@@ -59,6 +59,7 @@ import {
   mountIndexHtml,
   withHsts,
   arrivedOverHttps,
+  chatBodyForMux,
 } from "./server.ts";
 import {
   createPairLimiter,
@@ -2220,6 +2221,39 @@ describe("bridgeConfigBody — /api/config reports the crew mode", () => {
 // The mux block (M10/06) — how the phone learns what the multiplexer underneath can do, without
 // ever learning to branch on which one it is. Same reason as above: the handler is inside Bun.serve,
 // so the shape is asserted through the pure builder it calls.
+describe("chatBodyForMux — Send now is offered only where the multiplexer can press it", () => {
+  const body = {
+    page: "live" as const,
+    gen: 1,
+    rev: 3,
+    head: 3,
+    oldest: 1,
+    hasOlder: false,
+    upserts: [],
+    queued: ["sign off"],
+    sendQueuedNow: ["ctrl+Enter"],
+  };
+  const mux = (unsupportedKeys: string[]) =>
+    declareCapabilities({ supports: ["sendKeys"], unsupportedKeys, topologyLatency: { kind: "push" } });
+
+  test("a multiplexer that delivers the chord keeps the field", () => {
+    expect(chatBodyForMux(body, mux([]))).toBe(body);
+  });
+
+  test("one that would deliver it as a plain Enter loses the field, and nothing else", () => {
+    // tmux 3.6b and zellij 0.44.2 deliver ctrl+Enter as `^M`; Enter would SUBMIT the draft.
+    const out = chatBodyForMux(body, mux(["ctrl+Enter"]));
+    expect("sendQueuedNow" in out).toBe(false);
+    const { sendQueuedNow: _dropped, ...rest } = body;
+    expect(out).toEqual(rest);
+  });
+
+  test("a body without the field passes through untouched", () => {
+    const { sendQueuedNow: _none, ...plain } = body;
+    expect(chatBodyForMux(plain, mux(["ctrl+Enter"]))).toBe(plain);
+  });
+});
+
 describe("muxConfigBody — the capability declaration, as the phone reads it", () => {
   const everything = declareCapabilities({
     supports: [...MUX_CAPABILITIES],

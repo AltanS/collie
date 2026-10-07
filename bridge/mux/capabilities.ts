@@ -16,6 +16,8 @@
 //    hands back a path the operator pastes; the multiplexer is not involved, so it cannot decline it.
 //    It is host-local for every adapter because a mux adapter is host-local by rule (ADR 0011).
 
+import { formatMuxKey, parseMuxKey } from "./keys.ts";
+
 /**
  * Every capability an adapter may declare, in Collie's words.
  *
@@ -228,6 +230,30 @@ export function supportsCapability(
   capability: MuxCapability,
 ): boolean {
   return declaration.supports[capability];
+}
+
+/**
+ * Whether this multiplexer can deliver EVERY key of a sequence, as the keys it names.
+ *
+ * False when `sendKeys` is not declared at all, when a key is not a neutral spelling, or when a key
+ * is declared unsupported — as the whole chord (`ctrl+Enter`) or as its base key (Herdr's `PageUp`
+ * refuses `shift+PageUp` too, keys.ts there). One undeliverable key makes the whole sequence
+ * undeliverable: the keys of a sequence mean something together, and its front half alone is a
+ * different action.
+ *
+ * This is how a surface that offers a key as a button (the chat answer's `sendQueuedNow`) asks the
+ * pane's multiplexer, as a capability fact rather than by its name.
+ */
+export function keysDeliverable(
+  declaration: Pick<MuxCapabilityDeclaration, "supports" | "unsupportedKeys">,
+  keys: readonly string[],
+): boolean {
+  if (!declaration.supports.sendKeys) return false;
+  const refused = new Set(declaration.unsupportedKeys);
+  return keys.every((spelling) => {
+    const parsed = parseMuxKey(spelling);
+    return parsed !== null && !refused.has(formatMuxKey(parsed)) && !refused.has(parsed.key);
+  });
 }
 
 /** The declared capabilities, sorted — for the config surface (M10/06), the matrix and tests. */

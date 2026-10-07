@@ -17,7 +17,7 @@ import {
 import { rootOfWorkspace, type RootSnapshot, withinBound } from "./changes-root.ts";
 import { existingPaths, type FilesExistAnswer, filesQuery, MAX_EXIST_PATHS, serveFiles, UNKNOWN_PATH } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
+import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
@@ -130,6 +130,7 @@ import type {
   WorkspaceChangeDiffResponse,
   WorkspaceChangesResponse,
   WorkspaceFilesResponse,
+  ChatBody,
   PaneChatResponse,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -1419,7 +1420,7 @@ export function startServer(opts: {
       if (action === "history" && req.method === "GET")
         return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
       if (action === "chat" && req.method === "GET")
-        return paneChat(cfg, journals, live, rt.engine, paneId, url, req);
+        return paneChat(cfg, journals, live, rt.engine, herdr.capabilities, paneId, url, req);
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
@@ -2861,6 +2862,7 @@ async function paneChat(
   journals: Record<string, JournalAdapter> | null,
   live: LiveWindows | null,
   engine: StateEngine,
+  mux: Pick<MuxCapabilityDeclaration, "supports" | "unsupportedKeys">,
   paneId: string,
   url: URL,
   req: Request,
@@ -2893,7 +2895,7 @@ async function paneChat(
         : await live.older(adapter, ref, params.before, params.limit);
     if (read === null) return unavailable("no-log");
     // Masked before the ETag is hashed, so the tag describes what was actually sent (bridge/redact.ts).
-    const body = cfg.redact ? redactChatBody(read) : read;
+    const body = chatBodyForMux(cfg.redact ? redactChatBody(read) : read, mux);
     const data = { paneId, available: true, ...body } satisfies PaneChatResponse;
     const etag = computeEtag(JSON.stringify(data));
     if (notModified(req.headers.get("if-none-match"), etag)) {
@@ -2906,6 +2908,26 @@ async function paneChat(
   } catch (err) {
     return text(`transcript read failed: ${errorText(err)}`, 502);
   }
+}
+
+/**
+ * The chat answer as THIS pane's multiplexer can act on it.
+ *
+ * `sendQueuedNow` is the harness naming its key (journal/types.ts), and only the multiplexer knows
+ * whether it can deliver that key as itself. tmux and zellij deliver `ctrl+Enter` as a plain Enter
+ * (mux/keys.ts `EXTENDED_ONLY_CHORDS`), and Enter submits a draft in Claude Code's input box, so a
+ * "Send now" button there would send the draft instead. The field is dropped, whole, when any of its
+ * keys is undeliverable (`keysDeliverable`): the phone reads an absent field as "no button". Asked as
+ * a capability fact, never by the multiplexer's name. Static per bridge, so it never moves the ETag.
+ */
+export function chatBodyForMux(
+  body: ChatBody,
+  mux: Pick<MuxCapabilityDeclaration, "supports" | "unsupportedKeys">,
+): ChatBody {
+  if (!("sendQueuedNow" in body) || body.sendQueuedNow === undefined) return body;
+  if (keysDeliverable(mux, body.sendQueuedNow)) return body;
+  const { sendQueuedNow: _undeliverable, ...rest } = body;
+  return rest;
 }
 
 /**

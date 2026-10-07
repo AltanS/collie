@@ -39,6 +39,7 @@ import {
   type TernExec,
   type TernRunResult,
 } from "./exec.ts";
+import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import { toTernKey, TERN_UNSENDABLE_KEYS } from "./keys.ts";
 import { ternBeaconMatcher } from "./markers.ts";
 import {
@@ -90,7 +91,7 @@ export class TernMux implements MuxAdapter {
     ],
     spaces: "many",
     topologyLatency: { kind: "push" },
-    unsupportedKeys: TERN_UNSENDABLE_KEYS,
+    unsupportedKeys: [...TERN_UNSENDABLE_KEYS, ...EXTENDED_ONLY_CHORDS],
   });
 
   private readonly revisions = new Map<string, RevisionEntry>();
@@ -185,6 +186,9 @@ export class TernMux implements MuxAdapter {
       if (!res.ok) {
         if (res.reason === "meta") {
           return muxRefused("Tern cannot send meta chords: terminal PTYs do not receive Super/Command");
+        }
+        if (res.reason === "extended") {
+          return muxRefused(`${key} is not known to reach a Tern pane as itself rather than as the plain key, so it is refused rather than mis-sent`);
         }
         return muxRefused(`Tern cannot send key: ${key}`);
       }

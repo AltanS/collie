@@ -18,8 +18,13 @@
 // byte logger: every named key and every printable ASCII character arrived as the bytes a terminal
 // sends for it. `Up` came as `ESC [ A`, `shift+Tab` as `ESC [ Z`, `ctrl+alt+Delete` as
 // `ESC [ 3 ; 7 ~`, `Comma` as `,` and `alt+Comma` as `ESC ,`.
+//
+// `ctrl+Enter` was NOT in that probe, and nothing since has shown what tuios delivers for it. On tmux
+// and zellij it arrives as a plain Enter, which submits a draft in Claude Code's input box, so until a
+// probe shows it arriving as itself it is declared unsupported (../keys.ts `EXTENDED_ONLY_CHORDS`)
+// and refused here. Fail closed: a refused key is a missing button, a mis-sent one is a sent draft.
 
-import { MUX_NAMED_KEYS, parseMuxKey, type MuxNamedKey } from "../keys.ts";
+import { isExtendedOnlyChord, MUX_NAMED_KEYS, parseMuxKey, type MuxNamedKey } from "../keys.ts";
 
 /**
  * Every named key in the contract's alphabet, in tuios's spelling. The same names, and the table is
@@ -69,7 +74,7 @@ const _EVERY_NAMED_KEY_IS_TRANSLATED: readonly (typeof MUX_NAMED_KEYS)[number][]
 void _EVERY_NAMED_KEY_IS_TRANSLATED;
 
 /** Why a key never reached the socket, in the words the refusal detail prints. */
-export type TuiosKeyRejection = "unparsed" | "meta";
+export type TuiosKeyRejection = "unparsed" | "meta" | "extended";
 
 /** A translated chord, or the reason tuios will not be asked for it. */
 export type TuiosKeyResult =
@@ -87,6 +92,7 @@ export function toTuiosKey(spelling: string): TuiosKeyResult {
   const parsed = parseMuxKey(spelling);
   if (parsed === null) return { ok: false, reason: "unparsed" };
   if (parsed.modifiers.includes("meta")) return { ok: false, reason: "meta" };
+  if (isExtendedOnlyChord(spelling)) return { ok: false, reason: "extended" };
   const base = NAMED_BY_CONTRACT_SPELLING.get(parsed.key) ?? SEPARATOR_NAMES.get(parsed.key) ?? parsed.key;
   return { ok: true, key: [...parsed.modifiers, base].join("+") };
 }

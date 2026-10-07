@@ -140,3 +140,27 @@ export function canonicalMuxKey(spelling: string): string | null {
 export function isMuxKey(spelling: string): boolean {
   return parseMuxKey(spelling) !== null;
 }
+
+/**
+ * Chords a program can only tell from a PLAINER key through an extended keyboard encoding.
+ *
+ * `ctrl+Enter` is the one so far. A terminal without an extended encoding (CSI u, modifyOtherKeys)
+ * has no byte for it, so a multiplexer that cannot produce one delivers the very `\r` that Enter
+ * sends. That is worse than sending nothing: Claude Code's "send now" key becomes Enter, and Enter
+ * SUBMITS whatever draft sits in its input box. Probed 2026-10-08 on a pane running `cat -v` in raw
+ * mode: tmux 3.6b and zellij 0.44.2 both delivered `^M`, identical to Enter, with and without the
+ * pane asking for an extended encoding; Herdr 0.9.3 delivered the chord and Claude Code acted on it.
+ *
+ * Shared so every adapter opts out in the same words. An adapter lists these in its
+ * `unsupportedKeys` and refuses them at send time ({@link isExtendedOnlyChord}) until a probe on that
+ * multiplexer shows the chord arriving as itself; an adapter nobody has probed opts out too.
+ */
+export const EXTENDED_ONLY_CHORDS: readonly string[] = ["ctrl+Enter"];
+
+const EXTENDED_ONLY = new Set(EXTENDED_ONLY_CHORDS);
+
+/** Whether `spelling`, canonicalised, is one of {@link EXTENDED_ONLY_CHORDS}. */
+export function isExtendedOnlyChord(spelling: string): boolean {
+  const canonical = canonicalMuxKey(spelling);
+  return canonical !== null && EXTENDED_ONLY.has(canonical);
+}

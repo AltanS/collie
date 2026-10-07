@@ -222,4 +222,12 @@ describe("every translated dictionary", () => {
       }
     },
   );
+
+  // WCAG 2.5.3, Label in Name: voice control says the words it sees on the button, so an accessible
+  // name that is a different sentence ("Send the waiting messages now" under "Send now") fails it.
+  it.each(["en", ...translated])("%s: the Send now button's accessible name starts with its visible words", async (code) => {
+    const load = bundles[`./messages/${code}.ts`];
+    const dictionary = Object.values(await load!())[0]!;
+    expect(dictionary["chat.stream.sendNowAria"]!.startsWith(dictionary["chat.stream.sendNow"]!)).toBe(true);
+  });
 });

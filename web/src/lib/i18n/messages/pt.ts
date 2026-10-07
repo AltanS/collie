@@ -326,6 +326,8 @@ export const pt: Dictionary = {
   "chat.stream.empty": "Envie uma mensagem para começar.",
   "chat.stream.working": "Ainda trabalhando…",
   "chat.stream.queued": "Aguardando para enviar",
+  "chat.stream.sendNow": "Enviar agora",
+  "chat.stream.sendNowAria": "Enviar agora, as mensagens em espera",
   "chat.stream.loadOlderFailed": "Não foi possível carregar interações anteriores",
   "chat.card.create": "Criar",
   "chat.card.edit": "Editar",

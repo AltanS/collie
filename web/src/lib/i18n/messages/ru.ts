@@ -326,6 +326,8 @@ export const ru: Dictionary = {
   "chat.stream.empty": "Отправьте сообщение, чтобы начать.",
   "chat.stream.working": "Выполняется…",
   "chat.stream.queued": "Ожидание отправки",
+  "chat.stream.sendNow": "Отправить сейчас",
+  "chat.stream.sendNowAria": "Отправить сейчас, ожидающие сообщения",
   "chat.stream.loadOlderFailed": "Не удалось загрузить предыдущие шаги",
   "chat.card.create": "Создать",
   "chat.card.edit": "Править",

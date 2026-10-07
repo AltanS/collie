@@ -100,6 +100,7 @@ import {
   type WireWorkspace,
 } from "./client.ts";
 import { routeEvent, subscriptionTypes } from "./events.ts";
+import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import { toTuiosKey, TUIOS_UNSENDABLE_KEYS } from "./keys.ts";
 import { TUIOS_LOGO_SVG } from "./logo.ts";
 
@@ -129,7 +130,7 @@ const TUIOS_CAPABILITIES = declareCapabilities({
     "pushTopologyEvents",
     "pushPaneEvents",
   ],
-  unsupportedKeys: TUIOS_UNSENDABLE_KEYS,
+  unsupportedKeys: [...TUIOS_UNSENDABLE_KEYS, ...EXTENDED_ONLY_CHORDS],
   // The event stream announces every structure change Collie shows: windows and sessions
   // appearing, closing, moving and being renamed, and workspaces being renamed. So there is no
   // census and no number to state.
@@ -137,7 +138,8 @@ const TUIOS_CAPABILITIES = declareCapabilities({
   notes: {
     agentDetection:
       "tuios names the agent in a pane from its harness. An agent Collie has no harness for reads as a shell.",
-    sendKeys: "tuios has no Super or Command key for a pane, so a `meta` chord is refused.",
+    sendKeys:
+      "tuios has no Super or Command key for a pane, so a `meta` chord is refused. Ctrl+Enter is refused too, until it is shown to arrive as itself rather than as a plain Enter.",
     setFocus:
       "tuios has no command that moves an attached terminal to another session. When no terminal shows this pane's session, Show in terminal is refused and says which session the terminal shows.",
     createTab:
@@ -379,6 +381,9 @@ export class TuiosMux implements MuxAdapter {
       if (!result.ok) {
         if (result.reason === "meta") {
           return muxRefused(`tuios has no Super or Command key for a pane, so it cannot send ${key}. Use alt for the Alt key.`);
+        }
+        if (result.reason === "extended") {
+          return muxRefused(`${key} is not known to reach a tuios pane as itself rather than as the plain key, so it is refused rather than mis-sent`);
         }
         return muxRefused(`not a key: ${key}`);
       }

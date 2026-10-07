@@ -609,6 +609,11 @@ menu and tap **Terminal view**. The choice is one setting for the whole device, 
 browser, and a device that already chose the terminal keeps it. **Chat view** in the same menu
 switches back.
 
+When you queue a message while Claude Code works, Chat shows it on a **Waiting to send** card, and
+the card's **Send now** button sends the whole queue to the running turn at once. Only Claude Code
+offers it, because the button presses Ctrl+Enter, the key that agent defines for this. The button is
+hidden on a read-only device and on a saved copy.
+
 One thing in Chat is known to be incomplete. Hermes can remove a turn from its log after Collie
 read it, for example when it compacts. Chat then keeps showing that turn until the session is read
 again. The terminal never has this problem.

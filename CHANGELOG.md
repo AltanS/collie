@@ -83,6 +83,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
   offline, or the screen is a saved copy, dialog options and the send button are disabled with
   "Reconnect to answer" and "Reconnect to send". Typing still works and the draft still saves.
   There is no queue, no retry and no send on reconnect.
+- **Send now on a waiting message.** When you queue a message while Claude Code works, Chat's
+  "Waiting to send" card gets a **Send now** button. It presses Ctrl+Enter, which hands the whole
+  queue to the running turn at its next tool call. The bridge declares the key for each harness, and
+  only Claude Code declares one today, so no other pane shows the button. It shows only where the
+  multiplexer can send Ctrl+Enter, which today is Herdr: tmux and zellij deliver it as a plain Enter,
+  which would send your draft instead. A read-only device, a saved copy and a pane the bridge cannot
+  reach do not show it either.
 
 ### Changed
 
@@ -149,6 +156,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
   are now a body: redacted under `none`, a count of `•` marks under the default preview. Named keys
   such as Enter and Ctrl+C stay readable. Audit files written before 1.18.0 may still hold typed
   characters; rotate or delete them.
+- **Chat dropped queued messages while a background task finished.** Claude Code keeps one queue for
+  your messages and its own notifications, and takes the front one off. Collie counted only your
+  messages, so each finished task or subagent pushed your oldest waiting message off its list while
+  Claude Code still showed it queued. Two queued messages could show as one, or none. The queue now
+  keeps a place for every entry, matches a notification by its kind and body when Claude Code rewrites
+  it on the way out, and clears a message once the transcript shows it delivered, so a sent message
+  never stays "Waiting to send". Claude Code's own plain-text notices no longer show as yours.
 
 ## [1.17.2] - 2026-10-06
 

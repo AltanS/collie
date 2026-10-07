@@ -35,7 +35,7 @@ import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, paneTextWithDraft } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
-import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
+import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
@@ -44,10 +44,11 @@ import { saveChatTail } from "@/lib/chat-tail";
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
 // These suites drive sends against a mocked network and never poll first, so they pin the pane live;
 // the gating itself is covered by liveness.test.ts and the *-offline suites.
+const liveness = vi.hoisted(() => ({ live: true }));
 vi.mock("@/lib/liveness", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/liveness")>()),
-  isLive: () => true,
-  useLive: () => true,
+  isLive: () => liveness.live,
+  useLive: () => liveness.live,
 }));
 
 // The detail view's core job: type a reply and submit it to the bridge. This drives the whole wired
@@ -3299,6 +3300,122 @@ describe("AgentChat — the chat body", () => {
     expect(
       screen.getByText(/This pane has no agent session.*The terminal stays here\./),
     ).toBeInTheDocument();
+  });
+});
+
+// ── "SEND NOW" ON THE WAITING CARD: WHO MAY TAP IT, AND WHAT IT SENDS ───────────────────────────
+//
+// The keys are the bridge's data (`sendQueuedNow` on the chat answer), the write gate is the pane
+// view's. These cases pin the second half: the same answer draws the button on a device that may
+// write and withholds it on one that may not, and a tap goes through the ordinary keys route once.
+describe("AgentChat — Send now on the waiting card", () => {
+  const agent = () => ({ ...fixtureAgents[0]!, hasSession: true });
+
+  /** The fixture window, plus a queue and the keys the bridge declares for it. */
+  function answerWithQueue(declared: string[] | undefined) {
+    const body: ChatWindowBody & { paneId: string; available: true } = {
+      paneId: "w1:p1",
+      available: true,
+      page: "live",
+      gen: 7,
+      rev: 1,
+      head: 1,
+      oldest: 1,
+      hasOlder: false,
+      upserts: [],
+      queued: ["first", "second"],
+    };
+    if (declared !== undefined) body.sendQueuedNow = declared;
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.json(body)));
+  }
+
+  it("draws the button for a device that may write and sends the declared keys once", async () => {
+    answerWithQueue(["ctrl+Enter"]);
+    const sent: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sent.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ agent: agent(), device: { enforced: true, device: "my-phone", authorized: true } });
+    const button = await screen.findByRole("button", { name: "Send now, the waiting messages" });
+    await user.click(button);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({ keys: ["ctrl+Enter"] });
+    await user.click(button);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("withholds the button on a read-only device", async () => {
+    answerWithQueue(["ctrl+Enter"]);
+    renderChat({ agent: agent(), device: { enforced: true, device: "spare-phone", authorized: false } });
+    expect(await screen.findByText("Waiting to send")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
+  });
+
+  // A queue is non-empty exactly while the agent works, which is when a permission prompt appears,
+  // and the declared keys would answer it. The button is withheld, not disabled.
+  it("withholds the button while a permission dialog is on screen, and sends nothing", async () => {
+    answerWithQueue(["ctrl+Enter"]);
+    const sent: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sent.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderChat({
+      agent: agent(),
+      device: { enforced: true, device: "my-phone", authorized: true },
+      text: MENU_TEXT,
+    });
+    expect(await screen.findByText("Waiting to send")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
+    expect(sent).toHaveLength(0);
+  });
+
+  // The liveness backstop (M46 spec 11): a pane the bridge has not answered lately is not written to.
+  it("withholds the button while the pane is not live", async () => {
+    answerWithQueue(["ctrl+Enter"]);
+    liveness.live = false;
+    try {
+      renderChat({ agent: agent(), device: { enforced: true, device: "my-phone", authorized: true } });
+      expect(await screen.findByText("Waiting to send")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
+    } finally {
+      liveness.live = true;
+    }
+  });
+
+  it("refuses at the handler when the pane went dark after the card was drawn", async () => {
+    answerWithQueue(["ctrl+Enter"]);
+    const sent: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sent.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ agent: agent(), device: { enforced: true, device: "my-phone", authorized: true } });
+    const button = await screen.findByRole("button", { name: "Send now, the waiting messages" });
+    // The render that would hide the button has not happened yet: `isLive` flips without a re-render.
+    liveness.live = false;
+    try {
+      await user.click(button);
+      expect(sent).toHaveLength(0);
+    } finally {
+      liveness.live = true;
+    }
+  });
+
+  it("withholds the button when the bridge declared no keys", async () => {
+    answerWithQueue(undefined);
+    renderChat({ agent: agent(), device: { enforced: true, device: "my-phone", authorized: true } });
+    expect(await screen.findByText("Waiting to send")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
   });
 });
 

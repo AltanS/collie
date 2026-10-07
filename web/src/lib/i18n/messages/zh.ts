@@ -382,6 +382,8 @@ export const zh: Dictionary = {
   "chat.stream.empty": "发送一条消息即可开始。",
   "chat.stream.working": "仍在处理…",
   "chat.stream.queued": "等待发送",
+  "chat.stream.sendNow": "立即发送",
+  "chat.stream.sendNowAria": "立即发送，等待中的消息",
   "chat.stream.loadOlderFailed": "无法加载更早的对话",
   "chat.card.create": "新建",
   "chat.card.edit": "编辑",

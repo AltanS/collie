@@ -1,8 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, type CSSProperties, type RefObject } from "react";
-import { ArrowUpToLine, History, Loader2 } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
 
 import { ItemView, ToolGroup, groupRuns } from "@/components/chat-cards";
 import { StatusDot } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
@@ -83,7 +84,84 @@ const LIVE_ROW = "mt-1 flex items-center gap-2 py-2 text-xs font-medium text-mut
 const QUEUED_BLOCK =
   "mt-1 flex min-w-0 flex-col gap-1 rounded-md border border-dashed border-status-working/40 bg-status-working/5 px-3 py-2";
 const QUEUED_LABEL = "text-xs font-medium text-status-working";
+/** The label row. The button, when there is one, is its only other child, at the right. */
+const QUEUED_HEAD = "flex min-h-7 items-center justify-between gap-2";
+/**
+ * "Send now": drawn 28px tall and bought up to the 44px floor as hit area (DESIGN.md §6), so the
+ * card does not grow a row for it. `min-w-11` is the width half of the floor; the `::before` is the
+ * height half and reaches into the card's own padding, never into the message text under it.
+ */
+const SEND_NOW =
+  "relative h-7 min-w-11 gap-1 px-2 text-xs before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']";
+/** How long "Send now" holds its pending face when the queue does not empty first. */
+const SEND_NOW_PENDING_MS = 5_000;
 const QUEUED_TEXT = "wrap-anywhere text-sm whitespace-pre-wrap text-foreground/80";
+
+/**
+ * THE QUEUE CARD: one group, however many messages wait, with its one control at the head.
+ *
+ * "Send now" belongs to the GROUP and not to a message because it IS a group act: in Claude Code,
+ * Ctrl+Enter hands the whole queue to the running turn, so a button on one row would promise a
+ * choice the agent does not offer. It is drawn only when the caller passes `sendNow`, which the pane
+ * view does only for a bridge-declared key list on a pane this device may write to (agent-chat.tsx).
+ *
+ * PENDING, NEVER RETRYING. A tap disables the button and shows a spinner until the card goes away
+ * (the queue emptied, so the unmount ends it) or {@link SEND_NOW_PENDING_MS} pass, or the send
+ * itself failed. It never sends a second time on its own: a second Ctrl+Enter that lands after the
+ * queue emptied would be a key typed into the agent's composer.
+ */
+function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (() => Promise<boolean>) | null }) {
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setPending(false), SEND_NOW_PENDING_MS);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
+  const onTap = () => {
+    if (pending || sendNow === null) return;
+    setPending(true);
+    // A refusal or a failed write has already told the operator why (the pane view's status line).
+    void sendNow().then(
+      (sent) => (sent ? undefined : setPending(false)),
+      () => setPending(false),
+    );
+  };
+
+  return (
+    <div data-slot="stream-queued" className={QUEUED_BLOCK}>
+      <div className={QUEUED_HEAD}>
+        <p className={QUEUED_LABEL}>{t("chat.stream.queued")}</p>
+        {sendNow !== null && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-slot="stream-send-now"
+            className={SEND_NOW}
+            disabled={pending}
+            aria-busy={pending}
+            // The accessible name STARTS with the visible words in every language (WCAG 2.5.3, Label in
+            // Name), so a voice command "tap Send now" finds the button; the rest says what is sent.
+            aria-label={t("chat.stream.sendNowAria")}
+            onClick={onTap}
+          >
+            {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <CornerDownLeft aria-hidden className="size-3.5" />}
+            {t("chat.stream.sendNow")}
+          </Button>
+        )}
+      </div>
+      {queued.map((text, i) => (
+        // The index is the key, and here that is right rather than lazy: the list has no identity
+        // on the wire, two identical queued messages ARE two messages, and the whole list is
+        // replaced on every answer so a key never has to survive one.
+        <p key={i} className={QUEUED_TEXT}>
+          {text}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 /** The top affordance, the same shape and the same words the mirror's own scrollback row uses. */
 const EDGE_ROW =
@@ -172,6 +250,7 @@ export function SessionStream({
   fontSize,
   listRef,
   savedCopy = null,
+  onSendQueuedNow,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -201,6 +280,13 @@ export function SessionStream({
    * top slot in place of "Load older" and "Start of the conversation" (see {@link SavedCopyRow}).
    */
   savedCopy?: string | null;
+  /**
+   * Send the queue now with the keys the bridge declared (`feed.window.sendQueuedNow`). Passed ONLY
+   * where this device may write to this pane; leave it out and the card has no button, which is how
+   * a read-only device, a saved copy and a lost host all lose it. Resolves false when nothing was
+   * sent. The keys are handed back so this body never holds a copy of its own.
+   */
+  onSendQueuedNow?: (keys: readonly string[]) => Promise<boolean>;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -286,6 +372,10 @@ export function SessionStream({
     el.scrollTop = held.top + (el.scrollHeight - held.height);
   }, [blocks, loadingOlder, listRef]);
 
+  const sendNowKeys = window.sendQueuedNow;
+  const sendNow =
+    onSendQueuedNow !== undefined && sendNowKeys.length > 0 ? () => onSendQueuedNow(sendNowKeys) : null;
+
   const status = window.status;
   const missing =
     status.kind === "unavailable" && (status.reason === "no-log" || status.reason === "no-session");
@@ -362,17 +452,7 @@ export function SessionStream({
           therefore wears the operator's OWN colour (the same well `UserTurn` uses) so the eye reads
           "mine, not yet sent" rather than "a turn nobody answered". */}
       {window.queued.length > 0 && window.status.kind === "live" && (
-        <div data-slot="stream-queued" className={QUEUED_BLOCK}>
-          <p className={QUEUED_LABEL}>{t("chat.stream.queued")}</p>
-          {window.queued.map((text, i) => (
-            // The index is the key, and here that is right rather than lazy: the list has no identity
-            // on the wire, two identical queued messages ARE two messages, and the whole list is
-            // replaced on every answer so a key never has to survive one.
-            <p key={i} className={QUEUED_TEXT}>
-              {text}
-            </p>
-          ))}
-        </div>
+        <QueuedCard queued={window.queued} sendNow={sendNow} />
       )}
 
       {/* The reading, when there is one, and only where there is nothing to read under it. A stale

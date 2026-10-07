@@ -89,6 +89,15 @@ export interface ChatWindow {
    */
   readonly queued: readonly string[];
   /**
+   * The keys that make the agent take {@link queued} now, as the BRIDGE declared them for this
+   * session's harness (neutral spelling, e.g. `["ctrl+Enter"]`), or empty when it declares none.
+   *
+   * Replaced with every answer, like {@link queued}, and for the same reason: it is a fact the
+   * answer states, not history. It is DATA so this code names no harness; a bridge one release behind
+   * sends none, which reads as "no button". A `?before=` page leaves it alone.
+   */
+  readonly sendQueuedNow: readonly string[];
+  /**
    * When the bridge answered with these turns, set ONLY while the window is the SAVED COPY: the tail
    * the phone kept (lib/chat-tail.ts), read back because a live read failed (M46 spec 09). `null` for
    * every window a live answer built. The view says "Saved copy from {time}" while it is set, and
@@ -133,6 +142,7 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
   hasOlder: false,
   entries: [],
   queued: EMPTY_QUEUE,
+  sendQueuedNow: EMPTY_QUEUE,
   savedAt: null,
 };
 
@@ -154,6 +164,8 @@ export function savedChatWindow(entries: readonly ChatEntry[], savedAt: number):
     hasOlder: false,
     entries,
     queued: EMPTY_QUEUE,
+    // What could be sent now then is not a thing a copy can do (nothing saved acts, M46).
+    sendQueuedNow: EMPTY_QUEUE,
     savedAt,
   };
 }
@@ -213,6 +225,7 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     // `?? EMPTY_QUEUE`: a member one release behind sends no `queued` at all, and "nothing waiting"
     // is the honest reading of a bridge that does not know the question.
     queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
+    sendQueuedNow: nextQueue(held.sendQueuedNow, body.sendQueuedNow ?? EMPTY_QUEUE),
     // A live answer: whatever the window was before, it is current now.
     savedAt: null,
   };

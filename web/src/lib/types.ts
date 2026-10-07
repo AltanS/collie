@@ -1235,6 +1235,13 @@ export interface ChatWindowBody {
    * the route is additive-optional over a crew link).
    */
   queued?: string[];
+  /**
+   * The keys that deliver {@link queued} now, in the neutral key spelling, declared by the bridge
+   * for this session's harness. Absent for every harness that has no such key and from a bridge one
+   * release behind, and both read as "no Send now button". Mirrors `ChatWindowBody` in
+   * bridge/journal/live.ts.
+   */
+  sendQueuedNow?: string[];
 }
 
 /**

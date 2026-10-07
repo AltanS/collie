@@ -22,7 +22,15 @@
 //
 // `Esc` (probed: `Escape` is rejected outright) and nothing else. Every other name in the contract's
 // alphabet — including the paging and edit block Herdr refuses — was accepted verbatim, so zellij's
-// `unsupportedKeys` is EMPTY.
+// `unsupportedKeys` holds no NAMED key.
+//
+// ── THE ONE CHORD ZELLIJ SENDS AS SOMETHING ELSE ─────────────────────────────────────────────────
+//
+// `ctrl+Enter`. Probed 2026-10-08 on 0.44.2, in a throwaway session, against panes running `cat -v`
+// in raw mode: `send-keys "Ctrl Enter"` exited 0 and arrived as `^M`, the same byte as Enter, both
+// for a plain pane and for panes that had asked for the kitty keyboard protocol or modifyOtherKeys.
+// So it is declared unsupported (../keys.ts `EXTENDED_ONLY_CHORDS`) and refused here: sent, it would
+// be Enter, and Enter submits a draft in Claude Code's input box.
 //
 // ── WHY `meta` IS REFUSED, EVEN THOUGH ZELLIJ ACCEPTS `Super` ─────────────────────────────────────
 //
@@ -33,7 +41,7 @@
 // the only honest answer. It is not an `unsupportedKeys` entry because that list holds KEYS —
 // enumerating every meta chord is not a list, and the Keys tray greys buttons off it.
 
-import { MUX_NAMED_KEYS, parseMuxKey, type MuxModifier, type MuxNamedKey } from "../keys.ts";
+import { isExtendedOnlyChord, MUX_NAMED_KEYS, parseMuxKey, type MuxModifier, type MuxNamedKey } from "../keys.ts";
 
 /**
  * Every named key in the contract's alphabet, in zellij's spelling.
@@ -83,7 +91,7 @@ const ZELLIJ_MODIFIERS = {
 const CHORD_SEPARATOR = " ";
 
 /** Why a chord never reached zellij, in the words the refusal detail prints. */
-export type ZellijKeyRejection = "unparsed" | "meta";
+export type ZellijKeyRejection = "unparsed" | "meta" | "extended";
 
 /** A translated chord, or the reason zellij will not be asked for it. */
 export type ZellijKeyResult =
@@ -116,6 +124,7 @@ export function toZellijKey(spelling: string): ZellijKeyResult {
   const parsed = parseMuxKey(spelling);
   if (parsed === null) return { ok: false, reason: "unparsed" };
   if (parsed.modifiers.includes("meta")) return { ok: false, reason: "meta" };
+  if (isExtendedOnlyChord(spelling)) return { ok: false, reason: "extended" };
   const parts: string[] = [];
   for (const modifier of parsed.modifiers) {
     // `meta` is already refused above, so every survivor is a key of ZELLIJ_MODIFIERS.

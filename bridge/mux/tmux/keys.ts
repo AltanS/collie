@@ -15,8 +15,14 @@
 //
 // WHAT TMUX CAN SEND THAT HERDR CANNOT. The paging and edit block — `PageUp`, `PageDown`, `Home`,
 // `End`, `Insert`, `Delete` — are all real tmux keys (`PPage`, `NPage`, `Home`, `End`, `IC`, `DC`),
-// so tmux's `unsupportedKeys` is EMPTY where Herdr's has six entries. That asymmetry is the whole
-// argument for the contract's alphabet being closed and complete rather than Herdr's (../keys.ts).
+// so tmux sends every NAMED key where Herdr refuses six. That asymmetry is the whole argument for the
+// contract's alphabet being closed and complete rather than Herdr's (../keys.ts).
+//
+// WHAT TMUX SENDS AS SOMETHING ELSE is `ctrl+Enter`. Probed 2026-10-08 on tmux 3.6b against a pane
+// running `cat -v` in raw mode: `send-keys C-Enter` arrived as `^M`, the same byte as Enter, with
+// `extended-keys` off and with `extended-keys always` + `extended-keys-format csi-u`. So it is
+// declared unsupported (../keys.ts `EXTENDED_ONLY_CHORDS`) and refused here: sent, it would be Enter,
+// and Enter submits a draft in Claude Code's input box.
 //
 // WHAT TMUX HAS NO WORD FOR is the `meta` modifier. tmux's `M-` is Alt, which the contract already
 // spells `alt`; there is no second modifier to map `meta` onto, and mapping it onto `M-` would send
@@ -24,7 +30,7 @@
 // with a reason that says so. It is not an `unsupportedKeys` entry because that list holds KEYS —
 // enumerating every `meta+<anything>` chord is not a list, and the Keys tray greys buttons off it.
 
-import { MUX_NAMED_KEYS, parseMuxKey, type MuxModifier, type MuxNamedKey } from "../keys.ts";
+import { isExtendedOnlyChord, MUX_NAMED_KEYS, parseMuxKey, type MuxModifier, type MuxNamedKey } from "../keys.ts";
 
 /**
  * Every named key in the contract's alphabet, in tmux's spelling.
@@ -80,7 +86,7 @@ const TMUX_MODIFIERS = {
 const BACK_TAB = "BTab";
 
 /** Why a chord never reached tmux, in the words the refusal detail prints. */
-export type TmuxKeyRejection = "unparsed" | "meta";
+export type TmuxKeyRejection = "unparsed" | "meta" | "extended";
 
 /** A translated chord, or the reason tmux will not be asked for it. */
 export type TmuxKeyResult =
@@ -113,6 +119,7 @@ export function toTmuxKey(spelling: string): TmuxKeyResult {
   const parsed = parseMuxKey(spelling);
   if (parsed === null) return { ok: false, reason: "unparsed" };
   if (parsed.modifiers.includes("meta")) return { ok: false, reason: "meta" };
+  if (isExtendedOnlyChord(spelling)) return { ok: false, reason: "extended" };
   const prefixes: string[] = [];
   for (const modifier of parsed.modifiers) {
     // `meta` is already refused above, so every survivor is a key of TMUX_MODIFIERS.

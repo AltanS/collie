@@ -44,6 +44,19 @@ describe("buildJournalRegistry", () => {
   });
 });
 
+describe("sendQueuedNow", () => {
+  test("Claude Code declares Ctrl+Enter and no other harness declares anything", async () => {
+    const { canonicalMuxKey } = await import("../mux/keys.ts");
+    const registry = buildJournalRegistry(roots);
+    expect(registry.claude!.sendQueuedNow).toEqual(["ctrl+Enter"]);
+    // A declared key must be a valid neutral spelling, in its canonical form.
+    for (const key of registry.claude!.sendQueuedNow ?? []) expect(canonicalMuxKey(key)).toBe(key);
+    for (const [agent, adapter] of Object.entries(registry)) {
+      if (agent !== "claude") expect(adapter.sendQueuedNow).toBeUndefined();
+    }
+  });
+});
+
 describe("adapterFor", () => {
   const registry = buildJournalRegistry(roots);
 

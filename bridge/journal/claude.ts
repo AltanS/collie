@@ -290,19 +290,114 @@ const QUEUE_ENVELOPES = [
 ] as const;
 
 /**
- * The operator's own queued words, or null for anything else.
+ * Plain-text messages Claude Code queues on its own behalf, matched by their EXACT opening words.
+ *
+ * They carry no envelope, so {@link QUEUE_ENVELOPES} cannot see them, and without this list they are
+ * drawn as the operator's own message. Measured 2026-10-08 over the 570 newest sessions on one host:
+ * of 1,389 plain-text `enqueue` rows, 49 were `[Cross-session idle notice] "<session>", which you asked
+ * to be notified about, is idle now …`, 1 was `[Cross-session delivery notice] Your message to another
+ * session was held …`, and 16 were the auto-continuation `Your claude.ai usage limit has reset.
+ * Continue the task …`. The idle notice and the usage-limit one land in the transcript as a `user` row
+ * with `isMeta` and `promptSource: "system"`, which is Claude Code saying so itself.
+ *
+ * PREFIXES, EXACT, AND ONLY THESE. The other 1,300-odd plain rows are the human's own words and
+ * nothing else in their shape tells them apart, so a guess (any `[`, any sentence that looks
+ * automated) would hide a real message, which is the failure {@link QUEUE_ENVELOPES} refuses too.
+ * A notice Claude Code adds later shows up as one line in the queue row, visible and fixable.
+ */
+const QUEUE_NOTICES = [
+  "[Cross-session idle notice]",
+  "[Cross-session delivery notice]",
+  "Your claude.ai usage limit has reset.",
+] as const;
+
+/**
+ * What a queued message IS, as far as the queue is concerned.
+ *
+ * `kind` names the plumbing (an envelope tag or a {@link QUEUE_NOTICES} prefix), or is null for the
+ * operator's own words. `id` is the identity a later row can be matched on even when Claude Code
+ * spells the message differently there (see {@link createQueueTracker}). `text` is what the phone
+ * draws, and is null for plumbing.
+ */
+interface QueueEntry {
+  readonly kind: string | null;
+  readonly id: string;
+  readonly text: string | null;
+}
+
+/** How much of a message its identity keeps. Long enough that two different messages differ in it. */
+const QUEUE_ID_CHARS = 256;
+
+/** How much raw text {@link readQueueEntry} looks at: room for colour codes and runs of spaces. */
+const QUEUE_READ_CHARS = QUEUE_ID_CHARS * 16;
+
+/** ANSI off, whitespace runs to one space, ends trimmed: the spelling-proof form of a message. */
+function queueNormal(text: string): string {
+  return stripAnsi(text).replace(/\s+/g, " ").trim().slice(0, QUEUE_ID_CHARS);
+}
+
+/**
+ * Classify one queued message.
  *
  * `classifyUserText` is not reused here and the reason is worth stating: it MAPS plumbing onto
  * something showable — a `task-notification` becomes a `note` carrying its summary, which is right
  * for a turn that already happened and wrong for a queue. Nothing in the queue is a turn yet. The
  * only question is "did the operator type this", and the answer is yes or it is nothing.
+ *
+ * An envelope's identity is its tag and its BODY, everything after the opening tag. The attributes are
+ * left out on purpose: Claude Code rewrites them between the `enqueue` and the `remove` of the same
+ * message (measured 2026-10-08, a `<cross-session-message …>` loses its `hop-chain="…"` attribute on
+ * the way out, 498 characters in and 461 out), and the body is what stays.
  */
-function queuedText(content: JsonValue | undefined): string | null {
-  if (typeof content !== "string") return null;
-  const text = stripAnsi(content).trim();
-  if (text === "") return null;
-  if (QUEUE_ENVELOPES.some((tag) => opensEnvelope(tag, text))) return null;
-  return clamp(text, MAX_QUEUED_CHARS).text;
+function readQueueEntry(content: string): QueueEntry {
+  // Bounded first: the identity reads the first QUEUE_ID_CHARS and the drawn text far fewer, and a
+  // delivered turn can be a whole pasted file. Both sides of a match are cut the same way.
+  const text = stripAnsi(content.slice(0, QUEUE_READ_CHARS)).trim();
+  const tag = QUEUE_ENVELOPES.find((name) => opensEnvelope(name, text));
+  if (tag !== undefined) {
+    const body = text.slice(text.indexOf(">") + 1);
+    return { kind: tag, id: `<${tag}>${queueNormal(body)}`, text: null };
+  }
+  const notice = QUEUE_NOTICES.find((prefix) => text.startsWith(prefix));
+  if (notice !== undefined) return { kind: notice, id: queueNormal(text), text: null };
+  return { kind: null, id: queueNormal(text), text: text === "" ? null : clamp(text, MAX_QUEUED_CHARS).text };
+}
+
+/** A string content, or the first text block of an array one: what a delivered message says. */
+function firstText(content: JsonValue | undefined): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+  for (const block of content) {
+    if (block !== null && typeof block === "object" && !Array.isArray(block) && block.type === "text" && typeof block.text === "string") {
+      return block.text;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a delivered `user` turn says, in the words it was QUEUED in.
+ *
+ * The same text, except for a slash command: queued as `/compact be ready`, it arrives as a
+ * `<command-name>/compact</command-name>…<command-args>be ready</command-args>` envelope, which
+ * {@link classifyUserText} already reads back into the line the operator typed.
+ */
+function deliveredAs(said: string): string {
+  if (!isEnvelope("command-name", stripAnsi(said))) return said;
+  return classifyUserText(said)?.text ?? said;
+}
+
+/**
+ * The message a `queued_command` attachment row carries, or null for every other attachment.
+ *
+ * Shape measured 2026-10-08: `{ type: "queued_command", prompt, commandMode, origin: { kind }, … }`,
+ * written right after the `remove` of every message absorbed mid-turn, the operator's (`kind: "human"`)
+ * and Claude Code's own (`"task-notification"`, `"peer"`) alike.
+ */
+function queuedCommandPrompt(attachment: JsonValue | undefined): string | null {
+  if (attachment === null || attachment === undefined || typeof attachment !== "object" || Array.isArray(attachment)) return null;
+  if (attachment.type !== "queued_command") return null;
+  return firstText(attachment.prompt);
 }
 
 /**
@@ -317,57 +412,142 @@ const MAX_QUEUED_CHARS = 200;
 /**
  * THE MESSAGE QUEUE, as Claude Code records it. `RowReducer.queued`'s one real implementation.
  *
- * FOUR OPERATIONS, and the row shapes are measured over 11,181 `queue-operation` rows in the 400
- * newest sessions here (2026-10-01):
+ * FOUR OPERATIONS, and the row shapes are measured over 19,000-odd `queue-operation` rows in the 570
+ * newest sessions here (2026-10-08):
  *
- *   `enqueue` (5,602)  `content` — the message. Every row carries one.
- *   `dequeue` (2,931)  NO `content` at all. It says one came off, never which.
- *   `remove`  (2,647)  `content` and a `reason`: `absorbed_mid_turn` (2,546) or
- *                      `delivered_to_agent` (200). Both mean it left the queue.
- *   `popAll`  (1)      the whole queue is gone.
+ *   `enqueue`  `content` — the message. Every row carries one.
+ *   `dequeue`  NO `content` at all. It says one came off, never which.
+ *   `remove`   `content` and a `reason`: `absorbed_mid_turn`, `delivered_to_agent` or, once,
+ *              `agent_stopped`. All mean it left the queue. 560 rows from older Claude Code carry
+ *              neither content nor reason.
+ *   `popAll`   the whole queue is gone (back into the input box).
  *
- * `dequeue` carrying nothing is what makes this a FIFO and not a set: the front is the only item a
- * contentless "one came off" can mean. Replayed over those 400 files, a `dequeue` never once arrived
- * on an empty queue, so the front really is the answer. A `remove` asked for something not on the
- * list 107 times, which is the tail-read window starting after an enqueue, so a miss is ordinary and
- * costs nothing.
+ * The queue is ONE FIFO of the operator's words and Claude Code's own plumbing, so EVERY enqueue takes
+ * a place, plumbing too: a contentless `dequeue` takes whatever is at the front. A background task
+ * finishing enqueues a `<task-notification>` and dequeues it a few milliseconds later; if only the
+ * operator's own words held places, that dequeue would pop THEIR message off the list while Claude
+ * Code still shows it waiting. Plumbing holds its place and is never drawn.
+ *
+ * A PLACE THAT IS NEVER CLEARED IS THE WORST FAULT HERE, because it sits at the front and every later
+ * `dequeue` pops it instead of the message that really left, so a delivered message reads "waiting"
+ * for the rest of the session. So a place is cleared by whichever of these finds it first:
+ *
+ *  1. A `remove`, matched in three steps: the exact content; then the same {@link readQueueEntry} `id`,
+ *     which survives Claude Code rewriting an envelope's attributes; then, for plumbing only, the
+ *     OLDEST place of the same kind. The last step never takes the operator's words, and a `remove`
+ *     of the operator's words that matches nothing leaves the queue alone (the window opened after
+ *     its enqueue, which is ordinary).
+ *  2. THE DELIVERY ITSELF. Every message that leaves the queue shows up again as a row: a
+ *     `queued_command` attachment after a `remove`, a `user` turn after a `dequeue`. That row clears
+ *     the place with the same `id` when the queue rows missed it — a contentless `remove`, or a
+ *     `dequeue` that took a stale front instead. A message that left through a queue row is noted for
+ *     {@link DEPARTED_TTL} operations, so its own delivery row is not mistaken for a second copy of it
+ *     still waiting.
  *
  * WHAT THIS GETS WRONG, AND IN WHICH DIRECTION. A window that opened between an enqueue and its
- * dequeue pops the wrong front, so the answer can be short. It can never be long: every item on it
- * came off an `enqueue` row this reducer actually read. See `RowReducer.queued` for why short is the
- * side to be wrong on.
+ * dequeue pops the wrong front, and the plumbing fallback can take a different notice than the one
+ * named, so the answer can be short. It can never be long: every item on it came off an `enqueue` row
+ * this reducer actually read and has not been seen delivered. See `RowReducer.queued` for why short
+ * is the side to be wrong on.
  */
 interface QueueTracker {
   /** Fold one `queue-operation` row in. Anything unrecognised leaves the queue alone. */
   readonly apply: (row: JsonObject) => void;
+  /** Fold in the text of a row that shows a queued message REACHED the agent (see step 2 above). */
+  readonly delivered: (content: string) => void;
   /** A SNAPSHOT, so a later `push` cannot change what a caller is holding. */
   readonly queued: () => readonly string[];
 }
 
+/** One place in the queue: a {@link QueueEntry} and the raw key an exact `remove` names it by. */
+interface QueueSlot extends QueueEntry {
+  /** The raw `content`, bounded so a huge envelope costs little. */
+  readonly raw: string;
+}
+
+/**
+ * How many places the tracker holds, plumbing included.
+ *
+ * Past {@link QUEUE_MAX} on purpose: the answer is bounded to the newest QUEUE_MAX of the operator's
+ * own words, but a place that fell off early would make a later `dequeue` pop a message that is still
+ * waiting. The bound is only there because the file is written by a process we do not control.
+ */
+const QUEUE_SLOTS_MAX = QUEUE_MAX * 4;
+
+/**
+ * How many queue operations a message that left stays noted, waiting for its own delivery row.
+ *
+ * Measured 2026-10-08: that row follows within a few rows (a `remove` row per absorbed message, then
+ * one attachment each), so this is far past real and only stops a note outliving its meaning. A note
+ * that outlives it can only make one later delivery row clear nothing, the short direction.
+ */
+const DEPARTED_TTL = QUEUE_MAX * 2;
+
+function slotKey(content: string): string {
+  return `${content.length}:${content.slice(0, QUEUE_ID_CHARS)}`;
+}
+
 function createQueueTracker(): QueueTracker {
-  let queue: string[] = [];
+  let queue: QueueSlot[] = [];
+  // Messages that left through a queue row, with the operation count they left at (step 2 above).
+  let departed: { id: string; at: number }[] = [];
+  let clock = 0;
+
+  const depart = (slot: QueueSlot | undefined): void => {
+    if (slot === undefined) return;
+    departed.push({ id: slot.id, at: clock });
+    if (departed.length > QUEUE_SLOTS_MAX) departed.shift();
+  };
+
+  const removeAt = (content: string): number => {
+    // 1. Exact. `findIndex`, so a message queued twice loses ONE copy (a filter would drop both).
+    const raw = slotKey(content);
+    const exact = queue.findIndex((slot) => slot.raw === raw);
+    if (exact !== -1) return exact;
+    // 2. Same identity, which survives an envelope's attributes being rewritten.
+    const entry = readQueueEntry(content);
+    const same = queue.findIndex((slot) => slot.id === entry.id);
+    if (same !== -1 || entry.kind === null) return same;
+    // 3. Plumbing only: the oldest place of the same kind. Never the operator's words.
+    return queue.findIndex((slot) => slot.kind === entry.kind);
+  };
+
   return {
     apply(row) {
+      clock += 1;
+      departed = departed.filter((note) => clock - note.at <= DEPARTED_TTL);
       const op = row.operation;
+      const content = row.content;
       if (op === "enqueue") {
-        const text = queuedText(row.content);
-        if (text === null) return;
-        queue.push(text);
-        // Oldest off, unlike `rememberPending`: the newest queued message is the one the operator
-        // just typed and is looking for (see QUEUE_MAX).
-        if (queue.length > QUEUE_MAX) queue.shift();
+        const text = typeof content === "string" ? content : "";
+        queue.push({ ...readQueueEntry(text), raw: slotKey(text) });
+        if (queue.length > QUEUE_SLOTS_MAX) queue.shift();
       } else if (op === "dequeue") {
-        queue.shift();
+        depart(queue.shift());
       } else if (op === "remove") {
-        const text = queuedText(row.content);
-        // `indexOf`, so a message queued twice loses ONE copy. A filter would drop both.
-        const at = text === null ? -1 : queue.indexOf(text);
-        if (at !== -1) queue.splice(at, 1);
+        // A `remove` with no content (older Claude Code) names nothing; its delivery row settles it.
+        if (typeof content !== "string") return;
+        const at = removeAt(content);
+        if (at !== -1) depart(queue.splice(at, 1)[0]);
       } else if (op === "popAll") {
         queue = [];
+        departed = [];
       }
     },
-    queued: () => [...queue],
+    delivered(content) {
+      // Every `user` turn comes through here, so the common case, no queue at all, costs nothing.
+      if (queue.length === 0 && departed.length === 0) return;
+      const { id } = readQueueEntry(content);
+      if (id === "") return;
+      const noted = departed.findIndex((note) => note.id === id);
+      if (noted !== -1) {
+        departed.splice(noted, 1);
+        return;
+      }
+      const at = queue.findIndex((slot) => slot.id === id);
+      if (at !== -1) queue.splice(at, 1);
+    },
+    queued: () => queue.flatMap((slot) => (slot.text === null ? [] : [slot.text])).slice(-QUEUE_MAX),
   };
 }
 
@@ -468,6 +648,13 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
       queue.apply(row);
       return NO_CHANGE;
     }
+    // A message absorbed into a running turn leaves this attachment right after its `remove`: proof
+    // it reached the agent, which clears its place if the `remove` missed it (createQueueTracker § 2).
+    if (type === "attachment") {
+      const prompt = queuedCommandPrompt(row.attachment);
+      if (prompt !== null) queue.delivered(prompt);
+      return NO_CHANGE;
+    }
     // EVERYTHING ELSE IS BOOKKEEPING, and it is a long list. Measured over 462 real session files on
     // 2026-09-30: `attachment`, `last-prompt`, `atis-latch`, `file-history-snapshot`, `mode`,
     // `permission-mode`, `ai-title`, `cost-state`, and `system` with subtypes
@@ -488,6 +675,13 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     const message = row.message;
     if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
     const content = message.content;
+    // A `user` turn is how a dequeued message reaches the agent, so it clears that message's place if
+    // the `dequeue` took another (createQueueTracker § 2). Not one the operator typed straight into an
+    // idle prompt (`promptSource: "typed"`): that one never sat in the queue.
+    if (type === "user" && row.isSidechain !== true && row.promptSource !== "typed") {
+      const said = firstText(content);
+      if (said !== null) queue.delivered(deliveredAs(said));
+    }
     // The block walk below is an `else if` chain over four types; this is where a fifth is counted.
     noteBlockTypes(unknown, content);
     const uuid = typeof row.uuid === "string" ? row.uuid : "";
@@ -909,6 +1103,12 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
     parse: (text) => parseClaudeTranscript(text),
     reducer: () => createClaudeReducer(),
     cacheProbe: (ref) => claudeCacheProbe(source, ref),
+    // Proven 2026-10-07 on a throwaway pane under Herdr 0.9.3: with two messages queued behind a
+    // running tool, `ctrl+Enter` through `POST /api/pane/:id/keys` made Claude Code write a `remove`
+    // row for BOTH (`absorbed_mid_turn`) and the "ctrl+enter to send now" hint went away. NOT on tmux
+    // 3.6b or zellij 0.44.2, which deliver it as a plain Enter (mux/keys.ts `EXTENDED_ONLY_CHORDS`);
+    // the chat route drops this list there (server.ts `chatBodyForMux`).
+    sendQueuedNow: ["ctrl+Enter"],
   };
 }
 

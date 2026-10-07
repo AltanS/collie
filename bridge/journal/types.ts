@@ -222,4 +222,19 @@ export interface JournalAdapter {
    * `containedRealpath` like every other journal read.
    */
   cacheProbe?(ref: AgentSessionRef): Promise<CacheProbe | null>;
+  /**
+   * The keys that make this harness take its queued messages NOW instead of at its next turn
+   * boundary, in the neutral spelling (`bridge/mux/keys.ts`) — or absent when it has no such key.
+   *
+   * OPTIONAL, and absent everywhere but Claude Code: it prints "ctrl+enter to send now" under a
+   * queued message, and Ctrl+Enter hands the whole queue to the running turn at its next tool
+   * boundary. The list rides the live window's answer beside `queued` (journal/live.ts), so the phone
+   * learns it as DATA from the bridge and its code names no harness. It sits on this adapter because
+   * this is where a harness already declares what its queue is; nothing here sends a key.
+   *
+   * The harness names the key; the MULTIPLEXER decides whether it can be pressed. The chat route drops
+   * the list where the pane's multiplexer declares one of its keys unsupported (`keysDeliverable`,
+   * mux/capabilities.ts), because tmux and zellij deliver `ctrl+Enter` as a plain Enter.
+   */
+  readonly sendQueuedNow?: readonly string[];
 }

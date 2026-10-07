@@ -93,6 +93,7 @@ import {
   type MuxWatchOptions,
 } from "../types.ts";
 import { resolveZellijBinary, SpawnZellijExec } from "./exec.ts";
+import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import { toZellijKey, ZELLIJ_UNSENDABLE_KEYS } from "./keys.ts";
 import { zellijBeaconMatcher } from "./markers.ts";
 import {
@@ -176,8 +177,9 @@ export const MAX_TYPED_CHARS = 128 * 1024;
  * else, `--full` reached 294 lines behind a 22-line viewport, `write-chars` typed literally,
  * `send-keys` typed and chorded and REFUSED a name it did not know, `rename-pane` set and cleared,
  * `close-pane`, `new-tab`, `rename-tab-by-id` and `close-tab-by-id` all answered, and `subscribe`
- * streamed JSON frames. `unsupportedKeys` is EMPTY and that is a finding, not an omission: zellij
- * sends every key in the contract's alphabet, including the six Herdr refuses (keys.ts).
+ * streamed JSON frames. `unsupportedKeys` holds no NAMED key and that is a finding, not an omission:
+ * zellij sends every key in the contract's alphabet, including the six Herdr refuses (keys.ts). It
+ * holds `ctrl+Enter`, which zellij delivers as a plain Enter (keys.ts header).
  */
 const ZELLIJ_CAPABILITIES = declareCapabilities({
   supports: [
@@ -192,7 +194,7 @@ const ZELLIJ_CAPABILITIES = declareCapabilities({
     "closeTab",
     "pushPaneEvents",
   ],
-  unsupportedKeys: ZELLIJ_UNSENDABLE_KEYS,
+  unsupportedKeys: [...ZELLIJ_UNSENDABLE_KEYS, ...EXTENDED_ONLY_CHORDS],
   // The only `bounded` declaration in this build, and the number is the census CEILING — the longest
   // a change nobody announced can sit unseen. Not the floor: an adaptive census runs faster than its
   // ceiling most of the time, and a bound that only holds when the herd happens to be busy is not a
@@ -210,7 +212,7 @@ const ZELLIJ_CAPABILITIES = declareCapabilities({
     createSpace:
       "One Collie on zellij drives exactly one zellij session, because every zellij verb is scoped to one. A session created from the phone would not appear in this collie at all, so the button is not offered.",
     sendKeys:
-      "zellij sends every key in Collie's alphabet and refuses a name it does not know rather than typing it as text. It drops a Super/Command modifier silently instead of encoding it, so a `meta` chord is refused rather than delivered as the bare key.",
+      "zellij sends every key in Collie's alphabet and refuses a name it does not know rather than typing it as text. It drops a Super/Command modifier silently instead of encoding it, so a `meta` chord is refused rather than delivered as the bare key. Ctrl+Enter is refused too: zellij delivers it as a plain Enter.",
     pushTopologyEvents:
       "Nothing in zellij's command line announces a pane or tab appearing, closing or being renamed — the plugin API is where such an event lives, and that is not a command line. A bounded census, 3 s after any change and relaxing to 12 s while nothing moves, is what keeps the promise instead.",
     pushPaneEvents:
@@ -382,9 +384,12 @@ export class ZellijMux implements MuxAdapter {
     for (const key of keys) {
       const result = toZellijKey(key);
       if (!result.ok) {
+        if (result.reason === "meta") {
+          return muxRefused(`zellij accepts a Super/Command chord and then drops the modifier, so ${key} would arrive as the bare key — it is refused rather than mis-sent`);
+        }
         return muxRefused(
-          result.reason === "meta"
-            ? `zellij accepts a Super/Command chord and then drops the modifier, so ${key} would arrive as the bare key — it is refused rather than mis-sent`
+          result.reason === "extended"
+            ? `zellij delivers ${key} as the plain key without its modifier, so it is refused rather than mis-sent`
             : `not a key: ${key}`,
         );
       }

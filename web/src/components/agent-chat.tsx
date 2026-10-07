@@ -54,6 +54,7 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
+import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
 import { Composer, type ComposerHandle } from "@/components/composer";
@@ -81,7 +82,7 @@ import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { submitMenuKeys } from "@/lib/menu-action";
-import { sendGuardedKeys } from "@/lib/dialog-guard";
+import { sendBoundKeys, sendGuardedKeys } from "@/lib/dialog-guard";
 import type { PromptBlockAction } from "@/components/prompt-select-block";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
@@ -1375,6 +1376,46 @@ export function AgentChat({
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
+  // Chat's "Send now" on the Waiting to send card: press the keys the BRIDGE declared for this
+  // session's harness (`ChatWindow.sendQueuedNow`), through the one-shot key door every dialog tap
+  // ends in. The write is unbound, exactly like a key from the Keys tray, which is why it must never
+  // be reachable while a dialog is up: a queue is non-empty exactly while the agent works, which is
+  // when a permission or question dialog appears, and the declared keys (Enter, Ctrl+Enter) would
+  // ANSWER that dialog. So the card is not given the handler while one is on screen, and the handler
+  // refuses on its own as the backstop behind it. Same write gates as every handler above;
+  // `refuseWrite` and the saved-copy rule decide whether the card was given this handler at all, and
+  // `isLive` is the liveness backstop `sendGuardedReply` and the Keys tray have (M46 spec 11).
+  // Resolves false when no key went out, which is the card's cue to drop its pending face at once.
+  const dialogPresentRef = useRef(dialogPresent);
+  dialogPresentRef.current = dialogPresent;
+  const paneLive = useLive(paneId, scope);
+  const handleSendQueuedNow = useCallback(
+    async (keys: readonly string[]): Promise<boolean> => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return false;
+      }
+      if (dialogPresentRef.current) {
+        setStatus(t("chat.status.screenChanged"), "warn");
+        return false;
+      }
+      if (!isLive(paneId, scope)) {
+        setStatus(t("composer.send.reconnect"), "error");
+        return false;
+      }
+      const result = await sendBoundKeys({ paneId, scope }, [...keys]);
+      if (result.status === "sent") {
+        setStatus(t("chat.status.sent"), "success");
+        revalidator.revalidate();
+        return true;
+      }
+      setStatus(result.status === "error" && result.error ? result.error : t("chat.status.sendFailed"), "error");
+      return false;
+    },
+    [refuseWrite, paneId, scope, revalidator],
+  );
+
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
   // keyboard and cover the output. You read the pane first, then tap the input to type. (Explicit
   // actions inside the composer still focus it; the mirror tap focuses it via composerRef.)
@@ -2171,6 +2212,15 @@ export function AgentChat({
                   fontSize={prefs.chatFontSize}
                   listRef={listRef}
                   savedCopy={savedCopyLine}
+                  // Withheld, not disabled, wherever nothing may act: a read-only device, a refused
+                  // host, a saved copy, a frozen read (M46: nothing saved on the phone can act), a
+                  // pane the bridge has not answered lately, and a dialog on screen (its answer
+                  // is the dialog's, and these keys would give it).
+                  onSendQueuedNow={
+                    readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
+                      ? undefined
+                      : handleSendQueuedNow
+                  }
                 />
               </CardWaitingCtx.Provider>
             ) : (

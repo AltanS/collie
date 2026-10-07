@@ -288,6 +288,19 @@ describe("what is queued", () => {
     expect(two.queued).toEqual([]);
   });
 
+  it("carries the keys the bridge declared to send the queue now, and drops them when it stops", () => {
+    expect(EMPTY_CHAT_WINDOW.sendQueuedNow).toEqual([]);
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"], sendQueuedNow: ["ctrl+Enter"] }));
+    expect(one.sendQueuedNow).toEqual(["ctrl+Enter"]);
+    // Same list again: the same array, so a poll that changed nothing re-renders nothing.
+    const two = mergeChat(one, live({ rev: 3, upserts: [], queued: ["waiting"], sendQueuedNow: ["ctrl+Enter"] }));
+    expect(two.sendQueuedNow).toBe(one.sendQueuedNow);
+    // A `?before=` page cannot see it and leaves it alone.
+    expect(mergeChat(two, older({ upserts: [entry("z", BASE - 1)] })).sendQueuedNow).toEqual(["ctrl+Enter"]);
+    // A bridge that declares none (another harness, or one release behind) reads as no keys.
+    expect(mergeChat(two, live({ rev: 4, upserts: [] })).sendQueuedNow).toEqual([]);
+  });
+
   it("is untouched by a 304", () => {
     const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
     expect(mergeChat(one, CHAT_UNCHANGED)).toBe(one);

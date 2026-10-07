@@ -447,6 +447,8 @@ export const en = {
   "chat.stream.empty": "Send a message to start.",
   "chat.stream.working": "Still working…",
   "chat.stream.queued": "Waiting to send",
+  "chat.stream.sendNow": "Send now",
+  "chat.stream.sendNowAria": "Send now, the waiting messages",
   "chat.stream.loadOlderFailed": "Couldn't load older turns",
   // --- chat.card (the blocks of the stream: turns, steps, notices) ---
   // A card's LABEL is the kind of step, a chrome word. What the step acted on — a path, a command,

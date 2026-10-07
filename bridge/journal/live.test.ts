@@ -692,6 +692,21 @@ describe("what is queued", () => {
     expect(next!.queued).toEqual([]);
   });
 
+  test("the keys that send the queue now ride the body only when the harness declares them", async () => {
+    // The phone learns "there is a Send now key" as DATA from this field, so its code names no harness.
+    const fx = fakeJournal([say("u1"), queue("waiting")]);
+    const bare = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect("sendQueuedNow" in bare!).toBe(false);
+
+    const declared = { ...fx.adapter, sendQueuedNow: ["ctrl+Enter"] as const };
+    const live = windows(fx);
+    const body = await live.window(declared, ref(), { limit: 10 });
+    expect(body!.sendQueuedNow).toEqual(["ctrl+Enter"]);
+    // Static: the same list on a poll that changed nothing, so it never moves the ETag by itself.
+    const again = await live.window(declared, ref(), { limit: 10, after: { gen: body!.gen, rev: body!.rev } });
+    expect(again!.sendQueuedNow).toEqual(["ctrl+Enter"]);
+  });
+
   test("a `?before=` page says nothing about it — it cannot see the tail", async () => {
     const fx = fakeJournal([say("u1"), say("u2"), queue("waiting")]);
     const live = windows(fx);

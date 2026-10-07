@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 
@@ -45,7 +45,13 @@ function feedOf(window: Partial<ChatWindow>, over: Partial<ChatFeed> = {}): Chat
   };
 }
 
-function renderStream(feed: ChatFeed, showToolCalls = true, working = false, starting = false) {
+function renderStream(
+  feed: ChatFeed,
+  showToolCalls = true,
+  working = false,
+  starting = false,
+  onSendQueuedNow?: (keys: readonly string[]) => Promise<boolean>,
+) {
   const listRef = createRef<ChatMessageListHandle>();
   return render(
     <SessionStream
@@ -57,6 +63,7 @@ function renderStream(feed: ChatFeed, showToolCalls = true, working = false, sta
       showCompactions={false}
       fontSize={14}
       listRef={listRef}
+      onSendQueuedNow={onSendQueuedNow}
     />,
   );
 }
@@ -432,5 +439,101 @@ describe("SessionStream — the queue", () => {
     );
     const texts = [...container.querySelectorAll("[data-slot='stream-queued'] p")].map((p) => p.textContent);
     expect(texts).toEqual(["Waiting to send", "same", "same"]);
+  });
+});
+
+// ── "Send now" on the waiting card ───────────────────────────────────────────
+//
+// The keys are DATA from the bridge (`ChatWindow.sendQueuedNow`), so these cases name no harness. The
+// pane view hands `onSendQueuedNow` over only where this device may write; leaving it out is how
+// every "nothing may act" state loses the button.
+describe("SessionStream — Send now", () => {
+  const live = (over: Partial<ChatWindow> = {}) =>
+    feedOf({ status: { kind: "live" }, entries: [], queued: ["first", "second"], sendQueuedNow: ["ctrl+Enter"], ...over });
+
+  it("shows one button on the group, beside the label, when the bridge declared keys and the device can write", () => {
+    const { container } = renderStream(live(), true, true, false, vi.fn(async () => true));
+    const buttons = container.querySelectorAll("[data-slot='stream-send-now']");
+    expect(buttons).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Send now, the waiting messages" })).toHaveTextContent("Send now");
+    // In the head row with the label, not among the message paragraphs.
+    expect(buttons[0]!.parentElement).toBe(container.querySelector("[data-slot='stream-queued'] > div"));
+  });
+
+  it("is absent when the bridge declared no keys", () => {
+    const { container } = renderStream(live({ sendQueuedNow: [] }), true, true, false, vi.fn(async () => true));
+    expect(container.querySelector("[data-slot='stream-send-now']")).toBeNull();
+  });
+
+  it("is absent when the device cannot act, because the handler is withheld", () => {
+    const { container } = renderStream(live(), true, true);
+    expect(container.querySelector("[data-slot='stream-queued']")).not.toBeNull();
+    expect(container.querySelector("[data-slot='stream-send-now']")).toBeNull();
+  });
+
+  it("is absent when nothing is waiting, however many keys are declared", () => {
+    const { container } = renderStream(live({ queued: [] }), true, true, false, vi.fn(async () => true));
+    expect(container.querySelector("[data-slot='stream-send-now']")).toBeNull();
+  });
+
+  it("is absent on a window that is not live", () => {
+    const { container } = renderStream(
+      live({ status: { kind: "unavailable", reason: "no-log" } }),
+      true,
+      true,
+      false,
+      vi.fn(async () => true),
+    );
+    expect(container.querySelector("[data-slot='stream-send-now']")).toBeNull();
+  });
+
+  it("a tap hands the declared keys over once, shows pending, and a second tap sends nothing", async () => {
+    let finish: (sent: boolean) => void = () => {};
+    const send = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    renderStream(live({ sendQueuedNow: ["ctrl+Enter"] }), true, true, false, send);
+    const button = screen.getByRole("button", { name: "Send now, the waiting messages" });
+    await userEvent.click(button);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(["ctrl+Enter"]);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await userEvent.click(button);
+    expect(send).toHaveBeenCalledTimes(1);
+    finish(true);
+  });
+
+  it("drops the pending face at once when nothing was sent", async () => {
+    const send = vi.fn(async () => false);
+    renderStream(live(), true, true, false, send);
+    const button = screen.getByRole("button", { name: "Send now, the waiting messages" });
+    await userEvent.click(button);
+    await vi.waitFor(() => expect(button).not.toBeDisabled());
+    expect(button).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("drops the pending face after five seconds and never sends again on its own", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const send = vi.fn(async () => true);
+      renderStream(live(), true, true, false, send);
+      const button = screen.getByRole("button", { name: "Send now, the waiting messages" });
+      await userEvent.click(button);
+      expect(button).toBeDisabled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+      expect(button).not.toBeDisabled();
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names no harness: the component source holds no quoted harness name", async () => {
+    // SAFETY: Vite's `?raw` import is a string module by contract; the dynamic import only types it as unknown.
+    const source = (await import("./session-stream.tsx?raw")).default as string;
+    for (const name of ["claude", "codex", "opencode", "grok", "hermes", "muse", "pi", "omp"]) {
+      expect(source).not.toMatch(new RegExp(`["'\\u0060]${name}["'\\u0060]`, "i"));
+    }
   });
 });

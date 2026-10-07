@@ -153,6 +153,15 @@ export interface ChatWindowBody {
    * and answer `[]` (`journal/reduce.ts` § `RowReducer.queued`).
    */
   queued: string[];
+  /**
+   * The keys that deliver {@link queued} now, in the neutral spelling, when this session's harness
+   * declares any (`JournalAdapter.sendQueuedNow`). ABSENT for every other harness, so their bodies are
+   * byte-identical to before, and absent from a bridge one release behind, which the phone reads as
+   * "no button". Static per harness: the same list on every answer, so it never moves the ETag.
+   * The route then drops it where the pane's multiplexer cannot deliver those keys as themselves
+   * (`chatBodyForMux` in server.ts): tmux and zellij send `ctrl+Enter` as a plain Enter.
+   */
+  sendQueuedNow?: string[];
 }
 
 /**
@@ -488,7 +497,7 @@ class LiveWindow {
       after !== null && after.gen === this.gen
         ? this.rows.filter((row) => row.rev > after.rev)
         : this.rows.slice(-limit);
-    return {
+    const body: ChatWindowBody = {
       page: "live",
       gen: this.gen,
       rev: this.rev,
@@ -502,6 +511,9 @@ class LiveWindow {
       // generation with no reducer yet has read no rows, so it has met no queue either.
       queued: [...(this.reducer?.queued() ?? [])],
     };
+    // Added only when declared, so every other harness's body is byte-identical to before.
+    if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
+    return body;
   }
 
   /** This generation, for a `?before=` page that must land in the same numbering. */

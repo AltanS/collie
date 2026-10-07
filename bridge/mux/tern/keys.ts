@@ -2,8 +2,11 @@
 //
 // Tern accepts key tokens joined with `+` (e.g. `ctrl+c`, `alt+f`, `enter`, `shift+tab`).
 // A meta modifier is refused because terminal PTYs do not receive Super/Command chords.
+// `ctrl+Enter` is refused too (../keys.ts `EXTENDED_ONLY_CHORDS`): nobody has probed what Tern
+// delivers for it, and on tmux and zellij it arrives as a plain Enter, which submits a draft in
+// Claude Code's input box. Fail closed until a probe shows it arriving as itself.
 
-import { MUX_NAMED_KEYS, parseMuxKey, type MuxModifier, type MuxNamedKey } from "../keys.ts";
+import { isExtendedOnlyChord, MUX_NAMED_KEYS, parseMuxKey, type MuxModifier, type MuxNamedKey } from "../keys.ts";
 
 /** Every named key in the contract's alphabet, in Tern's spelling. */
 const TERN_NAMED_KEYS = {
@@ -42,7 +45,7 @@ const TERN_MODIFIERS = {
   shift: "shift",
 } satisfies Partial<Record<MuxModifier, string>>;
 
-export type TernKeyRejection = "unparsed" | "meta";
+export type TernKeyRejection = "unparsed" | "meta" | "extended";
 
 export type TernKeyResult =
   | { readonly ok: true; readonly key: string }
@@ -63,6 +66,7 @@ export function toTernKey(spelling: string): TernKeyResult {
   const parsed = parseMuxKey(spelling);
   if (parsed === null) return { ok: false, reason: "unparsed" };
   if (parsed.modifiers.includes("meta")) return { ok: false, reason: "meta" };
+  if (isExtendedOnlyChord(spelling)) return { ok: false, reason: "extended" };
 
   const parts: string[] = [];
   for (const modifier of parsed.modifiers) {

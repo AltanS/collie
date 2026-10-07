@@ -89,6 +89,7 @@ import {
   type TmuxExec,
   type TmuxRunResult,
 } from "./exec.ts";
+import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import { toTmuxKey, TMUX_UNSENDABLE_KEYS } from "./keys.ts";
 import { tmuxBeaconMatcher } from "./markers.ts";
 import {
@@ -167,9 +168,10 @@ const REVISION_VARIANTS = 32;
  * Everything else is claimed because a probe ran it on tmux 3.6b: `capture-pane -p -e` returned SGR
  * and nothing else, `-S -N` reached 51 lines behind a 24-line viewport, `send-keys` typed and
  * chorded, `select-pane -T` set and cleared a label, `kill-pane` / `kill-window` / `new-window -P` /
- * `new-session -P` / `rename-window` all answered, and control mode streamed. `unsupportedKeys` is
- * EMPTY and that is a finding, not an omission: tmux sends every key in the contract's alphabet,
- * including the six Herdr refuses (keys.ts).
+ * `new-session -P` / `rename-window` all answered, and control mode streamed. `unsupportedKeys` holds
+ * no NAMED key, and that is a finding, not an omission: tmux sends every key in the contract's
+ * alphabet, including the six Herdr refuses (keys.ts). It holds `ctrl+Enter`, which tmux delivers
+ * as a plain Enter (keys.ts header).
  */
 const TMUX_CAPABILITIES = declareCapabilities({
   supports: [
@@ -187,7 +189,7 @@ const TMUX_CAPABILITIES = declareCapabilities({
     "pushTopologyEvents",
     "pushPaneEvents",
   ],
-  unsupportedKeys: TMUX_UNSENDABLE_KEYS,
+  unsupportedKeys: [...TMUX_UNSENDABLE_KEYS, ...EXTENDED_ONLY_CHORDS],
   // `push`, and the 5-second resync behind it is a BACKSTOP rather than the bound: control mode
   // announces windows and sessions appearing, closing and being renamed (watch.ts § the two ways).
   // The census exists for the sessions no control client is attached to and for a tmux too old to
@@ -202,7 +204,7 @@ const TMUX_CAPABILITIES = declareCapabilities({
       "`capture-pane -S` reaches behind the viewport as far as the pane's history-limit allows; a pane on the alternate screen has no history to reach, exactly as on Herdr.",
     createSpace: "A new space is a new tmux session on the same server. It is created detached, so nothing the operator is looking at moves.",
     sendKeys:
-      "tmux sends every key in Collie's alphabet. It has no Super/Command key, so a `meta` chord is refused — tmux's `M-` is Alt, which Collie already spells `alt`.",
+      "tmux sends every key in Collie's alphabet. It has no Super/Command key, so a `meta` chord is refused — tmux's `M-` is Alt, which Collie already spells `alt`. Ctrl+Enter is refused too: tmux delivers it as a plain Enter.",
     pushTopologyEvents:
       "Control mode pushes window and session changes. A bounded 5-second listing backs it up, which is also what keeps the promise on a tmux with no control mode.",
     pushPaneEvents:
@@ -415,9 +417,12 @@ export class TmuxMux implements MuxAdapter {
     for (const key of keys) {
       const result = toTmuxKey(key);
       if (!result.ok) {
+        if (result.reason === "meta") {
+          return muxRefused(`tmux has no Super/Command key, so it cannot send ${key} — its own \`M-\` is Alt, which Collie spells \`alt\``);
+        }
         return muxRefused(
-          result.reason === "meta"
-            ? `tmux has no Super/Command key, so it cannot send ${key} — its own \`M-\` is Alt, which Collie spells \`alt\``
+          result.reason === "extended"
+            ? `tmux delivers ${key} as the plain key without its modifier, so it is refused rather than mis-sent`
             : `not a key: ${key}`,
         );
       }

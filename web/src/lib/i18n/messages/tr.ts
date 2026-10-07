@@ -326,6 +326,8 @@ export const tr: Dictionary = {
   "chat.stream.empty": "Başlamak için bir mesaj gönderin.",
   "chat.stream.working": "Hâlâ çalışıyor…",
   "chat.stream.queued": "Göndermek için bekleniyor",
+  "chat.stream.sendNow": "Şimdi gönder",
+  "chat.stream.sendNowAria": "Şimdi gönder, bekleyen mesajlar",
   "chat.stream.loadOlderFailed": "Önceki turlar yüklenemedi",
   "chat.card.create": "Oluştur",
   "chat.card.edit": "Düzenle",
