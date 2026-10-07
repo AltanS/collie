@@ -15,9 +15,17 @@
 // (research note 05, rank 2). A freshly inserted scroller already sits at the top, so it is written
 // only when a stored spot below the top exists; the same scroller re-keyed to another entry is
 // written only when its spot differs from the one it last restored or recorded. It never reads.
+//
+// LATE CONTENT (lib/scroll-restore.ts): a spot the scroller is too short to reach yet is kept, not
+// forgotten. After a write that could not land, a ResizeObserver on the scroller and its children
+// (its numbers are free: they come after the frame's layout) retries on each growth for 3 s, and the
+// browser's clamped offsets in between are not recorded over the real spot. The reader's wheel,
+// touch, key or pointer ends it at once.
 import { createMixin } from "remix/component";
 
 import { basePath } from "@web/lib/base-path";
+
+import { createScrollRestore, RESTORE_WINDOW_MS } from "./scroll-restore";
 
 const MAX_SPOTS = 64;
 const spots = new Map<string, number>();
@@ -49,18 +57,92 @@ export function recallScroll(key: string): number | undefined {
   return spots.get(key);
 }
 
+/** What the reader does to take a scroller over: the restore never fights it. */
+const READER_EVENTS = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+
 const scrollMemoryMixin = createMixin<HTMLElement, [slot: string | undefined]>((handle) => {
   let key = "";
   let url = "";
   let bound: AbortController | null = null;
-  /** Where this element's scroll offset is known to be, without reading it: 0 on insert. */
+  /** Where this element's scroll offset is known to be: 0 on insert, else the last write or scroll. */
   let known = 0;
+  const restore = createScrollRestore();
+  let watching: AbortController | null = null;
+
+  /** Stop waiting for content: no observers, no timer, no reader listeners. */
+  const unwatch = (): void => {
+    watching?.abort();
+    watching = null;
+  };
+
+  /**
+   * After a write that may have clamped: watch the scroller for growth and retry. A ResizeObserver
+   * callback runs after the frame's layout, so `scrollHeight` and `scrollTop` cost nothing there.
+   */
+  const watch = (el: HTMLElement): void => {
+    unwatch();
+    const mine = new AbortController();
+    watching = mine;
+    const retry = (): void => {
+      if (mine.signal.aborted) return;
+      const step = restore.step({ at: el.scrollTop, max: el.scrollHeight - el.clientHeight }, performance.now());
+      if (step.kind === "wait") return;
+      if (step.kind === "write") {
+        el.scrollTop = step.top;
+        known = step.top;
+      }
+      if (watching === mine) unwatch();
+    };
+    const sizes = new ResizeObserver(retry);
+    const watchChild = (node: Node): void => {
+      if (node instanceof Element) sizes.observe(node);
+    };
+    sizes.observe(el);
+    for (const child of el.children) watchChild(child);
+    // A child that arrives later (the rows replacing a skeleton) is content growing too.
+    const arrivals = new MutationObserver((records) => {
+      for (const record of records) record.addedNodes.forEach(watchChild);
+    });
+    arrivals.observe(el, { childList: true });
+    // The reader taking over ends it: their scroll, not ours, from here on.
+    const stop = (): void => {
+      restore.cancel();
+      unwatch();
+    };
+    for (const type of READER_EVENTS) el.addEventListener(type, stop, { passive: true, once: true, signal: mine.signal });
+    // A timer, because the observers fire only on growth. It ends with the window, hidden or not, and on `mine`.
+    const timer = setTimeout(() => {
+      restore.cancel();
+      if (watching === mine) unwatch();
+    }, RESTORE_WINDOW_MS);
+    mine.signal.addEventListener(
+      "abort",
+      () => {
+        sizes.disconnect();
+        arrivals.disconnect();
+        clearTimeout(timer);
+      },
+      { once: true },
+    );
+  };
+
   const restoreAfterCommit = (): void => {
     const top = recallScroll(key) ?? 0;
-    if (top === known) return;
+    if (top === known) {
+      restore.cancel();
+      unwatch();
+      return;
+    }
     handle.queueTask((el) => {
       el.scrollTop = top;
-      known = top;
+      // Just written, so the layout is current and this read is free. A clamped write reads short.
+      known = el.scrollTop;
+      restore.arm(top, performance.now());
+      if (known < top) watch(el);
+      else {
+        restore.cancel();
+        unwatch();
+      }
     });
     void handle.update();
   };
@@ -75,11 +157,14 @@ const scrollMemoryMixin = createMixin<HTMLElement, [slot: string | undefined]>((
     const el = event.node;
     rekey(slotNow);
     known = 0;
+    restore.cancel();
+    unwatch();
     el.addEventListener(
       "scroll",
       () => {
         known = el.scrollTop;
-        rememberScroll(key, known);
+        // While a taller spot is being waited for, the browser's clamp is not where the reader is.
+        if (!restore.holds(known)) rememberScroll(key, known);
       },
       { passive: true, signal: bound.signal },
     );
@@ -88,6 +173,8 @@ const scrollMemoryMixin = createMixin<HTMLElement, [slot: string | undefined]>((
   handle.addEventListener("remove", () => {
     bound?.abort();
     bound = null;
+    restore.cancel();
+    unwatch();
   });
   return (slot) => {
     slotNow = slot;

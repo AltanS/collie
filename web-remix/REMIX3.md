@@ -424,6 +424,13 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   the entry it lands on, so `quietCurrentEntry()` rewrites the first entry after boot, and an
   internal `<a>` carries `data-rmx-reset-scroll="false"`.
 
+- **Late content.** A spot the scroller is too short to reach (the rows arrive after the first
+  commit, or the store was shrunk while the entry was away) is kept, not forgotten: the clamp is not
+  recorded over it, a ResizeObserver on the scroller and its children retries the write on each
+  growth for 3 s (`R/lib/scroll-restore.ts`; the window is short because a restore that fires after
+  the reader settled yanks a screen they are reading), and the reader's wheel, touch, key or pointer
+  ends it. `e2e/pane-scroll-memory.spec.ts` holds both cases.
+
 ### Layout in insert callbacks
 
 **An insert callback, a `ref` or a commit `queueTask` neither reads layout nor writes a scroll
