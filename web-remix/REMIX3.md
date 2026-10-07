@@ -456,6 +456,47 @@ and the mount is added later by `mounted()`. Keep `shared/routes.ts` browser-saf
 `remix/routes` may come in, never a `bridge/` module. Calls that go through `@web/lib/api` are not
 covered, because web/ spells its own paths.
 
+## Server document
+
+Since S1 (`experiments/remix-v3/ACTION-PLAN.md` B) the bridge renders `/` and `/pane/:paneId` on Bun
+from the request's snapshot (`R/ssr/render.tsx`, wired in `bridge/http/controllers/document.ts`), and
+`R/main.tsx` hydrates it in place. Every component on those two routes, and the Shell around them,
+now runs on Bun as well as in the browser. The rules:
+
+- **Module scope touches no browser API.** The bridge imports the shell to render, so a module that
+  reads `document`, `window`, `localStorage`, `navigator`, `matchMedia` or `crypto.randomUUID` when
+  it evaluates breaks the bridge, not a page. Wrap such code in `if ("document" in globalThis)` (or
+  `"window"`), as `R/routes/settings/install.tsx` and `typeface.tsx` do. `globalThis.x?.()` is fine.
+- **Setup registers nothing past the request on the server.** On Bun `handle.signal` never aborts
+  and `queueTask` is dropped, so a listener, a poll source or a timer added in setup lives for the
+  life of the bridge and holds the request's data. Check `onServer()` (`R/lib/server-render.ts`)
+  before `want()`, `subscribe…()`, `window.addEventListener` or `setInterval` in setup. `want()`
+  checks it itself. `useStore` and `useStoreSelect` are safe: they subscribe in `queueTask`, which
+  the server drops.
+- **Render reads stores, never the request.** A render primes the module stores for its request
+  and resets them all before the call returns (`resetStores`). This is only safe because the whole
+  tree builds inside one synchronous call. Do not `await` in setup or render on the server path,
+  and do not read a store in a callback that runs later. `R/ssr/render.test.tsx` renders two
+  snapshots back to back and interleaved and asserts neither output holds the other's panes.
+- **The first render must match on both sides.** Hydration patches a mismatch, it does not throw,
+  so a mismatch is a silent text or attribute swap after load. Anything that depends on the device
+  and not on the snapshot or the prefs cookie (pointer type, viewport, reduced motion, the clock
+  past the snapshot) must not change the markup of the first render. Pick by CSS instead
+  (`pointer-fine:hidden`, as the pin hint does), or change it after mount.
+- **Links carry the mount through `href()` and `mounted()`.** On Bun there is no
+  `<meta name="collie-base">`; `W/lib/base-path.ts` asks `R/lib/server-render.ts` for the render's
+  mount instead. Never write a root-absolute path by hand.
+- **Prefs come from the cookie.** `R/lib/prefs.ts` writes the device's prefs to the `collie-prefs`
+  cookie (under 3,000 bytes, else none) on boot and on every change, and the bridge primes the prefs
+  stores from it. A pref that is not in the cookie renders its default on the server.
+- **One island.** The document holds `AppRoot` (`R/app-root.tsx`, id `collie:app#AppRoot`), and its
+  props are the snapshot, the config and the path. A new route the bridge should render goes into
+  `matchAppRoute` and `appRouteNode`, and the router's action must draw the same node
+  (`homeNode()`, `paneNode()`), so the first routed tap replaces the body with the same tree.
+- **The static shell stays the fallback.** Offline, the service worker's cache, a refused gate and
+  every other route boot from `index.html` with its splash. Keep both boots working: e2e
+  `ssr-boot.spec.ts` covers the server document, the rest of the suite the static shell.
+
 ## Motion
 
 ### CSS first
