@@ -329,11 +329,11 @@ function ConnectionStateBanner({
         // The saved-copy sentence names the cause and the saved time, and both matter: at 390px
         // beside Retry it truncated mid-word. It wraps to a second line instead.
         wrap={view.saved}
-        // ONE HEIGHT FOR EVERY RED VARIANT (M46 pass 3). The strip flipped between one, two and three
-        // lines as its sentence changed, and every flip moved the page under the operator's thumb.
-        // Red reserves the tallest variant's height (see RED_MIN_HEIGHT), so a change of sentence
-        // changes words and nothing else.
-        className={tone === "red" ? RED_MIN_HEIGHT : undefined}
+        // NO RESERVED HEIGHT (2026-10-07). Red used to take a 72px floor, the tallest variant's
+        // height, because the band sat in flow and every change of sentence moved the page. The band
+        // is an overlay on the header's bottom edge now (`ui/strip-host.tsx`), so a taller sentence
+        // covers a little more of the strip beneath it and moves nothing. The strip is as tall as
+        // its words.
         // Actions only in red — amber is ambient (no buttons), green is a passing confirmation. ONE
         // button, Retry, and the ✕ the Notice draws beside it. A Reload icon stood here too and the
         // operator read two buttons for one problem; Retry already revalidates and re-probes, and the
@@ -373,16 +373,6 @@ function ConnectionStateBanner({
     </StripSlot>
   );
 }
-
-/**
- * The red strip's reserved height: four 16px lines (`text-xs`; the hint's smaller type keeps the same
- * line) and the strip's own 8px of padding. That is the tallest variant at 390px beside Retry and
- * the ✕ (it was Retry and Reload, same width): the "no connection" sentence on three lines and the
- * hint under it, measured 2026-10-07.
- * Every red variant takes it, so the strip does not change height while the outage changes its words.
- * A longer translation may still grow it; nothing shrinks it.
- */
-const RED_MIN_HEIGHT = "min-h-[72px]";
 
 // A config response proves HTTP reachability. Only a fresh, lead-scoped snapshot can also prove
 // the mux is disconnected. Member snapshots retain the lead's mux status, not the member's.

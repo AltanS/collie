@@ -211,9 +211,6 @@ const SENT_ECHO_GRACE_MS = 5_000;
 // Burst window for post-keypress revalidation (see scheduleKeyRevalidate).
 const KEY_REVALIDATE_MS = 300;
 
-/** How long the composer stays offline before the draft note shows (see `draftNote`). */
-const DRAFT_NOTE_DELAY_MS = 1_500;
-
 // Shared in-flow dock chrome for Keys/Quick — an IN-FLOW panel (never an overlay), so the terminal
 // mirror's flex-1 box shrinks and its tail stays visible while the dock is open (a covering sheet
 // hid exactly the prompt you were driving). Full-bleed top border + capped height keep the mirror
@@ -372,19 +369,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   offlineRef.current = offline;
   // The one-line note while Send is off for want of a live read: what happens to the words already
   // typed. It floats in the terminal-draft notice's slot (see `floatingNotice`), so it moves nothing.
-  // Once per pane view (this component is keyed by pane): shown after the composer has been offline
-  // for a moment, so a cold mount waiting on its first read does not flash it, and spent once the
-  // pane is live again or its x is tapped, so a flaky link does not repeat it.
+  // It appears only on the first keystroke made while offline that leaves text in the field (see
+  // `noteOfflineKeystroke`): not on going offline, not for a draft restored from the store, not for
+  // an emptied field. Once per pane view (this component is keyed by pane): spent when its x is
+  // tapped or when the pane is live again, so a flaky link does not repeat it.
   const [draftNote, setDraftNote] = useState<"idle" | "shown" | "spent">("idle");
   useEffect(() => {
-    if (draftNote === "shown" && !offline) {
-      setDraftNote("spent");
-      return;
-    }
-    if (draftNote !== "idle" || !offline) return;
-    const timer = setTimeout(() => setDraftNote("shown"), DRAFT_NOTE_DELAY_MS);
-    return () => clearTimeout(timer);
+    if (draftNote === "shown" && !offline) setDraftNote("spent");
   }, [draftNote, offline]);
+  const noteOfflineKeystroke = (value: string) => {
+    if (value === "" || !offlineRef.current) return;
+    setDraftNote((note) => (note === "idle" ? "shown" : note));
+  };
 
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
   // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
@@ -1838,6 +1834,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 : (e) => {
                     rememberCaret(e);
                     updateInput(e.target.value);
+                    noteOfflineKeystroke(e.target.value);
                   }
             }
             onSelect={direct.active ? undefined : rememberCaret}

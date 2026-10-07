@@ -21,7 +21,8 @@ import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-scree
 // screen that is exactly where the composer's input row is, so the badge covered the one control the
 // operator was using — and in the "keep using the app" case, the one control the badge itself had
 // just handed back. The band under the header is this app's ONE place for a persistent one-line
-// fact, it arbitrates rather than stacking, and it covers nothing. So the badge lives there, and
+// fact, and it arbitrates rather than stacking. Since 2026-10-07 it is an overlay that covers the
+// top of the route (the pane strip, the filter row), never the composer. So the badge lives there, and
 // `components/update-screen-provider.tsx` is how it reaches a reading owned outside the router.
 //
 // ── IT RANKS BELOW THE OUTAGE STRIP ─────────────────────────────────────────

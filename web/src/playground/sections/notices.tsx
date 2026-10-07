@@ -449,7 +449,9 @@ function useRevalidatingRibbonRouter(initial: HomeData) {
           path: "/",
           loader: () => dataRef.current,
           element: (
-            <StripHost>
+            // `flow`, as harness.tsx's RootRouter: the ribbon is alone on this stage, so there is no
+            // route for the app's overlay band to cover, and an overlay would hang outside the card.
+            <StripHost flow>
               <UpdateRibbon />
             </StripHost>
           ),

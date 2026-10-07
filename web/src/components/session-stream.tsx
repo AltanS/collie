@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, type CSSProperties, type RefObject } from "react";
-import { ArrowUpToLine, Loader2 } from "lucide-react";
+import { ArrowUpToLine, History, Loader2 } from "lucide-react";
 
 import { ItemView, ToolGroup, groupRuns } from "@/components/chat-cards";
 import { StatusDot } from "@/components/status-badge";
@@ -90,6 +90,29 @@ const EDGE_ROW =
   "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
 
 /**
+ * THE SAVED-COPY LINE (M46 specs 09 and 10), at the top of the scrolled content of either body.
+ *
+ * It used to be a bar of its own above the body, a row of chrome under the pane strip. It now sits
+ * where the thread's top edge already speaks ("Start of the conversation", "Load older"), because it
+ * is a fact about that edge: older text is on the bridge, and there is no bridge to ask. So while the
+ * view is a saved copy it stands INSTEAD of those two, scrolls with the text, and costs no row. The
+ * same small muted type as "Start of the conversation"; quiet, because a saved copy is the screen the
+ * operator left, not an error, and the strip above the header already says why it is there.
+ */
+export function SavedCopyRow({ text }: { text: string }) {
+  return (
+    <div
+      role="status"
+      data-slot="saved-copy"
+      className="mb-3 flex items-start justify-center gap-1.5 px-2 text-center text-[11px] leading-snug text-muted-foreground"
+    >
+      <History aria-hidden className="mt-px size-3 shrink-0" />
+      <span className="text-balance">{text}</span>
+    </div>
+  );
+}
+
+/**
  * Why there is nothing to read, in the operator's terms — or `null` while there is.
  *
  * The three `available: false` reasons take the History page's own sentences, because they are the
@@ -148,6 +171,7 @@ export function SessionStream({
   showCompactions,
   fontSize,
   listRef,
+  savedCopy = null,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -172,6 +196,11 @@ export function SessionStream({
   fontSize: number;
   /** The pane view's one list handle: a send snaps the body it is looking at back to the tail. */
   listRef: RefObject<ChatMessageListHandle | null>;
+  /**
+   * The saved-copy sentence while this window is the phone's saved copy, else `null`. It takes the
+   * top slot in place of "Load older" and "Start of the conversation" (see {@link SavedCopyRow}).
+   */
+  savedCopy?: string | null;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -283,8 +312,11 @@ export function SessionStream({
       {/* Top of the window. Older turns come off `hasOlder` and nothing else: what the live window
           has trimmed is the History read's job, reached through `?before=`, and the bridge holds
           none of it in memory. Where there is nothing older, the thread says where it starts — the
-          History page's own line, because it is the same fact about the same session. */}
-      {window.hasOlder ? (
+          History page's own line, because it is the same fact about the same session. A saved copy takes
+          the slot instead of both: there is no bridge to load from (SavedCopyRow). */}
+      {savedCopy !== null ? (
+        <SavedCopyRow text={savedCopy} />
+      ) : window.hasOlder ? (
         <button type="button" onClick={onLoadOlder} disabled={loadingOlder} className={EDGE_ROW}>
           {loadingOlder ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}

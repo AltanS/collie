@@ -173,7 +173,7 @@ describe("RootLayout — the document itself never scrolls", () => {
 });
 
 // THE NOTCH IS PAID FOR ONCE, IN BOTH STATES, AND THIS IS THE REPORTED BUG. The header pays for it,
-// always, now that the band paints under it.
+// always, now that the band hangs under it.
 //
 // Three rows at the top of this app each set `env(safe-area-inset-top)` for themselves — the update
 // ribbon, the connection bar and the header — every one of them written when it was, or might have
@@ -230,10 +230,10 @@ describe("RootLayout — the safe-area inset is reserved exactly once", () => {
   });
 });
 
-// THE RIBBON SITS UNDER THE BAR (2026-10-07). The band painted above the header until then, so an
+// THE RIBBON HANGS UNDER THE BAR (2026-10-07). The band painted above the header until then, so an
 // outage pushed the whole page down, bar included, and the notch had to be handed between the two.
-// Now the header is the first thing in the column, the band comes after it, and the route after
-// the band. Asserted as DOM order over the real layout, because order is the whole change.
+// Now the header is the first thing in the column, the band's anchor comes after it, and the route
+// after the anchor. Asserted as DOM order over the real layout; the block below asserts the overlay.
 describe("RootLayout — the header comes first, the band under it, the route last", () => {
   it("orders header → strip → route in the document", async () => {
     const offered: HomeData = {
@@ -276,6 +276,88 @@ describe("RootLayout — the header comes first, the band under it, the route la
     // The header is the column's FIRST child: nothing paints above the bar, in any state.
     const column = container.querySelector(".flex.h-\\(--app-h\\).flex-col");
     expect(column?.firstElementChild).toBe(header);
+  });
+});
+
+// THE BAND FLOATS OVER THE ROUTE (2026-10-07, later the same day). In flow under the bar it still
+// shoved the pane strip and the dashboard's filter row down when an outage appeared, and the operator
+// does not want layout shifts. So the band hangs from a zero-height anchor on the header's bottom
+// edge and covers the top of the route instead. jsdom cannot measure a height, so the contract is
+// asserted as structure: the strip lives inside an absolutely positioned box, and the route's own
+// wrapper is the same element, class for class, with and without a strip.
+describe("RootLayout: the band floats over the route and moves nothing", () => {
+  const offered: HomeData = {
+    ...home(AFTERNOON),
+    error: false,
+    update: {
+      current: "1.4.1",
+      latest: "1.5.0",
+      latestUrl: null,
+      releaseAvailable: true,
+      majorAvailable: null,
+      majorUrl: null,
+      bridgeStale: false,
+      checkedAt: 0,
+    },
+  };
+
+  function renderLayout(data: HomeData) {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => data,
+          element: <RootLayout />,
+          children: [{ index: true, element: <div>dashboard</div> }],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    return render(<RouterProvider router={router} />);
+  }
+
+  /** The route's box: the column's direct child that holds the outlet. */
+  function routeBox(container: HTMLElement) {
+    const column = container.querySelector(".flex.h-\\(--app-h\\).flex-col");
+    return [...(column?.children ?? [])].find((el) => el.textContent?.includes("dashboard"));
+  }
+
+  it("paints the strip inside an absolutely positioned band hung right under the header", async () => {
+    const { container } = renderLayout(offered);
+    const strip = await screen.findByText(/Collie 1.5.0 available/);
+    const header = container.querySelector("header");
+    const anchor = container.querySelector('[data-slot="strip-anchor"]');
+    expect(anchor).toHaveClass("relative", "z-30", "h-0");
+    expect(anchor?.parentElement).toBe(header?.parentElement);
+    // The anchor is the first BOXED sibling after the bar: only the band's two sr-only live regions
+    // sit between them, and those are out of flow.
+    let el = header?.nextElementSibling;
+    while (el && el.classList.contains("sr-only")) el = el.nextElementSibling;
+    expect(el).toBe(anchor);
+    const band = strip.closest('[data-slot="collapse"]');
+    expect(band).toHaveClass("absolute", "inset-x-0", "top-0", "bg-background", "shadow-md");
+    expect(band?.parentElement).toBe(anchor);
+    // And the route is not inside the band's anchor.
+    expect(anchor?.contains(screen.getByText("dashboard"))).toBe(false);
+  });
+
+  it("leaves the route's box the same element, class for class, with and without a strip", async () => {
+    const bare = renderLayout({ ...home(AFTERNOON), error: false });
+    await screen.findByText("dashboard");
+    const bareBox = routeBox(bare.container);
+    expect(bareBox).toBeDefined();
+    const bareClass = bareBox?.className;
+    const bareStyle = bareBox?.getAttribute("style");
+    bare.unmount();
+
+    const shown = renderLayout(offered);
+    await screen.findByText(/Collie 1.5.0 available/);
+    const shownBox = routeBox(shown.container);
+    expect(shownBox?.className).toBe(bareClass);
+    expect(shownBox?.getAttribute("style")).toBe(bareStyle);
+    // No padding, margin or offset tied to the band anywhere on the route's box.
+    expect(shownBox?.className ?? "").not.toMatch(/(?:^|\s)(?:p|pt|py|m|mt|my|top)-/);
   });
 });
 

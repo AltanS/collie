@@ -128,9 +128,10 @@ export function RootLayout() {
     noteSnapshotCrew(snapshotUpdate);
   }, [snapshotUpdate]);
 
-  // A viewport-height flex column: the header bar, then the ribbon band (when shown) as an in-flow
-  // row under it, and the active route fills the rest (each route root is `min-h-0 flex-1`). The
-  // band reserves real space instead of overlaying, so it never covers the header or the route.
+  // A viewport-height flex column: the header bar, then the ribbon band's zero-height anchor, and
+  // the active route fills the rest (each route root is `min-h-0 flex-1`). The band hangs from the
+  // anchor as an overlay (`ui/strip-host.tsx`): it covers the top of the route while a strip shows
+  // and reserves no space, so an outage moves nothing.
   return (
     // The crew roster is published here, at the data root, so every surface below — including sheets
     // portalled out to document.body — can answer "which machine?" without a prop chain. With no crew
@@ -166,21 +167,23 @@ export function RootLayout() {
             the ribbon cannot disagree. The header owns the safe-area inset unconditionally, because
             nothing ever paints above it. */}
         <AppHeaderHost bridge={data.bridge} error={data.error} lastSeenAt={shownLastSeenAt(data, pane)}>
-          {/* THE BAND, a ribbon UNDER the header bar, and the rule that there is only ever one strip
-              in it. Four facts can be true at once: the auth refusal, a lost connection, a degraded
-              one, an update on offer. None of them excludes another, so the host arbitrates. Which
-              fact beats which is `lib/strip-priority.ts`, a fact about this app, deliberately not
-              about `ui/`.
+          {/* THE BAND, an overlay hung from the header's bottom edge, and the rule that there is
+              only ever one strip in it. Four facts can be true at once: the auth refusal, a lost
+              connection, a degraded one, an update on offer. None of them excludes another, so the
+              host arbitrates. Which fact beats which is `lib/strip-priority.ts`, a fact about this
+              app, deliberately not about `ui/`.
 
-              It painted ABOVE the header until 2026-10-07. That made it the first thing on the
-              screen while open, so it had to take the notch from the header and give it back, and
-              the whole page, bar included, jumped down when an outage appeared and up when it went.
-              Under the bar, the header stays put and only the content below it moves. Neither row
-              scrolls: this column is `overflow-hidden` at the viewport's height and every route
-              scrolls inside its own region, so the ribbon stays with the bar by construction.
+              Its home moved twice on 2026-10-07. Above the header, it made the whole page, bar
+              included, jump down when an outage appeared. In flow under the bar, it still shoved the
+              pane strip and the dashboard's filter row down. Now the host renders a zero-height
+              anchor right after the header, and the band is absolutely positioned from it at
+              `z-30`: it COVERS whatever sits under the bar while a strip shows, and nothing moves.
+              Neither the bar nor the anchor scrolls: this column is `overflow-hidden` at the
+              viewport's height and every route scrolls inside its own region, so route content
+              passes under the band.
 
-              The three features below register into it and render nothing where they sit. The band
-              paints first, then the host's other child, the route. */}
+              The three features below register into it and render nothing where they sit. The band's
+              anchor comes first, then the host's other child, the route. */}
           <StripHost>
             {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run
                 in flight, a new bridge this bundle is behind, and peers following, one row that says
@@ -211,7 +214,7 @@ export function RootLayout() {
             {/* The everyday move, animated: dashboard → pane slides in from the right, back from
                 the left, and every other navigation (a poll revalidation, a scope change, pane to
                 pane) arrives with no animation at all. It wraps the OUTLET and sits BELOW the header
-                and the band: the key inside remounts the route's subtree so the entrance replays,
+                and under the band: the key inside remounts the route's subtree so the entrance replays,
                 and everything that must survive a navigation (the header shell, the band, the mark's
                 37 animations) is already outside it. It is not the View Transitions API and may not
                 become one; see the file's header. */}

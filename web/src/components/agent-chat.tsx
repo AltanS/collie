@@ -5,7 +5,6 @@ import {
   ArrowUpToLine,
   ChevronUp,
   EllipsisVertical,
-  History,
   Loader2,
   Minimize2,
   ScrollText,
@@ -31,7 +30,6 @@ import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
 import { t, type MessageKey } from "@/lib/i18n";
 import { savedAtLabel } from "@/lib/format";
-import { Notice } from "@/components/ui/notice";
 import { settleAfterSend } from "@/lib/harness/guard";
 import { setStatus } from "@/lib/status";
 import { setFollowing as publishFollowing } from "@/lib/poll-intent";
@@ -68,7 +66,7 @@ import { PaneMeta } from "@/components/pane-meta";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
-import { chatStatusKey, SessionStream } from "@/components/session-stream";
+import { chatStatusKey, SavedCopyRow, SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -953,6 +951,9 @@ export function AgentChat({
   // loader restored. The Terminal body has no offline read beyond that mirror: the raw screen is
   // never cached as Chat. `null` while what is drawn is live.
   const savedCopyAt = chatShown ? chatFeed.window.savedAt : stale ? (lastSeenAt ?? null) : null;
+  // The dated sentence both bodies draw at the top of their scrolled text (session-stream.tsx §
+  // SavedCopyRow). It stands in the top slot instead of "Load older" and "Start of the conversation".
+  const savedCopyLine = savedCopyAt === null ? null : t("chat.savedCopy", { time: savedAtLabel(savedCopyAt) });
   // Nothing on a saved copy may act (spec 11): the dock and the composer read this. A Chat window
   // read back from the store is a saved copy even when the mirror's own read is not.
   // A pane this phone cannot place, or whose read got no answer with nothing kept, is no live pane
@@ -2124,14 +2125,6 @@ export function AgentChat({
               composer is what a keyboard user already has (the textarea is the next tabbable thing),
               and `focusFromMirror` deliberately declines a tap that landed on a control or a text
               selection. It is a touch convenience layered over an already-reachable action. */}
-          {/* THE SAVED-COPY NOTICE (M46 specs 09 and 10): above either body, never inside it, so it
-              does not scroll away with the text it dates. Quiet, because a saved copy is the screen
-              the operator left, not an error; the strip above the header says why it is there. */}
-          {savedCopyAt !== null && (
-            <Notice tone="neutral" variant="box" announce="status" icon={<History />} className="mt-1 mb-1">
-              {t("chat.savedCopy", { time: savedAtLabel(savedCopyAt) })}
-            </Notice>
-          )}
           <div
             role="presentation"
             className={cn(
@@ -2165,6 +2158,7 @@ export function AgentChat({
                   showCompactions={dash.prefs.showCompactions}
                   fontSize={prefs.chatFontSize}
                   listRef={listRef}
+                  savedCopy={savedCopyLine}
                 />
               </CardWaitingCtx.Provider>
             ) : (
@@ -2196,8 +2190,14 @@ export function AgentChat({
 
                       This used to be gated on `truncated`, which Herdr never sets true — so the button
                       rendered on no pane at all. `readableLines` (scrollback depth + viewport) is the
-                      signal that actually works. */}
-                  {historyAvailable ? (
+                      signal that actually works.
+
+                      A SAVED COPY takes the slot instead of either button (M46 specs 09 and 10):
+                      both reach the bridge, and there is no bridge. The dated sentence says so here,
+                      at the top of the text it dates, rather than in a bar above the mirror. */}
+                  {savedCopyLine !== null ? (
+                    <SavedCopyRow text={savedCopyLine} />
+                  ) : historyAvailable ? (
                     <button
                       type="button"
                       onClick={() => nav.down(historyPath(paneId, scope))}
@@ -2307,9 +2307,13 @@ export function AgentChat({
                   )}
                 </>
               ) : (
-                <div className="py-16 text-center text-sm text-muted-foreground">
-                  {t(noSavedCopy ? "pane.saved.none" : "chat.output.empty")}
-                </div>
+                <>
+                  {/* An empty saved copy still says what it is, unless there is no copy at all. */}
+                  {savedCopyLine !== null && !noSavedCopy && <SavedCopyRow text={savedCopyLine} />}
+                  <div className="py-16 text-center text-sm text-muted-foreground">
+                    {t(noSavedCopy ? "pane.saved.none" : "chat.output.empty")}
+                  </div>
+                </>
               )}
             </ChatMessageList>
             )}

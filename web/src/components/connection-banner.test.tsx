@@ -412,23 +412,25 @@ describe("ConnectionBanner — offline states", () => {
     expect(row()?.querySelector('[data-slot="connection-hint"]')).toBeNull();
   });
 
-  // M46 pass 3: the strip changed height with its sentence and moved the page. Every red variant
-  // reserves the tallest one's height, and Retry never wraps.
+  // The band is an overlay since 2026-10-07 (`ui/strip-host.tsx`), so a sentence change moves
+  // nothing below it and red no longer reserves a height. It is as tall as its words, and Retry
+  // still never wraps.
   it.each([
     ["offline, saved", { online: false, stale: true, lastSeenAt: SAVED_AT }],
     ["no bridge, saved", { online: true, stale: true, lastSeenAt: SAVED_AT }],
     ["no bridge, nothing saved", { online: true, stale: false, lastSeenAt: undefined }],
-  ])("offline states: every red variant reserves the same height (%s)", async (_name, state) => {
+  ])("offline states: no red variant reserves a height (%s)", async (_name, state) => {
     h.lost = true;
     cfg.reachable = false;
     setOnline(state.online);
     renderBanner({ error: true, stale: state.stale, lastSeenAt: state.lastSeenAt });
     await act(async () => {});
-    expect(row()).toHaveClass("min-h-[72px]");
+    expect(row()).not.toHaveClass("min-h-[72px]");
+    expect(row()?.className).not.toMatch(/min-h-\[(?!33px\])/);
     expect(screen.getByRole("button", { name: /retry/i })).toHaveClass("whitespace-nowrap");
   });
 
-  it("offline states: amber is not reserved, it keeps the thin strip", () => {
+  it("offline states: amber keeps the thin strip", () => {
     h.trouble = true;
     renderBanner();
     expect(row()).not.toHaveClass("min-h-[72px]");

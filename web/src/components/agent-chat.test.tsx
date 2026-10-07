@@ -1374,6 +1374,40 @@ describe("AgentChat — top-of-mirror history affordance", () => {
     expect(loadOlder()).not.toBeInTheDocument();
   });
 
+  // 2026-10-07: a saved copy has no bridge to page from, so the dated line stands where the button
+  // would, at the top of the mirror's scrolled text, and no bar sits above the mirror.
+  const SAVED_AT = new Date(2026, 0, 2, 14, 32).getTime();
+  it.each([
+    ["Load older", { kind: "shell" as const, readableLines: 6946 }],
+    ["Show entire history", { hasSession: true, readableLines: 51 }],
+  ])("a saved copy puts its line in the top slot instead of %s", (_name, paneFacts) => {
+    const agent = { ...fixtureAgents[0]!, ...paneFacts };
+    const { container } = renderChat({
+      agent,
+      agents: [agent],
+      requestedLines: 600,
+      stale: true,
+      lastSeenAt: SAVED_AT,
+      error: true,
+    });
+    const line = screen.getByText(/^Saved copy from .+\. Older text is on the bridge\.$/);
+    const slot = line.closest('[data-slot="saved-copy"]')!;
+    expect(slot).not.toBeNull();
+    // The first thing in the mirror's scroller, so it scrolls with the text it dates.
+    expect(slot.parentElement!.className).toContain("overflow-y-auto");
+    expect(slot.parentElement!.firstElementChild).toBe(slot);
+    expect(loadOlder()).not.toBeInTheDocument();
+    expect(showHistory()).not.toBeInTheDocument();
+    expect(container.querySelector('[data-slot="notice"]')).toBeNull();
+  });
+
+  it("live, the mirror's top slot has no saved line and keeps its button", () => {
+    const agent = { ...fixtureAgents[0]!, kind: "shell" as const, readableLines: 6946 };
+    const { container } = renderChat({ agent, agents: [agent], requestedLines: 600 });
+    expect(loadOlder()).toBeInTheDocument();
+    expect(container.querySelector('[data-slot="saved-copy"]')).toBeNull();
+  });
+
   it("stays hidden when readableLines is unknown (older bridge) rather than offering a dud tap", () => {
     const agent = { ...fixtureAgents[0]!, kind: "shell" as const }; // no readableLines
     renderChat({ agent, agents: [agent], requestedLines: 600 });
@@ -3768,5 +3802,33 @@ describe("AgentChat — a failed poll keeps the Chat on screen", () => {
     await view.poll();
     await waitFor(() => expect(savedLine()).toBeInTheDocument());
     expect(view.blocks()).toBe(shown);
+  });
+
+  // 2026-10-07, Altan: the dated line was a bar of its own under the pane strip. It is the top of the
+  // transcript now, where "Start of the conversation" and "Load older" stand, and it replaces both.
+  it("the saved line takes the transcript's top slot, and the live slot comes back with the bridge", async () => {
+    const view = renderPolled();
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText("Start of the conversation")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="saved-copy"]')).toBeNull();
+
+    mode = "drop";
+    await view.poll();
+    await waitFor(() => expect(savedLine()).toBeInTheDocument());
+    const stream = document.querySelector('[data-slot="session-stream"]')!;
+    const slot = stream.firstElementChild!;
+    expect(slot).toHaveAttribute("data-slot", "saved-copy");
+    expect(slot).toContainElement(savedLine());
+    expect(screen.queryByText("Start of the conversation")).toBeNull();
+    expect(screen.queryByRole("button", { name: /load older/i })).toBeNull();
+    // No bar above the body any more: the line is the only one, and it lives in the scroller.
+    expect(document.querySelector('[data-slot="notice"]')).toBeNull();
+    expect(screen.getAllByText(/^Saved copy from/)).toHaveLength(1);
+
+    mode = "live";
+    await view.poll();
+    await waitFor(() => expect(savedLine()).toBeNull());
+    expect(document.querySelector('[data-slot="saved-copy"]')).toBeNull();
+    expect(screen.getByText("Start of the conversation")).toBeInTheDocument();
   });
 });

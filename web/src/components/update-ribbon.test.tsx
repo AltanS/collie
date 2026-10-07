@@ -619,8 +619,13 @@ describe("the band owns the row; this feature owns the words", () => {
     // below. What stays banned is anything that could escape the row: `fixed`/`sticky` position
     // against the viewport or a scrolling ancestor, and any `z-` utility, which would let a piece of
     // this feature climb above or below a neighbouring strip instead of leaving that to the host.
+    // The scan covers THIS feature's pixels, the Notice and everything in it. The host's own
+    // placement (a `z-30` anchor and an `absolute` band since the band became an overlay on
+    // 2026-10-07) is the host's, and `ui/strip-host.test.tsx` pins it.
     const { container } = await renderBand(info());
-    for (const element of container.querySelectorAll("*")) {
+    const own = [...container.querySelectorAll('[data-slot="notice"], [data-slot="notice"] *')];
+    expect(own.length).toBeGreaterThan(0);
+    for (const element of own) {
       // `getAttribute`, not `.className`: an SVG's is an SVGAnimatedString and stringifies to
       // "[object SVGAnimatedString]", which passes every assertion below by saying nothing.
       const tokens = (element.getAttribute("class") ?? "").split(/\s+/);

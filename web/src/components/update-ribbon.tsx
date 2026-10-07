@@ -49,8 +49,9 @@ import type { DismissScope } from "@/lib/types";
 //
 // ── FIXED HEIGHT, IN EVERY STATE ─────────────────────────────────────────────
 // The row is one height whatever it is saying, and only the text changes. A band that grew and
-// shrank as a run progressed would reflow the whole route under the operator's thumb mid-update,
-// which is the one moment they are least able to tolerate it. That height is now `ui/notice.tsx`'s
+// shrank as a run progressed would cover more and then less of the route under the operator's thumb
+// mid-update (it reflowed the whole route until the band became an overlay on 2026-10-07), which is
+// the one moment they are least able to tolerate it. That height is now `ui/notice.tsx`'s
 // `min-h-[33px]` strip floor, shared with every other strip, rather than a number written here —
 // which is also what makes the band's arbitration height-invariant. One truncating line rather than
 // a wrapping paragraph, and the strings are held to a 40-character budget in all six locales for

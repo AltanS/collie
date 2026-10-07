@@ -101,9 +101,14 @@ export function useConnectionClock(mode: ClockMode): void {
  * render nothing where they sit — they register a `StripSlot` with `ui/strip-host.tsx` and the band
  * paints the winner — so a card that mounts one of them without a host would show an empty stage and
  * report a bug that is not there. It costs the cards that mount no strip nothing: the band collapses
- * to no height, and a header inside it reserves the safe-area inset itself, as it always does. The
- * band paints ABOVE the card's content here, a header included, which is not the app's order (the
- * app paints it under the header); {@link PaneStackRouter} carries the app's order.
+ * to no height, and a header inside it reserves the safe-area inset itself, as it always does.
+ *
+ * IN FLOW, NOT AN OVERLAY (`flow`). The app hangs the band over the top of the route since
+ * 2026-10-07, but most cards here mount a strip and nothing else, so there is no route for it to
+ * cover: an overlay on a zero-height anchor would hang outside the Stage's clipped box and the card
+ * would show nothing. So this router paints the band as a plain row ABOVE the card's content, a
+ * header included, which is not the app's composition. {@link PaneStackRouter} and
+ * {@link createFullAppRouter} carry the app's composition, overlay and all.
  */
 export function RootRouter({ data, children }: { data: HomeData; children: ReactNode }) {
   const [router] = useState(() =>
@@ -113,7 +118,7 @@ export function RootRouter({ data, children }: { data: HomeData; children: React
           id: ROOT_ROUTE_ID,
           path: "/",
           loader: () => data,
-          element: <StripHost>{children}</StripHost>,
+          element: <StripHost flow>{children}</StripHost>,
         },
       ],
       { initialEntries: ["/"] },
@@ -385,16 +390,18 @@ export function PaneRouter({
 const StackDeviceContext = createContext<DeviceAuth | null>(null);
 
 /**
- * {@link PaneRouter}'s pane, PLUS the band RootLayout mounts under the header — the real `<StripHost>`
- * with the real `<UpdateRibbon/>` and `<ConnectionBanner/>` registering into it — so the worst-case
+ * {@link PaneRouter}'s pane, PLUS the band RootLayout hangs under the header, the real `<StripHost>`
+ * with the real `<UpdateRibbon/>` and `<ConnectionBanner/>` registering into it, so the worst-case
  * stack (gap 4) can be judged as one screen instead of summed from cards measured apart. Same real
  * components, same nesting as `routes/root.tsx`: the header host wraps the band host, which wraps the
- * two features AND the pane, so the bar comes first, the ribbon second and the pane last.
+ * two features AND the pane, so the bar comes first, the band's zero-height anchor second and the
+ * pane last. The band is the app's OVERLAY here (no `flow`): it covers the top of the pane, the tab
+ * and pane strips, and the pane below it starts at the same pixel with or without a strip.
  *
- * BOTH FEATURES ARE MOUNTED AND ONE OF THEM SHOWS. That is not the harness being lazy — it is the
- * app's rule made visible: the band takes one strip at a time, and `AUTH` (the refusal below) beats
- * `UPDATE` (the offer). What this card is for is the height of the real worst case, which is one
- * strip plus the header, and never two strips plus the header.
+ * BOTH FEATURES ARE MOUNTED AND ONE OF THEM SHOWS. That is not the harness being lazy: it is the
+ * app's rule made visible. The band takes one strip at a time, and `AUTH` (the refusal below) beats
+ * `UPDATE` (the offer). The worst case at the top of this app is the header plus ONE strip floating
+ * over the pane's first rows, never two strips, and never a pane pushed down.
  *
  * The red `ConnectionBanner` here is deliberately the AUTH-ERROR branch (`bridge=undefined,
  * authError`), not the trouble→lost escalation — that branch paints red off its props alone, with no

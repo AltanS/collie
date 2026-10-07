@@ -74,10 +74,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **The connection strip is a ribbon under the header, and the header never moves.** The band that
-  held the connection, auth and update strips painted above the header and pushed the whole page
-  when a strip came or went. It now sits under the header bar. The header owns the notch inset for
-  good, the "as of" chip left it, and the brand column cannot be squeezed by the chips beside it.
+- **The connection strip floats under the header, and nothing moves for it.** The band that held
+  the connection, auth and update strips painted above the header and pushed the whole page when a
+  strip came or went. It is an overlay now, anchored to the header's bottom edge with a shadow: it
+  covers the pane strip or the filter row while it shows, and the X uncovers it. The header owns the
+  notch inset for good, the "as of" chip left it, and the brand column cannot be squeezed by the
+  chips beside it. "Saved copy from …" left its own bar too: it is the first line of the transcript
+  or the mirror, where "Start of the conversation" and "Load older" sit, and scrolls with the text.
 - **The connection strip can be hidden, and the Collie mark shows the state after that.** The red
   strip keeps one button, Retry, and gets an X. Hidden, it stays hidden for the rest of that outage
   and comes back on the next one; recovery after a hide shows no green flash. While the connection is
@@ -85,7 +88,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   state stays visible with the strip gone.
 - **The offline draft note floats above the belt and can be dismissed.** "The draft stays on this
   phone" used to open under the input field and push the field up. It now shows in the same floating
-  card as the terminal-draft notice, one notice at a time, with an X, and moves nothing.
+  card as the terminal-draft notice, one notice at a time, with an X, and moves nothing. It shows
+  only on the first keystroke while offline that leaves text in the field, not on going offline.
 - **The file screen in Changes: icons, a path row, and a clearer end of the list.** The Diff, Source
   and Preview switcher shows icons, each with its word as the title and the accessible name. A thin
   mono row under the name shows the path from the repo root and folds the middle folders to an

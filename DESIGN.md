@@ -43,7 +43,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/segmented.tsx` | Two or three labelled segments in one row, exactly one selected: Diff \| Source \| Preview, the Files screen's All files \| Changes, the 1 h / 24 h chart switch, the alert threshold and duration choices. Values are strings or numbers. Every segment reserves its 1px border and the selected one only recolours it, so a switch moves nothing (§2), and a tap on the selected segment does nothing. `semantics` picks a tab list (a switch between screens) or a radio group (one setting); `disabled` makes the row inert. A segment may carry a count (`badge`, with `badgeLabel` for the screen reader), floated on its top-right corner like the toggle button's, as the Files screen's Changes segment does. Theme and Belt size predate it and still carry their own copy. |
 | `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer; there is no popover, no dialog, no tooltip. |
-| `ui/strip-host.tsx` | The ribbon band under the header bar. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. Domain-blind: a bigger number wins, and it does not know what a connection is. |
+| `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
 | `ui/tab-bar.tsx` | A bottom tab bar: equal icon-over-word tabs on the page colour, a rule above, the safe area below. The active mark is a reserved 2px top edge, and a count badge floats on the icon, so a switch or a count never moves a word. The dashboard footer (ADR 0066, ADR 0085): with a crew, Crew, Dashboard, Changes, so the default tab sits in the middle under the thumb and the two side tabs are the side trips. |
 | `ui/toggle-button.tsx` | An icon toggle button: a setting that is on or off, with `aria-pressed`, drawn as a 44px square (icon only) or 44px tall with a word. Owns the one pressed look, the primary tint plus the hairline `ring-primary/40`, so a pressed toggle never reads like a selected `bg-muted` segment beside it. An optional `badge` count sits on the square's corner, absolute, so a count that comes or goes moves nothing (§2). The dashboard's needs-you switch, the Changes tree's Ignored toggle, the Changes list's Tree toggle, and the Changes only toggle with its badge. Not for a multi-select filter chip, and not for the `role="switch"` track of `ui/switch.tsx`. |
@@ -70,8 +70,8 @@ two alert systems at once.
 
 **So: no seventh one.** A new notice is a `Notice`. If it appears or disappears, it does so through
 `Collapse`. If it competes for the band under the header, it registers a `StripSlot`. The two
-placements (§4) are now the `variant` prop and there is no third: `strip` is viewport chrome under
-the header, full-bleed with a `border-b`; `box` is content in the column, inset on the page gutter
+placements (§4) are now the `variant` prop and there is no third: `strip` is viewport chrome hung under
+the header, full-bleed with a `border-b`, floating over the top of the route; `box` is content in the column, inset on the page gutter
 with a full border and the house radius.
 
 ---
@@ -572,8 +572,8 @@ Stated so nobody reads this document as a description of a clean tree.
    and not only a tidiness: each of the three set `env(safe-area-inset-top)` for itself, on the
    assumption that each might be the first thing on screen, so the everyday ribbon + header case on
    an iPhone paid for the notch twice and showed a dead band above the notice. The inset has one
-   owner now, `app-header.tsx`'s `<header>`, in every state: since 2026-10-07 the band paints as a
-   ribbon UNDER the header bar, so nothing ever sits above it. Gone with it: two tint tables, two hand-rolled collapse machines, and both
+   owner now, `app-header.tsx`'s `<header>`, in every state: since 2026-10-07 the band hangs as an
+   overlay UNDER the header bar, so nothing ever sits above it and nothing below it moves. Gone with it: two tint tables, two hand-rolled collapse machines, and both
    `role="alert"` + `aria-live="polite"` pairs.
 2. **`space-overview.tsx:136`** — an `outline-none` on the filter `<input>` with no
    replacement focus mark on it or its `<label>`. Trap 2 in its plain form: keyboard focus
@@ -605,7 +605,7 @@ five of them and any category may wear any one.
 
 | Category | Outlives the next interaction? | Scope | Where it lives |
 | --- | --- | --- | --- |
-| **System strip** | yes | the app / this session | the band under the header, full-bleed |
+| **System strip** | yes | the app / this session | the band hung under the header, full-bleed, floating over the route |
 | **Scope notice** | yes | this route or view | an inset box in the content column |
 | **Event** | no | wherever it fires | the floating layer — never holds space |
 | **Contextual notice** | while its control is relevant | one control | that control's own chrome |
@@ -670,13 +670,26 @@ the composer inexplicably dead, which is a lie by omission. Hence the ruling: **
 outlive the operator's next interaction holds space; anything shorter floats.** A standing condition
 costs space because it costs capability, and those pixels buy a fact the operator must not lose.
 
+**The one exception is the system strip, which floats although it stands** (2026-10-07). It covers
+the top of the route, whatever sits directly under the header: the tab and pane strips on a pane, the
+filter row on the dashboard. It sat in flow under the bar for one day, and an outage then shoved the
+pane strip down under the operator's thumb, which §2 grades as a fault. The two things the ruling
+protects still hold. The strip occludes no capability it does not also explain: a lost connection is
+exactly when the rows beneath it are stale. And it never fades on its own: it stays until its
+condition clears or the operator dismisses it, and the header's mark keeps the badge after a dismiss.
+
+**The z ladder the band sits on.** `z-20` is the top of everything in flow: the sticky header, the
+composer dock, the Changes file bar, the chat docks. The band is `z-30`, so it covers all of them.
+`z-40` is the toasts and the anchored menu's dismiss surface, `z-50` the sheets, the update screen and
+the idle lock, so all of those cover the band. A new in-flow surface stays at `z-20` or below.
+
 ### Where the priority table lives
 
 `web/src/lib/strip-priority.ts` — `AUTH 40 > OUTAGE 30 > DEGRADED 20 > UPDATE 10`, in steps of ten
 so a future level slots into a gap without renumbering anything. It is on the **feature** side
 because `ui/strip-host.tsx` is domain-blind: it knows only that a bigger number wins, never what a
-connection or an update *is*. The band shows one strip at a time: two cost ~66px of a 390×844
-phone and double the number of times the page moves, and every pair has a strict answer anyway. The
+connection or an update *is*. The band shows one strip at a time: two would cover ~66px of a
+390×844 phone and double the number of times the band changes, and every pair has a strict answer anyway. The
 losing fact is not lost — the update offer keeps its footer line and its settings control.
 
 ### Two hard rules

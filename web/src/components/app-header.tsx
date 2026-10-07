@@ -135,8 +135,9 @@ interface AppHeaderHostProps {
  *
  * The pattern is `RootLayout`'s existing one: mounted above the outlet, so it survives navigation.
  * It is the FIRST thing on that shelf: the strip band (`ui/strip-host.tsx`, with UpdateRibbon and
- * ConnectionBanner registering into it) is one of its children and paints as a ribbon under this bar,
- * and the outlet comes after the band.
+ * ConnectionBanner registering into it) is one of its children. Its zero-height anchor comes right
+ * after this bar, and the band hangs from it as an overlay over the top of the outlet, so this bar's
+ * bottom edge is the band's top edge and the outlet below it never moves.
  *
  * Routes feed it through `<RouteHeader/>`; see the note there for why that is a portal and not a
  * store of nodes.
@@ -217,7 +218,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           "sticky top-0 z-20 flex flex-col border-b bg-background",
           /*
            * THE NOTCH IS THIS BAR'S, ALWAYS. The header is the first thing on the screen in every
-           * state: the strip band (`ui/strip-host.tsx`) paints as a ribbon UNDER it, never above it,
+           * state: the strip band (`ui/strip-host.tsx`) hangs UNDER it as an overlay, never above it,
            * so nothing else ever sits at the top edge and nothing else reserves the inset. It used to
            * hand the inset to the band while a strip showed above it (a context flag and a 240ms
            * padding transition kept the two in step); moving the band below the bar on 2026-10-07

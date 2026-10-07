@@ -71,8 +71,8 @@ export function TerminalDraftPreview({ text, onTakeOver, onDismiss }: TerminalDr
  * (ADR 0061): while Send is off for want of a live read, what happens to the words already typed.
  * It used to be an in-flow line under the field, so it moved the composer when it came and could
  * not be put away. Now it covers the mirror's last rows, moves nothing, and the x spends it for
- * this pane view. The composer owns when it shows, and gives the slot to the terminal-draft notice
- * when both are due.
+ * this pane view. The composer owns when it shows (only after a keystroke made while offline, so an
+ * idle screen stays clear), and gives the slot to the terminal-draft notice when both are due.
  */
 export function OfflineDraftNote({ onDismiss }: { onDismiss: () => void }) {
   useLocale();
