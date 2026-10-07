@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 
 import { CONFIG } from "./fixtures";
-import { PANE_SNAPSHOT, PANES } from "./pane-api";
+import { capture, PANE_SNAPSHOT, PANES } from "./pane-api";
 
 // S2 (`experiments/remix-v3/ACTION-PLAN.md` B): the open pane's Terminal rows and statusline rows are
 // two server frames, `pane-screen` and `pane-status`, read once per beat as one poll answer and
@@ -15,6 +15,9 @@ import { PANE_SNAPSHOT, PANES } from "./pane-api";
 //   (e) a refused frame shows the notice the JSON read showed for the same refusal
 //   (f) a server document's frames are adopted on hydration: same nodes, no animation, no reload
 //   (g) the cadence: the same beats as the JSON path (pane-cadence.spec.ts), one request per beat
+//   (h) the poll answer carries no text: the card comes from the screen model, a tap's guard reads the
+//       JSON route with no ETag of its own, and the polls go on carrying no text
+//   (i) Find asks for the text (the token `text` on the poll) and searches it; closing it drops the token
 
 declare global {
   interface Window {
@@ -52,11 +55,20 @@ async function postPane(context: BrowserContext, baseURL: string, body: { paneId
 interface Reads {
   api: Map<string, number>;
   frames: { status: number; poll: string | null }[];
+  /** The JSON reads the stub answered for a pane (the dialog guard's), with the ETag each asked with. */
+  guard: { ifNoneMatch: string | null }[];
+  keys: string[][];
+}
+
+/** A pane the API stub answers a JSON read for, as the bridge's `GET /api/pane/:id` does. */
+interface GuardPane {
+  paneId: string;
+  text: string;
 }
 
 /** The API stub: the snapshot (the open pane working, so the beat is HOT_MS), the config, nothing else. */
-async function stubApi(page: Page, working: boolean, mirror?: { status: number }): Promise<Reads> {
-  const reads: Reads = { api: new Map(), frames: [] };
+async function stubApi(page: Page, working: boolean, mirror?: { status: number }, guard?: GuardPane): Promise<Reads> {
+  const reads: Reads = { api: new Map(), frames: [], guard: [], keys: [] };
   await page.route("**/api/**", async (route: Route) => {
     const url = new URL(route.request().url());
     const sub = /^\/api\/pane\/[^/]+(?:\/(\w+))?$/u.exec(url.pathname);
@@ -68,6 +80,15 @@ async function stubApi(page: Page, working: boolean, mirror?: { status: number }
     }
     if (url.pathname === "/api/config") return route.fulfill({ json: { push: false, vapidPublicKey: "" } });
     if (sub && sub[1] === undefined && mirror !== undefined) return route.fulfill({ status: mirror.status, body: "refused" });
+    if (sub && sub[1] === undefined && guard !== undefined) {
+      reads.guard.push({ ifNoneMatch: route.request().headers()["if-none-match"] ?? null });
+      return route.fulfill({ json: { paneId: guard.paneId, text: guard.text, truncated: false, revision: 1 }, headers: { etag: '"guard-1"' } });
+    }
+    if (sub && sub[1] === "keys" && guard !== undefined) {
+      // SAFETY: the shell's own POST body, `{ keys: string[] }`.
+      reads.keys.push((JSON.parse(route.request().postData() ?? "{}") as { keys?: string[] }).keys ?? []);
+      return route.fulfill({ json: { ok: true } });
+    }
     return route.fulfill({ status: 404, json: { error: "not stubbed" } });
   });
   page.on("response", (res) => {
@@ -299,4 +320,71 @@ test("(g) the cadence: an idle pane makes the JSON path's beats, one frame reque
   expect(reads.frames.length, JSON.stringify(reads.frames)).toBeGreaterThanOrEqual(2);
   expect(reads.frames.length, JSON.stringify(reads.frames)).toBeLessThanOrEqual(4);
   expect(reads.frames.every((f) => f.poll !== null)).toBe(true);
+});
+
+/** The read inside a poll answer: no text, and the screen model's blocks. */
+interface AnsweredRead {
+  text?: string;
+  screen?: { blocks: { kind: string }[] };
+}
+
+function readOf(body: string): AnsweredRead {
+  // SAFETY: the e2e server's poll answer, whose first element is the read's JSON.
+  return JSON.parse(body.slice(body.indexOf(">") + 1, body.indexOf("</script>"))) as AnsweredRead;
+}
+
+test("(h) the poll answer carries no text: the card is the model's, the guard reads JSON with no ETag of its own", async ({ page, context, baseURL }) => {
+  const shot = capture("claude--permission-bash.txt");
+  await postPane(context, baseURL!, { paneId: PANES.permission, text: shot });
+  const reads = await stubApi(page, false, undefined, { paneId: PANES.permission, text: shot });
+  const bodies: string[] = [];
+  page.on("response", (res) => {
+    if (res.request().headers()["x-remix-frame"] === "true" && res.status() === 200) void res.text().then((body) => bodies.push(body));
+  });
+  await page.goto(path(PANES.permission, ON));
+  // The card is drawn from the screen model: three options, the family caption.
+  const card = page.locator('[data-slot="dialog-card"]');
+  await expect(card.getByTestId("dialog-option")).toHaveCount(3);
+  await expect.poll(() => bodies.length).toBeGreaterThan(0);
+  // The answer has no text, nor the unwrapped text; it has the model.
+  const carrying = bodies.find((body) => readOf(body).screen?.blocks[0]?.kind === "prompt-select");
+  expect(carrying, "a poll answer with the dialog's block").toBeDefined();
+  expect(readOf(carrying!)).not.toHaveProperty("text");
+  expect(readOf(carrying!)).toHaveProperty("screen.blocks.0.kind", "prompt-select");
+  // No JSON read of the pane was needed to draw it.
+  expect(reads.guard).toEqual([]);
+  expect(reads.api.get("pane screen") ?? 0).toBe(0);
+  // A tap: the guard reads the pane as JSON with the ETag of nothing (a read without text never reached
+  // web's pane cache, whose 304 would hand the guard a body with no text), then the key goes out.
+  await card.getByTestId("dialog-option").first().click();
+  await expect.poll(() => reads.keys.length).toBeGreaterThan(0);
+  expect(reads.guard.length).toBeGreaterThan(0);
+  expect(reads.guard[0]?.ifNoneMatch).toBeNull();
+  // The polls that went on carry no text either.
+  for (const body of bodies) expect(readOf(body), "text-free poll").not.toHaveProperty("text");
+});
+
+test("(i) Find asks for the text, searches it, and closing it drops the token", async ({ page, context, baseURL }) => {
+  await postPane(context, baseURL!, { paneId: PANE, text: screen("$ findable needle") });
+  const reads = await stubApi(page, true);
+  await page.goto(path(PANE, ON));
+  const rows = page.locator('[data-frame="pane-screen"] [data-rmx-key]');
+  await expect(rows.last()).toContainText("findable needle");
+  expect(reads.frames.every((f) => f.poll !== null && !f.poll.includes("text"))).toBe(true);
+  await page.getByTestId("header-menu").click();
+  await page.getByRole("dialog").getByText("Find in output", { exact: true }).click();
+  const input = page.getByTestId("find-input");
+  await expect(input).toBeVisible();
+  await input.fill("needle");
+  await expect(page.getByTestId("find-count")).toContainText("1");
+  // The poll that fetched the text asked for it, and the bar being open keeps asking.
+  expect(reads.frames.some((f) => f.poll?.split(",").includes("text") === true)).toBe(true);
+  // Closing the bar: the rows are the server's again, and the polls carry no text.
+  await page.getByRole("button", { name: /close/i }).first().click();
+  await expect(page.getByTestId("find-bar")).toHaveCount(0);
+  await expect(rows.last()).toContainText("findable needle");
+  reads.frames.length = 0;
+  await page.waitForTimeout(4_000);
+  expect(reads.frames.length).toBeGreaterThan(0);
+  expect(reads.frames.every((f) => f.poll !== null && !f.poll.includes("text"))).toBe(true);
 });

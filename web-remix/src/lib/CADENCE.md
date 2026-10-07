@@ -44,7 +44,7 @@ instead (REMIX3.md, "Frames"), off by default (the round 8 verdict: 1.6x the JSO
 | --- | --- | --- | --- | --- | --- |
 | every screen | `GET /api/snapshot` | each beat | JSON into a store | `lib/loaders.ts:334` (root loader) | `lib/data.ts:121`, `shell.tsx:54` |
 | every screen | `GET /api/config` | once per page; a failed read retries | JSON into a store | `lib/operator-config.ts:31` | `lib/data.ts:153` (`shell.tsx:55` keeps it on the beat until one read lands) |
-| pane, frames on (`?frames=1`) | `GET /pane/:id?lines=600&agent=…` with `X-Remix-Frame`, `X-Remix-Target`, `X-Collie-Poll` | each beat, the read's ETag / 304 | one poll answer: the read JSON and both frames' rows. 304: nothing at all. 200: the read into the store, then `frame.reload()` on each mounted frame whose rows moved; the runtime diffs them in by `data-rmx-key` | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/pane-frames.ts:254` |
+| pane, frames on (`?frames=1`) | `GET /pane/:id?lines=600&agent=…` with `X-Remix-Frame`, `X-Remix-Target`, `X-Collie-Poll` (+ `text` while Find is open, `X-Collie-Reply` while a reply card is placed) | each beat, the read's ETag / 304 | one poll answer: the read without its text, carrying the screen model, and both frames' rows. 304: nothing at all. 200: the read into the store, then `frame.reload()` on each mounted frame whose rows moved; the runtime diffs them in by `data-rmx-key` | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/pane-frames.ts:254` |
 | pane, frames off (the default) or latched | `GET /api/pane/:id?lines=600` | each beat, ETag / 304 | JSON into a store; the browser draws the rows | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/data.ts:47` (web's `fetchPane`) |
 | pane, Chat gate open | `GET /api/pane/:id/chat` | each beat, after-cursor + ETag | JSON into a store (with frames on, the beat's poll answer then carries the status band only) | `hooks/use-chat-window.ts:125`, `lib/api.ts:587` | `routes/pane/pane.tsx:455`, `routes/pane/chat-store.ts:76` (web's `fetchChat`) |
 | home, Crew tab; machines | `GET /api/machines` | each beat while mounted | JSON into a store | `lib/loaders.ts:650` | `routes/home/crew-tab.tsx:61`, `routes/machines/machines.tsx:30` |
@@ -53,8 +53,9 @@ instead (REMIX3.md, "Frames"), off by default (the round 8 verdict: 1.6x the JSO
 | home, Changes counts | `GET /api/changes` per space | own 5 s visible-only loop | JSON into a store | `hooks/use-workspace-change-counts.ts:111` | `lib/change-counts.ts:151` |
 
 With frames on, the pane still makes ONE request per beat, as the JSON read did: the poll answer
-carries the read (the card, the composer, the dialog guard's baseline still need the text) and both
-frames. It is conditional only when every frame on screen is held, so a 304 never leaves one empty.
+carries the read and both frames. The read has no text, since the rows are the same text drawn: it
+carries the screen model (the dialog's blocks, the draft, the footer, counts), which the card, the
+composer and the dialog guard's inputs are derived from, and the text itself only while Find is open. It is conditional only when every frame on screen is held, so a 304 never leaves one empty.
 While the reader is scrolled up, the screen frame is not reloaded (the rows stay put, rule 8); the
 held rows catch up at once on the jump back, with no request.
 

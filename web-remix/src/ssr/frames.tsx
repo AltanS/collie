@@ -26,8 +26,10 @@ import { renderToString } from "remix/component/server";
 
 import { findLinks } from "@web/lib/links";
 
+import type { PaneReadLite } from "../lib/pane-read";
+import { SCREEN_FRAME, STATUS_FRAME, type PaneFrameName, type ReplyProbe } from "../routes/pane/frames";
 import { parseScreen } from "../routes/pane/parse";
-import { SCREEN_FRAME, STATUS_FRAME, type PaneFrameName } from "../routes/pane/frames";
+import { screenOfText } from "../routes/pane/screen-model";
 import { StatusRows } from "../routes/pane/statusline";
 import { decorateRows, haystackOf } from "../screen/decorate";
 import { toRows } from "../screen/rows";
@@ -75,4 +77,25 @@ export async function renderPaneFrames(input: PaneFramesInput, targets: readonly
   const out: Partial<Record<PaneFrameName, string>> = {};
   for (const name of targets) out[name] = await renderToString(nodes[name]);
   return out;
+}
+
+/** What a poll asked of the read: its text as well (the find bar), and where the newest reply sits. */
+export interface PollReadAsk {
+  text: boolean;
+  probe?: ReplyProbe;
+}
+
+/**
+ * The read a poll answer carries (routes/pane/frames.ts, THE POLL ANSWER): the bridge's read as it is
+ * when the poll asked for the text, else the same read without `text` and `logicalText` and with the
+ * screen model computed from them. The route's own JSON never passes through here.
+ */
+export function pollRead<T extends { text: string; logicalText?: string }>(
+  read: T,
+  agent: string | undefined,
+  ask: PollReadAsk,
+): T | (Omit<T, "text" | "logicalText"> & Pick<PaneReadLite, "screen">) {
+  if (ask.text) return read;
+  const { text, logicalText: _unwrapped, ...rest } = read;
+  return { ...rest, screen: screenOfText(text, agent, ask.probe) };
 }

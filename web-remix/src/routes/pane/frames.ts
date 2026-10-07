@@ -21,21 +21,32 @@
 //
 // THE POLL ANSWER. A request with `X-Collie-Poll: <frame names>` gets every named frame and the pane
 // read itself in one body, so the beat costs one request and one multiplexer read, as the JSON read
-// did, and the screen's other readers (the card, the composer, the dialog guard's baseline) still get
-// the text:
+// did:
 //
-//   <script type="application/json" data-collie-pane-read>{PaneReadResponse}</script>
+//   <script type="application/json" data-collie-pane-read>{the read}</script>
 //   <template data-collie-frame="pane-status">…rows…</template>
 //   <template data-collie-frame="pane-screen">…rows…</template>
 //
-// The read goes first: its text is a JSON string, and gzip finds most of the rows' text again in it
-// (the window is 32 KiB). A request without the header (Remix's own default resolver) gets the one
-// frame `X-Remix-Target` names, as plain rows. Text in rows is escaped, so `</template>` and
-// `</script>` occur only as these closers (the JSON escapes every `<`).
+// WITHOUT THE TEXT. The rows are drawn on the bridge from the pane's text, so a read that carried the
+// text too sent the screen twice (the JSON `text` was 5.3 KiB of a 14.7 KiB answer). The answer leaves
+// `text` and `logicalText` out and carries `screen` (lib/pane-read.ts) instead: the dialog's blocks,
+// the composer's draft, the footer, the row counts and a stamp, computed with the shared pure
+// functions (routes/pane/screen-model.ts). What still needs the text asks for it, by adding the token
+// `text` to `X-Collie-Poll` (the find bar, which marks rows the server cannot mark); that answer is the
+// whole read and no `screen`, as before. The reader that places the newest reply over the mirror
+// (latest-reply.tsx) sends a probe instead, two 48-letter strings in `X-Collie-Reply`, and the answer's
+// `screen.reply` says where they sit.
+//
+// The read goes first: with the text in it, its JSON string held most of the rows' text, and gzip
+// found it again (the window is 32 KiB). A request without the header (Remix's own default resolver)
+// gets the one frame `X-Remix-Target` names, as plain rows. Text in rows is escaped, so `</template>`
+// and `</script>` occur only as these closers (the JSON escapes every `<`).
 
+import { PROBE_CHARS } from "@web/lib/latest-reply";
 import { panePath } from "@web/lib/nav";
 import type { Scope } from "@web/lib/scope";
-import type { PaneReadResponse } from "@web/lib/types";
+
+import type { PaneRead, PaneReadLite } from "../../lib/pane-read";
 
 export const SCREEN_FRAME = "pane-screen";
 export const STATUS_FRAME = "pane-status";
@@ -44,6 +55,10 @@ export const PANE_FRAMES: readonly PaneFrameName[] = [SCREEN_FRAME, STATUS_FRAME
 
 /** The request header that asks for a poll answer: the frame names, comma separated. */
 export const POLL_HEADER = "x-collie-poll";
+/** The token in `X-Collie-Poll` that asks for the read WITH its text (see THE POLL ANSWER). */
+export const POLL_TEXT = "text";
+/** The request header that carries the reply probe (see THE POLL ANSWER). */
+export const REPLY_HEADER = "x-collie-reply";
 /** The response header every answer of the frame route carries: proof it is ours, not a proxy's page. */
 export const FRAME_ANSWER_HEADER = "x-collie-frame";
 
@@ -56,6 +71,44 @@ export function pollTargets(header: string | null): PaneFrameName[] {
   if (header === null) return [];
   const asked = new Set(header.split(",").map((part) => part.trim()));
   return PANE_FRAMES.filter((name) => asked.has(name));
+}
+
+/** True when a poll header asks for the text as well as the screen model. */
+export function pollWantsText(header: string | null): boolean {
+  return header !== null && header.split(",").some((part) => part.trim() === POLL_TEXT);
+}
+
+/** The poll header for these frames, with the text when `text` is set. */
+export function pollHeader(targets: readonly PaneFrameName[], text: boolean): string {
+  return text ? [...targets, POLL_TEXT].join(",") : targets.join(",");
+}
+
+/**
+ * The newest reply's two probes: the first and last PROBE_CHARS letters and digits of its prose, folded
+ * (web's `fold`). The bridge locates them on the screen with web's `locateReply`.
+ */
+export interface ReplyProbe {
+  head: string;
+  tail: string;
+}
+
+/** The probe as the request header carries it: two percent-encoded strings with a dot between. */
+export function encodeProbe(probe: ReplyProbe): string {
+  return `${encodeURIComponent(probe.head)}.${encodeURIComponent(probe.tail)}`;
+}
+
+/** The probe a header carries, or undefined for none or one that is not two whole probes. */
+export function decodeProbe(header: string | null): ReplyProbe | undefined {
+  if (header === null) return undefined;
+  const parts = header.split(".");
+  if (parts.length !== 2) return undefined;
+  try {
+    const head = decodeURIComponent(parts[0] ?? "");
+    const tail = decodeURIComponent(parts[1] ?? "");
+    return head.length === PROBE_CHARS && tail.length === PROBE_CHARS ? { head, tail } : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -89,12 +142,12 @@ const templateOpen = (name: PaneFrameName): string => `<template data-collie-fra
 const TEMPLATE_CLOSE = "</template>";
 
 /** The read as JSON safe inside a `<script>`: every `<` escaped, so no `</script>` can close it early. */
-function scriptJson(read: PaneReadResponse): string {
+function scriptJson(read: PaneRead | PaneReadLite): string {
   return JSON.stringify(read).replaceAll("<", "\\u003c");
 }
 
 /** Assemble a poll answer (see the file header). */
-export function pollAnswer(read: PaneReadResponse, frames: Partial<Record<PaneFrameName, string>>): string {
+export function pollAnswer(read: PaneRead | PaneReadLite, frames: Partial<Record<PaneFrameName, string>>): string {
   let out = `${READ_OPEN}${scriptJson(read)}${READ_CLOSE}`;
   for (const name of [STATUS_FRAME, SCREEN_FRAME] as const) {
     const html = frames[name];
@@ -104,7 +157,7 @@ export function pollAnswer(read: PaneReadResponse, frames: Partial<Record<PaneFr
 }
 
 export interface ParsedPollAnswer {
-  read: PaneReadResponse;
+  read: PaneRead;
   frames: Partial<Record<PaneFrameName, string>>;
 }
 
@@ -117,11 +170,13 @@ export function parsePollAnswer(body: string): ParsedPollAnswer | null {
   if (!body.startsWith(READ_OPEN)) return null;
   const readEnd = body.indexOf(READ_CLOSE, READ_OPEN.length);
   if (readEnd === -1) return null;
-  let read: PaneReadResponse;
+  let read: PaneRead;
   try {
     // SAFETY: the bridge's own pane read, serialised by `pollAnswer` on the frame route; a body that
     // does not start with the exact data block above was refused before this line.
-    read = JSON.parse(body.slice(READ_OPEN.length, readEnd)) as PaneReadResponse;
+    const wire = JSON.parse(body.slice(READ_OPEN.length, readEnd)) as PaneRead | PaneReadLite;
+    // A read without its text carries `screen` and holds "" here; `screen` is what tells it from a blank pane.
+    read = "text" in wire ? wire : { ...wire, text: "" };
   } catch {
     return null;
   }

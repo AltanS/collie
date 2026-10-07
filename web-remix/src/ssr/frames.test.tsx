@@ -5,8 +5,8 @@ import { describe, expect, test } from "bun:test";
 import type { PaneReadResponse } from "@web/lib/types";
 
 import { CONFIG, SNAPSHOT } from "../../e2e/fixtures";
-import { paneFramePath, paneFrameParams, parsePollAnswer, pollAnswer, pollTargets } from "../routes/pane/frames";
-import { FRAME_TAIL_ROWS, renderPaneFrames } from "./frames";
+import { paneFramePath, paneFrameParams, parsePollAnswer, pollAnswer, pollHeader, pollTargets, pollWantsText } from "../routes/pane/frames";
+import { FRAME_TAIL_ROWS, pollRead, renderPaneFrames } from "./frames";
 import { documentPaneReadPath, paneReadApiPath, renderAppBody, type DocumentInput } from "./render";
 
 function screenOf(tag: string, rows = 6): string {
@@ -78,9 +78,32 @@ describe("pane frames", () => {
     expect(parsePollAnswer("<!doctype html><html>")).toBeNull();
   });
 
-  test("the poll header names known frames only", () => {
+  test("the poll header names known frames only, and `text` is a token that is not a frame", () => {
     expect(pollTargets("pane-screen, pane-status, evil")).toEqual(["pane-screen", "pane-status"]);
+    expect(pollTargets("pane-screen,pane-status,text")).toEqual(["pane-screen", "pane-status"]);
     expect(pollTargets(null)).toEqual([]);
+    expect(pollWantsText("pane-screen,pane-status,text")).toBe(true);
+    expect(pollWantsText(" text ")).toBe(true);
+    expect(pollWantsText("pane-screen,pane-status")).toBe(false);
+    expect(pollWantsText("texture")).toBe(false);
+    expect(pollWantsText(null)).toBe(false);
+    expect(pollHeader(["pane-screen", "pane-status"], false)).toBe("pane-screen,pane-status");
+    expect(pollHeader(["pane-status"], true)).toBe("pane-status,text");
+  });
+
+  test("a read without its text round-trips: the browser holds text '' and the model", () => {
+    const whole: PaneReadResponse = { ...read("alpha"), logicalText: "alpha row 0 https://example.com/alpha/0" };
+    const lite = pollRead(whole, undefined, { text: false });
+    if (!("screen" in lite)) throw new Error("expected a read with a screen model");
+    expect("text" in lite).toBe(false);
+    expect("logicalText" in lite).toBe(false);
+    const parsed = parsePollAnswer(pollAnswer(lite, { "pane-screen": "<div></div>" }));
+    expect(parsed?.read.text).toBe("");
+    expect(parsed?.read.screen).toEqual(JSON.parse(JSON.stringify(lite.screen)));
+    expect(parsed?.read.paneId).toBe(whole.paneId);
+    expect(parsed?.read.revision).toBe(1);
+    // Asked for the text, the read goes through untouched.
+    expect(pollRead(whole, undefined, { text: true })).toBe(whole);
   });
 
   test("the src carries the window and the agent; the bridge reads the pane with the page's scope", () => {

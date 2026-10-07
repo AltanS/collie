@@ -24,10 +24,11 @@ import { fetchPane } from "@web/lib/api";
 import { paneScope } from "@web/lib/hosts";
 import { panePath } from "@web/lib/nav";
 import { paneScopeKey, type Scope } from "@web/lib/scope";
-import type { AgentView, PaneReadResponse } from "@web/lib/types";
+import type { AgentView } from "@web/lib/types";
 
 import { navigate } from "../../lib/navigate";
 import { address, paneStore, snapshot } from "../../lib/data";
+import type { PaneRead } from "../../lib/pane-read";
 import { displayPrefs } from "../../lib/prefs";
 import { glideForwardWhenReady } from "../../lib/glide";
 import { href } from "../../routes";
@@ -44,7 +45,7 @@ interface Warming {
   /** The pane store's key (`paneScopeKey`), the one the pane route reads. */
   storeKey: string;
   at: number;
-  read: Promise<PaneReadResponse | undefined>;
+  read: Promise<PaneRead | undefined>;
 }
 
 let warming: Warming | null = null;
@@ -66,12 +67,13 @@ export function prefetchPane(pane: AgentView): void {
   const now = Date.now();
   if (warming?.key === key && now - warming.at < PREFETCH_TTL_MS) return;
   const agent = parseAgent(pane.agent, displayPrefs.get().rawTerminal);
-  const fetched = framesActive()
+  const fetched: Promise<PaneRead | undefined> = framesActive()
     ? prefetchPaneFrames(pane.paneId, scope, PANE_LINES, agent)
     : fetchPane(pane.paneId, PANE_LINES, scope, undefined, { seen: false });
   const read = fetched.then(
     (body) => {
-      if (body !== undefined) warmParse(body.text, agent);
+      // A read without its text (a frames answer) carries its parse already: nothing to warm.
+      if (body !== undefined && body.screen === undefined) warmParse(body.text, agent);
       return body;
     },
     () => undefined,
@@ -92,7 +94,7 @@ export function openPane(pane: AgentView, row?: HTMLElement): void {
  * The prefetched answer into the pane's store. Nothing reads that store before the pane screen
  * mounts, and the read started on this tap's own `pointerdown`, so it is the newest answer there is.
  */
-function seed(storeKey: string, body: PaneReadResponse | undefined): void {
+function seed(storeKey: string, body: PaneRead | undefined): void {
   if (body === undefined) return;
   paneStore(storeKey).set({ data: body, error: undefined, status: undefined });
 }

@@ -9,12 +9,20 @@
 //   - 304: nothing. No reload, no diff, no store write, no `reloadStart`. The cadence hears
 //     "unchanged" (`markPollResult(false)`), as from a JSON 304.
 //   - 200: the read goes into the pane's store (so the card, the composer, the find bar and the
-//     reply card still read the text), into web's pane cache (so its ETag and the dialog guard's
-//     baseline, `textBeforeLastSend`, see it, `notePaneRead`), and the cadence hears whether the text
-//     changed. The frames' HTML is HELD here by src, and each mounted frame is told `reload()`; the
+//     reply card still read it), into web's pane cache when it carries the text (so its ETag and the
+//     dialog guard's baseline, `textBeforeLastSend`, see it, `notePaneRead`), and the cadence hears
+//     whether the screen changed. The frames' HTML is HELD here by src, and each mounted frame is told `reload()`; the
 //     runtime asks `resolvePaneFrame`, which hands back the held HTML with no second request, and
 //     diffs it into the frame by `data-rmx-key` (C/src/runtime/diff-dom.ts). So `reloadStart` and
 //     `reloadComplete` are the runtime's own, fired only when something arrived.
+//
+// WITHOUT THE TEXT. A poll answer carries the screen model in place of the pane's text (frames.ts, THE
+// POLL ANSWER; lib/pane-read.ts), unless the poll asks for the text (`PaneFramesPoll.text`, the find
+// bar). Such a read must never reach web's pane cache: the next `fetchPane` (the dialog guard's own
+// re-read, `copyOutput`) would send its ETag, take a 304 and be handed a body with no text. So the
+// guard keeps reading the JSON route with no ETag of its own, and `notePaneRead` is for reads that
+// have text. The conditional request is dropped whenever the held read cannot answer what is asked now
+// (the text is wanted and the held read has none; the reply probe moved).
 //
 // WHY NOT LET `reload()` FETCH. The runtime treats a 304 as a failure (no HTML) and an empty body as
 // "clear the frame" (C/src/runtime/frame.ts, `renderFrameStream`); `reload()` takes no options, so a
@@ -41,8 +49,8 @@ import { markLive } from "@web/lib/connection-health";
 import { authHeader } from "@web/lib/pairing";
 import { internScope, paneScopeKey, scopeFromUrl, type Scope } from "@web/lib/scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "@web/lib/server-build";
-import type { PaneReadResponse } from "@web/lib/types";
 
+import type { PaneRead } from "../../lib/pane-read";
 import { paneStore } from "../../lib/data";
 import { focus, markPollResult } from "../../lib/polling";
 import { paneFrames } from "../../lib/prefs";
@@ -50,15 +58,20 @@ import { createStore } from "../../lib/store";
 import { href } from "../../routes";
 import { pollPane } from "./data";
 import {
+  encodeProbe,
   FRAME_ANSWER_HEADER,
   PANE_FRAMES,
   paneFramePath,
   parsePollAnswer,
   POLL_HEADER,
+  pollHeader,
+  REPLY_HEADER,
   SCREEN_FRAME,
   type PaneFrameName,
   type ParsedPollAnswer,
+  type ReplyProbe,
 } from "./frames";
+import { screenToken } from "./parse";
 
 /** The GET deadline every read has (web/src/lib/api.ts). */
 const GET_TIMEOUT_MS = 10_000;
@@ -71,7 +84,7 @@ const KNOWN_STATUSES = new Set([401, 403, 404, 409, 502, 503]);
  *  but not held as text (a server document drew it); undefined when it was never asked for. */
 interface Held {
   etag: string | null;
-  read: PaneReadResponse;
+  read: PaneRead;
   parts: Partial<Record<PaneFrameName, string | null>>;
 }
 
@@ -79,7 +92,7 @@ const held = new Map<string, Held>();
 /** What each mounted frame shows: the src and the ETag of the HTML it was last given. */
 const shown = new Map<PaneFrameName, { src: string; etag: string | null }>();
 /** Requests in flight by src, so the beat, a frame's own first load and a prefetch share one. */
-const inflight = new Map<string, { targets: readonly PaneFrameName[]; answer: Promise<Answer> }>();
+const inflight = new Map<string, { targets: readonly PaneFrameName[]; ask: Ask; answer: Promise<Answer> }>();
 
 /** True once an answer was not the bridge's fragment: the JSON read for the rest of the page's life. */
 export const framesLatched = createStore(false);
@@ -173,15 +186,24 @@ type Answer =
   | { kind: "refused"; status: number; detail: string }
   | { kind: "foreign" };
 
-async function request(src: string, targets: readonly PaneFrameName[], etag: string | null, seen: boolean, signal: AbortSignal | undefined): Promise<Answer> {
+/** What a request asks of the read besides the frames: its text, and where the newest reply sits. */
+interface Ask {
+  text: boolean;
+  probe: ReplyProbe | undefined;
+}
+
+const NO_ASK: Ask = { text: false, probe: undefined };
+
+async function request(src: string, targets: readonly PaneFrameName[], etag: string | null, seen: boolean, ask: Ask, signal: AbortSignal | undefined): Promise<Answer> {
   const headers = new Headers({
     Accept: "text/html",
     "X-Remix-Frame": "true",
     "X-Remix-Target": targets[0] ?? SCREEN_FRAME,
-    [POLL_HEADER]: targets.join(","),
+    [POLL_HEADER]: pollHeader(targets, ask.text),
     [XHR_HEADER]: XHR_HEADER_VALUE,
     ...authHeader(),
   });
+  if (ask.probe !== undefined) headers.set(REPLY_HEADER, encodeProbe(ask.probe));
   // The pane's own beat marks it seen; a prefetch and a frame's first load do not (web's `fetchPane`).
   if (seen) headers.set("x-collie-seen", "1");
   if (etag !== null) headers.set("if-none-match", etag);
@@ -211,21 +233,36 @@ async function request(src: string, targets: readonly PaneFrameName[], etag: str
 }
 
 /** One request per src at a time: a caller whose frames are all in the one in flight waits for it. */
-function shared(src: string, targets: readonly PaneFrameName[], etag: string | null, seen: boolean, signal: AbortSignal | undefined): Promise<Answer> {
+function shared(src: string, targets: readonly PaneFrameName[], etag: string | null, seen: boolean, ask: Ask, signal: AbortSignal | undefined): Promise<Answer> {
   const running = inflight.get(src);
-  if (running !== undefined && targets.every((name) => running.targets.includes(name))) return running.answer;
-  const answer = request(src, targets, etag, seen, signal).finally(() => {
+  if (running !== undefined && targets.every((name) => running.targets.includes(name)) && sameAsk(running.ask, ask)) return running.answer;
+  const answer = request(src, targets, etag, seen, ask, signal).finally(() => {
     if (inflight.get(src)?.answer === answer) inflight.delete(src);
   });
-  inflight.set(src, { targets, answer });
+  inflight.set(src, { targets, ask, answer });
   return answer;
+}
+
+function sameAsk(a: Ask, b: Ask): boolean {
+  return a.text === b.text && (a.probe === undefined ? b.probe === undefined : b.probe !== undefined && encodeProbe(a.probe) === encodeProbe(b.probe));
+}
+
+/**
+ * Whether the held read can answer `ask` with a 304: the text is there when the text is wanted (a model
+ * read has none), and a model read was located for the probe now asked about.
+ */
+function holdsAnswerFor(read: PaneRead, ask: Ask): boolean {
+  if (read.screen === undefined) return true;
+  if (ask.text) return false;
+  return read.screen.reply?.key === (ask.probe === undefined ? undefined : encodeProbe(ask.probe));
 }
 
 /** A fresh answer, held and recorded everywhere the JSON read would have been. */
 function take(src: string, paneId: string, scope: Scope, answer: Extract<Answer, { kind: "fresh" }>): Held {
   const entry: Held = { etag: answer.etag, read: answer.parsed.read, parts: { ...answer.parsed.frames } };
   hold(src, entry);
-  if (answer.etag !== null) notePaneRead(paneId, scope, answer.etag, answer.parsed.read);
+  // A read without its text stays out of web's pane cache (see WITHOUT THE TEXT).
+  if (answer.etag !== null && entry.read.screen === undefined) notePaneRead(paneId, scope, answer.etag, entry.read);
   return entry;
 }
 
@@ -245,6 +282,10 @@ export interface PaneFramesPoll {
   agent: string | undefined;
   /** The frames the open screen shows: both under the Terminal, the status band alone under Chat. */
   targets: readonly PaneFrameName[];
+  /** The read is wanted with its text (the find bar is open). */
+  text?: boolean;
+  /** Where the newest reply sits is wanted for this probe (latest-reply.tsx). */
+  probe?: ReplyProbe;
 }
 
 /**
@@ -253,15 +294,16 @@ export interface PaneFramesPoll {
  */
 export async function pollPaneFrames(poll: PaneFramesPoll, signal: AbortSignal): Promise<boolean> {
   const { key, paneId, scope, lines, agent, targets } = poll;
+  const ask: Ask = { text: poll.text === true, probe: poll.probe };
   const src = paneFrameSrc(paneId, scope, lines, agent);
   const before = held.get(src);
-  // Conditional only when every frame asked for is already on screen or held: a 304 must leave
-  // nothing missing.
-  const etag = before !== undefined && targets.every((name) => before.parts[name] !== undefined) ? before.etag : null;
+  // Conditional only when every frame asked for is already on screen or held, and the held read can
+  // answer what is asked of it: a 304 must leave nothing missing.
+  const etag = before !== undefined && targets.every((name) => before.parts[name] !== undefined) && holdsAnswerFor(before.read, ask) ? before.etag : null;
   const store = paneStore(key);
   let answer: Answer;
   try {
-    answer = await shared(src, targets, etag, true, signal);
+    answer = await shared(src, targets, etag, true, ask, signal);
   } catch (error) {
     if (!(error instanceof Error) || error.name === "AbortError") return false;
     store.update((prev) => ({ ...prev, error: error.message, status: undefined }));
@@ -287,7 +329,7 @@ export async function pollPaneFrames(poll: PaneFramesPoll, signal: AbortSignal):
     }
     case "fresh": {
       const entry = take(src, paneId, scope, answer);
-      const changed = entry.read.text !== store.get().data?.text;
+      const changed = screenToken(entry.read) !== screenToken(store.get().data);
       // The store compares by value (lib/data.ts): the same screen wakes nobody.
       store.set({ data: entry.read, error: undefined, status: undefined });
       markPollResult(changed);
@@ -325,7 +367,7 @@ export async function resolvePaneFrame(src: string, target: PaneFrameName, signa
   const scope = internScope(scopeFromUrl(url.href));
   let answer: Answer;
   try {
-    answer = await shared(src, PANE_FRAMES, null, false, signal);
+    answer = await shared(src, PANE_FRAMES, null, false, NO_ASK, signal);
   } catch {
     return "";
   }
@@ -346,12 +388,12 @@ export async function resolvePaneFrame(src: string, target: PaneFrameName, signa
  * The dashboard's pointerdown prefetch (routes/home/open-pane.ts), through the frames: both frames and
  * the read, held for the screen's first frame, never marking the pane seen. Resolves the read.
  */
-export async function prefetchPaneFrames(paneId: string, scope: Scope, lines: number, agent: string | undefined): Promise<PaneReadResponse | undefined> {
+export async function prefetchPaneFrames(paneId: string, scope: Scope, lines: number, agent: string | undefined): Promise<PaneRead | undefined> {
   const src = paneFrameSrc(paneId, scope, lines, agent);
   const before = held.get(src);
-  const etag = before !== undefined && PANE_FRAMES.every((name) => isHeld(before.parts[name])) ? before.etag : null;
+  const etag = before !== undefined && PANE_FRAMES.every((name) => isHeld(before.parts[name])) && holdsAnswerFor(before.read, NO_ASK) ? before.etag : null;
   try {
-    const answer = await shared(src, PANE_FRAMES, etag, false, undefined);
+    const answer = await shared(src, PANE_FRAMES, etag, false, NO_ASK, undefined);
     if (answer.kind === "fresh") return take(src, paneId, scope, answer).read;
     if (answer.kind === "same") return before?.read;
     if (answer.kind === "foreign") {
@@ -369,7 +411,7 @@ export async function prefetchPaneFrames(paneId: string, scope: Scope, lines: nu
  * A server document drew the pane's frames from this read (main.tsx): held as on screen, so the first
  * beat asks with its ETag and an unchanged pane answers 304.
  */
-export function primePaneFrames(src: string, paneId: string, scope: Scope, etag: string | null, read: PaneReadResponse): void {
+export function primePaneFrames(src: string, paneId: string, scope: Scope, etag: string | null, read: PaneRead): void {
   hold(src, { etag, read, parts: { [SCREEN_FRAME]: null, "pane-status": null } });
   for (const name of PANE_FRAMES) shown.set(name, { src, etag });
   if (etag !== null) notePaneRead(paneId, scope, etag, read);

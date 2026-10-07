@@ -544,9 +544,35 @@ two named frames on the pane's own URL (`R/routes/pane/frames.ts` names them and
   its marks are the browser's.
 - **One request per beat.** The beat (`R/lib/polling.ts`, unchanged) calls `pollPaneFrames`
   (`R/routes/pane/pane-frames.ts`): one GET with `X-Remix-Frame`, `X-Remix-Target` and
-  `X-Collie-Poll: <frames>`, answered with the read's JSON and every asked frame in one body. The read
-  still goes into the pane's store and web's pane cache (`notePaneRead`), because the card, the
-  composer and the dialog guard read the text.
+  `X-Collie-Poll: <frames>`, answered with the read and every asked frame in one body. The read goes
+  into the pane's store, and the card, the composer and the dialog guard take what they need from it
+  (next bullet).
+- **The answer carries no text.** The rows are drawn on the bridge from the pane's text, so a read that
+  also carried the text sent the screen twice. The read in a poll answer has no `text` and no
+  `logicalText`; it has `screen` (`R/lib/pane-read.ts`): the dialog's blocks, the composer's draft, the
+  agents footer, the row counts, the agent that parsed it and a stamp. The bridge computes it with the
+  same pure functions the browser runs over a parse of the text (`R/routes/pane/screen-model.ts`,
+  `R/ssr/frames.tsx` `pollRead`), and the browser reads it back through `parseRead`
+  (`R/routes/pane/parse.ts`) into the same card, keyboard flag, draft and footer; the card's words
+  are still the browser's locale, because only the block travels. `screen-model.test.ts` runs every
+  capture in `web/src/fixtures/panes` through text, model, JSON and back and compares. Three readers
+  need more than the model, and each asks:
+  - **Find** needs the text (its marks are the browser's). Tapping Find in the actions sheet reads the
+    pane once with the token `text` added to `X-Collie-Poll` (`openFind`), the rows are the browser's
+    while the bar is open, and every beat asks for the text until it closes.
+  - **The reply card** (`latest-reply.tsx`) places the newest reply over the rows it covers by finding
+    its opening and its ending in the whole text. It sends the two 48-letter probes (`X-Collie-Reply`),
+    and the answer's `screen.reply` says `{ key, fit, endLine }`, located by web's own `locateReply`
+    over a stand-in turn that holds the probes. A reply short enough to be whole, or capped, is settled
+    in the browser and sends nothing.
+  - **Copy output** reads the pane once as JSON (`fetchPane`) and copies that.
+  A read with no text never reaches web's pane cache (`notePaneRead` is for reads that have it): the
+  dialog guard's own re-reads go through `fetchPane`, which would send the cached ETag, take a 304 and
+  be handed a body with no text. The conditional request is dropped when the held read cannot answer
+  what is asked now (the text is wanted and it has none, or the reply probe moved). A model parsed for
+  another agent than the page's (the snapshot had not said which agent the pane is when the first beat
+  went out) is asked for again at once. The server document still carries the whole read, and the
+  first beat after it hears 304.
 - **304 never reaches the runtime.** The runtime treats a 304 as a failure and an empty body as "clear
   the frame", and `reload()` takes no options. So the poll asks first, with the read's ETag as
   `If-None-Match`; on 304 nothing happens at all (no `reloadStart`, no diff, no store write); on 200
@@ -561,7 +587,7 @@ two named frames on the pane's own URL (`R/routes/pane/frames.ts` names them and
   diff in place. A row that changes above the tail still moves the rows above it: that is the
   runtime's diff, measured in COMPARE.md round 8.
 - **Vary and storage.** `/pane/:paneId` answers a document or a fragment by request header, so every
-  answer on it says `Vary: X-Remix-Frame, X-Remix-Target, X-Collie-Poll`, the fragments
+  answer on it says `Vary: X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply`, the fragments
   `Cache-Control: private, no-store`, the document `no-store`. A frame request never falls through to
   the document or the static shell.
 - **Mount rule.** The frames' src is mounted with `href()` on BOTH sides. The server never fetches a

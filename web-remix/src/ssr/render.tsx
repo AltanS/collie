@@ -208,8 +208,8 @@ export function paneReadApiPath(url: URL, paneId: string): string {
   return `/api/pane/${encodeURIComponent(paneId)}${search === "" ? "" : `?${search}`}`;
 }
 
-export { renderPaneFrames } from "./frames";
-export { pollAnswer, pollTargets, isPaneFrameName, FRAME_ANSWER_HEADER, POLL_HEADER } from "../routes/pane/frames";
+export { renderPaneFrames, pollRead } from "./frames";
+export { pollAnswer, pollTargets, pollWantsText, decodeProbe, isPaneFrameName, FRAME_ANSWER_HEADER, POLL_HEADER, REPLY_HEADER } from "../routes/pane/frames";
 
 /**
  * The `/api/pane/:id` path a pane document at `url` reads (S2): the shell's poll window and the page's

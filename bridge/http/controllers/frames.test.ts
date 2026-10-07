@@ -5,7 +5,7 @@
 //
 // The renderer is the shell's real one, bundled with `Bun.build` as document.test.ts bundles it.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../../config.ts";
@@ -236,6 +236,144 @@ describe("pane frames: answers", () => {
     const res = await serveFrame({ ...frameDepsOf(paneRead), renderer: async () => null }, ...get(PANE, frameHeaders("pane-screen")));
     expect(res?.status).toBe(404);
     expect(res!.headers.get(FRAME_ANSWER_HEADER)).toBeNull();
+  });
+});
+
+const POLL_BOTH = "pane-screen,pane-status";
+const READ_OPEN = '<script type="application/json" data-collie-pane-read>';
+
+/** The screen model as a poll answer carries it (web-remix/src/lib/pane-read.ts). */
+interface AnsweredScreen {
+  stamp: string;
+  agent?: string;
+  blank: boolean;
+  rows: number;
+  statusRows: number;
+  rawDraft: string | null;
+  blocks: { kind: string; prompt?: { family: string; options: { label: string }[] } }[];
+  footer: { segments: { text: string }[] }[];
+  reply?: { key: string; fit: string; endLine: number };
+}
+
+/** The read inside a poll answer. */
+interface AnsweredRead {
+  paneId: string;
+  revision: number;
+  truncated: boolean;
+  text?: string;
+  logicalText?: string;
+  screen?: AnsweredScreen;
+}
+
+/** A poll answer taken apart: the read as parsed and as text, and the rows after it. */
+interface SplitAnswer {
+  read: AnsweredRead;
+  json: string;
+  rest: string;
+}
+
+function splitAnswer(body: string): SplitAnswer {
+  const end = body.indexOf("</script>");
+  const json = body.slice(READ_OPEN.length, end);
+  // SAFETY: the bridge's own poll answer, which the test just asked for; the fields are checked below.
+  return { read: JSON.parse(json) as AnsweredRead, json, rest: body.slice(end) };
+}
+
+/** The model of an answer, which must have one. */
+function modelOf(body: string): AnsweredScreen {
+  const { screen } = splitAnswer(body).read;
+  if (screen === undefined) throw new Error("the poll answer has no screen model");
+  return screen;
+}
+
+const PERMISSION = readFileSync(join(import.meta.dir, "../../../web/src/fixtures/panes/claude--permission-bash.txt"), "utf8");
+const WORKING = readFileSync(join(import.meta.dir, "../../../web/src/fixtures/panes/claude--working.txt"), "utf8");
+
+describe("pane frames: the poll answer leaves the text out", () => {
+  const ask = async (text: string, headers: Record<string, string> = {}, path = `${PANE}&agent=claude`) => {
+    const { paneRead } = paneReads({ "w1:p1": text });
+    const res = await serveFrame(frameDepsOf(paneRead), ...get(path, frameHeaders("pane-screen", { "x-collie-poll": POLL_BOTH, ...headers })));
+    return { res: res!, body: await res!.text() };
+  };
+
+  test("no text in the read, the screen model in its place, the rows after it", async () => {
+    const { res, body } = await ask(WORKING);
+    expect(res.status).toBe(200);
+    const { read, rest } = splitAnswer(body);
+    expect("text" in read).toBe(false);
+    expect("logicalText" in read).toBe(false);
+    expect(read.paneId).toBe("w1:p1");
+    expect(read.revision).toBe(1);
+    expect(read.truncated).toBe(false);
+    const screen = modelOf(body);
+    expect(Object.keys(screen).toSorted()).toEqual(["agent", "blank", "blocks", "footer", "rawDraft", "rows", "stamp", "statusRows"]);
+    expect(screen.agent).toBe("claude");
+    expect(screen.blank).toBe(false);
+    expect(screen.rows).toBeGreaterThan(5);
+    expect(screen.stamp).toMatch(/\./);
+    // The rows are still there, and the text is in them once, not twice.
+    expect(rest).toContain('<template data-collie-frame="pane-screen">');
+    expect(rest).toContain("data-rmx-key=");
+  });
+
+  test("the screen's text is in the answer once: the rows. The answer is shorter by about the text.", async () => {
+    const whole = await ask(WORKING, { "x-collie-poll": `${POLL_BOTH},text` });
+    const lite = await ask(WORKING);
+    expect(whole.body.length - lite.body.length).toBeGreaterThan(WORKING.length * 0.5);
+  });
+
+  test("a dialog on screen: the model carries the dialog's block, which is the keyboard flag's input", async () => {
+    const screen = modelOf((await ask(PERMISSION)).body);
+    expect(screen.blocks.map((b) => b.kind)).toEqual(["prompt-select"]);
+    expect(screen.blocks[0]!.prompt?.family).toBe("permission");
+    expect(screen.blocks[0]!.prompt?.options.length).toBe(3);
+  });
+
+  test("the token `text` asks for the whole read: the route's JSON byte for byte, and no model", async () => {
+    const { paneRead } = paneReads({ "w1:p1": WORKING });
+    const direct = await (await paneRead(new Request("http://x/"), new URL(`http://${HOST}/api/pane/w1%3Ap1`), "w1%3Ap1")).text();
+    const { body } = await ask(WORKING, { "x-collie-poll": `${POLL_BOTH},text` });
+    const { read, json } = splitAnswer(body);
+    expect(json).toBe(direct.replaceAll("<", "\\u003c"));
+    expect(read.text).toBe(WORKING);
+    expect("screen" in read).toBe(false);
+  });
+
+  test("the Chat view's poll (the status frame alone) drops the text as well", async () => {
+    const { body } = await ask(WORKING, { "x-collie-poll": "pane-status" });
+    const { read, rest } = splitAnswer(body);
+    expect("text" in read).toBe(false);
+    expect(read.screen).toBeDefined();
+    expect(rest).not.toContain('data-collie-frame="pane-screen"');
+  });
+
+  test("a reply probe gets its place in the model; without one the model has none", async () => {
+    const probe = `${"a".repeat(48)}.${"b".repeat(48)}`;
+    const placed = modelOf((await ask(WORKING, { "x-collie-reply": probe })).body);
+    expect(placed.reply?.key).toBe(probe);
+    expect(placed.reply?.fit).toBe("off-screen");
+    expect(modelOf((await ask(WORKING)).body).reply).toBeUndefined();
+    // A probe that is not two whole probes is ignored.
+    expect(modelOf((await ask(WORKING, { "x-collie-reply": "short.probe" })).body).reply).toBeUndefined();
+  });
+
+  test("the reply header is not forwarded to the pane read, and the ETag is the read's either way", async () => {
+    const { paneRead, seen } = paneReads({ "w1:p1": WORKING });
+    const a = await serveFrame(frameDepsOf(paneRead), ...get(PANE, frameHeaders("pane-screen", { "x-collie-poll": POLL_BOTH, "x-collie-reply": `${"a".repeat(48)}.${"b".repeat(48)}` })));
+    const b = await serveFrame(frameDepsOf(paneRead), ...get(PANE, frameHeaders("pane-screen", { "x-collie-poll": `${POLL_BOTH},text` })));
+    expect(seen[0]!.headers.get("x-collie-reply")).toBeNull();
+    expect(a!.headers.get("etag")).toBe(b!.headers.get("etag"));
+    expect(a!.headers.get("vary")).toContain("X-Collie-Reply");
+  });
+
+  test("a 304 is the same for every ask", async () => {
+    const { paneRead } = paneReads({ "w1:p1": WORKING });
+    const first = await serveFrame(frameDepsOf(paneRead), ...get(PANE, frameHeaders("pane-screen", { "x-collie-poll": POLL_BOTH })));
+    const etag = first!.headers.get("etag")!;
+    for (const asked of [POLL_BOTH, `${POLL_BOTH},text`, "pane-status"]) {
+      const again = await serveFrame(frameDepsOf(paneRead), ...get(PANE, frameHeaders("pane-screen", { "x-collie-poll": asked, "if-none-match": etag })));
+      expect(again?.status).toBe(304);
+    }
   });
 });
 

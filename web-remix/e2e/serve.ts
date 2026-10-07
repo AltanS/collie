@@ -76,13 +76,22 @@ interface DocumentInput {
   now: number;
   pane?: PaneDocRead;
 }
+/** A read as a poll answer carries it (bridge/http/controllers/frames.ts `PolledRead`). */
+interface PolledRead {
+  paneId: string;
+  text?: string;
+  screen?: { stamp: string };
+}
 interface Renderer {
   isDocumentRoute(url: URL): boolean;
   renderAppDocument(indexHtml: string, input: DocumentInput): Promise<string>;
   isPaneFrameName(name: string | null | undefined): name is FrameName;
   pollTargets(header: string | null): FrameName[];
+  pollWantsText(header: string | null): boolean;
+  decodeProbe(header: string | null): { head: string; tail: string } | undefined;
+  pollRead(read: PaneReadResponse, agent: string | undefined, ask: { text: boolean; probe?: { head: string; tail: string } }): PolledRead;
   renderPaneFrames(input: { text: string; agent: string | undefined }, targets: readonly FrameName[]): Promise<Partial<Record<FrameName, string>>>;
-  pollAnswer(read: PaneReadResponse, frames: Partial<Record<FrameName, string>>): string;
+  pollAnswer(read: PolledRead, frames: Partial<Record<FrameName, string>>): string;
 }
 let renderer: Promise<Renderer> | undefined;
 
@@ -148,7 +157,7 @@ async function serveFrame(req: Request, url: URL): Promise<Response | null> {
   if (paneId === null || posted === undefined) return null;
   const render = await loadRenderer();
   if (!render.isPaneFrameName(target)) return new Response("no such frame", { status: 404 });
-  const headers = new Headers({ "cache-control": "private, no-store", vary: "X-Remix-Frame, X-Remix-Target, X-Collie-Poll", "x-collie-frame": target });
+  const headers = new Headers({ "cache-control": "private, no-store", vary: "X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply", "x-collie-frame": target });
   if (posted.text === undefined) return new Response("refused", { status: posted.status ?? 403, headers });
   const { read, etag } = paneRead(paneId, posted.text);
   headers.set("etag", etag);
@@ -156,9 +165,12 @@ async function serveFrame(req: Request, url: URL): Promise<Response | null> {
   const poll = req.headers.get("x-collie-poll");
   const asked = render.pollTargets(poll);
   const targets = poll === null || asked.length === 0 ? [target] : asked;
-  const frames = await render.renderPaneFrames({ text: posted.text, agent: url.searchParams.get("agent") ?? undefined }, targets);
+  const agent = url.searchParams.get("agent") ?? undefined;
+  const frames = await render.renderPaneFrames({ text: posted.text, agent }, targets);
   headers.set("content-type", "text/html; charset=utf-8");
-  return new Response(poll === null ? (frames[target] ?? "") : render.pollAnswer(read, frames), { headers });
+  const ask = { text: render.pollWantsText(poll), probe: render.decodeProbe(req.headers.get("x-collie-reply")) };
+  const answer = poll === null ? (frames[target] ?? "") : render.pollAnswer(render.pollRead(read, agent, ask), frames);
+  return new Response(answer, { headers });
 }
 
 Bun.serve({

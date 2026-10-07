@@ -38,6 +38,7 @@ import type { Block, StyledLine } from "@web/lib/blocks";
 import { rendersNativeMirror } from "@web/lib/harness";
 import { t } from "@web/lib/i18n";
 import { locateReply, type ReplyPlacement } from "@web/lib/latest-reply";
+import { fetchPane } from "@web/lib/api";
 import { paneMirrorOverride } from "@web/lib/mirror-invert";
 import { muxCapability } from "@web/lib/mux-capability";
 import { changesPath, historyPath, panePath, spacePath } from "@web/lib/nav";
@@ -82,10 +83,11 @@ import { findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, pollPane, writeG
 import { CardDock, type CardActions } from "./dialog-card";
 import { answerMultiSelect, answerPreview, answerWizard } from "./dialogs/actions";
 import { FindBar } from "./find-bar";
-import { SCREEN_FRAME, STATUS_FRAME, type PaneFrameName } from "./frames";
+import { SCREEN_FRAME, STATUS_FRAME, type PaneFrameName, type ReplyProbe } from "./frames";
 import { bindPaneFrames, framesActive, framesLatched, paneFrameSrc, pollPaneFrames } from "./pane-frames";
 import { createLatestReply, LatestReplyCard } from "./latest-reply";
-import { parseAgent, parseScreen } from "./parse";
+import { askForReply, placementOf, type ReplyAsk } from "./screen-model";
+import { parseAgent, parseRead, screenToken } from "./parse";
 import { PaneIdentity } from "./identity";
 import type { PaneIdentityProps } from "./identity";
 import { questionNotes } from "./question-note";
@@ -122,10 +124,19 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const agentNow = (): string | undefined => parseAgent(findPane(snapshot.get().data, paneId)?.agent, displayPrefs.get().rawTerminal);
   let frameAgent = agentNow();
   let frameTargets: readonly PaneFrameName[] = [SCREEN_FRAME, STATUS_FRAME];
+  // WHAT THE ANSWER CARRIES BESIDES THE ROWS (pane-frames.ts, WITHOUT THE TEXT). A frames answer leaves
+  // the pane's text out and carries the screen model instead. Two readers want more, and say so in the
+  // request: the find bar wants the text itself, and the newest reply's reader wants its place on the
+  // screen, for which it sends two probes. The find bar's text is asked for from the moment a tap on
+  // Find starts (`findOpening`) to the moment the bar closes.
+  const find = createFind();
+  let findOpening = false;
+  let replyProbe: ReplyProbe | undefined;
   const readMirror = (signal: AbortSignal, window: number): Promise<boolean> => {
     if (!framesActive()) return pollPane(key, paneId, scope, signal, window);
     frameAgent = agentNow();
-    return pollPaneFrames({ key, paneId, scope, lines: window, agent: frameAgent, targets: frameTargets }, signal);
+    const text = findOpening || find.state.get().open;
+    return pollPaneFrames({ key, paneId, scope, lines: window, agent: frameAgent, targets: frameTargets, text, probe: replyProbe }, signal);
   };
   want({ key: `pane-screen:${key}`, poll: (signal) => readMirror(signal, lines) }, handle.signal);
   focus.set({ paneId, following: true });
@@ -158,7 +169,6 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const chatCounters = chatReads(key);
   const readStripsPref = useStore(handle, stripsCollapsed);
   const readZenAvailable = useStore(handle, zenPref);
-  const find = createFind();
   const readFind = useStore(handle, find.state);
   const readFramesOn = useStore(handle, paneFrames);
   const readLatched = useStore(handle, framesLatched);
@@ -231,21 +241,29 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   /** The agent's statusline rows and background-agents block (agent-chat.tsx `statusLines`, `agentsFooter`). */
   let statusLines: StyledLine[] = [];
   let agentsFooter: StyledLine[] = [];
+  /** The agent a stale screen model was last asked again for, so one agent change asks once. */
+  let askedAgain: string | undefined | null = null;
+  /** How many rows the statusline draws (a read without its text holds the count, the frame holds the rows). */
+  let statusRows = 0;
 
   const wake = (): void => scheduleUpdate(handle);
 
   // The newest reply in full over the rows that only hold its end (agent-chat.tsx `useLatestReply`).
   const latest = createLatestReply(paneId, scope, wake, handle.signal);
-  let placedFor: { text: string; reply: TranscriptEntry } | null = null;
+  let placedFor: { token: string; reply: TranscriptEntry } | null = null;
   let placement: ReplyPlacement | null = null;
+  /** Where the newest reply is to be placed: settled by its length, or asked of the bridge by two probes. */
+  let replyAsk: { reply: TranscriptEntry; ask: ReplyAsk } | null = null;
   /** A collapsed card is a judgement about ONE message, so it is remembered by uuid. */
   let collapsedReply: string | null = null;
 
   /** Copy the buffered output (agent-chat.tsx `copyOutput`): the unwrapped text when the read has it.
    *  The row is offered only where `navigator.clipboard` exists; plain HTTP has none (a SecureContext API). */
   const copyOutput = async (): Promise<void> => {
-    const data = readPane().data;
     try {
+      // A read without its text (frames) has none to copy: one JSON read of the pane has it.
+      const held = readPane().data;
+      const data = held?.screen === undefined ? held : await fetchPane(paneId, lines, scope);
       await navigator.clipboard.writeText(data?.logicalText || (data?.text ?? ""));
       setStatus(t("chat.copyOutput.done"), "success");
     } catch {
@@ -382,6 +400,20 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const findSlot = (): CustomSlot["render"] extends () => infer R ? R : never => <FindBar find={find} />;
   const openActions = (): void => setSheet("actions");
   const closeFind = (): void => find.close();
+  /** Find searches the mirror's text, which a frames read does not carry: read it first, then open the bar. */
+  const openFind = async (): Promise<void> => {
+    if (readPane().data?.screen !== undefined) {
+      findOpening = true;
+      try {
+        await readMirror(new AbortController().signal, lines);
+      } finally {
+        findOpening = false;
+      }
+      // Still no text (the read failed): the bar would search nothing, and the notice says why.
+      if (readPane().data?.screen !== undefined) return;
+    }
+    find.open();
+  };
 
   return () => {
     countRender("PaneRoute");
@@ -421,9 +453,18 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     const rawMirror = display.rawTerminal;
     const override = paneMirrorOverride(scope, paneId);
     const native = rendersNativeMirror(pane?.agent, override);
+    // The text, or the model a frames answer carries in its place (parse.ts `parseRead`). `token` moves
+    // when the screen does, and is "" for a blank one: all this screen asks of the text but its rows.
     const text = read.data?.text ?? "";
+    const token = screenToken(read.data);
     frameAgent = parseAgent(pane?.agent, rawMirror);
-    const parsed = parseScreen(text, frameAgent);
+    const parsed = parseRead(read.data, frameAgent);
+    // A model parsed for another agent than the page's (the snapshot had not said which agent this
+    // pane is when the first beat went out) has no card for this one: ask again now, not at the next beat.
+    if (read.data?.screen !== undefined && read.data.screen.agent !== frameAgent && askedAgain !== frameAgent) {
+      askedAgain = frameAgent;
+      handle.queueTask(kick);
+    }
     if (parsed.blocks !== lastBlocks) {
       lastBlocks = parsed.blocks;
       card = parsed.card;
@@ -431,6 +472,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       rawDraft = parsed.rawDraft;
       statusLines = parsed.statusLines;
       agentsFooter = parsed.agentsFooter;
+      statusRows = parsed.statusRows;
     }
 
     // ── The chat gate (ADR 0082) ─────────────────────────────────────────────────────────────────
@@ -547,14 +589,28 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     // ── The newest reply over the rows it covers (agent-chat.tsx `clippedReply`) ───────────────────
     // Read only while the Terminal is the body: the card lives in the mirror and nowhere else.
     const replyOn = historyAvailable && display.expandClippedReply && !chatShown;
-    handle.queueTask(() => latest.see(text, replyOn));
+    handle.queueTask(() => latest.see(token, replyOn));
     const reply = latest.reply(replyOn);
     if (reply === null) {
       placedFor = null;
       placement = null;
-    } else if (placedFor === null || placedFor.text !== text || placedFor.reply !== reply) {
-      placedFor = { text, reply };
-      placement = locateReply(text, reply);
+      replyAsk = null;
+      replyProbe = undefined;
+    } else {
+      if (replyAsk === null || replyAsk.reply !== reply) {
+        replyAsk = { reply, ask: askForReply(reply) };
+        replyProbe = replyAsk.ask.kind === "probe" ? replyAsk.ask.probe : undefined;
+        // A held read that was placed for another reply cannot place this one: ask at once, not at the next beat.
+        if (replyProbe !== undefined && read.data?.screen !== undefined) handle.queueTask(kick);
+      }
+      const screen = read.data?.screen;
+      if (screen !== undefined) {
+        placement = placementOf(screen, replyAsk.ask);
+        placedFor = null;
+      } else if (placedFor === null || placedFor.token !== token || placedFor.reply !== reply) {
+        placedFor = { token, reply };
+        placement = locateReply(text, reply);
+      }
     }
     // Find searches the mirror, so while it is open the mirror is whole and the card stands down.
     const clippedReply = placement?.fit === "clipped" && !findState.open ? reply : null;
@@ -694,9 +750,10 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               key={`terminal:${key}`}
               spotKey={key}
               lines={mirror}
+              heldScreen={{ rows: parsed.mirrorRows, rev: token }}
               logicalText={read.data?.logicalText}
               loading={read.data === undefined && read.error === undefined}
-              blank={text === ""}
+              blank={token === ""}
               lead={lead}
               hideLeading={hiddenRows}
               wrap={display.wrap}
@@ -721,8 +778,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
             down while the keyboard is up (web's `composing`), through Collapse. */}
         <Collapse open={!zenOn}>
           <div class="relative shrink-0" data-slot="bottom-region">
-          <Collapse open={!vp.keyboard && statusLines.length > 0}>
-            {statusLines.length > 0 ? (
+          <Collapse open={!vp.keyboard && statusRows > 0}>
+            {statusRows > 0 ? (
               <StatusStrip
                 rows={statusLines}
                 frame={frameSrc === undefined ? undefined : <Frame name={STATUS_FRAME} src={frameSrc} />}
@@ -748,7 +805,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
             unsupportedKeys={cfg?.mux?.unsupportedKeys ?? []}
             target={target}
             rawDraft={rawDraft}
-            paneText={text}
+            paneText={token}
             chatShown={chatShown}
             chatNote={chatNote}
             changes={pane?.cwd ? { label: t("chat.changes.label"), onClick: () => void navigate(href(changesPath(paneId, scope))) } : undefined}
@@ -775,14 +832,14 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
           herd={all}
           onRenamed={kick}
           onClosed={() => goUp(scope)}
-          onFind={text !== "" && !chatShown ? () => find.open() : undefined}
+          onFind={token !== "" && !chatShown ? () => void openFind() : undefined}
           onHistory={historyAvailable ? () => void navigate(href(historyPath(paneId, scope))) : undefined}
-          onCopyOutput={text !== "" && "clipboard" in navigator ? () => void copyOutput() : undefined}
+          onCopyOutput={token !== "" && "clipboard" in navigator ? () => void copyOutput() : undefined}
           paneView={dash.paneView}
           onPaneViewChange={(view) => setDashPref("paneView", view)}
           paneViewNote={chatNote}
           onSettings={() => setSheet("settings")}
-          onZen={zenAvailable && text !== "" ? enterZen : undefined}
+          onZen={zenAvailable && token !== "" ? enterZen : undefined}
         />
         <PaneSettingsSheet open={sheet === "settings"} onClose={() => setSheet(null)} pane={pane ?? null} scope={scope} />
         <CacheSheet open={sheet === "cache"} onClose={() => setSheet(null)} cache={pane?.cache} host={pane?.host} />

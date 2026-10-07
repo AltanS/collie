@@ -10,7 +10,7 @@
 // A refusal (403, 404, 502...) keeps its status and goes out as plain text.
 //
 // ONE URL, TWO ANSWERS. The document (./document.ts) and the frames share `/pane/:paneId`, so every
-// answer here, and the document, says `Vary: X-Remix-Frame, X-Remix-Target, X-Collie-Poll`, and none
+// answer here, and the document, says `Vary: X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply`, and none
 // is stored (`no-store`). A frame request NEVER falls through to the document or the static shell:
 // a page diffed into a frame would nest the app inside itself (research note 08, 4.2).
 //
@@ -18,6 +18,15 @@
 // cannot render at all (no renderer compiled in, an unknown frame name) it answers without that
 // header, and the browser reads the pane as JSON for the rest of the page's life
 // (web-remix/src/routes/pane/pane-frames.ts, NOT OURS).
+//
+// THE POLL ANSWER LEAVES THE TEXT OUT. The rows are drawn from the pane's text, so a poll answer that
+// also carried the read's `text` sent the screen twice. The read in a poll answer has no `text` and no
+// `logicalText`; it has `screen` instead, what the browser would derive from them, computed here by
+// the shell's renderer with the same pure functions the browser runs (web-remix/src/routes/pane/
+// screen-model.ts). Two things ask for more: the token `text` in `X-Collie-Poll` (the find bar) gets
+// the read whole, and `X-Collie-Reply` (two probes of the newest reply) gets `screen.reply`, where
+// the reply sits on the screen. The ETag is the read's either way: it names the pane, not the answer.
+// The JSON route is not touched.
 //
 // The fragments are the shell's own components rendered on Bun (web-remix/src/ssr/frames.tsx), pure
 // functions of the read, so the last few are kept by ETag: two phones on one pane render once.
@@ -36,16 +45,33 @@ interface PaneRead {
   logicalText?: string;
 }
 
+/** A read as a poll answer carries it: the pane route's body, or that body without its text and with the screen model. */
+interface PolledRead {
+  paneId: string;
+  text?: string;
+  screen?: { stamp: string };
+}
+
+/** The probe of the newest reply a poll may carry (web-remix/src/routes/pane/frames.ts). */
+interface ReplyProbe {
+  head: string;
+  tail: string;
+}
+
 /** What this route uses of the shell's renderer (web-remix/src/ssr/render.tsx). */
 export interface FrameRenderer {
   isPaneFrameName(name: string | null | undefined): name is PaneFrameName;
   pollTargets(header: string | null): PaneFrameName[];
+  pollWantsText(header: string | null): boolean;
+  decodeProbe(header: string | null): ReplyProbe | undefined;
+  /** The read a poll answer carries: the read itself, or without its text and with the screen model. */
+  pollRead(read: PaneRead, agent: string | undefined, ask: { text: boolean; probe?: ReplyProbe }): PolledRead;
   paneReadApiPath(url: URL, paneId: string): string;
   renderPaneFrames(
     input: { text: string; logicalText?: string; agent: string | undefined },
     targets: readonly PaneFrameName[],
   ): Promise<Partial<Record<PaneFrameName, string>>>;
-  pollAnswer(read: PaneRead, frames: Partial<Record<PaneFrameName, string>>): string;
+  pollAnswer(read: PolledRead, frames: Partial<Record<PaneFrameName, string>>): string;
 }
 
 /** What {@link serveFrame} reads. A narrow seam, so a test needs no `startServer`. */
@@ -60,10 +86,11 @@ export interface FrameDeps {
 const FRAME_HEADER = "x-remix-frame";
 const TARGET_HEADER = "x-remix-target";
 const POLL_HEADER = "x-collie-poll";
+const REPLY_HEADER = "x-collie-reply";
 /** On every answer about a pane: proof to the browser that this is the frame route's own. */
 export const FRAME_ANSWER_HEADER = "x-collie-frame";
 /** Every answer on `/pane/:paneId`, document included, depends on these request headers. */
-export const FRAME_VARY = "X-Remix-Frame, X-Remix-Target, X-Collie-Poll";
+export const FRAME_VARY = "X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply";
 /** Below this many bytes a fragment goes out raw. */
 const GZIP_MIN_BYTES = 1024;
 /** Rendered fragments kept by ETag, agent and frames. */
@@ -131,7 +158,7 @@ export async function serveFrame(deps: FrameDeps, req: Request, url: URL): Promi
   // frame headers, and no compression, since this body is read here and not sent.
   const apiUrl = new URL(renderer.paneReadApiPath(url, paneId), url);
   const headers = new Headers(req.headers);
-  for (const name of [FRAME_HEADER, TARGET_HEADER, POLL_HEADER, "accept-encoding", "accept"]) headers.delete(name);
+  for (const name of [FRAME_HEADER, TARGET_HEADER, POLL_HEADER, REPLY_HEADER, "accept-encoding", "accept"]) headers.delete(name);
   const read = await deps.paneRead(new Request(apiUrl, { method: "GET", headers, signal: req.signal }), apiUrl, rawPaneId);
   const etag = read.headers.get("etag");
   if (read.status === 304) {
@@ -154,7 +181,8 @@ export async function serveFrame(deps: FrameDeps, req: Request, url: URL): Promi
     frames = await renderer.renderPaneFrames({ text: body.text, logicalText: body.logicalText, agent }, targets);
     if (etag !== null) remember(key, frames);
   }
-  const html = poll === null ? (frames[target] ?? "") : renderer.pollAnswer(body, frames);
+  const ask = { text: renderer.pollWantsText(poll), probe: renderer.decodeProbe(req.headers.get(REPLY_HEADER)) };
+  const html = poll === null ? (frames[target] ?? "") : renderer.pollAnswer(renderer.pollRead(body, agent, ask), frames);
 
   const out = frameHeaders(target, build, { "content-type": "text/html; charset=utf-8" });
   if (etag !== null) out.set("etag", etag);

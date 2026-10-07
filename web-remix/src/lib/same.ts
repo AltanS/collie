@@ -13,7 +13,9 @@
 // health (its state, its writability or its "last seen" label), so a member that stops answering
 // still goes stale on screen.
 import { hostHealthMap } from "@web/lib/host-health";
-import type { PaneReadResponse, SnapshotResponse } from "@web/lib/types";
+import type { SnapshotResponse } from "@web/lib/types";
+
+import type { PaneRead, PaneScreen } from "./pane-read";
 
 /**
  * The cadence crew health is presented at. It is `IDLE_MS` in lib/polling.ts, restated here because
@@ -43,7 +45,7 @@ export function sameSnapshot(held: SnapshotResponse, next: SnapshotResponse): bo
  * payload. The revision IS payload: the dialog race guard reads it at tap time (routes/pane/pane.tsx
  * `target()`), so a moved revision publishes even over the same text.
  */
-export function samePaneRead(a: PaneReadResponse | undefined, b: PaneReadResponse | undefined): boolean {
+export function samePaneRead(a: PaneRead | undefined, b: PaneRead | undefined): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
   return (
@@ -51,6 +53,24 @@ export function samePaneRead(a: PaneReadResponse | undefined, b: PaneReadRespons
     a.text === b.text &&
     a.revision === b.revision &&
     a.truncated === b.truncated &&
-    a.logicalText === b.logicalText
+    a.logicalText === b.logicalText &&
+    sameScreen(a.screen, b.screen)
+  );
+}
+
+/**
+ * True when two screen models are the same screen. The stamp covers the text and the agent, and every
+ * other field but the reply's place is derived from them; the place is derived from the stamp's screen
+ * and the probe, so the probe it answers belongs to the comparison too.
+ */
+function sameScreen(a: PaneScreen | undefined, b: PaneScreen | undefined): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  return (
+    a.stamp === b.stamp &&
+    a.agent === b.agent &&
+    a.reply?.key === b.reply?.key &&
+    a.reply?.fit === b.reply?.fit &&
+    a.reply?.endLine === b.reply?.endLine
   );
 }

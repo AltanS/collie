@@ -12,10 +12,11 @@
 import { markLive } from "@web/lib/connection-health";
 import { loadLastSnapshot, saveLastSnapshot } from "@web/lib/last-seen";
 import { internScope, scopeFromUrl, viewAllFromUrl, type Scope } from "@web/lib/scope";
-import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
+import type { BridgeConfig, SnapshotResponse } from "@web/lib/types";
 
 import { ApiError, fetchConfig, fetchSnapshot, isAbort } from "./api";
 import { busy } from "./busy";
+import type { PaneRead } from "./pane-read";
 import { samePaneRead, sameSnapshot } from "./same";
 import { createStore, type Store } from "./store";
 
@@ -40,7 +41,7 @@ export function sameLoaded<T>(a: Loaded<T>, b: Loaded<T>): boolean {
 }
 
 /** The mirror's gate: the same screen by value, since web's `fetchPane` hands back a new object per read. */
-function samePaneLoaded(a: Loaded<PaneReadResponse>, b: Loaded<PaneReadResponse>): boolean {
+function samePaneLoaded(a: Loaded<PaneRead>, b: Loaded<PaneRead>): boolean {
   return samePaneRead(a.data, b.data) && a.error === b.error && a.status === b.status;
 }
 
@@ -70,13 +71,13 @@ export const config = createStore<Loaded<BridgeConfig>>(empty(), sameLoaded);
  */
 export const snapshotAt = createStore<number>(0, () => false);
 
-const paneStores = new Map<string, Store<Loaded<PaneReadResponse>>>();
+const paneStores = new Map<string, Store<Loaded<PaneRead>>>();
 
 /** The store for one pane's mirror, created on first ask and kept for the page's lifetime. */
-export function paneStore(key: string): Store<Loaded<PaneReadResponse>> {
+export function paneStore(key: string): Store<Loaded<PaneRead>> {
   let store = paneStores.get(key);
   if (!store) {
-    store = createStore<Loaded<PaneReadResponse>>(empty(), samePaneLoaded);
+    store = createStore<Loaded<PaneRead>>(empty(), samePaneLoaded);
     paneStores.set(key, store);
   }
   return store;

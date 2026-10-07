@@ -14,6 +14,7 @@ import { parseAnsi } from "@web/lib/ansi";
 import { splitLines, type Block, type StyledLine } from "@web/lib/blocks";
 import { adapterFor, buildBlocks } from "@web/lib/harness";
 
+import type { PaneRead, PaneScreen } from "../../lib/pane-read";
 import { dialogCardOf, mirrorLines, type DialogCard } from "./cards";
 
 export interface ScreenParse {
@@ -25,6 +26,9 @@ export interface ScreenParse {
   /** The agent's statusline rows and background-agents block (agent-chat.tsx). */
   statusLines: StyledLine[];
   agentsFooter: StyledLine[];
+  /** How many rows the mirror draws, and how many the statusline draws (the counts the framed screen sizes by). */
+  mirrorRows: number;
+  statusRows: number;
 }
 
 /** The pane on screen, the one being prefetched, and a little slack for a sideways move. */
@@ -42,13 +46,17 @@ function build(text: string, agent: string | undefined): ScreenParse {
   // parse of the text (agent-chat.tsx), and none of them without an adapter.
   const adapter = adapterFor(agent);
   const screen = adapter === undefined ? [] : splitLines(parseAnsi(text));
+  const mirror = mirrorLines(blocks);
+  const statusLines = adapter?.extractStatusLines(screen) ?? [];
   return {
     blocks,
     card: dialogCardOf(blocks),
-    mirror: mirrorLines(blocks),
+    mirror,
     rawDraft: adapter?.extractInputDraft(screen) ?? null,
-    statusLines: adapter?.extractStatusLines(screen) ?? [],
+    statusLines,
     agentsFooter: adapter?.extractAgentsFooter?.(screen) ?? [],
+    mirrorRows: mirror.length,
+    statusRows: statusLines.length,
   };
 }
 
@@ -74,4 +82,51 @@ export function warmParse(text: string, agent: string | undefined): void {
   } catch {
     // the pane's own render runs the same parse and surfaces the failure there
   }
+}
+
+// ── A read that left its text out ───────────────────────────────────────────────────────────────────
+
+/**
+ * The parse of a poll answer's screen model (lib/pane-read.ts). The mirror's lines and the statusline's
+ * rows are not in it, because the server frames draw them: `mirror` and `statusLines` stay empty, and
+ * `mirrorRows` and `statusRows` say how many rows those frames hold. The card is derived from the
+ * model's blocks by the same `dialogCardOf` that runs over a parse of the text, so its wording is the
+ * browser's own locale. One parse per model object: a quiet poll keeps the held read, and the same
+ * object comes back.
+ */
+const NONE: StyledLine[] = [];
+const modelParses = new WeakMap<PaneScreen, ScreenParse>();
+
+function parseModel(screen: PaneScreen): ScreenParse {
+  const held = modelParses.get(screen);
+  if (held !== undefined) return held;
+  const parse: ScreenParse = {
+    blocks: screen.blocks,
+    card: dialogCardOf(screen.blocks),
+    mirror: NONE,
+    rawDraft: screen.rawDraft,
+    statusLines: NONE,
+    agentsFooter: screen.footer,
+    mirrorRows: screen.rows,
+    statusRows: screen.statusRows,
+  };
+  modelParses.set(screen, parse);
+  return parse;
+}
+
+/** The parse of a pane read: from its screen model when it has one, else from its text. */
+export function parseRead(read: PaneRead | undefined, agent: string | undefined): ScreenParse {
+  if (read?.screen !== undefined) return parseModel(read.screen);
+  return parseScreen(read?.text ?? "", agent);
+}
+
+/**
+ * A token that changes when the screen does: "" for a blank screen, else the text itself, or the
+ * model's stamp. Only ever compared for equality (the composer's send echo, the reply reader, the
+ * cadence's "did it move").
+ */
+export function screenToken(read: PaneRead | undefined): string {
+  if (read === undefined) return "";
+  if (read.screen !== undefined) return read.screen.blank ? "" : read.screen.stamp;
+  return read.text;
 }

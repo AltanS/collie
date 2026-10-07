@@ -131,6 +131,11 @@ export interface TerminalViewProps {
    * marks are the browser's, and a server row cannot carry them.
    */
   frameSrc?: string;
+  /**
+   * What the screen holds when the server frame draws it and the read carried no text (so `lines` is
+   * empty): how many rows, and a token that changes when the screen does. Absent, both come from `lines`.
+   */
+  heldScreen?: { rows: number; rev: string };
   top: MirrorTop;
   /** Muted lines under the top affordance (no session reported, no log yet, the mux's own note). */
   notes: readonly string[];
@@ -149,6 +154,9 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
   let rows: Row[] = [];
   let shown: Row[] = [];
   let shownLines: readonly StyledLine[] = [];
+  /** The framed screen as last taken while following: its row count and what it was taken from. */
+  let shownRows = 0;
+  let shownKey: unknown;
   /** Distance from the bottom when Load older was tapped: held across the longer text. */
   let anchor: number | null = null;
   let seenTail = handle.props.tailRev;
@@ -204,7 +212,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
 
   return () => {
     countRender("TerminalView");
-    const { lines, loading, blank, lead, hideLeading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText, frameSrc } = handle.props;
+    const { lines, loading, blank, lead, hideLeading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText, frameSrc, heldScreen } = handle.props;
     // The server frame draws the rows unless the find bar needs the browser's own (see `frameSrc`).
     const framed = frameSrc !== undefined && !find.state.get().open;
     if (tailRev !== seenTail) {
@@ -221,21 +229,27 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
     }
     const olderLoading = top?.kind === "older" && top.loading;
     // A Load older that landed takes the new rows even while scrolled up: the reader asked for them.
+    const liveRows = heldScreen?.rows ?? lines.length;
+    const liveKey: unknown = heldScreen?.rev ?? lines;
     if (framed) {
-      // The frame is not reloaded while scrolled up (pane-frames.ts, FROZEN): the lines it shows are
-      // the ones last taken while following, which is what the jump button's dot compares against.
-      if (following || shownLines.length === 0 || anchor !== null) shownLines = lines;
+      // The frame is not reloaded while scrolled up (pane-frames.ts, FROZEN): the screen it shows is
+      // the one last taken while following, which is what the jump button's dot compares against.
+      if (following || shownRows === 0 || anchor !== null) {
+        shownLines = lines;
+        shownRows = liveRows;
+        shownKey = liveKey;
+      }
     } else if (following || shown.length === 0 || (anchor !== null && shown !== rows)) {
       shown = rows;
       shownLines = lines;
     }
-    if (anchor !== null && !olderLoading && (framed ? shownLines === lines : shown === rows)) {
+    if (anchor !== null && !olderLoading && (framed ? shownKey === liveKey : shown === rows)) {
       const held = anchor;
       handle.queueTask(() => {
         if (anchor === held) anchor = null;
       });
     }
-    const hasNew = !following && (framed ? shownLines !== lines : shown !== rows);
+    const hasNew = !following && (framed ? shownKey !== liveKey : shown !== rows);
     // The reply card's rows come off what is SHOWN, frozen or live, so folding the card gives them
     // back at once even while the reader is scrolled up (web hides them off its frozen `display`).
     if (cut === null || cut.rows !== shown || cut.n !== hideLeading) {
@@ -243,7 +257,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
     }
     const visibleRows = cut.outRows;
     const visibleLines = cut.outLines;
-    const framedRows = Math.max(0, shownLines.length - hideLeading);
+    const framedRows = Math.max(0, shownRows - hideLeading);
 
     // Links and find marks are laid over the browser's own rows only; a framed row has its links from
     // the server (ssr/frames.tsx) and find never runs while framed.
