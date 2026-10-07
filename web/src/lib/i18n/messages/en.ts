@@ -712,6 +712,7 @@ export const en = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "Access refused. This is not a connection problem.",
   "connection.auth.signIn": "Sign in",
+  "connection.translation": "Translation is on; the live view may redraw",
   "connection.reload.aria": "Reload",
   "connection.retry": "Retry",
   "common.closeAria": "Close",

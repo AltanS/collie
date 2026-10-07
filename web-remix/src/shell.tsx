@@ -37,6 +37,7 @@ import { BootSplash, FirstConnect } from "./shell/boot-splash";
 import { BusyBar, NavPending } from "./shell/busy-bar";
 import { CollieMark } from "./shell/collie-mark";
 import { ConnectionBanner } from "./shell/connection-banner";
+import { TranslationNotice } from "./shell/translation-notice";
 import { headerOf, ShellProvider } from "./shell/context";
 import { HeaderHost, headerShowsStatus } from "./shell/header";
 import { ScreenTransition } from "./shell/screen-transition";
@@ -72,6 +73,8 @@ export function Shell(handle: Handle<ShellProps>) {
             <StripHost />
             {/* The connection strip: amber, red, green and the auth refusal, one slot in the band. */}
             <ConnectionBanner />
+            {/* "Translation is on": one lowest-priority slot, shown while the browser's translator holds the page. */}
+            <TranslationNotice />
             {/* The update offer: one slot in the band for every route, as web's RootLayout. Draws nothing in
                 place; it subscribes to its own stores, never the Shell. */}
             <UpdateRibbon />

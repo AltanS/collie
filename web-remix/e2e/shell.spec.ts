@@ -240,3 +240,17 @@ test.describe("the bottom sheet on touch", () => {
     await expect(sheet).toHaveCount(0);
   });
 });
+
+test("the browser's translator class on <html> shows the translation notice, and it leaves with the class", async ({ page }) => {
+  await stubPaneBridge(page, { [PANES.plain]: "ready\n> " });
+  await openHome(page);
+  const notice = page.getByTestId("translation-notice");
+  await expect(notice).toHaveCount(0);
+  await page.evaluate(() => document.documentElement.classList.add("translated-ltr"));
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveText(/Translation is on/u);
+  await page.evaluate(() => document.documentElement.classList.remove("translated-ltr"));
+  await expect(notice).toHaveCount(0);
+  await page.evaluate(() => document.documentElement.classList.add("translated-rtl"));
+  await expect(notice).toBeVisible();
+});

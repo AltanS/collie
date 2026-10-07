@@ -11,6 +11,9 @@ import type { RemixNode } from "remix/component";
 
 export { AUTH, DEGRADED, OUTAGE, UPDATE, UPDATE_RUN } from "@web/lib/strip-priority";
 
+/** Below every other strip: the reader chose to translate, so it informs and never competes with a fault. */
+export const TRANSLATION = 5;
+
 export interface StripEntry {
   priority: number;
   render: () => RemixNode;

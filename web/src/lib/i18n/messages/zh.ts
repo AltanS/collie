@@ -635,6 +635,7 @@ export const zh: Dictionary = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "访问被拒绝。此非连接故障。",
   "connection.auth.signIn": "登录",
+  "connection.translation": "翻译已开启；实时视图可能会重绘",
   "connection.reload.aria": "重新加载",
   "connection.retry": "重试",
   "common.closeAria": "关闭",

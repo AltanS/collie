@@ -646,6 +646,7 @@ export const ko: Dictionary = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "접근이 거부되었습니다. 연결 상태와 무관한 인증 오류입니다.",
   "connection.auth.signIn": "로그인",
+  "connection.translation": "번역이 켜져 있습니다. 실시간 화면이 다시 그려질 수 있습니다",
   "connection.reload.aria": "새로고침",
   "connection.retry": "재시도",
   "common.closeAria": "닫기",

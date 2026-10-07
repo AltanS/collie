@@ -653,6 +653,7 @@ export const de: Dictionary = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "Zugriff verweigert. Es liegt kein Verbindungsproblem vor.",
   "connection.auth.signIn": "Anmelden",
+  "connection.translation": "Die Übersetzung ist an; die Live-Ansicht kann neu zeichnen",
   "connection.reload.aria": "Neu laden",
   "connection.retry": "Erneut versuchen",
   "common.closeAria": "Schließen",

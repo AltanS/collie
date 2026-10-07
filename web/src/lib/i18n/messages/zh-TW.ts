@@ -631,6 +631,7 @@ export const zhTW: Dictionary = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "存取被拒絕。這不是連線故障。",
   "connection.auth.signIn": "登入",
+  "connection.translation": "翻譯已開啟；即時檢視可能會重繪",
   "connection.reload.aria": "重新載入",
   "connection.retry": "重試",
   "common.closeAria": "關閉",

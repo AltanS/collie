@@ -652,6 +652,7 @@ export const es: Dictionary = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "Acceso denegado. No es un error de conexión.",
   "connection.auth.signIn": "Iniciar sesión",
+  "connection.translation": "La traducción está activada; la vista en vivo puede redibujarse",
   "connection.reload.aria": "Recargar",
   "connection.retry": "Reintentar",
   "common.closeAria": "Cerrar",

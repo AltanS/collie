@@ -648,6 +648,7 @@ export const ja: Dictionary = {
   // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
   "connection.auth.message": "アクセスが拒否されました。接続状態の問題ではありません。",
   "connection.auth.signIn": "サインイン",
+  "connection.translation": "翻訳がオンです。ライブ表示が再描画されることがあります",
   "connection.reload.aria": "再読み込み",
   "connection.retry": "再試行",
   "common.closeAria": "閉じる",
