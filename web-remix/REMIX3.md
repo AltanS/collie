@@ -728,6 +728,10 @@ orbit.
 - Measured in Chromium at 4x CPU throttle: keyed cell update p95 3.6 ms, full replace p50 13.9 ms, no frame over
   50 ms (SPIKE, probe 3 table). Stay in the vdom for the mirror.
 - Chat blocks are keyed by block id (`R/routes/pane/chat.tsx`). Keep it.
+- "Load older" holds the reader's place by the FIRST VISIBLE BLOCK, not the distance from the bottom
+  (`R/chat/anchor.ts`): each block carries `data-key` (its first item id); the tap measures the first
+  block still in view, and after the page's layout `afterLayout` moves `scrollTop` by that block's
+  drift. The merge itself is web's `mergeChat` (by uuid, ordered by seq, a repeated turn written over).
 - While the reader is scrolled up, the rows under their eye are frozen (`R/routes/pane/terminal.tsx`).
   The mirror is the one surface allowed to move by itself, and only at the tail (D §2).
 

@@ -5,8 +5,10 @@
 // view: the gate needs answers even while the Terminal or the start state is on screen. The bridge
 // pages by whole turns, so a block on screen is never half a turn; abandoned turns stay in the
 // window and are not drawn. Steps fold into runs as the React stream folds them (chat/steps.ts), and
-// "Load older" pages earlier turns in above, holding the reader's place: the distance from the
-// bottom is kept across the insert.
+// "Load older" pages earlier turns in above, holding the reader's place: the page merges by turn key
+// (web's `mergeChat`, deduped by uuid), and the FIRST VISIBLE BLOCK stays put (chat/anchor.ts): its
+// offset is measured before the page lands and `scrollTop` is corrected after the browser's layout,
+// by `afterLayout`, so the commit itself reads nothing.
 import { on, ref, type Handle, type RemixNode } from "remix/component";
 import { ArrowDown, ArrowUpToLine, LoaderCircle } from "lucide";
 
@@ -16,9 +18,11 @@ import { t, type MessageKey } from "@web/lib/i18n";
 import type { Scope } from "@web/lib/scope";
 import type { ChatEntry } from "@web/lib/types";
 
+import { afterLayout } from "../../lib/after-layout";
 import { countRender } from "../../lib/render-count";
 import { setStatus } from "../../lib/status";
 import { useStore } from "../../lib/store";
+import { anchorOf, restoredTop, type Anchor, type BlockBox } from "../../chat/anchor";
 import { groupRuns } from "../../chat/steps";
 import { ItemView, ToolGroup } from "../../chat/tool-card";
 import { createTailPin, isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
@@ -74,6 +78,16 @@ const NO_NOTES: Readonly<Record<string, string>> = {};
  */
 const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
 
+/** Every block of the stream with its stable key (`data-key`, the block's first item id) and its box. */
+function blockBoxes(scroller: HTMLElement): BlockBox[] {
+  const boxes: BlockBox[] = [];
+  for (const node of scroller.querySelectorAll<HTMLElement>("[data-block]")) {
+    const { top, bottom } = node.getBoundingClientRect();
+    boxes.push({ key: node.dataset.key ?? "", top, bottom });
+  }
+  return boxes;
+}
+
 export interface ChatViewProps {
   /** The pane's (host, session, pane) key: the window's and the scroll memory's key. */
   paneKey: string;
@@ -104,8 +118,8 @@ export function ChatView(handle: Handle<ChatViewProps>) {
   let following = spot.following;
   let restoreTop: number | null = spot.following ? null : spot.top;
   let scroller: HTMLDivElement | undefined;
-  /** Distance from the bottom before an older page lands, so the reader's place is held. */
-  let anchor: number | null = null;
+  /** The block under the reader's eye before an older page lands, so their place is held. */
+  let anchor: Anchor | null = null;
   let lastEntries: readonly ChatEntry[] | undefined;
   let lastFold = "";
   let groups: ChatItem[][] = [];
@@ -120,8 +134,18 @@ export function ChatView(handle: Handle<ChatViewProps>) {
   const pin = (): void => {
     if (!scroller) return;
     if (anchor !== null && !store.get().loadingOlder) {
-      scroller.scrollTop = scroller.scrollHeight - anchor;
+      const held = anchor;
+      const box = scroller;
       anchor = null;
+      // Read after the page's layout, write once (REMIX3.md, "Layout in insert callbacks").
+      afterLayout(
+        box,
+        () => restoredTop(held, { scrollTop: box.scrollTop, scrollHeight: box.scrollHeight, containerTop: box.getBoundingClientRect().top, blocks: blockBoxes(box) }),
+        (top) => {
+          if (Math.abs(box.scrollTop - top) >= 1) box.scrollTop = top;
+        },
+        handle.signal,
+      );
       return;
     }
     if (restoreTop !== null) {
@@ -150,7 +174,8 @@ export function ChatView(handle: Handle<ChatViewProps>) {
   };
 
   const older = async (): Promise<void> => {
-    if (scroller) anchor = scroller.scrollHeight - scroller.scrollTop;
+    // A tap, not a flush: measuring here costs nothing the commit would pay.
+    if (scroller) anchor = anchorOf(blockBoxes(scroller), scroller.getBoundingClientRect().top, scroller.scrollHeight - scroller.scrollTop);
     following = false;
     const failed = await loadOlder(paneKey, paneId, scope);
     if (failed !== undefined) {
@@ -238,11 +263,11 @@ export function ChatView(handle: Handle<ChatViewProps>) {
             {top}
             {groups.map((group) =>
               group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
-                <div key={group[0]!.id} data-block data-n={1} class={STREAM_BLOCK}>
+                <div key={group[0]!.id} data-block data-key={group[0]!.id} data-n={1} class={STREAM_BLOCK}>
                   <ItemView item={group[0]!} note={notes[group[0]!.id]} />
                 </div>
               ) : (
-                <div key={group[0]!.id} data-block data-n={group.length} class={STREAM_BLOCK}>
+                <div key={group[0]!.id} data-block data-key={group[0]!.id} data-n={group.length} class={STREAM_BLOCK}>
                   <ToolGroup items={group} liveOpens={showToolCalls} notes={notes} />
                 </div>
               ),
