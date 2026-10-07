@@ -20,6 +20,7 @@ import { installRoutesApi } from "./routes-api";
 //   (f) a tall dashboard keeps its scroll position across hydration
 //   (g) every island the document lists (`rmx-data`) has its module preloaded or already loaded
 //   (h) no animation frame draws the body before the stylesheet applies, server document and static shell
+//   (i) with JavaScript blocked, the splash and the pane's placeholder hide themselves by CSS after 8 s
 
 const NOW = 1_790_000_000_000;
 const SNAP = homeSnapshot(NOW, false);
@@ -342,6 +343,64 @@ test.describe("unstyled frames", () => {
     const seen = await page.evaluate(() => window.__frames);
     expect(seen?.withBody ?? 0).toBeGreaterThan(0);
     expect(seen?.unstyled, seen?.first).toBe(0);
+  });
+});
+
+// (i) CSS-ONLY EXIT (research note 09, D2.4). The 8 s is part of the contract, so the default is read
+// off the computed style; the exit itself is watched with `--failsafe-delay`, a test-only custom
+// property the stylesheet reads (index.html, src/app.css), set here by adding a rule to the served
+// document, so the spec waits 0.6 s and not 8 s. JavaScript is OFF in these contexts: nothing but
+// CSS can clear the placeholder.
+
+const FAST = 600;
+
+/** Serve every document with `--failsafe-delay` shortened. */
+async function shortenFailsafe(page: Page): Promise<void> {
+  await page.route("**/*", async (route) => {
+    if (route.request().resourceType() !== "document") return route.continue();
+    const response = await route.fetch();
+    const html = await response.text();
+    return route.fulfill({ response, body: html.replace("</head>", `<style>:root{--failsafe-delay:${String(FAST)}ms}</style></head>`) });
+  });
+}
+
+const visibility = (page: Page, selector: string): Promise<string> =>
+  page.locator(selector).first().evaluate((el) => getComputedStyle(el).visibility);
+
+test.describe("css-only exit", () => {
+  test.use({ serviceWorkers: "block", javaScriptEnabled: false });
+
+  test("(i) the static shell's splash is on for 8 s by default, and hides itself with no JavaScript", async ({ page }) => {
+    await page.goto("/");
+    const splash = page.locator(".boot-splash");
+    await expect(splash).toBeVisible();
+    const spec = await splash.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { delay: style.animationDelay, fill: style.animationFillMode, name: style.animationName };
+    });
+    expect(spec).toEqual({ delay: "8s", fill: "forwards", name: "boot-failsafe" });
+
+    const fast = await page.context().newPage();
+    await shortenFailsafe(fast);
+    await fast.goto("/");
+    await expect(fast.locator(".boot-splash")).toBeVisible();
+    await expect.poll(() => visibility(fast, ".boot-splash"), { timeout: 5_000 }).toBe("hidden");
+    await fast.close();
+  });
+
+  test("(i) a server-drawn pane placeholder hides itself with no JavaScript", async ({ page, context, baseURL }) => {
+    await useServerDocuments(context, baseURL!, SNAP);
+    await shortenFailsafe(page);
+    await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+    const skeleton = page.locator('[data-slot="screen-skeleton"]').first();
+    await expect(skeleton).toBeAttached();
+    expect(await skeleton.evaluate((el) => getComputedStyle(el).animationName)).toBe("placeholder-failsafe");
+    await expect.poll(() => visibility(page, '[data-slot="screen-skeleton"]'), { timeout: 5_000 }).toBe("hidden");
+    // The default, unshortened, is the same 8 s.
+    const plain = await context.newPage();
+    await plain.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+    expect(await plain.locator('[data-slot="screen-skeleton"]').first().evaluate((el) => getComputedStyle(el).animationDelay)).toBe("8s");
+    await plain.close();
   });
 });
 

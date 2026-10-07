@@ -4,3 +4,23 @@
 @import "../../web/src/index.css";
 @source "../../web/src/lib/hosts.ts";
 @source "../../web/src/lib/triage.ts";
+
+/* CSS-ONLY EXIT (research note 09, D2.4). Whatever the server paints that only JavaScript clears gets
+   a failsafe that needs no JavaScript: after 8 s it is hidden, so a bundle that never arrives (a
+   blocked script, a dead CDN, an old webview) leaves the page honest and quiet instead of an
+   animated placeholder that says "loading" forever. The static shell's splash has the same rule in
+   index.html's inline style; this one covers the placeholder a server-drawn pane carries until its
+   first read. `animation-fill-mode: forwards` keeps it hidden; the node is removed the normal way as
+   soon as the app has something to draw in its place, so this never runs on a healthy boot.
+   `--failsafe-delay` is TEST-ONLY: e2e/ssr-boot.spec.ts sets it to a fraction of a second so the
+   exit can be observed without an 8 s wait. Nothing in the app sets it. */
+[data-slot="screen-skeleton"] {
+  animation: placeholder-failsafe 1ms linear var(--failsafe-delay, 8s) forwards;
+}
+@keyframes placeholder-failsafe {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

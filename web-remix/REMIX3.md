@@ -511,6 +511,12 @@ now runs on Bun as well as in the browser. The rules:
   props are the snapshot, the config and the path. A new route the bridge should render goes into
   `matchAppRoute` and `appRouteNode`, and the router's action must draw the same node
   (`homeNode()`, `paneNode()`), so the first routed tap replaces the body with the same tree.
+- **Anything the server paints that only JavaScript clears has a CSS-only exit.** The static shell's
+  splash (`index.html`) and the pane's `screen-skeleton` (`src/app.css`) hide themselves after 8 s
+  with `animation: ... var(--failsafe-delay, 8s) forwards`, so a bundle that never arrives leaves a
+  quiet page, not a placeholder that says "loading" forever. `--failsafe-delay` is test-only
+  (`e2e/ssr-boot.spec.ts` (i) sets it to 0.6 s with JavaScript off). A new server-painted placeholder
+  needs the same rule (research note 09, D2.4).
 - **The static shell stays the fallback.** Offline, the service worker's cache, a refused gate and
   every other route boot from `index.html` with its splash. Keep both boots working: e2e
   `ssr-boot.spec.ts` covers the server document, the rest of the suite the static shell.

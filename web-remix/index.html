@@ -141,6 +141,18 @@
         color: light-dark(#5d5d5d, #a1a1a1);
         font:
           500 0.875rem/1.4 var(--font-sans);
+        /* CSS-ONLY EXIT. If the bundle never arrives, this placeholder hides itself after 8 s instead
+           of saying "Connecting" forever; a healthy boot replaces the node long before. `forwards`
+           keeps it hidden. `--failsafe-delay` is TEST-ONLY (e2e/ssr-boot.spec.ts); nothing in the app
+           sets it. The server-drawn pane placeholder has the same rule in src/app.css. */
+        animation: boot-failsafe 1ms linear var(--failsafe-delay, 8s) forwards;
+      }
+      @keyframes boot-failsafe {
+        to {
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
       }
       /* The typeface setting, mirrored from index.css (ADR 0033). The splash resolves --font-sans
          like everything else does, so the same three blocks decide the same thing here — otherwise
