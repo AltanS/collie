@@ -3,7 +3,14 @@ import { expect, test } from "@playwright/test";
 import { en } from "@/lib/i18n/messages/en";
 
 import { installApiStub } from "./fixtures/api";
-import { installPiPictureWorld, MIRROR_PANE_ID, stubBlob } from "./fixtures/mirror";
+import {
+  type BlobRequest,
+  E2E_DEVICE_TOKEN,
+  installPiPictureWorld,
+  MIRROR_PANE_ID,
+  pairDevice,
+  stubBlob,
+} from "./fixtures/mirror";
 
 // ── M39, #292: a picture pi shows reaches the live mirror ────────────────────────────────────────
 //
@@ -18,10 +25,13 @@ test.use({ serviceWorkers: "block" });
 
 const PANE_URL = `/pane/${encodeURIComponent(MIRROR_PANE_ID)}`;
 
+let blobRequests: BlobRequest[] = [];
+
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "these cases drive the app bundle, not the playground");
   await installApiStub(page);
-  await stubBlob(page, "bytes");
+  blobRequests = await stubBlob(page, "bytes");
+  await pairDevice(page);
 });
 
 test("a finished pi turn's picture shows after the mirror, in view at the tail", async ({ page }) => {
@@ -30,11 +40,18 @@ test("a finished pi turn's picture shows after the mirror, in view at the tail",
 
   const picture = page.getByRole("img", { name: en["mirror.imageAlt"] });
   await expect(picture).toBeVisible();
-  // The journal's picture: the anchor points at the blob the fixture turn named.
+  // The journal's picture. Reads need the token (ADR 0086), so the page fetches the blob itself and
+  // links an object URL of its own origin; the fetch behind it names the blob the fixture turn named.
+  const origin = new URL(page.url()).origin;
   await expect(page.getByRole("link", { name: en["mirror.imageAlt"] })).toHaveAttribute(
     "href",
-    /\/api\/blobs\/[0-9a-f]{64}$/,
+    new RegExp(`^blob:${origin.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}/[0-9a-f-]{36}$`),
   );
+  expect(blobRequests.length).toBeGreaterThan(0);
+  for (const request of blobRequests) {
+    expect(request.path).toMatch(/\/api\/blobs\/[0-9a-f]{64}$/);
+    expect(request.authorization).toBe(`Bearer ${E2E_DEVICE_TOKEN}`);
+  }
   // The card says where it came from, and it is not the order-matched placeholder card.
   await expect(page.getByText(en["mirror.turnImageCaption"], { exact: true })).toBeVisible();
   await expect(page.getByText(en["mirror.imageMatchedByOrder"], { exact: true })).toHaveCount(0);

@@ -142,8 +142,36 @@ export async function installMirrorWorld(page: Page): Promise<void> {
  */
 export type BlobAnswer = "bytes" | "notFound" | "truncated";
 
-export async function stubBlob(page: Page, answer: BlobAnswer): Promise<void> {
+/** The device token a case seeds with `pairDevice`; the blob fetch must carry it (ADR 0086). */
+export const E2E_DEVICE_TOKEN = "e2e-device-token";
+
+/**
+ * Stand in for a paired phone: store a device token before the page's own scripts run, so the
+ * bridge subresource fetches (`lib/authed-url.ts`) carry `Authorization: Bearer <token>`. The API
+ * stub answers reads without a token, so only a case that asserts the header needs this.
+ */
+export async function pairDevice(page: Page): Promise<void> {
+  await page.addInitScript((token) => localStorage.setItem("collie:device-token", token), E2E_DEVICE_TOKEN);
+}
+
+/** One request the blob route answered: its path and the `Authorization` header it carried. */
+export interface BlobRequest {
+  path: string;
+  authorization: string | undefined;
+}
+
+/**
+ * Answers the blob route and returns the log of what it was asked, in order. The page loads a blob
+ * with `fetch` + the token into an object URL (an `<img src>` cannot send a header), so the log is
+ * where a case sees the bridge-facing half of that: the path and the `Authorization` header.
+ */
+export async function stubBlob(page: Page, answer: BlobAnswer): Promise<BlobRequest[]> {
+  const requests: BlobRequest[] = [];
   await page.route("**/blobs/**", async (route) => {
+    requests.push({
+      path: new URL(route.request().url()).pathname,
+      authorization: route.request().headers()["authorization"],
+    });
     if (answer === "notFound") {
       await route.fulfill({ status: 404, contentType: "text/plain", body: "no such blob" });
       return;
@@ -157,6 +185,7 @@ export async function stubBlob(page: Page, answer: BlobAnswer): Promise<void> {
       body: answer === "truncated" ? PNG_BYTES.subarray(0, 24) : PNG_BYTES,
     });
   });
+  return requests;
 }
 
 // ── #292: a pi pane, which draws its picture with no placeholder at all ──────────────────────────

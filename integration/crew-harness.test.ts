@@ -32,7 +32,8 @@ import { parseStandbyDevices } from "../bridge/crew/standby-devices.ts";
 import { TAKEOVER_RESTART_EXIT } from "../bridge/crew/takeover.ts";
 import { parseMarker, crewRuntimePath } from "../bridge/crew/staleness.ts";
 import { memberWarrantLines, peerWarrantLines } from "../cli/crew-status-deputy.ts";
-import { sha256Hex } from "../bridge/pairing.ts";
+import { isWellFormedLocalSecret, localSecretPath } from "../bridge/local-secret.ts";
+import { CODE_TTL_MS, generateCode, newPending, PENDING_FILENAME, sha256Hex } from "../bridge/pairing.ts";
 import {
   bodyDigest,
   canonicalRequest,
@@ -205,6 +206,9 @@ class Instance {
 
   async start(): Promise<void> {
     if (this.port === 0) this.port = await freePort();
+    // The previous process's secret names nothing a new bridge holds. Removed here so the wait in
+    // `localAuth()` can only ever be satisfied by the file THIS start wrote.
+    rmSync(localSecretPath(this.stateDir), { force: true });
     this.proc = Bun.spawn(["bun", "run", join(import.meta.dir, "..", "bridge", "index.ts")], {
       cwd: join(import.meta.dir, ".."),
       env: {
@@ -247,6 +251,74 @@ class Instance {
     if (proc === null) return;
     proc.kill("SIGTERM");
     await proc.exited;
+  }
+
+  /**
+   * The read credential for this instance: the host's own per-start secret (ADR 0086,
+   * bridge/local-secret.ts), read off `<stateDir>/local-secret` exactly as the CLI reads it. It is
+   * rotated on every start, so it is read per request and never cached. Waits for the file because a
+   * listener can accept before the bridge has written it.
+   */
+  async localAuth(): Promise<Record<string, string>> {
+    const path = localSecretPath(this.stateDir);
+    let secret = "";
+    await waitFor(
+      () => {
+        try {
+          secret = readFileSync(path, "utf8").trim();
+        } catch {
+          secret = "";
+        }
+        return Promise.resolve(isWellFormedLocalSecret(secret));
+      },
+      10_000,
+      () => `${this.name} never wrote its local secret`,
+    );
+    return { authorization: `Bearer ${secret}` };
+  }
+
+  /** The pairing token this drill claimed for the write routes, once, through the real claim. */
+  private pairedToken: string | null = null;
+
+  /**
+   * A real pairing token for the write routes, claimed the way a phone claims one. The drill owns the
+   * state dir, so it plays `collie pair` itself: the same `generateCode` and `newPending` write the
+   * same pending file (the bridge picks it up without a restart), then `POST /api/pair` with a
+   * same-origin `Origin` hands out the token. The token lives in `paired-devices.json`, so it survives
+   * this instance's restarts. The local secret is never used for a write: it is read-level only.
+   */
+  async pairingAuth(): Promise<Record<string, string>> {
+    if (this.pairedToken === null) {
+      const code = generateCode();
+      writeFileSync(
+        join(this.stateDir, PENDING_FILENAME),
+        JSON.stringify(newPending(code, Date.now(), CODE_TTL_MS)),
+        { mode: 0o600 },
+      );
+      const res = await fetch(`${this.origin()}/api/pair`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: this.origin() },
+        body: JSON.stringify({ code, label: "drill" }),
+      });
+      expect(res.status).toBe(200);
+      // SAFETY: the handler emits `{ token, label }` on a claim (server.ts, `POST /api/pair`).
+      this.pairedToken = ((await res.json()) as { token: string }).token;
+    }
+    return { authorization: `Bearer ${this.pairedToken}`, origin: this.origin() };
+  }
+
+  /** A GET or other READ of this instance's `/api/*`, carrying its local credential. */
+  async api(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    for (const [name, value] of Object.entries(await this.localAuth())) headers.set(name, value);
+    return fetch(`${this.origin()}${path}`, { ...init, headers });
+  }
+
+  /** A write to this instance's `/api/*`, carrying a real pairing token and a same-origin `Origin`. */
+  async apiWrite(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    for (const [name, value] of Object.entries(await this.pairingAuth())) headers.set(name, value);
+    return fetch(`${this.origin()}${path}`, { ...init, headers });
   }
 
   /** A membership verb's restart, for real: the child dies, and the new one re-reads the store. */
@@ -311,8 +383,8 @@ interface MergedSnapshot {
 }
 
 /** GET a collie's `/api/snapshot` and read it as {@link MergedSnapshot}. */
-async function snapshotOf(origin: string): Promise<MergedSnapshot> {
-  const res = await fetch(`${origin}/api/snapshot`);
+async function snapshotOf(instance: Instance): Promise<MergedSnapshot> {
+  const res = await instance.api("/api/snapshot");
   // SAFETY: the handler emits its body `satisfies SnapshotResponse` (server.ts), and MergedSnapshot
   // is a structural subset of that type with every field optional — it claims nothing the handler
   // does not already promise.
@@ -430,9 +502,24 @@ describe("solo zero-tax, measured rather than inferred", () => {
     const packed = await fetch(`${base}${CREW_HELLO_PATH}`);
     expect(packed.status).toBe(unknown.status);
     expect(packed.headers.get("x-crew-protocol")).toBeNull();
-    expect((await fetch(`${base}/api/snapshot`)).status).toBe(200);
-    expect((await fetch(`${base}/api/config`)).status).toBe(200);
-    expect((await fetch(`${base}/api/pane/${encodeURIComponent(lead.paneId)}`)).status).toBe(200);
+    // Today's codes, WITH the host's own read credential (ADR 0086): reads need the pairing token,
+    // and a drill that sends none would measure the gate and not the routes.
+    expect((await lead.api(`/api/snapshot`)).status).toBe(200);
+    expect((await lead.api(`/api/config`)).status).toBe(200);
+    expect((await lead.api(`/api/pane/${encodeURIComponent(lead.paneId)}`)).status).toBe(200);
+  });
+
+  test("with no credential every read is 403 but health, and a wrong one is no better", async () => {
+    const base = lead.origin();
+    const wrong = { authorization: `Bearer ${"A".repeat(43)}` };
+    const paths = ["/api/snapshot", "/api/config", `/api/pane/${encodeURIComponent(lead.paneId)}`, "/api/crew", "/api/machines"];
+    for (const path of paths) {
+      const bare = await fetch(`${base}${path}`);
+      expect([path, bare.status, await bare.text()]).toEqual([path, 403, "device not paired"]);
+      expect([path, (await fetch(`${base}${path}`, { headers: wrong })).status]).toEqual([path, 403]);
+    }
+    // The one open read: the updater's probe, asked before anyone holds a token.
+    expect((await fetch(`${base}/api/health`)).status).toBe(200);
   });
 
   test("the peer sweep rides the herd poll — there is no second timer", async () => {
@@ -448,7 +535,7 @@ describe("solo zero-tax, measured rather than inferred", () => {
   test("`/api/crew` is registered on a solo instance and answers 404 — there is no crew", async () => {
     // The Crew overview is a FRONT-DOOR route, so unlike `/crew/v1/*` it exists here: what a solo
     // instance owes is a refusal, not an absence, and it is the same refusal a peer gives (ADR 0013).
-    const res = await fetch(`${lead.origin()}/api/crew`);
+    const res = await lead.api(`/api/crew`);
     expect(res.status).toBe(404);
     expect(await res.text()).toContain('"code":"crew.not_lead"');
   });
@@ -458,7 +545,7 @@ describe("solo zero-tax, measured rather than inferred", () => {
   test("`/api/machines` answers one row on a solo instance, and its own sample arrives on the tick", async () => {
     const machinesOf = async (): Promise<MachinesResponse> =>
       // SAFETY: the handler emits `MachinesResponse` (server.ts, `serveMachinesRoute`).
-      (await (await fetch(`${lead.origin()}/api/machines`)).json()) as MachinesResponse;
+      (await (await lead.api(`/api/machines`)).json()) as MachinesResponse;
     await waitFor(
       async () => (await machinesOf()).machines[0]?.sample !== undefined,
       15_000,
@@ -469,14 +556,14 @@ describe("solo zero-tax, measured rather than inferred", () => {
     expect(body.machines[0]!.sample!.cpu).toBeGreaterThanOrEqual(0);
     expect(body.machines[0]!.sample!.cpu).toBeLessThanOrEqual(1);
     expect(body.machines[0]!.sample!.memTotal).toBeGreaterThan(0);
-    const history = await fetch(`${lead.origin()}/api/machines/local/history`);
+    const history = await lead.api(`/api/machines/local/history`);
     expect(history.status).toBe(200);
     expect(await history.json()).toMatchObject({ stepMs: 60_000 });
-    expect((await fetch(`${lead.origin()}/api/machines/nas/history`)).status).toBe(404);
+    expect((await lead.api(`/api/machines/nas/history`)).status).toBe(404);
   }, 30_000);
 
   test("a solo snapshot carries no crew fields", async () => {
-    const body = await (await fetch(`${lead.origin()}/api/snapshot`)).text();
+    const body = await (await lead.api(`/api/snapshot`)).text();
     expect(body).not.toMatch(/"servers"|"host":|"crew"/);
   });
 });
@@ -596,13 +683,13 @@ describe("the TLS factor is enforced at the handshake", () => {
 
 describe("the lead speaks for the crew", () => {
   test("the merged snapshot carries both hosts' sessions, host-tagged", async () => {
-    const body = await snapshotOf(lead.origin());
+    const body = await snapshotOf(lead);
     await waitFor(
-      async () => (await snapshotOf(lead.origin())).servers?.length === 2,
+      async () => (await snapshotOf(lead)).servers?.length === 2,
       10_000,
       `the lead never merged the peer in (saw ${JSON.stringify(body.servers)})`,
     );
-    const snap = await snapshotOf(lead.origin());
+    const snap = await snapshotOf(lead);
     const hosts = (snap.servers ?? []).map((s) => s.id).toSorted();
     expect(hosts).toEqual(
       [lead.store()!.self.memberId, peer.store()!.self.memberId].toSorted(),
@@ -615,11 +702,11 @@ describe("the lead speaks for the crew", () => {
     const leadId = lead.store()!.self.memberId;
     const peerId = peer.store()!.self.memberId;
     await waitFor(
-      async () => (await snapshotOf(lead.origin())).servers?.length === 2,
+      async () => (await snapshotOf(lead)).servers?.length === 2,
       10_000,
       "the lead never merged the peer in",
     );
-    const res = await fetch(`${lead.origin()}/api/crew`);
+    const res = await lead.api(`/api/crew`);
     expect(res.status).toBe(200);
     // SAFETY: the handler emits `CrewStatusResponse` (server.ts, `/api/crew`) — the same discipline
     // `snapshotOf` above applies to the snapshot body.
@@ -655,7 +742,7 @@ describe("the lead speaks for the crew", () => {
     const peerId = peer.store()!.self.memberId;
     const machinesOf = async (): Promise<MachinesResponse> =>
       // SAFETY: the handler emits `MachinesResponse` (server.ts, `serveMachinesRoute`).
-      (await (await fetch(`${lead.origin()}/api/machines`)).json()) as MachinesResponse;
+      (await (await lead.api(`/api/machines`)).json()) as MachinesResponse;
     await waitFor(
       async () => (await machinesOf()).machines.find((m) => m.id === peerId)?.sample !== undefined,
       15_000,
@@ -663,7 +750,7 @@ describe("the lead speaks for the crew", () => {
     );
     const body = await machinesOf();
     // SAFETY: the handler emits `CrewStatusResponse` (server.ts, `/api/crew`).
-    const crew = (await (await fetch(`${lead.origin()}/api/crew`)).json()) as CrewStatusResponse;
+    const crew = (await (await lead.api(`/api/crew`)).json()) as CrewStatusResponse;
     expect(body.machines.map((m) => m.id)).toEqual(crew.members.map((m) => m.id));
     expect(body.machines.map((m) => m.id)).toEqual([leadId, peerId]);
     expect(body.machines.map((m) => m.isLead)).toEqual([true, false]);
@@ -673,20 +760,23 @@ describe("the lead speaks for the crew", () => {
     expect(peerRow.sampledAt!).toBeLessThanOrEqual(body.ts);
     expect(peerRow.sample!.cores).toBeGreaterThan(0);
     // The sibling never leaks into the browser's merged snapshot.
-    expect(JSON.stringify(await snapshotOf(lead.origin()))).not.toContain("machineStats");
+    expect(JSON.stringify(await snapshotOf(lead))).not.toContain("machineStats");
   }, 30_000);
 
   test("the read gate covers `/api/crew`, exactly as it covers `/api/config`", async () => {
     // A cross-origin read is refused before the body is composed — the same `guard(…, "read")` every
     // other non-terminal endpoint takes, so a rebound DNS name cannot read the roster either.
-    const res = await fetch(`${lead.origin()}/api/crew`, { headers: { origin: "http://evil.invalid" } });
+    // WITH the credential: the only thing wrong with this request is its Origin, so the 403 is the
+    // read gate's cross-origin refusal and not the missing-credential one.
+    const res = await lead.api("/api/crew", { headers: { origin: "http://evil.invalid" } });
     expect(res.status).toBe(403);
+    expect(await res.text()).toContain("cross-origin");
   });
 
   test("a proxied pane read is byte-identical and keeps its ETag and its 304", async () => {
     const peerId = peer.store()!.self.memberId;
-    const url = `${lead.origin()}/api/pane/${encodeURIComponent(peer.paneId)}?host=${peerId}`;
-    const first = await fetch(url);
+    const path = `/api/pane/${encodeURIComponent(peer.paneId)}?host=${peerId}`;
+    const first = await lead.api(path);
     expect(first.status).toBe(200);
     const etag = first.headers.get("etag");
     expect(etag).not.toBeNull();
@@ -696,7 +786,7 @@ describe("the lead speaks for the crew", () => {
     expect(bodyText).toContain("peer pane");
     expect(bodyText).not.toContain("lead pane");
 
-    const conditional = await fetch(url, { headers: { "if-none-match": etag! } });
+    const conditional = await lead.api(path, { headers: { "if-none-match": etag! } });
     expect(conditional.status).toBe(304);
     expect(await conditional.text()).toBe("");
   });
@@ -713,10 +803,11 @@ describe("the lead speaks for the crew", () => {
     // agree — which is what the original bug violated, and what is asserted below in both directions.
     const peerId = peer.store()!.self.memberId;
     const url = `${lead.origin()}/api/pane/${encodeURIComponent(peer.paneId)}?host=${peerId}`;
+    const auth = await lead.localAuth();
     // Read at the WIRE, via `node:http`: `fetch` inflates a gzip body for us and leaves the header
     // on, which is precisely the confusion that hid the original bug — under `fetch` a lying header
     // and an honest one are indistinguishable. `rawGet` decodes nothing.
-    const res = await rawGet(url, { "accept-encoding": "gzip, deflate, br" });
+    const res = await rawGet(url, { ...auth, "accept-encoding": "gzip, deflate, br" });
     expect(res.status).toBe(200);
 
     const gzipped = res.body[0] === 0x1f && res.body[1] === 0x8b;
@@ -768,8 +859,10 @@ describe("a peer that is not there", () => {
     await peer.stop();
     try {
       const peerId = peer.store()!.self.memberId;
-      const res = await fetch(
-        `${lead.origin()}/api/pane/${encodeURIComponent(peer.paneId)}/reply?host=${peerId}`,
+      // A write needs a real pairing token (the local secret is read-level only), so this one is
+      // refused by the DOWNED PEER and not by the gate in front of it.
+      const res = await lead.apiWrite(
+        `/api/pane/${encodeURIComponent(peer.paneId)}/reply?host=${peerId}`,
         { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "hi" }) },
       );
       expect(res.ok).toBe(false);
@@ -785,17 +878,17 @@ describe("a peer that is not there", () => {
     await peer.stop();
     expect(await portOpen(peer.port)).toBe(false);
     try {
-      const res = await fetch(`${lead.origin()}/api/snapshot`);
+      const res = await lead.api(`/api/snapshot`);
       expect(res.status).toBe(200);
       await waitFor(
         async () => {
-          const snap = await snapshotOf(lead.origin());
+          const snap = await snapshotOf(lead);
           return (snap.servers ?? []).some((s) => s.id !== lead.store()!.self.memberId && !s.reachable);
         },
         10_000,
         async () =>
           `the lead never marked the downed peer degraded (last: ${JSON.stringify(
-            (await snapshotOf(lead.origin())).servers,
+            (await snapshotOf(lead)).servers,
           )}, port open: ${await portOpen(peer.port)})`,
       );
     } finally {
@@ -1099,7 +1192,7 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
 
   test("and the merged snapshot still shows the peer — the real lead was never locked out", async () => {
     await waitFor(
-      async () => ((await snapshotOf(lead.origin())).servers ?? []).some((s) => s.id === peer.store()!.self.memberId && s.reachable),
+      async () => ((await snapshotOf(lead)).servers ?? []).some((s) => s.id === peer.store()!.self.memberId && s.reachable),
       15_000,
       "the lead lost its own peer after the second anchor went up",
     );
@@ -2013,7 +2106,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     );
     // The merged snapshot names both members, from the roster that rode the warrant push.
     await waitFor(
-      async () => ((await snapshotOf(aide.origin())).servers ?? []).some((s) => s.id === idOf(witness) && s.reachable),
+      async () => ((await snapshotOf(aide)).servers ?? []).some((s) => s.id === idOf(witness) && s.reachable),
       20_000,
       "the new lead never swept its adopted roster",
     );
