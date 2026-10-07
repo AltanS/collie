@@ -708,6 +708,12 @@
   ascent-override: 91.51%;
   descent-override: 27.16%;
   line-gap-override: 0%;
+  /* Latin only, for the reason Aldrich's stand-in below gives: the 107.53% was measured on Space
+     Grotesk's Latin, so Russian used to land here ~7.5% too large. Cyrillic now skips it for the
+     plain system stack. Keep in step with the same block in index.html. */
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
 }
 
 /* Aldrich — the second SHIPPED face, and the one a reader picks deliberately. Built by the same
@@ -738,7 +744,13 @@
    `src: url()`, the same one metric family, and every number recomputed by scripts/build-ui-font.sh
    rather than hand-picked. Aldrich's line box is a good deal shallower than Space Grotesk's, which
    is why it needs its OWN table and cannot borrow the one above — sharing it would reintroduce on
-   this face precisely the shift the mechanism exists to remove. */
+   this face precisely the shift the mechanism exists to remove.
+
+   LATIN ONLY, by `unicode-range`: the same ranges the Aldrich subset is cut to (RANGES in
+   scripts/build-ui-font.sh). The 113% was measured on Aldrich's Latin, so on any other script it
+   is just a bigger system face. Russian used to land here and render ~13% too large; now Cyrillic
+   skips this stand-in, lands on Play below while it loads, and on the plain system stack if it
+   never does. Keep in step with the same block in index.html. */
 @font-face {
   font-family: "Aldrich Fallback";
   src:
@@ -748,6 +760,41 @@
   ascent-override: 63.53%;
   descent-override: 18.52%;
   line-gap-override: 4.22%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+/* Aldrich's Cyrillic companion — Play 400 (SIL OFL 1.1, public/fonts/LICENSE-play.txt), 4.8 KB,
+ * subset to the Cyrillic Russian and Ukrainian copy needs plus №. Aldrich draws no Cyrillic, so
+ * without this a Russian UI fell through to the system face.
+ *
+ * SAME FAMILY NAME, so no font stack changes anywhere: the browser asks "Aldrich" for each
+ * character and answers from whichever face covers it. This one is declared AFTER the Latin face on
+ * purpose (the later face wins an overlap), and its `unicode-range` is what makes it LAZY: a
+ * browser fetches a face only when text inside its range is rendered, so an English device never
+ * downloads it and a Russian one downloads it once. Therefore it must never be preloaded, and
+ * never precached (lib/sw-routes.ts UI_COMPANION_FONT_URLS: runtime cache only, kept from the
+ * activate sweep). The range is also in index.html and in scripts/build-ui-font.sh.
+ *
+ * It follows Aldrich only: Space Grotesk and the system face are untouched, and a reader on
+ * Space Grotesk gets system-ui Cyrillic as before.
+ *
+ * METRICS are measured, not guessed (scripts/build-ui-font.sh prints them). Play's letters are
+ * ~7.7% smaller than Aldrich's (x-height 0.484 against 0.520, cap height 0.649 against 0.700), so
+ * `size-adjust` scales them up to match. The ascent/descent/gap overrides then restore Aldrich's
+ * own line box, so a line of Russian is exactly as tall as a line of English. One weight, as with
+ * Aldrich: `font-synthesis-weight: none` in the base layer keeps bold from being smeared. */
+@font-face {
+  font-family: "Aldrich";
+  src: url("/fonts/ui-play-2.101-cyrillic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 107.67%;
+  ascent-override: 66.89%;
+  descent-override: 19.5%;
+  line-gap-override: 4.44%;
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 
 /* ── The typeface setting: CSS owns every stack, JavaScript only swaps a class ───────────────────

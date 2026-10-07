@@ -153,27 +153,36 @@ export function t(key: MessageKey, vars?: TemplateVars): string {
 
 const pluralRules = new Map<Locale, Intl.PluralRules>();
 
-/** `one` or `other` — the two categories a dictionary carries. Anything else Intl reports (`few`,
- *  `many`, `zero`, `two`) maps to `other`. Russian is the language that stretches this: its `few`
- *  (2 to 4) and `many` (5 to 20) forms differ, so `ru.ts` words each `.other` string as a form that
- *  stays correct for both, for example "Скрыто шагов: {count}" with the noun in the genitive plural. */
-function pluralSuffix(locale: Locale, count: number): "one" | "other" {
+/** The CLDR plural category Intl reports for `count` in `locale`: `one`, `few`, `many`, `other` and so
+ *  on. Which categories a language has is the language's business, not ours: English and German
+ *  have `one`/`other`, Japanese only `other`, Russian `one`/`few`/`many`/`other`. */
+function pluralCategory(locale: Locale, count: number): Intl.LDMLPluralRule {
   let rules = pluralRules.get(locale);
   if (rules === undefined) {
     rules = new Intl.PluralRules(locale);
     pluralRules.set(locale, rules);
   }
-  return rules.select(count) === "one" ? "one" : "other";
+  return rules.select(count);
 }
 
 /**
- * Translate a plural pair. `keyBase` names the pair, not a key: `tn("a.b.count", 2)` reads
- * `a.b.count.other`. `count` is injected as the `{count}` slot, so the message never has to repeat
- * it at the call site — and it wins over an explicit `vars.count`, which would only ever disagree.
+ * Translate a plural set. `keyBase` names the set, not a key: `tn("a.b.count", 2)` reads
+ * `a.b.count.other` in English. The category comes from `Intl.PluralRules` for the active language,
+ * and the key is `${keyBase}.${category}`. A dictionary carries only the categories its language
+ * needs beyond `.other`: English has `.one`, Russian adds `.few` and `.many`. A category the
+ * dictionary has no key for (French `many` for a million, a fraction in any language) falls back to
+ * `.other`, which every dictionary carries. `count` is injected as the `{count}` slot, so the
+ * message never has to repeat it at the call site, and it wins over an explicit `vars.count`,
+ * which would only ever disagree.
  */
 export function tn(keyBase: PluralKey, count: number, vars?: TemplateVars): string {
-  const key: MessageKey = `${keyBase}.${pluralSuffix(activeLocale(), count)}`;
-  return interpolate(activeDictionary()[key], { ...vars, count });
+  const dictionary: Readonly<Record<string, string | undefined>> = activeDictionary();
+  const template =
+    dictionary[`${keyBase}.${pluralCategory(activeLocale(), count)}`] ?? dictionary[`${keyBase}.other`];
+  // `.other` exists for every PluralKey in every dictionary (the type and the parity test see to
+  // it), so this only fires if that contract is broken.
+  if (template === undefined) throw new Error(`tn: no plural form for ${keyBase}`);
+  return interpolate(template, { ...vars, count });
 }
 
 /** Switch languages: persist, stamp `<html lang>`, repaint now in whatever is available, and start

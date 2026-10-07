@@ -11,6 +11,11 @@ import {
 import { LOCALES } from "./locale";
 import { en, type MessageKey } from "./messages/en";
 
+/** The extra plural categories a language may carry beyond English's `.one`/`.other`. */
+const EXTRA_PLURAL_CATEGORIES = ["few", "many"] as const;
+/** The languages whose Intl plural rules use those extra categories for whole numbers. */
+const EXTRA_PLURAL_LOCALES = new Set(["ru"]);
+
 // The translation runtime. What is pinned here is everything that fails SILENTLY in production:
 // a value that carries regex punctuation, a plural that reads the wrong language's grammar, the
 // window between choosing a language and its chunk arriving, and the pin surviving a reload.
@@ -80,6 +85,35 @@ describe("plurals", () => {
     await whenLocaleReady("ja");
     expect(tn("space.overview.paneCount", 1)).toBe("1ペイン");
     expect(tn("space.overview.paneCount", 2)).toBe("2ペイン");
+  });
+
+  it("picks one/few/many for Russian", async () => {
+    setLocale("ru");
+    await whenLocaleReady("ru");
+    const files = (n: number) => tn("home.changes.files", n);
+    expect(files(1)).toBe("1 файл");
+    expect(files(2)).toBe("2 файла");
+    expect(files(5)).toBe("5 файлов");
+    expect(files(11)).toBe("11 файлов");
+    expect(files(21)).toBe("21 файл");
+    expect(files(22)).toBe("22 файла");
+    expect(files(25)).toBe("25 файлов");
+    expect(files(0)).toBe("0 файлов");
+    expect(files(0.5)).toBe("Файлов: 0.5");
+  });
+
+  it("falls back to .other when the dictionary has no key for the category", async () => {
+    // French has a `many` category (for millions) that its bundle carries no key for. If CLDR ever
+    // drops it, the two reads still agree, which is what the fallback promises.
+    setLocale("fr");
+    await whenLocaleReady("fr");
+    expect(tn("space.overview.paneCount", 1_000_000)).toBe("1000000 volets");
+  });
+
+  it("reads English while a Russian bundle is still loading, with English grammar", () => {
+    setLocale("ru");
+    expect(tn("space.overview.paneCount", 1)).toBe("1 pane");
+    expect(tn("space.overview.paneCount", 2)).toBe("2 panes");
   });
 
   it("uses the Traditional Chinese bundle as its own locale", async () => {
@@ -205,10 +239,24 @@ describe("every translated dictionary", () => {
         englishKeys.filter((key) => !(key in dictionary)),
         `${code} lacks keys`,
       ).toEqual([]);
+      // The one thing a bundle may add: `.few`/`.many` next to a `.one`/`.other` pair English has.
+      const isExtraPlural = (key: string): boolean =>
+        EXTRA_PLURAL_CATEGORIES.some((category) => {
+          if (!key.endsWith(`.${category}`)) return false;
+          return `${key.slice(0, -category.length - 1)}.one` in en;
+        });
       expect(
-        keys.filter((key) => !(key in en)),
+        keys.filter((key) => !(key in en) && !isExtraPlural(key)),
         `${code} has keys English lacks`,
       ).toEqual([]);
+      // Intl gives Russian `few` and `many` for whole numbers, so a plural base without both would
+      // quietly read `.other` for 2 and for 5.
+      const bases = englishKeys.filter((key) => key.endsWith(".one")).map((key) => key.slice(0, -4));
+      const extras = bases.flatMap((base) => EXTRA_PLURAL_CATEGORIES.map((category) => `${base}.${category}`));
+      expect(
+        extras.filter((key) => key in dictionary),
+        `${code} carries plural categories its language does not use`,
+      ).toEqual(EXTRA_PLURAL_LOCALES.has(code) ? extras : []);
 
       // A bundle that is English in disguise would pass every check below. A few strings are
       // legitimately identical (a unit, a name, a placeholder); a copied bundle makes nearly all so.
@@ -219,6 +267,13 @@ describe("every translated dictionary", () => {
         const value = dictionary[key]!;
         expect(slotsOf(value), `${code} ${key}`).toEqual(slotsOf(en[key]));
         expect(value, `${code} ${key} has an em dash`).not.toContain("\u2014");
+      }
+      // An extra plural form carries the same slots as its pair's `.other`.
+      for (const key of keys.filter(isExtraPlural)) {
+        // SAFETY: `isExtraPlural` only passes keys whose `.one` exists in English, and every English `.one` has an `.other`.
+        const other = `${key.slice(0, key.lastIndexOf("."))}.other` as MessageKey;
+        expect(slotsOf(dictionary[key]!), `${code} ${key}`).toEqual(slotsOf(en[other]));
+        expect(dictionary[key], `${code} ${key} has an em dash`).not.toContain("\u2014");
       }
     },
   );

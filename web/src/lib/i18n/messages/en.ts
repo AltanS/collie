@@ -8,7 +8,8 @@
 //     different VALUES for the same keys, so they are typed `Record<MessageKey, string>`.
 //   * `{name}` marks an interpolation slot; `t()` fills it. Slots are named, never positional,
 //     because a translator re-orders a sentence and positions do not survive that.
-//   * A plural comes as a `.one` / `.other` PAIR and is read through `tn()`, never `t()`.
+//   * A plural comes as a `.one` / `.other` PAIR and is read through `tn()`, never `t()`. A language
+//     with more categories (Russian: `.few`, `.many`) adds them in its own file only.
 //
 // Seeded with the language-selector copy only — the full string sweep lands separately.
 
@@ -1798,4 +1799,17 @@ export type Messages = typeof en;
 /** What a translated bundle must be: every key, any string. `Record` over a finite union of
  *  literals is complete in BOTH directions — a missing key fails the assignment, an extra one is
  *  caught as an excess property. That is the entire enforcement mechanism; don't loosen it. */
-export type Dictionary = Record<MessageKey, string>;
+export type Dictionary = Record<MessageKey, string> & Partial<Record<ExtraPluralKey, string>>;
+
+/** The base of every `.one`/`.other` pair English has. */
+type PluralBaseOf<K> = K extends `${infer Base}.one`
+  ? `${Base}.other` extends MessageKey
+    ? Base
+    : never
+  : never;
+
+/** The plural forms a language may add beyond `.one`/`.other`, for a base English has a pair for:
+ *  `.few` and `.many` for Russian (1 файл, 2 файла, 5 файлов). Optional here, because a language
+ *  with no such category carries none; `tn()` falls back to `.other` for a category with no key.
+ *  The parity test requires them in `ru`. */
+export type ExtraPluralKey = `${PluralBaseOf<MessageKey>}.${"few" | "many"}`;

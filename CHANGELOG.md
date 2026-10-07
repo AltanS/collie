@@ -41,7 +41,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   a retry after a lost answer never makes two worktrees. Herdr only, on the lead (ADR 0089).
 - **Collie speaks five more languages.** Русский, Italiano, Français, Português (Brazilian wording) and
   Türkçe join the language list in Settings → Appearance, so the interface has twelve. Russian reads
-  every count in a form that fits both 2 to 4 and 5 or more.
+  every count in its own form: 1 файл, 2 файла, 5 файлов, 21 файл.
 - **A paired device can carry an expiry you chose.** `collie pair --expires 30d` (also `h`, `w`)
   puts a lifetime on the token the phone claims. Without the flag a token never expires, exactly as
   before, and no existing token changes. `collie devices set-expiry` and `clear-expiry` adjust a
@@ -173,6 +173,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Russian has its own letters in the interface face.** Aldrich draws no Cyrillic, so Russian fell back
+  to the system font, about 13% too large. A 5 KB Cyrillic companion (Play, SIL OFL 1.1) now loads
+  only once Cyrillic text is on screen, so English devices never fetch it, and it matches Aldrich's
+  letter size and line height. Under Space Grotesk, Russian no longer renders about 7.5% too large.
 - **Herdr 0.9.3 hid every repository from Collie.** The workspace row no longer carries the repo, so
   the New worktree tab listed nothing and the Files view lost the workspace folder. The bridge now
   asks Herdr's worktree list once per workspace and caches it (ADR 0032 addendum).
