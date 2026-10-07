@@ -374,6 +374,9 @@ export function HomeRoute() {
         pane={held}
         scope={held === null ? data.scope : paneScope(data.scope, held, data.servers, data.sessions)}
         readOnly={readOnly}
+        // The herd on screen is the saved copy: its ids may have been reused, so nothing is renamed,
+        // focused or closed from it (the sheet shows a note, `useSpaceActions` refuses the creates).
+        savedCopy={data.stale === true}
         onRenamed={() => revalidator.revalidate()}
         onClosed={() => revalidator.revalidate()}
         herd={herd}

@@ -633,3 +633,30 @@ describe("PaneActionsSheet — New agent on a branch", () => {
     expect(branch.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe("PaneActionsSheet — a saved copy", () => {
+  it("replaces Rename, Focus, Close and the branch-off with a note, and keeps Pin", () => {
+    renderSheet({ savedCopy: true, onBranchOff: vi.fn() });
+    expect(screen.getByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+    for (const name of ["Rename", "Close pane"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Focus|Show in|New agent on a branch/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Pin to top/ })).toBeInTheDocument();
+  });
+
+  it("sends no write", async () => {
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/.*/, ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ ok: true });
+      }),
+      http.delete(/\/api\/pane\/.*/, ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderSheet({ savedCopy: true });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toEqual([]);
+  });
+});

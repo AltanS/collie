@@ -256,7 +256,13 @@ export function AgentChat({
   // current while we're reconnecting/lost, and restores instantly on recovery. Both marks dim
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
-  const { newTab, newSpace, launch, launching, creatingTab, branchOff } = useSpaceActions();
+  // The pane view's own liveness for the structural writes (a "+", a launcher row, a branch-off): the
+  // hook already refuses on a saved HERD, and this adds what only this view knows, that THIS pane's
+  // last read failed or its screen is a saved copy. Set below, once both facts exist.
+  const structuralWritesOff = useRef(false);
+  const { newTab, newSpace, launch, launching, creatingTab, branchOff } = useSpaceActions(
+    () => !structuralWritesOff.current,
+  );
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
@@ -1405,6 +1411,10 @@ export function AgentChat({
   const dialogPresentRef = useRef(dialogPresent);
   dialogPresentRef.current = dialogPresent;
   const paneLive = useLive(paneId, scope);
+  // The same fact for the structural writes: the tab and pane sheets (rename, close, focus) take it
+  // as `savedCopy`, and the create hook above reads it through the ref. Nothing saved can act.
+  const savedCopyWrites = actsDisabledByCache || !paneLive;
+  structuralWritesOff.current = savedCopyWrites;
   const handleSendQueuedNow = useCallback(
     async (keys: readonly string[]): Promise<boolean> => {
       const refusal = refuseWrite();
@@ -2079,6 +2089,7 @@ export function AgentChat({
                     allowAll={false}
                     scope={scope}
                     readOnly={readOnly}
+                    savedCopy={savedCopyWrites}
                     onRenamed={() => revalidator.revalidate()}
                     // Closing the tab this pane lives in must not eject you to Home — see closeCurrentTab:
                     // it lands you on a neighbouring tab of this space, and only falls back to onBack() when
@@ -2119,6 +2130,7 @@ export function AgentChat({
                     onSelect={switchTo}
                     scope={scope}
                     readOnly={readOnly}
+                    savedCopy={savedCopyWrites}
                     onRenamed={() => revalidator.revalidate()}
                     // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
                     onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
@@ -2782,6 +2794,7 @@ export function AgentChat({
           pane={agent ?? null}
           scope={scope}
           readOnly={readOnly}
+          savedCopy={savedCopyWrites}
           onRenamed={() => revalidator.revalidate()}
           onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
           // Find searches the MIRROR, and highlights its hits there. In chat mode the mirror is

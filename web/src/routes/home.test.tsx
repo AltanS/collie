@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -655,5 +655,46 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(rows.map((r) => r.textContent)).toEqual(["webapp5 files+10 −2", "collieNo folder"]);
     await userEvent.click(rows[0]!);
     await waitFor(() => expect(url(router)).toBe("/space/w1/changes"));
+  });
+});
+
+// NOTHING SAVED CAN ACT (M46, ADR 0087 rule 8). A cold open draws the saved herd while the bridge is
+// still being asked; a row's hold and a heading's "+" must not write at ids read from it.
+describe("the dashboard on a saved copy", () => {
+  const saved = (): HomeData => ({ ...solo(), stale: true });
+  const REFUSAL = "Saved copy. Reconnect to make changes.";
+
+  it("a row's hold opens the sheet with a note in place of Rename, Focus and Close", async () => {
+    renderHome(saved());
+    await settled();
+    const [row] = rowsOf(groupSection("webapp"));
+    fireEvent.contextMenu(row!);
+    expect(await screen.findByText(REFUSAL)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+  });
+
+  it("the same hold on a live herd still offers Rename and Close", async () => {
+    renderHome(solo());
+    await settled();
+    const [row] = rowsOf(groupSection("webapp"));
+    fireEvent.contextMenu(row!);
+    expect(await screen.findByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close pane" })).toBeInTheDocument();
+  });
+
+  it("a workspace heading's '+' sends no create and says why", async () => {
+    const created: string[] = [];
+    server.use(
+      http.post(/\/api\/workspace\/[^/]+\/tab$/, ({ request }) => {
+        created.push(request.url);
+        return HttpResponse.json({ ok: false, error: "no" });
+      }),
+    );
+    renderHome(saved());
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    expect(await screen.findByText(REFUSAL)).toBeInTheDocument();
+    expect(created).toEqual([]);
   });
 });

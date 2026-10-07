@@ -652,6 +652,7 @@ export const de: Dictionary = {
   "space.readOnly.notPaired": "Nicht gekoppelt. Dieses Gerät in den Einstellungen koppeln.",
   "space.readOnly.expired": "Kopplung abgelaufen. In den Einstellungen erneut koppeln.",
   "space.readOnly.deviceUnauthorised": "Schreibgeschützt: Gerät nicht autorisiert",
+  "space.readOnly.savedCopy": "Gespeicherte Kopie. Verbinde dich neu, um etwas zu ändern.",
   "space.create.ready": "Neuer {what} bereit. Agent starten.",
   "space.noun.tab": "Tab",
   "space.noun.space": "Space",

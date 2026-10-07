@@ -189,6 +189,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   "(agent gone)", "Pane is gone". "Gone" now needs a live answer. Offline, the pane's row comes
   from any herd the phone kept for that machine, and a pane with no saved text says "No saved copy
   of this pane on this phone." with Send off.
+- **A Chat no longer stays blank when you come back to it early.** Leaving a pane for Files,
+  History or Changes and returning before its first refresh could show an empty Chat until the
+  session changed: the phone asked "anything new?" for a window it no longer held. It now asks only
+  when it says which window it holds.
 - **Back in Files goes where you came from.** A file opened from a path a pane printed, from a diff's
   Preview or from a link in a Markdown file now backs out to that pane, diff or file with the arrow,
   the same screen the edge swipe lands on. It used to walk up the folders one at a time. A breadcrumb

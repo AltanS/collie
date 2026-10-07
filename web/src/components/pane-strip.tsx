@@ -23,6 +23,8 @@ interface PaneStripProps {
   scope?: Scope;
   /** Drop the long-press write actions when the device isn't authorised. */
   readOnly?: boolean;
+  /** A saved copy is on screen: the long-press sheet shows a note in place of rename and close. */
+  savedCopy?: boolean;
   /** Revalidate after a rename. Long-press pane actions turn on only when this AND onClosed are set. */
   onRenamed?: () => void;
   /** Navigate/refresh after a close (Home if it's the open pane). Enables long-press with onRenamed. */
@@ -56,6 +58,7 @@ export function PaneStrip({
   onSelect,
   scope,
   readOnly,
+  savedCopy,
   onRenamed,
   onClosed,
   herd,
@@ -158,6 +161,7 @@ export function PaneStrip({
           pane={sheetPane}
           scope={scope}
           readOnly={readOnly}
+          savedCopy={savedCopy}
           onRenamed={onRenamed}
           onClosed={onClosed}
           herd={herd}

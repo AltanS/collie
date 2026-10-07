@@ -38,6 +38,8 @@ interface TabStripProps {
   scope?: Scope;
   /** Drop the long-press write actions when the device isn't authorised (the sheet shows a note). */
   readOnly?: boolean;
+  /** A saved copy is on screen: the long-press sheet shows a note in place of rename and close. */
+  savedCopy?: boolean;
   /** Revalidate after a rename. Long-press tab actions turn on only when this AND onClosed are set. */
   onRenamed?: () => void;
   /** Refresh/fall back after a close. Enables long-press together with onRenamed. */
@@ -122,6 +124,7 @@ export function TabStrip({
   allowAll = true,
   scope,
   readOnly,
+  savedCopy,
   onRenamed,
   onClosed,
   trailing,
@@ -273,6 +276,7 @@ export function TabStrip({
           tab={sheetTab}
           scope={scope}
           readOnly={readOnly}
+          savedCopy={savedCopy}
           onRenamed={onRenamed}
           onClosed={onClosed}
         />

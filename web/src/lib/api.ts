@@ -716,6 +716,13 @@ export type ChatRequest =
 // 6). A `?before=` page is a one-shot tap like fetchHistory's, so there is no repeat fetch for a
 // validator to save. The body alone is NOT cached beside the tag: a 304 here means "you already
 // hold this", and what the client holds is the merged window (lib/chat-window.ts), not this answer.
+//
+// THE TAG IS SENT ONLY WITH A CURSOR. A read with no `after` is the client saying it holds nothing: a
+// view that mounted again (back from the Files screen), or a pane switched to. The tag outlives the
+// view, so on such a read it could still match: the answer to a first read, when nothing moved since,
+// hashes to the very bytes the tag was made from, and the 304 then told an EMPTY window "you already
+// hold this". The Chat body stood blank until the session next changed. Only a read that names the
+// window it holds can be told "unchanged".
 const chatEtags = new Map<string, string>();
 // One Chat screen is open at a time and a second device makes two; eight covers any plausible
 // come-and-go across a session, and matches MAX_WINDOWS on the bridge side.
@@ -753,7 +760,7 @@ export async function fetchChat(
     scope,
   );
   const cacheKey = opts.before ? null : paneScopeKey(scope, paneId);
-  const cached = cacheKey === null ? undefined : chatEtags.get(cacheKey);
+  const cached = cacheKey === null || !opts.after ? undefined : chatEtags.get(cacheKey);
 
   const headers = new Headers({
     [XHR_HEADER]: XHR_HEADER_VALUE,

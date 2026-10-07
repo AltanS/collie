@@ -635,6 +635,7 @@ export const zh: Dictionary = {
   "space.readOnly.notPaired": "未配对，请在设置中配对当前设备",
   "space.readOnly.expired": "配对已过期，请在设置中重新配对",
   "space.readOnly.deviceUnauthorised": "只读模式，设备未授权",
+  "space.readOnly.savedCopy": "这是已保存的副本。请重新连接后再修改。",
   "space.create.ready": "新{what}已就绪，可启动 Agent",
   "space.noun.tab": "标签页",
   "space.noun.space": "空间",

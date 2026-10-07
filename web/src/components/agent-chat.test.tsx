@@ -3445,6 +3445,34 @@ describe("AgentChat — Send now on the waiting card", () => {
   });
 });
 
+// ── NOTHING SAVED CAN ACT: THE STRUCTURAL WRITES OF THE PANE VIEW ──────────────────────────────
+//
+// Rename, Focus, Close and the branch-off live in the ⋮ sheet, and the tab "+" in the tab row. A pane
+// the bridge has not answered lately gets the sheet's note instead of the rows, and the "+" refuses.
+describe("AgentChat — structural writes on a pane that is not live", () => {
+  it("replaces Rename, Focus and Close with the saved-copy note in the pane menu", async () => {
+    liveness.live = false;
+    try {
+      const user = userEvent.setup();
+      renderChat();
+      await openPaneMenu(user);
+      expect(screen.getByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+    } finally {
+      liveness.live = true;
+    }
+  });
+
+  it("keeps Rename and Close on a live pane", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await openPaneMenu(user);
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close pane" })).toBeInTheDocument();
+  });
+});
+
 // ── ONE SEQUENCE: THE BLOOM AND THE BODY SWAP (1.17.0, ADR 0082) ────────────────────────────────
 //
 // A shell becomes an agent while the pane is open. The bloom (components/agent-start.tsx) and the

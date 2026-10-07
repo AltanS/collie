@@ -631,6 +631,7 @@ export const zhTW: Dictionary = {
   "space.readOnly.notPaired": "尚未配對，請在設定中配對目前裝置",
   "space.readOnly.expired": "配對已到期，請在設定中重新配對",
   "space.readOnly.deviceUnauthorised": "唯讀模式，裝置未授權",
+  "space.readOnly.savedCopy": "這是已儲存的副本。請重新連線後再修改。",
   "space.create.ready": "新的{what}已就緒，可以啟動 Agent",
   "space.noun.tab": "分頁",
   "space.noun.space": "空間",

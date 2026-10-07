@@ -33,6 +33,23 @@ describe("PaneStrip", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("passes a saved copy to the sheet: a long-press shows a note in place of Rename and Close", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+        savedCopy
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: /codex/ }));
+    expect(screen.getByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+  });
+
   it("carries an accessible name, so the row of pills is not an unnamed run of buttons", () => {
     render(
       <PaneStrip

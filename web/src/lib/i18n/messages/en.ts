@@ -714,6 +714,7 @@ export const en = {
   "space.readOnly.notPaired": "Not paired — pair this device in Settings",
   "space.readOnly.expired": "Pairing expired. Pair again in Settings",
   "space.readOnly.deviceUnauthorised": "Read-only — device not authorised",
+  "space.readOnly.savedCopy": "Saved copy. Reconnect to make changes.",
   "space.create.ready": "New {what} ready — launch your agent",
   "space.noun.tab": "tab",
   "space.noun.space": "space",

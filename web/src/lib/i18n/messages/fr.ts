@@ -557,6 +557,7 @@ export const fr: Dictionary = {
   "space.readOnly.notPaired": "Non associé : associez cet appareil dans Paramètres",
   "space.readOnly.expired": "Association expirée. Associez de nouveau dans Paramètres",
   "space.readOnly.deviceUnauthorised": "Lecture seule : appareil non autorisé",
+  "space.readOnly.savedCopy": "Copie enregistrée. Reconnectez-vous pour modifier.",
   "space.create.ready": "Nouveau {what} prêt : lancez votre agent",
   "space.noun.tab": "tab",
   "space.noun.space": "espace",

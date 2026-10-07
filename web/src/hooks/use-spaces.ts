@@ -28,7 +28,17 @@ export function tabCreateKey(workspaceId: string, scope: Scope | undefined): str
 // view and the detail Herdr palette. The new pane won't be in the snapshot until the next poll, so
 // we pass it through navigation state (`freshPane`) — the detail route falls back to it so the
 // composer is live immediately (no "agent gone" flash) while a revalidate catches the snapshot up.
-export function useSpaceActions() {
+//
+// THE SAVED-COPY GATE (2026-10-08). Nothing saved on the phone can act (M46, ADR 0087 rule 8), and
+// every create here is a write aimed at ids read from a snapshot. A cold open draws the dimmed saved
+// herd for a while before the bridge answers; ids can be reused by then, so a tap on a "+" or a
+// launcher row would act on a space that is not the one on screen. So the same refusal the read-only
+// gates give (the hook's floating status, nothing sent) is given while the root snapshot is a saved
+// copy, and while the caller's own `canWrite` says no: the pane view passes its pane's liveness
+// (`isLive`, lib/liveness.ts), which the dashboard cannot, because it reads no pane. The controls stay
+// drawn, as `workspace-new-tab.tsx` says they must: a control that comes and goes moves what is
+// around it.
+export function useSpaceActions(canWrite?: () => boolean) {
   const nav = useNav();
   const revalidator = useRevalidator();
   // revalidator changes identity each revalidation cycle; keep the callbacks stable via a ref so
@@ -44,6 +54,17 @@ export function useSpaceActions() {
   readOnlyRef.current = isReadOnly(root?.device) || notPaired;
   const notPairedRef = useRef(false);
   notPairedRef.current = notPaired;
+  // Read through refs for the reason the gates above are: the callbacks below stay stable.
+  const savedCopyRef = useRef(false);
+  savedCopyRef.current = root?.stale === true;
+  const canWriteRef = useRef(canWrite);
+  canWriteRef.current = canWrite;
+  /** True while a create must be refused for want of a live read. Says why through the status line. */
+  const refusedAsSavedCopy = useCallback((): boolean => {
+    if (!savedCopyRef.current && (canWriteRef.current?.() ?? true)) return false;
+    setStatus(t("space.readOnly.savedCopy"), "error");
+    return true;
+  }, []);
   // The scope (machine + named session) the new tab/space must be created in, and navigated into.
   // Read via a ref so the returned callbacks stay stable across revalidations, like readOnly above.
   const scopeRef = useRef<Scope | undefined>(undefined);
@@ -110,6 +131,7 @@ export function useSpaceActions() {
     // draw a space of the addressed machine and session only.
     async (workspaceId: string, at?: Scope) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (refusedAsSavedCopy()) return;
       const scope = at ?? scopeRef.current;
       const key = tabCreateKey(workspaceId, scope);
       if (creatingTabRef.current.has(key)) return;
@@ -124,7 +146,7 @@ export function useSpaceActions() {
         setCreatingTab(new Set(creatingTabRef.current));
       }
     },
-    [open, blockedText],
+    [open, blockedText, refusedAsSavedCopy],
   );
 
   // ONE Space create in flight at a time, globally — there is only ever one "+" for a new Space on
@@ -140,6 +162,7 @@ export function useSpaceActions() {
   const newSpace = useCallback(
     async (opts: { label?: string; cwd?: string } = {}, at?: Scope) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (refusedAsSavedCopy()) return;
       if (creatingSpaceRef.current) return;
       creatingSpaceRef.current = true;
       setCreatingSpace(true);
@@ -153,7 +176,7 @@ export function useSpaceActions() {
         setCreatingSpace(false);
       }
     },
-    [open, blockedText],
+    [open, blockedText, refusedAsSavedCopy],
   );
 
   // A worktree arrives as a SPACE and is therefore acknowledged as one: same write gate, same
@@ -163,6 +186,7 @@ export function useSpaceActions() {
   const newWorktree = useCallback(
     async (workspaceId: string, branch: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (refusedAsSavedCopy()) return;
       if (creatingSpaceRef.current) return;
       creatingSpaceRef.current = true;
       setCreatingSpace(true);
@@ -175,7 +199,7 @@ export function useSpaceActions() {
         setCreatingSpace(false);
       }
     },
-    [open, blockedText],
+    [open, blockedText, refusedAsSavedCopy],
   );
 
   // "New agent on a branch" (ADR 0089): `newWorktree` plus a request id and, optionally, a launcher
@@ -202,6 +226,7 @@ export function useSpaceActions() {
         setStatus(blockedText(), "error");
         return false;
       }
+      if (refusedAsSavedCopy()) return false;
       if (creatingSpaceRef.current) return false;
       creatingSpaceRef.current = true;
       setCreatingSpace(true);
@@ -221,7 +246,7 @@ export function useSpaceActions() {
         setCreatingSpace(false);
       }
     },
-    [open, blockedText],
+    [open, blockedText, refusedAsSavedCopy],
   );
 
   // `alreadyOpen` is an ANSWER, not a refusal — either way the pane below is where to go — so this
@@ -229,13 +254,14 @@ export function useSpaceActions() {
   const showWorktree = useCallback(
     async (workspaceId: string, path: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (refusedAsSavedCopy()) return;
       try {
         open(await api.openWorktree(workspaceId, path, scopeRef.current), "space");
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       }
     },
-    [open, blockedText],
+    [open, blockedText, refusedAsSavedCopy],
   );
 
   // A launcher arrives as a SPACE (from the dashboard) or a TAB beside a named pane (from the
@@ -255,6 +281,7 @@ export function useSpaceActions() {
     // the dashboard's row passes nothing, and the bridge creates a throwaway Space instead.
     async (command: string, beside?: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (refusedAsSavedCopy()) return;
       if (launchingRef.current.has(command)) return;
       launchingRef.current.add(command);
       setLaunching(new Set(launchingRef.current));
@@ -267,7 +294,7 @@ export function useSpaceActions() {
         setLaunching(new Set(launchingRef.current));
       }
     },
-    [open, blockedText],
+    [open, blockedText, refusedAsSavedCopy],
   );
 
   return {

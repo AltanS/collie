@@ -258,3 +258,21 @@ describe("TabActionsSheet — locale", () => {
     expect(screen.getByRole("button", { name: "Tab schließen" })).toBeInTheDocument();
   });
 });
+
+describe("TabActionsSheet — a saved copy", () => {
+  it("replaces Rename and Close tab with a note and sends nothing", async () => {
+    const calls: string[] = [];
+    server.use(
+      http.all(/\/api\/tab\/.*/, ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderSheet({ savedCopy: true });
+    expect(screen.getByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close tab" })).toBeNull();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toEqual([]);
+  });
+});

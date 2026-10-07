@@ -557,6 +557,7 @@ export const tr: Dictionary = {
   "space.readOnly.notPaired": "Eşleşmedi, bu cihazı Ayarlar'da eşleyin",
   "space.readOnly.expired": "Eşleme süresi doldu. Ayarlar'da tekrar eşleyin",
   "space.readOnly.deviceUnauthorised": "Salt okunur, cihaza yetki verilmedi",
+  "space.readOnly.savedCopy": "Kayıtlı kopya. Değişiklik yapmak için yeniden bağlanın.",
   "space.create.ready": "Yeni {what} hazır, aracınızı başlatın",
   "space.noun.tab": "sekme",
   "space.noun.space": "boşluk",

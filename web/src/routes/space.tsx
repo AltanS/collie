@@ -134,6 +134,7 @@ export function SpaceRoute() {
               creatingTab={creatingTab.has(tabCreateKey(selectedWs.workspaceId, data.scope))}
               scope={data.scope}
               readOnly={isReadOnly(data.device) || notPaired}
+              savedCopy={data.stale === true}
               onRenamed={() => revalidator.revalidate()}
               // Closing the tab you're filtered to would strand you on an empty view — fall back to
               // "All" (setTab(null)) in that case; either way revalidate so it drops out of the strip.

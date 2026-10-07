@@ -246,6 +246,26 @@ describe("TabStrip — long-press actions", () => {
     expect(screen.getByRole("button", { name: "Close tab" })).toBeInTheDocument();
   });
 
+  it("passes a saved copy to the sheet: a note in place of Rename and Close tab", () => {
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        savedCopy
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: "tab 2" }));
+    expect(screen.getByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close tab" })).toBeNull();
+  });
+
   it("stays inert on contextmenu when the actions are not wired", () => {
     render(
       <TabStrip

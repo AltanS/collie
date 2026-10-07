@@ -557,6 +557,7 @@ export const pt: Dictionary = {
   "space.readOnly.notPaired": "Não pareado: pareie este dispositivo nas Configurações",
   "space.readOnly.expired": "Pareamento expirado. Pareie novamente nas Configurações",
   "space.readOnly.deviceUnauthorised": "Somente leitura: dispositivo não autorizado",
+  "space.readOnly.savedCopy": "Cópia guardada. Reconecte para fazer alterações.",
   "space.create.ready": "Novo {what} pronto: inicie seu agente",
   "space.noun.tab": "tab",
   "space.noun.space": "espaço",

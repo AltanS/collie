@@ -30,6 +30,13 @@ interface PaneActionsSheetProps {
   scope?: Scope;
   /** This device isn't authorised to write — show a read-only note instead of the actions. */
   readOnly?: boolean;
+  /**
+   * What is on screen is a SAVED COPY, or the pane has not answered lately (`lib/liveness.ts`): the
+   * ids here may name panes that no longer exist or have been reused, so Rename, Focus, Close and
+   * the branch-off are replaced by a note, exactly as `readOnly` replaces them. Pin stays: it is
+   * this device's own preference and writes nothing to the machine.
+   */
+  savedCopy?: boolean;
   /** Fired after a successful rename so the parent can revalidate (the label lands on the next poll). */
   onRenamed: () => void;
   /** Fired after a successful close, with the closed pane id — the parent navigates Home if it's the
@@ -145,6 +152,7 @@ export function PaneActionsSheet({
   pane,
   scope,
   readOnly = false,
+  savedCopy = false,
   onRenamed,
   onClosed,
   onFind,
@@ -228,7 +236,7 @@ export function PaneActionsSheet({
   }, [mode]);
 
   async function save() {
-    if (!pane || saving) return;
+    if (!pane || saving || savedCopy) return;
     const next = label.trim();
     setSaving(true);
     try {
@@ -254,7 +262,7 @@ export function PaneActionsSheet({
   // own words (`closeFailed` is the fallback for a body that carried none), so it is not a swallow
   // site. `pane` is copied to a local first — narrowing does not survive into the async closure.
   async function requestClose() {
-    if (!pane || closeEcho.pending) return;
+    if (!pane || closeEcho.pending || savedCopy) return;
     const target = pane;
     if (!confirm(target.paneId)) return;
     await closeEcho.run(target.paneId, async () => {
@@ -291,7 +299,7 @@ export function PaneActionsSheet({
    * screen and the operator is about to look there.
    */
   async function showInTerminal() {
-    if (!pane || focusing) return;
+    if (!pane || focusing || savedCopy) return;
     setFocusing(true);
     try {
       const res = await api.focusPane(pane.paneId, scope);
@@ -468,6 +476,8 @@ export function PaneActionsSheet({
       )}
       {readOnly ? (
         <p className="py-2 text-sm text-muted-foreground">{t("paneActions.readOnly")}</p>
+      ) : savedCopy ? (
+        <p className="py-2 text-sm text-muted-foreground">{t("space.readOnly.savedCopy")}</p>
       ) : hostBlock ? (
         // Refused BEFORE anything is attempted (§10.3): no queue, no retry, no "try anyway" — the
         // lead would answer `host_unreachable` and the operator would be left guessing whether a

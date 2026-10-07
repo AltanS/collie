@@ -905,8 +905,20 @@ describe("fetchChat", () => {
       }),
     );
     await expect(fetchChat("chat-etag")).resolves.toMatchObject({ outcome: "body" });
-    await expect(fetchChat("chat-etag")).resolves.toEqual({ outcome: "unchanged" });
+    await expect(fetchChat("chat-etag", { after: { gen: 7, rev: 3 } })).resolves.toEqual({
+      outcome: "unchanged",
+    });
     expect(asks).toBe(2);
+  });
+
+  it("never validates a read that holds nothing, so a remounted view gets the body and not a 304", async () => {
+    // The tag outlives the view. A first read was answered with this body, nothing moved, the view
+    // left for the Files screen and came back with an empty window: the same read with no cursor
+    // would hash to the same tag and be answered 304 into a window with nothing in it.
+    const { seen } = captureChat("chat-remount", 'W/"c3"');
+    await fetchChat("chat-remount");
+    await fetchChat("chat-remount");
+    expect(seen[1]?.get("if-none-match")).toBeNull();
   });
 
   it("does not validate a `?before=` page — a one-shot tap has no repeat fetch to save", async () => {

@@ -10,15 +10,19 @@ import { tabCreateKey, useSpaceActions } from "./use-spaces";
 
 // Stub the bridge's create endpoints at the api seam — same idiom launch-strip.test.tsx uses for
 // api.launch. Only the calls this tree can make are declared.
-const { mockCreateTab, mockCreateWorkspace, mockCreateWorktree } = vi.hoisted(() => ({
+const { mockCreateTab, mockCreateWorkspace, mockCreateWorktree, mockOpenWorktree, mockLaunch } = vi.hoisted(() => ({
   mockCreateTab: vi.fn(),
   mockCreateWorkspace: vi.fn(),
   mockCreateWorktree: vi.fn(),
+  mockOpenWorktree: vi.fn(),
+  mockLaunch: vi.fn(),
 }));
 vi.mock("@/lib/api", () => ({
   createTab: mockCreateTab,
   createWorkspace: mockCreateWorkspace,
   createWorktree: mockCreateWorktree,
+  openWorktree: mockOpenWorktree,
+  launch: mockLaunch,
 }));
 
 function homeData(): HomeData {
@@ -88,13 +92,13 @@ function AddressedHarness() {
   );
 }
 
-function makeRouter(harness = <Harness />) {
+function makeRouter(harness = <Harness />, root: Partial<HomeData> = {}) {
   return createMemoryRouter(
     [
       {
         id: ROOT_ROUTE_ID,
         path: "/",
-        loader: () => homeData(),
+        loader: () => ({ ...homeData(), ...root }),
         element: <Outlet />,
         children: [{ index: true, element: harness }],
       },
@@ -298,5 +302,69 @@ describe("useSpaceActions — branchOff", () => {
     expect(screen.getByTestId("status-probe")).toHaveTextContent(
       "The worktree is ready, but the agent did not start. Start it in the new shell.",
     );
+  });
+});
+
+// NOTHING SAVED CAN ACT (M46, ADR 0087 rule 8). A cold open draws the saved herd before the bridge
+// answers; every create here is a write at ids read from that snapshot. Each entry point refuses and
+// sends nothing, whether the herd is the saved copy (the dashboard) or the caller's own liveness says
+// no (the pane view).
+describe("useSpaceActions — a saved copy refuses every structural write", () => {
+  const ALL = ["new-tab", "new-space", "new-worktree", "branch-off", "show-worktree", "launch"] as const;
+
+  beforeEach(() => {
+    for (const mock of [mockCreateTab, mockCreateWorkspace, mockCreateWorktree, mockOpenWorktree, mockLaunch]) mock.mockReset();
+    clearStatus();
+    resetPollIntent();
+  });
+
+  function WritesHarness({ canWrite }: { canWrite?: () => boolean }) {
+    const actions = useSpaceActions(canWrite);
+    const status = useStatus();
+    const run = {
+      "new-tab": () => void actions.newTab("w1"),
+      "new-space": () => void actions.newSpace({}),
+      "new-worktree": () => void actions.newWorktree("w1", "feature/x"),
+      "branch-off": () => void actions.branchOff("w1", "feature/x", { requestId: "r1" }),
+      "show-worktree": () => void actions.showWorktree("w1", "/tmp/wt"),
+      launch: () => void actions.launch("claude"),
+    } satisfies Record<(typeof ALL)[number], () => void>;
+    return (
+      <div>
+        {ALL.map((name) => (
+          <button key={name} onClick={() => run[name]()}>
+            {name}
+          </button>
+        ))}
+        <span data-testid="status">{status?.text ?? ""}</span>
+      </div>
+    );
+  }
+
+  const REFUSAL = "Saved copy. Reconnect to make changes.";
+  const writes = () => [mockCreateTab, mockCreateWorkspace, mockCreateWorktree, mockOpenWorktree, mockLaunch];
+
+  it.each(ALL)("%s sends nothing while the herd on screen is the saved copy", async (name) => {
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<WritesHarness />, { stale: true })} />);
+    await user.click(await screen.findByRole("button", { name }));
+    expect(screen.getByTestId("status")).toHaveTextContent(REFUSAL);
+    for (const mock of writes()) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it.each(ALL)("%s sends nothing while the caller's own read is not live", async (name) => {
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<WritesHarness canWrite={() => false} />)} />);
+    await user.click(await screen.findByRole("button", { name }));
+    expect(screen.getByTestId("status")).toHaveTextContent(REFUSAL);
+    for (const mock of writes()) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("a live herd and a live caller still create", async () => {
+    mockCreateTab.mockResolvedValueOnce(refused());
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<WritesHarness canWrite={() => true} />)} />);
+    await user.click(await screen.findByRole("button", { name: "new-tab" }));
+    await waitFor(() => expect(mockCreateTab).toHaveBeenCalledTimes(1));
   });
 });

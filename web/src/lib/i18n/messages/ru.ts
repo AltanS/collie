@@ -601,6 +601,7 @@ export const ru: Dictionary = {
   "space.readOnly.notPaired": "Не сопряжено: свяжите это устройство в Настройках",
   "space.readOnly.expired": "Срок сопряжения истек. Свяжите снова в Настройках",
   "space.readOnly.deviceUnauthorised": "Только чтение: устройство не авторизовано",
+  "space.readOnly.savedCopy": "Сохранённая копия. Переподключитесь, чтобы вносить изменения.",
   "space.create.ready": "Новый {what} готов: запустите своего агента",
   "space.noun.tab": "tab",
   "space.noun.space": "пробел",

@@ -651,6 +651,7 @@ export const es: Dictionary = {
   "space.readOnly.notPaired": "Sin emparejar. Vincula este dispositivo en Ajustes",
   "space.readOnly.expired": "Vinculación caducada. Vuelve a vincular en Ajustes",
   "space.readOnly.deviceUnauthorised": "Modo lectura. Dispositivo no autorizado",
+  "space.readOnly.savedCopy": "Copia guardada. Vuelve a conectarte para hacer cambios.",
   "space.create.ready": "{what} disponible. Inicia el agente",
   "space.noun.tab": "pestana",
   "space.noun.space": "espacio",
