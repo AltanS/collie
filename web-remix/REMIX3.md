@@ -249,6 +249,17 @@ on("click", async (_event, signal) => {
 Pass the signal to `fetch`. Never keep manual request ids (`C/docs/events.md`, "Always Check
 signal.aborted").
 
+**A `queueTask` signal is render-scoped.** The signal a task receives is the render's own: the
+component's next render for ANY reason (a store wake, a parent update, a navigation) aborts it, so an
+`await` followed by `if (signal.aborted) return` drops its result whenever something re-rendered in
+between (`C/src/runtime/component.ts`, `render()` calls `#abortRenderSignal()`; kody hit it three
+ways, research note 07 d.1). Work that must outlive a re-render, a fetch or a timer the component
+owns, uses `handle.signal` (the instance's life) and its own `AbortController` kept in setup, aborted
+on `handle.signal`, with a superseding call aborting the previous one. A task that calls
+`handle.update()` before its first `await` aborts itself, the next render queues another, and the
+scheduler reaches its guard: set the pending UI in the render that decides to load, never in the task.
+Today no `queueTask` in `R/` awaits (`git grep` it before you add the first).
+
 ### Window and document listeners
 
 Register with `{ signal: handle.signal }` (`C/docs/handle.md`, "Native Event Listeners"). This shell
@@ -773,6 +784,11 @@ So is a `MessageChannel` queue. So is a WebSocket.
 - `data-rmx-preserve-dom` acts only on frame reloads from server HTML. In this SPA it does nothing
   (`C/src/runtime/diff-dom.ts`; SPIKE, probe 3).
 - The `jsx-key` lint rule from React does not apply. Keep keys by choice, not by lint.
+- **`rmx-*` attributes need the `data-` prefix.** `rmx-key`, `rmx-target` and the rest type-check,
+  because JSX accepts any hyphenated attribute, and the runtime ignores them; only `data-rmx-key`,
+  `data-rmx-target`, `data-rmx-src` and the other `data-rmx-*` names are read (`C/src/runtime/`).
+  The row looks keyed and is not. `R/lib/rmx-attributes.test.ts` fails on any JSX attribute under
+  `src/` that starts `rmx-` (research note 09, D2.5).
 
 ## Testing
 
@@ -834,6 +850,15 @@ The Remix authors, quoted. One line each.
 - **Age gate.** `remix@3.0.0` and its 48 packages were published 2026-10-01. The 7-day
   `minimumReleaseAge` gate in `bunfig.toml` blocks them until 2026-10-08. Do not widen the exclude
   list beyond those names.
+- **Remix's own `<Frame>` needs `crypto.randomUUID`.** The runtime calls it (`randomFrameId`) for
+  every nested `<Frame>` the browser renders itself, and `randomUUID` exists only in a secure
+  context. The dev and remix lanes are plain `http://bluefin:<port>`, where it is `undefined`, so a
+  frame there throws on mount and the page stays blank. Since S1/S2 the pane draws two named frames,
+  so `R/lib/polyfills.ts` fills `crypto.randomUUID` from `crypto.getRandomValues` before `run()`
+  (`installPolyfills()` in `R/main.tsx`), and `Promise.withResolvers` and `Object.hasOwn` with it.
+  Keep that call first in `main.tsx`; a new entry point (a worker, a test page) that renders a frame
+  needs it too. The top frame does not use it (`run.ts`), which is why the shell ran for months without
+  the polyfill. Collie's own `Frame` in `R/routes/frame/frame.tsx` is a page layout and unrelated.
 - **Navigation API.** Without `window.navigation` and `NavigateEvent.sourceElement`, every link is a
   full document load (SPIKE, probe 4). Check the oldest supported iOS on a real phone.
 - **Handler rejections.** A rejected promise from an `on()` handler is swallowed (research note 01,
