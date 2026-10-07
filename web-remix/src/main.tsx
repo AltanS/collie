@@ -41,6 +41,9 @@ import { startNavTracking } from "./shell/screen-transition";
 
 installPolyfills();
 
+/** The longest `afterFirstPaint` waits. */
+const FIRST_PAINT_WAIT_MS = 100;
+
 /** The island registry. A document holds one island, `AppRoot`; any other id is not ours. */
 function loadModule(moduleUrl: string, exportName: string): typeof AppRoot {
   if (`${moduleUrl}#${exportName}` !== APP_ROOT_ENTRY) throw new Error(`Collie: no island ${moduleUrl}#${exportName}`);
@@ -98,9 +101,26 @@ if (fromServer !== null) {
 startPrefSync();
 startPrefCookie(basePath());
 startNavTracking();
+// A server document already shows its rows: let the browser paint them before the runtime hydrates
+// (see `afterFirstPaint`). The static shell has nothing to show and starts at once.
+if (fromServer !== null) await afterFirstPaint();
 let app: AppRuntime = start();
 let ready = settle(app, fromServer !== null);
 
+/**
+ * Resolves after the browser's first frame with the server's HTML in it, and never later than
+ * FIRST_PAINT_WAIT_MS. WHY: a WARM load has this module cached, so it ran before the first frame, and
+ * `run()` (the store reads, the hydrating render) held the paint of rows the server had already drawn
+ * (round 8: first row 207 ms warm against 107 cold at 4x). Two animation frames put the first paint
+ * behind us. The timer is the ceiling: animation frames do not run in a hidden tab, and a late
+ * hydration must not wait for one.
+ */
+function afterFirstPaint(): Promise<void> {
+  const done = Promise.withResolvers<void>();
+  const timer = setTimeout(() => done.resolve(), FIRST_PAINT_WAIT_MS);
+  requestAnimationFrame(() => requestAnimationFrame(() => done.resolve()));
+  return done.promise.finally(() => clearTimeout(timer));
+}
 function start(): AppRuntime {
   const next = startAppRuntime(mountedRouter, loadModule);
   next.addEventListener("error", (event) => {
