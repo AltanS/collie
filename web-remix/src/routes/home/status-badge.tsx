@@ -27,7 +27,7 @@ export function StatusBadge(handle: Handle<{ status: AgentStatus; stale?: boolea
   return () => {
     const { status, stale = false } = handle.props;
     return (
-      <Badge variant="outline" data-testid="status-pill" class={cn("gap-1.5 transition-opacity", CHIP[status], stale && "opacity-40")}>
+      <Badge variant="outline" data-testid="status-pill" translate="no" class={cn("gap-1.5 transition-opacity", CHIP[status], stale && "opacity-40")}>
         <span class={cn("size-1.5 rounded-full", DOT[status])} />
         {statusLabel(status)}
       </Badge>

@@ -12,6 +12,8 @@ export interface SectionHeaderProps {
   trailing?: RemixNode;
   id?: string;
   tone?: "muted" | "strong";
+  /** The label is one of the UI's own words (Pinned, Needs you), not a name: the translator skips it. */
+  ui?: boolean;
   class?: string;
 }
 
@@ -21,7 +23,7 @@ export function SectionHeader(handle: Handle<SectionHeaderProps>) {
     const color = accent ? "text-status-blocked" : tone === "strong" ? "text-foreground" : "text-muted-foreground";
     const type = tone === "strong" && !accent ? "text-[13px] font-semibold tracking-normal" : "text-xs font-semibold uppercase tracking-wide";
     return (
-      <div class={cn("flex items-center gap-2", handle.props.class)}>
+      <div translate={handle.props.ui === true ? "no" : undefined} class={cn("flex items-center gap-2", handle.props.class)}>
         <h2 id={id} class="flex min-w-0 flex-1">
           <span class={cn("flex min-w-0 flex-1 items-center gap-1.5", type, color)}>
             {dot && <span class={cn("size-2 shrink-0 rounded-full", dot)} aria-hidden="true" />}

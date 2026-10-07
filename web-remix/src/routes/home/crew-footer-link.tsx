@@ -40,6 +40,7 @@ export function CrewFooterLink(handle: Handle<{ class?: string }>) {
             type="button"
             mix={on("click", () => void navigate(href(crewPath(address.get().scope))))}
             aria-label={t("crew.footer.aria")}
+            translate="no"
             class={cn(
               "flex w-full items-center justify-center gap-1.5 text-[11px] leading-relaxed text-muted-foreground active:text-foreground",
               handle.props.class,

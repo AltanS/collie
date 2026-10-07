@@ -122,6 +122,7 @@ function IdleCover(handle: Handle<{ catchingUp: boolean }>) {
         aria-modal="true"
         aria-label={t("idle.dialogAria")}
         data-testid="idle-lock"
+        translate="no"
         class="fixed inset-0 z-50 flex items-center justify-center bg-background/40 px-6 backdrop-blur-[3px]"
       >
         <div class="flex flex-col items-center gap-6 rounded-lg border border-border/60 bg-card/70 px-8 py-10 text-center shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">

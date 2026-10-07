@@ -28,7 +28,7 @@ export function FoldHeader(handle: Handle<FoldHeaderProps>) {
   return () => {
     const { label, count, open, controls, trailing, testId } = handle.props;
     return (
-      <div class="flex items-center gap-2">
+      <div translate="no" class="flex items-center gap-2">
         <h2 class="flex min-w-0 flex-1">
           <button
             type="button"

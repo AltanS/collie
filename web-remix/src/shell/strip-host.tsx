@@ -27,7 +27,7 @@ export function StripHost(handle: Handle) {
   return () => {
     const layers = strips.layers;
     return (
-      <div data-slot="strip-band" class="shrink-0">
+      <div data-slot="strip-band" translate="no" class="shrink-0">
         <div class="sr-only" role="status" data-slot="strip-live-polite" />
         <div class="sr-only" role="alert" data-slot="strip-live-assertive" />
         <Collapse open={layers.length > 0}>

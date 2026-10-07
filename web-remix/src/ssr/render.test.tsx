@@ -75,6 +75,14 @@ describe("server document render", () => {
     expect(body).not.toContain("rmx:flush");
   });
 
+  test("the server document locks the header and the strip band and leaves the rows alone", async () => {
+    const html = markup((await renderAppBody(input(ALPHA))).body);
+    expect(html).toMatch(/<header[^>]*data-slot="app-header"[^>]*translate="no"|<header[^>]*translate="no"[^>]*data-slot="app-header"/u);
+    expect(html).toMatch(/data-slot="strip-band"[^>]*translate="no"|translate="no"[^>]*data-slot="strip-band"/u);
+    expect(html).not.toMatch(/<html[^>]*translate=/u);
+    expect(html).not.toMatch(/data-testid="pane-row"[^>]*translate="no"|translate="no"[^>]*data-testid="pane-row"/u);
+  });
+
   test("a pane draws its own screen", async () => {
     const { body } = await renderAppBody(input(ALPHA, `/pane/${encodeURIComponent("alpha-w1:p1")}`));
     // The pane's own view with its sibling chips. Its screen is a skeleton until the first pane read:

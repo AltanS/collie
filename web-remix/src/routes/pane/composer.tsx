@@ -659,7 +659,7 @@ export function Composer(handle: Handle<ComposerProps>) {
     const asksWhich = offersFiles(cfg);
 
     return (
-      <div data-slot="chrome-block" class={CHROME_BLOCK}>
+      <div data-slot="chrome-block" translate="no" class={CHROME_BLOCK}>
         <div class="pointer-events-none absolute inset-x-0 bottom-full z-20 px-3 pb-2" data-slot="draft-notice-slot">
           {showPreview && raw !== null ? (
             <div class="pointer-events-auto">
@@ -963,7 +963,7 @@ export function ComposerStandIn(handle: Handle<ComposerStandInProps>) {
   return () => {
     const { gate } = handle.props;
     return (
-      <div data-slot="chrome-block-standin" aria-hidden="true" inert class={CHROME_BLOCK}>
+      <div data-slot="chrome-block-standin" translate="no" aria-hidden="true" inert class={CHROME_BLOCK}>
         <div class={COMPOSER_PAD}>
           <BeltStandIn />
           <div class={cn(FIELD_BOX, gate.locked && "bg-muted/40")}>

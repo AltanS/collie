@@ -237,6 +237,7 @@ export function BottomSheet(handle: Handle<BottomSheetProps>) {
         aria-labelledby={!peekOnly && title ? titleId : undefined}
         aria-hidden={peekOnly ? "true" : undefined}
         data-testid="bottom-sheet"
+        translate="no"
         data-state={peekOnly ? "peek" : "open"}
         style={peekOnly ? { pointerEvents: "none" } : undefined}
       >
@@ -314,7 +315,7 @@ export function SideSheet(handle: Handle<SideSheetProps>) {
     focus.track(open);
     if (!open) return null;
     return (
-      <div class="fixed inset-x-0 top-0 z-50 flex h-(--app-h)" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
+      <div class="fixed inset-x-0 top-0 z-50 flex h-(--app-h)" translate="no" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
         <div
           tabIndex={-1}
           mix={ref((node: HTMLDivElement) => focus.setPanel(node))}

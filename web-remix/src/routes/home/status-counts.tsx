@@ -55,6 +55,7 @@ export function StatusCounts(handle: Handle<{ panes: readonly AgentView[]; label
     if (shown.length === 0) return null;
     return (
       <span
+        translate="no"
         class={cn(
           "flex min-w-0 flex-nowrap items-center overflow-hidden py-0.5 leading-none tabular-nums",
           labelled ? "gap-x-2" : "gap-x-3",
@@ -105,6 +106,7 @@ export function StatusSummaryLine(handle: Handle<StatusSummaryLineProps>) {
         aria-disabled={inert && focusable ? "true" : undefined}
         tabIndex={inert && focusable ? -1 : undefined}
         data-testid="summary-line"
+        translate="no"
         mix={on("click", () => handle.props.onJump?.())}
         class={cn(
           "flex min-h-8 min-w-0 max-w-full items-center gap-3 text-left text-xs font-medium text-foreground disabled:opacity-100",

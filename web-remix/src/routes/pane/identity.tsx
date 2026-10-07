@@ -67,12 +67,12 @@ export function PaneIdentity(handle: Handle<PaneIdentityProps>) {
               </span>
             ) : null}
           </span>
-          <h1 data-testid="pane-title" data-glide="name" class="min-w-0 truncate text-base leading-5 font-semibold">
+          <h1 data-testid="pane-title" data-glide="name" translate="yes" class="min-w-0 truncate text-base leading-5 font-semibold">
             {name}
           </h1>
         </div>
         <div class="mt-1 flex h-3 min-w-0 items-baseline gap-2">
-          <span data-testid="pane-place" class="pointer-events-none min-w-0 truncate text-[11px] leading-3 text-muted-foreground">
+          <span data-testid="pane-place" translate="yes" class="pointer-events-none min-w-0 truncate text-[11px] leading-3 text-muted-foreground">
             {workspace}
           </span>
           <PaneMeta host={host} session={session} cache={cache} onOpenCache={() => handle.props.onCache()} class="relative z-10 ml-auto" />

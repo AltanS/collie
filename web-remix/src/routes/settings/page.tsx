@@ -25,7 +25,7 @@ export function SettingsPage(handle: Handle<SettingsPageProps>) {
   return () => {
     const { title, up, backLabel = "settings.nav.back", children } = handle.props;
     return (
-      <Frame title={t(title)} backLabel={t(backLabel)} up={up}>
+      <Frame title={t(title)} backLabel={t(backLabel)} up={up} lock>
         {children}
       </Frame>
     );

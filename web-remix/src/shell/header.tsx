@@ -89,6 +89,7 @@ export function HeaderHost(handle: Handle) {
     return (
       <header
         data-slot="app-header"
+        translate="no"
         data-width={claim.width}
         class={cn(
           "sticky top-0 z-20 flex shrink-0 flex-col border-b bg-background",

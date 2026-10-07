@@ -68,7 +68,7 @@ export function SettingsRoute(handle: Handle) {
   return () => {
     const scope = where().scope;
     return (
-      <Frame title={t("settings.title")} backLabel={t("settings.nav.back")} up={homePath(scope)}>
+      <Frame title={t("settings.title")} backLabel={t("settings.nav.back")} up={homePath(scope)} lock>
         <InstallControl />
         {/* ONE card of rows, not one card per row: they are siblings of one list. */}
         <Card class="gap-0 py-0">

@@ -321,7 +321,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
 
         {pinned.length > 0 && (
           <section id={PINNED_ID} aria-labelledby={PINNED_HEADING_ID} data-testid="pinned-group" class="flex scroll-mt-4 flex-col gap-2">
-            <SectionHeader id={PINNED_HEADING_ID} label={t("home.pinned.title")} />
+            <SectionHeader id={PINNED_HEADING_ID} label={t("home.pinned.title")} ui />
             <ListGroup>{pinned.map((a) => row(a, "herd"))}</ListGroup>
           </section>
         )}
@@ -340,7 +340,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
 
         {!p.renderBody && ranked && rankedRows.length > 0 && (
           <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} data-testid="ranked-group" class="flex scroll-mt-4 flex-col gap-2">
-            <SectionHeader id={RANKED_HEADING_ID} label={t(rankedHeading(order))} count={rankedRows.length} tone="strong" class="min-h-7" />
+            <SectionHeader id={RANKED_HEADING_ID} label={t(rankedHeading(order))} count={rankedRows.length} tone="strong" ui class="min-h-7" />
             <ListGroup>{rankedRows.map((a) => row(a, "herd"))}</ListGroup>
           </section>
         )}

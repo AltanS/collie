@@ -30,6 +30,7 @@ export function TabBar<V extends string>(handle: Handle<TabBarProps<V>>) {
       <nav
         aria-label={label}
         data-slot="tab-bar"
+        translate="no"
         class={cn("shrink-0 border-t border-rule bg-background pb-[env(safe-area-inset-bottom)]", handle.props.class)}
       >
         <div class="flex">
