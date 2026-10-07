@@ -20,6 +20,7 @@
 
 import type { StyledLine } from "../../blocks";
 import {
+  BRIDGE_PROMPT_TAIL_LINES,
   composerBottomText,
   composerContText,
   composerGhost,
@@ -385,9 +386,6 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
 export function hasComposer(lines: StyledLine[]): boolean {
   return locateComposer(lines) !== null;
 }
-
-/** `DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts — mirrored, the way web mirrors wire types. */
-const BRIDGE_PROMPT_TAIL_LINES = 6;
 
 /**
  * The composer's OWN prompt row, verbatim as it sits on screen (trailing padding dropped), or null

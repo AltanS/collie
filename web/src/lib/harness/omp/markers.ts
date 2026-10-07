@@ -25,6 +25,15 @@ export function rstrip(text: string): string {
   return text.replace(/\s+$/, "");
 }
 
+/**
+ * `DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts — mirrored, the way web mirrors wire types.
+ * `verifyExpectedPrompt` accepts a named region only when its match ends inside this many of the
+ * fresh read's NON-BLANK rows from the tail, so every shape that names one (`composerPrompt`) has to
+ * count the rows it leaves below itself. Here rather than in one shape module because two of them
+ * (chrome.ts's box, pi-shape.ts's pi-shaped composer) now count against it.
+ */
+export const BRIDGE_PROMPT_TAIL_LINES = 6;
+
 // The composer's TOP border: a rounded corner, at least one rule glyph, then anything (omp paints the
 // user's whole statusline INTO this border — see chrome.ts), closed by the opposite corner. Loose ON
 // PURPOSE, and it earns that looseness exactly the way claude/markers.ts's `isInputBoxTopBorder` earns

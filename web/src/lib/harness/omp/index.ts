@@ -69,7 +69,7 @@
 //     Ask single-select, tool-approval and model-picker detectors, and each is fail-closed on a whole
 //     layout's worth of evidence (resume.ts, ask.ts, approval.ts, switch.ts). There is no other
 //     detector to mis-fire, so no other screen, captured or not, can be up-levelled.
-//   - TESTED, for the 83 screens in this corpus: 19 composer states, six answer-editor states, the
+//   - TESTED, for the 85 screens in this corpus: 21 composer states, six answer-editor states, the
 //     `/model` and `/settings` pickers (each in the 17.x/18.1 form with a moved-selection twin, and in
 //     the 18.4 form), the `/tree` picker in both versions, the Ask tool's eleven screens, eight
 //     tool-approval screens, the `/resume` picker in both layouts, and the compact model picker in 23
@@ -109,7 +109,7 @@
 
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
-import { locatePiComposer, piDraft } from "./pi-shape";
+import { locatePiComposer, piComposerPrompt, piDraft } from "./pi-shape";
 import {
   extractGlyphInputDraft,
   extractGlyphStatusLines,
@@ -182,7 +182,10 @@ export function ompBuildBlocks(lines: StyledLine[]): Block[] {
 
 export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const pi = locatePiComposer(lines);
-  if (pi) return decorateOmpDisplay(lines.slice(pi.bottom + 1, pi.suggestEnd));
+  // The slash palette stands in the status row's place while it is up (pi-shape.ts), so there is no
+  // statusline to lift off the mirror: the run below the composer is the palette's, and the phone
+  // draws its own command list rather than echoing omp's here.
+  if (pi) return pi.palette ? [] : decorateOmpDisplay(lines.slice(pi.bottom + 1, pi.suggestEnd));
   const rule = locateRuleComposer(lines);
   if (rule !== null) return decorateOmpDisplay(extractRuleStatusLines(lines, rule));
   const glyph = locateGlyphComposer(lines);
@@ -216,7 +219,7 @@ export function hasComposer(lines: StyledLine[]): boolean {
 
 export function composerPrompt(lines: StyledLine[]): string | null {
   const pi = locatePiComposer(lines);
-  if (pi) return lines.slice(pi.top, pi.bottom + 1).map((line) => line.segments.map((s) => s.text).join("").trimEnd()).join("\n");
+  if (pi) return piComposerPrompt(lines, pi);
   const rule = locateRuleComposer(lines);
   if (rule !== null) return ruleComposerPrompt(lines, rule);
   const glyph = locateGlyphComposer(lines);
