@@ -1326,6 +1326,34 @@ box covers the statusline. Every row above the box is the sandbox session's own 
 The answers were typed with `herdr pane send-text` into the sandbox session only, and the workspace was
 closed afterwards.
 
+## OMP 18.8 pi composer slash palette (captured 2026-10-07, oh-my-pi `omp` v18.8.0, scratch panes)
+
+Two captures of one screen: the pi-shaped composer with a slash command typed into it, which is when
+omp paints its command palette. They exist for one report — a phone send of `/resume` typed the
+command into the pane and it then sat on the filter row unsubmitted, because the palette REPLACES the
+status row on this shape (`pi-shape.ts`), so every verification read found no composer at the tail and
+the submit key was never sent.
+
+The palette draws its own chrome: a full-width rule, the filter row (` /resume` — one space in, the
+draft itself), a second rule of the same colour, then the entries, the `❯ `-marked selection row
+first and two-space-indented rows after it, with a wrapped entry's continuation indented to the
+description column and a `█`/`│` scrollbar column at the right edge. `w48` is the wrapped, clipped
+form; the wide capture is the unclipped one. `Enter` on this screen accepts the highlighted entry —
+verified live, where `/resume` + `Enter` opened the Resume Session picker (`omp--menu-resume.txt`).
+
+Not `scripts/capture-fixture.sh`: the panes were scratch tmux sessions, which no Collie bridge sees,
+read with `tmux capture-pane -p -e -S -60`. The same screen was then read from a live Herdr pane
+running the same version through `herdr pane read --format ansi` — identical rows, same markers — so
+the shape these grammars match is the shape the bridge really serves. LF throughout, no `\r`, and the
+trailing blank padding a top-anchored pane leaves below the palette is trimmed, so each buffer ends
+on its last palette row the way a filled pane's read does. **No sanitization was needed**: these panes
+carry only omp's welcome panel, its `Update Available` notice and the palette.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-8-slash-palette.txt` | `/resume` typed on a 168-column pi-shaped composer: eight palette entries and no scrollbar. `composerReady` true, `extractInputDraft` reads `/resume` off the filter row, and there is no statusline to lift | `idle` |
+| `omp--v18-8-slash-palette-w48.txt` | The same screen on a 48-column pane: every entry wraps, continuations land on the description column, and the scrollbar column is on screen | `idle` |
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

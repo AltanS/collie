@@ -224,6 +224,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   path into the terminal's input line, and the "Draft in terminal" card read that as a draft of yours
   until the send was verified. The card now waits while a send is in flight, and a draft that is still
   there afterwards shows again. Thanks @AndiWandHerd (#370).
+- **A slash command sends in omp while its command palette is open.** On omp 18.8's pi-shaped input
+  box, typing a slash command opens a palette below the box and hides the status row, and Collie no
+  longer found the box, so the command stayed typed and never sent. The palette now counts as the
+  box's footer, and the command is read back and then submitted. Thanks @thelinuxlich (#373).
 
 ## [1.17.2] - 2026-10-06
 
