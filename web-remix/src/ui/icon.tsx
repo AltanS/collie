@@ -1,6 +1,8 @@
 // Lucide icons without React: the `lucide` package ships each icon as plain SVG data (an IconNode,
 // a list of [tag, attributes]). This draws one with lucide's own defaults, so an icon here is the
-// same drawing, stroke and box as `lucide-react` draws it in web/.
+// same drawing, stroke and box as `lucide-react` draws it in web/. The defaults are one CSS rule on
+// `svg.lucide` (app.css), not attributes on every icon: a server document carries some 30 icons, and
+// the nine attributes were 165 bytes each (S3).
 import { createElement, type Handle } from "remix/component";
 import type { IconNode } from "lucide";
 
@@ -23,15 +25,8 @@ export function Icon(handle: Handle<IconProps>) {
     });
     return (
       <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
         viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width={strokeWidth}
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        style={strokeWidth === 2 ? undefined : { strokeWidth }}
         role={label === undefined ? undefined : "img"}
         aria-label={label}
         aria-hidden={label === undefined ? "true" : undefined}

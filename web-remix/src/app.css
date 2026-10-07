@@ -24,3 +24,21 @@
     pointer-events: none;
   }
 }
+
+/* LUCIDE'S DEFAULTS IN ONE RULE (S3, ui/icon.tsx). Every icon carried the same nine presentation
+   attributes (xmlns, a 24 px box, no fill, the stroke's colour, width, caps and joins): about 165 bytes
+   each, some 30 per server document. They are this rule instead, in the base layer so a size utility on
+   the icon still wins. A stroke width other than 2 is the icon's inline style, which beats the rule.
+   An icon that still sets its own box (a glyph nested in a drawing, routes/home/crew-formation.tsx)
+   is left alone. */
+@layer base {
+  svg.lucide:not([width]) {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
