@@ -526,15 +526,18 @@ now runs on Bun as well as in the browser. The rules:
 Since S2 (`experiments/remix-v3/ACTION-PLAN.md` B) the pane's rows can be drawn on the bridge too, as
 two named frames on the pane's own URL (`R/routes/pane/frames.ts` names them and lays out the answer):
 
-- **Off by default.** S2 had two bounds: no more renderer CPU while a pane streams than before, and
+- **On by default.** S2 had two bounds: no more renderer CPU while a pane streams than before, and
   no more than 1.5x the bytes of the JSON read. The CPU bound held (Terminal, 1x: 3.4 % of one core
-  against 3.7 % with frames off, same build, same hour). The bytes bound did not: one poll answer is
-  the read's JSON plus the rows' HTML, 1.6x the JSON read after gzip (2.4 against 1.5 KiB on a
-  working pane), and 432 against 262 KiB over a 30 s Terminal stream. So `PANE_FRAMES_DEFAULT` is
-  `false` (`R/lib/prefs.ts`), and a device turns frames on with `?frames=1` (stored; `?frames=0`
-  turns them off again). Numbers: `experiments/remix-v3/COMPARE.md`, round 8. Everything below is
-  what happens with frames on; with them off the pane reads `/api/pane/:id` as JSON and the browser
-  draws every row, as before S2.
+  against 3.7 % with frames off, same build, same hour). The bytes bound first failed: a poll answer
+  that carried the read's text AND the rows was 1.6x the JSON read after gzip (round 8, default off).
+  Leaving the text out of the answer (next bullets) brought a working Claude pane to 1.23x to 1.42x
+  in the Terminal view and 0.29x to 0.50x in Chat (four live panes, 8 samples each, through the
+  bridge's own frame route; `experiments/remix-v3/ACTION-PLAN.md` B, S2b), so `PANE_FRAMES_DEFAULT`
+  is `true` (`R/lib/prefs.ts`) and `?frames=0` turns it off for a device (stored; `?frames=1` turns
+  it on again). The bound does not hold while a dialog is on screen: the model then carries the
+  dialog's blocks, and the capture in `claude--permission-bash.txt` answers 1.78x (the rows alone
+  are 1.33x). With frames off the pane reads `/api/pane/:id` as JSON and the browser draws every row,
+  as before S2.
 
 - **What streams.** `pane-screen` is the Terminal's rows (`ScreenRows`), `pane-status` the agent's
   statusline rows (`StatusRows`). Only the rows: the `<pre>` and the strip around them (font, wrap,

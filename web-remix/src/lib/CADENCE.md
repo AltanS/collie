@@ -37,15 +37,15 @@ right when").
 
 The "How" column says how this shell reads it. Every row but the pane's mirror is a JSON `fetch`
 into a module store, as web's loaders do. Since S2 the pane's mirror can be two server frames
-instead (REMIX3.md, "Frames"), off by default (the round 8 verdict: 1.6x the JSON read's bytes);
-`?frames=1` turns them on for a device. Either way the WHEN is unchanged, only the HOW differs.
+instead (REMIX3.md, "Frames"), on by default (1.2x to 1.4x the JSON read's bytes after gzip in the
+Terminal view, under 0.5x in Chat; `?frames=0` turns them off for a device). Either way the WHEN is unchanged, only the HOW differs.
 
 | Screen | Endpoint | When | How (R/) | W/ | R/ |
 | --- | --- | --- | --- | --- | --- |
 | every screen | `GET /api/snapshot` | each beat | JSON into a store | `lib/loaders.ts:334` (root loader) | `lib/data.ts:121`, `shell.tsx:54` |
 | every screen | `GET /api/config` | once per page; a failed read retries | JSON into a store | `lib/operator-config.ts:31` | `lib/data.ts:153` (`shell.tsx:55` keeps it on the beat until one read lands) |
-| pane, frames on (`?frames=1`) | `GET /pane/:id?lines=600&agent=…` with `X-Remix-Frame`, `X-Remix-Target`, `X-Collie-Poll` (+ `text` while Find is open, `X-Collie-Reply` while a reply card is placed) | each beat, the read's ETag / 304 | one poll answer: the read without its text, carrying the screen model, and both frames' rows. 304: nothing at all. 200: the read into the store, then `frame.reload()` on each mounted frame whose rows moved; the runtime diffs them in by `data-rmx-key` | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/pane-frames.ts:254` |
-| pane, frames off (the default) or latched | `GET /api/pane/:id?lines=600` | each beat, ETag / 304 | JSON into a store; the browser draws the rows | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/data.ts:47` (web's `fetchPane`) |
+| pane, frames on (the default) | `GET /pane/:id?lines=600&agent=…` with `X-Remix-Frame`, `X-Remix-Target`, `X-Collie-Poll` (+ `text` while Find is open, `X-Collie-Reply` while a reply card is placed) | each beat, the read's ETag / 304 | one poll answer: the read without its text, carrying the screen model, and both frames' rows. 304: nothing at all. 200: the read into the store, then `frame.reload()` on each mounted frame whose rows moved; the runtime diffs them in by `data-rmx-key` | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/pane-frames.ts:254` |
+| pane, frames off (`?frames=0`) or latched | `GET /api/pane/:id?lines=600` | each beat, ETag / 304 | JSON into a store; the browser draws the rows | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/data.ts:47` (web's `fetchPane`) |
 | pane, Chat gate open | `GET /api/pane/:id/chat` | each beat, after-cursor + ETag | JSON into a store (with frames on, the beat's poll answer then carries the status band only) | `hooks/use-chat-window.ts:125`, `lib/api.ts:587` | `routes/pane/pane.tsx:455`, `routes/pane/chat-store.ts:76` (web's `fetchChat`) |
 | home, Crew tab; machines | `GET /api/machines` | each beat while mounted | JSON into a store | `lib/loaders.ts:650` | `routes/home/crew-tab.tsx:61`, `routes/machines/machines.tsx:30` |
 | crew | `GET /api/crew` | each beat while mounted | JSON into a store | `lib/loaders.ts:604` | `routes/crew/crew.tsx:64` |

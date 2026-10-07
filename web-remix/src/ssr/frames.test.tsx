@@ -121,8 +121,8 @@ describe("pane frames", () => {
 
 describe("a pane document with its read", () => {
   const paneId = SNAPSHOT.agents[0]?.paneId ?? "";
-  // Frames are off by default (lib/prefs.ts `PANE_FRAMES_DEFAULT`, the round 8 verdict); these documents
-  // come from a device that turned them on, as its prefs cookie says.
+  // Frames are on by default (lib/prefs.ts `PANE_FRAMES_DEFAULT`); these documents come from a device
+  // whose prefs cookie says so.
   const FRAMES_ON = JSON.stringify({ "collie:pane-frames:v1": "1" });
   const input = (text: string, prefs: string | null = FRAMES_ON): DocumentInput => ({
     url: new URL(`/pane/${encodeURIComponent(paneId)}`, "http://collie.test"),
@@ -160,8 +160,8 @@ describe("a pane document with its read", () => {
     expect(off).toContain('"frames":false');
     expect(off).not.toContain('data-frame="pane-screen"');
     const fresh = (await renderAppBody(input(screenOf("alpha"), null))).body;
-    expect(fresh).toContain('"frames":false');
-    expect(fresh).not.toContain('data-frame="pane-screen"');
+    expect(fresh).toContain('"frames":true');
+    expect(fresh).toContain('data-frame="pane-screen"');
     expect(fresh).toContain("alpha row 5");
   });
 
