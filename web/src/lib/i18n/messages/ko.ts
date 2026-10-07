@@ -1183,6 +1183,8 @@ export const ko: Dictionary = {
     "비밀번호 입력 프롬프트에서는 화면 표시가 없어 전송 여부를 검증할 수 없습니다. 작성한 내용은 창에 남아 있습니다.",
   "reply.stalled.generic":
     "메시지가 입력창에 전달되지 않았습니다. 대화상자가 입력을 기다리는 중일 수 있으며, 키 입력을 전송했다면 해당 키만 반영되었을 수 있습니다. 제출된 내용은 없습니다.",
+  "reply.stalled.modal":
+    "메시지가 입력창에 전달되지 않았습니다. 대화상자, 메뉴 또는 오버레이가 키보드를 점유하고 있어 텍스트가 그리로 전달되었습니다. 제출된 내용은 없습니다.",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "메모 입력창이 열리지 않았습니다. 창 상태를 확인하십시오.",

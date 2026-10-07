@@ -84,7 +84,20 @@ export interface HarnessAdapter {
    * card needs it to answer `true` as well; a throw counts as `false`. Read from the harness's own
    * captures, and pinned by the card's allow-list test.
    */
-  modalOnScreen?(lines: StyledLine[]): boolean;
+   modalOnScreen?(lines: StyledLine[]): boolean;
+  /**
+   * Positive evidence that a full overlay box holds the keyboard — the /models-style overlay
+   * paints its own bordered box over the middle of the screen while the composer tail stays
+   * intact, so `composerReady` still answers true although typing would land in the overlay's
+   * filter, never the input box. Asked by the reply path (`lib/reply-action.ts`) before typing
+   * and when classifying a stalled send.
+   *
+   * OPTIONAL. Absent skips both checks for that adapter, which is the pre-existing behaviour. A
+   * throw propagates to the caller — the unread-dialog card treats it as `false`, the reply path
+   * lets the send reject, exactly like a throwing `composerReady`. Read from the harness's own
+   * captures; the suites pin the corpus.
+   */
+  overlayHoldsKeyboard?(lines: StyledLine[]): boolean;
   /**
    * Literal on-screen text from the composer's prompt/draft tail — the region a DESTRUCTIVE write
    * aimed at that composer may be bound to. Null = no composer at the tail (the same screens

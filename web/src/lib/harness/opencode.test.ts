@@ -12,6 +12,7 @@ import {
   hasComposer,
   locateComposer,
   modalOnScreen,
+  overlayHoldsKeyboard,
   pickerOverlayUp,
 } from "./opencode/chrome";
 import { detectPermissionDialog } from "./opencode/dialog";
@@ -746,6 +747,27 @@ describe("opencode pickers", () => {
   // show in the composer). Flip to `it` when the check learns the typed state.
   it.fails("the ctrl+p palette with a typed filter refuses too (known gap)", () => {
     expect(hasComposer(loadLines("oc--command-palette-query.txt"))).toBe(false);
+  });
+});
+
+describe("overlayHoldsKeyboard", () => {
+  // The /models-style overlay paints its own bordered box over the screen while the composer tail
+  // stays intact, so the composer gate still answers true although typing would land in the
+  // overlay's filter, never the input box. Only the closed box matches: a looser shape would also
+  // match the composer's own interior rows and refuse every live send.
+  it("sees the slash-palette overlay box, and nothing else in any corpus", () => {
+    expect(overlayHoldsKeyboard(loadLines("oc--slash-palette.txt"))).toBe(true);
+    const rest = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt") && f !== "oc--slash-palette.txt");
+    expect(rest.length).toBeGreaterThan(50);
+    for (const name of rest) expect(overlayHoldsKeyboard(loadLines(name)), name).toBe(false);
+  });
+
+  // The ctrl+p palette with a typed filter is the documented known gap (the `it.fails` case in
+  // "opencode pickers" above): its rows open with the bar but never close it — the same shape as
+  // the composer's own interior rows, so no box predicate can claim it without refusing live
+  // composers too. Pinned here so closing that gap must update this test, not slip past it.
+  it("does not claim the typed-filter palette (known gap, still open)", () => {
+    expect(overlayHoldsKeyboard(loadLines("oc--command-palette-query.txt"))).toBe(false);
   });
 });
 

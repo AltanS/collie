@@ -1044,6 +1044,7 @@ export const tr: Dictionary = {
   "reply.refused.multilineMidway": "Bu giriş yeni satırda gönderilir, bu yüzden çok satırlı bir mesaj ilk satır sonundan kesildi. Öncesindeki kısım zaten bölmede. Mesajı tek bir satıra yazın.",
   "reply.stalled.noEcho": "Bu bir parola istemi; yazarken hiçbir şey göstermez, bu yüzden metin doğrulanamaz ve hiçbir şey gönderilmedi. Yazdığınız şey zaten bölmede.",
   "reply.stalled.generic": "Mesaj giriş kutusuna ulaşmadı; bir iletişim kutusu bekliyor olabilir ve bir tuşla yanıtlıyorsanız o tuş muhtemelen iletildi. Hiçbir şey gönderilmedi.",
+  "reply.stalled.modal": "Mesaj giriş kutusuna ulaşmadı; bir iletişim kutusu, menü veya yer paylaşımı klavyeyi tutuyordu ve metin oraya gitti. Hiçbir şey gönderilmedi.",
   "previewAction.note.notOpened": "Not girişi açılmadı, bölmeyi kontrol edin",
   "previewAction.note.clearFailed": "Mevcut not temizlenemedi, bölmeyi kontrol edin",
   "previewAction.note.textFailed": "Not metni ulaşmadı, bölmeyi kontrol edin",

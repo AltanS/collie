@@ -1044,6 +1044,7 @@ export const fr: Dictionary = {
   "reply.refused.multilineMidway": "Cette saisie s'envoie au saut de ligne, le message multiligne a donc été coupé au premier saut. La partie précédente se trouve déjà dans le volet. Écrivez le message sur une seule ligne.",
   "reply.stalled.noEcho": "Il s'agit d'une invite de mot de passe : rien ne s'affiche lors de la saisie, le texte ne peut donc pas être confirmé et rien n'a été envoyé. Ce que vous avez saisi se trouve déjà dans le volet.",
   "reply.stalled.generic": "Le message n'a pas atteint le champ de saisie : une boîte de dialogue est peut-être en attente, et si vous y répondiez par une touche, celle-ci a probablement été transmise. Rien n'a été envoyé.",
+  "reply.stalled.modal": "Le message n'a pas atteint le champ de saisie : un dialogue, un menu ou une superposition gardait le clavier, et le texte y est arrivé. Rien n'a été envoyé.",
   "previewAction.note.notOpened": "La saisie de note ne s'est pas ouverte : vérifiez le volet",
   "previewAction.note.clearFailed": "Impossible d'effacer la note existante : vérifiez le volet",
   "previewAction.note.textFailed": "Le texte de la note n'est pas arrivé : vérifiez le volet",

@@ -403,6 +403,29 @@ export function modalOnScreen(lines: StyledLine[]): boolean {
   return false;
 }
 
+/**
+ * Whether a full overlay box holds the keyboard: a bar row the heavy ┃ opens AND closes (the
+ * /models-style overlay paints its own bordered box over the middle of the screen, filter row
+ * included). Transcript, composer, description and footer rows never close with ┃, and
+ * agent-authored │ tables cannot match either — only the overlay box borders in heavy ┃ on both
+ * sides. Bare bar rows (padding) are excluded.
+ *
+ * Deliberately NOT folded into `pickerOverlayUp`/`modalOnScreen`: those feed the unread-dialog
+ * card, the composer gate and the conformance leg, where a new shape would move existing
+ * verdicts. The reply path consults this separately (`lib/reply-action.ts`), so a miss here only
+ * ever refuses a send, never a card. Measured on 1.18.32 (`oc--slash-palette.txt`,
+ * `oc--command-palette-query.txt`); every non-box capture must stay false (the suites pin it).
+ * User-typed text ending in a heavy ┃ would match too — accepted, essentially untypable, and a
+ * hit only ever refuses.
+ */
+export function overlayHoldsKeyboard(lines: StyledLine[]): boolean {
+  return lines.some((l) => {
+    const text = rstrip(lineText(l));
+    if (!isBarRow(text) || !text.endsWith("┃")) return false;
+    return text.replace(/^\s*┃/, "").slice(0, -1).trim().length > 0;
+  });
+}
+
 /** The model row down to the rule, verbatim as they sit on screen (trailing padding dropped) — the
  *  region the reply path binds its DESTRUCTIVE pre-clear sweep to. It is the right region for that
  *  job because the sweep (`ctrl+k` + Backspaces) erases the draft ABOVE it without moving it: the

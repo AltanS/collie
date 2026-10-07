@@ -26,6 +26,7 @@ import {
   extractStatusLines,
   hasComposer,
   modalOnScreen,
+  overlayHoldsKeyboard,
   stripChrome,
 } from "./chrome";
 import { detectPermissionDialog } from "./dialog";
@@ -93,6 +94,7 @@ export const opencodeAdapter: HarnessAdapter = {
   // cannot stand over a healthy narrow pane.
   cancelKey: "Escape",
   modalOnScreen,
+  overlayHoldsKeyboard,
   composerPrompt,
   replyChunks: opencodeReplyChunks,
   draftIsOpaque,

@@ -1044,6 +1044,7 @@ export const pt: Dictionary = {
   "reply.refused.multilineMidway": "Esta entrada é enviada ao pular linha, então uma mensagem de várias linhas foi cortada na primeira quebra. A parte anterior já está no painel. Deixe a mensagem em uma linha só.",
   "reply.stalled.noEcho": "Este é um aviso de senha: nada é exibido enquanto você digita, então o texto não pode ser confirmado e nada foi enviado. O que você digitou já está no painel.",
   "reply.stalled.generic": "A mensagem não chegou à caixa de entrada: um diálogo pode estar aguardando, e se você respondeu por tecla, ela provavelmente foi registrada. Nada foi enviado.",
+  "reply.stalled.modal": "A mensagem não chegou à caixa de entrada: um diálogo, um menu ou uma sobreposição segurava o teclado, e o texto foi parar lá. Nada foi enviado.",
   "previewAction.note.notOpened": "A entrada da nota não abriu: verifique o painel",
   "previewAction.note.clearFailed": "Não foi possível limpar a nota existente: verifique o painel",
   "previewAction.note.textFailed": "O texto da nota não chegou: verifique o painel",

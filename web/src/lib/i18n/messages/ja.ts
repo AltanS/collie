@@ -1184,6 +1184,8 @@ export const ja: Dictionary = {
     "パスワード入力プロンプトです。エコーバックがないため到達確認ができず、送信されませんでした。入力内容はペイン側に残っています。",
   "reply.stalled.generic":
     "メッセージが入力欄に届きませんでした。ダイアログの応答待ちの可能性があります。キー操作で応答した場合は入力されている可能性があります。送信は実行されていません。",
+  "reply.stalled.modal":
+    "メッセージが入力欄に届きませんでした。ダイアログ、メニュー、オーバーレイのいずれかがキー入力を保持していたため、テキストはそちらに入力されました。送信は実行されていません。",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "ノート入力を開けませんでした。ペインを確認してください。",

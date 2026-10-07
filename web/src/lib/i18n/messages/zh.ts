@@ -1172,6 +1172,8 @@ export const zh: Dictionary = {
     "当前处于密码提示状态，终端无回显导致无法确认文本且未提交。输入的内容已写入窗格。",
   "reply.stalled.generic":
     "消息未送达输入框。可能有对话框正在等待输入；如果是按键响应，该按键可能已生效。未提交任何内容。",
+  "reply.stalled.modal":
+    "消息未送达输入框。对话框、菜单或悬浮层之一占用了键盘，文本被送到了那里。未提交任何内容。",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "备注输入框未能打开，请检查对应窗格",
