@@ -2667,12 +2667,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All FIFTEEN session-scoped routes (tab create, workspace create, launch, this host's launcher
+    // All SIXTEEN session-scoped routes (tab create, workspace create, launch, this host's launcher
     // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
-    // a workspace's Files view, the Files existence check by pane or workspace, tab action, the pane
-    // family, "look now", the worktree listing and the worktree actions) reach their runtime through
-    // the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(15);
+    // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
+    // by pane or workspace (ADR 0090), tab action, the pane family, "look now", the worktree listing
+    // and the worktree actions) reach their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(16);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS

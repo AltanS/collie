@@ -16,6 +16,7 @@ import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
+import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
@@ -313,6 +314,11 @@ export function isPairingRefusal<TThrown>(error: TThrown): boolean {
  * as every other call here spells it; the mount is applied by `apiFetch`.
  */
 export async function fetchAuthedBytes(path: string, signal?: AbortSignal): Promise<Blob> {
+  return (await fetchAuthedAnswer(path, signal)).blob;
+}
+
+/** {@link fetchAuthedBytes} with the answer's headers, for a caller that reads a version off them. */
+async function fetchAuthedAnswer(path: string, signal?: AbortSignal): Promise<{ blob: Blob; headers: Headers }> {
   const res = await apiFetch(path, {
     signal: withTimeout(signal, GET_TIMEOUT_MS),
     headers: { [XHR_HEADER]: XHR_HEADER_VALUE, ...authHeader() },
@@ -324,7 +330,7 @@ export async function fetchAuthedBytes(path: string, signal?: AbortSignal): Prom
     notePairingAnswer(res.status, detail);
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
-  return res.blob();
+  return { blob: await res.blob(), headers: res.headers };
 }
 
 // Best-effort human-readable failure detail: the response body if present, else the status text.
@@ -990,6 +996,52 @@ export function fetchFileText(
   signal?: AbortSignal,
 ): Promise<FilesAnswer<FileReadResponse>> {
   return filesRead<FileReadResponse>(`${filesBase(target)}?${new URLSearchParams({ path }).toString()}`, scope, signal);
+}
+
+/**
+ * The address of one picture under the Files root, as bytes (ADR 0090): `files/image` beside the
+ * Files read, in the same pane or workspace form and with the same scope.
+ */
+export function filesImagePath(target: ChangesTarget, path: string, scope?: Scope): string {
+  return withScope(`${filesBase(target)}/image?${new URLSearchParams({ path }).toString()}`, scope);
+}
+
+/**
+ * What an image read came to. `image` is the bytes, typed by the bridge's sniff. `too-large` is the
+ * bridge's 413 (over 16 MiB), `not-image` its 415 (the bytes are none of the types it serves), and
+ * `failed` everything else: a refusal, an older member's 404, the network. The screen then shows the
+ * file's size as it did before, with the reason. `version` is the size and mtime the bridge sent with
+ * the bytes, when it sent them (an older bridge sends none; a crew lead relays a member's as they came).
+ */
+export type FileImageAnswer =
+  | { outcome: "image"; blob: Blob; version?: string }
+  | { outcome: "too-large" }
+  | { outcome: "not-image" }
+  | { outcome: "failed" };
+
+/**
+ * One picture under the Files root, fetched WITH the pairing token (an `<img src>` cannot carry it)
+ * and handed back as a Blob the caller turns into an object URL and revokes. Never through
+ * `lib/authed-url.ts`'s table: that one keeps one URL per path for the life of the page, which is
+ * right for content-addressed blobs and wrong for a file whose bytes change under one name. An abort
+ * rethrows, so a caller that moved on hears nothing.
+ */
+export async function fetchFileImage(
+  target: ChangesTarget,
+  path: string,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<FileImageAnswer> {
+  try {
+    const { blob, headers } = await fetchAuthedAnswer(filesImagePath(target, path, scope), signal);
+    const version = fileVersionOf(headers.get("x-collie-file-size"), headers.get("x-collie-file-mtime"));
+    return version === null ? { outcome: "image", blob } : { outcome: "image", blob, version };
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    if (err instanceof ApiError && err.status === 413) return { outcome: "too-large" };
+    if (err instanceof ApiError && err.status === 415) return { outcome: "not-image" };
+    return { outcome: "failed" };
+  }
 }
 
 /** The most paths one existence check may name: the bridge's `MAX_EXIST_PATHS` (ADR 0088). */

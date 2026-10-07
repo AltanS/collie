@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
 
+import { FilesLoading } from "@/components/file-preview";
 import { FilesFolderBody } from "@/components/files-view";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -81,15 +81,9 @@ function Quiet({ children }: { children: React.ReactNode }) {
   return <p className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">{children}</p>;
 }
 
-export function FilesLoading() {
-  useLocale();
-  return (
-    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-      <Loader2 className="size-4 animate-spin" />
-      {t("files.loading")}
-    </div>
-  );
-}
+// The quiet loading line lives beside the file drawings, which wait on a picture with it too
+// (ADR 0090); the screens here keep importing it from this module.
+export { FilesLoading };
 
 /**
  * The way to the changes when the tree cannot show this folder: at the root, the Changes list still

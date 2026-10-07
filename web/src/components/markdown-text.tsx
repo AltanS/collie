@@ -34,6 +34,22 @@ export type LinkResolver = (href: string) => LinkTarget;
 // label as plain text: a dead anchor would be worse than none, and raw Markdown worse still.
 const LinkContext = createContext<LinkResolver | null>(null);
 
+/**
+ * What the screen draws for one `![alt](src)` (ADR 0090), or null to draw the alt text, as an image
+ * has always read. Only a screen that passes one gets image spans at all: the parse is asked for
+ * them only then, so the transcript's images stay their alt text.
+ */
+export type ImageResolver = (src: string, alt: string) => ReactNode | null;
+
+const ImageContext = createContext<ImageResolver | null>(null);
+
+/** One image span: the screen's drawing of it, or its alt text when the screen draws none. */
+function ImageSpan({ src, alt }: { src: string; alt: string }) {
+  const resolve = useContext(ImageContext);
+  const drawn = resolve?.(src, alt) ?? null;
+  return drawn ?? <TextRun text={alt} />;
+}
+
 /** Literal text with find hits marked. Still text nodes — `<mark>` is structure, never parsed markup. */
 function Hit({ text }: { text: string }) {
   const query = useContext(QueryContext);
@@ -247,6 +263,8 @@ function Span({ span }: { span: MdSpan }) {
       return <CodeSpan text={span.text} />;
     case "link":
       return <LinkSpan span={span} />;
+    case "image":
+      return <ImageSpan src={span.src} alt={span.alt} />;
     default:
       return <TextRun text={span.text} />;
   }
@@ -402,6 +420,7 @@ export function MarkdownText({
   className,
   query = "",
   resolveLink,
+  resolveImage,
   headingIds = false,
   variant = "chat",
 }: {
@@ -411,21 +430,26 @@ export function MarkdownText({
   query?: string;
   /** Where a relative or fragment link leads. Without it such a link reads as its label. */
   resolveLink?: LinkResolver;
+  /** How an image is drawn. Without it every image reads as its alt text, and none is parsed as one. */
+  resolveImage?: ImageResolver;
   /** Give each heading an `id` (its anchor). Off by default: an id on every transcript heading is a collision. */
   headingIds?: boolean;
   /** `document` sizes headings as a page. Chat, the default, renders exactly as it always did. */
   variant?: MarkdownVariant;
 }) {
-  const blocks = useMemo(() => parseMarkdown(text), [text]);
+  const withImages = resolveImage !== undefined;
+  const blocks = useMemo(() => parseMarkdown(text, { images: withImages }), [text, withImages]);
   const anchors = useMemo(() => (headingIds ? headingAnchors(blocks) : null), [blocks, headingIds]);
   return (
     <QueryContext.Provider value={query}>
       <LinkContext.Provider value={resolveLink ?? null}>
-        <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
-          {blocks.map((block, i) => (
-            <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
-          ))}
-        </div>
+        <ImageContext.Provider value={resolveImage ?? null}>
+          <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
+            {blocks.map((block, i) => (
+              <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
+            ))}
+          </div>
+        </ImageContext.Provider>
       </LinkContext.Provider>
     </QueryContext.Provider>
   );

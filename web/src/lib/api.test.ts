@@ -12,9 +12,11 @@ import {
   createTab,
   fetchChat,
   fetchConfig,
+  fetchFileImage,
   fetchHistory,
   fetchPane,
   fetchSnapshot,
+  filesImagePath,
   getNotifyPrefs,
   POLL_TIMEOUT_MS,
   readFailureKind,
@@ -962,5 +964,44 @@ describe("fetchPane drives the pane's liveness", () => {
     await expect(fetchPane("w1:p1", undefined, undefined, controller.signal)).rejects.toThrow();
     await new Promise((resolve) => setTimeout(resolve, DEAD_DEBOUNCE_MS + 50));
     expect(isLive("w1:p1")).toBe(true);
+  });
+});
+
+describe("the Files image read (ADR 0090)", () => {
+  it("addresses files/image beside the Files read, in both forms, with the scope", () => {
+    expect(filesImagePath({ kind: "pane", paneId: "w1:p1" }, "img/a b.png")).toBe("/api/pane/w1%3Ap1/files/image?path=img%2Fa+b.png");
+    expect(filesImagePath({ kind: "space", spaceId: "w2" }, "logo.png", { host: "laptop", session: "s1" })).toBe(
+      "/api/workspace/w2/files/image?path=logo.png&host=laptop&session=s1",
+    );
+  });
+
+  it("answers the bytes, and turns 413, 415 and any other failure into an outcome", async () => {
+    const got = await fetchFileImage({ kind: "pane", paneId: "w1:p1" }, "logo.png");
+    if (got.outcome !== "image") throw new Error(got.outcome);
+    expect(got.blob.type).toBe("image/png");
+    // The version the bridge sent with the bytes is the size and mtime, joined as the text read's are.
+    expect(got.version).toMatch(/^\d+:\d+$/);
+    server.use(http.get(/\/files\/image$/, () => new HttpResponse(new Uint8Array(3), { headers: { "content-type": "image/png" } })));
+    const bare = await fetchFileImage({ kind: "pane", paneId: "w1:p1" }, "logo.png");
+    expect(bare).toEqual({ outcome: "image", blob: expect.any(Blob) });
+    expect("version" in bare).toBe(false);
+    server.resetHandlers();
+    for (const [status, outcome] of [
+      [413, "too-large"],
+      [415, "not-image"],
+      [404, "failed"],
+      [500, "failed"],
+    ] as const) {
+      server.use(http.get(/\/files\/image$/, () => new HttpResponse("no", { status })));
+      expect(await fetchFileImage({ kind: "space", spaceId: "w1" }, "a.png")).toEqual({ outcome });
+    }
+    server.use(http.get(/\/files\/image$/, () => HttpResponse.error()));
+    expect(await fetchFileImage({ kind: "pane", paneId: "w1:p1" }, "a.png")).toEqual({ outcome: "failed" });
+  });
+
+  it("an abort rethrows, so a screen that moved on hears nothing", async () => {
+    const abort = new AbortController();
+    abort.abort();
+    await expect(fetchFileImage({ kind: "pane", paneId: "w1:p1" }, "logo.png", undefined, abort.signal)).rejects.toBeTruthy();
   });
 });

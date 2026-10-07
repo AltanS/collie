@@ -7,7 +7,7 @@ import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 
-import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
+import { FileContent, type FileImages, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
 import { ChangesListHead, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, FilesModeControl } from "@/components/files-view";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
@@ -206,13 +206,60 @@ const README_WITH_LINKS = [
 /** What the playground gives a link in a Markdown file: an address that goes nowhere, and a tap that does nothing. */
 const PLAYGROUND_LINKS: FileLinks = { hrefFor: () => "#", onOpen: () => {} };
 
+/** An SVG with a transparent ground, for the SVG preview and the Markdown image cards. */
+const PLAYGROUND_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="#2563eb" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 13l3 3 5-7"/></svg>\n';
+
+/** A 96 × 64 PNG, transparent but for a disc and a bar, so the board shows through around them. */
+const PLAYGROUND_PNG = Uint8Array.from(
+  atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAYAAADlNHIOAAAA2ElEQVR42u3cMQoCMQBE0fSew5PtvbygtfUuWApaiDom8wZygf+6BDKGmZlZyW6X0548AAB8duftugP4QeR3D4BA9FcYAALhHw+AYPw0Qn34NIT4YQTxwwjihxHEDyOIH0YQP4wAoBVgpvjfRBA/jACgDWDm+M+utGvu8gEAmBtghfhTIwAAAAAAAAAAAPQBrBQfgvgAAAAAAAAAAAAAvAcAAAAAgvgAIIi/LsJYcQAgdMefAWG0THwI3fH/CWG0T/xCCLWDCCoH/wuy8I9ZFv4zzszMzOy+AxMOJ70dzlJtAAAAAElFTkSuQmCC",
+  ),
+  (c) => c.charCodeAt(0),
+);
+
+/** What the playground gives a picture (ADR 0090): canvas pixels for a raster one, the SVG above for text. */
+const PLAYGROUND_IMAGES: FileImages = {
+  bytes: async () => ({ outcome: "image", blob: new Blob([PLAYGROUND_PNG], { type: "image/png" }) }),
+  text: async () => PLAYGROUND_SVG,
+};
+
+/** A bridge that will not serve the picture: the bytes are not one of the five types (415). */
+const PLAYGROUND_IMAGES_REFUSED: FileImages = {
+  bytes: async () => ({ outcome: "not-image" }),
+  text: async () => null,
+};
+
+/** A README with a relative picture, a relative SVG and a remote one, which stays its alt text. */
+const README_WITH_IMAGES = [
+  "# Webapp",
+  "",
+  "The cart, as it looks today:",
+  "",
+  "![the cart screen](docs/cart.png)",
+  "",
+  "The mark: ![the mark](public/mark.svg) and a remote badge, which stays words: ![build passing](https://example.com/badge.png)",
+  "",
+].join("\n");
+
 type CardView = "diff" | FileView;
 
 /**
  * The file screen's sticky bar and body, live: the Diff | Source | Preview choice is a real control.
  * A file the change set names shows its letter and opens on Diff; another opens on its default.
  */
-function FileCard({ file, initial, height = 380 }: { file: FileText; initial: CardView; height?: number }) {
+function FileCard({
+  file,
+  initial,
+  height = 380,
+  images,
+}: {
+  file: FileText;
+  initial: CardView;
+  height?: number;
+  images?: FileImages;
+}) {
   const [view, setView] = useState<CardView>(initial);
   const change = changeAt(CHANGES, file.path);
   const views: CardView[] = [
@@ -244,7 +291,7 @@ function FileCard({ file, initial, height = 380 }: { file: FileText; initial: Ca
           {view === "diff" && diff?.available ? (
             <DiffView diff={diff.diff} path={file.path} />
           ) : (
-            <FileContent file={file} view={view === "preview" ? "preview" : "source"} links={PLAYGROUND_LINKS} />
+            <FileContent file={file} view={view === "preview" ? "preview" : "source"} links={PLAYGROUND_LINKS} images={images} />
           )}
         </div>
       </div>
@@ -587,9 +634,54 @@ export function ChangesSection() {
         <Card
           state="files-binary"
           label="file, a binary file"
-          reach="in the tree, open an image or any other binary file. Its size is the whole screen."
+          reach="in the tree, open a binary file that is not a picture. Its size is the whole screen."
         >
-          <FileCard file={fileOf("logo.png")} initial="source" height={260} />
+          <FileCard file={fileOf("logo.png", { path: "dist/app.wasm" })} initial="source" height={260} />
+        </Card>
+
+        <Card
+          state="files-image"
+          label="file, a picture"
+          reach="in the tree, open a .png, .jpg, .gif, .webp or .avif file. It fits the column on a board that
+            shows its transparency, with its size and type under it, and no Source | Preview control."
+        >
+          <FileCard file={fileOf("logo.png")} initial="source" height={360} images={PLAYGROUND_IMAGES} />
+        </Card>
+
+        <Card
+          state="files-image-refused"
+          label="file, a picture the bridge will not serve"
+          reach="in the tree, open a .png that is really text, or one over 16 MB. The binary line stays, with
+            the reason under it."
+        >
+          <FileCard file={fileOf("logo.png")} initial="source" height={260} images={PLAYGROUND_IMAGES_REFUSED} />
+        </Card>
+
+        <Card
+          state="files-preview-svg"
+          label="file, an SVG preview"
+          reach="in the tree, open an .svg file. It opens on Preview, drawn as a picture that runs no script;
+            Source shows its text."
+        >
+          <FileCard
+            file={fileOf("index.html", { path: "public/mark.svg", text: PLAYGROUND_SVG, size: PLAYGROUND_SVG.length })}
+            initial="preview"
+            height={340}
+          />
+        </Card>
+
+        <Card
+          state="files-preview-markdown-images"
+          label="file, a Markdown preview with pictures"
+          reach="in the tree, open a README that shows pictures by a relative path. A remote picture stays its
+            alt text."
+        >
+          <FileCard
+            file={fileOf("README.md", { text: README_WITH_IMAGES })}
+            initial="preview"
+            height={460}
+            images={PLAYGROUND_IMAGES}
+          />
         </Card>
       </Group>
 

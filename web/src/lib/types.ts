@@ -1165,7 +1165,17 @@ export type FilesListing =
  */
 export type FileRead =
   | { available: false; reason: ChangesUnavailableReason }
-  | { available: true; root: string; path: string; size: number; binary: boolean; truncated: boolean; text: string };
+  | {
+      available: true;
+      root: string;
+      path: string;
+      size: number;
+      /** The file's modification time, epoch ms. With `size` it is the version a held picture is keyed on (ADR 0090). Absent from an older bridge. */
+      mtimeMs?: number;
+      binary: boolean;
+      truncated: boolean;
+      text: string;
+    };
 
 /** GET …/files and GET …/files?dir= — a folder, asked by pane or by workspace. */
 export type FilesListResponse = ChangesWorkspace & FilesListing;

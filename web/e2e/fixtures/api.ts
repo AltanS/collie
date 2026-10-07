@@ -10,6 +10,7 @@ import {
   fixtureCommitDiff,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
+  fixtureFileImage,
   fixtureFileRead,
   fixtureFilesDir,
   FIXTURE_FILES_UNKNOWN,
@@ -136,6 +137,13 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
     const file = q.get("path");
     const found = file !== null ? fixtureFileRead(file) : fixtureFilesDir(q.get("dir") ?? "");
     return found === null ? fulfillJson(route, FIXTURE_FILES_UNKNOWN, 404) : fulfillJson(route, found);
+  }
+
+  // One picture under the Files root, as bytes (ADR 0090).
+  if (/^\/api\/(?:pane|workspace)\/[^/]+\/files\/image$/.test(path)) {
+    const bytes = fixtureFileImage(new URL(route.request().url()).searchParams.get("path") ?? "");
+    if (bytes === null) return fulfillJson(route, FIXTURE_FILES_UNKNOWN, 404);
+    return route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(bytes) });
   }
 
   if (/^\/api\/pane\/[^/]+\/history$/.test(path)) {

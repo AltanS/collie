@@ -1,4 +1,4 @@
-import { resolveFileLink } from "./files-link";
+import { resolveFileLink, resolveImageSrc } from "./files-link";
 
 // Links in a Markdown file, resolved against the file they are in. The root is the folder Files
 // shows; a path never starts with a slash and never climbs out.
@@ -61,5 +61,30 @@ describe("resolveFileLink", () => {
     expect(resolveFileLink("", "guide.md")).toBeNull();
     expect(resolveFileLink("a%00b.md", "guide.md")).toBeNull();
     expect(resolveFileLink("a%5Cb.md", "guide.md")).toBeNull();
+  });
+});
+
+describe("resolveImageSrc: which images of a Markdown file the preview may load (ADR 0090)", () => {
+  it("resolves a relative address against the file's folder", () => {
+    expect(resolveImageSrc("img/home.png", "docs/guide.md")).toBe("docs/img/home.png");
+    expect(resolveImageSrc("./home.png", "docs/guide.md")).toBe("docs/home.png");
+    expect(resolveImageSrc("../brand/mark.svg", "docs/guide.md")).toBe("brand/mark.svg");
+    expect(resolveImageSrc("my%20shot.png", "README.md")).toBe("my shot.png");
+    expect(resolveImageSrc("a.png?raw=1#x", "README.md")).toBe("a.png");
+  });
+
+  it("refuses a scheme, a root-absolute, home or protocol-relative address, and a fragment", () => {
+    for (const src of ["https://example.com/a.png", "http://x/a.png", "data:image/png;base64,AA", "javascript:alert(1)", "file:///etc/a.png", "/logo.png", "//cdn.example/a.png", "~/a.png", "#top", "?x", "", "   "]) {
+      expect({ src, at: resolveImageSrc(src, "docs/guide.md") }).toEqual({ src, at: null });
+    }
+  });
+
+  it("refuses an address that climbs past the root, names a folder, or goes through .git", () => {
+    expect(resolveImageSrc("../../a.png", "docs/guide.md")).toBeNull();
+    expect(resolveImageSrc("../a.png", "README.md")).toBeNull();
+    expect(resolveImageSrc("img/", "README.md")).toBeNull();
+    expect(resolveImageSrc(".git/a.png", "README.md")).toBeNull();
+    expect(resolveImageSrc("sub/.GIT/a.png", "README.md")).toBeNull();
+    expect(resolveImageSrc("a%00.png", "README.md")).toBeNull();
   });
 });

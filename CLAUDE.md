@@ -661,7 +661,9 @@ root comes off the snapshot, never the request, and its real path must pass the 
 client's path is relative, refused on its shape before any disk call, and its real path must sit
 inside the root's through `containedRealpath`; `.git` and the bridge's state and config folders are
 denied on top. It needs an authorised device (`device-read`), and its bytes go out as JSON, never as
-a document. `GET /api/fonts/<basename>` does not become a fourth such place: the request's name is **looked up** in the rows the operator's own
+a document, with one exception: `files/image` ([ADR 0090](./.adr/0090-files-shows-images.md)) sends a
+picture's raw bytes, typed by `sniffImageType` from the bytes alone (PNG, JPEG, GIF, WebP, AVIF; no
+SVG), with `no-store` and a `default-src 'none'; sandbox` CSP, through the same `readFile` checks. `GET /api/fonts/<basename>` does not become a fourth such place: the request's name is **looked up** in the rows the operator's own
 `theme.toml` declared and that row's path is taken, so a name nobody declared is refused before any path exists. The containment
 rule in [`files.ts`](./bridge/journal/files.ts) then runs anyway, on both surfaces and as an
 independent second check: **every** path about to be read goes through `containedRealpath` — after

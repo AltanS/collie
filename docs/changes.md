@@ -154,23 +154,33 @@ A changed file opens on its **Diff**, with **Source** and, for some types, **Pre
 A file that did not change opens on its source or its preview. A deleted file has only its diff, and
 a new file shows as all added.
 
-Source is numbered and coloured up to 2000 lines and plain above that. A binary file shows its size
-and nothing else. A file over the size limit shows its first part and says so. A symlink shows as a
+Source is numbered and coloured up to 2000 lines and plain above that. A picture is drawn (below). Any
+other binary file shows its size and nothing else. A file over the size limit shows its first part and says so. A symlink shows as a
 link row and opens like a file.
 
-Markdown, JSON and HTML files open on a **Preview** when they did not change.
+Markdown, JSON, HTML and SVG files open on a **Preview** when they did not change.
 
 | File | Preview |
 | --- | --- |
 | `.md`, `.markdown` | Formatted text. Raw HTML in the file stays as text. |
 | `.json` | A tree. The first two levels are open and a folded node shows its count. |
 | `.html`, `.htm` | The page in a sandboxed frame on a white ground. |
+| `.svg` | The picture, drawn so it runs no script and loads nothing. |
 
 > **Note.** An HTML preview runs no scripts, sends no forms and loads no remote files. A link in the
 > page does not open. Pictures stored inside the file as `data:` addresses still draw.
 
 Links in a Markdown preview work. A relative link opens that file or folder, a `#heading` link scrolls
 to the heading, and a web link opens in a new tab. A link that leaves the folder reads as plain text.
+
+A PNG, JPEG, GIF, WebP or AVIF file opens as the picture. It fits the screen, sits on a checkerboard
+that shows transparency, and has its size and type under it. A picture has no Source.
+
+Collie reads the type from the file's bytes, not its name. A file that is not really a picture, or
+one over 16 MiB, shows its size and the reason instead.
+
+A Markdown preview draws the pictures the file names by a relative path, the first 20 of them. A
+picture on the web, or outside the folder, shows its description text.
 
 A JSON file that does not parse shows the error and its source. A tree is not drawn above 5000 values,
 and the source shows instead.
@@ -244,6 +254,7 @@ open like any other row.
 
 - **2000 entries per folder.** A larger folder shows its first 2000 and says it was cut.
 - **1 MiB per file.** A larger file shows its first 1 MiB and says it was cut.
+- **16 MiB per picture.** A larger picture shows its size and says it is too large.
 - **Binary files show no text.** A file with a NUL byte in its first 8000 bytes counts as binary, git's
   own rule.
 - **No folder, no files.** A workspace whose folder is your home folder, a folder above it, or `/`

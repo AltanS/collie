@@ -53,6 +53,11 @@ export function crewRouteFor(pathname: string): string | null {
  */
 const FORWARDABLE: readonly RegExp[] = [
   /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/,
+  // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
+  // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
+  // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).
+  /^pane\/[^/]+\/files\/image$/,
+  /^workspace\/[^/]+\/files\/image$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   /^workspace$/,
@@ -81,9 +86,9 @@ const FORWARDABLE: readonly RegExp[] = [
   /^blobs\/[^/]+$/,
 ];
 
-/** `workspace/<id>/changes` and `workspace/<id>/files` — the workspace routes that are reads. */
+/** `workspace/<id>/changes`, `.../files` and `.../files/image` — the workspace routes that are reads. */
 function isWorkspaceRead(route: string): boolean {
-  return /^workspace\/[^/]+\/(?:changes|files)$/.test(route);
+  return /^workspace\/[^/]+\/(?:changes|files|files\/image)$/.test(route);
 }
 
 /** The pane actions that only read, as bridge/server.ts's `isPaneReadAction` lists them. */
@@ -126,7 +131,8 @@ export function forwardKind(route: string): ForwardKind {
   // `changes` is read-only git over the owning member's folder (ADR 0065): a read, like history.
   // `chat` is the same log `history` reads, asked for its newest end (journal/live.ts): a read too,
   // and the one on the poll path — so it must never be refused before it is tried (§10.3). `files`
-  // reads one folder or file under that same root (ADR 0083): a read as well.
+  // reads one folder or file under that same root (ADR 0083): a read as well, and so is
+  // `files/image`, whose third segment is `files` too (ADR 0090).
   return isPaneRead(action) ? "read" : "write";
 }
 
@@ -249,7 +255,16 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
  * `accept-encoding` — the same negotiation `bridge/http-cache.ts` makes for a local route, and the
  * same relationship to the ETag (hashed over the identity body, `vary: accept-encoding` declared).
  */
-const PROXIED_RESPONSE_HEADERS = ["content-type", "etag", "cache-control", "vary"];
+const PROXIED_RESPONSE_HEADERS = [
+  "content-type",
+  "etag",
+  "cache-control",
+  "vary",
+  // The picture's version, as plain data (ADR 0090): a file's size and mtime. Without them a member's
+  // picture reaches the phone with no key to hold it under, so the phone would never keep it.
+  "x-collie-file-size",
+  "x-collie-file-mtime",
+];
 
 /** Content types worth a transform. Everything else (an image, an upload echo) streams through. */
 function compressibleType(contentType: string | null): boolean {

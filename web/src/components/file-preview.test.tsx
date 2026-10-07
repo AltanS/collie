@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,10 @@ import { en } from "@/lib/i18n/messages/en";
 import type { FilesAt } from "@/lib/nav";
 import { fixtureFileRead } from "@/test/handlers";
 
-import { defaultView, FileContent, type FileLinks, type FileText } from "./file-preview";
+import type { FileImageAnswer } from "@/lib/api";
+import { clearHeldImages, dropHeldImages, heldImage, imageSubject } from "@/lib/file-image-cache";
+
+import { defaultView, FileContent, type FileImages, type FileLinks, type FileText } from "./file-preview";
 
 afterEach(cleanup);
 
@@ -23,6 +26,10 @@ describe("defaultView", () => {
     expect(defaultView("page.htm")).toBe("preview");
     expect(defaultView("src/cart.ts")).toBe("source");
     expect(defaultView("Makefile")).toBe("source");
+    // An SVG has a Preview, so it opens on it, as Markdown and HTML do (ADR 0090).
+    expect(defaultView("icons/logo.SVG")).toBe("preview");
+    // A raster picture has no Source | Preview pair: its one view is the picture.
+    expect(defaultView("logo.png")).toBe("source");
   });
 });
 
@@ -316,5 +323,361 @@ describe("Preview: code draws no ligatures", () => {
   it("a README preview sets its headings as a document", () => {
     const { container } = render(<FileContent file={file("README.md")} view="preview" />);
     expect(container.querySelector("[data-heading-level='1']")?.className).toContain("text-2xl");
+  });
+});
+
+// ── Pictures (ADR 0090) ───────────────────────────────────────────────────────────────────────────
+
+/** A text read's answer for `path`, built on a fixture's fields. */
+function textFile(path: string, text: string, over: Partial<FileText> = {}): FileText {
+  return { ...file("README.md"), path, text, size: text.length, binary: false, truncated: false, ...over };
+}
+
+/** A binary file of `size` bytes at `path`, as the text read answers it. */
+function binaryFile(path: string, size = 52_224): FileText {
+  return { ...file("logo.png"), path, size, binary: true, text: "" };
+}
+
+/** A loader that answers every picture with `answer` and every text with `text`, and counts. */
+function loader(answer: FileImageAnswer = { outcome: "image", blob: new Blob(["png"], { type: "image/png" }) }, text: string | null = "<svg/>") {
+  const bytes = vi.fn<FileImages["bytes"]>(async () => answer);
+  const texts = vi.fn<(path: string, signal: AbortSignal) => Promise<string | null>>(async () => text);
+  const images: FileImages = { bytes, text: texts };
+  return { images, bytes, texts };
+}
+
+/** Object URLs made and revoked during a test, with the blob each was made for. */
+function trackObjectUrls() {
+  const made: { url: string; blob: Blob }[] = [];
+  const revoked: string[] = [];
+  const create = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+    const url = `blob:picture/${String(made.length + 1)}`;
+    if (blob instanceof Blob) made.push({ url, blob });
+    return url;
+  });
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+    revoked.push(url);
+  });
+  return {
+    made,
+    revoked,
+    restore: () => {
+      create.mockRestore();
+      revoke.mockRestore();
+    },
+  };
+}
+
+/** Fire the picture's load with a natural size, as a browser does once it has decoded it. */
+function loadPicture(img: HTMLElement, width: number, height: number): void {
+  Object.defineProperty(img, "naturalWidth", { configurable: true, value: width });
+  Object.defineProperty(img, "naturalHeight", { configurable: true, value: height });
+  fireEvent.load(img);
+}
+
+describe("a raster picture", () => {
+  it("is drawn from the image read on its board, with its natural size, size and type under it", async () => {
+    const { images, bytes } = loader();
+    const { container } = render(<FileContent file={binaryFile("shots/home.png")} view="source" images={images} />);
+    const img = await screen.findByRole("img", { name: "home.png" });
+    expect(bytes).toHaveBeenCalledTimes(1);
+    expect(bytes.mock.calls[0]![0]).toBe("shots/home.png");
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
+    expect(img.className).toContain("max-h-[70dvh]");
+    expect(img.className).toContain("object-contain");
+    // Before the picture has drawn, the caption knows the size and the type.
+    const caption = container.querySelector("figcaption")!;
+    expect(caption.textContent).toBe("51 KB · PNG");
+    loadPicture(img, 1200, 800);
+    expect(caption.textContent).toBe("1200 × 800 · 51 KB · PNG");
+    expect(screen.queryByText(/Binary file/)).toBeNull();
+  });
+
+  it("asks for each of png, jpg, jpeg, gif, webp and avif, and for nothing else", async () => {
+    for (const name of ["a.png", "b.JPG", "c.jpeg", "d.gif", "e.webp", "f.avif"]) {
+      const { images, bytes } = loader();
+      render(<FileContent file={binaryFile(name)} view="source" images={images} />);
+      expect(await screen.findByRole("img", { name })).toBeTruthy();
+      expect(bytes).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
+    const { images, bytes } = loader();
+    render(<FileContent file={binaryFile("archive.zip", 2048)} view="source" images={images} />);
+    expect(screen.getByText("Binary file, 2 KB")).toBeTruthy();
+    expect(bytes).not.toHaveBeenCalled();
+  });
+
+  it("with no loader, is the binary line it always was", () => {
+    render(<FileContent file={binaryFile("logo.png", 20480)} view="source" />);
+    expect(screen.getByText("Binary file, 20 KB")).toBeTruthy();
+  });
+
+  it.each([
+    [{ outcome: "too-large" } as const, en["files.image.tooLarge"]],
+    [{ outcome: "not-image" } as const, en["files.image.notImage"]],
+    [{ outcome: "failed" } as const, en["files.image.failed"]],
+  ])("a %o read falls back to the binary line, with the reason", async (answer, reason) => {
+    const { images } = loader(answer);
+    render(<FileContent file={binaryFile("big.png")} view="source" images={images} />);
+    expect(await screen.findByText(reason)).toBeTruthy();
+    expect(screen.getByText(/Binary file, 51 KB/)).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("a loader that throws is a failed read", async () => {
+    const images: FileImages = { bytes: () => Promise.reject(new Error("offline")), text: async () => null };
+    render(<FileContent file={binaryFile("a.png")} view="source" images={images} />);
+    expect(await screen.findByText(en["files.image.failed"])).toBeTruthy();
+  });
+
+  it("bytes the browser cannot draw fall back to the binary line", async () => {
+    const { images } = loader();
+    render(<FileContent file={binaryFile("a.avif")} view="source" images={images} />);
+    fireEvent.error(await screen.findByRole("img"));
+    expect(screen.getByText(en["files.image.undrawable"])).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("revokes its object URL when the screen goes, and when another file takes its place", async () => {
+    const urls = trackObjectUrls();
+    try {
+      const { images } = loader();
+      const { rerender, unmount } = render(<FileContent file={binaryFile("one.png")} view="source" images={images} />);
+      await screen.findByRole("img", { name: "one.png" });
+      const first = urls.made.at(-1)!.url;
+      expect(urls.revoked).not.toContain(first);
+      rerender(<FileContent file={binaryFile("two.png")} view="source" images={images} />);
+      await screen.findByRole("img", { name: "two.png" });
+      expect(urls.revoked).toContain(first);
+      const second = urls.made.at(-1)!.url;
+      unmount();
+      expect(urls.revoked).toContain(second);
+      // Every URL made is revoked by the end.
+      expect(urls.made.map((m) => m.url).every((u) => urls.revoked.includes(u))).toBe(true);
+    } finally {
+      urls.restore();
+    }
+  });
+
+  it("asks again for a file read again, since its bytes may have changed under one name", async () => {
+    const { images, bytes } = loader();
+    const { rerender } = render(<FileContent file={binaryFile("live.png")} view="source" images={images} />);
+    await screen.findByRole("img");
+    rerender(<FileContent file={binaryFile("live.png", 60_000)} view="source" images={images} />);
+    await waitFor(() => expect(bytes).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("held pictures (ADR 0090, amended 2026-10-07)", () => {
+  const SUBJECT = imageSubject(undefined, "pane:w1:p1");
+  const at = (size: number, mtimeMs: number | undefined) => ({ ...binaryFile("shots/home.png", size), mtimeMs });
+
+  /** What changes.tsx builds: the loader's fetch behind the table, filed under one pane. */
+  function held() {
+    const fetch = vi.fn<(path: string) => Promise<FileImageAnswer>>(async () => ({ outcome: "image", blob: new Blob(["png"], { type: "image/png" }) }));
+    const images: FileImages = {
+      bytes: (path, _signal, version) => heldImage(SUBJECT, path, version, () => fetch(path)),
+      text: async () => null,
+    };
+    return { images, fetch };
+  }
+
+  beforeEach(() => clearHeldImages());
+
+  it("hands the image read the file's version, and none when the answer has no mtime", async () => {
+    const { images, bytes } = loader();
+    const first = render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+    await screen.findByRole("img");
+    expect(bytes.mock.calls[0]?.[2]).toEqual({ tag: "1000:77", own: true });
+    first.unmount();
+    render(<FileContent file={at(1000, undefined)} view="source" images={images} />);
+    await screen.findByRole("img");
+    expect(bytes.mock.calls[1]?.[2]).toBeNull();
+  });
+
+  it("opening the same picture again makes no request", async () => {
+    const { images, fetch } = held();
+    const first = render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+    await screen.findByRole("img");
+    first.unmount();
+    render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+    await screen.findByRole("img");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a changed size or mtime is another version and is fetched again", async () => {
+    const { images, fetch } = held();
+    const first = render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+    await screen.findByRole("img");
+    first.unmount();
+    const second = render(<FileContent file={at(1000, 78)} view="source" images={images} />);
+    await screen.findByRole("img");
+    second.unmount();
+    render(<FileContent file={at(1001, 78)} view="source" images={images} />);
+    await screen.findByRole("img");
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("the refresh button's drop makes the next open fetch again", async () => {
+    const { images, fetch } = held();
+    const first = render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+    await screen.findByRole("img");
+    first.unmount();
+    dropHeldImages(SUBJECT);
+    render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+    await screen.findByRole("img");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("a held blob gets a fresh object URL per view: the first view's revoked URL is never handed on", async () => {
+    const urls = trackObjectUrls();
+    try {
+      const { images, fetch } = held();
+      const first = render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+      const firstImg = await screen.findByRole("img");
+      const firstUrl = firstImg.getAttribute("src");
+      first.unmount();
+      expect(urls.revoked).toContain(firstUrl);
+      render(<FileContent file={at(1000, 77)} view="source" images={images} />);
+      const secondUrl = (await screen.findByRole("img")).getAttribute("src");
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(secondUrl).not.toBe(firstUrl);
+      expect(urls.revoked).not.toContain(secondUrl);
+      // Both views were made from the one held blob.
+      expect(urls.made).toHaveLength(2);
+      expect(urls.made[1]!.blob).toBe(urls.made[0]!.blob);
+      cleanup();
+      expect(urls.made.every((m) => urls.revoked.includes(m.url))).toBe(true);
+    } finally {
+      urls.restore();
+    }
+  });
+
+  it("holds a Markdown picture under the Markdown file's version and its path", async () => {
+    const { images, bytes } = loader();
+    const md = textFile("docs/guide.md", "![the screen](img/home.png)", { size: 500, mtimeMs: 9 });
+    const { unmount } = render(<FileContent file={md} view="preview" images={images} />);
+    await screen.findByRole("img");
+    expect(bytes.mock.calls[0]).toEqual(["docs/img/home.png", expect.anything(), { tag: "docs/guide.md@500:9", own: false }]);
+    unmount();
+    // No mtime on the Markdown file: nothing to hold the picture under.
+    const bare = textFile("docs/guide.md", "![the screen](img/home.png)", { size: 500, mtimeMs: undefined });
+    render(<FileContent file={bare} view="preview" images={images} />);
+    await waitFor(() => expect(bytes).toHaveBeenCalledTimes(2));
+    expect(bytes.mock.calls[1]?.[2]).toBeNull();
+  });
+
+  it("a Markdown picture opened again from the same Markdown version makes no request", async () => {
+    const { images, fetch } = held();
+    const md = textFile("docs/guide.md", "![the screen](img/home.png)", { size: 500, mtimeMs: 9 });
+    const first = render(<FileContent file={md} view="preview" images={images} />);
+    await screen.findByRole("img");
+    first.unmount();
+    render(<FileContent file={md} view="preview" images={images} />);
+    await screen.findByRole("img");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    cleanup();
+    // The Markdown file changed: its pictures are asked for again.
+    render(<FileContent file={{ ...md, mtimeMs: 10 }} view="preview" images={images} />);
+    await screen.findByRole("img");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><script>alert(1)</script><circle r="4"/></svg>\n';
+
+describe("an SVG", () => {
+  it("previews as a picture from its own text, typed image/svg+xml, never as markup in the page", async () => {
+    const urls = trackObjectUrls();
+    try {
+      const { container, unmount } = render(<FileContent file={textFile("icons/logo.svg", SVG)} view="preview" />);
+      const img = await screen.findByRole("img", { name: "logo.svg" });
+      expect(urls.made).toHaveLength(1);
+      expect(urls.made[0]!.blob.type).toBe("image/svg+xml");
+      expect(await urls.made[0]!.blob.text()).toBe(SVG);
+      expect(img.getAttribute("src")).toBe(urls.made[0]!.url);
+      // The file's own elements never reach this document.
+      expect(container.querySelector("script")).toBeNull();
+      expect(container.querySelector("circle")).toBeNull();
+      loadPicture(img, 24, 24);
+      expect(container.querySelector("figcaption")!.textContent).toBe(`24 × 24 · ${String(SVG.length)} B · SVG`);
+      unmount();
+      expect(urls.revoked).toEqual([urls.made[0]!.url]);
+    } finally {
+      urls.restore();
+    }
+  });
+
+  it("shows its source on Source", () => {
+    const { container } = render(<FileContent file={textFile("logo.svg", SVG)} view="source" />);
+    expect(container.querySelector("[data-slot='file-source']")).not.toBeNull();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("one the browser cannot draw says so", async () => {
+    render(<FileContent file={textFile("broken.svg", "<svg")} view="preview" />);
+    fireEvent.error(await screen.findByRole("img"));
+    expect(screen.getByText(en["files.image.undrawable"])).toBeTruthy();
+  });
+});
+
+describe("Preview: Markdown images", () => {
+  function show(text: string, images: FileImages | undefined, path = "docs/guide.md") {
+    return render(<FileContent file={textFile(path, text)} view="preview" images={images} />);
+  }
+
+  it("a relative raster image is read through the image read; an .svg through the text read", async () => {
+    const { images, bytes, texts } = loader();
+    show("# Guide\n\n![the screen](img/home.png)\n\n![the mark](../brand/mark.svg)", images);
+    const shot = await screen.findByRole("img", { name: "the screen" });
+    const mark = await screen.findByRole("img", { name: "the mark" });
+    expect(bytes.mock.calls.map((c) => c[0])).toEqual(["docs/img/home.png"]);
+    expect(texts.mock.calls.map((c) => c[0])).toEqual(["brand/mark.svg"]);
+    expect(shot.className).toContain("max-w-full");
+    expect(mark.getAttribute("src")).toMatch(/^blob:/);
+  });
+
+  it("a remote, root-absolute, escaping, .git or non-picture image stays its alt text and asks for nothing", async () => {
+    const { images, bytes, texts } = loader();
+    show(
+      [
+        "![remote](https://example.com/a.png)",
+        "![proto](//example.com/a.png)",
+        "![rooted](/logo.png)",
+        "![home](~/a.png)",
+        "![up](../../a.png)",
+        "![git](.git/a.png)",
+        "![data](data:image/png;base64,AAAA)",
+        "![doc](notes.md)",
+      ].join("\n\n"),
+      images,
+    );
+    for (const alt of ["remote", "proto", "rooted", "home", "up", "git", "data", "doc"]) expect(screen.getByText(alt)).toBeTruthy();
+    await act(async () => undefined);
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(bytes).not.toHaveBeenCalled();
+    expect(texts).not.toHaveBeenCalled();
+  });
+
+  it("an image that does not load stays its alt text", async () => {
+    const { images } = loader({ outcome: "not-image" });
+    show("![a fake](fake.png)", images);
+    await act(async () => undefined);
+    expect(screen.getByText("a fake")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("with no loader, every image is its alt text, as before", () => {
+    show("![shot](img/home.png)", undefined);
+    expect(screen.getByText("shot")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("loads at most the first 20 images of a document", async () => {
+    const { images, bytes } = loader();
+    show(Array.from({ length: 25 }, (_, i) => `![shot ${String(i)}](img/${String(i)}.png)`).join("\n\n"), images);
+    await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(20));
+    expect(bytes).toHaveBeenCalledTimes(20);
+    expect(screen.getByText("shot 24")).toBeTruthy();
   });
 });

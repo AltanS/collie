@@ -12,8 +12,9 @@ import {
   FilesModeControl,
   useFilesFilter,
 } from "@/components/files-view";
-import { FileContent, defaultView, type FileLinks, type FileView } from "@/components/file-preview";
+import { FileContent, defaultView, type FileImages, type FileLinks, type FileView } from "@/components/file-preview";
 import { CleanRepos, CommitHead } from "@/components/changes-commit";
+import { dropHeldImages, heldImage, imageSubject } from "@/lib/file-image-cache";
 import {
   ChangePath,
   ChangesFilterBar,
@@ -44,6 +45,7 @@ import {
   fetchChangeCommitDiff,
   fetchChangeDiff,
   fetchChanges,
+  fetchFileImage,
   fetchFilesDir,
   fetchFileText,
   type ChangesLookup,
@@ -327,6 +329,8 @@ function ChangesScreen() {
   );
   const targetKey = target.kind === "pane" ? `pane:${paneId}` : `space:${spaceId}`;
   const scope = useScope();
+  // What the held pictures of this screen are filed under (lib/file-image-cache.ts).
+  const imagesOf = imageSubject(scope, targetKey);
   const navigate = useNavigate();
   const nav = useNav();
   const location = useLocation();
@@ -703,7 +707,10 @@ function ChangesScreen() {
   // file has left, and what Previous / Next walk, so it must not go stale under an open file.
   const [failures, setFailures] = useState(0);
   const reread = async (mode: "manual" | "poll") => {
-    if (mode === "manual") setRefreshing(true);
+    if (mode === "manual") {
+      setRefreshing(true);
+      dropHeldImages(imagesOf);
+    }
     // On the commit view the list is still read: it is what says the repo has new uncommitted work.
     const reads = [readList(mode)];
     if (commitRepo !== null) reads.push(readCommit(commitRepo, mode));
@@ -753,6 +760,22 @@ function ChangesScreen() {
   };
   // A link in a Markdown file opens another file or folder, one level down like a row does. The name
   // may be a folder written without its slash, so the read is allowed to fall back (`viaLink`).
+  // The pictures a file screen draws, read off the same machine and root as its text (ADR 0090).
+  // Memoised on what addresses them, so a re-render of the screen does not ask for the bytes again.
+  // Held in memory by version (lib/file-image-cache.ts): the same file opened again draws at once, and
+  // the refresh button drops what this pane or workspace holds before it reads.
+  const fileImages = useMemo<FileImages>(
+    () => ({
+      bytes: (path, signal, version) =>
+        heldImage(imagesOf, path, version, () => fetchFileImage(target, path, scope, signal)),
+      text: async (path, signal) => {
+        const read = await fetchFileText(target, path, scope, signal);
+        if (read.outcome !== "body" || !read.body.available) return null;
+        return read.body.binary || read.body.truncated ? null : read.body.text;
+      },
+    }),
+    [target, scope, imagesOf],
+  );
   const fileLinks: FileLinks = {
     hrefFor: (to) => filesPathTo(to),
     onOpen: (to) => nav.down(filesPathTo(to), { viaLink: true }),
@@ -1036,6 +1059,7 @@ function ChangesScreen() {
             diff={fileState}
             read={filesState}
             links={fileLinks}
+            images={fileImages}
             line={treeLine}
             onPair={pair}
           />
@@ -1367,6 +1391,7 @@ function TreeFileScreen({
   diff,
   read,
   links,
+  images,
   line,
   onPair,
 }: {
@@ -1382,6 +1407,8 @@ function TreeFileScreen({
   diff: FileState | null;
   read: FilesReadState<TreeRead>;
   links: FileLinks;
+  /** Where a picture's bytes come from (ADR 0090). */
+  images: FileImages;
   /** The line a printed path named, marked in the Source (ADR 0088). */
   line?: number;
   onPair: () => void;
@@ -1404,7 +1431,7 @@ function TreeFileScreen({
   else if (!read.data.available) body = <Quiet>{t(unavailableKey(read.data.reason))}</Quiet>;
   // A link that led to a folder: the screen is moving there on its own.
   else if ("entries" in read.data) body = <FilesLoading />;
-  else body = <FileContent file={read.data} view={view} links={links} line={line} />;
+  else body = <FileContent file={read.data} view={view} links={links} images={images} line={line} />;
   return (
     <>
       {/* Sticky, so the reader always knows which file this is, however far down the page. ONE ROW

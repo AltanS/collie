@@ -132,6 +132,9 @@ describe("the route table read off server.ts", () => {
       // The Files existence check (ADR 0088): a POST read, refused without a token like every route.
       "/api/pane/id1/files/exist",
       "/api/workspace/id1/files/exist",
+      // The Files image read (ADR 0090): bytes off the disk, so a missing token is refused here too.
+      "/api/pane/id1/files/image",
+      "/api/workspace/id1/files/image",
     ]) {
       expect(paths).toContain(known);
     }

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { asJsonBoolean, asJsonObject } from "@/lib/json";
 import { resetChangesListCache } from "@/lib/changes-list-cache";
+import { clearHeldImages } from "@/lib/file-image-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { clearNotPaired, isNotPaired } from "@/lib/pairing";
@@ -73,6 +74,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   resetChangesListCache();
+  clearHeldImages();
   clearNotPaired();
 });
 
@@ -528,9 +530,78 @@ describe("Changes: one file of the tree", () => {
     expect(screen.queryByRole("radiogroup", { name: en["files.view.aria"] })).toBeNull();
   });
 
-  it("shows a binary file as its size and nothing else", async () => {
+  it("draws a picture from the image read, with no Source | Preview control (ADR 0090)", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files\/image$/, ({ request }) => {
+        asked.push(new URL(request.url).search);
+        return undefined;
+      }),
+    );
     renderAt([`${FILES}?path=logo.png`]);
-    expect(await screen.findByText("Binary file, 20 KB")).toBeTruthy();
+    const picture = await screen.findByRole("img", { name: "logo.png" });
+    expect(picture.getAttribute("src")).toMatch(/^blob:/);
+    expect(asked).toEqual(["?path=logo.png"]);
+    expect(screen.queryByText("Binary file, 20 KB")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: en["files.view.aria"] })).toBeNull();
+  });
+
+  // The image read is held in memory under the file's version (ADR 0090, amended 2026-10-07).
+  describe("a held picture", () => {
+    function countImageReads() {
+      const asked: string[] = [];
+      server.use(
+        http.get(/\/api\/pane\/[^/]+\/files\/image$/, ({ request }) => {
+          asked.push(new URL(request.url).search);
+          return undefined;
+        }),
+      );
+      return asked;
+    }
+
+    it("opened again makes no second request", async () => {
+      const asked = countImageReads();
+      renderAt([`${FILES}?path=logo.png`]);
+      await screen.findByRole("img", { name: "logo.png" });
+      cleanup();
+      renderAt([`${FILES}?path=logo.png`]);
+      await screen.findByRole("img", { name: "logo.png" });
+      expect(asked).toEqual(["?path=logo.png"]);
+    });
+
+    it("is read again once the file's version changed", async () => {
+      const asked = countImageReads();
+      renderAt([`${FILES}?path=logo.png`]);
+      await screen.findByRole("img", { name: "logo.png" });
+      cleanup();
+      server.use(
+        http.get(/\/api\/pane\/[^/]+\/files$/, ({ request }) => {
+          const path = new URL(request.url).searchParams.get("path");
+          const read = path === null ? null : fixtureFileRead(path);
+          return read === null ? undefined : HttpResponse.json({ ...read, mtimeMs: 1_728_300_999_000 });
+        }),
+      );
+      renderAt([`${FILES}?path=logo.png`]);
+      await screen.findByRole("img", { name: "logo.png" });
+      expect(asked).toHaveLength(2);
+    });
+
+    it("is read again on the refresh button", async () => {
+      const asked = countImageReads();
+      renderAt([`${FILES}?path=logo.png`]);
+      await screen.findByRole("img", { name: "logo.png" });
+      await userEvent.click(screen.getByRole("button", { name: en["changes.refreshAria"] }));
+      await waitFor(() => expect(asked).toHaveLength(2));
+      await screen.findByRole("img", { name: "logo.png" });
+    });
+  });
+
+  it("shows a picture the bridge will not serve as its size, with the reason", async () => {
+    server.use(http.get(/\/api\/pane\/[^/]+\/files\/image$/, () => new HttpResponse("not an image this route serves", { status: 415 })));
+    renderAt([`${FILES}?path=logo.png`]);
+    expect(await screen.findByText(en["files.image.notImage"])).toBeTruthy();
+    expect(screen.getByText(/Binary file, 20 KB/)).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("opens a link row like a file", async () => {

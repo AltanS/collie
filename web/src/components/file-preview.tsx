@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 
-import { MarkdownText, type LinkResolver } from "@/components/markdown-text";
+import { MarkdownText, type ImageResolver, type LinkResolver } from "@/components/markdown-text";
 import { TokenLine } from "@/components/changes-view";
+import { ImageFrame } from "@/components/ui/image-frame";
 import { useLocale } from "@/hooks/use-locale";
+import type { FileImageAnswer } from "@/lib/api";
+import { fileVersionOf, type ImageVersion } from "@/lib/file-image-cache";
 import { HIGHLIGHT_MAX_LINES, highlightFile, highlightFileNow, languageForPath, type RowTokens } from "@/lib/diff-highlight";
-import { resolveFileLink } from "@/lib/files-link";
-import { RENDER_MAX_LINES, formatBytes, previewKindFor, splitLines, type PreviewKind } from "@/lib/files-view";
+import { resolveFileLink, resolveImageSrc } from "@/lib/files-link";
+import {
+  RENDER_MAX_LINES,
+  baseName,
+  formatBytes,
+  imageCaption,
+  isRasterImagePath,
+  previewKindFor,
+  splitLines,
+  type PreviewKind,
+} from "@/lib/files-view";
 import { t, tn } from "@/lib/i18n";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import { parseJsonTree } from "@/lib/json-tree";
@@ -15,8 +27,9 @@ import type { FilesAt } from "@/lib/nav";
 import type { FileRead } from "@/lib/types";
 
 // What the Files view draws for ONE file (ADR 0083): the source as numbered, coloured lines, or a
-// Preview of a Markdown, JSON or HTML file. Presentational only, so the route and the playground
-// mount the same markup.
+// Preview of a Markdown, JSON, HTML or SVG file, or a picture (ADR 0090). Presentational only, so the
+// route and the playground mount the same markup; the bytes of a picture come through a loader the
+// caller hands in ({@link FileImages}).
 //
 // THE FILE IS HOSTILE TEXT. It is whatever sits on the operator's disk: a README from a stranger's
 // repo, a saved web page. So every drawing here puts the file's characters into the DOM as TEXT
@@ -35,6 +48,17 @@ export function defaultView(path: string): FileView {
 
 function Quiet({ children }: { children: React.ReactNode }) {
   return <p className="px-6 py-16 text-center text-sm leading-relaxed text-muted-foreground">{children}</p>;
+}
+
+/** The quiet line a screen shows while a file or a picture is on its way. */
+export function FilesLoading() {
+  useLocale();
+  return (
+    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin" />
+      {t("files.loading")}
+    </div>
+  );
 }
 
 /** One quiet line under a drawing, for the bound a read hit. */
@@ -162,7 +186,20 @@ function anchorIn(root: HTMLElement, hash: string): HTMLElement | null {
  * nothing when there is none. A link that climbs past the root, or that no one gave a way to open,
  * reads as its label.
  */
-export function MarkdownPreview({ text, path, links }: { text: string; path: string; links?: FileLinks }) {
+export function MarkdownPreview({
+  text,
+  path,
+  links,
+  images,
+  version = null,
+}: {
+  text: string;
+  path: string;
+  links?: FileLinks;
+  images?: FileImages;
+  /** The Markdown file's own version (size and mtime), which its pictures are held under. */
+  version?: string | null;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const resolve = useCallback<LinkResolver>(
     (href) => {
@@ -182,12 +219,28 @@ export function MarkdownPreview({ text, path, links }: { text: string; path: str
     },
     [links, path],
   );
+  // An image the file names by a relative path is drawn from the root through the same reads as the
+  // Files view's own (ADR 0090); anything else, a remote picture first of all, stays its alt text.
+  const drawImage = useCallback<ImageResolver>(
+    (src, alt) => {
+      if (images === undefined) return null;
+      const at = resolveImageSrc(src, path);
+      if (at === null) return null;
+      const kind = previewKindFor(at) === "svg" ? "svg" : isRasterImagePath(at) ? "raster" : null;
+      if (kind === null) return null;
+      // A Markdown picture has no read answer of its own to take a version from, so it is held under
+      // the Markdown file's: a changed file, or a refresh, asks for its pictures again.
+      return <MarkdownImage path={at} kind={kind} alt={alt} images={images} tag={version === null ? null : `${path}@${version}`} />;
+    },
+    [images, path, version],
+  );
   return (
     <div ref={root} className="mx-auto w-full max-w-prose px-4 py-4" data-slot="file-markdown">
       <MarkdownText
         text={text}
         className="space-y-3 leading-relaxed"
         resolveLink={resolve}
+        resolveImage={images === undefined ? undefined : drawImage}
         headingIds
         variant="document"
       />
@@ -325,16 +378,208 @@ export function HtmlPreview({ text }: { text: string }) {
   );
 }
 
+// ── Pictures (ADR 0090) ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Where a picture's bytes come from. The route builds it from the screen's pane or workspace and its
+ * scope, so a picture on a crew member is read off that member's disk like its text. `bytes` asks the
+ * bridge's image read (a raster picture, typed by its bytes); `text` asks the ordinary text read and
+ * answers null for a file that is not whole text (an SVG drawn inside a Markdown file). Both may be
+ * asked again for the same path: a file's bytes change under one name, so the screen keeps none of
+ * them itself. `bytes` is given the file's version (null when it has none) and may hold the answer in
+ * memory under it (lib/file-image-cache.ts); the object URLs stay per view either way.
+ */
+export interface FileImages {
+  bytes(path: string, signal: AbortSignal, version: ImageVersion | null): Promise<FileImageAnswer>;
+  text(path: string, signal: AbortSignal): Promise<string | null>;
+}
+
+/**
+ * An object URL for `blob` while the component shows it, and null before. The URL is made in an
+ * effect and REVOKED by that effect's cleanup, on unmount and whenever the blob changes, so a phone
+ * that pages through a folder of pictures holds the bytes of the one on screen and no more.
+ */
+function useObjectUrl(blob: Blob | null): string | null {
+  const [made, setMade] = useState<{ blob: Blob; url: string } | null>(null);
+  useEffect(() => {
+    if (blob === null) return;
+    const url = URL.createObjectURL(blob);
+    setMade({ blob, url });
+    return () => URL.revokeObjectURL(url);
+  }, [blob]);
+  // A URL made for an earlier blob is revoked already, and says nothing about this one.
+  return made !== null && made.blob === blob ? made.url : null;
+}
+
+/** The natural size of a drawn picture, kept per URL so a new picture starts without one. */
+function useNaturalSize(url: string) {
+  const [size, setSize] = useState<{ url: string; width: number; height: number } | null>(null);
+  const [broken, setBroken] = useState<string | null>(null);
+  const onLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      setSize({ url, width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight });
+    },
+    [url],
+  );
+  const onError = useCallback(() => setBroken(url), [url]);
+  const known = size !== null && size.url === url ? size : null;
+  return { width: known?.width, height: known?.height, broken: broken === url, onLoad, onError };
+}
+
+/** Why a picture is not drawn, as the line under the binary file's size says it. */
+type ImageMiss = "too-large" | "not-image" | "failed" | "undrawable";
+
+const IMAGE_MISS_KEY = {
+  "too-large": "files.image.tooLarge",
+  "not-image": "files.image.notImage",
+  failed: "files.image.failed",
+  undrawable: "files.image.undrawable",
+} as const;
+
+/** The binary line a picture falls back to, with the reason it was not drawn. */
+function ImageMissed({ file, why }: { file: FileText; why: ImageMiss }) {
+  return (
+    <Quiet>
+      {t("files.binary", { size: formatBytes(file.size) })}
+      <span className="mt-1 block text-xs">{t(IMAGE_MISS_KEY[why])}</span>
+    </Quiet>
+  );
+}
+
+/** One picture on its board, with its caption, in the file screen's column. */
+function PictureView({ file, url, type }: { file: FileText; url: string; type: string }) {
+  const natural = useNaturalSize(url);
+  if (natural.broken) return <ImageMissed file={file} why="undrawable" />;
+  return (
+    <div className="px-4 py-3" data-slot="file-image">
+      <ImageFrame
+        src={url}
+        alt={baseName(file.path)}
+        caption={imageCaption({ width: natural.width, height: natural.height, size: file.size, type })}
+        onLoad={natural.onLoad}
+        onError={natural.onError}
+      />
+    </div>
+  );
+}
+
+type ImageLoad = { file: FileText; blob: Blob; type: string } | { file: FileText; miss: ImageMiss };
+
+/**
+ * A raster picture the text read called binary: its bytes from the bridge's image read, drawn from an
+ * object URL that is revoked when the file changes or the screen goes. A refusal (413, 415), a failed
+ * read, or bytes this browser cannot draw fall back to the binary line with the reason. `file` is the
+ * text read's answer, so a refresh of the screen, which reads the file again, asks for the bytes again.
+ */
+function ImagePreview({ file, images }: { file: FileText; images: FileImages }) {
+  const [load, setLoad] = useState<ImageLoad | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    const fetchIt = async (): Promise<void> => {
+      try {
+        const tag = fileVersionOf(file.size, file.mtimeMs);
+        const answer = await images.bytes(file.path, abort.signal, tag === null ? null : { tag, own: true });
+        if (abort.signal.aborted) return;
+        setLoad(answer.outcome === "image" ? { file, blob: answer.blob, type: answer.blob.type } : { file, miss: answer.outcome });
+      } catch {
+        if (!abort.signal.aborted) setLoad({ file, miss: "failed" });
+      }
+    };
+    void fetchIt();
+    return () => abort.abort();
+  }, [file, images]);
+  // An answer for an earlier read of this screen says nothing about this one.
+  const now = load !== null && load.file === file ? load : null;
+  const url = useObjectUrl(now !== null && "blob" in now ? now.blob : null);
+  if (now !== null && "miss" in now) return <ImageMissed file={file} why={now.miss} />;
+  if (now === null || url === null) return <FilesLoading />;
+  return <PictureView file={file} url={url} type={now.type} />;
+}
+
+/**
+ * An SVG file drawn as a picture: its text, which the text read already holds, as a Blob typed
+ * `image/svg+xml` behind an object URL, in an `<img>`. An SVG inside `<img>` runs no script and loads
+ * nothing, so a hostile file can draw and do nothing else; it is never put into this page's DOM.
+ */
+export function SvgPreview({ file }: { file: FileText }) {
+  const blob = useMemo(() => new Blob([file.text], { type: "image/svg+xml" }), [file.text]);
+  const url = useObjectUrl(blob);
+  if (url === null) return <FilesLoading />;
+  return <PictureView file={file} url={url} type="image/svg+xml" />;
+}
+
+/**
+ * One image of a Markdown file, from the root (ADR 0090). Its alt text stands in while it loads and
+ * stays when it cannot load, which is how every image in a Markdown preview read before.
+ */
+function MarkdownImage({
+  path,
+  kind,
+  alt,
+  images,
+  tag,
+}: {
+  path: string;
+  kind: "raster" | "svg";
+  alt: string;
+  images: FileImages;
+  /** The Markdown file's version the picture is held under, or null for no holding. */
+  tag: string | null;
+}) {
+  const [loaded, setLoaded] = useState<{ path: string; blob: Blob } | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    const fetchIt = async (): Promise<void> => {
+      try {
+        let blob: Blob | null = null;
+        if (kind === "svg") {
+          const text = await images.text(path, abort.signal);
+          if (text !== null) blob = new Blob([text], { type: "image/svg+xml" });
+        } else {
+          const answer = await images.bytes(path, abort.signal, tag === null ? null : { tag, own: false });
+          if (answer.outcome === "image") blob = answer.blob;
+        }
+        if (!abort.signal.aborted && blob !== null) setLoaded({ path, blob });
+      } catch {
+        // The alt text is the answer.
+      }
+    };
+    void fetchIt();
+    return () => abort.abort();
+  }, [path, kind, images, tag]);
+  const url = useObjectUrl(loaded !== null && loaded.path === path ? loaded.blob : null);
+  const [broken, setBroken] = useState<string | null>(null);
+  if (url === null || broken === url) return <>{alt}</>;
+  return <img src={url} alt={alt} onError={() => setBroken(url)} className="inline-block h-auto max-w-full" />;
+}
+
 // ── One file ───────────────────────────────────────────────────────────────────────────────────
 
 /**
  * What the file screen shows under its header. `view` is ignored for a type with no preview. A binary
- * file shows its size and nothing else; a read cut at the cap says so after the drawing. `line` marks
- * one line of the Source (see `SourceView`); a Preview has no lines, and ignores it.
+ * file shows its size and nothing else, unless its name says it is a picture and `images` can fetch
+ * it: then it is drawn, whatever `view` says, since a picture has no Source (ADR 0090). A read cut at
+ * the cap says so after the drawing. `line` marks one line of the Source (see `SourceView`); a
+ * Preview has no lines, and ignores it.
  */
-export function FileContent({ file, view, links, line }: { file: FileText; view: FileView; links?: FileLinks; line?: number }) {
+export function FileContent({
+  file,
+  view,
+  links,
+  images,
+  line,
+}: {
+  file: FileText;
+  view: FileView;
+  links?: FileLinks;
+  images?: FileImages;
+  line?: number;
+}) {
   useLocale();
-  if (file.binary) return <Quiet>{t("files.binary", { size: formatBytes(file.size) })}</Quiet>;
+  if (file.binary) {
+    if (images !== undefined && isRasterImagePath(file.path)) return <ImagePreview file={file} images={images} />;
+    return <Quiet>{t("files.binary", { size: formatBytes(file.size) })}</Quiet>;
+  }
   if (file.text === "") return <Quiet>{t("files.fileEmpty")}</Quiet>;
   let kind: PreviewKind | null = view === "preview" ? previewKindFor(file.path) : null;
   // A Markdown file of more than 5000 lines is too much to parse and lay out as a page. It reads as
@@ -342,9 +587,10 @@ export function FileContent({ file, view, links, line }: { file: FileText; view:
   if (kind === "markdown" && countLines(file.text) > RENDER_MAX_LINES) kind = null;
   return (
     <>
-      {kind === "markdown" && <MarkdownPreview text={file.text} path={file.path} links={links} />}
+      {kind === "markdown" && <MarkdownPreview text={file.text} path={file.path} links={links} images={images} version={fileVersionOf(file.size, file.mtimeMs)} />}
       {kind === "json" && <JsonPreview text={file.text} path={file.path} />}
       {kind === "html" && <HtmlPreview text={file.text} />}
+      {kind === "svg" && <SvgPreview file={file} />}
       {kind === null && <SourceView text={file.text} path={file.path} line={line} />}
       {file.truncated && <Note>{t("files.fileTruncated")}</Note>}
     </>

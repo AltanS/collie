@@ -9,7 +9,8 @@
 //
 // SCOPE. The subset agents actually emit: headings, fenced code, lists, blockquotes, rules,
 // paragraphs, GFM tables; inline bold/italic/code/links. Not HTML passthrough. An image is never
-// loaded: it reads as its alt text (a badge is a link whose label is the alt text).
+// loaded here: it reads as its alt text (a badge is a link whose label is the alt text), unless the
+// caller asks for image spans, and then the SCREEN decides what to load (the Files preview, ADR 0090).
 //
 // FLAT BY DESIGN. Blocks don't nest: a table or a list inside a blockquote or a list item is read as
 // the outer block's text, so a quoted table still collapses into a run-on line. Closing that means a
@@ -41,7 +42,14 @@ export type MdSpan =
    * the screen that shows the text can, so the renderer asks a resolver and, with none, shows the
    * label as plain text.
    */
-  | { kind: "link"; href: string; spans: MdSpan[]; rel?: true };
+  | { kind: "link"; href: string; spans: MdSpan[]; rel?: true }
+  /**
+   * `![alt](src)`, kept as an image only when the caller asked for images (`parseMarkdown`'s
+   * `images`), which the Files preview does and the transcript does not. `src` is the address AS
+   * WRITTEN and nothing has vetted it: the screen decides whether it names a file it may load, and
+   * draws `alt` otherwise (ADR 0090).
+   */
+  | { kind: "image"; alt: string; src: string };
 
 export type MdBlock =
   | { kind: "heading"; level: number; spans: MdSpan[] }
@@ -141,6 +149,27 @@ const MAX_INLINE_DEPTH = 6;
 /** Link reference definitions of one document: normalised label to the address it names. */
 export type RefDefs = ReadonlyMap<string, string>;
 
+/**
+ * How many more `![alt](src)` of one document may become image spans. Shared by every inline parse
+ * of the document and spent in reading order, so a file of a thousand pictures asks for the first
+ * few and reads the rest as their alt text.
+ */
+export interface ImageBudget {
+  left: number;
+}
+
+/** The most images one document asks the screen to draw, when it asks for any (ADR 0090). */
+export const MAX_DOCUMENT_IMAGES = 20;
+
+/** What every inline parse of one document shares: its definitions, and its image budget if any. */
+interface DocContext {
+  defs: RefDefs;
+  images?: ImageBudget;
+}
+
+// The parts of an image, re-read off the whole match: the alternation's own group holds only the alt.
+const IMAGE_PARTS = new RegExp(String.raw`^!\[([^\[\]\n]{0,500})\]\(\s{0,20}(${URL_BODY})${TITLE}\s{0,20}\)$`);
+
 /** `[Foo  Bar]` and `[foo bar]` name the same definition. */
 const refKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
 
@@ -154,7 +183,7 @@ const refKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase(
  * `defs` are the document's `[ref]: url` definitions, from `parseMarkdown`'s first pass. Without
  * them `[a][ref]` and `[ref]` stay text, which is also what they are when no definition names them.
  */
-export function parseInline(text: string, depth = 0, inLink = false, defs?: RefDefs): MdSpan[] {
+export function parseInline(text: string, depth = 0, inLink = false, defs?: RefDefs, images?: ImageBudget): MdSpan[] {
   const spans: MdSpan[] = [];
   const push = (span: MdSpan) => {
     if (span.kind === "text" && span.text === "") return;
@@ -199,9 +228,17 @@ export function parseInline(text: string, depth = 0, inLink = false, defs?: RefD
     push({ kind: "text", text: text.slice(last, m.index) });
     last = m.index + m[0].length;
     if (m[2] !== undefined) push({ kind: "code", text: m[2] }); // leaf: content is verbatim
-    else if (m[3] !== undefined) push({ kind: "bold", spans: parseInline(m[3], depth + 1, inLink, defs) });
-    else if (m[4] !== undefined) push({ kind: "italic", spans: parseInline(m[4], depth + 1, inLink, defs) });
-    else if (m[5] !== undefined) push({ kind: "text", text: m[5] }); // an image is its alt text, never loaded
+    else if (m[3] !== undefined) push({ kind: "bold", spans: parseInline(m[3], depth + 1, inLink, defs, images) });
+    else if (m[4] !== undefined) push({ kind: "italic", spans: parseInline(m[4], depth + 1, inLink, defs, images) });
+    else if (m[5] !== undefined) {
+      // An image is its alt text, unless the caller asked for images and the budget lasts. Inside a
+      // link's label it stays text, so a badge is still one link and never a picture inside one.
+      const src = images !== undefined && images.left > 0 && !inLink ? IMAGE_PARTS.exec(m[0])?.[2] : undefined;
+      if (src !== undefined && images !== undefined) {
+        images.left--;
+        push({ kind: "image", alt: m[5], src });
+      } else push({ kind: "text", text: m[5] });
+    }
     else if (m[6] !== undefined && m[7] !== undefined) pushLink(m[6], m[7]);
     else if (m[8] !== undefined || m[10] !== undefined) {
       // `[label][ref]`, `[label][]` and `[ref]`: the address is a definition's, found by its key.
@@ -241,11 +278,11 @@ const MAX_LINE_CHARS = 2000;
 const MAX_JOINED_CHARS = 50_000;
 
 /** Inline-parse `text`, unless any of the source `lines` it came from is too long to try. */
-function parseBounded(text: string, lines: readonly string[], defs: RefDefs): MdSpan[] {
+function parseBounded(text: string, lines: readonly string[], doc: DocContext): MdSpan[] {
   if (text.length > MAX_JOINED_CHARS || lines.some((l) => l.length > MAX_LINE_CHARS)) {
     return text === "" ? [] : [{ kind: "text", text }];
   }
-  return parseInline(text, 0, false, defs);
+  return parseInline(text, 0, false, doc.defs, doc.images);
 }
 
 // A LINK REFERENCE DEFINITION: `[ref]: https://x "Title"` on a line of its own, up to three spaces in.
@@ -329,10 +366,10 @@ function parseAlign(line: string): MdAlign[] {
  * Pad/truncate a BODY row to the header's width, so the renderer can assume a rectangle. Ragged body
  * rows are legal GFM and agents emit them; a ragged delimiter row is not — see `startsTable`.
  */
-function fitRow(line: string, width: number, defs: RefDefs): MdSpan[][] {
+function fitRow(line: string, width: number, doc: DocContext): MdSpan[][] {
   const cells = splitRow(line)
     .slice(0, width)
-    .map((cell) => parseBounded(cell, [line], defs));
+    .map((cell) => parseBounded(cell, [line], doc));
   while (cells.length < width) cells.push([]);
   return cells;
 }
@@ -360,10 +397,14 @@ const startsTable = (line: string, next: string | undefined) =>
 /**
  * Parse Markdown into blocks. Pure — no React, no DOM — so the whole grammar is unit-testable and
  * the renderer stays a dumb mapping from AST to elements.
+ *
+ * `images` asks for `![alt](src)` as image spans, the first {@link MAX_DOCUMENT_IMAGES} of the
+ * document in reading order; without it every image is its alt text, as the transcript wants.
  */
-export function parseMarkdown(source: string): MdBlock[] {
+export function parseMarkdown(source: string, opts: { images?: boolean } = {}): MdBlock[] {
   const lines = source.split("\n");
   const defs = collectRefDefs(lines);
+  const doc: DocContext = opts.images === true ? { defs, images: { left: MAX_DOCUMENT_IMAGES } } : { defs };
   const blocks: MdBlock[] = [];
   let i = 0;
 
@@ -405,7 +446,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       blocks.push({
         kind: "heading",
         level: heading[1]!.length,
-        spans: parseBounded(heading[2] ?? "", [line], defs),
+        spans: parseBounded(heading[2] ?? "", [line], doc),
       });
       i++;
       continue;
@@ -419,7 +460,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         body.push(q[1] ?? "");
         i++;
       }
-      blocks.push({ kind: "quote", spans: parseBounded(body.join(" ").trim(), body, defs) });
+      blocks.push({ kind: "quote", spans: parseBounded(body.join(" ").trim(), body, doc) });
       continue;
     }
 
@@ -432,7 +473,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         const item = isItem(lines[i]!);
         // A run stays one list only while its marker kind holds — a switch starts a new block.
         if (!item || OL_ITEM.test(lines[i]!) !== ordered) break;
-        items.push(parseBounded(item[1] ?? "", [lines[i]!], defs));
+        items.push(parseBounded(item[1] ?? "", [lines[i]!], doc));
         i++;
       }
       blocks.push({ kind: "list", ordered, items });
@@ -442,7 +483,7 @@ export function parseMarkdown(source: string): MdBlock[] {
     // Tables come last of the recognised blocks: every other construct wins a line that could be
     // read as either, and a table is the only one that needs to look ahead.
     if (startsTable(line, lines[i + 1])) {
-      const header = splitRow(line).map((cell) => parseBounded(cell, [line], defs));
+      const header = splitRow(line).map((cell) => parseBounded(cell, [line], doc));
       // Widths already match — `startsTable` refused the row otherwise — so the columns line up
       // without padding either side.
       const align = parseAlign(lines[i + 1]!);
@@ -451,7 +492,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       // The body runs until a blank line or anything that isn't a pipe row — a table that bumps
       // into a heading or a fence ends there rather than swallowing it.
       while (i < lines.length && lines[i]!.trim() !== "" && lines[i]!.includes("|")) {
-        rows.push(fitRow(lines[i]!, header.length, defs));
+        rows.push(fitRow(lines[i]!, header.length, doc));
         i++;
       }
       blocks.push({ kind: "table", align, header, rows });
@@ -478,7 +519,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       para.push(l.trim());
       i++;
     }
-    blocks.push({ kind: "paragraph", spans: parseBounded(para.join(" "), para, defs) });
+    blocks.push({ kind: "paragraph", spans: parseBounded(para.join(" "), para, doc) });
   }
 
   return blocks;
@@ -486,7 +527,9 @@ export function parseMarkdown(source: string): MdBlock[] {
 
 /** What a run of spans reads as, flattened: the text a heading slug or a length check is made of. */
 export function spansText(spans: readonly MdSpan[]): string {
-  return spans.map((s) => (s.kind === "text" || s.kind === "code" ? s.text : spansText(s.spans))).join("");
+  return spans
+    .map((s) => (s.kind === "text" || s.kind === "code" ? s.text : s.kind === "image" ? s.alt : spansText(s.spans)))
+    .join("");
 }
 
 /**

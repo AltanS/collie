@@ -83,6 +83,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   offline, or the screen is a saved copy, dialog options and the send button are disabled with
   "Reconnect to answer" and "Reconnect to send". Typing still works and the draft still saves.
   There is no queue, no retry and no send on reconnect.
+- **Files shows pictures.** A PNG, JPEG, GIF, WebP or AVIF opens as the picture, fitted to the
+  screen on a checkerboard that shows transparency, with its size and type under it. An SVG gets a
+  Source | Preview control and opens on Preview, drawn as a picture that runs no script. A README's
+  relative pictures draw in its preview. The bridge reads the type from the file's bytes, never its
+  name, and serves up to 16 MiB; anything else keeps the "Binary file" line with the reason (ADR 0090). A picture
+  you open again draws from memory until the file changes or you tap refresh.
 - **Send now on a waiting message.** When you queue a message while Claude Code works, Chat's
   "Waiting to send" card gets a **Send now** button. It presses Ctrl+Enter, which hands the whole
   queue to the running turn at its next tool call. The bridge declares the key for each harness, and

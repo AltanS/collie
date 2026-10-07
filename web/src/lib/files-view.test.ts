@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { baseName, formatBytes, headerFolder, joinRel, previewKindFor, rootPathOf, splitLines } from "./files-view";
+import { baseName, formatBytes, headerFolder, imageCaption, isRasterImagePath, joinRel, previewKindFor, rootPathOf, splitLines } from "./files-view";
 import { countJsonNodes, JSON_TREE_MAX_NODES, parseJsonTree } from "./json-tree";
 
 describe("previewKindFor", () => {
@@ -10,6 +10,9 @@ describe("previewKindFor", () => {
     ["data.JSON", "json"],
     ["index.html", "html"],
     ["page.htm", "html"],
+    ["icons/logo.svg", "svg"],
+    ["LOGO.SVG", "svg"],
+    ["logo.png", null],
     ["main.ts", null],
     ["json", null],
     [".md", null],
@@ -136,3 +139,30 @@ describe("headerFolder", () => {
   });
 });
 
+
+describe("pictures (ADR 0090)", () => {
+  it.each([
+    ["a.png", true],
+    ["b/c.JPG", true],
+    ["d.jpeg", true],
+    ["e.gif", true],
+    ["f.webp", true],
+    ["g.avif", true],
+    ["h.svg", false],
+    ["i.bmp", false],
+    ["png", false],
+    [".png", false],
+    ["j.png.txt", false],
+  ])("%s is a raster picture: %s", (path, raster) => {
+    expect(isRasterImagePath(path)).toBe(raster);
+  });
+
+  it("captions a picture with each part that is known", () => {
+    expect(imageCaption({ width: 1200, height: 800, size: 52_224, type: "image/png" })).toBe("1200 × 800 · 51 KB · PNG");
+    expect(imageCaption({ size: 52_224, type: "image/png" })).toBe("51 KB · PNG");
+    expect(imageCaption({ width: 0, height: 0, size: 900, type: "image/svg+xml" })).toBe("900 B · SVG");
+    expect(imageCaption({ size: 10, type: "application/octet-stream" })).toBe("10 B");
+    expect(imageCaption({ width: 16, height: 16, type: "IMAGE/WEBP" })).toBe("16 × 16 · WebP");
+    expect(imageCaption({})).toBe("");
+  });
+});

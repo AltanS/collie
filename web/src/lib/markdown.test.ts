@@ -2,8 +2,10 @@ import {
   classifyHref,
   headingAnchors,
   headingSlug,
+  MAX_DOCUMENT_IMAGES,
   parseInline,
   parseMarkdown,
+  spansText,
   type MdSpan,
 } from "./markdown";
 
@@ -647,5 +649,54 @@ describe("the link forms stay fast on hostile input", () => {
     expect(parseInline(`[a](${"x".repeat(501)})`).some((s) => s.kind === "link")).toBe(false);
     expect(parseInline(`[a](x "${"t".repeat(301)}")`).some((s) => s.kind === "link")).toBe(false);
     expect(parseInline(`[a](${"x".repeat(500)})`).some((s) => s.kind === "link")).toBe(true);
+  });
+});
+
+describe("image spans, for a screen that asks for them (ADR 0090)", () => {
+  const spansOf = (source: string): MdSpan[] => {
+    const block = parseMarkdown(source, { images: true })[0];
+    if (block === undefined || block.kind !== "paragraph") throw new Error("no paragraph");
+    return block.spans;
+  };
+
+  it("keeps the alt and the address as written, and drops a title", () => {
+    expect(spansOf('a ![the shot](img/home.png "Home") b')).toEqual([
+      { kind: "text", text: "a " },
+      { kind: "image", alt: "the shot", src: "img/home.png" },
+      { kind: "text", text: " b" },
+    ]);
+    // The parser vets nothing: the screen decides what an address may load.
+    expect(spansOf("![r](https://example.com/a.png)")).toEqual([{ kind: "image", alt: "r", src: "https://example.com/a.png" }]);
+  });
+
+  it("without the option, the transcript's reading is unchanged: the alt text", () => {
+    expect(parseMarkdown("a ![the logo](logo.png) b")).toEqual([{ kind: "paragraph", spans: [{ kind: "text", text: "a the logo b" }] }]);
+  });
+
+  it("a badge stays one link, its image the label", () => {
+    expect(spansOf("[![Build](badge.svg)](https://ci.example/run)")).toEqual([
+      { kind: "link", href: "https://ci.example/run", spans: [{ kind: "text", text: "Build" }] },
+    ]);
+  });
+
+  it("an image inside emphasis, a list and a table is an image too", () => {
+    expect(spansOf("**![bold](b.png)**")).toEqual([{ kind: "bold", spans: [{ kind: "image", alt: "bold", src: "b.png" }] }]);
+    const [list] = parseMarkdown("- ![item](i.png)", { images: true });
+    expect(list).toEqual({ kind: "list", ordered: false, items: [[{ kind: "image", alt: "item", src: "i.png" }]] });
+    const [table] = parseMarkdown("| a |\n| - |\n| ![cell](c.png) |", { images: true });
+    if (table?.kind !== "table") throw new Error("no table");
+    expect(table.rows[0]![0]).toEqual([{ kind: "image", alt: "cell", src: "c.png" }]);
+  });
+
+  it(`the first ${String(MAX_DOCUMENT_IMAGES)} of a document are images, in reading order; the rest are alt text`, () => {
+    const source = Array.from({ length: MAX_DOCUMENT_IMAGES + 5 }, (_, i) => `# ![h${String(i)}](h${String(i)}.png)`).join("\n");
+    const kinds = parseMarkdown(source, { images: true }).map((b) => (b.kind === "heading" ? b.spans[0]?.kind : null));
+    expect(kinds.filter((k) => k === "image")).toHaveLength(MAX_DOCUMENT_IMAGES);
+    expect(kinds.slice(0, MAX_DOCUMENT_IMAGES).every((k) => k === "image")).toBe(true);
+    expect(kinds.slice(MAX_DOCUMENT_IMAGES).every((k) => k === "text")).toBe(true);
+  });
+
+  it("an image's text, for a heading's anchor, is its alt", () => {
+    expect(spansText([{ kind: "text", text: "a " }, { kind: "image", alt: "logo", src: "l.png" }])).toBe("a logo");
   });
 });

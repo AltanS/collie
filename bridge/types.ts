@@ -994,6 +994,12 @@ export type FileReadAnswer =
       root: string;
       path: string;
       size: number;
+      /**
+       * The file's modification time, epoch ms, off the same open handle as `size`. With `size` it is
+       * the file's version: the phone holds a picture in memory under it (ADR 0090). Absent from a
+       * bridge that predates it, and then nothing is held.
+       */
+      mtimeMs?: number;
       binary: boolean;
       truncated: boolean;
       text: string;

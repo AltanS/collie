@@ -15,7 +15,18 @@ import {
   sharedReadCommit,
 } from "./changes.ts";
 import { rootOfWorkspace, type RootSnapshot, withinBound } from "./changes-root.ts";
-import { existingPaths, type FilesExistAnswer, filesQuery, MAX_EXIST_PATHS, serveFiles, UNKNOWN_PATH } from "./files-view.ts";
+import {
+  existingPaths,
+  type FilesExistAnswer,
+  filesQuery,
+  type FilesResult,
+  type ImageReadAnswer,
+  MAX_EXIST_PATHS,
+  MAX_IMAGE_READ_BYTES,
+  readImage,
+  serveFiles,
+  UNKNOWN_PATH,
+} from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
@@ -354,6 +365,15 @@ const WORKSPACE_FILES_ROUTE = /^\/api\/workspace\/([^/]+)\/files$/;
  */
 const PANE_FILES_EXIST_ROUTE = /^\/api\/pane\/([^/]+)\/files\/exist$/;
 const WORKSPACE_FILES_EXIST_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/exist$/;
+
+/**
+ * `GET /api/pane/<id>/files/image?path=` and `GET /api/workspace/<id>/files/image?path=`: one picture
+ * under the Files root, as its own bytes (ADR 0090). The same root, checks and `device-read` gate as
+ * the Files read, a 16 MiB cap, and a type read off the bytes, never the name. Forwarded with `?host=`
+ * like the Files read: `bridge/crew/forward.ts` mirrors both shapes and `forward.test.ts` pins them.
+ */
+const PANE_FILES_IMAGE_ROUTE = /^\/api\/pane\/([^/]+)\/files\/image$/;
+const WORKSPACE_FILES_IMAGE_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/image$/;
 
 /**
  * `GET /api/machines/<id>/history` and `POST /api/machines/<id>/alerts` (ADR 0084). The id is a
@@ -1317,6 +1337,29 @@ export function startServer(opts: {
       }
       const subject = paneExistMatch ? ({ kind: "pane", paneId: id } as const) : ({ kind: "workspace", workspaceId: id } as const);
       return filesExist(rt.engine, subject, req, filesPrivateFolders(cfg), homedir());
+    }
+
+    // ── Files, one picture as bytes (ADR 0090): the image the text read called binary ──
+    const paneImageMatch = pathname.match(PANE_FILES_IMAGE_ROUTE);
+    const workspaceImageMatch = paneImageMatch ? null : pathname.match(WORKSPACE_FILES_IMAGE_ROUTE);
+    const imageMatch = paneImageMatch ?? workspaceImageMatch;
+    if (imageMatch) {
+      const denied = caller.gate("device-read");
+      if (denied) return denied;
+      if (req.method !== "GET") return text("method not allowed", 405);
+      const rt = await caller.resolve();
+      // A member's picture, forwarded: the lead states the picture's headers itself, because the
+      // proxy keeps only a few of the member's (`proxiedResponse`), and a member one release behind
+      // answers a 404 that must not be cached either.
+      if (rt instanceof Response) return forwardedFilesImage(rt);
+      let id: string;
+      try {
+        id = decodeURIComponent(imageMatch[1]!);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      const subject = paneImageMatch ? ({ kind: "pane", paneId: id } as const) : ({ kind: "workspace", workspaceId: id } as const);
+      return filesImage(rt.engine, subject, url, filesPrivateFolders(cfg), homedir());
     }
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
@@ -3138,7 +3181,7 @@ export function parseFilesExistBody(body: JsonValue): string[] | null {
   return paths.filter((p): p is string => typeof p === "string");
 }
 
-/** What an existence check asks about: a pane's Files root, or a workspace's. */
+/** What an existence check or an image read asks about: a pane's Files root, or a workspace's. */
 export type FilesExistSubject = { kind: "pane"; paneId: string } | { kind: "workspace"; workspaceId: string };
 
 /**
@@ -3167,16 +3210,91 @@ export async function filesExist(
   }
   const paths = parseFilesExistBody(body);
   if (paths === null) return text("bad body", 400);
-  const snap = engine.current();
-  let root: string | null = null;
-  if (subject.kind === "pane") {
-    const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === subject.paneId);
-    if (pane) root = paneFilesRootOf(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd, home);
-  } else {
-    root = rootOfWorkspace(snap, subject.workspaceId, home)?.root ?? null;
-  }
+  const root = filesSubjectRoot(engine, subject, home);
   const exists = root === null ? [] : await existingPaths({ root, home, privateFolders }, paths);
   return json({ exists } satisfies FilesExistAnswer, accept);
+}
+
+/**
+ * The Files root of a pane or a workspace, the one the Files read picks for the same subject: a
+ * pane's workspace root, else its own cwd when that is bounded; a workspace's root. `null` when there
+ * is none, or no such pane or workspace.
+ */
+function filesSubjectRoot(engine: ChangesSnapshotSource, subject: FilesExistSubject, home: string): string | null {
+  const snap = engine.current();
+  if (subject.kind === "workspace") return rootOfWorkspace(snap, subject.workspaceId, home)?.root ?? null;
+  const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === subject.paneId);
+  return pane ? paneFilesRootOf(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd, home) : null;
+}
+
+/**
+ * The headers every picture answer carries beside {@link secure}'s (ADR 0090), set on the lead for a
+ * forwarded one too. `no-store` because the browser's cache outlives a pairing (the blob route's
+ * reasoning, `blobRoute`). The CSP drops the answer into an opaque origin with nothing allowed, in
+ * case the bytes are ever opened as a page rather than drawn by the phone's `<img>`; `nosniff` (from
+ * `secure`) keeps a browser from re-deciding what they are; `inline` says it is shown, not saved.
+ */
+const FILES_IMAGE_HEADERS = {
+  "cache-control": "no-store",
+  "content-security-policy": "default-src 'none'; sandbox",
+  "content-disposition": "inline",
+} as const;
+
+/**
+ * The picture's version, as headers: the file's size and mtime off the open handle the bytes came
+ * from. The phone compares them with the version the text read gave it before it holds the picture
+ * (ADR 0090), so bytes of a file that changed in between are never held under the older version.
+ */
+const FILE_SIZE_HEADER = "x-collie-file-size";
+const FILE_MTIME_HEADER = "x-collie-file-mtime";
+
+/**
+ * The answer for one image read, pure and exported so its statuses and headers are tested without
+ * Bun.serve (CLAUDE.md). The picture is `200` with the sniffed type. A refused path, and a subject
+ * with no root, is the Files view's one `404 { error: "unknown-path" }`: the text read already told
+ * the phone why there is no root, so this route has nothing to add. Too big is `413`; bytes that are
+ * none of the five types are `415`, whatever the file is named.
+ */
+export function filesImageResponse(answer: FilesResult<ImageReadAnswer>): Response {
+  if (answer === UNKNOWN_PATH || !answer.available) return unknownPath();
+  if (answer.kind === "too-large") {
+    return text(`image too large (max ${String(Math.round(MAX_IMAGE_READ_BYTES / (1024 * 1024)))} MB)`, 413);
+  }
+  if (answer.kind === "not-image") return text("not an image this route serves", 415);
+  // A copy into a fresh buffer: the read's view may be a window onto a larger one, and the body must
+  // be exactly the file's bytes.
+  const headers = new Headers({ "content-type": answer.type, ...FILES_IMAGE_HEADERS, [FILE_SIZE_HEADER]: String(answer.size) });
+  if (answer.mtimeMs !== undefined) headers.set(FILE_MTIME_HEADER, String(answer.mtimeMs));
+  return secure(new Response(answer.bytes.slice(), { headers }));
+}
+
+/**
+ * A member's answer to an image read, forwarded, with the picture's headers set by the lead. Exported
+ * for its test: the proxy keeps only a few of the member's headers, so these are the lead's to state.
+ */
+export function forwardedFilesImage(res: Response): Response {
+  for (const [name, value] of Object.entries(FILES_IMAGE_HEADERS)) res.headers.set(name, value);
+  res.headers.delete("etag");
+  return secure(res);
+}
+
+/**
+ * GET /api/pane/:id/files/image and /api/workspace/:id/files/image (ADR 0090). `?path=` names one
+ * file relative to the same root the Files read uses ({@link filesSubjectRoot}), read by
+ * {@link readImage} and answered by {@link filesImageResponse}. A request with no `path` is `400`.
+ */
+export async function filesImage(
+  engine: ChangesSnapshotSource,
+  subject: FilesExistSubject,
+  url: URL,
+  privateFolders: readonly string[],
+  home: string = homedir(),
+): Promise<Response> {
+  const path = url.searchParams.get("path");
+  if (path === null) return text("missing path", 400);
+  const root = filesSubjectRoot(engine, subject, home);
+  if (root === null) return unknownPath();
+  return filesImageResponse(await readImage({ root, home, privateFolders }, path));
 }
 
 /** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */

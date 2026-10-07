@@ -2,8 +2,8 @@
 // path becomes a path under the root, how a size reads, and how a file's text splits into lines.
 // Nothing here reads the DOM or the network.
 
-/** What a Preview can draw. */
-export type PreviewKind = "markdown" | "json" | "html";
+/** What a Preview can draw. An SVG is text, read by the text read and drawn as a picture (ADR 0090). */
+export type PreviewKind = "markdown" | "json" | "html" | "svg";
 
 // A Map, not an object literal, so a file named `x.constructor` finds nothing on the prototype.
 const PREVIEW_BY_EXTENSION = new Map<string, PreviewKind>([
@@ -12,14 +12,55 @@ const PREVIEW_BY_EXTENSION = new Map<string, PreviewKind>([
   ["json", "json"],
   ["html", "html"],
   ["htm", "html"],
+  ["svg", "svg"],
 ]);
+
+/** A path's extension, lower-cased, or `""` for none. A dot-file (`.md`) has none. */
+function extensionOf(path: string): string {
+  const name = (path.split("/").at(-1) ?? "").toLowerCase();
+  const dot = name.lastIndexOf(".");
+  return dot <= 0 ? "" : name.slice(dot + 1);
+}
 
 /** The preview a path has by its extension, or null when it has none (Source only). */
 export function previewKindFor(path: string): PreviewKind | null {
-  const name = (path.split("/").at(-1) ?? "").toLowerCase();
-  const dot = name.lastIndexOf(".");
-  if (dot <= 0) return null;
-  return PREVIEW_BY_EXTENSION.get(name.slice(dot + 1)) ?? null;
+  return PREVIEW_BY_EXTENSION.get(extensionOf(path)) ?? null;
+}
+
+// The raster pictures the bridge's image read serves (ADR 0090), by the name a reader expects. The
+// name only decides whether the phone ASKS: the bridge reads the type off the bytes, and a file that
+// is not what its name says answers 415, which the screen shows as the binary line it was before.
+const RASTER_EXTENSIONS: ReadonlySet<string> = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif"]);
+
+/** Whether a path names a raster picture the image read may serve: png, jpg, jpeg, gif, webp, avif. */
+export function isRasterImagePath(path: string): boolean {
+  return RASTER_EXTENSIONS.has(extensionOf(path));
+}
+
+// The word a caption gives each type the bridge sniffs, and SVG's, which the phone draws itself.
+const IMAGE_TYPE_WORD = new Map<string, string>([
+  ["image/png", "PNG"],
+  ["image/jpeg", "JPEG"],
+  ["image/gif", "GIF"],
+  ["image/webp", "WebP"],
+  ["image/avif", "AVIF"],
+  ["image/svg+xml", "SVG"],
+]);
+
+/**
+ * A picture's caption: `1200 × 800 · 51 KB · PNG`. Each part only when it is known: the size the
+ * text read gave, the natural size once the picture has drawn, the word for the type the bytes have.
+ * No words of Collie's own are in it, so it is the same in every language.
+ */
+export function imageCaption(parts: { width?: number; height?: number; size?: number; type?: string }): string {
+  const out: string[] = [];
+  if (parts.width !== undefined && parts.height !== undefined && parts.width > 0 && parts.height > 0) {
+    out.push(`${parts.width} × ${parts.height}`);
+  }
+  if (parts.size !== undefined) out.push(formatBytes(parts.size));
+  const word = parts.type === undefined ? undefined : IMAGE_TYPE_WORD.get(parts.type.split(";")[0]!.trim().toLowerCase());
+  if (word !== undefined) out.push(word);
+  return out.join(" · ");
 }
 
 /**
