@@ -106,7 +106,7 @@ the pointer, it was a supersede.
 | [0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md) | Speech-to-text is a provider seam Collie owns; Codex auth rides the operator's own binary (addendum 2026-10-03: a local command provider) | Accepted |
 | [0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md) | The UI is translated by a typed dictionary, not an i18n library | Amended in scope by 0074 |
 | [0031](./0031-freshness-is-a-declared-promise.md) | Freshness, focus and shape are contract promises, not adapter folklore | Accepted |
-| [0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) | A worktree is opened by the multiplexer, not by Git | Accepted |
+| [0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) | A worktree is opened by the multiplexer, not by Git (addendum 2026-10-07: Herdr 0.9.3 reads the repo off `worktree.list`) | Accepted |
 | [0033](./0033-the-app-face-is-a-device-preference.md) | The app's face is a device preference; an operator's fonts add to the list (differs from 0018) | Accepted |
 | [0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md) | Collie collects nothing, and opt-in is the ceiling | Accepted |
 | [0035](./0035-a-packaged-install-is-not-ours-to-update.md) | A packaged install is not ours to update | Accepted |

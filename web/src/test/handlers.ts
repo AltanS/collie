@@ -20,6 +20,7 @@ import type {
   TranscriptEntry,
   WorkspaceView,
 } from "@/lib/types";
+import { asJsonString, parseJsonObject } from "@/lib/json";
 
 import { censusFor, fixtureMachinesSolo, historyFor } from "./machine-fixtures";
 
@@ -699,6 +700,12 @@ export const handlers = [
     const path = q.get("path");
     const answer = path !== null ? fixtureFileRead(path) : fixtureFilesDir(q.get("dir") ?? "");
     return answer === null ? HttpResponse.json(FIXTURE_FILES_UNKNOWN, { status: 404 }) : HttpResponse.json(answer);
+  }),
+  // Which paths exist under the Files root (ADR 0088): the fixture tree's files and folders.
+  http.post(/\/api\/(?:pane|workspace)\/[^/]+\/files\/exist$/, async ({ request }) => {
+    const body = parseJsonObject(await request.text());
+    const paths = Array.isArray(body?.paths) ? body.paths.map(asJsonString).filter((p): p is string => p !== undefined) : [];
+    return HttpResponse.json({ exists: paths.filter((p) => fixtureFileRead(p) !== null || fixtureFilesDir(p) !== null) });
   }),
   // Pane transcript history. Two turns, newest-anchored, with nothing older behind them.
   http.get(/\/api\/pane\/[^/]+\/history/, () =>

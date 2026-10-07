@@ -184,8 +184,13 @@ A file path the agent prints in Chat or in the terminal mirror is a link to that
 `src/app.ts:42` opens the file on its Source at line 42, with that line marked. Chat draws the path
 as an underlined code chip, and the path on an Edit or a Read card works the same way.
 
-A path is a link only when it leads inside the workspace's folder, the folder Files reads. A path
-outside it, a web address, and a path the terminal broke across two lines stay plain text.
+A path is a link only when it leads inside the workspace's folder, the folder Files reads, and a
+file or a folder is there. A path outside it, a web address, and a path the terminal broke across
+two lines stay plain text.
+
+Collie asks the bridge which printed paths exist, many in one request, and the bridge reads no file
+to answer. A path stays plain text until the answer comes, and for as long as the view is open when
+the answer is no. Offline, and on a crew member's pane, no path is a link.
 
 A folder or a file is read when you open it, and again when you tap refresh. It never updates on a
 timer. The change marks follow the list of changes, which updates every 5 seconds while you look.

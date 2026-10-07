@@ -28,7 +28,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Paths the agent prints are links.** A file path in the chat, on an Edit, Write or Read card, or in
   the terminal mirror opens that file in Files, at the line when the path names one (`src/a.ts:42`).
   The phone resolves the path against the pane's repo; a path outside it stays plain text, and only a
-  root-relative path ever reaches the bridge (ADR 0088).
+  root-relative path ever reaches the bridge, and a path becomes a link only once the bridge has
+  confirmed the file is there, one batched check per view (ADR 0088).
 - **A second agent on a branch.** A pane's menu offers "New agent on a branch": the branch name is
   prefilled, pick one of your launchers or a shell, and Collie creates a git worktree and starts the
   session in it beside the first. Each create carries a request id and the bridge keeps a receipt, so
@@ -129,6 +130,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Herdr 0.9.3 hid every repository from Collie.** The workspace row no longer carries the repo, so
+  the New worktree tab listed nothing and the Files view lost the workspace folder. The bridge now
+  asks Herdr's worktree list once per workspace and caches it (ADR 0032 addendum).
 - **Six older translations had lost a placeholder.** "Show in {mux}" had become "Show in the
   terminal" in German, Spanish, Japanese, Korean and both Chinese files, and the Korean status label
   kept an em dash. A parity test now checks every translation against English for keys,

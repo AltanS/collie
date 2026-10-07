@@ -618,6 +618,9 @@ describe("solo zero-tax — routes", () => {
       // `files` is the Files view (ADR 0083): one folder or one file under the Changes root, a read
       // gated on an authorised device and forwarded to the owning member like `changes`.
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/",
+      // Which paths exist under the Files root (ADR 0088), asked in one batch for the pane view's
+      // links: a read with the Files gate, one `lstat` per path, not forwarded across a crew link.
+      "/^\\/api\\/pane\\/([^/]+)\\/files\\/exist$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       // The Changes view asked by workspace (ADR 0065): the same read as the pane route's `changes`,
       // read-gated and forwarded with `?host=` to the member that owns the space.
@@ -625,6 +628,8 @@ describe("solo zero-tax — routes", () => {
       // The Files view asked by workspace (ADR 0083): the pane route's `files`, by space, gated and
       // forwarded the same way.
       "/^\\/api\\/workspace\\/([^/]+)\\/files$/",
+      // The same existence check, asked by workspace (ADR 0088).
+      "/^\\/api\\/workspace\\/([^/]+)\\/files\\/exist$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
       // Default closed (ADR 0086): an `/api/*` path no route claims passes the read gate, pairing

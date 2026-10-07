@@ -89,3 +89,22 @@ creation time and cannot be reconstructed afterwards.
 - **What would justify revisiting this.** A second multiplexer growing real worktree bookkeeping (so
   the capability stops being one vendor's), or Collie deciding what it means to destroy a space —
   which is the argument `removeWorktree` is waiting on, not a missing line of code.
+
+## Addendum — 2026-10-07: Herdr 0.9.3 no longer puts the repo on the workspace
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten.
+
+On herdr 0.9.3 (protocol 22) the workspace row's `worktree` field is absent. The schema still lists
+it, but `workspace.list` and `session.snapshot` leave it off every workspace, Git ones included. So
+no space carried `repoRoot` or `isWorktree`, and the worktree rows never showed.
+
+The adapter now asks `worktree.list` by workspace id, once per workspace. The answer is cached while
+the workspace exists and cleared when the event stream reconnects; a failure other than
+`not_git_worktree` is asked again after 60 s. `repoRoot` is `source.repo_root`. `isWorktree` is
+`is_linked_worktree` of the entry whose `open_workspace_id` is the workspace, and `folder` is that
+entry's path. `source.source_checkout_path` is not used: asked from inside a linked worktree, it
+still names the repo's main checkout. The call never sends `trust_repository`, which Herdr reserves
+for a repository the operator has checked.
+
+The 0.8.2 row field stays first: when a row carries `worktree`, it is read and no call is made. The
+real 0.9.3 answers are captured in `bridge/mux/herdr/captures/workspaces-0.9.3.json`.

@@ -1,7 +1,9 @@
 // THE FILES VIEW'S BRIDGE HALF — one folder listed, or one text file read, under the Changes root
 // (ADR 0083). Read-only by construction: nothing here writes, renames, creates or deletes. The one
 // child process is `git check-ignore`, once per listing, through Changes' hardened runner, with the
-// names on stdin and no flags at all when git does not answer ({@link gitIgnoredNames}).
+// names on stdin and no flags at all when git does not answer ({@link gitIgnoredNames}). A third
+// call only asks whether paths exist, for the links in the pane view (ADR 0088): the same checks as
+// a read, then one `lstat` per path, and nothing opened ({@link existingPaths}).
 //
 // ── THE THIRD PLACE A CLIENT VALUE BECOMES A PATH ───────────────────────────────────────────────
 // The law in bridge/journal/files.ts names three places, and this is the third. Its bound:
@@ -454,6 +456,46 @@ export async function readFile(ctx: FilesContext, path: string): Promise<FilesRe
   } catch {
     return UNKNOWN_PATH;
   }
+}
+
+// ── Exist ───────────────────────────────────────────────────────────────────────────────────────
+
+/** The most paths one existence check may name (ADR 0088). More is a refused body, not a cut. */
+export const MAX_EXIST_PATHS = 64;
+
+/** What an existence check answers: the asked paths that are a regular file or a folder. */
+export interface FilesExistAnswer {
+  exists: string[];
+}
+
+/**
+ * Which of `paths` name a regular file or a folder under the root, in the order asked, each once
+ * (ADR 0088). A path passes the same checks a read runs (the shape, the real path inside the root's,
+ * `.git`, the private folders, a state secret's basename), then takes ONE `lstat` on its real path.
+ * Nothing is opened and no byte is read. Everything the read would refuse is absent here, and so is
+ * the root itself, a FIFO and a socket: an absent path and a refused one cannot be told apart, as on
+ * the read.
+ */
+export async function existingPaths(ctx: FilesContext, paths: readonly string[]): Promise<string[]> {
+  const asked = [...new Set(paths)];
+  if (asked.length === 0) return [];
+  const r = await resolveRoot(ctx);
+  if (r === null) return [];
+  const found = await mapLimited(asked, LSTAT_CONCURRENCY, async (path): Promise<boolean> => {
+    const segments = parseRelPath(path, r.host);
+    if (segments === null || segments.length === 0) return false;
+    try {
+      const real = await checkedTarget(segments, r);
+      if (real === null) return false;
+      // The real path holds no link by construction; one swapped in since is a link here, and absent,
+      // the way O_NOFOLLOW refuses it on the read.
+      const st = await r.fs.lstat(real).catch(() => null);
+      return st !== null && !st.isSymbolicLink() && (st.isFile() || st.isDirectory());
+    } catch {
+      return false;
+    }
+  });
+  return asked.filter((_, i) => found[i] === true);
 }
 
 /** List or read, as the query asks. */

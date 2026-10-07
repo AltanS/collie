@@ -8,7 +8,9 @@
 - **Trail:** the herdr-web-ui file viewer, read on 2026-10-07 as the model for this feature, which
   opens any printed absolute path and any `file:///` URI through its server's own file route ·
   `web/src/lib/file-paths.ts` (`findFilePaths`, `codeSpanPath`, `resolveFilePathLink`,
-  `paneFilesRoot`) · `web/src/components/file-links.tsx` (`usePaneFileLinks`) ·
+  `paneFilesRoot`) · `web/src/components/file-links.tsx` (`usePaneFileLinks`,
+  `useFileLinkExistence`) · `bridge/files-view.ts` (`existingPaths`) · `bridge/server.ts`
+  (`filesExist`) ·
   `web/src/routes/detail.tsx` · `web/src/components/markdown-text.tsx` ·
   `web/src/components/chat-cards.tsx` · `web/src/components/ansi-output.tsx` ·
   `web/src/components/raw-mirror.tsx` · `web/src/lib/nav.ts` (`FilesAt.line`) ·
@@ -28,7 +30,8 @@ root, and it would undo the bound ADR 0083 drew around Files.
 ## Decision
 
 **A printed path is tappable only when it resolves, on the phone, to a path inside the pane's Changes
-root. Only that root-relative path ever reaches the bridge, through the Files route that exists.**
+root, and the bridge said a file or a folder is there. Only that root-relative path ever reaches the
+bridge, through the Files routes.**
 
 1. **Resolution is client-side.** The phone works out the pane's root from the snapshot the way the
    bridge does (`paneFilesRoot` mirrors `workspaceRoot` and the pane cwd fallback, with the same
@@ -47,13 +50,34 @@ root. Only that root-relative path ever reaches the bridge, through the Files ro
 No bridge field is added. The root the phone works out is a hint for which text to underline. The
 root the bridge looks up on each read decides what is served.
 
+## Existence
+
+Amended 2026-10-07, before the release. On the dev lane about 20 of 24 tapped links opened "This
+file is not available". Agents name files in sibling checkouts, bare names in code spans
+(`languages.ts`), and `./x.md` against a cwd the phone does not know. Resolution alone cannot tell
+these from real files, and a dead link is worse than none.
+
+So a resolved path is a link only after the bridge said it exists. `POST /api/pane/:id/files/exist`
+and `POST /api/workspace/:id/files/exist` take `{ paths }`, at most 64 root-relative paths, and
+answer `{ exists }`. They use the Files root, the Files checks and the `device-read` gate (ADR 0083),
+then one `lstat` per path. No file is opened and no byte is read. Absent is also the answer for
+everything the read would refuse (outside the root, a link that escapes, `.git`, the private
+folders, a state secret's name), so the check tells nothing the read would not.
+
+The phone queues the paths a view draws, sends them 150 ms after the last one, each once, and keeps
+up to 512 answers per pane view. A path is plain text until the answer says yes, and a drawn link
+never turns back into text. Offline, after a failed request, and on a crew member's pane (the route
+is not forwarded over the crew link yet), nothing is asked and nothing is a link.
+
 ## Consequences
 
 - A pane whose root is out of bounds (parked in home), a machine whose paths are not POSIX, and a
   phone that has not heard the launchers answer yet show no links at all. The text reads as before.
 - If the bridge's root rule (`bridge/changes-root.ts`) changes, `paneFilesRoot` must change with it,
-  or links appear that open to "not available", or vanish where they would work. This ADR is the
+  or paths are asked against the wrong root and links vanish where they would work. This ADR is the
   link between the two; the phone's copy names the bridge's rule in its header.
+- An absent answer is kept while the pane view stays open, so a file the agent writes after its path
+  was drawn becomes a link only when the view opens again.
 - A path the terminal wrapped onto two rows is not joined. Revisit when a file counterpart of the
   URL repair through `logicalText` is worth its cost.
 - Windows paths (`C:\x`) are not found. Revisit with a Windows root rule on the phone.

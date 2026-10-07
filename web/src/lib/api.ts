@@ -13,7 +13,7 @@ import {
 } from "./connection-health";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonString, parseJsonObject } from "./json";
+import { asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
@@ -990,6 +990,32 @@ export function fetchFileText(
   signal?: AbortSignal,
 ): Promise<FilesAnswer<FileReadResponse>> {
   return filesRead<FileReadResponse>(`${filesBase(target)}?${new URLSearchParams({ path }).toString()}`, scope, signal);
+}
+
+/** The most paths one existence check may name: the bridge's `MAX_EXIST_PATHS` (ADR 0088). */
+export const FILES_EXIST_MAX = 64;
+
+/**
+ * Which of up to {@link FILES_EXIST_MAX} root-relative paths are a file or a folder under the pane's
+ * Files root (ADR 0088), so the pane view links only a path that opens. A POST because the paths ride
+ * in the body, but a read: it changes nothing, so it takes the read's deadline and stays off the busy
+ * bar. Only paths that were asked come back. A refusal or a failure throws, and the caller draws text.
+ */
+export async function fetchFilesExist(
+  paneId: string,
+  paths: readonly string[],
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const got = await doReq<JsonObject>(withScope(`/api/pane/${encodeURIComponent(paneId)}/files/exist`, scope), {
+    method: "POST",
+    body: JSON.stringify({ paths }),
+    signal,
+    timeoutMs: GET_TIMEOUT_MS,
+  });
+  const asked = new Set(paths);
+  const exists = Array.isArray(got.exists) ? got.exists : [];
+  return exists.map(asJsonString).filter((p): p is string => p !== undefined && asked.has(p));
 }
 
 /**

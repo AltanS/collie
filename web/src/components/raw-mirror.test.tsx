@@ -1,9 +1,11 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
-import { testFileOpener } from "@/test/file-links";
+import { paneLinkHandlers, PaneFileLinks, testFileOpener } from "@/test/file-links";
+import { server } from "@/test/setup";
 
 import { FileLinksProvider } from "./file-links";
 import { RawMirror } from "./raw-mirror";
@@ -42,6 +44,22 @@ describe("RawMirror file paths", () => {
     expect(container.querySelector("pre")!.textContent).toBe("  + edited src/cart.ts:7 done\nnext row");
     fireEvent.click(link);
     expect(opened).toEqual(["/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=7"]);
+  });
+
+  it("through the pane's real opener, a path the bridge did not say exists stays text", async () => {
+    const asked: string[][] = [];
+    server.use(...paneLinkHandlers(["src/cart.ts"], asked));
+    const { container } = render(
+      <MemoryRouter>
+        <PaneFileLinks>
+          <RawMirror lines={splitLines(parseAnsi("edited src/cart.ts\nread architecture/notes.md"))} />
+        </PaneFileLinks>
+      </MemoryRouter>,
+    );
+    expect(container.querySelector("a")).toBeNull();
+    await waitFor(() => expect(container.querySelector("a")?.textContent).toBe("src/cart.ts"));
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(asked).toEqual([["src/cart.ts", "architecture/notes.md"]]);
   });
 
   it("a path outside the root stays plain text", () => {

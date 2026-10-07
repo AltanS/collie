@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 
 // A path the agent printed is a link here too (ADR 0088), found per ROW on the row's plain text,
 // after the ANSI parse. A path the terminal wrapped onto two rows is two pieces, and neither is
-// joined to the other this round: each half is tried alone, and usually neither resolves. The
+// joined to the other this round: each half is tried alone, and usually neither resolves. Only a
+// path the bridge said exists is a link; the opener asks for the others and they stay text. The
 // link keeps the agent's colours and adds only the mirror's own link mark, an underline in
 // `currentColor`, the way an autolinked URL in the pane mirror reads (`ansi-output.tsx`), with the
 // same free em-relative tap pad. A tap on the link opens the file; a tap anywhere else does what it

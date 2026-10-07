@@ -526,7 +526,7 @@ export function PathLabel({ path, className }: { path: string; className?: strin
 }
 
 /**
- * A tool's path, tappable when it resolves under the Changes root (ADR 0088): an Edit, a Write or a
+ * A tool's path, tappable when it resolves under the Changes root and exists there (ADR 0088): an Edit, a Write or a
  * Read opens that file in Files, a Read at the first line it read. The label is the same
  * `PathLabel`, with the underline every in-app link wears; a path that resolves nowhere, or a screen
  * with no opener, draws the plain label. Never inside a button: the caller only uses it in a row
@@ -552,7 +552,8 @@ function ToolPath({ path, line }: { path: string; line?: number }) {
 }
 
 /**
- * What a call printed, with every path in it that resolves under the Changes root tappable (ADR 0088).
+ * What a call printed, with every path in it that resolves under the Changes root and exists there
+ * tappable (ADR 0088).
  * A Grep or a Glob prints the files it found, one per line, and those are the paths worth a tap. The
  * search's own folder (`where`) stays text: it sits inside a translated sentence, in a row that is
  * the output's toggle button, and a link inside a button is not a link. Line by line, so a wrapped

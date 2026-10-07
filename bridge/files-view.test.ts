@@ -8,19 +8,22 @@ import { crewGate } from "./crew/peer-gate.ts";
 import {
   compareEntries,
   decodeFileText,
+  existingPaths,
   type FilesContext,
   filesQuery,
   gitIgnoredNames,
   listFolder,
   MAX_FILES_ENTRIES,
+  MAX_EXIST_PATHS,
   MAX_FILES_READ_BYTES,
+  NODE_FILES_FS,
   parseRelPath,
   readFile,
   UNKNOWN_PATH,
 } from "./files-view.ts";
 import { hostFor } from "./host.ts";
 import { containedRealpath } from "./journal/files.ts";
-import { filesPrivateFolders, paneFiles, paneGateLevel, workspaceFiles } from "./server.ts";
+import { filesExist, filesPrivateFolders, paneFiles, paneGateLevel, parseFilesExistBody, workspaceFiles } from "./server.ts";
 import type { AgentView, FileEntry, FileReadAnswer, FilesListing, WorkspaceView } from "./types.ts";
 
 // The Files view (ADR 0083) is the third place a client value becomes a path, so most of this file
@@ -554,6 +557,121 @@ describe("GET /api/pane/:id/files and /api/workspace/:id/files", () => {
 
   test("the private folders are the state folder and the config folder", () => {
     expect(filesPrivateFolders({ stateDir: "/s/collie", commandsFile: "/c/collie/commands.toml" })).toEqual(["/s/collie", "/c/collie"]);
+  });
+});
+
+// ── Which paths exist (ADR 0088) ──────────────────────────────────────────────────────────────────
+
+describe("existingPaths: one lstat per path, under the same checks as a read", () => {
+  test("a mixed batch answers the files and folders that are there, in the order asked, once each", async () => {
+    const got = await existingPaths(ctx, ["a.txt", "nope.md", "c", "c/inner.txt", "a.txt", "sub/code.ts", "c/deep", "inside", "clink/inner.txt"]);
+    expect(got).toEqual(["a.txt", "c", "c/inner.txt", "sub/code.ts", "c/deep", "inside", "clink/inner.txt"]);
+  });
+
+  test("traversal, an absolute path, an empty or dot segment and the root itself are absent", async () => {
+    const asked = ["../outside/secret.txt", "c/../a.txt", "./a.txt", "/etc/passwd", `${root}/a.txt`, "", "c//inner.txt", "a.txt\0"];
+    expect(await existingPaths(ctx, asked)).toEqual([]);
+  });
+
+  test("a symlink that escapes the root is absent, as a file, a folder, a chain or a loop", async () => {
+    expect(await existingPaths(ctx, ["leak", "leakdir", "leakdir/secret.txt", "chain1", "chain2", "loop"])).toEqual([]);
+  });
+
+  test("the deny rules answer absent: .git, the private folders, and a state secret's basename", async () => {
+    const asked = [
+      ".git",
+      ".git/config",
+      ".GIT/config",
+      "gitlink",
+      ".collie-state",
+      ".collie-state/paired-devices.json",
+      "collie-config/.env",
+      "tostate/paired-devices.json",
+      "sib/collie-other/crew-trust.json",
+      "sib/collie-other/PAIRED-DEVICES.json",
+      "sib/notes",
+    ];
+    expect(await existingPaths(ctx, asked)).toEqual([]);
+    // A sibling's other files are ordinary files.
+    expect(await existingPaths(ctx, ["sib/collie-other/activity.json"])).toEqual(["sib/collie-other/activity.json"]);
+  });
+
+  test("nothing is opened: the check never calls readHead", async () => {
+    let reads = 0;
+    const fs = { ...NODE_FILES_FS, readHead: async () => (reads++, null) };
+    expect(await existingPaths({ ...ctx, fs }, ["a.txt", "B.md"])).toEqual(["a.txt", "B.md"]);
+    expect(reads).toBe(0);
+  });
+
+  test.if(POSIX)("a FIFO is neither a file nor a folder: absent", async () => {
+    const fifo = join(root, "exist.fifo");
+    Bun.spawnSync(["mkfifo", fifo]);
+    try {
+      expect(await existingPaths(ctx, ["exist.fifo"])).toEqual([]);
+    } finally {
+      rmSync(fifo, { force: true });
+    }
+  });
+
+  test("a root that is not narrow enough answers nothing", async () => {
+    expect(await existingPaths({ ...ctx, root: home }, ["projects"])).toEqual([]);
+  });
+});
+
+describe("POST /api/pane/:id/files/exist and /api/workspace/:id/files/exist", () => {
+  let snap: RootSnapshot;
+  const engine = { current: () => snap };
+  const deny = (): string[] => [state, config];
+  const post = (body: string) => new Request("http://x/", { method: "POST", body, headers: { "content-type": "application/json" } });
+  const ask = (paths: unknown[]) => post(JSON.stringify({ paths }));
+
+  beforeAll(() => {
+    snap = {
+      agents: [pane("w1:p1", "w1", join(root, "c", "deep"))],
+      shellPanes: [pane("w1:p2", "w1", join(root, "sub")), pane("w2:p1", "w2", home)],
+      workspaces: [space("w1", "ws"), space("w2", "home")],
+    };
+  });
+
+  test("both routes answer { exists } over the workspace root, with a mixed batch", async () => {
+    const paths = ["a.txt", "missing.md", "../outside/secret.txt", "leak", ".git/config", "c/inner.txt", "c"];
+    for (const subject of [{ kind: "pane", paneId: "w1:p1" }, { kind: "workspace", workspaceId: "w1" }] as const) {
+      const res = await filesExist(engine, subject, ask(paths), deny(), home);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      expect(await res.json()).toEqual({ exists: ["a.txt", "c/inner.txt", "c"] });
+    }
+  });
+
+  test("an entry that is not a string is absent, never a refusal of the batch", async () => {
+    const res = await filesExist(engine, { kind: "pane", paneId: "w1:p1" }, ask(["a.txt", 7, null, { p: 1 }, ["B.md"]]), deny(), home);
+    expect(await res.json()).toEqual({ exists: ["a.txt"] });
+  });
+
+  test("64 paths is the cap: 64 are answered, 65 is a 400", async () => {
+    const full = Array.from({ length: MAX_EXIST_PATHS }, (_, i) => (i === 0 ? "a.txt" : `none-${i}.md`));
+    expect(MAX_EXIST_PATHS).toBe(64);
+    expect(await (await filesExist(engine, { kind: "pane", paneId: "w1:p1" }, ask(full), deny(), home)).json()).toEqual({ exists: ["a.txt"] });
+    const over = await filesExist(engine, { kind: "pane", paneId: "w1:p1" }, ask([...full, "B.md"]), deny(), home);
+    expect(over.status).toBe(400);
+  });
+
+  test("a body of the wrong shape is a 400", async () => {
+    for (const body of ["", "not json", "[]", "null", '{"paths":"a.txt"}', '{"path":["a.txt"]}']) {
+      expect((await filesExist(engine, { kind: "pane", paneId: "w1:p1" }, post(body), deny(), home)).status).toBe(400);
+    }
+    expect(parseFilesExistBody({ paths: ["a", 1, "b"] })).toEqual(["a", "b"]);
+  });
+
+  test("no root, no pane and no workspace all answer an empty list", async () => {
+    for (const subject of [
+      { kind: "pane", paneId: "w2:p1" },
+      { kind: "workspace", workspaceId: "w2" },
+      { kind: "pane", paneId: "nope" },
+      { kind: "workspace", workspaceId: "nope" },
+    ] as const) {
+      expect(await (await filesExist(engine, subject, ask(["projects", "a.txt"]), deny(), home)).json()).toEqual({ exists: [] });
+    }
   });
 });
 

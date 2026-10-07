@@ -37,7 +37,8 @@ import { isPlainClick, useFileLinks, type FileLinkOpener } from "@/components/fi
 
 /**
  * A link in the mirror: an autolinked URL (opens a new tab), or a path the agent printed that
- * resolves under the Changes root (`onOpen`, ADR 0088), which opens Files inside the app.
+ * resolves under the Changes root and exists there (`onOpen`, ADR 0088), which opens Files inside
+ * the app.
  */
 type MirrorLink = LinkMatch & { onOpen?: () => void };
 
@@ -408,7 +409,8 @@ export const AnsiOutput = memo(function AnsiOutput({
   // (when the bridge sent it) lets a URL the pane wrapped be linked as the single URL it was.
   const urls = useMemo(() => findLinks(haystack, logicalText), [haystack, logicalText]);
   // Paths the agent printed, opened in Files (ADR 0088), in that same offset space. The opener is
-  // stable across polls (components/file-links.tsx), so this re-runs when the text does.
+  // stable across polls (components/file-links.tsx), so this re-runs when the text does, and when a
+  // path it asked about turns out to exist.
   const openFile = useFileLinks();
   const links = useMemo(() => mirrorLinks(haystack, urls, openFile), [haystack, urls, openFile]);
 

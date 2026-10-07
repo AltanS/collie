@@ -80,6 +80,10 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "It cannot fail in a way the operator could act on: it swallows its own throw by design (see its doc in lib/api.ts), and the revalidation that every caller runs immediately after is what reports the herd as it actually is.",
   },
+  fetchFilesExist: {
+    channel: "silent",
+    why: "A read that POSTs only because its paths ride in the body (ADR 0088): it changes nothing, so there is nothing to acknowledge. Its whole answer is which printed paths become links, and a failure draws them as plain text.",
+  },
   closePane: {
     channel: "echo",
     why: "The pane VANISHING from the strip is the outcome, so the echo carries only the acceptance — a success status would announce a fact the screen is already making, and the pane sheet closes before it could be read anyway.",

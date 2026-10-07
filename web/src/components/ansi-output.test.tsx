@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { MemoryRouter } from "react-router";
 
 import { http, HttpResponse } from "msw";
 import { AnsiOutput } from "./ansi-output";
 import { FileLinksProvider } from "./file-links";
-import { testFileOpener } from "@/test/file-links";
+import { paneLinkHandlers, PaneFileLinks, testFileOpener } from "@/test/file-links";
 import { server } from "@/test/setup";
 import { codexPaddingScreen } from "@/test/codex-padding";
 
@@ -839,5 +840,23 @@ describe("terminal mirror file paths", () => {
   it("with no opener only URLs are links", () => {
     const { container } = render(<AnsiOutput text="wrote docs/guide.md" />);
     expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("through the pane's real opener, only a path the bridge said exists becomes a link", async () => {
+    const asked: string[][] = [];
+    server.use(...paneLinkHandlers(["src/a.ts"], asked));
+    const { container } = render(
+      <MemoryRouter>
+        <PaneFileLinks>
+          <AnsiOutput text={"one src/a.ts\ntwo ../shared/routes.ts\nthree lib/gone.ts see https://example.com/x"} />
+        </PaneFileLinks>
+      </MemoryRouter>,
+    );
+    // Before the answer only the URL is a link.
+    expect([...container.querySelectorAll("a")].map((a) => a.textContent)).toEqual(["https://example.com/x"]);
+    await waitFor(() => expect(container.querySelectorAll("a")).toHaveLength(2));
+    expect([...container.querySelectorAll("a")].map((a) => a.textContent)).toEqual(["src/a.ts", "https://example.com/x"]);
+    // `../shared/routes.ts` climbs out of the root, so it is never asked about.
+    expect(asked).toEqual([["src/a.ts", "lib/gone.ts"]]);
   });
 });

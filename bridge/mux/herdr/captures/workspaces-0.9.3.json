@@ -1,0 +1,191 @@
+{
+  "_comment": "Captured 2026-10-07 from a live herdr 0.9.3 (protocol 22) on Linux, read-only: `herdr api snapshot` (workspaces only) and `herdr worktree list --workspace <id>` per workspace, plus `herdr worktree list --cwd /tmp`. Paths and project names scrubbed; every key and every value shape is the server's own.",
+  "version": "0.9.3",
+  "protocol": 22,
+  "workspaces": [
+    {
+      "active_tab_id": "w2H:t1",
+      "agent_status": "idle",
+      "focused": true,
+      "label": "atlas",
+      "number": 1,
+      "pane_count": 1,
+      "tab_count": 1,
+      "workspace_id": "w2H"
+    },
+    {
+      "active_tab_id": "w47:t11",
+      "agent_status": "working",
+      "focused": false,
+      "label": "orchard",
+      "number": 2,
+      "pane_count": 1,
+      "tab_count": 1,
+      "workspace_id": "w47"
+    },
+    {
+      "active_tab_id": "w51:t1",
+      "agent_status": "working",
+      "focused": false,
+      "label": "harbor",
+      "number": 3,
+      "pane_count": 1,
+      "tab_count": 1,
+      "workspace_id": "w51"
+    },
+    {
+      "active_tab_id": "w54:t2",
+      "agent_status": "done",
+      "focused": false,
+      "label": "kennel",
+      "number": 4,
+      "pane_count": 3,
+      "tab_count": 2,
+      "workspace_id": "w54"
+    }
+  ],
+  "worktreeList": {
+    "w2H": {
+      "id": "cli:worktree:list",
+      "result": {
+        "source": {
+          "repo_key": "/home/operator/projects/atlas/.git",
+          "repo_name": "atlas",
+          "repo_root": "/home/operator/projects/atlas",
+          "source_checkout_path": "/home/operator/projects/atlas",
+          "source_workspace_id": "w2H"
+        },
+        "type": "worktree_list",
+        "worktrees": [
+          {
+            "branch": "main",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": false,
+            "is_prunable": false,
+            "label": "atlas",
+            "open_workspace_id": "w2H",
+            "path": "/home/operator/projects/atlas"
+          },
+          {
+            "branch": "worktree-agent-ac9c721eb4fe1f179",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": true,
+            "is_prunable": false,
+            "label": "atlas",
+            "path": "/home/operator/projects/atlas/.claude/worktrees/agent-ac9c721eb4fe1f179"
+          },
+          {
+            "is_bare": false,
+            "is_detached": true,
+            "is_linked_worktree": true,
+            "is_prunable": false,
+            "label": "atlas",
+            "path": "/home/operator/projects/atlas/.claude/worktrees/deploy104"
+          }
+        ]
+      }
+    },
+    "w47": {
+      "id": "cli:worktree:list",
+      "result": {
+        "source": {
+          "repo_key": "/home/operator/projects/orchard/.git",
+          "repo_name": "orchard",
+          "repo_root": "/home/operator/projects/orchard",
+          "source_checkout_path": "/home/operator/projects/orchard",
+          "source_workspace_id": "w47"
+        },
+        "type": "worktree_list",
+        "worktrees": [
+          {
+            "branch": "main",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": false,
+            "is_prunable": false,
+            "label": "orchard",
+            "open_workspace_id": "w47",
+            "path": "/home/operator/projects/orchard"
+          }
+        ]
+      }
+    },
+    "w51": {
+      "id": "cli:worktree:list",
+      "result": {
+        "source": {
+          "repo_key": "/home/operator/projects/harbor/.git",
+          "repo_name": "harbor",
+          "repo_root": "/home/operator/projects/harbor",
+          "source_checkout_path": "/home/operator/projects/harbor",
+          "source_workspace_id": "w51"
+        },
+        "type": "worktree_list",
+        "worktrees": [
+          {
+            "branch": "main",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": false,
+            "is_prunable": false,
+            "label": "harbor",
+            "open_workspace_id": "w51",
+            "path": "/home/operator/projects/harbor"
+          },
+          {
+            "branch": "worktree-agent-a242448a29a6255f1",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": true,
+            "is_prunable": false,
+            "label": "harbor",
+            "path": "/home/operator/projects/harbor/.claude/worktrees/agent-a242448a29a6255f1"
+          },
+          {
+            "branch": "worktree-agent-ae27a17f60f113ab9",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": true,
+            "is_prunable": false,
+            "label": "harbor",
+            "path": "/home/operator/projects/harbor/.claude/worktrees/agent-ae27a17f60f113ab9"
+          }
+        ]
+      }
+    },
+    "w54": {
+      "id": "cli:worktree:list",
+      "result": {
+        "source": {
+          "repo_key": "/home/operator/projects/kennel/.git",
+          "repo_name": "kennel",
+          "repo_root": "/home/operator/projects/kennel",
+          "source_checkout_path": "/home/operator/projects/kennel",
+          "source_workspace_id": "w54"
+        },
+        "type": "worktree_list",
+        "worktrees": [
+          {
+            "branch": "main",
+            "is_bare": false,
+            "is_detached": false,
+            "is_linked_worktree": false,
+            "is_prunable": false,
+            "label": "kennel",
+            "open_workspace_id": "w54",
+            "path": "/home/operator/projects/kennel"
+          }
+        ]
+      }
+    }
+  },
+  "notGit": {
+    "error": {
+      "code": "not_git_worktree",
+      "message": "Herdr worktree actions require a path inside a Git work tree"
+    },
+    "id": "cli:worktree:list"
+  }
+}

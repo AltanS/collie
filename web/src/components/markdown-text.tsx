@@ -129,8 +129,9 @@ function PathChip({ target, text }: { target: FileLinkTarget; text: string }) {
 }
 
 /**
- * A run of plain prose. Every path in it that resolves under the Changes root becomes a chip; the
- * rest, and every path that does not resolve, stays text. With no opener (History, a Files preview)
+ * A run of plain prose. Every path in it that resolves under the Changes root, and that the bridge
+ * said exists (ADR 0088), becomes a chip; the rest, and every other path, stays text. Asking the
+ * opener is what queues a path for that check. With no opener (History, a Files preview)
  * this is the plain run it always was.
  */
 function TextRun({ text }: { text: string }) {
@@ -152,7 +153,7 @@ function TextRun({ text }: { text: string }) {
   return <>{nodes}</>;
 }
 
-/** A code span: a chip, and a tappable one when the whole span is a path that resolves. */
+/** A code span: a chip, and a tappable one when the whole span is a path that resolves and exists. */
 function CodeSpan({ text }: { text: string }) {
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);

@@ -124,7 +124,15 @@ describe("the route table read off server.ts", () => {
     const paths = everyApiPath();
     // Negative controls: a scanner that found nothing, or lost the regex routes, fails here.
     expect(paths.length).toBeGreaterThanOrEqual(45);
-    for (const known of ["/api/snapshot", "/api/devices/revoke", "/api/pane/id1/reply", "/api/workspace/id1/worktrees"]) {
+    for (const known of [
+      "/api/snapshot",
+      "/api/devices/revoke",
+      "/api/pane/id1/reply",
+      "/api/workspace/id1/worktrees",
+      // The Files existence check (ADR 0088): a POST read, refused without a token like every route.
+      "/api/pane/id1/files/exist",
+      "/api/workspace/id1/files/exist",
+    ]) {
       expect(paths).toContain(known);
     }
     expect(routeRegexSources().length).toBeGreaterThanOrEqual(8);

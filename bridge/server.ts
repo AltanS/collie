@@ -15,7 +15,7 @@ import {
   sharedReadCommit,
 } from "./changes.ts";
 import { rootOfWorkspace, type RootSnapshot, withinBound } from "./changes-root.ts";
-import { filesQuery, serveFiles, UNKNOWN_PATH } from "./files-view.ts";
+import { existingPaths, type FilesExistAnswer, filesQuery, MAX_EXIST_PATHS, serveFiles, UNKNOWN_PATH } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
@@ -343,6 +343,16 @@ const WORKSPACE_CHANGES_ROUTE = /^\/api\/workspace\/([^/]+)\/changes$/;
  * mirrors this shape and `forward.test.ts` pins it.
  */
 const WORKSPACE_FILES_ROUTE = /^\/api\/workspace\/([^/]+)\/files$/;
+
+/**
+ * `POST /api/pane/<id>/files/exist` and `POST /api/workspace/<id>/files/exist`: which of up to 64
+ * root-relative paths exist under the Files root (ADR 0088), so the pane view links only a path that
+ * opens. The same root, checks and `device-read` gate as the Files read; one `lstat` per path and no
+ * byte read. Not forwardable this round: `bridge/crew/forward.ts` does not list them, so a pane on a
+ * member answers the lead's 501 and the phone draws its paths as text.
+ */
+const PANE_FILES_EXIST_ROUTE = /^\/api\/pane\/([^/]+)\/files\/exist$/;
+const WORKSPACE_FILES_EXIST_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/exist$/;
 
 /**
  * `GET /api/machines/<id>/history` and `POST /api/machines/<id>/alerts` (ADR 0084). The id is a
@@ -1286,6 +1296,26 @@ export function startServer(opts: {
         return text("malformed URL", 400);
       }
       return workspaceFiles(rt.engine, workspaceId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
+    }
+
+    // ── Files, which paths exist (ADR 0088): the pane view's links, asked in one batch ──
+    const paneExistMatch = pathname.match(PANE_FILES_EXIST_ROUTE);
+    const workspaceExistMatch = paneExistMatch ? null : pathname.match(WORKSPACE_FILES_EXIST_ROUTE);
+    const existMatch = paneExistMatch ?? workspaceExistMatch;
+    if (existMatch) {
+      const denied = caller.gate("device-read");
+      if (denied) return denied;
+      if (req.method !== "POST") return text("method not allowed", 405);
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let id: string;
+      try {
+        id = decodeURIComponent(existMatch[1]!);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      const subject = paneExistMatch ? ({ kind: "pane", paneId: id } as const) : ({ kind: "workspace", workspaceId: id } as const);
+      return filesExist(rt.engine, subject, req, filesPrivateFolders(cfg), homedir());
     }
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
@@ -3034,8 +3064,7 @@ export async function paneFiles(
   const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === paneId);
   if (!pane) return json({ paneId, available: false, reason: "no-pane" } satisfies PaneFilesResponse, accept);
   const found = rootOfWorkspace(snap, pane.workspaceId, home);
-  // The fallback is bounded, unlike the Changes route's: a pane sitting in `~` or `/` lists nothing.
-  const root = found?.root ?? (withinBound(pane.cwd, home) ? pane.cwd : null);
+  const root = paneFilesRootOf(found, pane.cwd, home);
   const subject = found
     ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
     : { paneId };
@@ -3067,6 +3096,65 @@ export async function workspaceFiles(
   const answer = await serveFiles({ root: found.root, home, privateFolders }, filesQuery(url));
   if (answer === UNKNOWN_PATH) return unknownPath();
   return json({ ...subject, ...maskFileBody(answer, redact) } satisfies WorkspaceFilesResponse, accept);
+}
+
+/** A pane's Files root: its workspace's, else its own cwd, bounded, unlike the Changes route's fallback. */
+function paneFilesRootOf(found: ReturnType<typeof rootOfWorkspace>, cwd: string, home: string): string | null {
+  // The fallback is bounded: a pane sitting in `~` or `/` lists nothing.
+  return found?.root ?? (withinBound(cwd, home) ? cwd : null);
+}
+
+/**
+ * The `paths` of an existence check's body (ADR 0088), or `null` for a body that is not
+ * `{ paths: [...] }` with at most {@link MAX_EXIST_PATHS} entries. An entry that is not a string is
+ * dropped here and so absent from the answer, never a refusal of the batch.
+ */
+export function parseFilesExistBody(body: JsonValue): string[] | null {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+  const paths = body.paths;
+  if (!Array.isArray(paths) || paths.length > MAX_EXIST_PATHS) return null;
+  return paths.filter((p): p is string => typeof p === "string");
+}
+
+/** What an existence check asks about: a pane's Files root, or a workspace's. */
+export type FilesExistSubject = { kind: "pane"; paneId: string } | { kind: "workspace"; workspaceId: string };
+
+/**
+ * POST /api/pane/:id/files/exist and /api/workspace/:id/files/exist (ADR 0088). Body
+ * `{ paths: string[] }`, at most {@link MAX_EXIST_PATHS}; answer `{ exists: string[] }`, the asked
+ * paths that are a file or a folder under the same root the Files read uses
+ * ({@link existingPaths}). A pane or workspace with no root, or none at all, exists nothing: the
+ * answer is an empty list, never a refusal, so the phone has one case to draw (plain text). A body
+ * of the wrong shape is `400`.
+ */
+export async function filesExist(
+  engine: ChangesSnapshotSource,
+  subject: FilesExistSubject,
+  req: Request,
+  privateFolders: readonly string[],
+  home: string = homedir(),
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseFilesExistBody` checks
+    // every field before it is used.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const paths = parseFilesExistBody(body);
+  if (paths === null) return text("bad body", 400);
+  const snap = engine.current();
+  let root: string | null = null;
+  if (subject.kind === "pane") {
+    const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === subject.paneId);
+    if (pane) root = paneFilesRootOf(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd, home);
+  } else {
+    root = rootOfWorkspace(snap, subject.workspaceId, home)?.root ?? null;
+  }
+  const exists = root === null ? [] : await existingPaths({ root, home, privateFolders }, paths);
+  return json({ exists } satisfies FilesExistAnswer, accept);
 }
 
 /** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */

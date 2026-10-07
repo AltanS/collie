@@ -37,6 +37,7 @@ import type {
   WireTab,
   WireWorkspace,
   WireWorktree,
+  WireWorktreeListing,
 } from "./client.ts";
 
 const IDLE: AgentStatus = "idle";
@@ -323,6 +324,26 @@ export class FakeHerdr implements HerdrRpc {
       },
       ...repo,
     ];
+  }
+
+  /**
+   * `worktree.list` by workspace, as herdr 0.9.3 answers it: the repo whose bookkeeping names the
+   * workspace, `not_git_worktree` for one outside every modelled repo (the seeded spaces are plain
+   * folders), and `workspace_not_found` for an id the session does not have.
+   */
+  async workspaceWorktrees(workspaceId: string): Promise<WireWorktreeListing> {
+    this.assertConnected("worktree.list");
+    if (!this.workspaces.some((workspace) => workspace.workspace_id === workspaceId)) {
+      throw notFound("worktree.list", "workspace_not_found", workspaceId);
+    }
+    for (const [repoRoot, repo] of this.worktreesByRepo) {
+      if (!repo.some((worktree) => worktree.open_workspace_id === workspaceId)) continue;
+      return {
+        source: { repo_root: repoRoot, source_checkout_path: repoRoot },
+        worktrees: await this.listWorktrees(repoRoot),
+      };
+    }
+    throw new Error("herdr worktree.list: not_git_worktree: Herdr worktree actions require a path inside a Git work tree");
   }
 
   async createWorktree(opts: { cwd: string; branch: string }): Promise<CreatedShell> {
