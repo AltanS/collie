@@ -9,6 +9,7 @@ import {
   whenLocaleReady,
 } from "./index";
 import { LOCALES } from "./locale";
+import { en, type MessageKey } from "./messages/en";
 
 // The translation runtime. What is pinned here is everything that fails SILENTLY in production:
 // a value that carries regex punctuation, a plural that reads the wrong language's grammar, the
@@ -20,7 +21,7 @@ beforeEach(() => {
 });
 
 describe("isLocale", () => {
-  it("narrows the seven we ship and refuses everything else", () => {
+  it("narrows the twelve we ship and refuses everything else", () => {
     expect(isLocale("de")).toBe(true);
     expect(isLocale("zh")).toBe(true);
     expect(isLocale("zh-TW")).toBe(true);
@@ -173,5 +174,31 @@ describe("document language", () => {
     expect(document.documentElement.lang).toBe("zh-TW");
     setLocale("en");
     expect(document.documentElement.lang).toBe("en");
+  });
+});
+
+describe("the five newest dictionaries", () => {
+  const slotsOf = (template: string): string[] => [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).toSorted();
+  // SAFETY: `MessageKey` is `keyof typeof en` by construction, so every own key of `en` is one.
+  const englishKeys = Object.keys(en) as MessageKey[];
+  // The five added in one batch. The older bundles predate this check and are not held to it here:
+  // `paneActions.focus.labelWithMux` has dropped its `{mux}` slot in several of them, and `ko` keeps
+  // an em dash in `chat.header.statusAria`.
+  const added = ["ru", "it", "fr", "pt", "tr"] as const;
+
+  it.each(added)("%s has English's slots on every key, no em dash, and is not English", async (code) => {
+    setLocale(code);
+    await whenLocaleReady(code);
+    // `t()` serves English until the bundle lands, so a bundle that failed to load would pass every
+    // slot check below. A few strings are legitimately identical (a unit, a name, a placeholder);
+    // a missing bundle would make nearly all of them identical.
+    const sameAsEnglish = englishKeys.filter((key) => t(key) === en[key]);
+    expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
+
+    for (const key of englishKeys) {
+      const value = t(key);
+      expect(slotsOf(value), `${code} ${key}`).toEqual(slotsOf(en[key]));
+      expect(value, `${code} ${key} has an em dash`).not.toContain("\u2014");
+    }
   });
 });

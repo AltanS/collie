@@ -177,7 +177,7 @@ test("the list asks for the half hour, a machine's page reads its day once, and 
 // A cut label is scrollWidth over clientWidth, so that is what this measures, in every catalog (the
 // minutes string is one word in English, a Latin abbreviation in German and Spanish, a single
 // character beside the number in Japanese and Korean). The 44 px tap height stays.
-for (const locale of ["en", "de", "es", "ja", "ko", "zh", "zh-TW"]) {
+for (const locale of ["en", "de", "es", "ja", "ko", "zh", "zh-TW", "ru", "it", "fr", "pt", "tr"]) {
   test(`the alert duration row clips no label at 375 px, in ${locale}`, async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await page.addInitScript((code) => localStorage.setItem("collie:locale:v1", code), locale);

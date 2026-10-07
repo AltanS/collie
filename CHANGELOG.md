@@ -25,6 +25,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **Collie speaks five more languages.** Русский, Italiano, Français, Português (Brazilian wording) and
+  Türkçe join the language list in Settings → Appearance, so the interface has twelve. Russian reads
+  every count in a form that fits both 2 to 4 and 5 or more.
 - **A paired device can carry an expiry you chose.** `collie pair --expires 30d` (also `h`, `w`)
   puts a lifetime on the token the phone claims. Without the flag a token never expires, exactly as
   before, and no existing token changes. `collie devices set-expiry` and `clear-expiry` adjust a

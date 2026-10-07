@@ -702,7 +702,7 @@ See [Which folder, and which repos](changes.md#which-folder-and-which-repos) for
 
 ## Language
 
-Collie's interface is available in six languages. Configure this under **Settings → Appearance → Language**.
+Collie's interface is available in twelve languages. Configure this under **Settings → Appearance → Language**.
 
 - English
 - Deutsch
@@ -710,6 +710,11 @@ Collie's interface is available in six languages. Configure this under **Setting
 - 한국어
 - 日本語
 - 中文
+- Русский
+- Italiano
+- Français
+- Português
+- Türkçe
 
 The selection is saved locally in the browser per device. The terminal mirror remains untranslated:
 it displays the raw output from the agent, while quick replies, menu labels, and key caps match the

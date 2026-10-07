@@ -38,7 +38,7 @@ until explicitly configured.
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** as the write credential: once a device is paired, every write needs its token
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
-- **Six UI languages** and a per-device typeface setting
+- **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
 

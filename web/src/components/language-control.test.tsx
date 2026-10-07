@@ -30,6 +30,11 @@ describe("LanguageControl", () => {
       "日本語",
       "简体中文",
       "繁體中文",
+      "Русский",
+      "Italiano",
+      "Français",
+      "Português",
+      "Türkçe",
     ]);
     expect(select).toHaveValue("en");
   });

@@ -4,7 +4,7 @@
 // (../../hooks/use-locale.ts) and the message bundles all agree on these names, and a bundle can
 // import the type without dragging the store's module-load side effects into its graph.
 
-export type Locale = "en" | "de" | "es" | "ko" | "ja" | "zh" | "zh-TW";
+export type Locale = "en" | "de" | "es" | "ko" | "ja" | "zh" | "zh-TW" | "ru" | "it" | "fr" | "pt" | "tr";
 
 /** What Collie falls back to: the source-of-truth dictionary, always present in the main chunk. */
 export const DEFAULT_LOCALE = "en" satisfies Locale;
@@ -25,6 +25,11 @@ export const LOCALES: readonly LocaleOption[] = [
   { code: "ja", nativeName: "日本語" },
   { code: "zh", nativeName: "简体中文" },
   { code: "zh-TW", nativeName: "繁體中文" },
+  { code: "ru", nativeName: "Русский" },
+  { code: "it", nativeName: "Italiano" },
+  { code: "fr", nativeName: "Français" },
+  { code: "pt", nativeName: "Português" },
+  { code: "tr", nativeName: "Türkçe" },
 ];
 
 /** Narrow a string of unknown provenance (localStorage, a URL, a header) to a Locale. */

@@ -50,6 +50,11 @@ const LOADERS = {
   ja: async () => (await import("./messages/ja")).ja,
   zh: async () => (await import("./messages/zh")).zh,
   "zh-TW": async () => (await import("./messages/zh-TW")).zhTW,
+  ru: async () => (await import("./messages/ru")).ru,
+  it: async () => (await import("./messages/it")).it,
+  fr: async () => (await import("./messages/fr")).fr,
+  pt: async () => (await import("./messages/pt")).pt,
+  tr: async () => (await import("./messages/tr")).tr,
 } satisfies Record<Exclude<Locale, typeof DEFAULT_LOCALE>, () => Promise<Dictionary>>;
 
 const loaded = new Map<Locale, Dictionary>();
@@ -148,9 +153,10 @@ export function t(key: MessageKey, vars?: TemplateVars): string {
 
 const pluralRules = new Map<Locale, Intl.PluralRules>();
 
-/** `one` or `other` — the only two categories our seven languages need. Anything else Intl reports
- *  (`few`, `many`, `zero`, `two`) maps to `other`, which is the correct bucket for a dictionary
- *  that only carries the pair. */
+/** `one` or `other` — the two categories a dictionary carries. Anything else Intl reports (`few`,
+ *  `many`, `zero`, `two`) maps to `other`. Russian is the language that stretches this: its `few`
+ *  (2 to 4) and `many` (5 to 20) forms differ, so `ru.ts` words each `.other` string as a form that
+ *  stays correct for both, for example "Скрыто шагов: {count}" with the noun in the genitive plural. */
 function pluralSuffix(locale: Locale, count: number): "one" | "other" {
   let rules = pluralRules.get(locale);
   if (rules === undefined) {

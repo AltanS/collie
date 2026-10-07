@@ -1,14 +1,19 @@
 import { de } from "./messages/de";
 import { en } from "./messages/en";
 import { es } from "./messages/es";
+import { fr } from "./messages/fr";
+import { it as itIT } from "./messages/it";
 import { ja } from "./messages/ja";
 import { ko } from "./messages/ko";
+import { pt } from "./messages/pt";
+import { ru } from "./messages/ru";
+import { tr } from "./messages/tr";
 import { zh } from "./messages/zh";
 import { zhTW } from "./messages/zh-TW";
 
 // The Settings row for Machines names what the page shows, and the page's own description names the
 // disk. The row said "CPU, memory, network, alert rules" while the page read disks too, so the row
-// under-promised in all seven catalogs. Each locale's word for a disk sits in both strings.
+// under-promised in all twelve catalogs. Each locale's word for a disk sits in both strings.
 const DISK_WORD = [
   [en, "disk"],
   [de, "Festplatte"],
@@ -17,6 +22,11 @@ const DISK_WORD = [
   [ko, "디스크"],
   [zh, "磁盘"],
   [zhTW, "磁碟"],
+  [ru, "диск"],
+  [itIT, "disco"],
+  [fr, "disque"],
+  [pt, "disco"],
+  [tr, "disk"],
 ] as const;
 
 describe("the Machines row in Settings", () => {
