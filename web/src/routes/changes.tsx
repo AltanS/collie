@@ -86,7 +86,9 @@ import {
   spaceChangesPath,
   spaceFilesPath,
   spacePath,
+  treeUpLanding,
   upTarget,
+  type TreeUpLanding,
   type FilesAt,
 } from "@/lib/nav";
 import { useRootData } from "@/lib/route-data";
@@ -222,6 +224,17 @@ function nextCommit(prev: CommitState | null, repo: string, data: ChangeCommitRe
  */
 const collapsedByPane = new Map<string, ReadonlySet<string>>();
 
+// The tree's back arrow, named for where it lands (`treeUpLanding`): the screens it can step back
+// onto reuse the labels those screens' own arrows have.
+const TREE_BACK_ARIA = {
+  pane: "changes.backAria.pane",
+  workspace: "changes.backAria.workspace",
+  dashboard: "changes.backAria.dashboard",
+  list: "changes.listBackAria",
+  folder: "files.backAria.folder",
+  parent: "files.backAria.parent",
+} satisfies Record<TreeUpLanding, MessageKey>;
+
 /**
  * The header's one place for the root folder, on every screen of this route (the root, a folder, a
  * file, the commit view): `· segment` in mono after the workspace label, where the segment is the
@@ -281,12 +294,14 @@ const PATH_ROW_MONO = "font-mono text-[11px] leading-4";
 const FALLBACK_CHAR_WIDTH = 6.6;
 
 /**
- * The thin row under the file screen's name row: the whole path from the repo root, as much of it as
- * the row's width holds (`fitPath`). The name row stays the title and gives the folder little; this
- * row is where the reader sees where the file lives. `title` carries the full path for a pointer.
- * Until the width is measured, the full path draws with `truncate`, so the row is one line either way.
+ * The thin row under the file screen's name row: the FOLDER the file lives in, from the repo root, as
+ * much of it as the row's width holds (`fitPath`). The name row above holds the file's name alone, so
+ * no part of the path is on screen twice (Altan's phone passes, 2026-10-07 and 2026-10-08: the whole
+ * path under a clipped whole path still read as the same line twice). `title` carries the full path
+ * for a pointer. Until the width is measured, the folder draws with `truncate`, so it is one line.
+ * A file at the root has no folder, and no row.
  */
-function FilePathRow({ path }: { path: string }) {
+function FilePathRow({ folder, path }: { folder: string; path: string }) {
   const [rowRef, width] = useElementWidth<HTMLDivElement>(0);
   const probeRef = useRef<HTMLSpanElement>(null);
   const [charWidth, setCharWidth] = useState(FALLBACK_CHAR_WIDTH);
@@ -305,7 +320,7 @@ function FilePathRow({ path }: { path: string }) {
         title={path}
         className={cn("h-[18px] min-w-0 px-4 text-muted-foreground", PATH_ROW_MONO, budget === null && "truncate")}
       >
-        {budget === null ? path : fitPath(path, budget)}
+        {budget === null ? folder : fitPath(folder, budget)}
       </div>
     </>
   );
@@ -648,8 +663,17 @@ function ChangesScreen() {
   // Keyed with the screen it belongs to, so a commit's file and the same uncommitted file differ. A
   // tree file on its Diff reads through the same machinery as the list's file screen.
   const current = open ?? commitOpen;
+  // The diff's read is LATCHED to its file once the Diff has been shown: the switch to Source or
+  // Preview and back is a change of body only, the read, its answer and its poll stay put, so the
+  // way back shows the held diff at once, with no loading state and no request. The latch is this
+  // file's alone; another file, or the tree's folders, let it go, and the next Diff reads afresh.
+  const diffLatch = useRef<string | null>(null);
+  if (treeFile === null || (diffLatch.current !== null && diffLatch.current !== treeFile)) diffLatch.current = null;
+  if (treeFile !== null && treeView === "diff" && treeChange) diffLatch.current = treeFile;
   const treeDiffRef: ChangeRef | null =
-    treeFile !== null && treeView === "diff" && treeChange ? { repo: treeChange.repo, path: treeChange.path } : null;
+    treeFile !== null && treeChange && (treeView === "diff" || diffLatch.current === treeFile)
+      ? { repo: treeChange.repo, path: treeChange.path }
+      : null;
   const diffRef = current ?? treeDiffRef;
   const openKey = diffRef ? `${commitView ? "commit" : "changes"}\n${diffRef.repo}\n${diffRef.path}` : null;
   const [file, setFile] = useState<FileState | null>(null);
@@ -750,10 +774,11 @@ function ChangesScreen() {
   const previewInFiles = (path: string) => nav.down(filesPathTo({ path }), { fileView: "preview" });
 
   // The tree's moves (ADR 0067): a folder or a file is one level down, recorded as `from`, so the
-  // way up steps back onto the folder it came from and replaces otherwise; a crumb is sideways.
+  // way up steps back onto whatever it came from and replaces onto the parent folder otherwise; a crumb
+  // to an ancestor folder pops back to it (ADR 0067, amended 2026-10-07).
   const treeAt: FilesAt | null = treeFile !== null ? { path: treeFile } : treeDir !== null && treeDir !== "" ? { dir: treeDir } : null;
   const treeParent = treeAt === null ? null : filesParent(treeAt);
-  const upTree = (parent: FilesAt) => nav.upExact(filesPathTo(parent));
+  const upTree = (parent: FilesAt) => nav.upTree(filesPathTo(parent));
   const openEntry = (entry: FileEntry) => {
     const rel = entryPath(treeDir ?? "", entry);
     nav.down(filesPathTo(entry.kind === "dir" ? { dir: rel } : { path: rel }), entry.kind === "link" ? { viaLink: true } : undefined);
@@ -780,7 +805,9 @@ function ChangesScreen() {
     hrefFor: (to) => filesPathTo(to),
     onOpen: (to) => nav.down(filesPathTo(to), { viaLink: true }),
   };
-  const openCrumb = (to: string) => nav.side(filesPathTo(to === "" ? undefined : { dir: to }));
+  const openCrumb = (to: string) => nav.crumb(filesPathTo(to === "" ? undefined : { dir: to }));
+  // The tree's arrow names where it lands, by the same guard the move runs (`treeUpLanding`).
+  const treeBackAria = TREE_BACK_ARIA[treeUpLanding(readFrom(location.state), treeFile !== null, prefs.changesOnly, canStepBack())];
   const pair = () => nav.down(pairedDevicesPath(scope));
   // The Changes segment is one control under the header on every level of the tree. The list is the root's body, so
   // turning it on from a folder or a file also goes up to the root, the way back from there does.
@@ -914,7 +941,7 @@ function ChangesScreen() {
                     : open || commitView
                       ? t("changes.listBackAria")
                       : treeParent !== null
-                        ? t(treeFile !== null ? "files.backAria.folder" : "files.backAria.parent")
+                        ? t(treeBackAria)
                         : t(backAriaKey)
                 }
               >
@@ -1414,6 +1441,7 @@ function TreeFileScreen({
   onPair: () => void;
 }) {
   useLocale();
+  const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
   const size = read.phase === "ready" && read.data.available && "size" in read.data ? read.data.size : null;
   let body: React.ReactNode;
   if (waiting) body = <FilesLoading />;
@@ -1435,7 +1463,7 @@ function TreeFileScreen({
   return (
     <>
       {/* Sticky, so the reader always knows which file this is, however far down the page. ONE ROW
-          (2026-10-06): the path, its size, and the view control at the right, each segment as wide as
+          (2026-10-06): the file's name, its size, and the view control at the right, each segment as wide as
           its word. Two rows and the mode control above them held 166 px of a phone's 844 before the
           first line of the file; this row holds 60. The name keeps its middle truncation and the
           folder gives way first, so the control never pushes the file's name off the row. */}
@@ -1443,7 +1471,7 @@ function TreeFileScreen({
         <div className="flex min-h-11 items-center gap-3 px-4 py-2">
           {change && <StatusLetter status={change.status} />}
           <div className="min-w-0 flex-1">
-            <ChangePath path={path} />
+            <ChangePath path={baseName(path)} />
             {change?.oldPath && (
               <div className="truncate font-mono text-xs text-muted-foreground">
                 {t("changes.file.renamedFrom", { path: change.oldPath })}
@@ -1469,7 +1497,7 @@ function TreeFileScreen({
             />
           )}
         </div>
-        <FilePathRow path={path} />
+        {folder && <FilePathRow folder={folder} path={path} />}
       </div>
       <div className="flex-1 py-2">{body}</div>
     </>

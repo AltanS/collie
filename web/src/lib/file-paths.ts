@@ -397,3 +397,23 @@ export function paneFilesRoot({
   const own = folderOf(pane.cwd);
   return own !== null && withinBound(own, h) ? own : null;
 }
+
+/**
+ * The folder Files opens on when it is entered from a pane: the pane's cwd, as a path relative to the
+ * Changes root, or null to open the root. The root stays the workspace's folder (ADR 0083); a pane
+ * that `cd`-ed into a subfolder only starts the tree there. Null when the cwd IS the root, lies
+ * outside it, is a `.git` folder or sits under one, is unknown, or when the root cannot be worked out
+ * (a Windows machine's paths are not POSIX, so they never get a folder here). Never absolute: the
+ * bridge takes a path relative to the root it looks up itself.
+ */
+export function paneFilesDir(input: {
+  pane: RootPane;
+  panes: readonly RootPane[];
+  workspaces: readonly RootWorkspace[];
+  home: string;
+}): string | null {
+  const root = paneFilesRoot(input);
+  const cwd = folderOf(input.pane.cwd);
+  if (root === null || cwd === null) return null;
+  return readable(under(root, cwd));
+}

@@ -350,8 +350,27 @@ export function ancestorsOf(pathname: string): string[] {
   return [];
 }
 
+/**
+ * A pathname with each segment percent-decoded, for comparing two spellings of one screen. A pane id
+ * holds a colon (`w1:p2`), which `panePath` writes as `%3A` and a typed or pasted URL may not, and
+ * the router keeps the spelling the entry was opened with. A segment that is not valid encoding is
+ * kept as written.
+ */
+export function decodedPath(pathname: string): string {
+  return pathname
+    .split("/")
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    })
+    .join("/");
+}
+
 function matches(pattern: string, pathname: string): boolean {
-  if (pattern !== ANY_SPACE) return pattern === pathname;
+  if (pattern !== ANY_SPACE) return decodedPath(pattern) === decodedPath(pathname);
   return /^\/space\/[^/]+$/.test(pathname);
 }
 
@@ -370,8 +389,16 @@ export type UpMove = { kind: "back" } | { kind: "replace"; to: string };
  * router in a test) has no index to read, and `from` alone decides there — so this reads `true`.
  */
 export function canStepBack(): boolean {
-  const idx = asJsonNumber(asJsonObject(window.history.state)?.idx);
+  const idx = historyIdx();
   return idx === undefined ? true : idx > 0;
+}
+
+/**
+ * The index React Router stamped on the current history entry (`history.state.idx`), or `undefined`
+ * where the router does not stamp `window.history` (a memory router in a test, a fresh document).
+ */
+export function historyIdx(): number | undefined {
+  return asJsonNumber(asJsonObject(window.history.state)?.idx);
 }
 
 /**
@@ -404,7 +431,7 @@ export function upTarget(here: string, from: string | undefined, fallback: strin
  * parent, and otherwise replaces this entry with it, so the space's own up still finds the dashboard.
  */
 export function resolveUpTo(from: string | undefined, target: string, canGoBack = true): UpMove {
-  if (canGoBack && from !== undefined && pathOnly(from) === pathOnly(target)) return { kind: "back" };
+  if (canGoBack && from !== undefined && decodedPath(pathOnly(from)) === decodedPath(pathOnly(target))) return { kind: "back" };
   return { kind: "replace", to: target };
 }
 
@@ -414,7 +441,7 @@ function locationKey(href: string): string {
   const pathname = cut === -1 ? href : href.slice(0, cut);
   const search = cut === -1 || href[cut] === "#" ? "" : href.slice(cut + 1).split("#")[0] ?? "";
   const pairs = [...new URLSearchParams(search).entries()].map(([k, v]) => `${k}=${v}`).toSorted();
-  return `${pathname}?${pairs.join("&")}`;
+  return `${decodedPath(pathname)}?${pairs.join("&")}`;
 }
 
 /**
@@ -426,6 +453,57 @@ function locationKey(href: string): string {
 export function resolveUpToExact(from: string | undefined, target: string, canGoBack = true): UpMove {
   if (canGoBack && from !== undefined && locationKey(from) === locationKey(target)) return { kind: "back" };
   return { kind: "replace", to: target };
+}
+
+/**
+ * The back arrow of a folder or a file in the Files tree. It goes back to where the operator came
+ * from whenever it can, because the tree is entered from many places (a path a pane printed, a
+ * diff's Preview, a link inside a Markdown file) and the phone's edge swipe is a step back to that
+ * same entry (ADR 0067). `resolveUpToExact` steps back only onto the parent FOLDER, which for those
+ * entries meant the arrow walked up the folders while the swipe left the tree: two screens for one
+ * gesture. With no `from` (a cold deep link) or no entry behind, it replaces onto `parent`, the
+ * structural parent folder, so the child never stays behind it.
+ */
+export function resolveTreeUp(from: string | undefined, parent: string, canGoBack = true): UpMove {
+  if (canGoBack && from !== undefined) return { kind: "back" };
+  return { kind: "replace", to: parent };
+}
+
+/** What the tree's back arrow lands on, named for its accessible label. */
+export type TreeUpLanding = "pane" | "workspace" | "dashboard" | "list" | "folder" | "parent";
+
+/**
+ * Where {@link resolveTreeUp} lands, as a name for the arrow's label: the same guard, read without
+ * moving. A step back lands on `from`, and `from` is a pane, its history, a space, the dashboard, a
+ * Changes diff or commit, the change list, or another place in the tree. A replace lands on the
+ * parent folder. Both land on a place in the tree as "the folder" from a file and "up one folder"
+ * from a folder, the labels the arrow always had, so the tree's own places answer `replaced`.
+ * `fromFile` says whether the screen the arrow sits on is a file. The Changes screen with no file in
+ * its query is the tree's root, or the change list when the operator chose Changes only: `rootIsList`
+ * says which.
+ */
+export function treeUpLanding(
+  from: string | undefined,
+  fromFile: boolean,
+  rootIsList: boolean,
+  canGoBack = true,
+): TreeUpLanding {
+  const replaced: TreeUpLanding = fromFile ? "folder" : "parent";
+  if (!canGoBack || from === undefined) return replaced;
+  const seg = pathOnly(from).split("/").filter((s) => s !== "");
+  const [head, , leaf, sub] = seg;
+  if (seg.length === 0) return "dashboard";
+  if (head === "space" && seg.length === 2) return "workspace";
+  if (head === "pane" && (seg.length === 2 || (seg.length === 3 && leaf === "history"))) return "pane";
+  if ((head === "pane" || head === "space") && leaf === "changes") {
+    if (seg.length === 4 && sub === "commit") return "list";
+    if (seg.length === 3) {
+      const cut = from.indexOf("?");
+      const diff = cut !== -1 && new URLSearchParams(from.slice(cut + 1).split("#")[0]).has("path");
+      if (diff || rootIsList) return "list";
+    }
+  }
+  return replaced;
 }
 
 /**

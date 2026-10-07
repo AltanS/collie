@@ -120,9 +120,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   only on the first keystroke while offline that leaves text in the field, not on going offline.
 - **The file screen in Changes: icons, a path row, and a clearer end of the list.** The Diff, Source
   and Preview switcher shows icons, each with its word as the title and the accessible name. A thin
-  mono row under the name shows the path from the repo root and folds the middle folders to an
-  ellipsis when the row is too narrow, the file name last to go. Previous and Next lose their border
-  and go muted when there is nothing to step to.
+  mono row under the name shows the path from the repo root, only when the name row has to cut the
+  path short, and folds the middle folders to an ellipsis when the row is too narrow, the file name
+  last to go. Previous and Next lose their border and go muted when there is nothing to step to.
+- **Switching a changed file between Changes and Code shows the held diff at once.** The diff of the
+  open file stays read while its source shows, and the poll keeps it fresh, so the way back no
+  longer reloads it. The refresh button still reads it again.
 - **Pairing is always on, and every request needs the token, reads included.** A bridge with no
   paired device answers `403 device not paired` to every `/api/*` route except `/api/health` and
   `/api/pair`, so run `collie pair` on the host first; `collie doctor` and the installers now say so.
@@ -163,7 +166,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   "(agent gone)", "Pane is gone". "Gone" now needs a live answer. Offline, the pane's row comes
   from any herd the phone kept for that machine, and a pane with no saved text says "No saved copy
   of this pane on this phone." with Send off.
-
+- **Back in Files goes where you came from.** A file opened from a path a pane printed, from a diff's
+  Preview or from a link in a Markdown file now backs out to that pane, diff or file with the arrow,
+  the same screen the edge swipe lands on. It used to walk up the folders one at a time. A breadcrumb
+  to a folder above you pops back to it instead of stacking a second copy. Files opened from a pane
+  that has moved into a subfolder now starts in that folder, with the root one crumb away (ADR 0067).
 - **Typed characters never reach the audit log.** Type mode sends one key per character, and the
   audit trail listed `keys` as a parameter, so a password typed on the phone landed in `audit.log`
   character by character, even with `COLLIE_AUDIT_CONTENT=none`. Typed characters, spaces and tabs

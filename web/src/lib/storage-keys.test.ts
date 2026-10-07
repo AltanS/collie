@@ -76,6 +76,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie.nav.booted", { area: "session", prefix: false, fate: "kept", why: "navigation state" }],
   ["collie.nav.seeded", { area: "session", prefix: false, fate: "kept", why: "navigation state, an app path" }],
   ["collie.nav.pendingOpen", { area: "session", prefix: false, fate: "kept", why: "navigation state, an app path" }],
+  ["collie.nav.trail", { area: "session", prefix: false, fate: "kept", why: "navigation state, the app paths this tab visited" }],
   // ── Dropped: the 1.17 last-seen mirror, moved into the on-device store (ADR 0087) ──
   ["collie:last-snapshot:", { area: "session", prefix: true, fate: "dropped", why: "lib/last-seen.ts deletes it at boot" }],
   ["collie:last-pane:", { area: "session", prefix: true, fate: "dropped", why: "lib/last-seen.ts deletes it at boot" }],

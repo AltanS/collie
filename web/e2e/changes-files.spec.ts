@@ -200,11 +200,12 @@ test("a Markdown link opens the other file in Files, an anchor scrolls in place,
   await expect(page).toHaveURL(/\/changes\/files\?path=docs%2Fguide\.md$/);
   await expect(page.getByRole("link", { name: "the readme" })).toBeVisible();
 
-  // And the arrow, by the back-level rules, goes up from a file to its folder.
+  // And the arrow, by the back-level rules (ADR 0067, amended 2026-10-07), steps back to where the
+  // file was opened from: here the guide, the same screen the edge swipe lands on.
   await page.getByRole("link", { name: "the readme" }).click();
   await expect(page).toHaveURL(/\/changes\/files\?path=README\.md$/);
   await page.getByRole("button", { name: en["files.backAria.folder"] }).click();
-  await expect(page).toHaveURL(new RegExp(`/pane/${PANE}/changes$`));
+  await expect(page).toHaveURL(/\/changes\/files\?path=docs%2Fguide\.md$/);
 });
 
 // THE HTML PREVIEW UNDER THE SHELL'S CSP. The document below tries everything a hostile page would:

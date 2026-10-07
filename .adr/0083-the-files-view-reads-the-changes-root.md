@@ -245,6 +245,17 @@ left the header's second line. The header keeps Filter, the Tree toggle (Changes
 The "{count} ignored hidden" footer is the only switch for ignored rows: once they are shown it
 reads "{count} ignored shown" and offers **Hide**. Read "Changes only" above as the Changes segment.
 
+## Amended 2026-10-07: Files opens at the pane's folder
+
+The web side only; the root and the bridge are unchanged. A pane that had `cd`-ed into a subfolder
+opened Files at the workspace folder, above where it works. The belt's Files button now opens the
+tree on the pane's folder when that lies strictly below the root the phone derives (`paneFilesDir`,
+`web/src/lib/file-paths.ts`, from `paneFilesRoot` and the pane's cwd), as `?dir=<relative path>`, a
+step down from the pane. When the cwd is the root, outside it, under `.git`, unknown or not a POSIX
+path, or when the operator chose Changes only (the root then opens as the list), it opens the root
+as before. The path sent is relative; the bridge still looks the root up itself. The arrow from that
+folder steps back to the pane, and the breadcrumb reaches the root (ADR 0067, amended the same day).
+
 ## Amended 2026-10-08: the opened file is checked too
 
 The race above is now closed on the handle, before any byte is read, for the text read and the image

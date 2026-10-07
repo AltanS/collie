@@ -128,3 +128,38 @@ and sits under its list). The dashboard's footer tabs are a device preference an
   - A commit view. It waits for the operator's decision.
 - **Revisit** if a sheet ever needs to close on the swipe: that is a history entry per sheet, and
   every close path would then have to step back.
+
+## Amended 2026-10-07: the Files tree's arrow and breadcrumb
+
+Measured on the dev lane. A pane printed `src/lib/nav.ts:120`, the tap opened the file one level down
+from the pane (`from` = the pane), and the arrow then went to `?dir=src/lib`, then `?dir=src`, each a
+replace, because the tree's up was `upExact(parentFolder)` and `from` was not that folder. The edge
+swipe went straight back to the pane. A diff's Preview and a link inside a Markdown file did the same.
+Rule 3 says the arrow and the swipe land on the same screen, and in the tree they did not.
+
+- **The tree's arrow steps back to wherever the entry came from** (`resolveTreeUp`, `useNav().upTree`):
+  a step back whenever the entry has a `from` and the router is not on its first entry, else a replace
+  onto the structural parent folder, as before. It no longer asks that `from` be the parent folder.
+  Its accessible name says where it lands (`treeUpLanding`), reusing the pane's, the list's and the
+  tree's own labels; a place in the tree keeps "Back to the folder" from a file and "Up one folder"
+  from a folder.
+- **A breadcrumb to an ancestor folder pops** (`useNav().crumb`, `resolveCrumb`). Browser history
+  cannot be read, so the app writes down what the tab shows: history index to href, from one
+  `useLocation` effect in the root layout (`useNavTrail`, `lib/nav-trail.ts`), in memory and mirrored
+  to sessionStorage (`collie.nav.trail`, 100 entries, oldest dropped first). A crumb looks back from
+  the current index for the nearest entry that is the target folder, requiring every entry between to
+  be a place of the same Files screen (same pane or space, same machine and session) inside the
+  target's subtree, and goes back that many entries. When the target is not behind us but places below
+  it are (Files opened on the pane's own folder, `collie/web`, and the crumb names `collie`), it goes
+  back to the first of those places and replaces THAT entry with the target (`findCrumbBase`), so no
+  folder below the target stays one swipe away. Otherwise it replaces onto the target. The landing
+  entry keeps a `from` only when it lies outside the tree (the pane), so its arrow steps back there;
+  a `from` inside the tree names a place below the folder and is dropped. Before, a crumb was a sideways replace that carried `from`: after root, a, a/b, a/b/c,
+  tapping `a` left root, a, a/b, a, and the next swipe went down into a/b.
+- **Sheets, panes and diffs between the two stop the pop.** A pop would skip them, and they would be
+  one swipe away from a folder that claims to be above them.
+- **Two spellings of one id are one screen.** A pane id holds a colon. `panePath` writes it as `%3A`,
+  a typed or pasted URL may not, and the router keeps whichever spelling the entry was opened with.
+  The ancestor and same-place tests compared the text, so a pane opened by a typed URL was not the
+  parent of its own Changes screen and the arrow replaced instead of stepping back. They compare
+  percent-decoded segments now (`decodedPath`).

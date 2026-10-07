@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { codeSpanPath, findFilePaths, paneFilesRoot, resolveFilePathLink } from "./file-paths";
+import { codeSpanPath, findFilePaths, paneFilesDir, paneFilesRoot, resolveFilePathLink } from "./file-paths";
 
 /** The paths found in `text`, as printed (with the suffix), for a compact table. */
 const printed = (text: string) => findFilePaths(text).map((f) => text.slice(f.start, f.end));
@@ -191,5 +191,48 @@ describe("paneFilesRoot", () => {
   it("no home known yet, or a Windows home, gives no root", () => {
     expect(paneFilesRoot({ pane, panes: [pane], workspaces: [], home: "" })).toBeNull();
     expect(paneFilesRoot({ pane, panes: [pane], workspaces: [], home: "C:\\Users\\me" })).toBeNull();
+  });
+});
+
+describe("paneFilesDir: where Files opens from a pane", () => {
+  const home = "/var/home/me";
+  const space = [{ workspaceId: "w1", folder: "/var/home/me/repo" }];
+  const dirOf = (cwd: string, workspaces = space, extra: { host?: string } = {}) => {
+    const pane = { workspaceId: "w1", cwd, ...extra };
+    return paneFilesDir({ pane, panes: [pane], workspaces, home });
+  };
+
+  it("is the pane's folder relative to the workspace root when it lies inside", () => {
+    expect(dirOf("/var/home/me/repo/web/src")).toBe("web/src");
+    expect(dirOf("/var/home/me/repo/web/")).toBe("web");
+  });
+
+  it("opens the root when the pane sits at the root", () => {
+    expect(dirOf("/var/home/me/repo")).toBeNull();
+    expect(dirOf("/var/home/me/repo/")).toBeNull();
+  });
+
+  it("opens the root when the pane is outside it", () => {
+    expect(dirOf("/var/home/me/other/web")).toBeNull();
+    expect(dirOf("/var/home/me/repo-two")).toBeNull();
+    expect(dirOf("/var/home/me")).toBeNull();
+  });
+
+  it("opens the root when the folder is unknown", () => {
+    expect(dirOf("")).toBeNull();
+    expect(dirOf("   ")).toBeNull();
+  });
+
+  it("reads /home and /var/home as one folder, as the root lookup does", () => {
+    expect(dirOf("/home/me/repo/web")).toBe("web");
+  });
+
+  it("never asks for a .git folder, or a Windows path", () => {
+    expect(dirOf("/var/home/me/repo/.git/hooks")).toBeNull();
+    expect(dirOf("C:\\Users\\me\\repo\\web", [{ workspaceId: "w1", folder: "C:\\Users\\me\\repo" }])).toBeNull();
+  });
+
+  it("uses the pane's own cwd as the root when no workspace folder is known, so there is nothing below it", () => {
+    expect(dirOf("/var/home/me/repo/web", [])).toBeNull();
   });
 });

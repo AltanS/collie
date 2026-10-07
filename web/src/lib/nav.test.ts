@@ -6,6 +6,7 @@ import {
   filesParent,
   filesPath,
   homePath,
+  decodedPath,
   isAncestor,
   machinePath,
   machinesPath,
@@ -14,12 +15,14 @@ import {
   panePath,
   parentChain,
   readFrom,
+  resolveTreeUp,
   resolveUp,
   resolveUpTo,
   resolveUpToExact,
   settingsPath,
   spaceChangesCommitPath,
   spaceFilesPath,
+  treeUpLanding,
   updatesPath,
   upTarget,
 } from "./nav";
@@ -409,6 +412,55 @@ describe("resolveUpToExact: a folder level of the Files view", () => {
   });
 });
 
+describe("resolveTreeUp: the arrow inside the Files tree goes back where you came from", () => {
+  const parent = "/pane/w1/changes/files?dir=src/lib";
+
+  it("steps back onto a pane that printed the path, not up the folders", () => {
+    expect(resolveTreeUp("/pane/w1", parent)).toEqual({ kind: "back" });
+  });
+
+  it("steps back onto the diff a Preview came from, and onto a Markdown file a link came from", () => {
+    expect(resolveTreeUp("/pane/w1/changes?repo=.&path=a.ts", parent)).toEqual({ kind: "back" });
+    expect(resolveTreeUp("/pane/w1/changes/files?path=docs/README.md", parent)).toEqual({ kind: "back" });
+  });
+
+  it("still steps back onto the parent folder when that is where it came from", () => {
+    expect(resolveTreeUp(parent, parent)).toEqual({ kind: "back" });
+  });
+
+  it("replaces onto the parent folder on a cold deep link and on the first entry", () => {
+    expect(resolveTreeUp(undefined, parent)).toEqual({ kind: "replace", to: parent });
+    expect(resolveTreeUp("/pane/w1", parent, false)).toEqual({ kind: "replace", to: parent });
+  });
+});
+
+describe("treeUpLanding: naming where the tree's arrow lands", () => {
+  it("names a pane, its history, a space and the dashboard", () => {
+    expect(treeUpLanding("/pane/w1:p2?h=badger", true, false)).toBe("pane");
+    expect(treeUpLanding("/pane/w1/history", true, false)).toBe("pane");
+    expect(treeUpLanding("/space/w1", true, false)).toBe("workspace");
+    expect(treeUpLanding("/", true, false)).toBe("dashboard");
+  });
+
+  it("names a Changes diff or the change list as the list", () => {
+    expect(treeUpLanding("/pane/w1/changes?repo=.&path=a.ts", true, false)).toBe("list");
+    expect(treeUpLanding("/space/w1/changes/commit?repo=.", true, false)).toBe("list");
+    expect(treeUpLanding("/space/w1/changes", false, true)).toBe("list");
+  });
+
+  it("keeps the folder and parent labels when it steps back onto the tree's own root, folders and files", () => {
+    expect(treeUpLanding("/space/w1/changes", false, false)).toBe("parent");
+    expect(treeUpLanding("/pane/w1/changes/files?dir=a", false, false)).toBe("parent");
+    expect(treeUpLanding("/pane/w1/changes/files?path=a/b.md", true, false)).toBe("folder");
+  });
+
+  it("keeps the labels the arrow always had when it replaces", () => {
+    expect(treeUpLanding(undefined, true, false)).toBe("folder");
+    expect(treeUpLanding(undefined, false, false)).toBe("parent");
+    expect(treeUpLanding("/pane/w1", false, false, false)).toBe("parent");
+  });
+});
+
 describe("readPreviewAsked: the diff's Preview offer", () => {
   it("is true only for the one value the offer writes", () => {
     expect(readPreviewAsked({ from: "/pane/w1/changes", fileView: "preview" })).toBe(true);
@@ -417,3 +469,19 @@ describe("readPreviewAsked: the diff's Preview offer", () => {
     expect(readPreviewAsked(undefined)).toBe(false);
   });
 });
+
+describe("two spellings of one pane id", () => {
+  it("a colon and %3A name the same screen for every up move", () => {
+    expect(isAncestor("/pane/w1:p2", "/pane/w1%3Ap2/changes")).toBe(true);
+    expect(isAncestor("/pane/w1%3Ap2", "/pane/w1:p2/history")).toBe(true);
+    expect(resolveUp("/pane/w1%3Ap2/changes", "/pane/w1:p2", "/pane/w1%3Ap2")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1%3Ax", "/space/w1:x")).toEqual({ kind: "back" });
+    expect(resolveUpToExact("/pane/w1:p2/changes/files?dir=a", "/pane/w1%3Ap2/changes/files?dir=a")).toEqual({ kind: "back" });
+  });
+
+  it("keeps a segment that is not valid encoding as written", () => {
+    expect(decodedPath("/pane/w1%zz")).toBe("/pane/w1%zz");
+    expect(isAncestor("/pane/w1%zz", "/pane/w1%zz/changes")).toBe(true);
+  });
+});
+

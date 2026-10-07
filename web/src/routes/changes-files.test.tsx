@@ -2,13 +2,14 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { asJsonBoolean, asJsonObject } from "@/lib/json";
 import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { clearHeldImages } from "@/lib/file-image-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
 import { clearNotPaired, isNotPaired } from "@/lib/pairing";
 import { fixtureAgents, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
@@ -412,6 +413,40 @@ describe("Changes: back goes up one level through the tree", () => {
     expect(router.state.historyAction).toBe("POP");
   });
 
+  // Measured on the dev lane 2026-10-07: a pane printed `src/lib/nav.ts:120`, the tap opened the file,
+  // and the arrow walked up the folders while the edge swipe went straight back to the pane.
+  it("steps back onto the pane a file was opened from, and says so", async () => {
+    const router = renderAt([
+      "/pane/w1%3Ap1",
+      { pathname: FILES, search: "?path=src%2Froutes%2Fcheckout.tsx", state: { from: "/pane/w1%3Ap1" } },
+    ]);
+    const arrow = await screen.findByRole("button", { name: en["changes.backAria.pane"] });
+    await userEvent.click(arrow);
+    expect(await screen.findByText("pane screen")).toBeTruthy();
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  it("steps back onto the diff a Preview was opened from, and says so", async () => {
+    const diff = "/pane/w1%3Ap1/changes?repo=.&path=src%2Froutes%2Fcheckout.tsx";
+    const router = renderAt([
+      diff,
+      { pathname: FILES, search: "?path=src%2Froutes%2Fcheckout.tsx", state: { from: diff } },
+    ]);
+    await userEvent.click(await screen.findByRole("button", { name: en["changes.listBackAria"] }));
+    await waitFor(() => expect(router.state.location.search).toBe("?repo=.&path=src%2Froutes%2Fcheckout.tsx"));
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  it("steps back onto a folder, not up the tree, when a folder row opened a file from a link", async () => {
+    const router = renderAt([
+      { pathname: FILES, search: "?path=README.md", state: { from: "/pane/w1%3Ap1" } },
+      { pathname: FILES, search: "?path=docs%2Fa.md", state: { from: `${FILES}?path=README.md` } },
+    ]);
+    await userEvent.click(await screen.findByRole("button", { name: en["files.backAria.folder"] }));
+    await waitFor(() => expect(router.state.location.search).toBe("?path=README.md"));
+    expect(router.state.historyAction).toBe("POP");
+  });
+
   it("replaces onto the parent folder when the entry behind is not that folder (a cold deep link)", async () => {
     const router = renderAt([`${FILES}?dir=src%2Froutes`]);
     await screen.findByRole("button", { name: /^checkout\.tsx/ });
@@ -465,15 +500,88 @@ describe("Changes: one file of the tree", () => {
     expect(asked.every((u) => !u.includes("line"))).toBe(true);
   });
 
-  it("draws the whole path on a thin row under the name row, ending in the file name", async () => {
+  // The path is on screen once (2026-10-08): the name row holds the file's name alone, and the thin
+  // row under it the folder. Nothing of the path draws twice, clipped or not.
+  it("names the file on the name row and its folder on the thin row, each once", async () => {
     renderAt([`${FILES}?path=src%2Froutes%2Fcheckout.tsx`]);
     await screen.findAllByText("cartTotal", { exact: false });
     const row = document.querySelector('[data-slot="file-path-row"]');
-    expect(row).toBeTruthy();
+    expect(row?.textContent).toBe("src/routes/");
     expect(row?.getAttribute("title")).toBe("src/routes/checkout.tsx");
-    // jsdom measures nothing, so the row draws the full path; a fitted one still ends in the name.
-    expect(row?.textContent?.endsWith("checkout.tsx")).toBe(true);
-    expect(row?.textContent).toBe("src/routes/checkout.tsx");
+    expect(screen.getAllByText(/checkout\.tsx/).length).toBe(1);
+    expect(screen.queryAllByText(/src\/routes\/checkout/).length).toBe(0);
+  });
+
+  it("draws no folder row for a file at the root", async () => {
+    renderAt([`${FILES}?path=README.md`]);
+    await screen.findAllByText("README.md");
+    expect(document.querySelector('[data-slot="file-path-row"]')).toBeNull();
+  });
+
+  // ONE READ PER FILE'S DIFF (2026-10-07): Diff, Source and Diff again is a change of body. The diff
+  // read stays open under Source, so the way back shows the held answer with no loading state and no
+  // request; only the refresh button asks again.
+  describe("switching between Diff and Source", () => {
+    const ORDERS = `${FILES}?path=packages%2Fapi%2Fserver%2Fhandlers%2Forders.ts`;
+
+    function watch() {
+      const diffs: string[] = [];
+      const sources: string[] = [];
+      const listener = ({ request }: { request: Request }) => {
+        const url = new URL(request.url);
+        if (url.pathname.endsWith("/changes") && url.searchParams.get("path") !== null) diffs.push(url.search);
+        if (url.pathname.endsWith("/files") && url.searchParams.get("path") !== null) sources.push(url.search);
+      };
+      server.events.on("request:start", listener);
+      return { diffs, sources, stop: () => server.events.removeListener("request:start", listener) };
+    }
+
+    it("shows the held diff at once on the way back, with no loading state and no request", async () => {
+      const seen = watch();
+      renderAt([ORDERS]);
+      await screen.findByText(en["changes.file.renamedFrom"].replace("{path}", "server/orders.ts"));
+      await waitFor(() => expect(seen.diffs.length).toBe(1));
+      await userEvent.click(screen.getByRole("radio", { name: en["files.view.source"] }));
+      await waitFor(() => expect(document.querySelector("[data-slot='file-source']")).not.toBeNull());
+      await userEvent.click(screen.getByRole("radio", { name: en["files.view.diff"] }));
+      // Synchronously after the tap: the diff body is there, the loader is not.
+      expect(screen.queryByText(en["files.loading"])).toBeNull();
+      expect(screen.getByText(/listOrders/)).toBeTruthy();
+      await userEvent.click(screen.getByRole("radio", { name: en["files.view.source"] }));
+      await userEvent.click(screen.getByRole("radio", { name: en["files.view.diff"] }));
+      expect(seen.diffs.length).toBe(1);
+      expect(seen.sources.length).toBe(1);
+      seen.stop();
+    });
+
+    it("reads again on the refresh button, and the held answer stays on screen meanwhile", async () => {
+      const seen = watch();
+      renderAt([ORDERS]);
+      await waitFor(() => expect(seen.diffs.length).toBe(1));
+      await userEvent.click(await screen.findByRole("radio", { name: en["files.view.source"] }));
+      await userEvent.click(await screen.findByRole("radio", { name: en["files.view.diff"] }));
+      await userEvent.click(screen.getByRole("button", { name: en["changes.refreshAria"] }));
+      await waitFor(() => expect(seen.diffs.length).toBe(2));
+      expect(screen.queryByText(en["files.loading"])).toBeNull();
+      seen.stop();
+    });
+
+    it("keeps reading the diff on the poll while Source is showing", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const seen = watch();
+        renderAt([ORDERS]);
+        await waitFor(() => expect(seen.diffs.length).toBe(1));
+        await userEvent.click(await screen.findByRole("radio", { name: en["files.view.source"] }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS + 100);
+        });
+        await waitFor(() => expect(seen.diffs.length).toBeGreaterThan(1));
+        seen.stop();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("asks the diff of the change set's repo, with the path inside that repo", async () => {

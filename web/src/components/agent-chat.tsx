@@ -99,7 +99,8 @@ import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
-import { changesPath, historyPath, panePath, spacePath } from "@/lib/nav";
+import { paneFilesDir } from "@/lib/file-paths";
+import { changesPath, filesPath, historyPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
@@ -675,6 +676,21 @@ export function AgentChat({
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
+  // Where the belt's Files button goes. The root of Files is the workspace's folder (ADR 0083), and a
+  // pane that has `cd`-ed into a subfolder would land above where it works, so the tree opens ON the
+  // pane's folder when that lies below the root. The root screen stays as it was when the pane sits
+  // at the root, outside it or reports no folder, and when the operator chose Changes only: the root
+  // then opens as the list, and a folder would have shown the tree instead. The arrow from that folder
+  // steps back to this pane (`from`), and the breadcrumb still reaches the root.
+  const filesDir = useMemo(
+    () =>
+      agent === undefined || rootSpaces === undefined
+        ? null
+        : paneFilesDir({ pane: agent, panes: herd, workspaces: rootSpaces, home: launchersHome }),
+    [agent, herd, rootSpaces, launchersHome],
+  );
+  const filesEntryPath =
+    filesDir === null || dash.prefs.changesOnly ? changesPath(paneId, scope) : filesPath(paneId, scope, { dir: filesDir });
 
   // Mirror freeze: at the bottom we follow live output; the moment you scroll up to read backscroll
   // we hold the text steady (no reflow / no re-pin) until you jump back to latest — so a long
@@ -2620,7 +2636,7 @@ export function AgentChat({
                   // to say so (ADR 0065).
                   changesPill={
                     agent?.cwd
-                      ? { onClick: () => nav.down(changesPath(paneId, scope)), label: t("chat.changes.label") }
+                      ? { onClick: () => nav.down(filesEntryPath), label: t("chat.changes.label") }
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}

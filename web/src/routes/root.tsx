@@ -8,6 +8,7 @@ import {
   useRouteLoaderData,
 } from "react-router";
 
+import { useNavTrail } from "@/hooks/use-nav";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
 import { useBusyWhile } from "@/lib/busy";
@@ -97,6 +98,8 @@ export function RootLayout() {
   // accelerate/decelerate rather than a flicker, and delaying it would only make the fast case —
   // the common one — say nothing at all.
   useBusyWhile(useNavigation().state !== "idle");
+  // The history the tab has walked, for the Files breadcrumb's pop (lib/nav-trail.ts).
+  useNavTrail();
   useAgentTransitions(data.agents, paneId ?? null);
   // THE PUSH RACE. `usePushSetup` can raise the browser's permission prompt on its own, behind the
   // tour's backdrop, so it waits until the tour has decided it is not showing. "pending" is what
