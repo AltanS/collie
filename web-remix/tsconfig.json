@@ -25,11 +25,13 @@
     // under web-remix/src spells `@/`. `@shared/*` is the repo's `shared/`: the bridge's route map,
     // which the bridge router and `lib/urls.ts` both import (browser-safe by contract).
     "paths": {
+      // Bun and tsc only; the Vite plugin answers this specifier first in the browser build.
+      "virtual:collie-mark": ["./src/shell/collie-mark-data.ts"],
       "@shared/*": ["../shared/*"],
       "@web/*": ["../web/src/*"],
       "@/*": ["../web/src/*"]
     }
   },
   "include": ["src", "vite.config.ts"],
-  "exclude": ["src/sw.ts"]
+  "exclude": ["src/sw.ts", "src/sw-document.ts"]
 }

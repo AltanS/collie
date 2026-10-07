@@ -50,6 +50,8 @@ export interface PrefStore<T> extends Store<T> {
   readonly key: string;
   /** Re-read the key from storage and wake subscribers on a change. Writes nothing. */
   reload(): void;
+  /** Take `raw` as if storage held it (a server render, from the prefs cookie). Writes nothing. */
+  prime(raw: string | null): void;
 }
 
 interface Codec<T> {
@@ -59,7 +61,7 @@ interface Codec<T> {
 }
 
 /** What the cross-tab sync needs from each store. */
-const registry: Array<{ key: string; reload(): void }> = [];
+const registry: Array<Pick<PrefStore<unknown>, "key" | "reload" | "prime" | "subscribe">> = [];
 
 function persisted<T>(key: string, codec: Codec<T>): PrefStore<T> {
   const read = (): T => {
@@ -88,6 +90,7 @@ function persisted<T>(key: string, codec: Codec<T>): PrefStore<T> {
     subscribe: inner.subscribe,
     version: inner.version,
     reload: () => inner.set(read()),
+    prime: (raw) => inner.set(codec.decode(raw)),
   };
   registry.push(store);
   return store;
@@ -277,4 +280,59 @@ export function startPrefSync(target: StorageEventSource = window): void {
       if (event.key === null || event.key === store.key) store.reload();
     }
   });
+}
+
+// ── The prefs cookie (S1, the server document) ────────────────────────────────────────────────────
+
+/**
+ * The cookie that carries this device's prefs to the bridge, so a server document draws the stored
+ * choices and the hydrating tree finds the same markup (no flash of the defaults). It holds the RAW
+ * stored strings by key, `{ "collie:dash-prefs:v1": "...", ... }`, URI-encoded; the bridge hands it to
+ * {@link primePrefs} untouched, and the same total decoders as storage read it.
+ */
+export const PREFS_COOKIE = "collie-prefs";
+
+/** Above this many encoded bytes the cookie is not written: a server render then draws the defaults. */
+export const PREFS_COOKIE_MAX = 3000;
+
+/** The cookie's value for the stored prefs, or null when it would be too long to send. */
+export function prefsCookieValue(read: (key: string) => string | null): string | null {
+  const raw: Record<string, string> = {};
+  for (const store of registry) {
+    const value = read(store.key);
+    if (value !== null) raw[store.key] = value;
+  }
+  const value = encodeURIComponent(JSON.stringify(raw));
+  return value.length > PREFS_COOKIE_MAX ? null : value;
+}
+
+/**
+ * Prime every pref store from the cookie's JSON (already URI-decoded), for one server render. A key
+ * that is absent, or not a string, reads as absent: the store takes its default.
+ */
+export function primePrefs(json: string | null): void {
+  const raw = json === null ? undefined : parseJsonObject(json);
+  for (const store of registry) {
+    const value = raw === undefined ? undefined : asJsonString(raw[store.key]);
+    store.prime(value ?? null);
+  }
+}
+
+let cookieStarted = false;
+
+/**
+ * Write the prefs cookie now and after every change of a pref, for the page's life (main.tsx).
+ * `path` is the mount, so the cookie goes only to this collie. `SameSite=Strict`: only a navigation
+ * from this origin carries it. Never `Secure`, because the tailnet origin can be plain HTTP.
+ */
+export function startPrefCookie(path: string): void {
+  if (cookieStarted) return;
+  cookieStarted = true;
+  const write = (): void => {
+    const value = prefsCookieValue((key) => storage()?.getItem(key) ?? null);
+    const attrs = `; Path=${path}; Max-Age=${value === null ? 0 : 31_536_000}; SameSite=Strict`;
+    document.cookie = `${PREFS_COOKIE}=${value ?? ""}${attrs}`;
+  };
+  write();
+  for (const store of registry) store.subscribe(write);
 }

@@ -7,10 +7,12 @@ import { createController } from "remix/router";
 import { isReservedAuthPath, reservedAuthPlaceholder, serveStatic, WEB_DIR } from "../../server.ts";
 import type { BridgeHttp } from "../deps.ts";
 import { routes } from "../routes.ts";
+import { documentDeps, serveDocument } from "./document.ts";
 
 /** The catch-all: the reserved `/auth/` placeholder, or a file out of `web/dist`, or the app shell. */
 export function appShell(deps: BridgeHttp): (context: RequestContext) => Promise<Response> {
   const { cfg } = deps;
+  const documents = documentDeps(deps);
   return async ({ request: req, url }) => {
     const { pathname } = url;
     // ── Reserved for a fronting proxy's sign-in page ─────────────────────
@@ -20,6 +22,11 @@ export function appShell(deps: BridgeHttp): (context: RequestContext) => Promise
     // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
     // leave the operator staring at the UI they were trying to escape.
     if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
+
+    // ── The server document (S1): `/` and `/pane/:paneId` for a request that may read the snapshot ──
+    // Null for everything else, and then the static shell answers exactly as before (./document.ts).
+    const document = await serveDocument(documents, req, url);
+    if (document !== null) return document;
 
     // ── Static PWA (with SPA fallback) ───────────────────────────────────
     return serveStatic(pathname, req.headers.get("accept-encoding"), WEB_DIR, cfg.basePath);

@@ -14,10 +14,9 @@ import { render, type Router } from "remix/spa";
 import { basePath } from "@web/lib/base-path";
 import { paneScopeKey } from "@web/lib/scope";
 
+import { homeNode, paneNode } from "./app-root";
 import { address, noteAddress } from "./lib/data";
 import { glideGate } from "./lib/glide";
-import { homeAction } from "./routes/home/action";
-import { PaneRoute } from "./routes/pane/pane";
 import { settingsAction, settingsDeviceAction, settingsSectionAction, settingsUpdatesAction } from "./routes/settings/action";
 import { SpaceRoute } from "./routes/space/space";
 import { routes } from "./routes";
@@ -51,9 +50,10 @@ declare module "remix" {
 // sideways move from one pane to another, or to the same pane id on another machine (`?h=`), is a
 // new instance with its own setup, never the old one with a stale `paneId` and scope. The scope is
 // the one `noteAddress` just read off this URL, in the middleware above.
-const paneAction = createAction(routes.pane, ({ render: draw, params }) =>
-  draw(<PaneRoute key={paneScopeKey(address.get().scope, params.paneId)} paneId={params.paneId} />),
-);
+// The home and pane nodes are app-root.tsx's, the same the bridge renders into a server document and
+// the browser hydrates (S1), so the first routed render puts the same component at every position.
+const homeAction = createAction(routes.home, ({ render: draw }) => draw(homeNode()));
+const paneAction = createAction(routes.pane, ({ render: draw, params }) => draw(paneNode(params.paneId)));
 const spaceAction = createAction(routes.space, ({ render: draw, params }) =>
   draw(<SpaceRoute key={`space:${paneScopeKey(address.get().scope, params.spaceId)}`} spaceId={params.spaceId} />),
 );

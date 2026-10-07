@@ -10,8 +10,20 @@
 
 let cached: string | null = null;
 
+/**
+ * Where the mount comes from when there is no document: the bridge renders web-remix's shell on Bun
+ * (the Remix 3 branch, S1) and sets this to its render's mount. Read on every call, never cached.
+ */
+let serverMount: () => string = () => "/";
+
+/** Name the mount for code running with no document (web-remix/src/lib/server-render.ts). */
+export function setServerMountSource(read: () => string): void {
+  serverMount = read;
+}
+
 /** The mount, always with a leading and a trailing slash: `/` or `/collie/`. */
 export function basePath(): string {
+  if (!("document" in globalThis)) return normalise(serverMount());
   cached ??= readMount();
   return cached;
 }

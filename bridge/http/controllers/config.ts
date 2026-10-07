@@ -17,19 +17,7 @@ import { requestScope } from "../scope.ts";
 import { routes } from "../routes.ts";
 
 export function configController(deps: BridgeHttp) {
-  const {
-    cfg,
-    registry,
-    push,
-    crew,
-    crewLead,
-    stt,
-    operatorCommands,
-    operatorKeys,
-    operatorQuickReplies,
-    operatorFonts,
-    operatorCacheRules,
-  } = deps;
+  const { cfg, registry, operatorFonts, operatorCacheRules } = deps;
   return createController(routes.config, {
     actions: {
       // The rule catalog behind the cache chips, and the overrides this host applies. Gated exactly as
@@ -49,80 +37,8 @@ export function configController(deps: BridgeHttp) {
       config: {
         middleware: [gate(deps, "read")],
         async handler({ request: req, url }) {
-          const { host } = requestScope(deps, req, url);
-          // Read-level, like the other non-terminal endpoints. Nothing Collie puts here is a
-          // credential — the VAPID public key is handed to every browser by design — but the payload
-          // is no longer entirely Collie's: operatorCommands is operator-authored text, and any read
-          // client sees it verbatim (`.env.example` says so where it is set).
-          // It was also the one route that skipped checkAccess entirely, so COLLIE_PUBLIC_HOSTS
-          // didn't cover it and a rebound DNS name could still read the build id. The client only ever
-          // calls this same-origin, and a refusal can't be mistaken for an outage: ConnectionBanner
-          // short-circuits to AuthErrorBanner before its red-state probe runs. Noted in #32.
-          // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
-          // with no restart. The path is cfg's, never the request's.
-          const mine = await operatorCommands();
-          const myKeys = await operatorKeys();
-          const myReplies = await operatorQuickReplies();
-          // Same mtime-checked re-read, same reason: an operator who adds a face to theme.toml wants
-          // it in the picker on the next page load, not after a restart.
-          const myFonts = await operatorFonts();
-          // The PRIMARY session's adapter, because one collie drives one multiplexer: every session in
-          // the registry is built by the same factory off the same `cfg.mux`, so which runtime answers
-          // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
-          // eagerly in the constructor and never disposed.
-          const activeMux = registry.get();
-          // ── `?host=<member>`: THIS MEMBER's capability declaration (M22/03) ──────────────────
-          //
-          // Answered from what the lead already holds, and never forwarded: `config` is on
-          // `bridge/crew/forward.ts`'s not-forwarded list and must stay there, because a config read
-          // is the request every page load makes and it must not be able to make the lead dial a
-          // machine. The lead learned the block from that member's last `hello`.
-          //
-          // The host selector is the one `target()` above already resolved, so an unknown or
-          // ill-formed member id gets the same 404 every host-scoped route gives it. It is never
-          // silently rewritten to the lead: quietly answering for a different machine is the exact
-          // failure the host dimension exists to prevent.
-          const scoped = host.kind === "local" ? undefined : crewLead?.resolve(host);
-          if (host.kind !== "local" && scoped === undefined) {
-            return jsonError(
-              apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw }),
-              404,
-              req.headers.get("accept-encoding"),
-            );
-          }
-          // A member that has published nothing answers with the LEAD's block, because absent means
-          // "use the lead's" — which is byte for byte the reading the phone gives every pane today.
-          // The lead's own entry resolves `local`, so it takes its own branch and its own adapter.
-          const memberMux = scoped?.kind === "peer" ? crewLead?.muxFor(scoped.link.memberId) : null;
-          // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
-          // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
-          // because "no provider" must OMIT the key, never send a null one (CREW_PROTOCOL.md §11).
-          const sttWire = (await sttCapability(await stt())) ?? undefined;
-          return json(
-            bridgeConfigBody({
-              push: push.enabled,
-              vapidPublicKey: push.publicKey,
-              build: await buildId(),
-              mode: crew.mode,
-              operatorCommands: mine,
-              operatorKeys: myKeys,
-              operatorQuickReplies: myReplies,
-              operatorFonts: myFonts,
-              mux: activeMux?.herdr,
-              // Assigned through `?? undefined` rather than conditionally, so the no-`host=` request
-              // builds the byte-identical body it always did (CREW_PROTOCOL.md §11).
-              muxWire: memberMux ?? undefined,
-              stt: sttWire,
-              // This host's own limits, read from cfg on every request like everything else here.
-              // A crew member answers with ITS number, which is the number that will judge the bytes.
-              upload: {
-                maxBytes: cfg.maxUploadBytes,
-                imageTypes: [...IMAGE_EXTS],
-                textTypes: [...TEXT_EXTS, ...cfg.uploadExtraTypes],
-              },
-            }),
-            req.headers.get("accept-encoding"),
-          );
+          const body = await configFor(deps, req, url);
+          return body instanceof Response ? body : json(body, req.headers.get("accept-encoding"));
         },
       },
       muxLogo: {
@@ -172,4 +88,84 @@ export function configController(deps: BridgeHttp) {
       },
     },
   });
+}
+
+/**
+ * The `/api/config` body for `req` at `url`, or the 404 an unknown `?host=` gets. The route's gate
+ * (read level) runs before this; the server document (./document.ts) has passed the same
+ * `checkAccess` before it asks. Re-read per request, as the route always was.
+ */
+export async function configFor(deps: BridgeHttp, req: Request, url: URL): Promise<ReturnType<typeof bridgeConfigBody> | Response> {
+  const { cfg, registry, push, crew, crewLead, stt, operatorCommands, operatorKeys, operatorQuickReplies, operatorFonts } = deps;
+  const { host } = requestScope(deps, req, url);
+  // Read-level, like the other non-terminal endpoints. Nothing Collie puts here is a
+  // credential — the VAPID public key is handed to every browser by design — but the payload
+  // is no longer entirely Collie's: operatorCommands is operator-authored text, and any read
+  // client sees it verbatim (`.env.example` says so where it is set).
+  // It was also the one route that skipped checkAccess entirely, so COLLIE_PUBLIC_HOSTS
+  // didn't cover it and a rebound DNS name could still read the build id. The client only ever
+  // calls this same-origin, and a refusal can't be mistaken for an outage: ConnectionBanner
+  // short-circuits to AuthErrorBanner before its red-state probe runs. Noted in #32.
+  // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
+  // with no restart. The path is cfg's, never the request's.
+  const mine = await operatorCommands();
+  const myKeys = await operatorKeys();
+  const myReplies = await operatorQuickReplies();
+  // Same mtime-checked re-read, same reason: an operator who adds a face to theme.toml wants
+  // it in the picker on the next page load, not after a restart.
+  const myFonts = await operatorFonts();
+  // The PRIMARY session's adapter, because one collie drives one multiplexer: every session in
+  // the registry is built by the same factory off the same `cfg.mux`, so which runtime answers
+  // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
+  // eagerly in the constructor and never disposed.
+  const activeMux = registry.get();
+  // ── `?host=<member>`: THIS MEMBER's capability declaration (M22/03) ──────────────────
+  //
+  // Answered from what the lead already holds, and never forwarded: `config` is on
+  // `bridge/crew/forward.ts`'s not-forwarded list and must stay there, because a config read
+  // is the request every page load makes and it must not be able to make the lead dial a
+  // machine. The lead learned the block from that member's last `hello`.
+  //
+  // The host selector is the one `target()` above already resolved, so an unknown or
+  // ill-formed member id gets the same 404 every host-scoped route gives it. It is never
+  // silently rewritten to the lead: quietly answering for a different machine is the exact
+  // failure the host dimension exists to prevent.
+  const scoped = host.kind === "local" ? undefined : crewLead?.resolve(host);
+  if (host.kind !== "local" && scoped === undefined) {
+    return jsonError(
+      apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw }),
+      404,
+      req.headers.get("accept-encoding"),
+    );
+  }
+  // A member that has published nothing answers with the LEAD's block, because absent means
+  // "use the lead's" — which is byte for byte the reading the phone gives every pane today.
+  // The lead's own entry resolves `local`, so it takes its own branch and its own adapter.
+  const memberMux = scoped?.kind === "peer" ? crewLead?.muxFor(scoped.link.memberId) : null;
+  // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
+  // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
+  // because "no provider" must OMIT the key, never send a null one (CREW_PROTOCOL.md §11).
+  const sttWire = (await sttCapability(await stt())) ?? undefined;
+  return bridgeConfigBody({
+      push: push.enabled,
+      vapidPublicKey: push.publicKey,
+      build: await buildId(),
+      mode: crew.mode,
+      operatorCommands: mine,
+      operatorKeys: myKeys,
+      operatorQuickReplies: myReplies,
+      operatorFonts: myFonts,
+      mux: activeMux?.herdr,
+      // Assigned through `?? undefined` rather than conditionally, so the no-`host=` request
+      // builds the byte-identical body it always did (CREW_PROTOCOL.md §11).
+      muxWire: memberMux ?? undefined,
+      stt: sttWire,
+      // This host's own limits, read from cfg on every request like everything else here.
+      // A crew member answers with ITS number, which is the number that will judge the bytes.
+      upload: {
+        maxBytes: cfg.maxUploadBytes,
+        imageTypes: [...IMAGE_EXTS],
+        textTypes: [...TEXT_EXTS, ...cfg.uploadExtraTypes],
+      },
+    });
 }

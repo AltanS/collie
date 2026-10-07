@@ -99,6 +99,12 @@ Need-Exit0 "bun install (web)"
 & $bun run build
 Need-Exit0 "the web build"
 Pop-Location
+# The binary compiles web-remix's server renderer in (S1, bridge/http/controllers/document.ts), so
+# its dependencies must be on disk for the compile to resolve them.
+Push-Location (Join-Path $repo "web-remix")
+& $bun install --frozen-lockfile
+Need-Exit0 "bun install (web-remix)"
+Pop-Location
 
 # NO LINT STEP, as in the Linux rows: CI lints the whole tree in its own workflow.
 $temp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }

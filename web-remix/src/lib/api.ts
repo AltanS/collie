@@ -134,9 +134,17 @@ export interface Fetched<T> {
 }
 
 /** The herd snapshot. `all` widens it to every session on the addressed machine. */
-export async function fetchSnapshot(scope?: Scope, signal?: AbortSignal, all = false): Promise<Fetched<SnapshotResponse>> {
+/**
+ * The snapshot read's path (mount not added) for a scope and breadth. One spelling for the poll below
+ * and for the bridge, which reads the same body for a server document (ssr/render.tsx).
+ */
+export function snapshotPath(scope?: Scope, all = false): string {
   const scoped = withScope(snapshotUrl(), scope);
-  const path = all ? `${scoped}${scoped.includes("?") ? "&" : "?"}sessions=all` : scoped;
+  return all ? `${scoped}${scoped.includes("?") ? "&" : "?"}sessions=all` : scoped;
+}
+
+export async function fetchSnapshot(scope?: Scope, signal?: AbortSignal, all = false): Promise<Fetched<SnapshotResponse>> {
+  const path = snapshotPath(scope, all);
   const got = await conditional(path, snapshotCache, path, new Headers(), signal);
   if (got.body.bridge !== "disconnected") lastLiveAt.set(Date.now());
   return got;

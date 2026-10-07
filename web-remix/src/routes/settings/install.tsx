@@ -33,16 +33,19 @@ let held: InstallPromptEvent | null = null;
 /** Whether an install offer is on the table. */
 export const installOffered = createStore<boolean>(false);
 
-window.addEventListener("beforeinstallprompt", (event) => {
-  if (!isInstallPrompt(event)) return;
-  event.preventDefault();
-  held = event;
-  installOffered.set(true);
-});
-window.addEventListener("appinstalled", () => {
-  held = null;
-  installOffered.set(false);
-});
+// Browser only: the bridge imports this module to render documents (S1), and has no window.
+if ("window" in globalThis) {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    if (!isInstallPrompt(event)) return;
+    event.preventDefault();
+    held = event;
+    installOffered.set(true);
+  });
+  window.addEventListener("appinstalled", () => {
+    held = null;
+    installOffered.set(false);
+  });
+}
 
 export async function promptInstall(): Promise<void> {
   const offer = held;

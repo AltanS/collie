@@ -26,6 +26,7 @@ import { loadConfig, loadSnapshot } from "./lib/data";
 import { bindGlideFrame } from "./lib/glide";
 import { idle, unlock } from "./lib/idle";
 import { want } from "./lib/polling";
+import { onServer } from "./lib/server-render";
 import { scheduleUpdate, useStore } from "./lib/store";
 import { Button } from "./ui/button";
 import { useLocale } from "./lib/i18n-store";
@@ -53,8 +54,12 @@ export interface ShellProps {
 export function Shell(handle: Handle<ShellProps>) {
   want(SNAPSHOT_SOURCE, handle.signal);
   want(CONFIG_SOURCE, handle.signal);
-  bindGlideFrame(handle.frames.top, handle.signal);
-  startBusyTracking();
+  // Not in a server render: the glide frame would outlive the request, and the busy tracker wraps
+  // the process's own `fetch`, which on the bridge is the bridge's.
+  if (!onServer()) {
+    bindGlideFrame(handle.frames.top, handle.signal);
+    startBusyTracking();
+  }
   const readIdle = useStore(handle, idle);
   useLocale(handle);
   return () => {

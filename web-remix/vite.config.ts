@@ -129,7 +129,7 @@ const mountReadyShellPlugin: Plugin = {
 // The Collie mark is GENERATED in the collie-brand repo and lands in web/ as a sealed React file
 // (DESIGN.md §8; REMIX3.md, "The mark orbit"). This shell must not hand-port it, so its data (the
 // stylesheet, the two bodies, the view boxes and the turn rates) is read out of that file here, at
-// build time, and served as `virtual:collie-mark` (types in src/shell/collie-mark-data.d.ts). A
+// build time, and served as `virtual:collie-mark` (off Vite, tsconfig.json points it at src/shell/collie-mark-data.ts). A
 // regenerated mark reaches this shell on the next build with no edit; a file whose constants change
 // shape fails the build here instead of drawing nothing.
 const COLLIE_MARK = resolve(WEB, "src/components/collie-mark.tsx");

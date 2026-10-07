@@ -32,10 +32,29 @@ export interface Store<T> {
   version(): number;
 }
 
+/**
+ * Every store made where there is no document: on the bridge, which renders documents (S1), and in
+ * the unit tests. The browser never fills it. A server render primes stores for one request and
+ * {@link resetStores} puts every one back to its first value right after, so the next request starts
+ * from the same blank state (`ssr/render.tsx`).
+ */
+const serverStores: Array<() => void> = [];
+
+/** Put every store made without a document back to its first value, with no notification. */
+export function resetStores(): void {
+  for (const reset of serverStores) reset();
+}
+
 export function createStore<T>(initial: T, equal: (a: T, b: T) => boolean = Object.is): Store<T> {
   let value = initial;
   let version = 0;
   const listeners = new Set<() => void>();
+  if (!("document" in globalThis)) {
+    serverStores.push(() => {
+      value = initial;
+      version = 0;
+    });
+  }
   const set = (next: T): void => {
     if (equal(value, next)) return;
     value = next;

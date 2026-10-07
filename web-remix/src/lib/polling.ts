@@ -26,6 +26,7 @@ import type { SnapshotResponse } from "@web/lib/types";
 
 import { address, snapshot } from "./data";
 import { endCatchUp, isLocked, setReleaseRefresh } from "./idle";
+import { onServer } from "./server-render";
 import { createStore } from "./store";
 
 export const BURST_MS = 300;
@@ -187,7 +188,8 @@ async function tick(force = false): Promise<void> {
  * registration of a key fetches at once, so a route shows data without waiting out a gap.
  */
 export function want(source: PollSource, until: AbortSignal): void {
-  if (until.aborted) return;
+  // A server render reads nothing and its signal never aborts (lib/server-render.ts).
+  if (until.aborted || onServer()) return;
   const entry = sources.get(source.key);
   if (entry) entry.holders++;
   else sources.set(source.key, { source, holders: 1 });

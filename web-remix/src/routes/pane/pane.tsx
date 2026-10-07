@@ -62,6 +62,7 @@ import { focus, kick, want } from "../../lib/polling";
 import { buzz, dashPrefs, displayPrefs, setDashPref, stripsCollapsed, zen as zenPref } from "../../lib/prefs";
 import { countRender } from "../../lib/render-count";
 import { setStatus } from "../../lib/status";
+import { onServer } from "../../lib/server-render";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { href } from "../../routes";
 import { headerOf } from "../../shell/context";
@@ -116,7 +117,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
 
   // Every write here goes through web's api.ts, which reads each answer into WEB's pairing latch.
   // Each move of that latch is carried into this shell's own (lib/pairing.ts).
-  const unsubscribe = subscribePairing(() => (webRefused() ? markNotPaired() : clearNotPaired()));
+  // Not in a server render: nothing would ever end the subscription there (lib/server-render.ts).
+  const unsubscribe = onServer() ? () => {} : subscribePairing(() => (webRefused() ? markNotPaired() : clearNotPaired()));
   handle.signal.addEventListener("abort", () => {
     unsubscribe();
     if (focus.get().paneId === paneId) focus.set({ paneId: null, following: true });
@@ -250,13 +252,15 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     autoZen = false;
     wake();
   };
-  window.addEventListener(
-    "keydown",
-    (event) => {
-      if (zenOn && event.key === "Escape") leaveZen();
-    },
-    { signal: handle.signal },
-  );
+  if (!onServer()) {
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (zenOn && event.key === "Escape") leaveZen();
+      },
+      { signal: handle.signal },
+    );
+  }
 
   const toggleStrips = (): void => {
     const folded = composerKeyboard ? (keyboardFold ?? true) : stripsCollapsed.get();

@@ -37,6 +37,10 @@
          root-absolute reference in this file, to the path a proxy gave Collie when it serves the
          file. One build serves any mount, so the value is not known here. lib/base-path.ts reads it. -->
     <meta name="collie-base" content="/" />
+    <!-- Which shell this build is. The bridge renders a server document for `/` and `/pane/:paneId`
+         only into a build that carries this (S1, bridge/http/controllers/document.ts): web/'s React
+         build mounts into its own root and must keep getting its static file. -->
+    <meta name="collie-shell" content="remix" />
     <title>Collie</title>
     <!-- The UI typeface, fetched in parallel with the CSS that asks for it rather than after it.
          index.css already guarantees no layout shift with a metric-matched fallback, so this is not
@@ -216,8 +220,8 @@
     </style>
   </head>
   <body>
-    <!-- remix/spa renders into <body> itself (the document is its top frame), so the splash sits
-         directly in <body> and the app's first render replaces it. -->
+    <!-- The static shell's splash, directly in <body>: the app's first render replaces it. A server
+         document (S1) has no splash; the bridge replaces these children with the rendered app. -->
     <div class="boot-splash" role="status" aria-label="Loading Collie">
       <span class="boot-splash__mark" aria-hidden="true"></span>
       <span>Connecting to the herd…</span>

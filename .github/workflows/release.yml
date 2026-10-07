@@ -171,6 +171,9 @@ jobs:
 
           bun install --frozen-lockfile
           (cd web && bun install --frozen-lockfile && bun run build)
+          # The binary compiles web-remix's server renderer in (S1, bridge/http/controllers/document.ts),
+          # so its dependencies must be on disk for the compile below to resolve them.
+          (cd web-remix && bun install --frozen-lockfile)
 
           # NO LINT STEP, here or anywhere on an operator's path: oxlint's allocator SIGABRTs below
           # roughly 7 GB of RAM and bricked real installs (1.0.0-beta.44). CI lints in its own

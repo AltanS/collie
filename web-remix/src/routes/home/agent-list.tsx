@@ -17,6 +17,7 @@ import { machinesHiddenFrom } from "../../lib/hidden-machines";
 import { useLocale } from "../../lib/i18n-store";
 import { inRankOrder, rankedHeading, type PaneOrder } from "../../lib/pane-order";
 import { pinHintRetired, pinMatcher, showsPinHint, type Pin } from "../../lib/pins";
+import { onServer } from "../../lib/server-render";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { Chip } from "../../ui/chip";
 import { Icon } from "../../ui/icon";
@@ -129,16 +130,18 @@ export function AgentList(handle: Handle<AgentListProps>) {
   let revealed: AgentListProps["reveal"] = null;
   let strip: HTMLElement | null = null;
   // Coming back to a background tab IS opening the dashboard again: a new reading (web/'s
-  // `rereadOnVisible`). Never on a poll.
-  document.addEventListener(
-    "visibilitychange",
-    () => {
-      if (document.visibilityState !== "visible" || handle.props.order === "place") return;
-      frozen.reread();
-      scheduleUpdate(handle);
-    },
-    { signal: handle.signal },
-  );
+  // `rereadOnVisible`). Never on a poll. Not in a server render (no document, no signal to end it).
+  if (!onServer()) {
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState !== "visible" || handle.props.order === "place") return;
+        frozen.reread();
+        scheduleUpdate(handle);
+      },
+      { signal: handle.signal },
+    );
+  }
 
   return () => {
     const p = handle.props;

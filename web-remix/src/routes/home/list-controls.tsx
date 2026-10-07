@@ -86,7 +86,6 @@ export function PaneOrderToggle(handle: Handle<{ order: PaneOrder; onChange: (or
 export function PinHint(handle: Handle<{ open: boolean; onFocusLeaves?: () => void }>) {
   useLocale(handle);
   let box: HTMLElement | null = null;
-  const fine = globalThis.matchMedia?.("(pointer: fine)").matches ?? false;
   return () => (
     <Collapse open={handle.props.open} class="-mt-5">
       {handle.props.open ? (
@@ -108,7 +107,10 @@ export function PinHint(handle: Handle<{ open: boolean; onFocusLeaves?: () => vo
               if (hadFocus) handle.props.onFocusLeaves?.();
             }}
           >
-            {fine ? t("home.pinHint.rightClick") : t("home.pinHint.hold")}
+            {/* Both sentences, and CSS picks by the pointer: the bridge renders this on Bun (S1), where
+                there is no pointer to ask, and the hydrating browser must find the same markup. */}
+            <span class="pointer-fine:hidden">{t("home.pinHint.hold")}</span>
+            <span class="hidden pointer-fine:inline">{t("home.pinHint.rightClick")}</span>
           </Notice>
         </div>
       ) : null}

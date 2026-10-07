@@ -38,9 +38,13 @@ function paint(): void {
 }
 
 // App-lifetime subscriptions, like `startPrefSync`: the face is the document's, not a component's.
-designPrefs.subscribe(paint);
-config.subscribe(paint);
-paint();
+// Browser only: the bridge imports this module to render documents (S1), where a primed store must
+// paint nothing.
+if ("document" in globalThis) {
+  designPrefs.subscribe(paint);
+  config.subscribe(paint);
+  paint();
+}
 
 /** The shipped faces' display names. Untranslated, and typed so a new key cannot skip one. */
 const FAMILY_LABELS = {
