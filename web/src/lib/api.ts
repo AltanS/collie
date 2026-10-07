@@ -347,7 +347,29 @@ function normaliseProxyRedirect(res: Response): Response {
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   // Every caller spells a root-absolute `/api/…`; the mount is applied here, once (ADR 0052).
-  return normaliseProxyRedirect(await fetch(mounted(path), { ...init, redirect: "manual" }));
+  try {
+    return normaliseProxyRedirect(await fetch(mounted(path), { ...init, redirect: "manual" }));
+  } catch (error) {
+    throw deadlineError(error, init?.signal);
+  }
+}
+
+/**
+ * A read that ran out of its deadline, named for what it is on every engine.
+ *
+ * WebKit rejects a fetch whose signal aborted with a generic `AbortError` ("Fetch is aborted") even
+ * when the signal is `AbortSignal.timeout`, whose own reason is a `TimeoutError`; Chromium and Gecko
+ * reject with the reason. The two are not the same event for the app: an `AbortError` is a superseded
+ * poll, which the loaders rethrow for React Router to drop, and a `TimeoutError` is a read that got
+ * no answer ({@link readFailureKind}). On Safari the deadline looked like a supersede, so a hung poll
+ * went to the error boundary and never counted as a lost connection. The signal still holds the
+ * truth, so the error is swapped for the signal's own `TimeoutError` reason when that is what aborted
+ * it. Anything else, a caller's own abort included, passes through unchanged.
+ */
+function deadlineError<TThrown>(error: TThrown, signal: AbortSignal | null | undefined): TThrown | Error {
+  if (!(error instanceof Error) || error.name !== "AbortError") return error;
+  const reason: unknown = signal?.aborted ? signal.reason : undefined;
+  return reason instanceof Error && reason.name === "TimeoutError" ? reason : error;
 }
 
 /**

@@ -374,6 +374,33 @@ describe("api client — failed reads and the outage latch", () => {
     expect(isLostLatched()).toBe(true);
   });
 
+  // WebKit rejects ANY aborted fetch with a generic AbortError ("Fetch is aborted"), a deadline
+  // included. The signal still carries its own reason, and the client reads it back.
+  const webkitFetch = () =>
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const signal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        const fail = () => reject(named("AbortError"));
+        if (signal?.aborted) fail();
+        else signal?.addEventListener("abort", fail);
+      });
+    });
+
+  it("a deadline WebKit reports as an AbortError is still a TimeoutError, and latches the outage", async () => {
+    webkitFetch();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => AbortSignal.abort(named("TimeoutError")));
+    await expect(fetchSnapshot()).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(isLostLatched()).toBe(true);
+  });
+
+  it("the app's own abort stays an AbortError on that engine and latches nothing", async () => {
+    webkitFetch();
+    const controller = new AbortController();
+    controller.abort(named("AbortError"));
+    await expect(fetchSnapshot(undefined, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(isLostLatched()).toBe(false);
+  });
+
   it("the two-failure rule: one 5xx latches nothing, the second in a row does, and a live answer clears it", async () => {
     server.use(http.get("/api/snapshot", () => new HttpResponse("bad gateway", { status: 502 })));
     await fetchSnapshot().catch(() => {});
