@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The Remix phone shell's islands page loads half the JavaScript at start.** The build names the chunks of the first load (`boot`, `shared`, `islands`) apart from the pane's and the static shell's, so a module the dashboard does not use no longer rides in a shared chunk. The dashboard on an islands document loads about 139 KiB of gzip JavaScript in 10 requests, against 316 KiB for the full client. Exploration branch `remix-v3` only.
 - **The Remix phone shell draws its icons with one CSS rule.** Lucide's defaults (the 24 px box, no fill, the stroke's colour, width, caps and joins) are a rule on `svg.lucide` in the base layer, not nine attributes on every icon, so a server document is about 5 KB smaller before gzip. A size class on an icon still wins, and a stroke width other than 2 stays on the icon. Exploration branch `remix-v3` only.
 - **The bridge routes its HTTP requests through `remix/router`.** Each route now lives in one typed table, `bridge/http/routes.ts`, with one controller per family and the gates as middleware. Every path, method, status, header and body answers as before, so nothing changes for a phone, a browser or a crew lead.
 - **The route table lives in `shared/routes.ts`.** The bridge router and the Remix phone shell import one typed map, so a renamed path or param stops `typecheck` on both sides. `bridge/http/routes.ts` re-exports it. No request changed.
