@@ -1282,3 +1282,83 @@ describe("loaders — a failed poll keeps the herd and the mirror", () => {
     expect(data.text).toBe(paneTextWithDraft());
   });
 });
+
+// ── The pane's saved row (M46 spec 10) ────────────────────────────────────────
+//
+// The pane page names its pane from the herd the root loader hands it. With the bridge away that
+// herd is the one kept at the PANE URL's address, and a pane URL never carries the breadth: opened
+// from the widened dashboard, the narrow herd may never have been kept, and the page said "(agent
+// gone)". A failed pane read now carries the pane's own row from any kept herd that can address it.
+describe("paneLoader — the pane's saved row", () => {
+  // Every write a case queued lands before the fake database goes away.
+  afterEach(async () => {
+    await (await import("./store")).__storeIdle();
+  });
+
+  const paneAt = (url: string) =>
+    import("./loaders").then(({ paneLoader }) =>
+      paneLoader({ params: { paneId: "w1:p1" }, request: new Request(`http://localhost${url}`) }),
+    );
+
+  it("names the pane from the widened herd when no narrow herd was kept", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    failPane();
+    const data = await paneAt("/pane/w1:p1");
+    expect(data.error).toBe(true);
+    expect(data.savedPane?.workspaceLabel).toBe("webapp");
+  });
+
+  it("carries no saved row on a live read", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    const data = await paneAt("/pane/w1:p1");
+    expect(data.error).toBe(false);
+    expect(data.savedPane).toBeUndefined();
+  });
+
+  it("never takes another session's pane of the same id from a narrow herd", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/") }); // the primary session, untagged
+    failPane();
+    const data = await paneAt("/pane/w1:p1?s=collie-demo");
+    expect(data.savedPane).toBeUndefined();
+  });
+
+  it("tells two sessions' `w1:p1` apart in a widened herd by the session each row names", async () => {
+    const primary = { ...fixtureAgents[0]!, session: "default" };
+    const demo = { ...fixtureAgents[0]!, workspaceLabel: "demo", session: "collie-demo" };
+    server.use(http.get("/api/snapshot", () => HttpResponse.json({ ...fixtureSnapshot, agents: [primary, demo] })));
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    failPane();
+    expect((await paneAt("/pane/w1:p1?s=collie-demo")).savedPane?.workspaceLabel).toBe("demo");
+    expect((await paneAt("/pane/w1:p1")).savedPane?.workspaceLabel).toBe("webapp");
+  });
+
+  it("on a crew, names a member's pane from the lead's merged herd, by the machine its row names", async () => {
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixtureCrewSnapshot)));
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/") });
+    failPane();
+    expect((await paneAt("/pane/w1:p1?h=workshop")).savedPane?.workspaceLabel).toBe("moonward");
+  });
+
+  it("a cold page reads the row back from the store", async () => {
+    const warm = await import("./loaders");
+    await warm.rootLoader({ request: new Request("http://localhost/?all=1") });
+    await (await import("./store")).__storeIdle();
+    vi.resetModules();
+    failPane();
+    const data = await paneAt("/pane/w1:p1");
+    expect(data.savedPane?.workspaceLabel).toBe("webapp");
+  });
+
+  it("a device refused for want of pairing names nothing it kept", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    (await import("./pairing")).markNotPaired();
+    failPane();
+    expect((await paneAt("/pane/w1:p1")).savedPane).toBeUndefined();
+  });
+});

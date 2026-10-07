@@ -58,10 +58,17 @@ export function DetailRoute() {
   // alone could hand this view another machine's pane — rendering its space, tab and cwd around a
   // mirror of, and a composer typing into, the one the URL actually addresses. Solo panes carry no
   // host and match unconditionally, so this is the same lookup it has always been.
+  //
+  // Last, the pane's row from a herd the phone kept (`PaneData.savedPane`), and only while the herd on
+  // screen is not a live answer. With the bridge away the root loader may hold no herd for this
+  // pane's address (the dashboard's was widened, or another machine's), and the pane is then still
+  // the pane the operator opened, drawn from what was saved. A live herd without the pane outranks
+  // it: that is the one answer that may say the pane closed.
   const agent =
     findPane(root.agents, paneId, scope, root.servers, root.sessions) ??
     findPane(root.shellPanes, paneId, scope, root.servers, root.sessions) ??
-    (fresh && fresh.paneId === paneId && !seen ? fresh : undefined);
+    (fresh && fresh.paneId === paneId && !seen ? fresh : undefined) ??
+    (root.error ? pane.savedPane : undefined);
   const gone = !agent;
 
   // Recover from a closed pane: once a healthy snapshot no longer has it, go up a level instead of
@@ -122,6 +129,8 @@ export function DetailRoute() {
       // The saved copy (M46 spec 10): the pane view dates it, and nothing on it may act (spec 11).
       stale={pane.stale === true}
       lastSeenAt={pane.lastSeenAt}
+      // The pane's read got no answer and the phone keeps no text for it.
+      noSavedCopy={pane.error && pane.text === ""}
       onBack={up}
       onBackArrow={backArrow}
       // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.

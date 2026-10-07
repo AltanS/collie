@@ -177,9 +177,9 @@ export const NOTICE_ACTION = `h-6 gap-1 px-2 text-xs ${NOTICE_ACTION_TAP}`;
  * by definition and `ui/strip-host.tsx` owns the row it sits in, so there is no gutter for the 100%
  * to be offset by. Both halves of that are what the box cannot say for itself.
  *
- * No safe-area inset here. The band's top inset belongs to `ui/strip-host.tsx`, which owns the row;
- * three of the current strips carry it and one does not, which is exactly the drift a shared owner
- * ends. The FLOOR, by contrast, does belong here and not on the host: it is derived from the action
+ * No safe-area inset here. The band sits under the header, and the header owns the notch
+ * (`app-header.tsx`); three of the old strips carried it and one did not, which is exactly the drift
+ * a single owner ends. The FLOOR, by contrast, does belong here and not on the host: it is derived from the action
  * slot's button, which is this component's contract, and it is tone-tinted through the `border-b`,
  * which the host is deliberately blind to.
  */

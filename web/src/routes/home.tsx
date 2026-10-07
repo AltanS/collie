@@ -14,7 +14,6 @@ import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
-import { Badge } from "@/components/ui/badge";
 import { CrewFooterLink } from "@/components/crew-footer-link";
 import { useCrew } from "@/components/crew-provider";
 import { CrewTab } from "@/components/crew-tab";
@@ -30,7 +29,6 @@ import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { isolateSpaces } from "@/lib/spaces";
-import { savedAtLabel } from "@/lib/format";
 import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
@@ -210,14 +208,6 @@ export function HomeRoute() {
         width="column"
         rightLead={
           <>
-            {/* THE AGE OF THE SAVED COPY (M46 spec 10). Drawn only while the herd below is the copy
-                the phone kept, so a glance at the header says how old the rows are. It leaves with
-                the first live answer; the banner above says why it is there. */}
-            {data.stale === true && data.lastSeenAt !== undefined && (
-              <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground tabular-nums">
-                {t("home.savedAsOf", { time: savedAtLabel(data.lastSeenAt) })}
-              </Badge>
-            )}
             {/* Host first, then session — outer dimension first, and the two are deliberately
                 different shapes (bordered server pill vs filled layers capsule) so a glance can tell
                 "change machine" from "change session on this machine". Both self-hide. */}

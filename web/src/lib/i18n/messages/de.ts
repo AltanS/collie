@@ -359,6 +359,7 @@ export const de: Dictionary = {
   "chat.fullReply.fromTranscript": "aus dem Protokoll",
   "chat.fullReply.showingTerminal": "Terminal wird gezeigt",
   "chat.output.empty": "(keine neue Ausgabe)",
+  "pane.saved.none": "Keine gespeicherte Kopie dieses Panes auf diesem Gerät.",
   "chat.switcher.aria": "Pane wechseln",
   "chat.switcher.ariaNeedsYou": "Pane wechseln, ein anderes Pane braucht dich",
   "chat.switcher.title": "Pane wechseln",
@@ -525,6 +526,7 @@ export const de: Dictionary = {
   "nav.settings.aria": "Einstellungen",
   "nav.home.aria.default": "Collie-Startseite",
   "nav.home.aria.lost": "Collie-Startseite: nicht verbunden",
+  "nav.home.aria.lostAt": "Collie-Startseite: nicht verbunden. Angezeigt wird der Stand von {time}.",
   "nav.home.aria.reconnecting": "Collie-Startseite: verbindet neu",
   "nav.mux.onPrefix": "auf",
   "nav.prereleaseTitle": "Vorabversion: {version}",
@@ -532,7 +534,6 @@ export const de: Dictionary = {
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "Nicht verbunden",
   "home.empty.disconnectedAt": "Nicht verbunden, zuletzt aktiv: {time}",
-  "home.savedAsOf": "Stand {time}",
   "home.empty.noAgents": "Keine aktiven Agenten.",
   "home.empty.waiting": "Warten auf Herdr...",
   "home.empty.panesHint": "Panes befinden sich unter Spaces.",

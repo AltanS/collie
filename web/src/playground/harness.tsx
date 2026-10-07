@@ -101,7 +101,9 @@ export function useConnectionClock(mode: ClockMode): void {
  * render nothing where they sit — they register a `StripSlot` with `ui/strip-host.tsx` and the band
  * paints the winner — so a card that mounts one of them without a host would show an empty stage and
  * report a bug that is not there. It costs the cards that mount no strip nothing: the band collapses
- * to no height, and a header inside it goes on reserving the safe-area inset itself.
+ * to no height, and a header inside it reserves the safe-area inset itself, as it always does. The
+ * band paints ABOVE the card's content here, a header included, which is not the app's order (the
+ * app paints it under the header); {@link PaneStackRouter} carries the app's order.
  */
 export function RootRouter({ data, children }: { data: HomeData; children: ReactNode }) {
   const [router] = useState(() =>
@@ -383,11 +385,11 @@ export function PaneRouter({
 const StackDeviceContext = createContext<DeviceAuth | null>(null);
 
 /**
- * {@link PaneRouter}'s pane, PLUS the band RootLayout mounts above it — the real `<StripHost>` with
- * the real `<UpdateRibbon/>` and `<ConnectionBanner/>` registering into it — so the worst-case stack
- * (gap 4) can be judged as one screen instead of summed from cards measured apart. Same real
- * components, same nesting as `routes/root.tsx`: the host wraps the two features AND the header, so
- * the band arbitrates and the header knows whether it still owes the safe-area inset.
+ * {@link PaneRouter}'s pane, PLUS the band RootLayout mounts under the header — the real `<StripHost>`
+ * with the real `<UpdateRibbon/>` and `<ConnectionBanner/>` registering into it — so the worst-case
+ * stack (gap 4) can be judged as one screen instead of summed from cards measured apart. Same real
+ * components, same nesting as `routes/root.tsx`: the header host wraps the band host, which wraps the
+ * two features AND the pane, so the bar comes first, the ribbon second and the pane last.
  *
  * BOTH FEATURES ARE MOUNTED AND ONE OF THEM SHOWS. That is not the harness being lazy — it is the
  * app's rule made visible: the band takes one strip at a time, and `AUTH` (the refusal below) beats
@@ -431,13 +433,13 @@ export function PaneStackRouter({
               pollMs={3_000}
             >
               <div className="flex h-full flex-col">
-                <StripHost>
-                  <UpdateRibbon />
-                  <ConnectionBanner bridge={undefined} error authError />
-                  <AppHeaderHost bridge={data.bridge} error={false}>
+                <AppHeaderHost bridge={data.bridge} error={false}>
+                  <StripHost>
+                    <UpdateRibbon />
+                    <ConnectionBanner bridge={undefined} error authError />
                     <StackPane data={data} fixture={fixture} />
-                  </AppHeaderHost>
-                </StripHost>
+                  </StripHost>
+                </AppHeaderHost>
               </div>
             </CrewProvider>
           ),
@@ -483,7 +485,7 @@ function StackPane({ data, fixture }: { data: HomeData; fixture: PaneFixture }) 
 // because a card built out of placeholder screens moves more smoothly than the app does, which made
 // it useless for the one question a motion card is asked: does this stutter?
 //
-// WHAT IS REAL: the shell (`StripHost` → `UpdateRibbon` + `ConnectionBanner` → `AppHeaderHost` →
+// WHAT IS REAL: the shell (`AppHeaderHost` → `StripHost` → `UpdateRibbon` + `ConnectionBanner` +
 // `ScreenTransition` → `Outlet`), every route component, the route ids the app reads its data by,
 // the loader RESULT SHAPES, and the `shouldRevalidate: false` history opts out with.
 //

@@ -341,6 +341,7 @@ export const zhTW: Dictionary = {
   "chat.fullReply.fromTranscript": "來自記錄",
   "chat.fullReply.showingTerminal": "正在顯示終端機",
   "chat.output.empty": "（暫無近期輸出）",
+  "pane.saved.none": "此裝置上沒有這個窗格的儲存副本。",
   "chat.switcher.aria": "切換窗格",
   "chat.switcher.ariaNeedsYou": "切換窗格，另一個窗格需要你",
   "chat.switcher.title": "切換窗格",
@@ -504,6 +505,7 @@ export const zhTW: Dictionary = {
   "nav.settings.aria": "系統設定",
   "nav.home.aria.default": "Collie 首頁",
   "nav.home.aria.lost": "Collie 首頁（連線中斷）",
+  "nav.home.aria.lostAt": "Collie 首頁（連線中斷）。正在顯示 {time} 儲存的內容。",
   "nav.home.aria.reconnecting": "Collie 首頁（重新連線中）",
   "nav.mux.onPrefix": "執行於",
   "nav.prereleaseTitle": "預覽版本：{version}",
@@ -511,7 +513,6 @@ export const zhTW: Dictionary = {
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "已中斷連線",
   "home.empty.disconnectedAt": "已中斷連線，最後上線時間：{time}",
-  "home.savedAsOf": "截至 {time}",
   "home.empty.noAgents": "沒有執行中的 Agent。",
   "home.empty.waiting": "等待 Herdr 回應...",
   "home.empty.panesHint": "窗格位於「空間」清單中。",

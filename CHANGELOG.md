@@ -74,6 +74,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The connection strip is a ribbon under the header, and the header never moves.** The band that
+  held the connection, auth and update strips painted above the header and pushed the whole page
+  when a strip came or went. It now sits under the header bar. The header owns the notch inset for
+  good, the "as of" chip left it, and the brand column cannot be squeezed by the chips beside it.
 - **The connection strip can be hidden, and the Collie mark shows the state after that.** The red
   strip keeps one button, Retry, and gets an X. Hidden, it stays hidden for the rest of that outage
   and comes back on the next one; recovery after a hide shows no green flash. While the connection is
@@ -109,6 +113,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   control share one 44 px row, so the file starts 122 px higher.
 
 ### Fixed
+
+- **A pane opened while offline no longer reads as gone.** A pane address carries no dashboard
+  scope, so with the bridge away the herd for that address was empty and the pane looked closed:
+  "(agent gone)", "Pane is gone". "Gone" now needs a live answer. Offline, the pane's row comes
+  from any herd the phone kept for that machine, and a pane with no saved text says "No saved copy
+  of this pane on this phone." with Send off.
 
 - **Typed characters never reach the audit log.** Type mode sends one key per character, and the
   audit trail listed `keys` as a parameter, so a password typed on the phone landed in `audit.log`

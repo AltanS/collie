@@ -391,6 +391,9 @@ export const en = {
   "chat.fullReply.fromTranscript": "from transcript",
   "chat.fullReply.showingTerminal": "showing the terminal",
   "chat.output.empty": "(no recent output)",
+  // The pane page with the bridge away and nothing kept for this pane: what the phone can say
+  // without a live answer. Never "gone", which only a live answer can state (M46 spec 10).
+  "pane.saved.none": "No saved copy of this pane on this phone.",
   "chat.switcher.aria": "Switch pane",
   "chat.switcher.ariaNeedsYou": "Switch pane, another pane needs you",
   "chat.switcher.title": "Switch pane",
@@ -584,6 +587,7 @@ export const en = {
   "nav.settings.aria": "Settings",
   "nav.home.aria.default": "Collie home",
   "nav.home.aria.lost": "Collie home — not connected",
+  "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
   "nav.home.aria.reconnecting": "Collie home — reconnecting",
   "nav.mux.onPrefix": "on",
   "nav.prereleaseTitle": "Pre-release build — {version}",
@@ -591,7 +595,6 @@ export const en = {
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "Disconnected",
   "home.empty.disconnectedAt": "Disconnected — last seen {time}",
-  "home.savedAsOf": "as of {time}",
   "home.empty.noAgents": "No agents running.",
   "home.empty.waiting": "Waiting for Herdr…",
   "home.empty.panesHint": "Your panes are under Spaces.",

@@ -17,15 +17,15 @@ import { UpdateRibbon } from "./update-ribbon";
 
 // The ONE update band. The reading behind it is pinned in `lib/update-ribbon.test.ts`; this file is
 // about the row that reaches the screen — its words, its tap, its dismiss, and what it does and does
-// NOT own now that the band above the header owns the row it appears in.
+// NOT own now that the band under the header owns the row it appears in.
 //
 // THE COMPONENT DRAWS NOTHING WHERE IT SITS. It registers a `StripSlot` and `ui/strip-host.tsx`
 // paints the winner, so every case here mounts the real host — a ribbon rendered without one is
 // silent by design, and asserting against that would be asserting against the wrong thing. What
 // used to be pinned as "the band class, byte-identical in every state" is now two facts split
-// between two files: the SHAPE is `ui/notice.tsx`'s strip floor (its own tests), and the POSITION,
-// the safe-area inset included, is the host's (`ui/strip-host.test.tsx`). What is left here is that
-// this feature adds neither.
+// between two files: the SHAPE is `ui/notice.tsx`'s strip floor (its own tests), and the POSITION is
+// the host's (`ui/strip-host.test.tsx`); the safe-area inset is the header's. What is left here is
+// that this feature adds none of them.
 //
 // The bundle states are driven through the REAL self-updater, the way the real poll drives it: a
 // build id that is not ours, observed twice (the hysteresis), with or without a reload hold.
@@ -600,19 +600,16 @@ describe("one height in every state, and the band's own", () => {
 });
 
 describe("the band owns the row; this feature owns the words", () => {
-  it("reserves no safe-area inset of its own — the band above the header does", async () => {
+  it("reserves no safe-area inset — the band sits under the header, which owns it", async () => {
     // THE REPORTED BUG, pinned at its source. This row set `env(safe-area-inset-top)` for itself,
     // as did the connection bar and as did the header, each written when it was the first thing on
     // the screen. Any two of them at once therefore paid for the notch twice, and ribbon + header
-    // is the everyday case. One owner now, and it is the row's position in the viewport that
-    // decides who: `ui/strip-host.tsx`.
+    // is the everyday case. The band paints under the header since 2026-10-07, so the header is the
+    // one owner (`routes/root.test.tsx` counts it over the whole layout) and the band holds none.
     const { container } = await renderBand(info());
+    expect(band(container)).not.toBeNull();
     expect(band(container)?.className).not.toMatch(/safe-area/);
-    const inset = container.querySelector("[class*='safe-area-inset-top']");
-    expect(inset).not.toBeNull();
-    expect(inset?.contains(band(container))).toBe(true);
-    // Exactly one element reserves it, in the whole band.
-    expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(1);
+    expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(0);
   });
 
   it("takes no position out of the layout flow, anywhere in the band", async () => {

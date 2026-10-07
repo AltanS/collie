@@ -128,9 +128,9 @@ export function RootLayout() {
     noteSnapshotCrew(snapshotUpdate);
   }, [snapshotUpdate]);
 
-  // A viewport-height flex column: the top banners (when shown) are in-flow rows at the top and the
-  // active route fills the rest (each route root is `min-h-0 flex-1`). This is what keeps a banner
-  // from covering the route's sticky header — it reserves real space instead of overlaying.
+  // A viewport-height flex column: the header bar, then the ribbon band (when shown) as an in-flow
+  // row under it, and the active route fills the rest (each route root is `min-h-0 flex-1`). The
+  // band reserves real space instead of overlaying, so it never covers the header or the route.
   return (
     // The crew roster is published here, at the data root, so every surface below — including sheets
     // portalled out to document.body — can answer "which machine?" without a prop chain. With no crew
@@ -150,69 +150,76 @@ export function RootLayout() {
           it. */}
       <TourHost home={data} onDecision={setTourDecision} />
       <div className="flex h-(--app-h) flex-col overflow-hidden">
-        {/* THE BAND, and the rule that there is only ever one strip in it. Four facts can be true at
-            once above the header — the auth refusal, a lost connection, a degraded one, an update on
-            offer — and none of them excludes another. Before this host arbitrated them, each row
-            reserved the notch for itself (each was written assuming it might be the first thing on
-            screen), so ribbon + header on an iPhone paid for the safe-area inset twice and left a
-            dead band at the top of the app. One winner, one inset, one owner.
+        {/* THE ONE HEADER, and the first thing on the screen in every state. It survives a
+            navigation because it is rendered HERE rather than inside `<Outlet/>`: all six routes used
+            to mount their own copy, and a header inside the outlet unmounts and remounts on every
+            route change. That restarted the Collie mark's 37 CSS animations at zero each time, the
+            operator's report, and rebuilt every gradient, filter and mask id in the drawing with it.
+            It is one shell now, mounted once for the life of the app, and each route portals its own
+            items into it via `<RouteHeader/>`.
 
-            The two features below register into it and render nothing where they sit; the header and
-            the route are the host's `children` and follow the band in the DOM. Which fact beats
-            which is `lib/strip-priority.ts` — a fact about this app, deliberately not about `ui/`. */}
-        <StripHost>
-          {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run in
-              flight, a new bridge this bundle is behind, and peers following — one row that says
-              whichever of those is true. Mounted unconditionally so the bundle self-updater's
-              controller runs (and can auto-update) for the app's lifetime; it registers no slot when
-              it has nothing to say. */}
-          <UpdateRibbon />
-          {/* A RUN THIS DEVICE DID NOT ASK FOR, as one line. The sheet that takes the screen is
-              mounted in `App.tsx`, outside the router; only its collapsed form belongs in the band,
-              and `useOptionalUpdateScreen` is how the one reading reaches across that boundary. It
-              was a bar pinned to the bottom of the viewport until 2026-09-20, which on a pane screen
-              is where the composer's input row is. `null` here is a tree with no App above it — a
-              unit test, or the playground — and that renders no strip, which is correct. */}
-          {updateScreen !== null && <UpdateRunStrip screen={updateScreen} />}
-          {/* The app's ONE connection surface: a thin bar that stays hidden while healthy, appears
-              amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
-              red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
-              same shared-clock signals as the header dog, so the two always agree. */}
-          <ConnectionBanner
-            bridge={data.bridge}
-            host={data.scope.host}
-            error={data.error}
-            authError={data.authError}
-            lastSeenAt={shownLastSeenAt(data, pane)}
-            stale={shownStale(data, pane)}
-          />
-          {/* THE ONE HEADER, and the third thing on this shelf. The two banners above it have always
-            survived a navigation because they are rendered HERE rather than inside `<Outlet/>`; the
-            header did not, because all six routes mounted their own copy of it, and a header inside
-            the outlet unmounts and remounts on every route change. That restarted the Collie mark's
-            37 CSS animations at zero each time — the operator's report — and rebuilt every gradient,
-            filter and mask id in the drawing with it. It is one shell now, mounted once for the life
-            of the app, and each route portals its own items into it via `<RouteHeader/>`.
+            It WRAPS everything below it rather than sitting beside it, which is the structural half
+            of the fix: there is no arrangement of this app in which a route mounts without a header
+            above it, and `<RouteHeader/>` throws outside the host rather than quietly rendering
+            nothing. `bridge`, `error` and the saved-copy stamp are read here, once, off the root
+            snapshot, and they are the same three the ConnectionBanner below is given, so the dog and
+            the ribbon cannot disagree. The header owns the safe-area inset unconditionally, because
+            nothing ever paints above it. */}
+        <AppHeaderHost bridge={data.bridge} error={data.error} lastSeenAt={shownLastSeenAt(data, pane)}>
+          {/* THE BAND, a ribbon UNDER the header bar, and the rule that there is only ever one strip
+              in it. Four facts can be true at once: the auth refusal, a lost connection, a degraded
+              one, an update on offer. None of them excludes another, so the host arbitrates. Which
+              fact beats which is `lib/strip-priority.ts`, a fact about this app, deliberately not
+              about `ui/`.
 
-            It WRAPS the outlet rather than sitting beside it, which is the structural half of the
-            fix: there is no arrangement of this app in which a route mounts without a header above
-            it, and `<RouteHeader/>` throws outside the host rather than quietly rendering nothing.
-            `bridge` and `error` are read here, once, off the root snapshot every route was
-            forwarding them from anyway — six copies of the same two fields was six chances to
-            disagree with the ConnectionBanner two lines up. */}
-          <AppHeaderHost bridge={data.bridge} error={data.error}>
+              It painted ABOVE the header until 2026-10-07. That made it the first thing on the
+              screen while open, so it had to take the notch from the header and give it back, and
+              the whole page, bar included, jumped down when an outage appeared and up when it went.
+              Under the bar, the header stays put and only the content below it moves. Neither row
+              scrolls: this column is `overflow-hidden` at the viewport's height and every route
+              scrolls inside its own region, so the ribbon stays with the bar by construction.
+
+              The three features below register into it and render nothing where they sit. The band
+              paints first, then the host's other child, the route. */}
+          <StripHost>
+            {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run
+                in flight, a new bridge this bundle is behind, and peers following, one row that says
+                whichever of those is true. Mounted unconditionally so the bundle self-updater's
+                controller runs (and can auto-update) for the app's lifetime; it registers no slot
+                when it has nothing to say. */}
+            <UpdateRibbon />
+            {/* A RUN THIS DEVICE DID NOT ASK FOR, as one line. The sheet that takes the screen is
+                mounted in `App.tsx`, outside the router; only its collapsed form belongs in the
+                band, and `useOptionalUpdateScreen` is how the one reading reaches across that
+                boundary. It was a bar pinned to the bottom of the viewport until 2026-09-20, which on
+                a pane screen is where the composer's input row is. `null` here is a tree with no App
+                above it, a unit test or the playground, and that renders no strip, which is
+                correct. */}
+            {updateScreen !== null && <UpdateRunStrip screen={updateScreen} />}
+            {/* The app's ONE connection surface: a thin bar that stays hidden while healthy, appears
+                amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates
+                to a red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery.
+                Reads the same shared-clock signals as the header dog, so the two always agree. */}
+            <ConnectionBanner
+              bridge={data.bridge}
+              host={data.scope.host}
+              error={data.error}
+              authError={data.authError}
+              lastSeenAt={shownLastSeenAt(data, pane)}
+              stale={shownStale(data, pane)}
+            />
             {/* The everyday move, animated: dashboard → pane slides in from the right, back from
-                the left, and every other navigation — a poll revalidation, a scope change, pane to
-                pane — arrives with no animation at all. It wraps the OUTLET and sits BELOW the
-                header for the reason the header sits above it: the key inside remounts the route's
-                subtree so the entrance replays, and everything that must survive a navigation (the
-                band, the header shell, the mark's 37 animations) is already outside it. It is not
-                the View Transitions API and may not become one — see the file's header. */}
+                the left, and every other navigation (a poll revalidation, a scope change, pane to
+                pane) arrives with no animation at all. It wraps the OUTLET and sits BELOW the header
+                and the band: the key inside remounts the route's subtree so the entrance replays,
+                and everything that must survive a navigation (the header shell, the band, the mark's
+                37 animations) is already outside it. It is not the View Transitions API and may not
+                become one; see the file's header. */}
             <ScreenTransition>
               <Outlet />
             </ScreenTransition>
-          </AppHeaderHost>
-        </StripHost>
+          </StripHost>
+        </AppHeaderHost>
       </div>
     </CrewProvider>
   );

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CloudOff, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { savedAtLabel } from "@/lib/format";
 import { CollieMark } from "@/components/collie-mark";
 import { t } from "@/lib/i18n";
 import { useStatus } from "@/lib/status";
@@ -23,6 +24,11 @@ interface CollieHomeProps {
    *  lost badge wears, the same two the connection strip uses so the two agree: false is the phone's
    *  own fact (WifiOff), anything else is a bridge that does not answer (CloudOff). */
   online?: boolean;
+  /** When the data on screen was last read live, if anyone knows. Only ever SPOKEN, never drawn:
+   *  while `lost`, it puts the age of the copy into the button's name, which is what remains of the
+   *  strip's "Showing what was saved at <time>" once the operator has dismissed it. The strip under
+   *  the header carries the date for sighted readers; the bar itself stays free of it. */
+  lastSeenAt?: number;
   className?: string;
 }
 
@@ -119,7 +125,14 @@ export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   return (1 - Math.cos(2 * Math.PI * u)) * du;
 }
 
-export function CollieHome({ onHome, trouble, lost = false, online = true, className }: CollieHomeProps) {
+export function CollieHome({
+  onHome,
+  trouble,
+  lost = false,
+  online = true,
+  lastSeenAt,
+  className,
+}: CollieHomeProps) {
   useLocale();
   const bloom = trouble && !lost;
   const LostIcon = online ? CloudOff : WifiOff;
@@ -307,9 +320,11 @@ export function CollieHome({ onHome, trouble, lost = false, online = true, class
       aria-label={
         !trouble
           ? t("nav.home.aria.default")
-          : lost
-            ? t("nav.home.aria.lost")
-            : t("nav.home.aria.reconnecting")
+          : !lost
+            ? t("nav.home.aria.reconnecting")
+            : lastSeenAt === undefined
+              ? t("nav.home.aria.lost")
+              : t("nav.home.aria.lostAt", { time: savedAtLabel(lastSeenAt) })
       }
       className={cn(
         "-mx-1 flex items-center rounded px-1 transition-opacity active:opacity-70",
@@ -352,7 +367,7 @@ export function CollieHome({ onHome, trouble, lost = false, online = true, class
           paper="var(--background)"
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />
-        {/* THE LOST BADGE. The strip above the header says the connection is gone, and the operator can
+        {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can
             hide it; this is what stays after that, so the state is never only a dimmed dog. It sits in
             the corner of the 44px box (inside it, so the tap target does not grow) on the page colour
             with the same `ring-2 ring-background` cut the status dot in agent-chat wears, which keeps

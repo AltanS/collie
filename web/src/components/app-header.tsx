@@ -26,7 +26,6 @@ import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
 import { Collapse } from "@/components/ui/collapse";
-import { useStripBandOpen } from "@/components/ui/strip-host";
 import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -111,6 +110,10 @@ interface AppHeaderHostProps {
   // no way for them to be right differently.
   bridge: BridgeStatus | undefined;
   error: boolean;
+  /** When the data on screen was last read live — the same stamp the connection strip dates its
+   *  saved-copy sentence by (`shownLastSeenAt` in routes/root.tsx). The mark speaks it while lost, so
+   *  the time is still there for a screen reader once the strip has been dismissed. */
+  lastSeenAt?: number;
   /** The routes below it. Not a sibling: the host RENDERS the outlet, so there is no arrangement of
    *  this app in which a route is mounted without a header above it. */
   children: ReactNode;
@@ -130,14 +133,15 @@ interface AppHeaderHostProps {
  * entirely. None of that is reachable by memoising inside the mark: the `useMemo` on its markup is
  * per-instance, and a new instance is exactly what was happening.
  *
- * The pattern is `RootLayout`'s existing one — the strip band, with UpdateRibbon and
- * ConnectionBanner registering into it, already sits above the outlet and already survives
- * navigation. This is the second thing on that shelf, and it renders the outlet itself.
+ * The pattern is `RootLayout`'s existing one: mounted above the outlet, so it survives navigation.
+ * It is the FIRST thing on that shelf: the strip band (`ui/strip-host.tsx`, with UpdateRibbon and
+ * ConnectionBanner registering into it) is one of its children and paints as a ribbon under this bar,
+ * and the outlet comes after the band.
  *
  * Routes feed it through `<RouteHeader/>`; see the note there for why that is a portal and not a
  * store of nodes.
  */
-export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
+export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeaderHostProps) {
   // The same two shared-clock signals the ConnectionBanner reads, so the dog and the bar agree by
   // construction: bloom while troubled (≥4s not-live), rest muted once lost (≥15s, latched).
   useLocale();
@@ -157,9 +161,6 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
   // the line still reads "on <the lead's mux>" — the name of the thing the page you are running is
   // built on, which is what a support question needs.
   const mux = useMuxName();
-  // Whether the band above this bar is showing a strip right now. It decides ONE thing — who
-  // reserves the safe-area inset — and the reasoning sits on the class below.
-  const bandOpen = useStripBandOpen();
   // The mark that goes with that name, served by the bridge from the ADAPTER's own bytes. Empty
   // whenever no logo was published, and empty renders nothing — see useMuxLogoUrl.
   const muxLogo = useMuxLogoUrl();
@@ -193,8 +194,8 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
 
   return (
     <HeaderSlotContext.Provider value={slots}>
-      {/* A column, not a row: the sticky bar reserves the safe-area inset when nothing above it does
-          (see the class list), and stacks the (usually absent) prerelease strip above the header row
+      {/* A column, not a row: the sticky bar reserves the safe-area inset (see the class list), and
+          stacks the (usually absent) prerelease strip above the header row
           proper, which keeps its original padding. On a stable
           build AlphaBar renders null and the geometry is byte-for-byte what it always was — the inset +
           the row's own py-2 reproduce the old `calc(safe-area + 0.5rem)` top padding exactly. The strip
@@ -215,29 +216,14 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
         className={cn(
           "sticky top-0 z-20 flex flex-col border-b bg-background",
           /*
-           * THE NOTCH IS RESERVED ONCE, BY WHATEVER IS ACTUALLY ON TOP.
-           *
-           * This bar owned `env(safe-area-inset-top)` unconditionally, on a claim that was true when
-           * it was written and is not any more: that the header is the first thing on the screen. It
-           * is not, whenever the band above it (`ui/strip-host.tsx`) is showing a strip — and the
-           * band reserves the inset too, because a strip that clears the notch is the whole reason
-           * the band exists in that position. Two unconditional reservations is one dead inset-tall
-           * strip at the top of an iPhone, which is exactly the bug reported for ribbon + header.
-           *
-           * `useStripBandOpen()` and NOT a `:first-child` selector: the band never unmounts (it
-           * collapses to nothing and keeps its live regions), so the header is never the DOM's first
-           * child once a host is mounted, and the question is whether the band is currently OPEN.
-           * Outside a host the hook is false and this bar owns the inset exactly as before.
-           *
-           * The transition is load-bearing, not decoration. The two reservations hand over during
-           * the band's own 240ms open/close, so without it the header's inset would appear in one
-           * frame while the band was still half-way through animating its own away, and the page
-           * below would jog down and back. On the same duration and the same easing as
-           * `ui/collapse.tsx`'s (COLLAPSE_MS), the sum of the two is monotonic and the operator sees
-           * one movement. Under reduced motion both sides snap together, which is also correct.
+           * THE NOTCH IS THIS BAR'S, ALWAYS. The header is the first thing on the screen in every
+           * state: the strip band (`ui/strip-host.tsx`) paints as a ribbon UNDER it, never above it,
+           * so nothing else ever sits at the top edge and nothing else reserves the inset. It used to
+           * hand the inset to the band while a strip showed above it (a context flag and a 240ms
+           * padding transition kept the two in step); moving the band below the bar on 2026-10-07
+           * made that handover, and the jog of the whole page it caused, unnecessary.
            */
-          "transition-[padding-top] duration-[240ms] ease-out motion-reduce:transition-none",
-          !bandOpen && "[padding-top:env(safe-area-inset-top)]",
+          "[padding-top:env(safe-area-inset-top)]",
           // The rule is RECOLOURED, never removed — DESIGN.md §2's own technique, and the width stays
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
@@ -298,17 +284,23 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                   trouble={trouble}
                   lost={lost}
                   online={online}
+                  lastSeenAt={lastSeenAt}
                 />
                 {/* THE IDENTITY, STACKED: the brand over the multiplexer this collie drives, both
                     beside the mark. It was ONE 18px line — "Collie on <mux>" — and on a phone that
                     line ran out of room inside the multiplexer's NAME, the one word here the reader
                     does not already know; the operator's screenshot had it down to a single letter.
                     Stacking inverts what gives way. The two runs no longer compete for one line's
-                    width, so the brand costs the name nothing and the name gets the whole block —
-                    the width this block asks the row for is the mux line's alone (the brand is out
-                    of flow, see below). Both lines still carry `truncate`, and the brand is the one
-                    that clips first, because it is the shorter run inside a box the longer run
-                    sized.
+                    width, so the brand costs the name nothing and the name gets the whole block.
+
+                    THE BLOCK NEVER GIVES WAY (2026-10-07). It is `shrink-0 whitespace-nowrap`, so
+                    it is always as wide as its longer line and neither line wraps or clips. It was
+                    `min-w-0` with `truncate` on both lines, and a phone with the right cluster full
+                    (two chips, the gear, and a saved-copy badge that has since left the bar)
+                    squeezed it to ~20px: the operator saw "C." over "o". What gives way now is the
+                    RIGHT cluster: `header-right` is `min-w-0`, and the host and session chips in it
+                    are `min-w-0` with a `truncate` name, so their names shorten first. The gear and
+                    the mark are `shrink-0` and keep their 44px.
 
                     The brand wears the app's EXISTING 11px uppercase tracked tier — `SectionLabel`,
                     DESIGN.md §1 — and not a new type style. It reads as the eyebrow over the line
@@ -316,14 +308,19 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                     under this collie is what a support question needs; that the app is called Collie
                     is not.
 
-                    THE MUX LINE IS THE BLOCK'S ONLY FLOW CHILD; the brand rides above it out of
-                    flow. This is what puts "on <mux>" on the same visual line as the row's other
+                    THE MUX LINE IS THE ONLY LINE WITH HEIGHT; the brand rides above it in a
+                    zero-height box. This is what puts "on <mux>" on the same visual line as the row's other
                     centred children (the host/session chips, the gear): the row centres every
                     child, so whatever height this block CONTRIBUTES is what gets centred — and
                     when it contributed both lines (40.5px), the mux line's centre landed 8px below
                     everything else's, which read as the right cluster floating on its own line
-                    between the two left ones. With the eyebrow absolute (`bottom-full`), the block
-                    contributes exactly the mux line's 24px box, so that line's centre IS the row's
+                    between the two left ones. The eyebrow is a `flex h-0 items-end` box: it adds
+                    no height, and its text sits on that box's bottom edge, which is the block's top
+                    edge, so it overflows UP exactly as `absolute bottom-full` used to. It stays in
+                    flow for its WIDTH: the block is as wide as the longer of the two lines even
+                    before a mux name has arrived, when the absolute eyebrow sat in a 0px box and
+                    spilled over the right cluster. The block contributes exactly the mux line's
+                    24px box, so that line's centre IS the row's
                     centre, shared with every chip. The alignment holds by construction, not by a
                     compensating offset that would drift the next time a size changes.
 
@@ -333,11 +330,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                     The eyebrow is 11px at `leading-none` (the arbitrary size would otherwise take
                     the body's 1.5 and draw 16.5px): from the block's top at 18px it reaches up to
                     7px from the row's top edge, inside the row's own box with the top padding to
-                    spare. An out-of-flow child adds no width either — this block is sized by the
-                    mux line alone, which the old flex column already guaranteed in practice (the
-                    brand is the shorter run) and this makes true by construction; `max-w-full`
-                    keeps the eyebrow clipping to that width, so it still truncates first. The mux
-                    logo changes none of it: 1.15em on a -0.2em baseline shift stays inside the
+                    spare. The mux logo changes none of it: 1.15em on a -0.2em baseline shift stays inside the
                     line box the type already asked for.
 
                     IT IS MOUNTED ONCE AND HIDDEN off the wordmark routes, rather than rendered
@@ -360,9 +353,9 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                 <div
                   data-slot="header-identity"
                   hidden={!claim.wordmark}
-                  className="relative min-w-0"
+                  className="shrink-0 whitespace-nowrap"
                 >
-                  <SectionLabel className="absolute bottom-full left-0 max-w-full truncate leading-none">
+                  <SectionLabel className="flex h-0 items-end leading-none">
                     Collie
                   </SectionLabel>
                   {/* The line the freed width is FOR — "on <mux>", the sentence the brand line
@@ -377,7 +370,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                       that makes two stacked runs one sentence rather than two loose labels, and it
                       is the only translated word here — the brand and the multiplexer's own name
                       are names, and names are not translated. */}
-                  <span className="block min-h-6 truncate text-base">
+                  <span className="block min-h-6 text-base">
                     {mux !== "" && (
                       <>
                         {t("nav.mux.onPrefix")}{" "}
@@ -416,7 +409,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                 {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
                     so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between
                     icons close to what it was. */}
-                <div data-slot="header-right" ref={setRight} className="flex items-center gap-1" />
+                <div data-slot="header-right" ref={setRight} className="flex min-w-0 items-center gap-1" />
               </>
             )}
             {/* The takeover host. `display: contents` so the route's own children are direct flex items
@@ -564,7 +557,7 @@ export function SettingsGear({ scope }: { scope?: Scope }) {
       // against a 12px gap, so a neighbour steals 12px of this one's hit area) and drags the last
       // one past the header's padding into document overflow. Costs horizontal room, which the
       // breadcrumb absorbs — it already truncates by design.
-      className="grid size-11 place-items-center text-muted-foreground transition-colors hover:text-foreground"
+      className="grid size-11 shrink-0 place-items-center text-muted-foreground transition-colors hover:text-foreground"
     >
       <Settings className="size-5" />
     </button>

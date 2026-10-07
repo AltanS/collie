@@ -52,7 +52,7 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   authError: false,
 });
 
-function makeRouter(initialPath: string, homeLoader: () => HomeData) {
+function makeRouter(initialPath: string, homeLoader: () => HomeData, paneExtra: Partial<PaneData> = {}) {
   return createMemoryRouter(
     [
       {
@@ -73,6 +73,7 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
               revision: 0,
               error: false,
               authError: false,
+              ...paneExtra,
             }),
             element: <DetailRoute />,
           },
@@ -132,6 +133,27 @@ describe("DetailRoute — freshPane bootstrap", () => {
       await router.revalidate();
     });
 
+    await screen.findByTestId("home");
+    expect(router.state.location.pathname).toBe("/");
+  });
+});
+
+// M46 spec 10: with the bridge away the herd on screen may not hold the pane (the root loader re-ran
+// at the pane's own address and kept nothing there), and the pane loader then carries the pane's row
+// from a herd the phone kept. Only a herd that is not a live answer may be outranked by it.
+describe("DetailRoute — the pane's saved row", () => {
+  const saved = agentView("w1:p1", "agent");
+
+  it("names the pane from its saved row while the herd on screen is not a live answer", async () => {
+    const away: HomeData = { ...connected([]), error: true, stale: true };
+    const router = makeRouter(panePath("w1:p1"), () => away, { error: true, savedPane: saved });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByTestId("chat")).toHaveTextContent("pane:w1:p1:live");
+  });
+
+  it("lets a live herd without the pane outrank the saved row: the pane closed", async () => {
+    const router = makeRouter(panePath("w1:p1"), () => connected([]), { error: true, savedPane: saved });
+    render(<RouterProvider router={router} />);
     await screen.findByTestId("home");
     expect(router.state.location.pathname).toBe("/");
   });

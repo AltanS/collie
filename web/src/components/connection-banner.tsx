@@ -71,7 +71,7 @@ type Tone = "amber" | "red" | "green";
 // one duration shared with everything else in the app that moves in flow.
 export const GREEN_MS = 1_800;
 
-// The ONE connection surface: a single, thin bar in the band above the header — `ui/strip-host.tsx`,
+// The ONE connection surface: a single, thin bar in the ribbon band under the header — `ui/strip-host.tsx`,
 // registered from here as a StripSlot — that is the app's entire connection UI; the header pill is
 // gone. It appears only on SUSTAINED trouble, escalates from amber → red on a real outage, flashes
 // green on recovery, and otherwise renders nothing. It reads the SAME two shared-clock signals

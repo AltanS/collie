@@ -13,6 +13,9 @@ import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, isLostLatched } from "@/lib/connection-health";
 import { CrewProvider } from "./crew-provider";
+import { savedAtLabel } from "@/lib/format";
+import { ServerSwitcher } from "./server-switcher";
+import { SessionSwitcher } from "./session-switcher";
 import type { BridgeStatus, ServerSummary } from "@/lib/types";
 
 // The header shell mounts CollieHome (a button) and, via SettingsGear, useNavigate — so it needs a router.
@@ -33,10 +36,13 @@ function renderHeader(ui: ReactElement) {
 function Header({
   bridge,
   error,
+  lastSeenAt,
   ...route
-}: { bridge: BridgeStatus | undefined; error: boolean } & ComponentProps<typeof RouteHeader>) {
+}: { bridge: BridgeStatus | undefined; error: boolean; lastSeenAt?: number } & ComponentProps<
+  typeof RouteHeader
+>) {
   return (
-    <AppHeaderHost bridge={bridge} error={error}>
+    <AppHeaderHost bridge={bridge} error={error} lastSeenAt={lastSeenAt}>
       <RouteHeader {...route} />
     </AppHeaderHost>
   );
@@ -247,6 +253,24 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
       act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
       expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
     });
+
+    // The saved-copy time left the bar with the "as of" badge (2026-10-07); the ribbon under the
+    // header says it, and once that is dismissed the mark's NAME still does. The host forwards the
+    // same stamp root.tsx gives the ribbon.
+    it("puts the saved time into the mark's name once lost, from the host's lastSeenAt", () => {
+      const at = Date.now() - 60_000;
+      renderHeader(<Header bridge="connected" error lastSeenAt={at} onHome={() => {}} />);
+      act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+      expect(
+        screen.getByRole("button", { name: `Collie home, not connected. Showing what was saved at ${savedAtLabel(at)}.` }),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the plain lost name when no stamp is known", () => {
+      renderHeader(<Header bridge="connected" error onHome={() => {}} />);
+      act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+      expect(screen.getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
+    });
   });
 });
 
@@ -364,14 +388,14 @@ describe("the header — the stacked identity", () => {
 
   // THE SHAPE. The two runs used to share one line, so the brand's ~55px came out of the
   // multiplexer name's budget and the name was what got the ellipsis — the operator's screenshot
-  // had it down to a single letter. Stacked, they no longer compete — and the brand is OUT OF FLOW
-  // (`absolute bottom-full`), so the block's width and height are the mux line's alone. That is
-  // what parks "on <mux>" on the row's one centred line, shared with the chips and the gear, with
-  // the eyebrow riding above it (see the identity comment in app-header.tsx for the arithmetic).
-  // Pinned as classes because that is where the fact lives: `relative` on the block anchors the
-  // eyebrow, `min-w-0` is what lets the block shrink instead of pushing the gear off the row,
-  // `max-w-full` clips the eyebrow to the width the mux line sized, and `truncate` on BOTH lines
-  // is the promise that neither overflows it.
+  // had it down to a single letter. Stacked, they no longer compete — and the brand sits in a
+  // ZERO-HEIGHT box (`flex h-0 items-end`) that overflows upward, so the block's height is the mux
+  // line's alone while its width is the longer of the two. That is what parks "on <mux>" on the
+  // row's one centred line, shared with the chips and the gear, with the eyebrow riding above it
+  // (see the identity comment in app-header.tsx for the arithmetic). Pinned as classes because that
+  // is where the fact lives: `shrink-0 whitespace-nowrap` on the block means it never gives way and
+  // never wraps (the right cluster gives way instead, see the 390px case below), so neither line
+  // carries a `truncate` any more.
   it("stacks the brand over the multiplexer instead of racing it for one line's width", async () => {
     server.use(
       http.get("/api/config", () =>
@@ -388,15 +412,100 @@ describe("the header — the stacked identity", () => {
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
     const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
     expect(block).not.toBeNull();
-    expect(block?.className).toContain("relative");
-    expect(block?.className).toContain("min-w-0");
+    expect(block?.className).toMatch(/(^|\s)shrink-0(\s|$)/);
+    expect(block?.className).toMatch(/(^|\s)whitespace-nowrap(\s|$)/);
+    expect(block?.className).not.toMatch(/(^|\s)min-w-0(\s|$)/);
     const [brand, muxLine] = Array.from(block?.children ?? []);
     expect(brand?.textContent).toBe("Collie"); // the brand is the TOP line…
-    expect(brand?.className).toContain("bottom-full"); // …and out of flow, above the block
-    expect(brand?.className).toContain("max-w-full");
+    expect(brand?.className).toMatch(/(^|\s)h-0(\s|$)/); // …adding no height…
+    expect(brand?.className).toContain("items-end"); // …and drawn above the block's top edge
     expect(muxLine?.textContent).toBe("on reference");
-    expect(brand?.className).toContain("truncate");
-    expect(muxLine?.className).toContain("truncate");
+    expect(brand?.className).not.toContain("truncate");
+    expect(muxLine?.className).not.toContain("truncate");
+  });
+
+  // THE BRAND NEVER GIVES WAY (2026-10-07). On a Pixel in airplane mode the dashboard row held the
+  // mark, the identity, a saved-copy badge, the "bluefin" and "default" chips and the gear, and the
+  // identity was the one thing allowed to shrink: it came out ~20px wide, "C." over "o". The row now
+  // gives the shrink to the RIGHT cluster. jsdom lays nothing out, so a 390px viewport cannot be
+  // measured here; what is pinned is the full right cluster at that width and the classes that
+  // decide who shrinks: the block is `shrink-0 whitespace-nowrap`, the cluster is `min-w-0`, each
+  // chip is `min-w-0` with a `truncate` name, and the gear holds its 44px with `shrink-0`.
+  it("keeps the wordmark whole at 390px with the right cluster full, and shortens the chips instead", async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    try {
+      server.use(
+        http.get("/api/config", () =>
+          HttpResponse.json({
+            push: false,
+            vapidPublicKey: "",
+            mux: { name: "herdr", capabilities: {}, unsupportedKeys: [], notes: {} },
+          }),
+        ),
+      );
+      const roster: ServerSummary[] = [
+        { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+        { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+      ];
+      const { container } = renderHeader(
+        <CrewProvider servers={roster} ts={100_000} pollMs={1500}>
+          <Header
+            bridge="connected"
+            error={false}
+            wordmark
+            width="column"
+            rightLead={
+              <>
+                <ServerSwitcher servers={roster} scope={{}} />
+                <SessionSwitcher sessions={[]} scope={{ session: "default" }} viewAll={false} />
+              </>
+            }
+            rightTrail={<SettingsGear />}
+          />
+        </CrewProvider>,
+      );
+      await waitFor(() => expect(screen.getByText("on herdr")).toBeInTheDocument());
+
+      // The right cluster is FULL: both chips and the gear are in it.
+      const right = container.querySelector<HTMLElement>('[data-slot="header-right"]');
+      const host = screen.getByRole("button", { name: /bluefin/ });
+      const session = screen.getByRole("button", { name: /default/ });
+      const gear = screen.getByRole("button", { name: "Settings" });
+      for (const el of [host, session, gear]) expect(right?.contains(el)).toBe(true);
+
+      // The wordmark is intact, on one line each, and its block cannot be squeezed.
+      const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
+      expect(block).toBeVisible();
+      const [brand, muxLine] = Array.from(block?.children ?? []);
+      expect(brand?.textContent).toBe("Collie");
+      expect(muxLine?.textContent).toBe("on herdr");
+      expect(block?.className).toMatch(/(^|\s)shrink-0(\s|$)/);
+      expect(block?.className).toMatch(/(^|\s)whitespace-nowrap(\s|$)/);
+      expect(block?.className).not.toMatch(/(^|\s)min-w-0(\s|$)/);
+
+      // What gives way is the right cluster, and inside it the chip NAMES.
+      expect(right?.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+      for (const chip of [host, session]) {
+        expect(chip.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+        expect(chip.className).not.toMatch(/(^|\s)shrink-0(\s|$)/);
+        const name = chip.querySelector("span");
+        expect(name?.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+        expect(name?.className).toMatch(/(^|\s)truncate(\s|$)/);
+      }
+      expect(gear.className).toMatch(/(^|\s)shrink-0(\s|$)/);
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    }
+  });
+
+  it("reserves the safe-area inset on the header itself, in every state", () => {
+    // The band paints UNDER the bar since 2026-10-07, so nothing ever sits above the header and the
+    // notch is always its own. There is no handover left to animate: no padding transition.
+    const { container } = renderHeader(<Header bridge="connected" error={false} wordmark />);
+    const header = container.querySelector("header");
+    expect(header?.className).toContain("[padding-top:env(safe-area-inset-top)]");
+    expect(header?.className).not.toMatch(/transition-\[padding-top\]/);
   });
 
   // THE HEIGHT CONTRACT, which the stack had to fit inside rather than grow (DESIGN.md §2, §6).

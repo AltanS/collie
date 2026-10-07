@@ -357,6 +357,7 @@ export const es: Dictionary = {
   "chat.fullReply.fromTranscript": "desde el registro",
   "chat.fullReply.showingTerminal": "mostrando la terminal",
   "chat.output.empty": "(sin salida reciente)",
+  "pane.saved.none": "No hay ninguna copia guardada de este panel en este dispositivo.",
   "chat.switcher.aria": "Cambiar panel",
   "chat.switcher.ariaNeedsYou": "Cambiar panel, otro panel te necesita",
   "chat.switcher.title": "Cambiar panel",
@@ -524,6 +525,7 @@ export const es: Dictionary = {
   "nav.settings.aria": "Configuración",
   "nav.home.aria.default": "Inicio de Collie",
   "nav.home.aria.lost": "Inicio de Collie (sin conexión)",
+  "nav.home.aria.lostAt": "Inicio de Collie (sin conexión). Se muestra la copia guardada ({time}).",
   "nav.home.aria.reconnecting": "Inicio de Collie (reconectando)",
   "nav.mux.onPrefix": "en",
   "nav.prereleaseTitle": "Compilación preliminar: {version}",
@@ -531,7 +533,6 @@ export const es: Dictionary = {
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "Desconectado",
   "home.empty.disconnectedAt": "Desconectado. Última conexión: {time}",
-  "home.savedAsOf": "copia de {time}",
   "home.empty.noAgents": "No hay agentes en ejecución.",
   "home.empty.waiting": "Esperando a Herdr...",
   "home.empty.panesHint": "Los paneles están en Espacios.",

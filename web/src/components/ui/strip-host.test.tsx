@@ -99,11 +99,10 @@ describe("StripHost — the top band, one winner", () => {
     expect(layers(container)).toHaveLength(0);
   });
 
-  it("owns the safe-area inset, so no strip carries one", () => {
-    // Three of the four strips this replaces set env(safe-area-inset-top) themselves and one does
-    // not, so which strip you are looking at decides whether the band clears the notch. One owner,
-    // one answer — and it is the row, because it is a fact about position in the viewport, not
-    // about the notice.
+  it("reserves no safe-area inset, and neither does any strip in it", () => {
+    // The band paints UNDER the header since 2026-10-07, so it is never the first thing on the
+    // screen and the notch is never its to clear. The header owns the inset in every state
+    // (`app-header.tsx`); a reservation here would pay for the notch twice while a strip shows.
     const { container } = render(
       <StripHost>
         <StripSlot priority={10}>
@@ -113,10 +112,28 @@ describe("StripHost — the top band, one winner", () => {
         </StripSlot>
       </StripHost>,
     );
-    const row = container.querySelector("[class*='safe-area-inset-top']");
-    expect(row).not.toBeNull();
-    expect(row?.contains(layers(container)[0] ?? null)).toBe(true);
+    expect(layers(container)).toHaveLength(1);
+    expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(0);
     expect(screen.getByText("copy").className).not.toMatch(/safe-area/);
+  });
+
+  it("paints the band BEFORE its children, which is what puts it between the header and the route", () => {
+    // `routes/root.tsx` mounts this host inside the header host, around the outlet. The band then
+    // comes after the header (the header host renders its bar first) and before the route (this
+    // host renders the band first), so the ribbon sits under the bar and above the screen.
+    render(
+      <StripHost>
+        <StripSlot priority={10}>
+          <Notice tone="info" variant="strip">
+            copy
+          </Notice>
+        </StripSlot>
+        <main>route</main>
+      </StripHost>,
+    );
+    const strip = screen.getByText("copy");
+    const route = screen.getByText("route");
+    expect(strip.compareDocumentPosition(route) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("keeps painting the last strip while the band collapses", () => {

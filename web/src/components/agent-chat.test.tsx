@@ -596,6 +596,24 @@ describe("AgentChat — a stale saved copy", () => {
     expect(await screen.findByRole("button", { name: "Yes" })).not.toBeDisabled();
     expect(screen.queryByText(/Saved copy from/)).toBeNull();
   });
+
+  // "Gone" is a fact only a live answer can state: a pane the phone cannot place while the herd on
+  // screen is not live is named by its id, and says what the phone does not have.
+  it("never says gone when the herd is not live and the pane is not in it", async () => {
+    renderChat({ agent: undefined, text: "", error: true, noSavedCopy: true });
+    expect(screen.getByText(fixtureAgents[0]!.paneId)).toBeInTheDocument();
+    expect(screen.getByText("No saved copy of this pane on this phone.")).toBeInTheDocument();
+    expect(screen.queryByText("(agent gone)")).toBeNull();
+    expect(screen.queryByText("(no recent output)")).toBeNull();
+    expect(screen.queryByPlaceholderText("Pane is gone")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  });
+
+  it("still says gone when a live herd does not hold the pane", () => {
+    renderChat({ agent: undefined, text: "" });
+    expect(screen.getByText("(agent gone)")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Pane is gone")).toBeInTheDocument();
+  });
 });
 
 describe("AgentChat — raw-terminal escape hatch", () => {

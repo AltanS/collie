@@ -149,6 +149,11 @@ interface AgentChatProps {
   stale?: boolean;
   /** When the saved mirror was fetched, for the notice's "Saved copy from {time}". */
   lastSeenAt?: number;
+  /**
+   * The pane's read got no answer and the phone keeps no text for it. The empty mirror then says so,
+   * rather than "no recent output", which would claim a read that never landed.
+   */
+  noSavedCopy?: boolean;
   /** Up one level: the header's back arrow (the Collie mark) and every exit from a pane that closed. */
   onBack: () => void;
   /**
@@ -234,6 +239,7 @@ export function AgentChat({
   stalled = false,
   stale = false,
   lastSeenAt,
+  noSavedCopy = false,
   onBack,
   onBackArrow,
   onSelect,
@@ -484,7 +490,12 @@ export function AgentChat({
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
 
-  const gone = !agent;
+  // "GONE" IS A FACT ONLY A LIVE ANSWER CAN STATE (M46 spec 10). With the bridge away the herd on
+  // screen is what the phone kept, and a pane missing from it is a pane this phone cannot place, not
+  // a pane that closed: it may simply never have been kept. So `gone` needs a live herd, and the other
+  // case is `unplaced`: the header names the pane by its id, nothing says "gone", and nothing acts.
+  const gone = !agent && !error && !stale;
+  const unplaced = !agent && !gone;
 
   // Drag the ACTIONS BELT up to bring up the pane switcher, tracked finger-by-finger so the sheet
   // peeks up under the thumb rather than appearing on release. The whole belt is the drag surface —
@@ -944,7 +955,9 @@ export function AgentChat({
   const savedCopyAt = chatShown ? chatFeed.window.savedAt : stale ? (lastSeenAt ?? null) : null;
   // Nothing on a saved copy may act (spec 11): the dock and the composer read this. A Chat window
   // read back from the store is a saved copy even when the mirror's own read is not.
-  const actsDisabledByCache = stale || savedCopyAt !== null;
+  // A pane this phone cannot place, or whose read got no answer with nothing kept, is no live pane
+  // either.
+  const actsDisabledByCache = stale || savedCopyAt !== null || unplaced || noSavedCopy;
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
   // question this side can answer. There are two layers and the split is deliberate: a pane that
   // draws Chat says what it is waiting for in the stream, in its own words, while a pane that keeps
@@ -1831,7 +1844,7 @@ export function AgentChat({
             </div>
           ) : (
             <div className="min-w-0 flex-1">
-              <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
+              <span className="truncate font-semibold">{unplaced ? paneId : t("chat.header.agentGone")}</span>
             </div>
           )}
           </HeaderStatus>
@@ -2295,7 +2308,7 @@ export function AgentChat({
                 </>
               ) : (
                 <div className="py-16 text-center text-sm text-muted-foreground">
-                  {t("chat.output.empty")}
+                  {t(noSavedCopy ? "pane.saved.none" : "chat.output.empty")}
                 </div>
               )}
             </ChatMessageList>

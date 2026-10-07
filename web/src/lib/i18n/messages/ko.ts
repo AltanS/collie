@@ -352,6 +352,7 @@ export const ko: Dictionary = {
   "chat.fullReply.fromTranscript": "로그에서",
   "chat.fullReply.showingTerminal": "터미널 표시 중",
   "chat.output.empty": "(최근 출력 없음)",
+  "pane.saved.none": "이 기기에 이 창의 저장된 사본이 없습니다.",
   "chat.switcher.aria": "창 전환",
   "chat.switcher.ariaNeedsYou": "창 전환, 다른 창이 응답을 기다립니다",
   "chat.switcher.title": "창 전환",
@@ -518,6 +519,7 @@ export const ko: Dictionary = {
   "nav.settings.aria": "설정",
   "nav.home.aria.default": "Collie 홈",
   "nav.home.aria.lost": "Collie 홈, 연결 끊김",
+  "nav.home.aria.lostAt": "Collie 홈, 연결 끊김. {time}에 저장된 내용을 표시합니다.",
   "nav.home.aria.reconnecting": "Collie 홈, 재연결 중",
   "nav.mux.onPrefix": "켜짐",
   "nav.prereleaseTitle": "프리릴리스 빌드 {version}",
@@ -525,7 +527,6 @@ export const ko: Dictionary = {
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "연결 끊김",
   "home.empty.disconnectedAt": "연결 끊김 (마지막 확인: {time})",
-  "home.savedAsOf": "{time} 기준",
   "home.empty.noAgents": "실행 중인 에이전트 없음",
   "home.empty.waiting": "Herdr 대기 중",
   "home.empty.panesHint": "창 목록은 Spaces에 있습니다.",

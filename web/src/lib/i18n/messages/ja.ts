@@ -353,6 +353,7 @@ export const ja: Dictionary = {
   "chat.fullReply.fromTranscript": "ログより",
   "chat.fullReply.showingTerminal": "ターミナルを表示中",
   "chat.output.empty": "(直近の出力なし)",
+  "pane.saved.none": "このペインの保存済みコピーはこの端末にありません。",
   "chat.switcher.aria": "ペインを切り替え",
   "chat.switcher.ariaNeedsYou": "ペインを切り替え、別のペインが対応を待っています",
   "chat.switcher.title": "ペインを切り替え",
@@ -519,6 +520,7 @@ export const ja: Dictionary = {
   "nav.settings.aria": "設定",
   "nav.home.aria.default": "Collie ホーム",
   "nav.home.aria.lost": "Collie ホーム (未接続)",
+  "nav.home.aria.lostAt": "Collie ホーム (未接続)。{time} に保存された内容を表示しています。",
   "nav.home.aria.reconnecting": "Collie ホーム (再接続中)",
   "nav.mux.onPrefix": "オン",
   "nav.prereleaseTitle": "プレリリースビルド: {version}",
@@ -526,7 +528,6 @@ export const ja: Dictionary = {
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "切断",
   "home.empty.disconnectedAt": "切断 (最終確認: {time})",
-  "home.savedAsOf": "{time} 時点",
   "home.empty.noAgents": "実行中のエージェントはありません。",
   "home.empty.waiting": "Herdrの応答を待機中...",
   "home.empty.panesHint": "ペインはSpaces内にあります。",

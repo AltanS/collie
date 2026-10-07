@@ -172,7 +172,8 @@ describe("RootLayout — the document itself never scrolls", () => {
   });
 });
 
-// THE NOTCH IS PAID FOR ONCE, IN BOTH STATES, AND THIS IS THE REPORTED BUG.
+// THE NOTCH IS PAID FOR ONCE, IN BOTH STATES, AND THIS IS THE REPORTED BUG. The header pays for it,
+// always, now that the band paints under it.
 //
 // Three rows at the top of this app each set `env(safe-area-inset-top)` for themselves — the update
 // ribbon, the connection bar and the header — every one of them written when it was, or might have
@@ -212,15 +213,12 @@ describe("RootLayout — the safe-area inset is reserved exactly once", () => {
     return container.querySelectorAll("[class*='safe-area-inset-top']");
   }
 
-  it("gives it to the band while a strip is showing, and not to the header as well", async () => {
+  it("gives it to the header while a strip is showing, and to nothing in the band", async () => {
     const { container } = renderLayout(offered);
     await waitFor(() => expect(screen.getByText(/Collie 1.5.0 available/)).toBeInTheDocument());
 
     expect(reservations(container)).toHaveLength(1);
-    // And it is the band's, above the header — not the header's.
-    const reserved = reservations(container)[0]!;
-    expect(container.querySelector("header")?.contains(reserved)).toBe(false);
-    expect(container.querySelector("header")?.className).not.toMatch(/safe-area/);
+    expect(container.querySelector("header")?.className).toMatch(/safe-area-inset-top/);
   });
 
   it("gives it to the header while the band is empty", async () => {
@@ -229,6 +227,55 @@ describe("RootLayout — the safe-area inset is reserved exactly once", () => {
 
     expect(reservations(container)).toHaveLength(1);
     expect(container.querySelector("header")?.className).toMatch(/safe-area-inset-top/);
+  });
+});
+
+// THE RIBBON SITS UNDER THE BAR (2026-10-07). The band painted above the header until then, so an
+// outage pushed the whole page down, bar included, and the notch had to be handed between the two.
+// Now the header is the first thing in the column, the band comes after it, and the route after
+// the band. Asserted as DOM order over the real layout, because order is the whole change.
+describe("RootLayout — the header comes first, the band under it, the route last", () => {
+  it("orders header → strip → route in the document", async () => {
+    const offered: HomeData = {
+      ...home(AFTERNOON),
+      error: false,
+      update: {
+        current: "1.4.1",
+        latest: "1.5.0",
+        latestUrl: null,
+        releaseAvailable: true,
+        majorAvailable: null,
+        majorUrl: null,
+        bridgeStale: false,
+        checkedAt: 0,
+      },
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => offered,
+          element: <RootLayout />,
+          children: [{ index: true, element: <div>dashboard</div> }],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    const { container } = render(<RouterProvider router={router} />);
+    const strip = await screen.findByText(/Collie 1.5.0 available/);
+    const header = container.querySelector("header");
+    const route = screen.getByText("dashboard");
+    expect(header).not.toBeNull();
+
+    const follows = (a: Node, b: Node) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(header?.contains(strip)).toBe(false);
+    expect(follows(header!, strip)).toBe(true);
+    expect(follows(strip, route)).toBe(true);
+    // The header is the column's FIRST child: nothing paints above the bar, in any state.
+    const column = container.querySelector(".flex.h-\\(--app-h\\).flex-col");
+    expect(column?.firstElementChild).toBe(header);
   });
 });
 

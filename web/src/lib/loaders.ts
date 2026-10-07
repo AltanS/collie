@@ -30,7 +30,7 @@ import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
 import { isLostLatched } from "@/lib/connection-health";
 import { markSavedCopy } from "@/lib/liveness";
-import { ambientSpaces } from "@/lib/hosts";
+import { ambientSpaces, findPane } from "@/lib/hosts";
 import {
   loadLastPaneText,
   loadLastSnapshot,
@@ -196,6 +196,14 @@ export interface PaneData {
    * handed down to the pane view for exactly that reading.
    */
   stale?: boolean;
+  /**
+   * The pane's own row from a herd this phone kept, set only when the pane's read failed. The pane
+   * page names the pane from it when the herd it was handed does not hold the pane, which happens
+   * with the bridge away: a pane URL never carries the breadth (`?all=1`), and a pane opened from
+   * another view's rows has its own address, so the root loader re-runs at an address it may hold no
+   * herd for. A missing row is then "not known", never "gone" (see {@link savedPaneRow}).
+   */
+  savedPane?: AgentView;
 }
 
 // ── THE COLD OPEN (M46 spec 10) ───────────────────────────────────────────────
@@ -526,6 +534,53 @@ export function resetRequestedLines(paneId?: string, scope?: Scope): void {
   else requestedLines.delete(paneKey(paneId, scope));
 }
 
+/**
+ * The pane's row from a herd this phone kept: memory first, then the on-device store.
+ *
+ * Read only for the pane page, and never folded into the herd a view draws: the widened and the
+ * narrow body stay apart (a narrow view must not draw a widened herd). What this answers is one
+ * question about one pane, "what was it?", from any kept herd that can address it:
+ *
+ * 1. the herd at the pane's own address, whose rows name neither dimension;
+ * 2. the widened herd of the pane's machine, and of its own address, whose rows name their session;
+ * 3. on a crew, for a pane on a member's primary session, the lead's merged herd, whose rows name
+ *    their machine.
+ *
+ * A row from a herd at another address counts only when it names the dimension that differs, so a
+ * `w1:p1` of one session is never taken for the `w1:p1` of another. `findPane` then matches within
+ * the pane's address, as the live lookup does.
+ */
+async function savedPaneRow(paneId: string, scope: Scope): Promise<AgentView | undefined> {
+  const homeHost = internScope({ host: scope.host });
+  const lead = internScope({});
+  const sources: { scope: Scope; all: boolean; needsSession: boolean; needsHost: boolean }[] = [
+    { scope, all: false, needsSession: false, needsHost: false },
+    { scope: homeHost, all: true, needsSession: scope.session !== undefined, needsHost: false },
+  ];
+  if (scope.session !== undefined) sources.push({ scope, all: true, needsSession: true, needsHost: false });
+  if (scope.host !== undefined) {
+    if (scope.session === undefined) sources.push({ scope: lead, all: false, needsSession: false, needsHost: true });
+    sources.push({ scope: lead, all: true, needsSession: scope.session !== undefined, needsHost: true });
+  }
+  const pick = (snap: SnapshotResponse, source: (typeof sources)[number]): AgentView | undefined => {
+    const panes = [...snap.agents, ...(snap.shellPanes ?? [])].filter(
+      (p) => (!source.needsSession || p.session !== undefined) && (!source.needsHost || p.host !== undefined),
+    );
+    return findPane(panes, paneId, scope, snap.servers, snap.sessions);
+  };
+  for (const source of sources) {
+    const held = lastSnapshot.get(snapshotKey(source.scope, source.all));
+    const row = held === undefined ? undefined : pick(held, source);
+    if (row !== undefined) return row;
+  }
+  for (const source of sources) {
+    const kept = await loadLastSnapshot(source.scope, source.all);
+    const row = kept === null ? undefined : pick(kept.value, source);
+    if (row !== undefined) return row;
+  }
+  return undefined;
+}
+
 // Last-known pane payload, flagged degraded — stale text (empty if this pane was never fetched),
 // truncated cleared, revision 0 (the prompt-select guard rejects a 0-revision mismatch anyway). Shared
 // by the failed-refresh catch and the offline navigation fast path, so both return the same shape.
@@ -547,6 +602,7 @@ async function stalePane(paneId: string, scope: Scope, lines: number, outage = f
   // A saved copy on screen is not a live pane: its dialog buttons and Send go off at once
   // (lib/liveness.ts, M46 spec 11), with no debounce.
   if (stale) markSavedCopy(paneId, scope);
+  const savedPane = refused ? undefined : await savedPaneRow(paneId, scope);
   return {
     paneId,
     scope,
@@ -558,6 +614,7 @@ async function stalePane(paneId: string, scope: Scope, lines: number, outage = f
     authError: hasAuthError(scope),
     lastSeenAt,
     stale,
+    savedPane,
   };
 }
 

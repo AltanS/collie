@@ -111,10 +111,10 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("connection.server.aria", { name: currentName })}
-        className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent active:scale-95"
+        className="flex min-w-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent active:scale-95"
       >
-        <Server className="size-3.5" />
-        <span className="max-w-[6rem] truncate">{currentName}</span>
+        <Server className="size-3.5 shrink-0" />
+        <span className="min-w-0 max-w-[6rem] truncate">{currentName}</span>
       </button>
 
       {/* Portalled for the same reason as the session sheet: a backdrop-filter on the header would

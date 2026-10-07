@@ -334,15 +334,16 @@ describe("ConnectionBanner — the single connection surface", () => {
     expect(row()?.querySelector("span.truncate.flex-1")).not.toBeNull();
   });
 
-  it("reserves no safe-area inset of its own — the band above the header does", () => {
+  it("reserves no safe-area inset — the band sits under the header, which owns it", () => {
     // The reported iOS bug, at one of its three sources. This row set the inset for itself, as did
     // the update ribbon and as did the header, each written when it might have been the first thing
-    // on the screen — so any two of them together paid for the notch twice. One owner now, and it is
-    // the band, because clearing the notch is a fact about the row's position in the viewport.
+    // on the screen — so any two of them together paid for the notch twice. The band paints under
+    // the header since 2026-10-07, so the header is the one owner and nothing in the band reserves.
     h.trouble = true;
     const { container } = renderBanner();
+    expect(row()).not.toBeNull();
     expect(row()?.className).not.toMatch(/safe-area/);
-    expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(1);
+    expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(0);
   });
 
   it("flashes green 'Connected' only after a visible bar recovers, then the band closes over it", () => {
