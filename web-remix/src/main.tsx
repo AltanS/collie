@@ -16,12 +16,12 @@ import "./app.css";
 
 import type { AppRuntime } from "remix/component";
 
-import { markLive } from "@web/lib/connection-health";
 import { basePath } from "@web/lib/base-path";
 
 import { APP_ROOT_ENTRY, AppRoot, type AppRootProps } from "./app-root";
 import { startAppRuntime } from "./lib/app-runtime";
-import { address, config, noteAddress, paneStore, snapshot, snapshotAt } from "./lib/data";
+import { address, paneStore } from "./lib/data";
+import { documentSeed } from "./lib/identity-seed";
 import { PANE_LINES, findPane } from "./routes/pane/data";
 import { primePaneFrames, paneFrameSrc } from "./routes/pane/pane-frames";
 import { parseAgent } from "./routes/pane/parse";
@@ -68,33 +68,32 @@ function serverProps(): AppRootProps | null {
   return null;
 }
 
-/** Give the stores what the server rendered from, before anything renders. */
-function prime(props: AppRootProps): void {
-  noteAddress(new URL(props.path, window.location.origin));
-  snapshot.set({ data: props.snapshot, error: undefined, status: undefined });
-  snapshotAt.set(props.snapshotAt);
-  config.set({ data: props.config, error: undefined, status: undefined });
-  // The snapshot is a live answer from the bridge, as a poll's would be.
-  if (props.snapshot.bridge !== "disconnected") markLive();
-  // A pane document drew its frames from this read (S2): the pane's store and the frames' ETag start
-  // from it, with the src the pane route will draw.
+/**
+ * A pane document drew its frames from one read (S2): the pane's store and the frames' ETag start from
+ * it, with the src the pane route will draw. Boot only: a soft navigation to another pane reconciles
+ * the DOM and does not hydrate it, so the stores re-seed (lib/identity-seed.ts) and the pane loads.
+ */
+function primePane(props: AppRootProps): void {
   const route = matchAppRoute(new URL(props.path, window.location.origin));
-  if (route?.kind === "pane" && props.pane !== undefined) {
-    // Hydrate in the mode the document was drawn in (a first visit has no prefs cookie yet), for this
-    // page only: `prime` leaves the stored switch alone.
-    paneFrames.prime(props.pane.frames ? "1" : "0");
-    const { scope } = address.get();
-    paneStore(paneScopeKey(scope, route.paneId)).set({ data: props.pane.read, error: undefined, status: undefined });
-    const agent = parseAgent(findPane(props.snapshot, route.paneId)?.agent, displayPrefs.get().rawTerminal);
-    primePaneFrames(paneFrameSrc(route.paneId, scope, PANE_LINES, agent), route.paneId, scope, props.pane.etag, props.pane.read);
-  }
+  if (route?.kind !== "pane" || props.pane === undefined) return;
+  // Hydrate in the mode the document was drawn in (a first visit has no prefs cookie yet), for this
+  // page only: priming leaves the stored switch alone.
+  paneFrames.prime(props.pane.frames ? "1" : "0");
+  const { scope } = address.get();
+  paneStore(paneScopeKey(scope, route.paneId)).set({ data: props.pane.read, error: undefined, status: undefined });
+  const agent = parseAgent(findPane(props.snapshot, route.paneId)?.agent, displayPrefs.get().rawTerminal);
+  primePaneFrames(paneFrameSrc(route.paneId, scope, PANE_LINES, agent), route.paneId, scope, props.pane.etag, props.pane.read);
 }
 
 // `?frames=0|1` sets the pane frames switch for this device before anything renders (lib/prefs.ts).
 applyFramesParam(new URL(window.location.href), false);
 
 const fromServer = serverProps();
-if (fromServer !== null) prime(fromServer);
+// Give the stores what the server rendered from, before anything renders (lib/identity-seed.ts).
+if (fromServer !== null) {
+  documentSeed.ensure(fromServer);
+  primePane(fromServer);
+}
 
 startPrefSync();
 startPrefCookie(basePath());

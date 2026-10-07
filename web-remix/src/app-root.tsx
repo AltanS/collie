@@ -20,6 +20,9 @@ import { paneScopeKey } from "@web/lib/scope";
 import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
 import { address } from "./lib/data";
+import { documentSeed } from "./lib/identity-seed";
+import { onServer } from "./lib/server-render";
+import { scheduleUpdate } from "./lib/store";
 import { HomeRoute } from "./routes/home/home";
 import { PaneRoute } from "./routes/pane/pane";
 import { routes } from "./routes";
@@ -86,7 +89,19 @@ export function appUrl(props: Pick<AppRootProps, "path" | "origin">): URL {
 }
 
 export const AppRoot = clientEntry(APP_ROOT_ENTRY, function AppRoot(handle: Handle<AppRootProps>) {
+  let checkedPath = handle.props.path;
   return () => {
+    // IDENTITY GUARD (lib/identity-seed.ts). This instance keeps its setup when the runtime hands it
+    // the props of another pane; the stores must follow the identity, not the first page. Checked
+    // after commit (a render never writes a store), and only when the path moved: the boot seeded the
+    // first one (main.tsx). Not on the server, which primes its own stores per request.
+    const path = handle.props.path;
+    if (path !== checkedPath && !onServer()) {
+      checkedPath = path;
+      handle.queueTask(() => {
+        if (documentSeed.ensure(handle.props)) scheduleUpdate(handle);
+      });
+    }
     const url = appUrl(handle.props);
     const route = matchAppRoute(url);
     return <Shell url={url}>{route === null ? null : appRouteNode(route)}</Shell>;
