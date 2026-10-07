@@ -481,7 +481,7 @@ export const zh: Dictionary = {
   // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
   // translator's call on the verb ("focus") and where a multiplexer name sits in a Chinese
   // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
-  "paneActions.focus.labelWithMux": "在终端中显示",
+  "paneActions.focus.labelWithMux": "在 {mux} 中显示",
   "paneActions.focus.labelFallback": "在终端中聚焦",
   "paneActions.focus.done": "已在终端中聚焦",
   "paneActions.focus.failed": "无法在终端中聚焦",

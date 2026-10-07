@@ -337,7 +337,7 @@ export const ko: Dictionary = {
   "chat.paneMenu.aria": "창 작업",
   "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
   "chat.header.openPaneSettingsAria": "{name} 창 설정",
-  "chat.header.statusAria": " — {label}",
+  "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(에이전트 연결 끊김)",
   "chat.scrollback.showHistory": "전체 기록 보기",
   "chat.scrollback.loadOlder": "이전 로그 불러오기",
@@ -491,7 +491,7 @@ export const ko: Dictionary = {
   // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
   // translator's call on the verb ("focus") and where a multiplexer name sits in a Korean
   // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
-  "paneActions.focus.labelWithMux": "터미널에 표시",
+  "paneActions.focus.labelWithMux": "{mux}에 표시",
   "paneActions.focus.labelFallback": "터미널에서 포커스",
   "paneActions.focus.done": "터미널에 포커스됨",
   "paneActions.focus.failed": "터미널 포커스 실패",

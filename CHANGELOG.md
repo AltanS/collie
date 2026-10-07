@@ -121,6 +121,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Six older translations had lost a placeholder.** "Show in {mux}" had become "Show in the
+  terminal" in German, Spanish, Japanese, Korean and both Chinese files, and the Korean status label
+  kept an em dash. A parity test now checks every translation against English for keys,
+  placeholders and em dashes.
 - **A pane opened while offline no longer reads as gone.** A pane address carries no dashboard
   scope, so with the bridge away the herd for that address was empty and the pane looked closed:
   "(agent gone)", "Pane is gone". "Gone" now needs a live answer. Offline, the pane's row comes

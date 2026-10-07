@@ -477,7 +477,7 @@ export const zhTW: Dictionary = {
   "paneActions.close.label": "關閉窗格",
   "paneActions.close.confirm": "再次點擊以確認關閉",
   "paneActions.close.closing": "正在關閉…",
-  "paneActions.focus.labelWithMux": "在終端機中顯示",
+  "paneActions.focus.labelWithMux": "在 {mux} 中顯示",
   "paneActions.focus.labelFallback": "在終端機中聚焦",
   "paneActions.focus.done": "已在終端機中聚焦",
   "paneActions.focus.failed": "無法在終端機中聚焦",

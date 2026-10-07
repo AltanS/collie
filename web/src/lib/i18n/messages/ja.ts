@@ -492,7 +492,7 @@ export const ja: Dictionary = {
   // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
   // translator's call on the verb ("focus") and where a multiplexer name sits in a Japanese
   // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
-  "paneActions.focus.labelWithMux": "ターミナルでフォーカス",
+  "paneActions.focus.labelWithMux": "{mux}でフォーカス",
   "paneActions.focus.labelFallback": "ターミナルでフォーカス",
   "paneActions.focus.done": "ターミナルでフォーカスしました",
   "paneActions.focus.failed": "ターミナルでフォーカスできませんでした",

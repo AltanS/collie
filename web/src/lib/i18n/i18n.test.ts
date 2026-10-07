@@ -177,28 +177,49 @@ describe("document language", () => {
   });
 });
 
-describe("the five newest dictionaries", () => {
-  const slotsOf = (template: string): string[] => [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).toSorted();
+describe("every translated dictionary", () => {
+  // The set of slot names, so a translation may repeat a slot or reorder them.
+  const slotsOf = (template: string): string[] => [
+    ...new Set([...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!)),
+  ].toSorted();
   // SAFETY: `MessageKey` is `keyof typeof en` by construction, so every own key of `en` is one.
   const englishKeys = Object.keys(en) as MessageKey[];
-  // The five added in one batch. The older bundles predate this check and are not held to it here:
-  // `paneActions.focus.labelWithMux` has dropped its `{mux}` slot in several of them, and `ko` keeps
-  // an em dash in `chat.header.statusAria`.
-  const added = ["ru", "it", "fr", "pt", "tr"] as const;
+  // Every shipped language except the source one. A new locale joins `LOCALES` and is covered here
+  // with no edit to this test.
+  const translated = LOCALES.map((option) => option.code).filter((code) => code !== "en");
+  // The bundles are read straight from their files. `t()` falls back to English key by key, so a
+  // key a bundle forgot would read as English and pass a check made through `t()`.
+  const bundles = import.meta.glob<Record<string, Record<string, string>>>("./messages/*.ts");
 
-  it.each(added)("%s has English's slots on every key, no em dash, and is not English", async (code) => {
-    setLocale(code);
-    await whenLocaleReady(code);
-    // `t()` serves English until the bundle lands, so a bundle that failed to load would pass every
-    // slot check below. A few strings are legitimately identical (a unit, a name, a placeholder);
-    // a missing bundle would make nearly all of them identical.
-    const sameAsEnglish = englishKeys.filter((key) => t(key) === en[key]);
-    expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
+  it.each(translated)(
+    "%s has English's keys, English's slots on every key, no em dash, and is not English",
+    async (code) => {
+      const load = bundles[`./messages/${code}.ts`];
+      expect(load, `${code} has a bundle file`).toBeDefined();
+      const exports = Object.values(await load!());
+      expect(exports, `${code} exports one dictionary`).toHaveLength(1);
+      const dictionary = exports[0]!;
 
-    for (const key of englishKeys) {
-      const value = t(key);
-      expect(slotsOf(value), `${code} ${key}`).toEqual(slotsOf(en[key]));
-      expect(value, `${code} ${key} has an em dash`).not.toContain("\u2014");
-    }
-  });
+      const keys = Object.keys(dictionary);
+      expect(
+        englishKeys.filter((key) => !(key in dictionary)),
+        `${code} lacks keys`,
+      ).toEqual([]);
+      expect(
+        keys.filter((key) => !(key in en)),
+        `${code} has keys English lacks`,
+      ).toEqual([]);
+
+      // A bundle that is English in disguise would pass every check below. A few strings are
+      // legitimately identical (a unit, a name, a placeholder); a copied bundle makes nearly all so.
+      const sameAsEnglish = englishKeys.filter((key) => dictionary[key] === en[key]);
+      expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
+
+      for (const key of englishKeys) {
+        const value = dictionary[key]!;
+        expect(slotsOf(value), `${code} ${key}`).toEqual(slotsOf(en[key]));
+        expect(value, `${code} ${key} has an em dash`).not.toContain("\u2014");
+      }
+    },
+  );
 });

@@ -497,7 +497,7 @@ export const es: Dictionary = {
   // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
   // translator's call on the verb ("focus") and where a multiplexer name sits in a Spanish
   // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
-  "paneActions.focus.labelWithMux": "Mostrar en la terminal",
+  "paneActions.focus.labelWithMux": "Mostrar en {mux}",
   "paneActions.focus.labelFallback": "Enfocar en el terminal",
   "paneActions.focus.done": "Enfocado en el terminal",
   "paneActions.focus.failed": "No se pudo enfocar en el terminal",
