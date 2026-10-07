@@ -220,6 +220,31 @@ export function applyFramesParam(url: URL, onServer: boolean): void {
   else paneFrames.set(asked === "1");
 }
 
+/**
+ * S3, islands (islands/README in REMIX3.md "Islands and soft navigation"): on, the bridge answers `/`
+ * and `/pane/:paneId` with server HTML and a few `clientEntry` islands, and navigation is Remix soft
+ * navigation; off, it answers the S1/S2 document with the one `AppRoot` island. A device switch carried
+ * in the prefs cookie like the frames switch; `?islands=0` or `?islands=1` on a page load sets it.
+ */
+/**
+ * The pin hint's retirement (`collie:pin-hint:v1`, "1" once retired; lib/pins.ts writes it). A pref
+ * store since S3 so the prefs cookie carries it: the bridge draws the dashboard's list in an islands
+ * document every beat, and must know the hint is gone.
+ */
+export const pinHintRetired = persisted("collie:pin-hint:v1", flag(false));
+
+export const ISLANDS_DEFAULT = true;
+export const ISLANDS_KEY = "collie:islands:v1";
+export const islandsPref = persisted(ISLANDS_KEY, flag(ISLANDS_DEFAULT));
+
+/** `?islands=0|1` on the page's URL sets the switch, as {@link applyFramesParam} does for frames. */
+export function applyIslandsParam(url: URL, onServer: boolean): void {
+  const asked = url.searchParams.get("islands");
+  if (asked !== "0" && asked !== "1") return;
+  if (onServer) islandsPref.prime(asked);
+  else islandsPref.set(asked === "1");
+}
+
 /** Duration of one press tick (web/src/lib/haptics.ts `TICK_MS`). */
 const TICK_MS = 10;
 

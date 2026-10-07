@@ -3,6 +3,7 @@
 // unseen square), and one bare shell. Harness and multiplexer names are plain data here, never a list
 // the app matches against. The working pane has a harness name no adapter knows: nothing reads its
 // mirror, so the stub text stays plain terminal text and never turns into a dialog card.
+import type { BrowserContext } from "@playwright/test";
 import type { AgentView, BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
 function pane(over: Partial<AgentView> & Pick<AgentView, "paneId" | "workspaceId" | "workspaceLabel" | "tabId">): AgentView {
@@ -49,4 +50,22 @@ export const CONFIG: BridgeConfig = { push: false, vapidPublicKey: "" };
 
 export function paneBody(paneId: string): PaneReadResponse {
   return { paneId, text: `stub mirror of ${paneId}\n$ `, truncated: false, revision: 1 };
+}
+
+/**
+ * Turn the S3 islands document off for this context, so the bridge draws `/` and `/pane/:paneId` as
+ * S1/S2 did: the specs that pin those documents (ssr-boot, pane-frames) keep pinning them, and
+ * e2e/islands.spec.ts holds the islands document. Both the prefs cookie (read by the server render)
+ * and local storage (the client writes the cookie back from it) carry the switch.
+ */
+export async function islandsOff(context: BrowserContext, baseURL: string): Promise<void> {
+  const value = encodeURIComponent(JSON.stringify({ "collie:islands:v1": "0" }));
+  await context.addCookies([{ name: "collie-prefs", value, url: baseURL }]);
+  await context.addInitScript(() => {
+    try {
+      localStorage.setItem("collie:islands:v1", "0");
+    } catch {
+      // A page with no storage: the cookie alone carries the switch for the server.
+    }
+  });
 }

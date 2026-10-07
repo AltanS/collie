@@ -42,7 +42,8 @@ Terminal view, under 0.5x in Chat; `?frames=0` turns them off for a device). Eit
 
 | Screen | Endpoint | When | How (R/) | W/ | R/ |
 | --- | --- | --- | --- | --- | --- |
-| every screen | `GET /api/snapshot` | each beat | JSON into a store | `lib/loaders.ts:334` (root loader) | `lib/data.ts:121`, `shell.tsx:54` |
+| every screen of the static shell | `GET /api/snapshot` | each beat | JSON into a store | `lib/loaders.ts:334` (root loader) | `lib/data.ts:121`, `shell.tsx:54` |
+| `home-list`: home and pane on an islands document (S3, the default) | `GET` of the page's own URL with `X-Remix-Frame`, `X-Remix-Target`, `X-Collie-Snap` (the hash each snapshot frame shows) and `X-Collie-Ranks` (the rows' frozen order) | each beat, in place of `/api/snapshot` | one answer: the snapshot's JSON, then the HTML of each snapshot frame (`home-list` on home, `pane-head` on a pane) whose hash moved. The snapshot goes into the same store; a moved frame is held and `frame.reload()` takes it, with no second request. An unmoved frame sends no HTML. A page whose answer is not ours falls back to `/api/snapshot` for the rest of its life | `lib/loaders.ts:334` | `islands/snapshot-frames.ts:137`, `islands/live.tsx:69`, `bridge/http/controllers/document.ts:233` |
 | every screen | `GET /api/config` | once per page; a failed read retries | JSON into a store | `lib/operator-config.ts:31` | `lib/data.ts:153` (`shell.tsx:55` keeps it on the beat until one read lands) |
 | pane, frames on (the default) | `GET /pane/:id?lines=600&agent=…` with `X-Remix-Frame`, `X-Remix-Target`, `X-Collie-Poll` (+ `text` while Find is open, `X-Collie-Reply` while a reply card is placed) | each beat, the read's ETag / 304 | one poll answer: the read without its text, carrying the screen model, and both frames' rows. 304: nothing at all. 200: the read into the store, then `frame.reload()` on each mounted frame whose rows moved; the runtime diffs them in by `data-rmx-key` | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/pane-frames.ts:254` |
 | pane, frames off (`?frames=0`) or latched | `GET /api/pane/:id?lines=600` | each beat, ETag / 304 | JSON into a store; the browser draws the rows | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:125`, `routes/pane/data.ts:47` (web's `fetchPane`) |
@@ -58,6 +59,10 @@ carries the screen model (the dialog's blocks, the draft, the footer, counts), w
 composer and the dialog guard's inputs are derived from, and the text itself only while Find is open. It is conditional only when every frame on screen is held, so a 304 never leaves one empty.
 While the reader is scrolled up, the screen frame is not reloaded (the rows stay put, rule 8); the
 held rows catch up at once on the jump back, with no request.
+
+On an islands page the snapshot beat is still ONE request per beat at the same cadence: the page URL
+replaces `/api/snapshot`, it does not add to it. The rows keep their frozen order because the beat
+sends that order (`X-Collie-Ranks`) and the bridge draws `home-list` in it (rule 8).
 
 The snapshot carries no ETag on the bridge today, so neither app sends `If-None-Match` for it. This
 shell would send one if the bridge ever adds it (`R/lib/api.ts:115`).

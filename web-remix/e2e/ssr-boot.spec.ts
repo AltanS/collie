@@ -2,7 +2,7 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import type { BridgeConfig, SnapshotResponse } from "@web/lib/types";
 
-import { CONFIG } from "./fixtures";
+import { CONFIG, islandsOff } from "./fixtures";
 import { homeHandlers, homeSnapshot } from "./home-api";
 import { installRoutesApi } from "./routes-api";
 
@@ -58,6 +58,8 @@ async function useServerDocuments(context: BrowserContext, baseURL: string, snap
   const res = await context.request.post(`${baseURL}/__ssr`, { data: { snapshot, config } });
   expect(res.status()).toBe(204);
   await context.addCookies([{ name: "e2e-ssr", value: "1", url: baseURL }]);
+  // This file pins the S1/S2 documents; e2e/islands.spec.ts holds the islands document (S3).
+  await islandsOff(context, baseURL);
 }
 
 interface Watch {

@@ -37,6 +37,7 @@ import { applyFramesParam, paneFrames, primePrefs } from "../lib/prefs";
 import { isPaneFrameName, paneFrameParams } from "../routes/pane/frames";
 import { PANE_LINES } from "../routes/pane/data";
 import { paneFrameNodes } from "./frames";
+import { renderIslandsDocument, type IslandsDocumentInput } from "./islands-document";
 import { withServerRender } from "../lib/server-render";
 import { resetStores } from "../lib/store";
 
@@ -58,7 +59,7 @@ export interface DocumentInput {
 }
 
 /** Prime every store the first render reads, for this request only. */
-function prime(input: DocumentInput): void {
+export function prime(input: DocumentInput): void {
   noteAddress(input.url);
   snapshot.set({ data: input.snapshot, error: undefined, status: undefined });
   snapshotAt.set(input.snapshotAt);
@@ -76,7 +77,7 @@ function prime(input: DocumentInput): void {
  * The rows of a pane frame the document draws (see the file header), built synchronously from the
  * request's read while the tree builds: `renderToStream` builds its segments before its first await.
  */
-function resolveFrame(input: DocumentInput): (src: string, target?: string) => ReadableStream<Uint8Array> | string {
+export function resolveFrame(input: DocumentInput): (src: string, target?: string) => ReadableStream<Uint8Array> | string {
   return (src, target) => {
     if (input.pane === undefined || !isPaneFrameName(target)) return "";
     const { agent } = paneFrameParams(new URL(src, input.url));
@@ -86,7 +87,7 @@ function resolveFrame(input: DocumentInput): (src: string, target?: string) => R
 }
 
 /** Drain a byte stream to text. */
-async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
+export async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
   let out = "";
   for await (const chunk of stream) out += decoder.decode(chunk, { stream: true });
@@ -94,7 +95,7 @@ async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 /** Remix's stream markers (`<!-- rmx:flush ... -->`); a one-chunk body carries one. */
-const FLUSH_MARKER = /<!-- rmx:flush [a-z]+ -->/g;
+export const FLUSH_MARKER = /<!-- rmx:flush [a-z]+ -->/g;
 
 /**
  * The island's markup and its `rmx-data` script, plus the `<style>` tags of any `css()` rules the
@@ -140,7 +141,7 @@ export function renderAppBody(input: DocumentInput): Promise<RenderedBody> {
 
 const LEADING_HEAD = /^<head>([\s\S]*?)<\/head>/;
 
-function splitHead(html: string): RenderedBody {
+export function splitHead(html: string): RenderedBody {
   const head = LEADING_HEAD.exec(html);
   if (head === null) return { head: "", body: html };
   return { head: head[1] ?? "", body: html.slice(head[0].length) };
@@ -223,3 +224,20 @@ export function documentPaneReadPath(url: URL): string | null {
   withLines.searchParams.set("lines", String(PANE_LINES));
   return paneReadApiPath(withLines, route.paneId);
 }
+
+// ── S3: the islands document and the snapshot frames (ssr/islands-document.tsx) ─────────────────────
+
+
+/**
+ * The document for one request: the islands document where this page is drawn that way (S3), else the
+ * S1/S2 document. `islands` tells the bridge which, for `X-Collie-Document`.
+ */
+export async function renderDocument(indexHtml: string, input: IslandsDocumentInput): Promise<{ html: string; islands: boolean }> {
+  const islands = renderIslandsDocument(indexHtml, input);
+  if (islands !== null) return { html: await islands, islands: true };
+  return { html: await renderAppDocument(indexHtml, input), islands: false };
+}
+
+export { renderSnapshotFrames } from "./islands-document";
+export { ISLAND_SOURCES } from "../islands/ids";
+export { decodeHeld, isSnapshotFrameName, RANKS_HEADER, SNAP_HEADER, SNAPSHOT_ANSWER } from "../islands/snapshot-wire";

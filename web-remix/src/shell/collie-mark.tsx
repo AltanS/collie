@@ -85,6 +85,11 @@ interface Held {
 
 function paint(host: HTMLElement, size = 40, paper = "var(--background)"): Painted {
   host.innerHTML = markup(size);
+  return adopt(host, paper);
+}
+
+/** Take over a drawing already painted into `host`. */
+function adopt(host: HTMLElement, paper = "var(--background)"): Painted {
   const svg = host.querySelector("svg");
   const body = svg?.querySelector("g");
   if (!svg || !body) throw new Error("collie-mark: the generated markup has no <svg><g>");
@@ -169,25 +174,26 @@ function paint(host: HTMLElement, size = 40, paper = "var(--background)"): Paint
   };
 }
 
-export interface CollieHomeProps {
-  /** The tap. Read at click time, so a route's callback never re-renders the mark. */
-  onActivate: () => void;
-  /** The accessible name when the mark goes up rather than home ("Back to the dashboard"). */
-  label?: string;
+/** The connection reading the mark's button names: reconnecting, lost. */
+export interface MarkReading {
+  trouble: boolean;
+  lost: boolean;
 }
 
-export function CollieHome(handle: Handle<CollieHomeProps>) {
-  useLocale(handle);
+/**
+ * Drive one painted mark from the four inputs (see the file header) until `signal` aborts. Returns the
+ * reading now; `onReading` hears each change of it (the button's accessible name follows it).
+ */
+function driveMark(painted: Painted, signal: AbortSignal, onReading: (reading: MarkReading) => void): MarkReading {
   let trouble = false;
   let lost = false;
-  let painted: Painted | null = null;
   let round = false;
   let working = false;
   let frame = 0;
 
   const sync = (): void => {
-    painted?.setLost(lost);
-    painted?.setLoading(!lost && (trouble || round || working));
+    painted.setLost(lost);
+    painted.setLoading(!lost && (trouble || round || working));
   };
 
   // The fast orbit starts on the FIRST frame after a tap, with no threshold (web: `useBusyWhile`). A
@@ -204,7 +210,7 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
       sync();
     });
   };
-  handle.signal.addEventListener("abort", () => cancelAnimationFrame(frame), { once: true });
+  signal.addEventListener("abort", () => cancelAnimationFrame(frame), { once: true });
 
   // ── Connection: bloom at 4 s not live, lost at 15 s (latched until a live poll) ────────────────
   const readConnection = (): void => {
@@ -213,7 +219,7 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
     trouble = next.trouble;
     lost = next.lost;
     sync();
-    scheduleUpdate(handle); // the button's accessible name
+    onReading({ trouble, lost });
   };
   const readBusy = (): void => {
     if (busy.view.orbit === working) return;
@@ -222,7 +228,7 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
   };
 
   // ── The round: one per burst of `setStatus` ─────────────────────────────────────────────────
-  const startRound = (signal: AbortSignal): void => {
+  const startRound = (): void => {
     if (round) return; // a status during a round is the same news; the round already says it
     round = true;
     sync();
@@ -233,7 +239,7 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
     const step = (): void => {
       if (signal.aborted) return;
       if (ramp === null) {
-        const anims = painted?.animations() ?? null;
+        const anims = painted.animations() ?? null;
         ramp = anims === null ? () => {} : (rate) => anims.forEach((a) => a.updatePlaybackRate(rate));
       }
       const elapsed = performance.now() - started;
@@ -257,24 +263,52 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
     );
   };
 
+  trouble = connection.state.trouble;
+  lost = connection.state.lost;
+  working = busy.view.orbit;
+  sync();
+  connection.subscribe(readConnection, signal);
+  busy.addEventListener("change", readBusy, { signal });
+  let seen = status.get()?.id ?? 0;
+  status.subscribe(() => {
+    const id = status.get()?.id ?? 0;
+    if (id === 0 || id === seen) return;
+    seen = id;
+    startRound();
+  }, signal);
+  return { trouble, lost };
+}
+
+/**
+ * The header mark of an islands document (S3): the server draws its empty host in a span every document
+ * keeps across a soft navigation (`data-rmx-preserve-dom`); the `live` island paints it once and drives it
+ * for the page's life. The button's accessible name follows the reading through `onReading`.
+ */
+export function driveHeaderMark(host: HTMLElement, signal: AbortSignal, onReading: (reading: MarkReading) => void): MarkReading {
+  const painted = host.querySelector("svg") === null ? paint(host) : adopt(host);
+  return driveMark(painted, signal, onReading);
+}
+
+export interface CollieHomeProps {
+  /** The tap. Read at click time, so a route's callback never re-renders the mark. */
+  onActivate: () => void;
+  /** The accessible name when the mark goes up rather than home ("Back to the dashboard"). */
+  label?: string;
+}
+
+export function CollieHome(handle: Handle<CollieHomeProps>) {
+  useLocale(handle);
+  let reading: MarkReading = { trouble: false, lost: false };
+
   const mount = (host: HTMLSpanElement, signal: AbortSignal): void => {
-    painted = paint(host);
-    trouble = connection.state.trouble;
-    lost = connection.state.lost;
-    working = busy.view.orbit;
-    sync();
-    connection.subscribe(readConnection, signal);
-    busy.addEventListener("change", readBusy, { signal });
-    let seen = status.get()?.id ?? 0;
-    status.subscribe(() => {
-      const id = status.get()?.id ?? 0;
-      if (id === 0 || id === seen) return;
-      seen = id;
-      startRound(signal);
-    }, signal);
+    reading = driveMark(paint(host), signal, (next) => {
+      reading = next;
+      scheduleUpdate(handle); // the button's accessible name
+    });
   };
 
   return () => {
+    const { trouble, lost } = reading;
     const label = !trouble
       ? (handle.props.label ?? t("nav.home.aria.default"))
       : lost

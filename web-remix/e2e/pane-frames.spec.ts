@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 
-import { CONFIG } from "./fixtures";
+import { CONFIG, islandsOff } from "./fixtures";
 import { capture, PANE_SNAPSHOT, PANES } from "./pane-api";
 
 // S2 (`experiments/remix-v3/ACTION-PLAN.md` B): the open pane's Terminal rows and statusline rows are
@@ -249,6 +249,8 @@ test("(f) a server document's frames are adopted on hydration: same nodes, no mo
   const res = await context.request.post(`${baseURL!}/__ssr`, { data: { snapshot: { ...PANE_SNAPSHOT, ts: Date.now() }, config: CONFIG } });
   expect(res.status()).toBe(204);
   await context.addCookies([{ name: "e2e-ssr", value: "1", url: baseURL! }]);
+  // The S2 pane document; e2e/islands.spec.ts holds the islands one (S3).
+  await islandsOff(context, baseURL!);
   await page.addInitScript(() => {
     // Before any module runs: tag the rows the parser drew, and record every animation that starts.
     const marks = { tagged: 0, animations: 0, rows: new WeakSet<Element>() };

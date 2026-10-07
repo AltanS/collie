@@ -12,6 +12,8 @@ import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView } 
 import { cn } from "@web/lib/utils";
 
 import { tabCreateKey } from "../../chips/space-actions";
+import { act, holdAct, islandsHtml } from "../../lib/acts";
+import { href } from "../../routes";
 import { createFrozenRanks } from "../../lib/frozen-ranks";
 import { machinesHiddenFrom } from "../../lib/hidden-machines";
 import { useLocale } from "../../lib/i18n-store";
@@ -87,7 +89,15 @@ export interface AgentListProps {
   onOpen: (pane: AgentView, row: HTMLElement) => void;
   onPress?: (pane: AgentView) => void;
   glideKeyOf?: (pane: AgentView) => string;
+  /** Islands document (S3): a row whose pane page is not an islands page is a plain document link. */
+  documentLink?: (pane: AgentView) => boolean;
   onHold?: (pane: AgentView) => void;
+  /**
+   * The rank reading the browser holds (S3: an islands document's list is drawn on the bridge every
+   * beat, so the reading the operator is looking at comes back with the request, `X-Collie-Ranks`).
+   * Absent, the list takes its own reading as before.
+   */
+  heldRanks?: ReadonlyMap<string, number>;
   /** Bring a row into view and focus it (after a pin moved it); a fresh object each time. */
   reveal?: { rowKey: string } | null;
 }
@@ -157,7 +167,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
     }
 
     const order = p.order;
-    const ranks = frozen.ranks(order, [...p.agents, ...p.shellPanes]);
+    const ranks = p.heldRanks ?? frozen.ranks(order, [...p.agents, ...p.shellPanes]);
     const attention = triage(p.agents).filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
     const groups = groupPanesByWorkspace(p.agents, p.shellPanes, { order: "fixed", tabs: p.tabs, servers: p.servers });
     if (groups.length === 0) return null;
@@ -180,6 +190,20 @@ export function AgentList(handle: Handle<AgentListProps>) {
     const pinHintHere = !p.needsYouOnly && p.renderBody === undefined && p.onHold !== undefined;
     const pinHintOpen = showsPinHint(hintRetired(), p.pins.length, shownRows);
     const firstShownRow = ranked ? rankedRows[0] : drawn[0]?.rows[0];
+    // An islands document (S3): the server draws the list once per beat and no island hydrates it, so
+    // the jump says where to go in attributes (islands/act-table.ts), and the rows are links.
+    const html = islandsHtml();
+    const jumpActs = !html || p.renderBody
+      ? undefined
+      : pinnedUrgent
+        ? act("scroll-to", { id: PINNED_ID })
+        : ranked && firstUrgentRow !== undefined
+          ? act("reveal", { id: rowDomId(paneRowKey(firstUrgentRow)) })
+          : firstUrgent
+            ? drawn.some((d) => d.group === firstUrgent)
+              ? act("scroll-to", { id: groupDomId(firstUrgent.key) })
+              : act("isolate", { key: workspacePrefKey(firstUrgent) })
+            : undefined;
 
     const jumpTo = (g: WorkspaceGroup): void => {
       if (!drawn.some((d) => d.group === g)) {
@@ -218,19 +242,23 @@ export function AgentList(handle: Handle<AgentListProps>) {
       );
     };
 
-    const row = (a: AgentView, scope: "place" | "herd" = "place") => (
+    const row = (a: AgentView, scope: "place" | "herd" = "place") => {
+      const glideKey = p.glideKeyOf?.(a);
+      return (
       <AgentRow
         key={paneRowKey(a)}
+        link={html && glideKey !== undefined ? { href: href(glideKey), rowKey: encodeURIComponent(paneRowKey(a)), document: p.documentLink?.(a) === true } : undefined}
         id={rowDomId(paneRowKey(a))}
         agent={a}
         scope={scope}
         unseen={bucketOf(a) === "ready"}
-        glideKey={p.glideKeyOf?.(a)}
+        glideKey={glideKey}
         onOpen={(pane, el) => handle.props.onOpen(pane, el)}
         onPress={p.onPress}
         onHold={p.onHold}
       />
-    );
+      );
+    };
 
     const controls = (
       <div class="flex shrink-0 gap-1">
@@ -256,7 +284,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
               strip = node;
             })}
           >
-            <Chip label={t("space.tabStrip.all")} active={!isolatedGroup} onClick={() => handle.props.onIsolate(null)} />
+            <Chip label={t("space.tabStrip.all")} active={!isolatedGroup} acts={act("isolate", { key: "" })} onClick={() => handle.props.onIsolate(null)} />
             {entries.map((entry, i) => {
               if (entry.kind === "machine") {
                 const name = hostName(p.servers, entry.host) ?? entry.host;
@@ -275,6 +303,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
                     active={false}
                     dimmed
                     status={worstTriage(entry.panes)}
+                    acts={act("show-machine", { host })}
                     onClick={() => {
                       handle.props.onShowMachine(host);
                       // Focus stays on the strip, on the chip that took this one's place.
@@ -293,6 +322,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
                   active={isolatedGroup?.key === g.key}
                   dimmed={!isolatedGroup && hiddenSet.has(key)}
                   status={worstTriage(g.panes)}
+                  acts={html ? { ...act("isolate", { key: isolatedGroup?.key === g.key ? "" : key }), ...holdAct("hide-space", { key }) } : undefined}
                   onClick={() => handle.props.onIsolate(isolatedGroup?.key === g.key ? null : key)}
                   onLongPress={() => handle.props.onToggleHidden(key)}
                 />
@@ -308,6 +338,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
             allClear={attention.length === 0}
             onJump={onJump}
             focusable={p.pins.length > 0 || reveal !== null}
+            acts={jumpActs}
             class="min-w-0 flex-1"
           />
           {p.renderBody === undefined ? (
@@ -348,7 +379,7 @@ export function AgentList(handle: Handle<AgentListProps>) {
         {!p.renderBody &&
           !ranked &&
           drawn.map(({ group: g, rows }) => (
-            <section key={g.key} id={groupDomId(g.key)} data-testid="workspace-group" data-host={groupHost(g)} class="flex scroll-mt-4 flex-col gap-2">
+            <section key={g.key} id={groupDomId(g.key)} data-rmx-key={html ? `group:${encodeURIComponent(g.key)}` : undefined} data-testid="workspace-group" data-host={groupHost(g)} class="flex scroll-mt-4 flex-col gap-2">
               <SectionHeader
                 label={g.label}
                 tone="strong"

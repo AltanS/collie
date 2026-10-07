@@ -25,7 +25,6 @@ import { sendKeys } from "@web/lib/api";
 import { describeApiError } from "@web/lib/api-error-message";
 import { composeLine, insertMarker, markerMissing, removeMarker } from "@web/lib/attachments";
 import { isDestructiveInput } from "@web/lib/destructive";
-import { adapterFor } from "@web/lib/harness";
 import { buzz } from "@web/lib/haptics";
 import { t, tn } from "@web/lib/i18n";
 import { keyLabel } from "@web/lib/key-queue";
@@ -52,10 +51,12 @@ import { useLocale } from "../../lib/i18n-store";
 import { displayPrefs, type DisplayPrefs } from "../../lib/prefs";
 import { setStatus } from "../../lib/status";
 import { scheduleUpdate, useStore } from "../../lib/store";
+import { adapterFor, harnessLoaded, loadHarness } from "../../lib/harness-lazy";
 import { handsFree, sttCapability } from "../../lib/stt";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
-import { sendTypedReply, type WriteTarget } from "./answer";
+import type { WriteTarget } from "./answer";
+import { lazySendTypedReply as sendTypedReply } from "./answer-lazy";
 import { AgentPalette } from "./agent-palette";
 import { Belt, BeltStandIn, type BeltPill, type BeltProps } from "./belt";
 import { ComposerDock, DisplayDock, QuickTray } from "./belt-drawers";
@@ -190,6 +191,8 @@ export function Composer(handle: Handle<ComposerProps>) {
   const readConfig = useStore(handle, config);
   const readHandsFree = useStore(handle, handsFree);
   const readDisplay = useStore(handle, displayPrefs);
+  // The harness answers the draft questions below; it loads on the first focus or terminal draft (lib/harness-lazy.ts).
+  useStore(handle, harnessLoaded);
   const draftPreview = createStableDraft(handle.signal);
   const readStable = useStore(handle, draftPreview.value);
 
@@ -539,6 +542,8 @@ export function Composer(handle: Handle<ComposerProps>) {
     const stable = readStable();
     if (stable !== null && raw !== null && normalizeDraft(stable) !== handledKey) previewLatched = true;
     const showPreview = !gate.locked && previewLatched && !previewDismissed && raw !== null && normalizeDraft(raw) !== handledKey;
+    // A draft in the terminal is one of the moments the harness is asked about (lib/harness-lazy.ts).
+    if (rawDraft !== null && !harnessLoaded.get()) handle.queueTask(() => void loadHarness());
     const adapter = adapterFor(agent);
     const opaque = raw !== null && adapter?.draftIsOpaque?.(raw) === true;
 
@@ -835,7 +840,10 @@ export function Composer(handle: Handle<ComposerProps>) {
                 on("select", (event) => {
                   caret = event.currentTarget.selectionStart;
                 }),
-                on("focus", () => handle.props.onFocusChange(true)),
+                on("focus", () => {
+                  void loadHarness();
+                  handle.props.onFocusChange(true);
+                }),
                 on("blur", (event) => {
                   caret = event.currentTarget.selectionStart;
                   handle.props.onFocusChange(false);

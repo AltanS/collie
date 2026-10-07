@@ -13,6 +13,7 @@ import { t } from "@web/lib/i18n";
 import { statusLabel, type AgentStatus, type PaneCache } from "@web/lib/types";
 
 import { PaneMeta } from "../../chips/pane-meta";
+import { act } from "../../lib/acts";
 import { useLocale } from "../../lib/i18n-store";
 import { AgentIcon } from "../home/agent-icon";
 import { Icon } from "../../ui/icon";
@@ -32,6 +33,8 @@ export interface PaneIdentityProps {
   onName: () => void;
   onWorkspace: () => void;
   onCache: () => void;
+  /** An islands document: the space overview's URL, which the workspace button loads as a document. */
+  workspaceHref?: string;
 }
 
 export function PaneIdentity(handle: Handle<PaneIdentityProps>) {
@@ -80,6 +83,7 @@ export function PaneIdentity(handle: Handle<PaneIdentityProps>) {
         <button
           type="button"
           data-testid="pane-name-button"
+          {...act("sheet", { sheet: "pane-settings" })}
           aria-label={t("chat.header.openPaneSettingsAria", { name })}
           class="absolute inset-x-0 -top-2 h-[30px] rounded-t-lg active:bg-muted/60"
           mix={on("click", () => handle.props.onName())}
@@ -87,6 +91,7 @@ export function PaneIdentity(handle: Handle<PaneIdentityProps>) {
         <button
           type="button"
           data-testid="pane-workspace-button"
+          {...act("document", { href: handle.props.workspaceHref })}
           aria-label={t("chat.header.openOverviewAria", {
             workspace,
             status: stateWord === "" ? "" : t("chat.header.statusAria", { label: stateWord }),

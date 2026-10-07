@@ -85,6 +85,15 @@ interface PolledRead {
 interface Renderer {
   isDocumentRoute(url: URL): boolean;
   renderAppDocument(indexHtml: string, input: DocumentInput): Promise<string>;
+  /** S3: the islands document where the page is drawn that way, else the S1/S2 document. */
+  renderDocument(indexHtml: string, input: DocumentInput & { preloads?: Record<string, string[]> }): Promise<{ html: string; islands: boolean }>;
+  /** S3: one snapshot beat's answer, or null for a page that is not an islands page. */
+  renderSnapshotFrames(
+    input: DocumentInput & { held: Map<string, string>; ranks: string | null; snapshotJson: string; raw?: boolean; preloads?: Record<string, string[]> },
+  ): Promise<string> | null;
+  decodeHeld(header: string | null): Map<string, string>;
+  isSnapshotFrameName(name: string | null | undefined): boolean;
+  ISLAND_SOURCES: Record<string, string>;
   isPaneFrameName(name: string | null | undefined): name is FrameName;
   pollTargets(header: string | null): FrameName[];
   pollWantsText(header: string | null): boolean;
@@ -113,6 +122,81 @@ function loadRenderer(): Promise<Renderer> {
   return renderer;
 }
 
+/** The build id the bridge sends in `X-Collie-Build` (its `build-info.json`). */
+async function buildId(): Promise<string> {
+  // SAFETY: this repo's own Vite build writes build-info.json with an `id` (vite.config.ts).
+  const stamp = (await Bun.file(join(root, "build-info.json")).json()) as { id?: string };
+  return stamp.id ?? "";
+}
+
+/** The prefs cookie's JSON (bridge/http/controllers/document.ts `prefsFromCookie`). */
+function prefsOf(req: Request): string | null {
+  const match = /(?:^|;\s*)collie-prefs=([^;]*)/.exec(req.headers.get("cookie") ?? "");
+  if (match?.[1] === undefined) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+/** Each island's chunk and its direct imports the entry does not load (bridge `islandPreloads`). */
+async function islandPreloads(sources: Record<string, string>): Promise<Record<string, string[]>> {
+  const file = Bun.file(join(root, ".vite", "manifest.json"));
+  if (!(await file.exists())) return {};
+  // SAFETY: Vite's own build manifest; only `file`, `imports` and `isEntry` are read.
+  const chunks = (await file.json()) as Record<string, { file: string; imports?: string[]; isEntry?: boolean }>;
+  const walk = (key: string, into: Set<string>): void => {
+    if (into.has(key)) return;
+    into.add(key);
+    for (const next of chunks[key]?.imports ?? []) walk(next, into);
+  };
+  const entry = new Set<string>();
+  for (const [key, chunk] of Object.entries(chunks)) if (chunk.isEntry === true) walk(key, entry);
+  const out: Record<string, string[]> = {};
+  for (const [id, source] of Object.entries(sources)) {
+    if (chunks[source] === undefined) continue;
+    out[id] = [source, ...(chunks[source]?.imports ?? [])].filter((key) => !entry.has(key)).map((key) => `/${chunks[key]?.file ?? ""}`);
+  }
+  return out;
+}
+
+const FRAME_VARY = "X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply, X-Collie-Snap, X-Collie-Ranks";
+
+/** The snapshot frames (bridge `serveSnapshotFrames`), for a spec that posted a snapshot. */
+async function serveSnapshotFrames(req: Request, url: URL): Promise<Response | null> {
+  const snap = req.headers.get("x-collie-snap");
+  const target = req.headers.get("x-remix-target");
+  if (snap === null && target === null) return null;
+  if (ssrCookie(req) === null || ssr === null || req.method !== "GET") return null;
+  const render = await loadRenderer();
+  if (!render.isDocumentRoute(url)) return null;
+  if (snap === null && !render.isSnapshotFrameName(target)) return null;
+  const now = Date.now();
+  const body = await render.renderSnapshotFrames({
+    url,
+    base: "/",
+    snapshot: ssr.snapshot,
+    snapshotAt: now,
+    config: ssr.config,
+    prefs: prefsOf(req),
+    now,
+    held: snap === null ? new Map([[target ?? "", ""]]) : render.decodeHeld(snap),
+    ranks: req.headers.get("x-collie-ranks"),
+    snapshotJson: JSON.stringify(ssr.snapshot),
+    raw: snap === null,
+    preloads: await islandPreloads(render.ISLAND_SOURCES),
+  });
+  if (body === null) return new Response("not an islands page", { status: 404 });
+  snapshotBeats++;
+  return new Response(body, {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store", vary: FRAME_VARY, "x-collie-build": await buildId(), "x-collie-frame": snap === null ? (target ?? "") : "snapshot" },
+  });
+}
+
+/** Snapshot beats answered, read by e2e/islands.spec.ts through `/__beats`. */
+let snapshotBeats = 0;
+
 function ssrCookie(req: Request): string | null {
   const match = /(?:^|;\s*)e2e-ssr=([^;]*)/.exec(req.headers.get("cookie") ?? "");
   return match?.[1] ?? null;
@@ -128,10 +212,13 @@ async function serveDocument(req: Request, url: URL): Promise<Response | null> {
   const now = Date.now();
   const paneId = paneIdOf(url);
   const posted = paneId === null ? undefined : panes.get(paneId);
-  const input: DocumentInput = { url, base: "/", snapshot: ssr.snapshot, snapshotAt: now, config: ssr.config, prefs: null, now };
+  const input: DocumentInput = { url, base: "/", snapshot: ssr.snapshot, snapshotAt: now, config: ssr.config, prefs: prefsOf(req), now };
   if (posted?.text !== undefined && paneId !== null) input.pane = paneRead(paneId, posted.text);
-  const html = await render.renderAppDocument(await Bun.file(join(root, "index.html")).text(), input);
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  const indexHtml = await Bun.file(join(root, "index.html")).text();
+  const { html, islands } = await render.renderDocument(indexHtml, { ...input, preloads: await islandPreloads(render.ISLAND_SOURCES) });
+  const headers = new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store", vary: FRAME_VARY, "x-collie-build": await buildId() });
+  if (islands) headers.set("x-collie-document", "islands");
+  return new Response(html, { headers });
 }
 
 /** The panes a spec posted: the mirror text, or a status to refuse with. */
@@ -190,6 +277,9 @@ Bun.serve({
       else panes.set(body.paneId, body);
       return new Response(null, { status: 204 });
     }
+    if (url.pathname === "/__beats") return Response.json({ beats: snapshotBeats });
+    const beat = await serveSnapshotFrames(req, url);
+    if (beat !== null) return beat;
     const frame = await serveFrame(req, url);
     if (frame !== null) return frame;
     const document = await serveDocument(req, url);

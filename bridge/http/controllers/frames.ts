@@ -90,7 +90,7 @@ const REPLY_HEADER = "x-collie-reply";
 /** On every answer about a pane: proof to the browser that this is the frame route's own. */
 export const FRAME_ANSWER_HEADER = "x-collie-frame";
 /** Every answer on `/pane/:paneId`, document included, depends on these request headers. */
-export const FRAME_VARY = "X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply";
+export const FRAME_VARY = "X-Remix-Frame, X-Remix-Target, X-Collie-Poll, X-Collie-Reply, X-Collie-Snap, X-Collie-Ranks";
 /** Below this many bytes a fragment goes out raw. */
 const GZIP_MIN_BYTES = 1024;
 /** Rendered fragments kept by ETag, agent and frames. */

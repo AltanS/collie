@@ -6,6 +6,7 @@ import { t, tn } from "@web/lib/i18n";
 import { crewPath } from "@web/lib/nav";
 import { cn } from "@web/lib/utils";
 
+import { act } from "../../lib/acts";
 import { navigate } from "../../lib/navigate";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
@@ -38,6 +39,7 @@ export function CrewFooterLink(handle: Handle<{ class?: string }>) {
         {multi && servers !== undefined ? (
           <button
             type="button"
+            {...act("document", { href: href(crewPath(address.get().scope)) })}
             mix={on("click", () => void navigate(href(crewPath(address.get().scope))))}
             aria-label={t("crew.footer.aria")}
             translate="no"

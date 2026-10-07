@@ -61,6 +61,19 @@ export interface DocumentInput {
   pane?: { read: unknown; etag: string | null };
 }
 
+/** What the bridge hands the renderer for an islands document (S3): each island's chunks, mounted. */
+export interface IslandsDocumentInput extends DocumentInput {
+  preloads?: Record<string, string[]>;
+}
+
+/** What the bridge hands the renderer for one snapshot beat (S3, web-remix/src/islands/snapshot-wire.ts). */
+export interface SnapshotFramesInput extends IslandsDocumentInput {
+  held: Map<string, string>;
+  ranks: string | null;
+  snapshotJson: string;
+  raw?: boolean;
+}
+
 /** The shell's renderer, as `web-remix/src/ssr/render.tsx` exports it. */
 export interface ShellRenderer extends FrameRenderer {
   isDocumentRoute(url: URL): boolean;
@@ -68,6 +81,16 @@ export interface ShellRenderer extends FrameRenderer {
   /** The `/api/pane/:id` path a pane document reads (the shell's poll window), or null for another page. */
   documentPaneReadPath(url: URL): string | null;
   renderAppDocument(indexHtml: string, input: DocumentInput): Promise<string>;
+  /** S3: the islands document where the page is drawn that way, else the S1/S2 document. */
+  renderDocument?(indexHtml: string, input: IslandsDocumentInput): Promise<{ html: string; islands: boolean }>;
+  /** S3: one snapshot beat's answer, or null when the page is not an islands page. */
+  renderSnapshotFrames?(input: SnapshotFramesInput): Promise<string> | null;
+  /** S3: the island module ids and their source files, as Vite's manifest keys them. */
+  ISLAND_SOURCES?: Record<string, string>;
+  /** S3: `X-Collie-Snap`, decoded. */
+  decodeHeld?(header: string | null): Map<string, string>;
+  /** S3: whether a frame name is a snapshot frame. */
+  isSnapshotFrameName?(name: string | null | undefined): boolean;
 }
 
 /** What {@link serveDocument} reads. A narrow seam, so a test needs no `startServer`. */
@@ -108,7 +131,10 @@ const SHELL_MARKER = '<meta name="collie-shell" content="remix" />';
 /** Below this many bytes the document goes out raw (the static path's floor). */
 const GZIP_MIN_BYTES = 1024;
 
-function documentResponse(html: string, method: string, acceptEncoding: string | null, build: string): Response {
+/** The header that marks an islands document (S3); the shell's resolver refuses a page without it. */
+export const DOCUMENT_MARK_HEADER = "x-collie-document";
+
+function documentResponse(html: string, method: string, acceptEncoding: string | null, build: string, islands = false): Response {
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "content-security-policy": CSP,
@@ -117,6 +143,7 @@ function documentResponse(html: string, method: string, acceptEncoding: string |
     vary: FRAME_VARY,
     [BUILD_HEADER]: build,
   });
+  if (islands) headers.set(DOCUMENT_MARK_HEADER, "islands");
   let bytes = new TextEncoder().encode(html);
   if (bytes.byteLength >= GZIP_MIN_BYTES && /\bgzip\b/.test(acceptEncoding ?? "")) {
     bytes = Bun.gzipSync(bytes);
@@ -161,8 +188,9 @@ export async function serveDocument(deps: DocumentDeps, req: Request, url: URL):
   const pane = await paneFor(deps, renderer, req, url);
   const now = deps.now();
   let html: string;
+  let islands = false;
   try {
-    const input: DocumentInput = {
+    const input: IslandsDocumentInput = {
       url,
       base: deps.cfg.basePath,
       snapshot,
@@ -172,12 +200,148 @@ export async function serveDocument(deps: DocumentDeps, req: Request, url: URL):
       now,
     };
     if (pane !== null) input.pane = pane;
-    html = await renderer.renderAppDocument(indexHtml, input);
+    if (renderer.renderDocument !== undefined) {
+      input.preloads = await islandPreloads(deps.webDir, deps.cfg.basePath, renderer.ISLAND_SOURCES ?? {});
+      const out = await renderer.renderDocument(indexHtml, input);
+      html = out.html;
+      islands = out.islands;
+    } else {
+      html = await renderer.renderAppDocument(indexHtml, input);
+    }
   } catch (error) {
     console.error("collie: server document failed, static shell served", error);
     return null;
   }
-  return documentResponse(html, req.method, req.headers.get("accept-encoding"), await deps.buildId());
+  return documentResponse(html, req.method, req.headers.get("accept-encoding"), await deps.buildId(), islands);
+}
+
+// ── The snapshot frames (S3) ───────────────────────────────────────────────────────────────────────
+
+/** `X-Collie-Snap` and `X-Collie-Ranks` (web-remix/src/islands/snapshot-wire.ts). */
+const SNAP_HEADER = "x-collie-snap";
+const RANKS_HEADER = "x-collie-ranks";
+const TARGET_HEADER = "x-remix-target";
+const FRAME_ANSWER_HEADER = "x-collie-frame";
+
+/**
+ * One snapshot beat of an islands page (S3): `/` or `/pane/:paneId` with `X-Collie-Snap`, or a plain
+ * named-frame request for a snapshot frame. The snapshot, read through the snapshot route's own gate and
+ * scope (`snapshotFor`), and the moved frames' HTML, in one body. Null when the request is not one (the
+ * pane frames, the document and the static shell answer it then). A refused gate answers its own status
+ * with no frame header, so the browser reads it as the JSON poll would.
+ */
+export async function serveSnapshotFrames(deps: DocumentDeps, req: Request, url: URL): Promise<Response | null> {
+  const snap = req.headers.get(SNAP_HEADER);
+  const target = req.headers.get(TARGET_HEADER);
+  if (snap === null && target === null) return null;
+  if (url.pathname !== "/" && !/^\/pane\/[^/]+\/?$/.test(url.pathname)) return null;
+  const renderer = await deps.renderer();
+  if (renderer === null || renderer.renderSnapshotFrames === undefined || renderer.decodeHeld === undefined) return null;
+  if (snap === null && renderer.isSnapshotFrameName?.(target) !== true) return null;
+  if (req.method !== "GET" && req.method !== "HEAD") return null;
+  const build = await deps.buildId();
+  const access = checkAccess(req, deps.cfg);
+  if (!access.ok) return plain(403, access.reason, build);
+  const snapshot = deps.snapshot(req, new URL(renderer.snapshotApiPath(url), url));
+  if (snapshot instanceof Response) return snapshot;
+  const config = await deps.config(req, new URL("/api/config", url));
+  if (config instanceof Response) return config;
+  const held = snap === null ? new Map([[target ?? "", ""]]) : renderer.decodeHeld(snap);
+  const now = deps.now();
+  let body: string | null;
+  try {
+    body = await renderer.renderSnapshotFrames({
+      url,
+      base: deps.cfg.basePath,
+      snapshot,
+      snapshotAt: now,
+      config,
+      prefs: prefsFromCookie(req.headers.get("cookie")),
+      now,
+      held,
+      ranks: req.headers.get(RANKS_HEADER),
+      snapshotJson: JSON.stringify(snapshot),
+      preloads: await islandPreloads(deps.webDir, deps.cfg.basePath, renderer.ISLAND_SOURCES ?? {}),
+      raw: snap === null,
+    });
+  } catch (error) {
+    console.error("collie: snapshot frames failed", error);
+    return plain(500, "snapshot frames failed", build);
+  }
+  // Not an islands page any more (a pref moved): no frame header, and the browser falls back to JSON.
+  if (body === null) return plain(404, "not an islands page", build);
+  const headers = new Headers({
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "private, no-store",
+    vary: FRAME_VARY,
+    [BUILD_HEADER]: build,
+    [FRAME_ANSWER_HEADER]: snap === null ? (target ?? "") : "snapshot",
+  });
+  let bytes = new TextEncoder().encode(body);
+  if (bytes.byteLength >= GZIP_MIN_BYTES && /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "")) {
+    bytes = Bun.gzipSync(bytes);
+    headers.set("content-encoding", "gzip");
+    headers.set("vary", `${FRAME_VARY}, Accept-Encoding`);
+  }
+  headers.set("content-length", String(bytes.byteLength));
+  return secure(new Response(req.method === "HEAD" ? null : bytes, { headers }));
+}
+
+function plain(status: number, body: string, build: string): Response {
+  return secure(new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", [BUILD_HEADER]: build } }));
+}
+
+// ── Island preloads (S3) ───────────────────────────────────────────────────────────────────────────
+
+interface ManifestChunk {
+  file: string;
+  imports?: string[];
+  isEntry?: boolean;
+}
+
+let manifestCache: { dir: string; mtime: number; chunks: Record<string, ManifestChunk> } | null = null;
+
+async function readManifest(webDir: string): Promise<Record<string, ManifestChunk> | null> {
+  const file = Bun.file(join(webDir, ".vite", "manifest.json"));
+  if (!(await file.exists())) return null;
+  const mtime = file.lastModified;
+  if (manifestCache?.dir === webDir && manifestCache.mtime === mtime) return manifestCache.chunks;
+  try {
+    // SAFETY: Vite's own build manifest next to the bundle (web-remix/vite.config.ts `build.manifest`);
+    // only `file` and `imports` are read, and a garbled file is caught here.
+    const chunks = (await file.json()) as Record<string, ManifestChunk>;
+    manifestCache = { dir: webDir, mtime, chunks };
+    return chunks;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Each island module's chunk and the chunks it imports directly, mounted, from Vite's manifest: the
+ * document preloads them (`<link rel="modulepreload">`), so an island's code is not a request made only
+ * after the entry ran. The build puts the islands' start code in a few chunks (web-remix/vite.config.ts
+ * `startChunksPlugin`), so an island chunk is a small facade over those and one level reaches them all.
+ * A chunk the entry already loads is never listed. Empty when there is no manifest.
+ */
+export async function islandPreloads(webDir: string, basePath: string, sources: Record<string, string>): Promise<Record<string, string[]>> {
+  const chunks = await readManifest(webDir);
+  const out: Record<string, string[]> = {};
+  if (chunks === null) return out;
+  const entryKeys = new Set<string>();
+  const walk = (key: string, into: Set<string>): void => {
+    if (into.has(key)) return;
+    into.add(key);
+    for (const next of chunks[key]?.imports ?? []) walk(next, into);
+  };
+  for (const [key, chunk] of Object.entries(chunks)) if (chunk.isEntry === true) walk(key, entryKeys);
+  const mount = basePath.endsWith("/") ? basePath : `${basePath}/`;
+  for (const [moduleId, source] of Object.entries(sources)) {
+    if (chunks[source] === undefined) continue;
+    const keys = [source, ...(chunks[source]?.imports ?? [])].filter((key) => !entryKeys.has(key));
+    out[moduleId] = keys.map((key) => `${mount}${chunks[key]?.file ?? ""}`);
+  }
+  return out;
 }
 
 /**

@@ -17,8 +17,7 @@ import { panePlaceParts } from "@web/lib/pane-name";
 import { PIN_HINT_MIN_ROWS, showsPinHint } from "@web/lib/pin-hint";
 import type { AgentView } from "@web/lib/types";
 
-import { pins } from "./prefs";
-import { createStore } from "./store";
+import { pinHintRetired, pins } from "./prefs";
 
 export { MAX_PINS, PIN_HINT_MIN_ROWS, pinMatcher, pins, showsPinHint };
 export type { Pin };
@@ -96,27 +95,13 @@ export function dropPin(pane: AgentView): void {
 
 // ── The pin hint (web/src/lib/pin-hint.ts) ─────────────────────────────────────────────────────────
 
-const HINT_KEY = "collie:pin-hint:v1";
-const RETIRED = "1";
-
-function readRetired(): boolean {
-  try {
-    return globalThis.localStorage?.getItem(HINT_KEY) === RETIRED;
-  } catch {
-    return false;
-  }
-}
-
-/** Whether this device retired the hint. Read synchronously at module load: the cold open is right. */
-export const pinHintRetired = createStore<boolean>(readRetired());
+/**
+ * Whether this device retired the hint (`collie:pin-hint:v1`), a pref store (lib/prefs.ts) read
+ * synchronously at module load, so the cold open is right, and carried by the prefs cookie.
+ */
+export { pinHintRetired };
 
 /** The operator dismissed the line or pinned a pane: retire it on this device for good. */
 export function retirePinHint(): void {
-  if (pinHintRetired.get()) return;
-  try {
-    globalThis.localStorage?.setItem(HINT_KEY, RETIRED);
-  } catch {
-    // Quota or private mode: the in-memory flag still holds for this session.
-  }
   pinHintRetired.set(true);
 }

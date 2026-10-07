@@ -6,6 +6,7 @@ import type { Scope } from "@web/lib/scope";
 import { cn } from "@web/lib/utils";
 
 import { capability } from "../../chips/capability";
+import { act } from "../../lib/acts";
 import { currentCrew, hostWriteBlock } from "../../chips/crew";
 import { useLocale } from "../../lib/i18n-store";
 import { ORDER_SEGMENTS, ORDERS, type PaneOrder } from "../../lib/pane-order";
@@ -32,6 +33,7 @@ export function NeedsYouSwitch(handle: Handle<{ on: boolean; onChange: (on: bool
         data-testid="needs-you-switch"
         aria-pressed={pressed}
         aria-label={t("home.needsYouOnly")}
+        {...act("dash-pref", { pref: "needsYouOnly", value: pressed ? "false" : "true" })}
         mix={on("click", () => handle.props.onChange(!handle.props.on))}
         class={cn(
           "relative flex size-11 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
@@ -64,6 +66,7 @@ export function PaneOrderToggle(handle: Handle<{ order: PaneOrder; onChange: (or
               data-order={value}
               aria-checked={selected}
               aria-label={t(label)}
+              {...act("pane-order", { order: value })}
               mix={on("click", () => handle.props.onChange(value))}
               class={cn(
                 "flex size-11 min-h-11 shrink-0 items-center justify-center rounded-md text-sm font-medium transition-colors",
@@ -101,6 +104,7 @@ export function PinHint(handle: Handle<{ open: boolean; onFocusLeaves?: () => vo
             variant="box"
             icon={<Icon icon={Pin} class="size-4 shrink-0" />}
             dismissLabel={t("home.pinHint.dismiss")}
+            dismissActs={act("retire-pin-hint")}
             onDismiss={() => {
               const hadFocus = box?.contains(document.activeElement) ?? false;
               retirePinHint();
@@ -121,7 +125,9 @@ export function PinHint(handle: Handle<{ open: boolean; onFocusLeaves?: () => vo
 /** The 28 px dashed "+" with a 46 px reach (web/'s AddButton at `sm` and HEADING_ADD_REACH). */
 export const HEADING_ADD_REACH = "relative before:absolute before:-inset-[9px] before:content-['']";
 
-export function AddButton(handle: Handle<{ label: string; onClick: () => void; busy?: boolean; class?: string; testId?: string }>) {
+export function AddButton(
+  handle: Handle<{ label: string; onClick: () => void; busy?: boolean; class?: string; testId?: string; acts?: Record<string, string> }>,
+) {
   return () => {
     const { label, busy = false, testId } = handle.props;
     return (
@@ -131,6 +137,7 @@ export function AddButton(handle: Handle<{ label: string; onClick: () => void; b
         disabled={busy}
         aria-label={label}
         aria-busy={busy}
+        {...handle.props.acts}
         mix={on("click", () => handle.props.onClick())}
         class={cn(
           HEADING_ADD_REACH,
@@ -161,6 +168,7 @@ export function WorkspaceNewTab(
         class="ml-1"
         label={t("home.group.newTab", { name: label })}
         busy={busy}
+        acts={act("new-tab", { workspace: handle.props.workspaceId, host: handle.props.at.host, session: handle.props.at.session })}
         onClick={() => {
           const block = hostWriteBlock(currentCrew(), handle.props.host);
           if (block !== undefined) {

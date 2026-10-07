@@ -9,7 +9,6 @@ import type { PromptOption } from "@web/lib/blocks";
 import { MENU_DOWN_KEYS, MENU_LEFT_KEYS, MENU_RIGHT_KEYS, MENU_UP_KEYS } from "@web/lib/harness/menu-hints";
 import { t } from "@web/lib/i18n";
 import type { MultiSelectIntent } from "@web/lib/multi-select-action";
-import { FEEDBACK_MAX_LENGTH } from "@web/lib/prompt-action";
 import { cn } from "@web/lib/utils";
 
 import { toRows } from "../../screen/rows";
@@ -21,6 +20,13 @@ import type { PreviewCardAction } from "./dialogs/actions";
 import { MultiSelectDialogCard } from "./dialogs/multi-select-card";
 import { PreviewSelectDialogCard } from "./dialogs/preview-select-card";
 import { WizardDialogCard } from "./dialogs/wizard-card";
+
+/**
+ * web/src/lib/prompt-action.ts `FEEDBACK_MAX_LENGTH`, held here so the card does not import the prompt
+ * action (and with it the dialog guard and every harness grammar) to read one number (S3, the islands
+ * pane page loads the writes on the first write). feedback-limit.test.ts keeps the two equal.
+ */
+export const FEEDBACK_MAX_LENGTH = 240;
 
 /** The handlers a card calls. Each resolves true when its keys went out. */
 export interface CardActions {

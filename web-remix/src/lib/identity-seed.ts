@@ -17,7 +17,7 @@
 import { markLive } from "@web/lib/connection-health";
 import { internScope, paneScopeKey, scopeFromUrl, scopeKey } from "@web/lib/scope";
 
-import type { AppRootProps } from "../app-root";
+import type { DocumentProps as AppRootProps } from "./document-props";
 import { config, noteAddress, snapshot, snapshotAt } from "./data";
 
 /** A path with no pane id in it is the dashboard. */

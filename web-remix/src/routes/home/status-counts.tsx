@@ -92,12 +92,14 @@ export interface StatusSummaryLineProps {
   /** Keep a line with no `onJump` reachable by script (`aria-disabled`, `tabindex=-1`), web/'s rule. */
   focusable?: boolean;
   class?: string;
+  /** Delegated action attributes for an islands document (lib/acts.ts); nothing elsewhere. */
+  acts?: Record<string, string>;
 }
 
 export function StatusSummaryLine(handle: Handle<StatusSummaryLineProps>) {
   return () => {
     const { panes, allClear, onJump, id, focusable = false } = handle.props;
-    const inert = onJump === undefined;
+    const inert = onJump === undefined && handle.props.acts === undefined;
     return (
       <button
         id={id}
@@ -106,6 +108,7 @@ export function StatusSummaryLine(handle: Handle<StatusSummaryLineProps>) {
         aria-disabled={inert && focusable ? "true" : undefined}
         tabIndex={inert && focusable ? -1 : undefined}
         data-testid="summary-line"
+        {...handle.props.acts}
         translate="no"
         mix={on("click", () => handle.props.onJump?.())}
         class={cn(

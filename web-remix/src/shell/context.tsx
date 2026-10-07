@@ -14,8 +14,12 @@ export interface ShellModels {
   strips: StripModel;
 }
 
-export function ShellProvider(handle: Handle<{ children?: RemixNode }, ShellModels>) {
-  handle.context.set({ header: new HeaderModel(), strips: new StripModel() });
+/**
+ * `models` hands in models made elsewhere: the islands of one document share ONE set (S3,
+ * islands/shell-models.ts), since each island has its own provider and they still draw one band.
+ */
+export function ShellProvider(handle: Handle<{ children?: RemixNode; models?: ShellModels }, ShellModels>) {
+  handle.context.set(handle.props.models ?? { header: new HeaderModel(), strips: new StripModel() });
   return () => handle.props.children;
 }
 

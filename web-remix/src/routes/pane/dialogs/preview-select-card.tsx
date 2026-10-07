@@ -12,7 +12,6 @@ import { Check, ChevronRight, Pencil, StickyNote, Trash2 } from "lucide";
 
 import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@web/lib/harness/wizard-model";
 import { t } from "@web/lib/i18n";
-import { NOTE_MAX_LENGTH } from "@web/lib/preview-action";
 import { cn } from "@web/lib/utils";
 
 import { toRows } from "../../../screen/rows";
@@ -23,6 +22,13 @@ import type { PreviewSelectCard } from "../cards";
 import type { CardActions } from "../dialog-card";
 import { ChoiceRow, createPending, QuestionHeading, spinner, WizardStepper } from "./parts";
 import type { PreviewCardAction } from "./actions";
+
+/**
+ * web/src/lib/preview-action.ts `NOTE_MAX_LENGTH`, held here so the card does not import the preview
+ * action (the dialog guard and every harness grammar) for one number (S3). ../feedback-limit.test.ts
+ * keeps the two equal.
+ */
+export const NOTE_MAX_LENGTH = 300;
 
 export interface PreviewSelectCardProps {
   card: PreviewSelectCard;

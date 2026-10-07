@@ -17,25 +17,23 @@
 // EVERY PENDING THING IS ITS OWN LEAF: `FirstConnect` (the cover until the first snapshot answers),
 // `ConnectionBanner` (drives the band's connection slot), `BusyBar` and `NavPending`. Each subscribes
 // to what it draws, so none of them wakes the Shell or, through it, every route.
-import { on, type Handle, type RemixNode } from "remix/component";
+import type { Handle, RemixNode } from "remix/component";
 
-import { t } from "@web/lib/i18n";
 
 import { startBusyTracking } from "./lib/busy";
 import { loadConfig, loadSnapshot } from "./lib/data";
 import { bindGlideFrame } from "./lib/glide";
-import { idle, unlock } from "./lib/idle";
+import { idle } from "./lib/idle";
 import { want } from "./lib/polling";
 import { onServer } from "./lib/server-render";
 import { scheduleUpdate, useStore } from "./lib/store";
-import { Button } from "./ui/button";
 import { useLocale } from "./lib/i18n-store";
 import { StatusToast, ToastViewport } from "./ui/toast-viewport";
 import { TourHost } from "./tour/tour-host";
 import { UpdateSheet } from "./update/update-sheet";
 import { BootSplash, FirstConnect } from "./shell/boot-splash";
 import { BusyBar, NavPending } from "./shell/busy-bar";
-import { CollieMark } from "./shell/collie-mark";
+import { IdleCover } from "./shell/idle-cover";
 import { ConnectionBanner } from "./shell/connection-banner";
 import { TranslationNotice } from "./shell/translation-notice";
 import { headerOf, ShellProvider } from "./shell/context";
@@ -110,51 +108,6 @@ function ShellToast(handle: Handle) {
   return () => {
     inHeader = headerShowsStatus(header.current);
     return <ToastViewport>{inHeader ? null : <StatusToast />}</ToastViewport>;
-  };
-}
-
-function IdleCover(handle: Handle<{ catchingUp: boolean }>) {
-  return () => {
-    const { catchingUp } = handle.props;
-    return (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("idle.dialogAria")}
-        data-testid="idle-lock"
-        translate="no"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-background/40 px-6 backdrop-blur-[3px]"
-      >
-        <div class="flex flex-col items-center gap-6 rounded-lg border border-border/60 bg-card/70 px-8 py-10 text-center shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
-          <div class="flex flex-col items-center gap-3">
-            {/* ONE mark in both states, in one 80 px box, so the panel never shifts as the resume
-                fetch starts and finishes. The catch-up is the bloom: the orbit speeds up and the
-                accents come to full chroma. `paper` is the glass panel's own token, the closest
-                honest answer over a blurred herd. */}
-            <span class="grid size-20 shrink-0 place-items-center">
-              <CollieMark size={64} loading={catchingUp} paper="var(--card)" />
-            </span>
-            <span class="text-lg font-semibold tracking-tight">Collie</span>
-          </div>
-          {catchingUp ? (
-            <div class="space-y-1">
-              <p class="font-medium">{t("idle.catchingUp.title")}</p>
-              <p class="max-w-xs text-sm text-muted-foreground">{t("idle.catchingUp.body")}</p>
-            </div>
-          ) : (
-            <div class="space-y-1">
-              <p class="font-medium">{t("idle.paused.title")}</p>
-              <p class="max-w-xs text-sm text-muted-foreground">{t("idle.paused.body")}</p>
-            </div>
-          )}
-          {!catchingUp && (
-            <Button size="lg" mix={on("click", unlock)}>
-              {t("idle.resume")}
-            </Button>
-          )}
-        </div>
-      </div>
-    );
   };
 }
 

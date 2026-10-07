@@ -13,6 +13,8 @@ export interface TabBarItem<V extends string> {
   badge?: number;
   dot?: boolean;
   badgeLabel?: string;
+  /** Delegated action attributes for an islands document (lib/acts.ts); nothing elsewhere. */
+  acts?: Record<string, string>;
 }
 
 export interface TabBarProps<V extends string> {
@@ -44,6 +46,7 @@ export function TabBar<V extends string>(handle: Handle<TabBarProps<V>>) {
                 key={it.value}
                 type="button"
                 aria-current={selected ? "page" : undefined}
+                {...it.acts}
                 mix={on("click", () => handle.props.onSelect(it.value))}
                 class={cn(
                   "relative -mt-px flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 border-t-2 border-transparent px-1 text-[11px] font-medium select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",

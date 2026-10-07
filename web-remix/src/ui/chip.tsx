@@ -23,6 +23,8 @@ export interface ChipProps {
   onClick: () => void;
   onLongPress?: () => void;
   onTapActive?: () => void;
+  /** Delegated action attributes for an islands document (lib/acts.ts); nothing elsewhere. */
+  acts?: Record<string, string>;
 }
 
 export function Chip(handle: Handle<ChipProps>) {
@@ -40,6 +42,7 @@ export function Chip(handle: Handle<ChipProps>) {
         aria-current={active ? "true" : undefined}
         aria-label={ariaLabel}
         aria-describedby={statusWords === null ? undefined : descriptionId}
+        {...handle.props.acts}
         mix={[
           on("click", () => {
             if (handle.props.active && handle.props.onTapActive) {

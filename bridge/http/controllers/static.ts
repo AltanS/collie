@@ -7,7 +7,7 @@ import { createController } from "remix/router";
 import { buildId, isReservedAuthPath, reservedAuthPlaceholder, serveStatic, WEB_DIR } from "../../server.ts";
 import type { BridgeHttp } from "../deps.ts";
 import { routes } from "../routes.ts";
-import { documentDeps, loadShellRenderer, serveDocument } from "./document.ts";
+import { documentDeps, loadShellRenderer, serveDocument, serveSnapshotFrames } from "./document.ts";
 import { frameDeps, serveFrame } from "./frames.ts";
 
 /** The catch-all: the reserved `/auth/` placeholder, or a file out of `web/dist`, or the app shell. */
@@ -24,6 +24,11 @@ export function appShell(deps: BridgeHttp): (context: RequestContext) => Promise
     // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
     // leave the operator staring at the UI they were trying to escape.
     if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
+
+    // ── The snapshot frames (S3): an islands page's beat, `/` or `/pane/:paneId` with `X-Collie-Snap` ──
+    // Before the pane frames: `pane-head` and `home-list` are not theirs (./document.ts).
+    const snapshotFrames = await serveSnapshotFrames(documents, req, url);
+    if (snapshotFrames !== null) return snapshotFrames;
 
     // ── The pane's server frames (S2): a named-frame request on `/pane/:paneId` ──
     // Answered here and never by the document or the static shell below (./frames.ts).

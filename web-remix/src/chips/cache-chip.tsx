@@ -6,6 +6,7 @@ import { t } from "@web/lib/i18n";
 import type { PaneCache } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { act, islandsHtml } from "../lib/acts";
 import { clock } from "../lib/clock";
 import { useLocale } from "../lib/i18n-store";
 import { useStoreSelect } from "../lib/store";
@@ -52,7 +53,9 @@ export function CacheChip(handle: Handle<CacheChipProps>) {
     const body = (
       <>
         <Icon icon={Hourglass} class={cn("size-3 shrink-0 translate-y-[0.35px]", TONE_CLASS[view.tone])} />
-        <span aria-hidden="true">{view.label}</span>
+        <span aria-hidden="true" data-cache-label="">
+          {view.label}
+        </span>
         {view.overridden ? (
           <>
             <span aria-hidden="true" data-overridden="true" class="size-1 shrink-0 rounded-full bg-current opacity-70" />
@@ -61,12 +64,18 @@ export function CacheChip(handle: Handle<CacheChipProps>) {
         ) : null}
       </>
     );
+    // In an islands document the label is server text: the `live` island ticks it from these two
+    // attributes (islands/cache-ticker.ts), once a minute, as this component's clock does.
+    const ticking = islandsHtml() && cache?.state !== "cold" && cache?.expiresAt !== undefined;
+    const tick = ticking ? { "data-expires": String(cache?.expiresAt), "data-state": cache?.state } : undefined;
     if (variant === "button") {
       return (
         <button
           type="button"
           data-slot="cache-chip"
           data-tone={view.tone}
+          {...tick}
+          {...act("sheet", { sheet: "cache" })}
           aria-label={`${label}, ${view.label}`}
           class={cn(shared, "transition-opacity active:opacity-60")}
           mix={on("click", () => handle.props.onOpen?.())}
@@ -76,7 +85,7 @@ export function CacheChip(handle: Handle<CacheChipProps>) {
       );
     }
     return (
-      <span data-slot="cache-chip" data-tone={view.tone} class={shared}>
+      <span data-slot="cache-chip" data-tone={view.tone} {...tick} class={shared}>
         {body}
         <span class="sr-only">{label}</span>
       </span>

@@ -6,12 +6,12 @@
 // `@web/*` aliases). Loaded straight by this test runtime it would not draw at all, which the last
 // test pins (document.ts header).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../../config.ts";
 import type { PaneWire, SnapshotResponse } from "../../types.ts";
-import { loadShellRenderer, prefsFromCookie, serveDocument, type DocumentDeps, type DocumentInput, type ShellRenderer } from "./document.ts";
+import { loadShellRenderer, prefsFromCookie, serveDocument, serveSnapshotFrames, type DocumentDeps, type DocumentInput, type ShellRenderer } from "./document.ts";
 
 const TS = 1_790_000_000_000;
 
@@ -233,6 +233,7 @@ describe("server document — the static shell answers instead", () => {
     const throwing: ShellRenderer = {
       ...renderer,
       renderAppDocument: () => Promise.reject(new Error("boom")),
+      renderDocument: () => Promise.reject(new Error("boom")),
     };
     const quiet = console.error;
     console.error = () => {};
@@ -280,6 +281,91 @@ describe("server document — no request sees another's panes", () => {
       expect(own).toContain("alpha-");
       expect(own).not.toContain("bravo-");
     }
+    expect(tb).toContain("bravo-");
+    expect(tb).not.toContain("alpha-");
+  });
+});
+
+describe("islands document (S3)", () => {
+  const ISLANDS_OFF = `collie-prefs=${encodeURIComponent(JSON.stringify({ "collie:islands:v1": "0" }))}`;
+  /** A pane whose harness has no session journal: it never shows Chat, so its page is an islands page. */
+  const plain = (tag: string): SnapshotResponse => ({ ...snapshotOf(tag), agents: [pane(tag, 1, { agent: "some-new-harness" }), pane(tag, 2)] });
+
+  test("GET / is marked, stamped with the build, keeps <html>'s and the app's attributes, and carries its islands", async () => {
+    const res = (await serveDocument(deps(), ...get("/")))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-collie-document")).toBe("islands");
+    expect(res.headers.get("x-collie-build")).toBe("build-1");
+    expect(res.headers.get("vary")).toContain("X-Collie-Snap");
+    const html = await res.text();
+    // <html> carries its preserve list in the shell's own index.html, which this test's fixture is not.
+    expect(readFileSync(join(import.meta.dir, "../../../web-remix/index.html"), "utf8")).toContain('<html lang="en" data-rmx-preserve-attrs="class style lang">');
+    expect(html).toContain('data-slot="app-body" data-rmx-preserve-attrs="inert"');
+    expect(html).toMatch(/<!-- rmx:h:[a-z0-9]+ -->/);
+    expect(html).toContain('"moduleUrl":"collie:live"');
+    expect(html).toContain('id="collie-boot"');
+    // The list is server HTML: its rows are links, and its frame is named for the snapshot beat.
+    expect(drawn(html)).toContain(`href="/pane/${encodeURIComponent("alpha-w1:p1")}"`);
+    expect(html).toContain('"name":"home-list"');
+  });
+
+  test("a pane with no session journal is an islands page; the islands switch off draws S1/S2 as before", async () => {
+    const page = (await serveDocument(deps({ snap: plain("alpha") }), ...get(`/pane/${encodeURIComponent("alpha-w1:p1")}`)))!;
+    expect(page.headers.get("x-collie-document")).toBe("islands");
+    expect(await page.text()).toContain('"moduleUrl":"collie:screen"');
+    const off = (await serveDocument(deps(), ...get("/", { headers: { cookie: ISLANDS_OFF } })))!;
+    expect(off.status).toBe(200);
+    expect(off.headers.get("x-collie-document")).toBeNull();
+    expect(await off.text()).not.toContain('id="collie-boot"');
+  });
+
+  test("a row whose pane shows Chat is a plain document link; a Terminal pane's row is prefetched and glides", async () => {
+    const html = drawn(await (await serveDocument(deps({ snap: plain("alpha") }), ...get("/")))!.text());
+    const rowOf = (paneId: string): string => /<a id="pane-row-[^"]*"[^>]*>/.exec(html.slice(html.indexOf(`data-pane-id="${paneId}"`) - 200))?.[0] ?? "";
+    const terminal = rowOf("alpha-w1:p1");
+    const chat = rowOf("alpha-w1:p2");
+    expect(terminal).toContain("data-prefetch");
+    expect(terminal).toContain('data-glide-origin="pane"');
+    expect(terminal).not.toContain("data-rmx-document");
+    expect(chat).toContain("data-rmx-document");
+    expect(chat).not.toContain("data-prefetch");
+    expect(chat).not.toContain("data-glide-origin");
+  });
+
+  test("the snapshot beat: a held hash gets no frame, a stale one gets the frame and the snapshot", async () => {
+    const page = await (await serveDocument(deps(), ...get("/")))!.text();
+    const held = /"held":\{"home-list":"([a-z0-9]+)"\}/.exec(page)?.[1];
+    expect(held).toBeDefined();
+    const same = (await serveSnapshotFrames(deps(), ...get("/", { headers: { "x-collie-snap": `home-list=${held!}` } })))!;
+    expect(same.status).toBe(200);
+    expect(same.headers.get("x-collie-frame")).toBe("snapshot");
+    expect(same.headers.get("x-collie-build")).toBe("build-1");
+    const quiet = await same.text();
+    expect(quiet).toContain("data-collie-snapshot");
+    expect(quiet).not.toContain("data-collie-frame=");
+    const moved = await (await serveSnapshotFrames(deps({ snap: snapshotOf("bravo") }), ...get("/", { headers: { "x-collie-snap": `home-list=${held!}` } })))!.text();
+    expect(moved).toContain('data-collie-frame="home-list"');
+    expect(moved).toContain("bravo-");
+    expect(moved).not.toContain("alpha-");
+  });
+
+  test("the beat answers only an islands page, only a request the gate lets in, and a frame by name", async () => {
+    expect(await serveSnapshotFrames(deps(), ...get("/"))).toBeNull();
+    expect(await serveSnapshotFrames(deps(), ...get("/settings", { headers: { "x-collie-snap": "home-list=" } }))).toBeNull();
+    const gated = deps({ cfg: config({ trustedUser: "you@example.com" }) });
+    expect((await serveSnapshotFrames(gated, ...get("/", { headers: { "x-collie-snap": "home-list=" } })))!.status).toBe(403);
+    expect((await serveSnapshotFrames(deps(), ...get("/", { headers: { "x-collie-snap": "home-list=", cookie: ISLANDS_OFF } })))!.status).toBe(404);
+    const raw = (await serveSnapshotFrames(deps(), ...get("/", { headers: { "x-remix-target": "home-list" } })))!;
+    expect(raw.headers.get("x-collie-frame")).toBe("home-list");
+    expect(await raw.text()).toContain("alpha-");
+  });
+
+  test("no beat sees another request's panes", async () => {
+    const ask = { headers: { "x-collie-snap": "home-list=" } };
+    const [a, b] = await Promise.all([serveSnapshotFrames(deps({ snap: snapshotOf("alpha") }), ...get("/", ask)), serveSnapshotFrames(deps({ snap: snapshotOf("bravo") }), ...get("/", ask))]);
+    const [ta, tb] = await Promise.all([a!.text(), b!.text()]);
+    expect(ta).toContain("alpha-");
+    expect(ta).not.toContain("bravo-");
     expect(tb).toContain("bravo-");
     expect(tb).not.toContain("alpha-");
   });

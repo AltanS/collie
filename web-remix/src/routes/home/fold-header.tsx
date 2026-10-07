@@ -22,6 +22,8 @@ export interface FoldHeaderProps {
   controls?: string;
   trailing?: RemixNode;
   testId?: string;
+  /** Delegated action attributes for an islands document (lib/acts.ts); nothing elsewhere. */
+  acts?: Record<string, string>;
 }
 
 export function FoldHeader(handle: Handle<FoldHeaderProps>) {
@@ -34,6 +36,7 @@ export function FoldHeader(handle: Handle<FoldHeaderProps>) {
             type="button"
             data-testid={testId}
             aria-expanded={open ? "true" : "false"}
+            {...handle.props.acts}
             aria-controls={controls !== undefined && open ? controls : undefined}
             // min-h-9 keeps the row on the 36px touch floor even though the text is tiny.
             class={cn(

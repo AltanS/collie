@@ -71,7 +71,7 @@ import {
   type ParsedPollAnswer,
   type ReplyProbe,
 } from "./frames";
-import { screenToken } from "./parse";
+import { screenToken } from "./parse-model";
 
 /** The GET deadline every read has (web/src/lib/api.ts). */
 const GET_TIMEOUT_MS = 10_000;

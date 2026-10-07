@@ -14,55 +14,24 @@
 // The entry id is explicit, never `import.meta.url`: under `bun build --compile` that is no file URL
 // (research note 08, trap 10.4). main.tsx maps it to this module through a registry.
 import { clientEntry, type Handle, type RemixNode } from "remix/component";
-import { createMultiMatcher } from "remix/route-pattern/match";
 
 import { paneScopeKey } from "@web/lib/scope";
-import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
 import { address } from "./lib/data";
+import { matchAppRoute, type AppRoute } from "./lib/app-route";
+import type { DocumentProps } from "./lib/document-props";
 import { documentSeed } from "./lib/identity-seed";
 import { onServer } from "./lib/server-render";
 import { scheduleUpdate } from "./lib/store";
 import { HomeRoute } from "./routes/home/home";
 import { PaneRoute } from "./routes/pane/pane";
-import { routes } from "./routes";
 import { Shell } from "./shell";
 
 export const APP_ROOT_ENTRY = "collie:app#AppRoot";
 
-export interface AppRootProps {
-  /** The page's path and query, mount taken off (the router's `context.url`). */
-  path: string;
-  /** The origin the server saw; the browser builds its URL on its own origin instead. */
-  origin: string;
-  /** The `/api/snapshot` body for this page's scope, as the poll would have read it. */
-  snapshot: SnapshotResponse;
-  /** When the bridge built that body (epoch ms): the freshness readers' `snapshotAt`. */
-  snapshotAt: number;
-  /** The `/api/config` body. */
-  config: BridgeConfig;
-  /**
-   * A pane document's pane read and its ETag (S2): the frames are drawn from it, and the browser primes
-   * the pane's store and the frames' ETag from it, so the first beat answers 304 when nothing moved.
-   */
-  pane?: { read: PaneReadResponse; etag: string | null; frames: boolean };
-}
+export { matchAppRoute };
 
-/** The routes a server document exists for. Every other path gets the static shell. */
-type AppRoute = { kind: "home" } | { kind: "pane"; paneId: string };
-
-const matcher = createMultiMatcher<"home" | "pane">();
-matcher.add(routes.home.pattern, "home");
-matcher.add(routes.pane.pattern, "pane");
-
-/** Which server-rendered route `url` (mount off) is, or null. The router's own matcher and patterns. */
-export function matchAppRoute(url: URL): AppRoute | null {
-  const match = matcher.match(url);
-  if (match === null) return null;
-  if (match.data === "home") return { kind: "home" };
-  const paneId = match.params.paneId;
-  return paneId === undefined ? null : { kind: "pane", paneId };
-}
+export type AppRootProps = DocumentProps;
 
 /** The home route's node. router.tsx's home action draws this. */
 export function homeNode(): RemixNode {

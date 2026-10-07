@@ -115,21 +115,20 @@ function restoreLastSeen(scope: Scope, all: boolean): void {
  * and the stalled check (lib/busy.ts): one hung past 6 s shows the bar, past 2.5 s the app looks
  * stalled. A live answer stamps the shared connection clock (`markLive`, web's own).
  */
-export async function loadSnapshot(signal: AbortSignal): Promise<boolean> {
+export function loadSnapshot(signal: AbortSignal): Promise<boolean> {
+  return loadSnapshotWith(async (scope, all) => (await fetchSnapshot(scope, signal, all)).body);
+}
+
+/**
+ * One snapshot read through `read` (the JSON route, or an islands page's snapshot beat,
+ * islands/snapshot-frames.ts), taken into the store as `loadSnapshot` takes it. Resolves true when
+ * the herd changed.
+ */
+export async function loadSnapshotWith(read: (scope: Address["scope"], all: boolean) => Promise<SnapshotResponse>): Promise<boolean> {
   const { scope, all } = address.get();
   const release = busy.beginLoad("poll");
   try {
-    const got = await fetchSnapshot(scope, signal, all);
-    const held = snapshot.get().data;
-    const same = held !== undefined && sameSnapshot(held, got.body);
-    snapshot.set({ data: same ? held : got.body, error: undefined, status: undefined });
-    snapshotAt.set(Date.now());
-    if (got.body.bridge !== "disconnected") markLive();
-    if (!same || Date.now() - lastSavedAt >= SAVE_EVERY_MS) {
-      lastSavedAt = Date.now();
-      saveLastSnapshot(scope, got.body, undefined, all);
-    }
-    return !same;
+    return takeSnapshot(await read(scope, all));
   } catch (error) {
     if (error instanceof Error && !isAbort(error)) restoreLastSeen(scope, all);
     if (error instanceof Error) failed(snapshot, error);
@@ -137,6 +136,21 @@ export async function loadSnapshot(signal: AbortSignal): Promise<boolean> {
   } finally {
     release();
   }
+}
+
+/** A snapshot body that answered: into the store (the held object while equal), stamped, saved. */
+export function takeSnapshot(body: SnapshotResponse): boolean {
+  const { scope, all } = address.get();
+  const held = snapshot.get().data;
+  const same = held !== undefined && sameSnapshot(held, body);
+  snapshot.set({ data: same ? held : body, error: undefined, status: undefined });
+  snapshotAt.set(Date.now());
+  if (body.bridge !== "disconnected") markLive();
+  if (!same || Date.now() - lastSavedAt >= SAVE_EVERY_MS) {
+    lastSavedAt = Date.now();
+    saveLastSnapshot(scope, body, undefined, all);
+  }
+  return !same;
 }
 
 /**

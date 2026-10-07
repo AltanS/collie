@@ -65,16 +65,26 @@ function deadline(signal: AbortSignal | undefined): AbortSignal {
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
-async function get(path: string, headers: Headers, signal: AbortSignal | undefined): Promise<Response> {
+async function get(path: string, headers: Headers, signal: AbortSignal | undefined, url = mounted(path)): Promise<Response> {
   headers.set(XHR_HEADER, XHR_HEADER_VALUE);
   for (const [name, value] of Object.entries(authHeader())) headers.set(name, value);
   // A safe GET: one immediate retry on a browser's network blip (lib/retry-get.ts), a fresh deadline each send.
-  const res = await sendRetryingOnce(() => fetch(mounted(path), { headers, signal: deadline(signal), redirect: "manual" }), signal);
+  const res = await sendRetryingOnce(() => fetch(url, { headers, signal: deadline(signal), redirect: "manual" }), signal);
   const build = res.headers.get(SERVER_BUILD_HEADER);
   if (build) serverBuild.set(build);
   if (res.type === "opaqueredirect" || REDIRECT_STATUSES.has(res.status)) {
     throw new ApiError(path, 401, "fronting identity proxy requires sign-in");
   }
+  return res;
+}
+
+/**
+ * A GET of a page URL already mounted (an islands page's snapshot beat, islands/snapshot-frames.ts),
+ * with the poll's own headers, retry, deadline and refusal reading. A non-2xx answer throws `ApiError`.
+ */
+export async function getPage(url: string, headers: Headers, signal: AbortSignal | undefined): Promise<Response> {
+  const res = await get(url, headers, signal, url);
+  if (!res.ok) throw await failure(url, res);
   return res;
 }
 

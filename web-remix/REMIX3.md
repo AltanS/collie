@@ -521,6 +521,57 @@ now runs on Bun as well as in the browser. The rules:
   every other route boot from `index.html` with its splash. Keep both boots working: e2e
   `ssr-boot.spec.ts` covers the server document, the rest of the suite the static shell.
 
+## Islands and soft navigation
+
+Since S3 (`experiments/remix-v3/ACTION-PLAN.md` B, "S3 done") `/` and a pane that would not show Chat
+are an ISLANDS DOCUMENT: server HTML with seven small islands in it (`R/islands/ids.ts`), marked
+`x-collie-document: islands`. Everything else, and a device with `collie:islands:v1` set to `0`, still
+gets the S1/S2 document or the static shell. The rules:
+
+- **The page is server HTML; an island is only what must react.** `live` (beat, toasts, idle cover),
+  `gestures` (one set of delegated listeners on `document`), `sheets`, `header-actions`, `home-tail`,
+  and on a pane `screen` and `composer`. The header, the rows and the pane's head are plain server
+  HTML. A tap on a row is a link, not a handler.
+- **Acts, not handlers, on server HTML.** A button in server HTML carries `act()` / `holdAct()`
+  (`R/lib/acts.ts`): `data-act` and `data-a-*` arguments. `gestures` reads them on the delegated
+  click and runs the act from `R/islands/act-table.ts`. Outside an islands render `act()` returns
+  nothing, so the same component still works in the static shell.
+- **Navigation is the runtime's.** `run({ loadModule, resolveFrame })` (`R/islands/boot.ts`) owns the
+  links. A top-frame navigation goes through `R/islands/resolver.ts`, which takes this build's
+  islands document only (`R/islands/refusal.ts`): a 5xx, a page without the marker, another build or
+  a network error is a full document load instead. Before the runtime diffs the new document in, the
+  resolver primes the stores from its `collie-boot` block (`R/islands/seed.ts`), so the islands
+  render the new page's data on their first render.
+- **One data block per document.** The snapshot, the config and a pane's read travel once, in
+  `<script type="application/json" id="collie-boot">` (`R/islands/document-data.ts`). Island props
+  stay small (a pane id, a page kind). Never put the snapshot into an island's props.
+- **Prefetch on the press, warm the modules beside it.** A press on `a[data-prefetch]` fetches the
+  next document (`R/islands/prefetch.ts`, at most 3, 5 s) and reads its text at once, and on a pane
+  link it warms the pane's islands and modules (`warmPaneModules`, `R/islands/registry.ts`). The tap
+  then commits from the cache with no fetch and no module load: about 10 to 12 ms on the e2e page.
+  The glide never waits on a prefetch that is already in the cache.
+- **A link that leaves the islands is a document load.** A Chat pane, History, Changes, a space's
+  overview and Settings are plain `data-rmx-document` links: the browser loads the S1/S2 document.
+- **Hydration adopts, it does not clean up.** The runtime keeps the server's nodes and does NOT
+  remove an attribute that the first client render leaves out. So an island's first client render
+  must draw what the server drew (the composer draws its stand-in first, then itself on the next
+  task: an `inert` left on the field from the stand-in once lost every draft). Attributes the client
+  must keep across a diff (`lang`, the `<html>` class) are in `data-rmx-preserve-attrs`; a node the
+  client paints itself (the header mark) has `data-rmx-preserve-dom`.
+- **The snapshot is a frame on the beat.** On an islands page the beat reads the page URL, not
+  `/api/snapshot` (`R/islands/snapshot-frames.ts`, CADENCE.md `home-list`). Each answer carries the
+  snapshot and only the frames whose hash moved; the hash is over the HTML with the runtime's ids
+  taken out, so two renders of the same rows hash the same.
+- **Start chunks are named, not left to the bundler.** `startChunksPlugin` (`R/vite.config.ts`)
+  groups the modules of the first load (`boot`, `shared`, `islands`) apart from the pane's and the
+  static shell's, so a home page loads about 139 KiB of gzip JS in 10 requests, against 316 KiB for
+  the full client. Code that a page does not need at once (the writes, the text parse, the idle
+  cover, the update and new-space sheets, the harness) is a dynamic `import()` in a `*-lazy.ts`
+  wrapper. A new static import from an island into the static shell pulls its chunk into the first
+  load: `e2e/islands.spec.ts` fails at more than half of the full client or more than 14 requests.
+- **Lucide's defaults are one CSS rule.** `svg.lucide:not([width])` in `R/app.css`; `Icon` writes only
+  the box, the role and a stroke width other than 2.
+
 ## Frames
 
 Since S2 (`experiments/remix-v3/ACTION-PLAN.md` B) the pane's rows can be drawn on the bridge too, as

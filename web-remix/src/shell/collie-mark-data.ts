@@ -11,8 +11,8 @@
 
 /** The one document-scoped stylesheet: the `cm-*` keyframes and the rules that run them. */
 export const STYLE = "";
-/** The two drawings; `__cmid__` is replaced per instance so gradient ids never collide. */
-export const BODY = { full: "", header: "" };
-export const VIEW = { full: "0 0 1 1", header: "0 0 1 1" };
+/** The header drawing (the only one this shell draws); `__cmid__` is replaced per instance so gradient ids never collide. */
+export const BODY = { header: "" };
+export const VIEW = { header: "0 0 1 1" };
 /** Seconds per turn: at rest, and while loading. */
 export const TURN = { rest: 1, live: 1 };

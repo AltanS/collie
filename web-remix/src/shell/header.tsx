@@ -161,7 +161,7 @@ function right(slot: HeaderRight): RemixNode {
 }
 
 /** "on <mux logo> <mux>", reserved at one line (`min-h-6`) before /api/config lands. */
-function MuxLine(handle: Handle) {
+export function MuxLine(handle: Handle) {
   const cfg = useStore(handle, config);
   useLocale(handle);
   return () => {

@@ -38,6 +38,8 @@ export interface NoticeProps {
   action?: RemixNode;
   onDismiss?: () => void;
   dismissLabel?: string;
+  /** Delegated action attributes for an islands document (lib/acts.ts); nothing elsewhere. */
+  dismissActs?: Record<string, string>;
 }
 
 export function Notice(handle: Handle<NoticeProps>) {
@@ -79,6 +81,7 @@ export function Notice(handle: Handle<NoticeProps>) {
               <button
                 type="button"
                 aria-label={dismissLabel}
+                {...handle.props.dismissActs}
                 mix={on("click", () => handle.props.onDismiss?.())}
                 class={cn(
                   "flex size-6 items-center justify-center rounded-sm opacity-70 hover:opacity-100",
