@@ -1590,11 +1590,18 @@ async function drain(stream: ReadableStream<Uint8Array> | undefined, onChunk: (s
   }
 }
 
-/** How many calls per second an instance makes to its own Herdr, measured over a two-second window. */
+/**
+ * How many poll calls per second an instance makes to its own Herdr, measured over a two-second window.
+ *
+ * `worktree.list` is not counted: the Herdr adapter asks it once per workspace (the repo lookup,
+ * cached afterwards), so a window that happens to hold the first lookup would read as double the
+ * rate. It is a one-off, not a clock.
+ */
 async function cadence(instance: Instance): Promise<number> {
-  const before = instance.herdr!.calls.length;
+  const polls = () => instance.herdr!.calls.filter((method) => method !== "worktree.list").length;
+  const before = polls();
   await Bun.sleep(2000);
-  return (instance.herdr!.calls.length - before) / 2;
+  return (polls() - before) / 2;
 }
 
 /** A port nothing is listening on, obtained by binding one and letting go. */

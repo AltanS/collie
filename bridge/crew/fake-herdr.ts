@@ -154,6 +154,16 @@ export function startFakeHerdr(opts: FakeHerdrOptions): FakeHerdr {
       return;
     }
     calls.push(msg.method ?? "");
+    if (msg.method === "worktree.list") {
+      // Herdr 0.9.3's answer for a folder outside Git. The adapter reads it as a final answer
+      // (no repo, never asked again), where `unknown_method` would be retried every minute and
+      // show up in the cadence the drill measures.
+      socket.write(
+        `${JSON.stringify({ id, error: { code: "not_git_worktree", message: "the fake harness has no repositories" } })}\n`,
+      );
+      socket.end();
+      return;
+    }
     const result = answer(msg.method ?? "", msg.params ?? {});
     const reply =
       result === null
