@@ -59,16 +59,19 @@ export function createStore<T>(initial: T, equal: (a: T, b: T) => boolean = Obje
   };
 }
 
-// ── The per-component animation-frame coalescer ──────────────────────────────────────────────────
+// ── The animation-frame coalescer: one wait per handle, one shared frame per turn ───────────────
 
-interface Pending {
+/** What one wake-up of the shared frame is waiting on. */
+interface Flush {
   /** "frame" for a requestAnimationFrame id, "timer" for a setTimeout id. */
   kind: "frame" | "timer";
   id: number;
-  run: () => void;
 }
 
-const pending = new Map<Updatable, Pending>();
+/** Handles waiting for the next flush, each with its one update. Per-handle coalescing lives here. */
+const waiting = new Map<Updatable, () => void>();
+/** The one frame or timer that will run everything in `waiting`; null when nothing is waiting. */
+let flushing: Flush | null = null;
 /** Holders of `holdFrames`; above zero, updates run on timers instead of animation frames. */
 let holds = 0;
 
@@ -76,10 +79,30 @@ let holds = 0;
  * Frame scheduler: an animation frame normally; a timer when no frame will come. A hidden page gets
  * no animation frames, and a hidden page polls nothing anyway, so that timer is rare and slow.
  */
-function arm(run: () => void): Pending {
-  if (holds > 0) return { kind: "timer", id: window.setTimeout(run, 0), run };
-  if (document.visibilityState === "visible") return { kind: "frame", id: requestAnimationFrame(run), run };
-  return { kind: "timer", id: window.setTimeout(run, 50), run };
+function arm(): Flush {
+  if (holds > 0) return { kind: "timer", id: window.setTimeout(flush, 0) };
+  if (document.visibilityState === "visible") return { kind: "frame", id: requestAnimationFrame(flush) };
+  return { kind: "timer", id: window.setTimeout(flush, 50) };
+}
+
+/**
+ * Run every waiting update in one turn, from ONE frame or timer however many handles wait. Before
+ * this, each handle armed its own rAF and the runtime armed its own guard-reset timer after each
+ * flush: five components on the 1 s clock were five frames and one timer per second (measured,
+ * `experiments/remix-v3/bench/results/resources-2026-10-07-316e7159-attrib.md`).
+ *
+ * The 50-update guard is per component (`C/src/runtime/scheduler.ts`, MAX_CASCADING_COMPONENT_UPDATES)
+ * and a handle waits at most once, so a shared frame gives each component one cascading update. The
+ * scheduler's turn-wide count only warns, at 50 components; the screens wake a few tens at most (a
+ * poll, a minute border on a dashboard of chips), and they all shared one frame before as well, since
+ * every rAF callback of a frame runs in the same turn. A handle that asks again while this runs waits
+ * for the next flush.
+ */
+function flush(): void {
+  flushing = null;
+  const due = [...waiting.values()];
+  waiting.clear();
+  for (const run of due) run();
 }
 
 /**
@@ -94,12 +117,9 @@ function arm(run: () => void): Pending {
  */
 export function holdFrames(): () => void {
   holds++;
-  if (holds === 1) {
-    for (const [handle, entry] of pending) {
-      if (entry.kind !== "frame") continue;
-      cancelAnimationFrame(entry.id);
-      pending.set(handle, arm(entry.run));
-    }
+  if (holds === 1 && flushing?.kind === "frame") {
+    cancelAnimationFrame(flushing.id);
+    flushing = arm();
   }
   let released = false;
   return () => {
@@ -116,18 +136,16 @@ export function framesHeld(): boolean {
 
 /**
  * Ask for ONE re-render of `handle` in the next frame. Any number of calls before that frame
- * collapse into the one update. A disconnected component is never updated.
+ * collapse into the one update, and every handle asking in the same turn shares the one frame. A
+ * disconnected component is never updated.
  */
 export function scheduleUpdate(handle: Updatable): void {
-  if (handle.signal.aborted || pending.has(handle)) return;
-  pending.set(
-    handle,
-    arm(() => {
-      pending.delete(handle);
-      if (handle.signal.aborted) return;
-      void handle.update();
-    }),
-  );
+  if (handle.signal.aborted || waiting.has(handle)) return;
+  waiting.set(handle, () => {
+    if (handle.signal.aborted) return;
+    void handle.update();
+  });
+  flushing ??= arm();
 }
 
 /**
@@ -149,3 +167,33 @@ export function useStore<T>(handle: Updatable, store: Store<T>): () => T {
   });
   return store.get;
 }
+
+/**
+ * Like `useStore`, but a change wakes the component only when `select(value)` differs from what its
+ * last render read. For a store that publishes often and a reader whose output changes rarely: the
+ * 1 s clock under a cache chip, whose label moves once a minute. The reader returns the value and
+ * records its selection, so call it in render. `select` may read `handle.props`; it runs on every
+ * change, so keep it cheap and pure.
+ */
+export function useStoreSelect<T, S extends string | number | boolean | null>(
+  handle: Updatable,
+  store: Store<T>,
+  select: (value: T) => S,
+): () => T {
+  let seen: S | symbol = NOTHING;
+  handle.queueTask(() => {
+    if (handle.signal.aborted) return;
+    const wake = (): void => {
+      if (!Object.is(select(store.get()), seen)) scheduleUpdate(handle);
+    };
+    store.subscribe(wake, handle.signal);
+    wake(); // a change between the first render and this task
+  });
+  return () => {
+    const value = store.get();
+    seen = select(value);
+    return value;
+  };
+}
+
+const NOTHING: unique symbol = Symbol("nothing read yet");

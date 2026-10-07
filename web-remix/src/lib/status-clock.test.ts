@@ -66,3 +66,90 @@ describe("clock", () => {
     expect(beat.tick).toBeNull();
   });
 });
+
+describe("clock while hidden", () => {
+  function rig() {
+    let t = 100;
+    let visible = true;
+    const watchers = new Set<() => void>();
+    const beat: Beat = { tick: null };
+    const log = { starts: 0, stops: 0 };
+    const clock = createClock(
+      () => t,
+      (fn) => {
+        beat.tick = fn;
+        log.starts++;
+        return () => {
+          beat.tick = null;
+          log.stops++;
+        };
+      },
+      {
+        visible: () => visible,
+        onChange(fn) {
+          watchers.add(fn);
+          return () => watchers.delete(fn);
+        },
+      },
+    );
+    return {
+      clock,
+      beat,
+      log,
+      watchers,
+      setTime: (n: number) => (t = n),
+      show(on: boolean) {
+        visible = on;
+        for (const fn of watchers) fn();
+      },
+    };
+  }
+
+  test("the interval stops when the page hides and restarts from the present when it shows", () => {
+    const r = rig();
+    const seen: number[] = [];
+    const stop = r.clock.subscribe(() => seen.push(r.clock.get()));
+    expect(r.log.starts).toBe(1);
+    r.setTime(200);
+    r.beat.tick?.();
+    r.show(false);
+    expect(r.log.stops).toBe(1);
+    expect(r.beat.tick).toBeNull();
+    expect(r.clock.listeners()).toBe(1); // the listener stays
+    r.setTime(5000);
+    r.show(false); // a repeated hidden event changes nothing
+    expect(r.log.stops).toBe(1);
+    seen.length = 0;
+    r.show(true);
+    expect(r.log.starts).toBe(2);
+    expect(r.clock.get()).toBe(5000);
+    expect(seen).toEqual([5000]); // one notification for the present
+    stop();
+    expect(r.log.stops).toBe(2);
+    expect(r.watchers.size).toBe(0);
+  });
+
+  test("a first listener on a hidden page starts nothing until the page shows", () => {
+    const r = rig();
+    r.show(false);
+    const stop = r.clock.subscribe(() => {});
+    expect(r.log.starts).toBe(0);
+    expect(r.watchers.size).toBe(1);
+    r.setTime(900);
+    r.show(true);
+    expect(r.log.starts).toBe(1);
+    expect(r.clock.get()).toBe(900);
+    stop();
+    expect(r.watchers.size).toBe(0);
+    expect(r.log.stops).toBe(1);
+  });
+
+  test("a listener that leaves while hidden drops the visibility watcher, nothing to stop twice", () => {
+    const r = rig();
+    const stop = r.clock.subscribe(() => {});
+    r.show(false);
+    stop();
+    expect(r.watchers.size).toBe(0);
+    expect(r.log.stops).toBe(1);
+  });
+});

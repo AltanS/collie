@@ -189,6 +189,28 @@ errors, and 60 direct ones drop updates (SPIKE, table "Burst of 60 updates").
 
 A direct `handle.update()` is allowed only in an `on()` handler, for that instance's own state.
 
+### Clocks and timers
+
+Idle, a page should wake the main thread only when something on screen can change. Measured on
+2026-10-07 (`experiments/remix-v3/bench/results/resources-2026-10-07-316e7159.md`): 435 wake-ups a
+minute idle, 191 hidden, against 207 and 16 for the React shell. The chain was a clock that
+published every second, five components each arming their own frame, and the runtime's guard-reset
+timer after every flush.
+
+- The shared clock (`R/lib/clock.ts`) runs only while something listens AND the page is visible.
+  Hidden, it stops; visible again, it restarts from the present and notifies once.
+- A store publishes only when a displayed value can change. The clock itself ticks each second
+  because the cache chip's borders (`floor((expiresAt - now) / 60 s)`, cold 10 s past expiry) sit at
+  each pane's own offset in the minute; a reader that needs less wakes itself less with
+  `useStoreSelect(handle, store, select)`, which re-renders only when `select(value)` changed since
+  its last render. `select` returns a primitive and may read `handle.props`.
+- Never read the wall clock in a loop to "keep a label fresh". A reader subscribes to the clock; a
+  new reader that needs another resolution gets its own store, not a faster clock.
+- `scheduleUpdate` shares ONE frame (or one timer, hidden or held) per turn across all handles
+  (`R/lib/store.ts`, `flush`). Each handle still coalesces to one update. The guard is per component,
+  so a shared frame gives each component one cascading update, same as before.
+- A new interval or `setTimeout` needs a reason in a comment and a way to stop it when hidden.
+
 ### Never
 
 - `handle.context.set(v)` followed by `handle.update()` on the provider. It re-renders the whole

@@ -8,14 +8,15 @@ import { cn } from "@web/lib/utils";
 
 import { clock } from "../lib/clock";
 import { useLocale } from "../lib/i18n-store";
-import { useStore } from "../lib/store";
+import { useStoreSelect } from "../lib/store";
 import { Icon } from "../ui/icon";
 
 // Port of web/src/components/cache-chip.tsx: how long a pane's prompt cache stays warm, as an
 // hourglass in the state's ink and a minutes label (`12m`, `<1m`, the word for cold), with a dot when
 // an override set the rule. The words are web/'s pure `cacheChipView` (reused read-only: the 10 s
-// grace, the bridge trusted for cold). One shared 1 s page clock (lib/clock.ts) ticks every chip; a
-// screen with no chip runs no timer.
+// grace, the bridge trusted for cold). One shared 1 s page clock (lib/clock.ts) feeds every chip, and
+// a chip re-renders only when its own text or tint changes (about once a minute); a screen with no
+// chip, or a hidden page, runs no timer.
 //
 // `row` is plain type (the dashboard row is already one button); `button` is the pane header's form,
 // a control that opens the cache sheet.
@@ -33,7 +34,11 @@ export interface CacheChipProps {
 }
 
 export function CacheChip(handle: Handle<CacheChipProps>) {
-  const now = useStore(handle, clock);
+  // The clock ticks each second; the chip wakes only on the second its text or tint changes.
+  const now = useStoreSelect(handle, clock, (at) => {
+    const next = cacheChipView(handle.props.cache, at);
+    return next === null ? "" : `${next.tone}|${next.label}|${String(next.overridden)}`;
+  });
   useLocale(handle);
   return () => {
     const { cache, variant = "row" } = handle.props;
