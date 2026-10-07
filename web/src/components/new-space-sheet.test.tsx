@@ -511,4 +511,30 @@ describe("NewSpaceSheet — New agent on a branch", () => {
     expect(ids).toHaveLength(3);
     expect(ids[2]).not.toBe(ids[0]);
   });
+
+  it("a retry with another branch, agent or repo is a new request and gets a new id", async () => {
+    const user = userEvent.setup();
+    const ids: string[] = [];
+    const onCreate = vi.fn<OnCreate>(async (_w, _b, extras) => {
+      ids.push(extras.requestId);
+      return false;
+    });
+    mountBranchOff(onCreate);
+    // The first tap's reply is lost. The operator then fixes the branch name and taps again.
+    await user.click(createButton());
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    fireEvent.change(branchField(), { target: { value: "feature/other" } });
+    await user.click(createButton());
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    // ...or picks another agent...
+    await user.selectOptions(picker(), "claude");
+    await user.click(createButton());
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    // ...and a further tap with nothing changed replays the last one.
+    await user.click(createButton());
+    expect(ids).toHaveLength(4);
+    expect(ids[3]).toBe(ids[2]);
+  });
 });

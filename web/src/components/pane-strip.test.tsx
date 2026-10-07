@@ -249,9 +249,8 @@ describe("PaneStrip", () => {
   // iOS Safari does not scroll a `pointer-events: none` scroller from a `pointer-events: auto`
   // child (https://bugs.webkit.org/show_bug.cgi?id=183870): the row looked fine and did not move
   // under a thumb. jsdom cannot scroll, so this pins the cause: nothing from the scroller down to
-  // a pill may opt out of hit-testing, and the z-index that lifts the row over the tab row's reach
-  // sits on the track inside the scroller, never on the <nav> (that would lift the scroller's
-  // blank overhang over the terminal mirror).
+  // a pill may opt out of hit-testing, and no z-index lifts any part of the row: nothing of the row
+  // overhangs the content below it any more (see the hit-box test beside this one).
   it("lets the scroller take a touch itself, so a sideways swipe scrolls the row on iOS", () => {
     render(
       <PaneStrip
@@ -267,7 +266,33 @@ describe("PaneStrip", () => {
       expect(el.className).not.toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
     }
     expect(nav.className).not.toMatch(/(?:^|\s)z-\[/);
-    expect(scroller.firstElementChild!.className).toMatch(/(?:^|\s)z-\[2\](?=\s|$)/);
+    expect(scroller.firstElementChild!.className).not.toMatch(/(?:^|\s)z-\[/);
     expect(scroller.firstElementChild!.contains(pill)).toBe(true);
+  });
+
+  // THE STRIP MAY NOT OVERHANG THE CONTENT. A pill's `::before` reach used to hang 18px below the
+  // row (`before:-bottom-5`, in an 18px `pb`/`-mb` clip room), which put it over the first lines of
+  // the chat or terminal and took the tap off a file-path link there (measured 2026-10-07 with
+  // `elementFromPoint`). jsdom has no layout, so this pins the classes that made it: the reach is
+  // the row's own 26px (`-inset-y-[2px]` against the pill's padding box), and the scroller has no
+  // bottom padding or negative bottom margin to extend a clip box below the row.
+  it("keeps every pill's hit box inside the 26px row, never over the content below", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    const nav = screen.getByRole("navigation", { name: "Panes" });
+    const scroller = nav.querySelector<HTMLElement>(".overflow-x-auto")!;
+    for (const pill of screen.getAllByRole("button")) {
+      const cls = pill.className;
+      expect(cls).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+      expect(cls).not.toMatch(/before:-inset-y-\[7px\]/);
+      expect(cls).not.toMatch(/before:-bottom-/);
+      expect(cls).not.toMatch(/before:z-/);
+    }
+    expect(scroller.className).not.toMatch(/(?:^|\s)(?:pb-|-mb-)/);
   });
 });

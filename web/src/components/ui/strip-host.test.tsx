@@ -1,9 +1,10 @@
+import { useRef } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { COLLAPSE_MS } from "./collapse";
 import { Notice } from "./notice";
-import { StripHost, StripSlot } from "./strip-host";
+import { bandOverlap, BandMain, StripHost, StripSlot, useBandInset } from "./strip-host";
 
 /** The layer wrapper the host paints a registered strip in. One per registered slot. */
 function layers(container: HTMLElement) {
@@ -286,5 +287,126 @@ describe("StripHost — the top band, one winner", () => {
     const front = layers(container).filter((l) => l.className.includes("opacity-100"));
     expect(front).toHaveLength(1);
     expect(front[0]).toHaveTextContent("first");
+  });
+});
+
+describe("bandOverlap — how far the band reaches into a scroller", () => {
+  it("is the band's bottom edge minus the scroller's top edge", () => {
+    // The saved-copy case: header ends at 60, the band is 57 tall, the scroller sits under 35px of
+    // strips. The band reaches 22px into it.
+    expect(bandOverlap(60, 57, 95)).toBe(22);
+  });
+
+  it("is zero when the strips under the header are as tall as the band, or taller", () => {
+    expect(bandOverlap(60, 35, 95)).toBe(0);
+    expect(bandOverlap(60, 20, 95)).toBe(0);
+  });
+
+  it("is the whole band for a route with nothing under the header", () => {
+    expect(bandOverlap(60, 35, 60)).toBe(35);
+  });
+});
+
+describe("useBandInset — content under the band starts below it", () => {
+  /**
+   * jsdom has no layout, so the three boxes are stated: the anchor on the header's edge at y=60, the
+   * band's content 57px tall, and the scroller's top wherever the test puts it.
+   */
+  function stubLayout(scrollerTop: number, bandHeight: number) {
+    return vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const slot = this.dataset.slot;
+        const top = slot === "strip-anchor" ? 60 : slot === "probe" ? scrollerTop : 0;
+        const height = slot === "strip-band-content" ? bandHeight : 0;
+        return { top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) };
+      });
+  }
+
+  function Probe({ base = 0 }: { base?: number }) {
+    const ref = useRef<HTMLDivElement>(null);
+    const style = useBandInset(ref, base);
+    return <div ref={ref} data-slot="probe" style={style} />;
+  }
+
+  function Strip() {
+    return (
+      <StripSlot priority={30}>
+        <Notice tone="danger" variant="strip">
+          Not connected
+        </Notice>
+      </StripSlot>
+    );
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("pads the scroller by the part of the band that covers it", () => {
+    stubLayout(95, 57);
+    const { container } = render(
+      <StripHost>
+        <Strip />
+        <Probe />
+      </StripHost>,
+    );
+    expect(container.querySelector<HTMLElement>("[data-slot='probe']")?.style.paddingTop).toBe("22px");
+  });
+
+  it("leaves a scroller alone when the strips above it are as tall as the band", () => {
+    stubLayout(95, 35);
+    const { container } = render(
+      <StripHost>
+        <Strip />
+        <Probe />
+      </StripHost>,
+    );
+    expect(container.querySelector<HTMLElement>("[data-slot='probe']")?.style.paddingTop).toBe("0px");
+  });
+
+  it("never goes below the scroller's own padding, and takes the band's reach when that is more", () => {
+    stubLayout(60, 35);
+    const { container, rerender } = render(
+      <StripHost>
+        <Strip />
+        <Probe base={16} />
+      </StripHost>,
+    );
+    // A route with nothing under the header: the band covers 35px of a 16px gutter.
+    expect(container.querySelector<HTMLElement>("[data-slot='probe']")?.style.paddingTop).toBe("35px");
+    stubLayout(60, 10);
+    rerender(
+      <StripHost>
+        <Strip />
+        <Probe base={16} />
+      </StripHost>,
+    );
+  });
+
+  it("asks for nothing while no strip is showing", () => {
+    stubLayout(60, 57);
+    const { container } = render(
+      <StripHost>
+        <Probe base={16} />
+      </StripHost>,
+    );
+    expect(container.querySelector<HTMLElement>("[data-slot='probe']")?.style.paddingTop).toBe("16px");
+  });
+
+  it("sets no style outside a host", () => {
+    const { container } = render(<Probe base={16} />);
+    expect(container.querySelector<HTMLElement>("[data-slot='probe']")?.getAttribute("style")).toBeNull();
+  });
+
+  it("BandMain renders a main whose class padding is replaced by the measured one", () => {
+    stubLayout(60, 35);
+    render(
+      <StripHost>
+        <Strip />
+        <BandMain base={16} data-slot="probe" className="p-4">
+          page
+        </BandMain>
+      </StripHost>,
+    );
+    expect(screen.getByRole("main").style.paddingTop).toBe("35px");
   });
 });

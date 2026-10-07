@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +17,10 @@ import {
   splitOpencodeKey,
 } from "./opencode.ts";
 import { MAX_RESULT_CHARS, MAX_TEXT_CHARS } from "./text.ts";
+
+// The Windows runner is ~10x slower on the sqlite fixtures (8 s against 0.25 s on Linux), past bun's 5 s
+// default. The budget is per file: bun resets the default for the next test file.
+setDefaultTimeout(process.platform === "win32" ? 30_000 : 5_000);
 
 // Builders mirroring the verified on-disk shape (opencode 1.18.9, 2026-08-03): a message row's `data`
 // json plus its parts' `data` json, composed by the source into one JSONL line per message.

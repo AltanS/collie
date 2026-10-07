@@ -51,9 +51,9 @@ interface TabStripProps {
    * It is a slot rather than a named prop because this row must not learn what the pane screen is
    * doing with it. Two things follow from "outside the scroller", and both are the point: it does
    * not scroll away with the tabs (a control you can lose by swiping is not an affordance), and it
-   * costs no height at all: it is a 28px square centred in the 30px row, and its 44px reach hangs
-   * DOWN out of the row the same way every tab's does (`TAB_ROW_SQUARE_TAP_TARGET`), so the control
-   * adds no pixel the row was not already spending.
+   * costs no height at all: it is a 28px square centred in the 30px row, and its hit box is the row
+   * itself, 44px wide (`TAB_ROW_SQUARE_TAP_TARGET`), so the control adds no pixel the row was not
+   * already spending.
    *
    * The cost, stated: with a trailing control the last tab can no longer scroll clean off the screen
    * edge, because the edge now belongs to the control. That is the `-mx-4 px-4` trick below, and it
@@ -161,9 +161,7 @@ export function TabStrip({
         // baseline rule the folder shape used to draw. No border-t and no border-b: this row draws no
         // horizontal rule of its own, and a header above it keeps whatever rule it already had.
         // `flex items-stretch` only when something is pinned to the trailing end; otherwise a
-        // `flow-root` block. Either one stops the scroller's `-mb-3.5` from collapsing through the
-        // <nav>'s own bottom edge, which would leave the <nav> (and its chrome ground) 44px tall
-        // while the row below it moved up 14px to overlap.
+        // `flow-root` block.
         className={cn("shrink-0 bg-chrome px-4", trailing ? "flex items-stretch" : "flow-root")}
       >
         <div
@@ -172,33 +170,21 @@ export function TabStrip({
           // so the last tab scrolls clean off the screen edge while the first still starts on the
           // route's 16px gutter. The two halves are ONE number and must move together.
           //
-          // pb-3.5 -mb-3.5: THE TAP FLOOR HANGS BELOW THE ROW, and this pair is what lets it. The
-          // row draws 30px, and a 44px hit needs 14px more. It cannot go UP: the route's own
-          // content scroller starts at the header's bottom edge and clips anything above it, and
-          // the header is a sticky `z-20` bar with 44px buttons of its own. So the whole 14px goes
-          // down, and a reach off a drawn box is clipped the instant the clip box (this scroller's
-          // padding box, `overflow-x: auto` clips BOTH axes, see STRIP_TAP_TARGET) does not extend
-          // into it. `pb-3.5` extends the clip box 14px; `-mb-3.5` takes the same 14px back out of
-          // the layout, so the <nav> still measures 30px and the scroller's lower 14px lies over
-          // whatever comes next. Only a tab's `::before` answers a tap there, and only because it
-          // carries `before:z-[1]`: the scroller itself is a plain block and loses to what lies
-          // under it, so the blank stretch between and beside the tabs stays the page's. The two
-          // halves are ONE number, like the gutter pair, and the tab's `before:-bottom-3.5` is the
-          // same number a third time.
+          // NOTHING HANGS BELOW THE ROW. A tab draws 30px, the row's whole height, and its hit box
+          // is those 30px (44px wide: `min-w-11`). The tap floor used to hang 14px below the row
+          // (`pb-3.5 -mb-3.5` here, `before:-bottom-3.5 before:z-[1]` on the tab) to reach 44px
+          // tall. That 14px lay over the first lines of whatever came next, the chat or the terminal
+          // mirror, and took the tap off a file-path link standing there: measured 2026-10-07 at
+          // 412x915, `elementFromPoint` over a link 1px under the row returned the tab's button for
+          // 13 of the link's 20px. A content link must win every tap inside the content area, so
+          // the floor gives way, and 30px stays well past WCAG 2.5.8's 24px. The alternative was a
+          // 44px row, 14px of phone screen the operator already asked back. It cannot go UP
+          // either: the header above is a sticky `z-20` bar with 44px buttons of its own.
           //
-          // What comes next decides what the reach takes. On a one-pane tab it is the 4px page gap
-          // and then the terminal mirror, which is `relative` and later in the tree and would win
-          // a tap without the `z-[1]`. With it the tab measures 44, and the price is stated: under
-          // each tab the mirror's top 10px stop answering a tap, a long-press or the start of a
-          // drag. On the space route the same 14px lie over the top of the space's list.
-          //
-          // Under a pane row the pane row wins instead: its pills sit in a `relative z-[2]` track
-          // (`pane-strip.tsx`), so it owns its whole 26px, gaps included, and the boundary lands on
-          // the rows' shared edge. The tab measures its own 30px there. Two stacked 44px targets
-          // need 88px of pitch and the two rows are 56, so one of them has to give, and it is the
-          // tab, whose row is the taller one.
+          // The pane row under this one (when the tab holds several panes) is a plain neighbour
+          // now, not a rival: the two rows' hit boxes meet on their shared edge and never overlap.
           className={cn(
-            "flex items-center gap-3 overflow-x-auto pb-3.5 -mb-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "flex items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             // With a pinned control the right half of the edge-to-edge trick is spent on it: the
             // scroller becomes the flex row's growing child, keeps the LEFT gutter cancellation so
             // the first tab still starts on the route's 16px, and stops at the control instead of at
@@ -247,10 +233,10 @@ export function TabStrip({
               adapter shipped today declares `createTab`, so this hides on none of them — it asks
               anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
           {newTab.capable && (
-            // 28px drawn, 44x44 hit. 28 and not the old 32 because the row is 30 now: the circle
-            // must sit inside it. The hit is TAB_ROW_SQUARE_TAP_TARGET's: from the row's top edge
-            // down to the tabs' own 44px line, and 8px out on each side, where it is last in the row
-            // and the scroller's 12px gap keeps it clear of the last tab.
+            // 28px drawn, 30x44 hit. 28 and not the old 32 because the row is 30 now: the circle
+            // must sit inside it. The hit is TAB_ROW_SQUARE_TAP_TARGET's: the row's own 30px, and
+            // 8px out on each side, where it is last in the row and the scroller's 12px gap keeps it
+            // clear of the last tab. It does not reach below the row (the scroller's comment says why).
             <AddButton
               size="sm"
               reach={TAB_ROW_SQUARE_TAP_TARGET}
@@ -358,14 +344,12 @@ function Tab({
         // `StableLabel` below holds that still.
         //
         // COMPACT: `h-7.5` draws a 30px tab, the row's whole height, and `text-[11px]` the size of
-        // the header's path line. The tap floor is not in this box. `before:top-0 before:-bottom-3.5`
-        // overrides STRIP_TAP_TARGET's symmetric 7px: the reach cannot go up (the scroller's comment
-        // says why), so it takes the whole 14px downward, 30+14 = 44, into the scroller's own
-        // `pb-3.5` clip room. The tab has no border, so the inset resolves against the drawn edge and
-        // needs no extra pixel the way a bordered pill's does. `before:z-[1]` lets the reach win over
-        // the mirror below (the scroller's comment says what that costs).
+        // the header's path line. The hit box is not this box: `before:inset-y-0` overrides
+        // STRIP_TAP_TARGET's symmetric 7px, so the reach is exactly the 30px row, never below it
+        // (the scroller's comment says why). The tab has no border, so the inset resolves against
+        // the drawn edge and needs no extra pixel the way a bordered pill's does.
         STRIP_TAP_TARGET,
-        "relative flex h-7.5 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-1.5 text-[11px] transition-colors before:top-0 before:-bottom-3.5 before:z-[1] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "relative flex h-7.5 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-1.5 text-[11px] transition-colors before:inset-y-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
         // INK AND WEIGHT ARE THE ONLY MARK. Full ink and semibold for the open tab; the muted ink
         // and medium weight for every other, with the full ink as the hover answer on a device that
         // has one.

@@ -56,6 +56,13 @@ export const FILE_EXIST_DEBOUNCE_MS = 150;
 export const FILE_EXIST_CACHE_MAX = 512;
 /** After a failure that may pass (a timeout, a 5xx, no network), the view asks nothing for this long. */
 const FILE_EXIST_RETRY_MS = 30_000;
+/**
+ * How long an "absent" answer is believed. A present answer stays for the view's life (files do not
+ * come back as nothing in the middle of a session); an absent one may be wrong within seconds, since
+ * the agent's Write often waits on a permission prompt while its path is already printed. After this
+ * the path is asked about again the next time it is drawn. ADR 0088.
+ */
+export const FILE_EXIST_ABSENT_TTL_MS = 30_000;
 
 /** What the opener asks of the existence answers. Stable until a new path is known to exist. */
 export interface FileLinkExistence {
@@ -76,6 +83,8 @@ class FileExistenceStore {
   private readonly ask: ExistAsk;
   /** Root-relative path to its answer, in recency order (a `Map` keeps insertion order). */
   private readonly answers = new Map<string, boolean>();
+  /** When each ABSENT answer was given, for {@link FILE_EXIST_ABSENT_TTL_MS}. */
+  private readonly absentAt = new Map<string, number>();
   private readonly queued = new Set<string>();
   private readonly asking = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -114,6 +123,11 @@ class FileExistenceStore {
   }
 
   want(rel: string): void {
+    if (this.answers.get(rel) === false && Date.now() - (this.absentAt.get(rel) ?? 0) >= FILE_EXIST_ABSENT_TTL_MS) {
+      // Stale "not there": forget it and ask again below.
+      this.answers.delete(rel);
+      this.absentAt.delete(rel);
+    }
     if (this.answers.has(rel) || this.queued.has(rel) || this.asking.has(rel)) return;
     if (this.refused || Date.now() < this.quietUntil || isLostLatched()) return;
     this.queued.add(rel);
@@ -174,6 +188,8 @@ class FileExistenceStore {
   private remember(rel: string, exists: boolean): void {
     this.answers.delete(rel);
     this.answers.set(rel, exists);
+    if (exists) this.absentAt.delete(rel);
+    else this.absentAt.set(rel, Date.now());
     while (this.answers.size > FILE_EXIST_CACHE_MAX) {
       // An absent answer goes first: dropping a known file would turn a drawn link back into text.
       let drop: string | undefined;
@@ -183,7 +199,9 @@ class FileExistenceStore {
           break;
         }
       }
-      this.answers.delete(drop ?? this.answers.keys().next().value!);
+      const gone = drop ?? this.answers.keys().next().value!;
+      this.answers.delete(gone);
+      this.absentAt.delete(gone);
     }
   }
 }

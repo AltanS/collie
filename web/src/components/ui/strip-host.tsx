@@ -4,13 +4,19 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type HTMLAttributes,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
+import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 /**
@@ -57,6 +63,18 @@ import { cn } from "@/lib/utils";
  * taller one covers a few more pixels of the row beneath. The band's height animates on APPEAR and
  * on LEAVE through `Collapse`, which on an overlay moves nothing but the band's own bottom edge.
  *
+ * WHAT THE BAND COVERS, AND WHO KEEPS CLEAR OF IT (2026-10-08). Covering the strips under the header
+ * is the design; covering the FIRST ROW OF CONTENT is a fault. A saved copy is red at once, its strip
+ * can run to ~57px on a phone, and the strips under the header on a one-pane tab are ~35px, so the
+ * band hid the "Saved copy from" line until the strip was dismissed. The same overlap hid the first
+ * card of every route with no strip under the header. So the band publishes the height it WILL have
+ * (the content's own, not the animated box's, so a consumer is not re-laid-out on every frame of the
+ * slide) through {@link useBandInset}, and a scroller that holds content at its top asks the hook how
+ * far the band reaches INTO it: the band's bottom edge minus the scroller's top edge, which already
+ * counts the strips between them. Zero when the strips are as tall as the band, and so nothing moves
+ * for the common strip. The scroller turns the number into top padding on its own motion (the same
+ * 240ms as the band), which is the one place content is allowed to move for a state.
+ *
  * The host is domain-blind and tone-blind. It does not know what a connection is, it styles
  * nothing, and it announces nothing — the Notice inside carries its own `announce`. Priorities
  * reach it as plain numbers; the TABLE that names them belongs on the feature side, so that
@@ -72,6 +90,82 @@ interface Registration {
 type Register = (id: string, entry: Registration | null) => void;
 
 const StripRegistry = createContext<Register | null>(null);
+
+interface BandValue {
+  /** The height the open band will have, or 0 with nothing showing (and always 0 for a flow band). */
+  height: number;
+  /** The zero-height anchor on the header's bottom edge: the band's top. */
+  anchorRef: RefObject<HTMLElement | null>;
+}
+
+const BandContext = createContext<BandValue | null>(null);
+
+/**
+ * How far an overlay band reaching down from `anchorTop` for `bandHeight` px runs INTO an element
+ * whose top edge is at `elTop`. Pure, so the arithmetic is tested without a layout engine. Never
+ * negative: an element that starts below the band is not covered by it.
+ */
+export function bandOverlap(anchorTop: number, bandHeight: number, elTop: number): number {
+  return Math.max(0, Math.round(anchorTop + bandHeight - elTop));
+}
+
+/**
+ * Add to a scroller that takes {@link useBandInset}'s style: the band's own slide speed
+ * (`COLLAPSE_MS` in `collapse.tsx`, which this literal must match).
+ */
+export const BAND_INSET_CLASS =
+  "transition-[padding-top] ease-out motion-reduce:transition-none duration-[240ms]";
+
+/**
+ * Keeps the top of a scroller clear of the strip band.
+ *
+ * `ref` is the scroller (the element whose content starts at its top) and `base` is the top padding
+ * it has on its own, in px. The result is the `style` that sets `padding-top` to whichever is larger,
+ * `base` or the overlap between the band and the scroller's top edge, so a scroller whose own padding
+ * already clears the band is left exactly as it was (the common strip, the common phone) and one
+ * that does not is pushed down by the shortfall and no more. `undefined` outside a host (a unit test,
+ * a playground card), where there is no band to keep clear of.
+ *
+ * The overlap is measured, not assumed, because what sits between the header and a scroller is
+ * different on every route: the pane's tab and pane strips, the dashboard's filter row, nothing.
+ * Re-read after every commit of the caller (a strip above it may have changed height) and on window
+ * resize; a state that does not change the number bails out.
+ */
+export function useBandInset(ref: RefObject<HTMLElement | null>, base = 0): CSSProperties | undefined {
+  const band = useContext(BandContext);
+  const [inset, setInset] = useState(0);
+  const height = band?.height ?? 0;
+  const anchorRef = band?.anchorRef;
+  const measure = useCallback(() => {
+    const el = ref.current;
+    const anchor = anchorRef?.current;
+    if (!el || !anchor || height === 0) return setInset(0);
+    setInset(bandOverlap(anchor.getBoundingClientRect().top, height, el.getBoundingClientRect().top));
+  }, [ref, anchorRef, height]);
+  useLayoutEffect(measure);
+  useEffect(() => {
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [measure]);
+  if (!band) return undefined;
+  return { paddingTop: Math.max(base, inset) };
+}
+
+/**
+ * A route's `<main>` scroller that keeps its first row clear of the band: {@link useBandInset} with
+ * its own ref, for the pages whose content starts at the top (Settings, Crew, Machines, Updates).
+ * `base` is the top padding the className gives it, in px.
+ */
+export function BandMain({
+  base,
+  className,
+  style,
+  ...props
+}: HTMLAttributes<HTMLElement> & { base: number }) {
+  const ref = useRef<HTMLElement>(null);
+  const inset = useBandInset(ref, base);
+  return <main ref={ref} className={cn(inset && BAND_INSET_CLASS, className)} style={{ ...style, ...inset }} {...props} />;
+}
 
 /** How long a replacement takes to dissolve. The app's "tap" speed — see COLLAPSE_MS on the tokens. */
 const SWAP_CLASS = "duration-[120ms]";
@@ -92,6 +186,12 @@ export function StripHost({
   flow?: boolean;
 }) {
   const [slots, setSlots] = useState<ReadonlyMap<string, Registration>>(() => new Map());
+  const anchorRef = useRef<HTMLDivElement>(null);
+  // A state-held node, not a ref object: the Collapse mounts its content a render AFTER the slot
+  // registers (it is rendered only once it has opened), so the node arrives late and the measuring
+  // effect has to run when it does.
+  const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
+  const [contentHeight, setContentHeight] = useState(0);
 
   // Identity-checked, so a feature re-rendering with the same copy does not churn the host. There
   // is no render loop here even though the host renders `children`: the host's own setState
@@ -133,12 +233,32 @@ export function StripHost({
   if (winner) last.current = { id: winner, node: slots.get(winner)?.node ?? null };
   const ghost = slots.size === 0 ? last.current : null;
 
+  const open = winner !== null;
+  // The band's own content height, measured where it is NATURAL: inside the Collapse's clip, whose
+  // outer box is the animated one. Read after layout and on every resize of the content (a strip
+  // that wraps to a second line when the phone turns), so the number leads the slide by one frame
+  // and never trails it.
+  useLayoutEffect(() => {
+    const node = contentNode;
+    if (!node) return setContentHeight(0);
+    const read = () => setContentHeight(Math.round(node.getBoundingClientRect().height));
+    read();
+    if (!hasResizeObserver()) return;
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [contentNode, winner, ghost]);
+  // A flow band reserves its own space, so it covers nothing; a closed one covers nothing either.
+  const covered = flow || !open ? 0 : contentHeight;
+  const band = useMemo<BandValue>(() => ({ height: covered, anchorRef }), [covered]);
+
   const layers: Array<{ key: string; node: ReactNode }> = ghost
     ? [{ key: ghost.id, node: ghost.node }]
     : [...slots].map(([id, entry]) => ({ key: id, node: entry.node }));
 
   return (
     <StripRegistry.Provider value={register}>
+      <BandContext.Provider value={band}>
       {/*
         Two live regions that exist BEFORE anything has to be announced, and never unmount.
         A live region has to be in the document before its contents change or the change is not
@@ -158,6 +278,7 @@ export function StripHost({
         bottom edge. The band hangs from its top. See "WHERE IT PAINTS" above for the rung.
       */}
       <div
+        ref={anchorRef}
         data-slot="strip-anchor"
         data-placement={flow ? "flow" : "overlay"}
         className={flow ? undefined : "relative z-30 h-0 shrink-0"}
@@ -177,15 +298,18 @@ export function StripHost({
             status slot; what stays here is what the band alone knows — which slot wins, how long the
             dissolve takes, and the ghost that keeps painting through the exit.
           */}
-          <OneOf
-            active={ghost ? ghost.id : winner}
-            options={layers}
-            layerClassName={cn("transition-opacity ease-out motion-reduce:transition-none", SWAP_CLASS)}
-          />
+          <div ref={setContentNode} data-slot="strip-band-content">
+            <OneOf
+              active={ghost ? ghost.id : winner}
+              options={layers}
+              layerClassName={cn("transition-opacity ease-out motion-reduce:transition-none", SWAP_CLASS)}
+            />
+          </div>
         </Collapse>
       </div>
 
       {children}
+      </BandContext.Provider>
     </StripRegistry.Provider>
   );
 }

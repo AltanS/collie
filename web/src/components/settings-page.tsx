@@ -8,6 +8,7 @@ import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
 import { settingsPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
+import { BandMain } from "@/components/ui/strip-host";
 
 // The shell every Settings SECTION page wears: the shell's own header filled with a back button and
 // a title, then one scrolling column of cards. Four pages share it, and sharing it is the point —
@@ -44,9 +45,9 @@ export function SettingsPage({ title, children }: { title: MessageKey; children:
       {/* `relative` for the same reason the home scroller carries it: an `sr-only` (position:
           absolute) deep in the page would otherwise escape the scroller and grow the document's
           own scrollbar. */}
-      <main className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         {children}
-      </main>
+      </BandMain>
     </div>
   );
 }

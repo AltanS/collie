@@ -283,7 +283,7 @@ export function HistoryRoute() {
       </RouteHeader>
 
       <div className={cn("relative min-h-0 min-w-0 flex-1", mirrorFace.className)} style={mirrorFace.style}>
-        <ChatMessageList ref={listRef} className="px-3 py-3">
+        <ChatMessageList ref={listRef} clearBand={12} className="px-3 py-3">
           {entries.length === 0 ? (
             <div className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">
               {/* The route is reachable by URL — a bookmark, a back button, an older cached bundle

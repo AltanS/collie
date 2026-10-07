@@ -3,6 +3,7 @@ import { ArrowDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { BAND_INSET_CLASS, useBandInset } from "@/components/ui/strip-host";
 import { useAutoScroll } from "@/hooks/use-auto-scroll";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -21,6 +22,14 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   onAtBottomChange?: (atBottom: boolean) => void;
   /** Dot the "jump to latest" button when newer output arrived while you were scrolled up. */
   hasNew?: boolean;
+  /**
+   * The list's own top padding in px, which asks it to keep its first row clear of the system strip
+   * band (`useBandInset`): the band covers the top of the route, and the top of the list is where
+   * "Saved copy from", "Load older" and "Start of the conversation" are read. Leave it out and the
+   * list does nothing about the band. State the number the className gives the top, because the
+   * padding that results replaces it.
+   */
+  clearBand?: number;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -28,7 +37,7 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, clearBand, style, ...props },
     ref,
   ) {
     useLocale();
@@ -36,6 +45,8 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
       dep,
       onAtBottomChange,
     });
+
+    const bandStyle = useBandInset(scrollRef, clearBand ?? 0);
 
     React.useImperativeHandle(
       ref,
@@ -52,8 +63,10 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
           onScroll={onScroll}
           className={cn(
             "h-full min-w-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4",
+            clearBand !== undefined && bandStyle !== undefined && BAND_INSET_CLASS,
             className,
           )}
+          style={clearBand !== undefined ? { ...style, ...bandStyle } : style}
           {...props}
         >
           {children}

@@ -13,6 +13,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 import { homePath, machinesPath, settingsSectionPath } from "@/lib/nav";
 import type { Scope } from "@/lib/scope";
 import { useScope } from "@/lib/session";
+import { BandMain } from "@/components/ui/strip-host";
 
 // ── THE SETTINGS INDEX ──────────────────────────────────────────────────────────────────────────
 //
@@ -137,7 +138,7 @@ export function SettingsRoute() {
         }
       />
 
-      <main className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         <InstallControl />
 
         {/* ONE card holding four rows, not four cards. They are a single list of siblings, and four
@@ -165,7 +166,7 @@ export function SettingsRoute() {
         <div className="mt-auto flex flex-col gap-2 pt-4">
           <BuildStamp />
         </div>
-      </main>
+      </BandMain>
     </div>
   );
 }

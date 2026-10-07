@@ -34,7 +34,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   the terminal mirror opens that file in Files, at the line when the path names one (`src/a.ts:42`).
   The phone resolves the path against the pane's repo; a path outside it stays plain text, and only a
   root-relative path ever reaches the bridge, and a path becomes a link only once the bridge has
-  confirmed the file is there, one batched check per view (ADR 0088).
+  confirmed the file is there, one batched check per view. On a crew member's pane paths stay plain
+  text (ADR 0088).
 - **A second agent on a branch.** A pane's menu offers "New agent on a branch": the branch name is
   prefilled, pick one of your launchers or a shell, and Collie creates a git worktree and starts the
   session in it beside the first. Each create carries a request id and the bridge keeps a receipt, so
@@ -189,6 +190,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
   "(agent gone)", "Pane is gone". "Gone" now needs a live answer. Offline, the pane's row comes
   from any herd the phone kept for that machine, and a pane with no saved text says "No saved copy
   of this pane on this phone." with Send off.
+- **A link right under the tab row takes the tap.** The tab and pane pills' tap areas reached 14 to
+  18px below their rows, over the first line of the content, so a path link there mostly opened a
+  tab instead. Each pill's tap area now ends at its own row: 30px tall for tabs, 26px for panes.
 - **A Chat no longer stays blank when you come back to it early.** Leaving a pane for Files,
   History or Changes and returning before its first refresh could show an empty Chat until the
   session changed: the phone asked "anything new?" for a window it no longer held. It now asks only
@@ -211,6 +215,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   keeps a place for every entry, matches a notification by its kind and body when Claude Code rewrites
   it on the way out, and clears a message once the transcript shows it delivered, so a sent message
   never stays "Waiting to send". Claude Code's own plain-text notices no longer show as yours.
+- **The connection strip no longer hides the first line under it.** The strip is drawn over the top of
+  the screen, and on a pane with one tab it covered the "Saved copy from" line, which sits at the top
+  of the thread, until you tapped the X. The strip now tells the scrolling list how far it reaches
+  into it, and the list starts below it. Settings, Crew, Machines, Updates and History keep their
+  first row clear the same way.
 
 ## [1.17.2] - 2026-10-06
 

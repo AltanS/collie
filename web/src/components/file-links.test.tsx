@@ -2,13 +2,13 @@ import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetConnectionHealth, latchLost } from "@/lib/connection-health";
 import { paneLinkHandlers, PaneFileLinks } from "@/test/file-links";
 import { server } from "@/test/setup";
 
-import { FILE_EXIST_DEBOUNCE_MS, usePaneFileLinks } from "./file-links";
+import { FILE_EXIST_ABSENT_TTL_MS, FILE_EXIST_DEBOUNCE_MS, usePaneFileLinks } from "./file-links";
 import { MarkdownText } from "./markdown-text";
 
 // The pane screen's opener (ADR 0088): the root from the snapshot, home from the launchers answer,
@@ -67,6 +67,39 @@ describe("usePaneFileLinks", () => {
     result.current!({ path: "lib/new.ts" });
     await settle();
     expect(asked).toEqual([["src/lib/gone.ts"], ["src/lib/new.ts"]]);
+  });
+
+  it("an absent answer expires: a file written after its path was drawn becomes a link, a present one is never re-asked", async () => {
+    const asked: string[][] = [];
+    // The helper reads `existing` at request time, so pushing to it later is the Write landing.
+    const existing = ["src/lib/here.ts"];
+    server.use(...paneLinkHandlers(existing, asked));
+    const { result } = renderHook(() => usePaneFileLinks({ paneId: "w1:p1", pane, panes, workspaces }), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    result.current!({ path: "lib/late.ts" });
+    result.current!({ path: "lib/here.ts" });
+    await settle();
+    expect(asked).toEqual([["src/lib/late.ts", "src/lib/here.ts"]]);
+
+    // The agent's Write lands. Within the window the absent answer still stands.
+    existing.push("src/lib/late.ts");
+    result.current!({ path: "lib/late.ts" });
+    result.current!({ path: "lib/here.ts" });
+    await settle();
+    expect(asked).toHaveLength(1);
+
+    // Past the window it is asked again, and only it.
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + FILE_EXIST_ABSENT_TTL_MS + 1);
+    try {
+      result.current!({ path: "lib/late.ts" });
+      result.current!({ path: "lib/here.ts" });
+      await settle();
+      expect(asked).toEqual([["src/lib/late.ts", "src/lib/here.ts"], ["src/lib/late.ts"]]);
+      await waitFor(() => expect(result.current!({ path: "lib/late.ts" })).not.toBeNull());
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("a route the bridge does not have (an older member) stops the asking, and nothing links", async () => {

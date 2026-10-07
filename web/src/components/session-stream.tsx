@@ -388,6 +388,9 @@ export function SessionStream({
   return (
     <ChatMessageList
       ref={listRef}
+      // Keeps the saved-copy line, "Load older" and the first turn clear of the strip band, which
+      // covers the top of the route (ui/strip-host.tsx). The class below is `pt-0`; so is the base.
+      clearBand={0}
       data-slot="session-stream"
       // `rev` moves once per tick that produced anything, so a reply still streaming re-pins the
       // tail. A `?before=` page leaves it alone, which is right: paging older must not jump down.

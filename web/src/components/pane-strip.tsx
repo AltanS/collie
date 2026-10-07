@@ -97,47 +97,30 @@ export function PaneStrip({
           and stays).
 
           THE ROW IS 26px: the 24px pill and 1px of air above and below it (option 3 of the
-          2026-09-23 top-bar deck). It used to wear LabelledStrip's shared `py-1.5`, 36px, and even
-          then a pill answered only 35px of touch, because 6px of padding is all a reach can use.
-          The tap floor now hangs BELOW the row instead, the same way the tab row's does
-          (`tab-strip.tsx`, the scroller's comment), and for the same reason: nothing may reach up.
-          Above this row is the tab row, whose tabs own every pixel of it.
+          2026-09-23 top-bar deck). It used to wear LabelledStrip's shared `py-1.5`, 36px.
 
-          THE ROW OWNS ITS WHOLE 26px, AND NOTHING BELOW IT. The tab row's reach hangs 14px down
-          into this row at `z-[1]`, so the pills sit in a TRACK, `relative z-[2]`, one step above
-          that: the track spans the row's full height and the scroller's full width, gutters
-          included, so a tap anywhere on this row, gaps between pills included, can never switch the
-          tab. The tab measures its own 30px while this row stands under it, and 44 when it does
-          not. `flow-root` keeps the scroller's negative margin from collapsing through the <nav>,
-          so the <nav> box is 26px and not 44.
-
-          `pb-[18px] -mb-[18px]` on the scroller: the track is 1 + 24 + 1 = 26px, and 18px of
-          padding below it carry the clip box (the scroller's padding box, `overflow-x: auto` clips
-          both axes) down to the 44px line; `-mb-[18px]` gives those 18px back to the layout, so
-          the row still measures 26 and the lower 18px lie over the page gap and the mirror's top
-          edge. `py-0` first, so no half of LabelledStrip's shared `py-1.5` survives the override.
-          The pill's own `before:-top-[2px] before:-bottom-5` is the other half: row top to 44.
-
-          THE SCROLLER TAKES TOUCHES ITSELF, AND IT IS THE Z-INDEX THAT KEEPS ITS OVERHANG OFF THE
-          MIRROR. It used to be the other way round: the whole <nav> was `relative z-[2]`, which
-          lifted the scroller's blank 18px over the mirror too, so the scroller was
-          `pointer-events-none` and each pill `pointer-events-auto`. iOS Safari does not scroll a
-          `pointer-events: none` scroller from a `pointer-events: auto` child
-          (https://bugs.webkit.org/show_bug.cgi?id=183870), so on a phone this row did not scroll
-          at all. Now the <nav> and the scroller are plain blocks, the way the tab row's are: the
-          mirror is `relative` and later in the tree, so it wins the scroller's blank overhang, and
-          only the track (the row) and the pills' reaches inside it (`z-[2]` with the track) stand
-          above the mirror. A swipe that starts on the row or on a pill's reach scrolls the row; a
-          touch anywhere else in the overhang reaches the mirror. */}
+          THE HIT BOX IS THE ROW, AND NOTHING BELOW IT. For a while the pill's reach hung 18px
+          under the row (`pb-[18px] -mb-[18px]` here, `before:-bottom-5` on the pill, a `z-[2]`
+          track to win over the tab row's own overhang) to make 44px of touch. That 18px lay over
+          the first lines of the chat or terminal and took the tap off a file-path link standing
+          there (measured 2026-10-07 on the tab row, same recipe: `elementFromPoint` over a link
+          1px under the strip returned the strip's button for 13 of the link's 20px). A content link
+          must win every tap inside the content area, so the pill answers its 26px row and 44px
+          across (`min-w-11`), above WCAG 2.5.8's 24px. Nothing may reach up either: above this row
+          is the tab row, whose tabs own every pixel of it, and the two hit boxes meet on their
+          shared edge and never overlap. The scroller keeps `py-0`, so no half of LabelledStrip's
+          shared `py-1.5` survives the override. It takes touches itself (no `pointer-events-none`
+          anywhere in it), because iOS Safari does not scroll a `pointer-events: none` scroller from
+          a `pointer-events: auto` child (https://bugs.webkit.org/show_bug.cgi?id=183870). */}
       <LabelledStrip
         label={t("space.paneStrip.title")}
         className="flow-root bg-chrome"
-        scrollerClassName="px-0 py-0 pb-[18px] -mb-[18px]"
+        scrollerClassName="px-0 py-0"
         scrollerRef={scrollerRef}
       >
         {/* `px-4` moves the gutter from the scroller onto the track, so the track covers the
             gutters too and the scroll width keeps both of them. */}
-        <div className="relative z-[2] flex w-max min-w-full shrink-0 items-center gap-2 px-4 py-px">
+        <div className="flex w-max min-w-full shrink-0 items-center gap-2 px-4 py-px">
           {panes.map((p) => (
             <PanePill
               key={p.paneId}
@@ -234,14 +217,13 @@ function PanePill({
         // above it. `h-6` rather than vertical padding, because the row is built to exactly 24px
         // plus 1px either side and a padding-sized pill came out at 22.5.
         //
-        // THE TAP FLOOR IS NOT CENTRED. `before:-top-[2px] before:-bottom-5` override
-        // STRIP_TAP_TARGET's symmetric 7px: an inset resolves against the padding box, 1px inside
-        // the border, so `-2px` puts the reach's top on the row's top edge (the boundary with the tab
-        // row, never past it), and `-20px` puts its bottom 44px below that, into the scroller's
-        // `pb-[18px]` clip room (see the row's comment in PaneStrip above). 26px of row plus 18px
-        // hanging below it: a 44px hit off a 24px pill in a 26px row.
+        // THE HIT BOX ENDS ON THE ROW'S EDGES. `before:-inset-y-[2px]` overrides STRIP_TAP_TARGET's
+        // symmetric 7px: an inset resolves against the padding box, 1px inside the border, so `-2px`
+        // puts the reach on the row's top and bottom edge (1px of air + the 24px pill + 1px), 26px
+        // tall, and no further: below the row lies the content, and a link there must win the tap
+        // (see the row's comment in PaneStrip above).
         STRIP_TAP_TARGET,
-        "flex h-6 min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[11px] font-medium transition-colors before:-top-[2px] before:-bottom-5 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex h-6 min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[11px] font-medium transition-colors before:-inset-y-[2px] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-muted text-muted-foreground hover:bg-muted/70",

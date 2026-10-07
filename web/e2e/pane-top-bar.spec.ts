@@ -11,10 +11,11 @@ import { installApiStub } from "./fixtures/api";
 // up: the route's scroller clips at the header's bottom edge). jsdom lays nothing out, so only a
 // real engine can say what a thumb actually hits. Every probe here is `elementFromPoint`.
 //
-// The numbers, and the one place the floor gives: a tab alone measures 44 (its 30px row plus 14px
-// over the page gap and the mirror's top edge). Under a pane row it measures its own 30, because
-// the pane row owns its whole box: two stacked 44px targets need 88px of pitch and the two rows are
-// 56. A pane pill measures 44 (26px row plus 18px below).
+// The numbers (1.18.0): the tap areas were limited to their own rows, because a floor that hung
+// 14 to 18px below the row sat over the first line of the content and a path link there opened a
+// tab instead (CHANGELOG, "A link right under the tab row takes the tap"). A tab answers its own
+// 30px row and a pane pill its own 26px row; the width stays at least 44px (the `before:-inset-x`
+// reach, `TAB_ROW_SQUARE_TAP_TARGET`). Nothing below a row answers its pill.
 //
 // A tab that holds two panes is the fixture's shell pane moved into the `code` tab: derived from
 // the shared fixture, not invented.
@@ -47,7 +48,13 @@ function hitSpan(nav: Locator, name: string) {
     let bottom = y;
     while (top > 0 && on(top - 1)) top -= 1;
     while (bottom < window.innerHeight && on(bottom + 1)) bottom += 1;
-    return { top, bottom, height: bottom - top + 1 };
+    // And the same probe sideways, through the button's centre line.
+    const onX = (px: number) => button.contains(document.elementFromPoint(px, y));
+    let left = x;
+    let right = x;
+    while (left > 0 && onX(left - 1)) left -= 1;
+    while (right < window.innerWidth && onX(right + 1)) right += 1;
+    return { top, bottom, height: bottom - top + 1, left, right, width: right - left + 1 };
   });
 }
 
@@ -57,7 +64,7 @@ async function rowHeights(page: Page) {
   return { tabs: tabs!.height, panes: panes?.height ?? null, tabsBottom: tabs!.y + tabs!.height };
 }
 
-test("a tab alone answers 44px, all of it below the header", async ({ page }) => {
+test("a tab alone answers its own row, all of it below the header", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent("w2:p1")}`);
   await expect(tabNav(page)).toBeVisible();
 
@@ -67,13 +74,18 @@ test("a tab alone answers 44px, all of it below the header", async ({ page }) =>
 
   for (const name of ["code", "shell", en["space.tabStrip.new.aria"]]) {
     const span = await hitSpan(tabNav(page), name);
-    expect(span.height, name).toBeGreaterThanOrEqual(44);
+    // The hit area is the row: it ends at the row's own bottom edge, and nothing below answers.
+    expect(span.height, name).toBeCloseTo(tabs, 0);
+    // Sideways a text tab answers its drawn box (`min-w-11`), less the few pixels at its trailing
+    // edge that the "+" reach (-9px, past a 6px gap) takes; the "+" answers its full 44.
+    expect(span.width, name).toBeGreaterThanOrEqual(name === en["space.tabStrip.new.aria"] ? 44 : 40);
+    expect(span.bottom + 1, name).toBeLessThanOrEqual(tabsBottom + 0.5);
     // Not one pixel of the header: its own 44px buttons keep theirs.
     expect(span.top, name).toBeGreaterThanOrEqual(tabsBottom - tabs - 0.5);
   }
 });
 
-test("under a pane row, the boundary is the rows' shared edge and a pill answers 44px", async ({ page }) => {
+test("under a pane row, the boundary is the rows' shared edge and a pill answers its own row", async ({ page }) => {
   await page.route("**/api/snapshot", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(twoPaneSnapshot) }),
   );
@@ -98,9 +110,18 @@ test("under a pane row, the boundary is the rows' shared edge and a pill answers
 
   for (const name of ["codex", "shell"]) {
     const pill = await hitSpan(paneNav(page), name);
-    expect(pill.height, name).toBeGreaterThanOrEqual(44);
+    expect(pill.height, name).toBeCloseTo(panes!, 0);
+    expect(pill.width, name).toBeGreaterThanOrEqual(44);
     // It starts on the shared edge, never inside the tab row.
     expect(pill.top, name).toBeGreaterThanOrEqual(tabsBottom - 1);
+    // It ends at the pane row's own bottom edge: the first line of content under the row is not
+    // the pill's.
+    expect(pill.bottom + 1, name).toBeLessThanOrEqual(row.y + row.height + 0.5);
+    const below = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest("nav")?.getAttribute("aria-labelledby") ?? null,
+      [(pill.left + pill.right) / 2, row.y + row.height + 1] as const,
+    );
+    expect(below, `${name} below the row`).toBeNull();
   }
 
   // Beside the pills the reach is not claimed: the mirror under the row's blank stretch still

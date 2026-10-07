@@ -2097,8 +2097,8 @@ export function AgentChat({
                     // drops out of the strip.
                     onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
                     // The fold's own control, pinned to the row's trailing end where it costs no height:
-                    // a 28px circle centred in the 30px tab row, its 44px reach hanging down out of the
-                    // row the way every tab's does. Same square recipe as the "+" beside it, transparent
+                    // a 28px circle centred in the 30px tab row, its hit box the row itself and no
+                    // lower (the way every tab's is: a reach below the row steals taps from the content). Same square recipe as the "+" beside it, transparent
                     // border included (the reach's numbers assume one): they are two controls of the
                     // same rank in the same row, and drawing them differently would rank them.
                     trailing={
@@ -2254,6 +2254,7 @@ export function AgentChat({
             ) : (
             <ChatMessageList
               ref={listRef}
+              clearBand={0}
               dep={display}
               onAtBottomChange={setFollowing}
               hasNew={hasNew}

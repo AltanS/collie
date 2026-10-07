@@ -150,8 +150,11 @@ export function NewSpaceSheet({
   // already set inside the handler a second tap lands in, before React has re-rendered.
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
-  // One request id per opening, kept across a failed or lost create so a retry replays it.
+  // One request id per opening, kept across a failed or lost create so a retry replays it. The bridge
+  // replays a known id, so the id must name ONE request: `lastAsk` is the fields the id was last used
+  // with, and a create with other fields mints a new id (see `createBranchOff`).
   const requestId = useRef("");
+  const lastAsk = useRef<string | null>(null);
   // WHICH MACHINE this space is created on. The roster and its tier-2 health come from the provider
   // rather than a prop, for the same reason `HostChip` reads them there: this sheet is mounted from
   // a list, not from a route, and the hide rule below has to hold wherever it is mounted.
@@ -213,6 +216,7 @@ export function NewSpaceSheet({
         setLauncherChoice(defaultLauncher(branchOff.launchers));
         launcherTouched.current = false;
         requestId.current = mintRequestId();
+        lastAsk.current = null;
       }
     }
     // `repos` is derived per render; keying the reset on `open` alone is deliberate — a poll that
@@ -291,6 +295,12 @@ export function NewSpaceSheet({
     creatingRef.current = true;
     setCreating(true);
     rememberLauncher(pickedLauncher);
+    // An unchanged retry keeps its id: that is the point of it, a lost reply replays instead of
+    // creating twice. A retry with another branch, agent or repo is a different request, and the
+    // bridge would answer it with the OLD worktree if it kept the id.
+    const ask = JSON.stringify([repo, name, pickedLauncher]);
+    if (lastAsk.current !== null && lastAsk.current !== ask) requestId.current = mintRequestId();
+    lastAsk.current = ask;
     try {
       const moved = await setup.onCreate(repo, name, {
         requestId: requestId.current,

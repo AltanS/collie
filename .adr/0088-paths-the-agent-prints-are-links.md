@@ -76,8 +76,10 @@ is not forwarded over the crew link yet), nothing is asked and nothing is a link
 - If the bridge's root rule (`bridge/changes-root.ts`) changes, `paneFilesRoot` must change with it,
   or paths are asked against the wrong root and links vanish where they would work. This ADR is the
   link between the two; the phone's copy names the bridge's rule in its header.
-- An absent answer is kept while the pane view stays open, so a file the agent writes after its path
-  was drawn becomes a link only when the view opens again.
+- An absent answer is believed for 30 seconds, then asked again the next time the path is drawn (changed
+  2026-10-08: it was kept for the life of the view, so a file the agent wrote after its path was
+  printed, a Write waiting on a permission prompt, stayed plain text until the view opened again). A
+  present answer is kept for the view's life.
 - A path the terminal wrapped onto two rows is not joined. Revisit when a file counterpart of the
   URL repair through `logicalText` is worth its cost.
 - Windows paths (`C:\x`) are not found. Revisit with a Windows root rule on the phone.

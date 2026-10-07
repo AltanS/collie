@@ -23,6 +23,7 @@ import { machinePath, machinesPath, machineTabOf, settingsSectionPath, type Mach
 import { useScope } from "@/lib/session";
 import type { MachineAlerts, MachineHistoryResponse, MachineRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { BandMain } from "@/components/ui/strip-host";
 
 // One machine, in two views under the header: Status (its numbers large, a bar per disk, then CPU,
 // memory, disk and network over the last hour or day) and Alerts (its rules).
@@ -107,7 +108,7 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
         }
       />
 
-      <main className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         {census === null ? (
           <MachinesEmptyCard reason={data.error ? "error" : "unavailable"} />
         ) : row === undefined ? (
@@ -171,7 +172,7 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
             )}
           </>
         )}
-      </main>
+      </BandMain>
     </div>
   );
 }

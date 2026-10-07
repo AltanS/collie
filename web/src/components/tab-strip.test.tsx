@@ -64,6 +64,41 @@ describe("TabStrip", () => {
     expect(screen.queryByText("Tabs")).toBeNull();
   });
 
+  // THE ROW MAY NOT OVERHANG THE CONTENT. A tab's `::before` reach used to hang 14px below the row
+  // (`before:-bottom-3.5 before:z-[1]` in a `pb-3.5 -mb-3.5` clip room), over the first lines of the
+  // chat or terminal, and took the tap off a file-path link there: measured 2026-10-07 at 412x915,
+  // `elementFromPoint` over a link under the strip returned the tab's button for 13 of its 20px.
+  // jsdom has no layout, so this pins the classes that made it: each tab's reach is the row's own 30px
+  // (`before:inset-y-0`), none carries a z-index or a reach below, and the scroller has no bottom
+  // padding or negative bottom margin to extend a clip box under the row. The same goes for the
+  // square "+" (`TAB_ROW_SQUARE_TAP_TARGET`).
+  it("keeps every hit box inside the 30px row, never over the content below", () => {
+    const { container } = render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={tabs[0]!.tabId}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    const scroller = container.querySelector<HTMLElement>("nav > div")!;
+    expect(scroller.className).not.toMatch(/(?:^|\s)(?:pb-|-mb-)/);
+    const cells = screen.getAllByRole("button");
+    expect(cells.length).toBeGreaterThan(1);
+    for (const cell of cells) {
+      expect(cell.className).not.toMatch(/before:-bottom-/);
+      expect(cell.className).not.toMatch(/before:z-/);
+      expect(cell.className).not.toMatch(/before:-inset-y-\[7px\]/);
+    }
+    const tab = screen.getByRole("button", { name: "tab 2" });
+    expect(tab.className).toMatch(/(?:^|\s)before:inset-y-0(?=\s|$)/);
+    expect(tab.className).toMatch(/(?:^|\s)h-7\.5(?=\s|$)/);
+    const plus = screen.getByRole("button", { name: "New tab" });
+    expect(plus.className).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+  });
+
   // INK AND WEIGHT ARE THE ONLY MARK (option 3 of the 2026-09-23 top-bar deck): the open tab is
   // `text-foreground font-semibold`, the rest `text-muted-foreground font-medium`, and no cell draws
   // a border, an underline, a fill or a radius in either state. Every box-affecting class is

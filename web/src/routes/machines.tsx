@@ -13,6 +13,7 @@ import { MACHINE_SPARK_MINUTES, type MachinesData } from "@/lib/loaders";
 import { machinePath, settingsPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import type { MachineRow } from "@/lib/types";
+import { BandMain } from "@/components/ui/strip-host";
 
 // The machines list: every machine in the crew (or the one machine a solo collie is), its CPU, memory
 // and network now. One card per machine, the lead first, each a tap into that machine's page.
@@ -66,7 +67,7 @@ export function MachinesRoute() {
         }
       />
 
-      <main className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {census === null ? (
           <MachinesEmptyCard reason={data.error ? "error" : "unavailable"} />
         ) : (
@@ -82,7 +83,7 @@ export function MachinesRoute() {
             />
           ))
         )}
-      </main>
+      </BandMain>
     </div>
   );
 }
