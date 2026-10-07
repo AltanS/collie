@@ -751,7 +751,7 @@ built from the same class constants. Step two, after the first paint (the commit
 rAF, the rAF for a `setTimeout`, the timer calls `scheduleUpdate`): the composer and the sheets. While
 a glide holds frames, step two waits for the update callback, like every rAF. In-flow parts whose
 height cannot be reserved without drawing them stay in step one. `e2e/pane-two-step.spec.ts` holds
-the chrome block's top and height, and the screen's tail, still across the swap. Measured 2026-10-07,
+the chrome block's top and height, and the screen's tail, still across the swap. `e2e/pane-mutation-log.spec.ts` logs what the DOM did per phase from the tap (glide on, step one's batch, the header claim, step two a later frame, glide off) and asserts that order, so a change that lumps the mount into one task fails it (checked by forcing `full = true`). Measured 2026-10-07,
 4x CPU, median of 5: longest tap task 103 to 67 ms, tap blocking 77 to 20 ms.
 
 Chat blocks carry web's `STREAM_BLOCK` verbatim (`content-visibility: auto`,
