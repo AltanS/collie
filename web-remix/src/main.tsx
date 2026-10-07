@@ -32,8 +32,10 @@ import { quietCurrentEntry } from "./lib/navigate";
 import { installPolyfills } from "./lib/polyfills";
 import { applyFramesParam, displayPrefs, paneFrames, startPrefCookie, startPrefSync } from "./lib/prefs";
 import { startPolling } from "./lib/polling";
+import { clearReconcileReloadFlag, reloadOnReconcileError, tabStorage } from "./lib/reconcile-reload";
 import { mountedRouter } from "./router";
 import { startUpdates } from "./update/boot";
+import { reloadDocument } from "./update/pwa";
 import { BootSplash } from "./shell";
 import { startNavTracking } from "./shell/screen-transition";
 
@@ -104,6 +106,8 @@ function start(): AppRuntime {
   const next = startAppRuntime(mountedRouter, loadModule);
   next.addEventListener("error", (event) => {
     console.error("Collie: the app runtime failed", event.error);
+    // A vdom that Translate or an extension corrupted fails every later tap: reload once (lib/reconcile-reload.ts).
+    if (event.error instanceof Error) reloadOnReconcileError(event.error, tabStorage(), reloadDocument);
   });
   return next;
 }
@@ -138,5 +142,7 @@ startPolling();
 startIdleLock();
 startUpdates();
 await ready;
+// A screen is up: the next reconcile fault in this tab may reload once again.
+clearReconcileReloadFlag(tabStorage());
 // The runtime stamped the first entry `resetScroll: true` as it started; a back move onto it reads that.
 quietCurrentEntry();
