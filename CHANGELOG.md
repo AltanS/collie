@@ -62,6 +62,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   no bridge shows the saved herd, dimmed, with every status in the past tense and "as of {time}" in
   the header. The banner tells you whether the phone is offline or the bridge is unreachable. The
   raw terminal mirror is never kept as chat, and a password prompt drops that pane's saved turns.
+  A failed poll never drops what is on screen: the view keeps its content, dims it and dates it.
+  A poll waits at most 6 seconds, one second longer than the bridge waits for the multiplexer, so a
+  phone whose VPN is up but whose radio is off learns within one poll that the bridge is gone. The
+  banner then says either "You are offline" or "No connection to the bridge"; the phone cannot tell
+  a dead internet from a dead Tailscale, so it no longer guesses.
 - **Nothing saved on the phone can act.** While the last read of a pane failed, the phone is
   offline, or the screen is a saved copy, dialog options and the send button are disabled with
   "Reconnect to answer" and "Reconnect to send". Typing still works and the draft still saves.

@@ -22,6 +22,7 @@ import {
   fetchSnapshot,
   isApiErrorStatus,
   isPairingRefusal,
+  readFailureKind,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { noteUpdateRun } from "./self-update";
@@ -235,10 +236,13 @@ function raceColdOpen<T>(work: Promise<T>): Promise<T | typeof COLD> {
 
 /**
  * Whether a datable cached render IS the saved copy (see {@link HomeData.stale}): before the first
- * live answer of this page, or once the outage is latched.
+ * live answer of this page, once the outage is latched, or when the read that failed got no answer at
+ * all (`outage`, a network failure or the poll deadline; lib/api.ts `readFailureKind`). The last one
+ * is the pane's own reading: its read and the herd read fail in the same poll, and whichever lands
+ * second must not wait one more poll to say what the first already proved.
  */
-function drawnFromSave(lastSeenAt: number | undefined): boolean {
-  return lastSeenAt !== undefined && (!answeredLive || isLostLatched());
+function drawnFromSave(lastSeenAt: number | undefined, outage = false): boolean {
+  return lastSeenAt !== undefined && (!answeredLive || outage || isLostLatched());
 }
 
 /** Test seam: shorten the cold-open wait. */
@@ -249,6 +253,9 @@ export function __setColdOpenWait(ms: number): void {
 // Keep-previous-data cache is PER-SCOPE: switching host or session must not show the other one's
 // herd flagged as stale. Keyed by the NUL-joined (host, session) pair via lib/scope.
 const lastSnapshot = new Map<string, SnapshotResponse>();
+// When each of those was fetched, so a herd drawn from MEMORY is dated by its own answer (M46 pass 3:
+// "as of {time}" on the dashboard, "Showing what was saved at {time}" in the strip).
+const lastSnapshotAt = new Map<string, number>();
 
 // A latched navigation skips the network, so retain whether the last real outcome for each scope was
 // an auth rejection. Store only rejected scopes; every other real outcome removes the marker.
@@ -358,11 +365,16 @@ async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
   // state): the wipe has already deleted the store, and the module cache is this page's memory of a
   // herd the phone is no longer entitled to. The pair screen is the whole answer.
   const refused = isNotPaired();
+  const key = snapshotKey(scope, viewAll);
+  // MEMORY FIRST (M46 pass 3). A herd this page already holds stays exactly as it is, dated by its own
+  // answer; the store is read only when memory is empty, which is a cold open or a scope not yet seen.
+  const inMemory = refused ? undefined : lastSnapshot.get(key);
+  if (inMemory) return toHomeData(inMemory, scope, viewAll, true, lastSnapshotAt.get(key));
   const restored = refused ? null : await loadLastSnapshot(scope, viewAll);
-  const cached = refused ? undefined : (lastSnapshot.get(snapshotKey(scope, viewAll)) ?? restored?.value);
-  if (cached) {
-    lastSnapshot.set(snapshotKey(scope, viewAll), cached);
-    return toHomeData(cached, scope, viewAll, true, restored?.at);
+  if (restored) {
+    lastSnapshot.set(key, restored.value);
+    lastSnapshotAt.set(key, restored.at);
+    return toHomeData(restored.value, scope, viewAll, true, restored.at);
   }
   // Nothing cached at all — an outage on a tab that never saw a good snapshot. `error: true` is what
   // keeps this apart from a genuinely empty herd downstream: the empty state is only allowed to say
@@ -427,6 +439,7 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
     } else snap = await fetching;
     answeredLive = true;
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);
+    lastSnapshotAt.set(snapshotKey(scope, viewAll), Date.now());
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).
     saveLastSnapshot(scope, snap, undefined, viewAll);
     rememberAuthError(scope, false);
@@ -447,16 +460,23 @@ function paneKey(paneId: string, scope?: Scope): string {
 }
 
 const lastPaneText = new Map<string, string>();
+// When each of those was fetched, so a mirror drawn from MEMORY is dated by its own answer. Evicted
+// with the text it dates.
+const lastPaneTextAt = new Map<string, number>();
 // Cap the per-pane stale-text cache so it can't grow without bound over a long session of opening
 // many panes. Evict the oldest (insertion-order) entry beyond the cap — dumb FIFO is plenty for a
 // phone that views one pane at a time.
 const PANE_TEXT_MAX = 20;
 
-function rememberPaneText(key: string, text: string): void {
+function rememberPaneText(key: string, text: string, at: number = Date.now()): void {
   lastPaneText.set(key, text);
+  lastPaneTextAt.set(key, at);
   if (lastPaneText.size > PANE_TEXT_MAX) {
     const oldest = lastPaneText.keys().next().value;
-    if (oldest !== undefined) lastPaneText.delete(oldest);
+    if (oldest !== undefined) {
+      lastPaneText.delete(oldest);
+      lastPaneTextAt.delete(oldest);
+    }
   }
 }
 
@@ -512,14 +532,18 @@ export function resetRequestedLines(paneId?: string, scope?: Scope): void {
 //
 // Same two tiers as staleHome: the module cache, then the write-through on-device mirror that
 // survives the page being discarded. A restored mirror is promoted into the module cache.
-async function stalePane(paneId: string, scope: Scope, lines: number): Promise<PaneData> {
+async function stalePane(paneId: string, scope: Scope, lines: number, outage = false): Promise<PaneData> {
   const key = paneKey(paneId, scope);
   // Refused for want of pairing: no kept text, for the reason staleHome gives.
   const refused = isNotPaired();
-  const restored = refused ? null : await loadLastPaneText(scope, paneId);
-  const text = refused ? "" : (lastPaneText.get(key) ?? restored?.value ?? "");
-  if (text) rememberPaneText(key, text);
-  const stale = drawnFromSave(text ? restored?.at : undefined);
+  // Memory first, as in staleHome: the store is read only when this page holds no text for the pane.
+  const held = refused ? undefined : lastPaneText.get(key);
+  const restored = refused || held !== undefined ? null : await loadLastPaneText(scope, paneId);
+  const text = refused ? "" : (held ?? restored?.value ?? "");
+  const at = held !== undefined ? lastPaneTextAt.get(key) : restored?.at;
+  if (text && held === undefined && at !== undefined) rememberPaneText(key, text, at);
+  const lastSeenAt = text ? at : undefined;
+  const stale = drawnFromSave(lastSeenAt, outage);
   // A saved copy on screen is not a live pane: its dialog buttons and Send go off at once
   // (lib/liveness.ts, M46 spec 11), with no debounce.
   if (stale) markSavedCopy(paneId, scope);
@@ -532,7 +556,7 @@ async function stalePane(paneId: string, scope: Scope, lines: number): Promise<P
     revision: 0,
     error: true,
     authError: hasAuthError(scope),
-    lastSeenAt: text ? restored?.at : undefined,
+    lastSeenAt,
     stale,
   };
 }
@@ -656,8 +680,9 @@ export async function paneLoader({
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     rememberAuthError(scope, isAuthError(e));
-    // Genuine network / server failure: show stale text flagged as degraded.
-    return stalePane(paneId, scope, lines);
+    // Genuine network / server failure: show stale text flagged as degraded. A read that got no
+    // answer at all is the saved copy at once (see drawnFromSave).
+    return stalePane(paneId, scope, lines, readFailureKind(e) === "network");
   }
 }
 

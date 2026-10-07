@@ -13,6 +13,8 @@ import {
   isLostLatched,
   markLive,
   markWake,
+  noteNetworkFailure,
+  noteServerFailure,
 } from "@/lib/connection-health";
 
 // Wall-clock derived, so fake timers (which also advance Date.now in Vitest) drive both the countdown
@@ -258,5 +260,42 @@ describe("useConnectionTrouble", () => {
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - TROUBLE_MS)); // 15s total
     expect(trouble.result.current).toBe(true);
     expect(lost.result.current).toBe(true); // red — and trouble is still true beneath it
+  });
+});
+
+// M46 pass 3: a failed herd read proves the outage without the clock. The muted dog and the red strip
+// flip on the SAME failure that turns the screen into the saved copy.
+describe("an outage a failed read already proved", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetConnectionHealth();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("a read that got no answer reaches both thresholds at once", () => {
+    const lost = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    const trouble = renderHook(({ c }) => useConnectionTrouble(c), { initialProps: { c: true } });
+    expect(lost.result.current).toBe(false);
+    act(() => noteNetworkFailure());
+    expect(lost.result.current).toBe(true);
+    expect(trouble.result.current).toBe(true);
+  });
+
+  it("one 5xx is not enough, the second in a row is", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => noteServerFailure());
+    expect(result.current).toBe(false);
+    act(() => noteServerFailure());
+    expect(result.current).toBe(true);
+  });
+
+  it("says nothing while nothing is connecting, and a live answer takes it back", () => {
+    const { result, rerender } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: false } });
+    act(() => noteNetworkFailure());
+    expect(result.current).toBe(false);
+    rerender({ c: true });
+    expect(result.current).toBe(true);
+    act(() => markLive());
+    expect(result.current).toBe(false);
   });
 });

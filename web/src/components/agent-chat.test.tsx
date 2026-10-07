@@ -3191,6 +3191,21 @@ describe("AgentChat — the chat body", () => {
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
+  // M46 pass 3, the blank Altan saw: the PWA reopened with Tailscale up and the radio off. The chat
+  // read does not fail there, it hangs, and the body stood empty until its deadline. A pane whose
+  // mirror is already the saved copy now draws its saved Chat at once.
+  it("stale render: draws the saved Chat tail at once while the chat read hangs", async () => {
+    chooseChat("chat");
+    const at = Date.now() - 60_000;
+    await saveChatTail(undefined, fixtureAgents[0]!.paneId, [
+      { uuid: "s1", seq: 7, ts: "", role: "assistant", parts: [{ kind: "text", text: "the saved reply" }] },
+    ], "1d", at);
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => new Promise<Response>(() => {})));
+    renderChat({ agent: journalAgent(), stale: true, lastSeenAt: at, error: true });
+    expect(await screen.findByText("the saved reply")).toBeInTheDocument();
+    expect(screen.getByText(/^Saved copy from .+\. Older text is on the bridge\.$/)).toBeInTheDocument();
+  });
+
   it("keeps the composer, the belt and the header in the chat body", async () => {
     chooseChat("chat");
     renderChat({ agent: journalAgent() });
@@ -3637,5 +3652,103 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     await act(() => vi.advanceTimersByTimeAsync(100));
     expect(container.querySelector('[data-slot="session-stream"]')).toBeNull();
     expect(screen.getByText(/has not reported a session to Herdr/i)).toBeInTheDocument();
+  });
+});
+
+// ── A FAILED POLL NEVER BLANKS THE CHAT (M46 pass 3, 2026-10-07) ────────────────────────────────────
+// Altan, airplane mode with Tailscale up, a pane open in Chat: the body went blank under a strip that
+// said "showing what was saved". The rule now: what the Chat body holds stays on screen through any
+// failed poll, and it is marked as the saved copy (the dated line above the body) on the read that
+// proves the outage: at once for a read that got no answer, on the second 5xx in a row. The line stays
+// until a live answer.
+describe("AgentChat — a failed poll keeps the Chat on screen", () => {
+  const journalAgent = () => ({ ...fixtureAgents[0]!, hasSession: true });
+  type ChatMode = "live" | "drop" | "502";
+  let mode: ChatMode = "live";
+
+  beforeEach(() => {
+    mode = "live";
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "chat", showToolCalls: true }));
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () => {
+        if (mode === "drop") return HttpResponse.error();
+        if (mode === "502") return new HttpResponse("bad gateway", { status: 502 });
+        return undefined; // the fixture window (test/handlers.ts)
+      }),
+    );
+  });
+
+  function renderPolled() {
+    let revalidate: () => void = () => {};
+    function Host() {
+      revalidate = useRevalidator().revalidate;
+      const agent = journalAgent();
+      return (
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={[agent]}
+          shellPanes={[]}
+          tabs={[]}
+          text={paneTextWithDraft("recent pane output")}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    // A loader that takes a beat, so a revalidation is a real poll with a loading→idle edge.
+    const loader = () => new Promise<null>((resolve) => setTimeout(() => resolve(null), 20));
+    const router = createMemoryRouter([{ path: "/", loader, element: withHeaderHost(<Host />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+    const blocks = () => container.querySelectorAll('[data-slot="session-stream"] [data-block]').length;
+    const poll = async () => {
+      await act(async () => {
+        void revalidate();
+      });
+      // Let the loader's beat pass and the Chat read that rides its idle edge come back.
+      await act(() => new Promise((resolve) => setTimeout(resolve, 80)));
+    };
+    return { blocks, poll };
+  }
+
+  const savedLine = () => screen.queryByText(/^Saved copy from .+\. Older text is on the bridge\.$/);
+
+  it("online, content shown, then a poll that gets no answer: the blocks stay and the saved line appears", async () => {
+    const view = renderPolled();
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    const shown = view.blocks();
+    expect(shown).toBeGreaterThan(0);
+    expect(savedLine()).toBeNull();
+
+    mode = "drop";
+    await view.poll();
+    await waitFor(() => expect(savedLine()).toBeInTheDocument());
+    expect(view.blocks()).toBe(shown);
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText("One commit: abc1234.")).toBeInTheDocument();
+
+    // It stays through further failures, once, and goes with the first live answer.
+    await view.poll();
+    expect(screen.getAllByText(/^Saved copy from/)).toHaveLength(1);
+    expect(view.blocks()).toBe(shown);
+    mode = "live";
+    await view.poll();
+    await waitFor(() => expect(savedLine()).toBeNull());
+    expect(view.blocks()).toBe(shown);
+  });
+
+  it("the two-failure rule: one 5xx keeps the Chat unmarked, the second in a row marks it", async () => {
+    const view = renderPolled();
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    const shown = view.blocks();
+
+    mode = "502";
+    await view.poll();
+    expect(savedLine()).toBeNull();
+    expect(view.blocks()).toBe(shown);
+
+    await view.poll();
+    await waitFor(() => expect(savedLine()).toBeInTheDocument());
+    expect(view.blocks()).toBe(shown);
   });
 });

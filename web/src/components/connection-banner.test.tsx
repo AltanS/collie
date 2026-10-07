@@ -391,17 +391,50 @@ describe("ConnectionBanner — offline states", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
-  it("offline states: online but the bridge does not answer, names Tailscale", () => {
+  // M46 pass 3: a VPN keeps `navigator.onLine` true in airplane mode, so "online" is not a fact here.
+  // One sentence that guesses no cause, and the places to look on a smaller second line.
+  it("offline states: online but the bridge does not answer, says so without guessing a cause", () => {
     setOnline(true);
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
-    expect(row()).toHaveTextContent(
-      /^Bridge not reachable\. Is Tailscale connected\? Showing what was saved at .+\./,
-    );
+    expect(row()).toHaveTextContent(/^No connection to the bridge\. Showing what was saved at .+\./);
+    expect(row()).not.toHaveTextContent(/Is Tailscale connected/);
+    const hint = row()?.querySelector('[data-slot="connection-hint"]');
+    expect(hint).toHaveTextContent("Check your connection or Tailscale.");
+    // Smaller and quieter than the sentence above it: advice, not the state.
+    expect(hint).toHaveClass("text-[11px]", "text-muted-foreground", "block");
+  });
+
+  it("offline states: the phone's own offline sentence carries no hint line", () => {
+    setOnline(false);
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    expect(row()?.querySelector('[data-slot="connection-hint"]')).toBeNull();
+  });
+
+  // M46 pass 3: the strip changed height with its sentence and moved the page. Every red variant
+  // reserves the tallest one's height, and Retry never wraps.
+  it.each([
+    ["offline, saved", { online: false, stale: true, lastSeenAt: SAVED_AT }],
+    ["no bridge, saved", { online: true, stale: true, lastSeenAt: SAVED_AT }],
+    ["no bridge, nothing saved", { online: true, stale: false, lastSeenAt: undefined }],
+  ])("offline states: every red variant reserves the same height (%s)", async (_name, state) => {
+    h.lost = true;
+    cfg.reachable = false;
+    setOnline(state.online);
+    renderBanner({ error: true, stale: state.stale, lastSeenAt: state.lastSeenAt });
+    await act(async () => {});
+    expect(row()).toHaveClass("min-h-[72px]");
+    expect(screen.getByRole("button", { name: /retry/i })).toHaveClass("whitespace-nowrap");
+  });
+
+  it("offline states: amber is not reserved, it keeps the thin strip", () => {
+    h.trouble = true;
+    renderBanner();
+    expect(row()).not.toHaveClass("min-h-[72px]");
   });
 
   it.each([
     [false, "You are offline. Showing what was saved at"],
-    [true, "Bridge not reachable. Is Tailscale connected? Showing what was saved at"],
+    [true, "No connection to the bridge. Showing what was saved at"],
   ])("offline states: the saved-copy sentence reads whole, wrapping instead of truncating (online %s)", (online, lead) => {
     setOnline(online);
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
@@ -424,7 +457,7 @@ describe("ConnectionBanner — offline states", () => {
     cfg.reachable = true;
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
     await act(async () => {});
-    expect(row()).not.toHaveTextContent(/Bridge not reachable/);
+    expect(row()).not.toHaveTextContent(/No connection to the bridge/);
     expect(row()).toHaveTextContent(/Can't reach Collie — last seen/);
   });
 

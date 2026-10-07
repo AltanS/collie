@@ -305,6 +305,30 @@ describe("usePolling — superseding a wedged revalidation", () => {
       Reflect.deleteProperty(navigator, "onLine"); // restore the prototype getter
     }
   });
+
+  // M46 pass 3: the network changing is the moment to ask, not the next beat of the cadence. Both
+  // events start a read at once and supersede one in flight: that read began on the network that
+  // just went away, and on a VPN with the radio off it would hang until its deadline.
+  it.each(["offline", "online"])("reads AT ONCE on `%s`, superseding a read already in flight", (event) => {
+    rr.state = "loading"; // a read is in flight, well inside SUPERSEDE_MS
+    renderHook(() => usePolling(hotData(), HOT_PANE));
+    window.dispatchEvent(new Event(event));
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads AT ONCE on `offline` from rest, before the next tick", () => {
+    rr.state = "idle";
+    renderHook(() => usePolling(makeData([]), null)); // the dashboard over an idle herd: IDLE_MS
+    window.dispatchEvent(new Event("offline"));
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("coming back to the foreground supersedes a read left in flight", () => {
+    rr.state = "loading";
+    renderHook(() => usePolling(hotData(), HOT_PANE));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
 });
 
 

@@ -3,7 +3,14 @@
 
 import { parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
-import { beginLongUpload, endLongUpload, markLive } from "./connection-health";
+import {
+  beginLongUpload,
+  endLongUpload,
+  markLive,
+  noteNetworkFailure,
+  noteServerFailure,
+  type ReadFailureKind,
+} from "./connection-health";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
@@ -121,6 +128,24 @@ export function isRefusalStatus<TThrown>(error: TThrown): boolean {
 }
 
 /**
+ * What a failed read says about the connection (lib/connection-health.ts `ReadFailureKind`).
+ *
+ * `network` is a read that got NO answer: `fetch` threw a TypeError (no route, the radio off) or the
+ * poll deadline ran out (a `TimeoutError`, see {@link POLL_TIMEOUT_MS}). `server` is a 5xx. Everything
+ * else, a refusal included, is `other`. A superseded poll (an `AbortError`) is `other` too: the app
+ * aborted it, the bridge did not fail it.
+ */
+export function readFailureKind<TThrown>(error: TThrown): ReadFailureKind {
+  if (error instanceof ApiError) return error.status >= 500 ? "server" : "other";
+  // The deadline's own DOMException, an Error subclass in every engine Collie runs in (the loaders'
+  // `isAbortError` reads the superseded case the same way).
+  if (error instanceof Error && error.name === "TimeoutError") return "network";
+  // `fetch` rejects a network failure with a plain TypeError in every engine Collie runs in.
+  if (error instanceof TypeError) return "network";
+  return "other";
+}
+
+/**
  * The bridge's error fields off a caught throw, or `undefined` when it did not come from here.
  *
  * The accessor exists so `ApiError` itself stays private to this module: `lib/api-error-message.ts`
@@ -140,6 +165,16 @@ export function apiErrorFields<TThrown>(thrown: TThrown): ApiErrorFields | undef
 //   - GET reads (snapshot/pane polls) are small and frequent — a short leash surfaces a dead link
 //     fast so the UI can show "reconnecting…" and retry on the next tick.
 const GET_TIMEOUT_MS = 10_000;
+//   - THE POLL READS (the herd snapshot, the pane mirror, the Chat window, the config read) get a
+//     shorter one still: 6s, decided 2026-10-07 (M46 pass 3). On a phone with a VPN up and the radio
+//     off, a request to the tailnet address does not fail, it hangs, and the 10s leash plus the 15s
+//     escalation made Collie slow to admit the network was gone. A poll read that runs out counts as
+//     a network failure (`readFailureKind`). 6s is one second above the bridge's own 5s mux timeout
+//     (bridge/mux/herdr/client.ts DEFAULT_TIMEOUT_MS), so a Herdr call that uses its whole budget
+//     comes back as the bridge's own answer and never reads as an outage on the phone. Long reads
+//     keep the 10s leash: the History page's 5000 turns, a `?before=` page, a file. Uploads keep
+//     their own budget below.
+export const POLL_TIMEOUT_MS = 6_000;
 //   - Mutations drive a real terminal on the host, which can legitimately take a beat — more slack.
 const MUTATION_TIMEOUT_MS = 20_000;
 //   - Uploads carry a whole file over the phone's uplink — the most generous budget.
@@ -380,13 +415,17 @@ function captureBuild(res: Response): void {
  */
 type Recover<T> = (status: number, detail: string) => T | null;
 
-async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise<T> {
+/** A request's init, plus the one deadline override a poll read asks for ({@link POLL_TIMEOUT_MS}). */
+type ReqInit = RequestInit & { timeoutMs?: number };
+
+async function doReq<T>(path: string, reqInit?: ReqInit, recover?: Recover<T>): Promise<T> {
+  const { timeoutMs: asked, ...init } = reqInit ?? {};
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
-  const method = init?.method?.toUpperCase() ?? "GET";
-  const timeoutMs = method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS;
+  const method = init.method?.toUpperCase() ?? "GET";
+  const timeoutMs = asked ?? (method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
   const res = await apiFetch(path, {
     ...init,
-    signal: withTimeout(init?.signal, timeoutMs),
+    signal: withTimeout(init.signal, timeoutMs),
     headers: {
       "content-type": "application/json",
       [XHR_HEADER]: XHR_HEADER_VALUE,
@@ -394,7 +433,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
       // Absent header when this device holds no token — which is exactly right for a bridge with
       // nothing paired, and for the bootstrap POST /api/pair that mints the first one.
       ...authHeader(),
-      ...init?.headers,
+      ...init.headers,
     },
   });
   captureBuild(res);
@@ -423,7 +462,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
 // Every mutating request (non-GET) feeds the app-wide busy signal so the top progress bar shows
 // while it's in flight; GET reads (snapshot/config polling) don't, or the bar would never rest.
 // trackBusy increments synchronously, so a caller sees `isBusy()` true the instant it fires.
-function req<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise<T> {
+function req<T>(path: string, init?: ReqInit, recover?: Recover<T>): Promise<T> {
   const op = doReq<T>(path, init, recover);
   const method = init?.method?.toUpperCase() ?? "GET";
   return method === "GET" ? op : trackBusy(op);
@@ -444,10 +483,24 @@ export async function fetchSnapshot(
   all = false,
 ): Promise<SnapshotResponse> {
   const path = withScope("/api/snapshot", scope);
-  const snap = await req<SnapshotResponse>(
-    all ? `${path}${path.includes("?") ? "&" : "?"}sessions=all` : path,
-    { signal },
-  );
+  let snap: SnapshotResponse;
+  try {
+    snap = await req<SnapshotResponse>(all ? `${path}${path.includes("?") ? "&" : "?"}sessions=all` : path, {
+      signal,
+      timeoutMs: POLL_TIMEOUT_MS,
+    });
+  } catch (error) {
+    // THE HERD READ IS THE ONE THAT DECIDES "THE BRIDGE IS GONE" (lib/connection-health.ts
+    // `noteNetworkFailure`, `noteServerFailure`). Every poll makes it, it always goes to the lead, and
+    // it is small, so a failure here is about the connection and not about one slow pane on a member.
+    // A read the app aborted itself (a superseded poll, a navigation) says nothing and counts nothing.
+    if (signal?.aborted !== true) {
+      const kind = readFailureKind(error);
+      if (kind === "network") noteNetworkFailure();
+      else if (kind === "server") noteServerFailure();
+    }
+    throw error;
+  }
   // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
   // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
   // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the
@@ -533,7 +586,7 @@ export async function fetchPane(
 
   let res: Response;
   try {
-    res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+    res = await apiFetch(url, { signal: withTimeout(signal, POLL_TIMEOUT_MS), headers });
   } catch (error) {
     // A read that never answered (network down, timed out) is a failed read. One the caller aborted
     // (a superseded revalidation, a navigation away) says nothing about the bridge.
@@ -677,7 +730,10 @@ export async function fetchChat(
   });
   if (cached !== undefined) headers.set("if-none-match", cached);
 
-  const res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  // The live window is a poll read and gets the poll deadline. A `?before=` page is a tap the operator
+  // waits on, and it can reach back to disk, so it keeps the long one.
+  const deadline = opts.before ? GET_TIMEOUT_MS : POLL_TIMEOUT_MS;
+  const res = await apiFetch(url, { signal: withTimeout(signal, deadline), headers });
   captureBuild(res);
 
   if (res.status === 304) {
@@ -1200,7 +1256,8 @@ export function openWorktree(
  * nothing on the wire and gets the byte-identical body it always did.
  */
 export function fetchConfig(scope?: Scope): Promise<BridgeConfig> {
-  return req<BridgeConfig>(withScope("/api/config", scope));
+  // A poll read: the connection strip's probe asks it while the strip is red.
+  return req<BridgeConfig>(withScope("/api/config", scope), { timeoutMs: POLL_TIMEOUT_MS });
 }
 
 /** Register push through the same timeout, authentication and error handling as the other APIs. */

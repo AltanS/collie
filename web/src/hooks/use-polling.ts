@@ -242,7 +242,9 @@ export function usePolling(
   }, [revalidator.state]);
 
   useEffect(() => {
-    const tick = () => {
+    // `supersede` is the network-change kick (see `onNetwork` below): it starts a fresh read even while
+    // one is in flight, because the one in flight was started on the network that just went away.
+    const tick = (supersede = false) => {
       if (document.hidden) return;
       // Idle-locked: the app is covered and nobody is reading it, so don't keep hitting the socket.
       // A live read (not a captured render value) because this fires from an interval — and unlike
@@ -270,10 +272,17 @@ export function usePolling(
       // Already loading: normally we leave it be, but a revalidation stuck past SUPERSEDE_MS is
       // almost certainly a black-holed fetch — kick a fresh one to supersede it and self-heal.
       const since = loadingSince.current;
-      if (since !== null && Date.now() - since >= SUPERSEDE_MS) r.revalidate();
+      if (supersede || (since !== null && Date.now() - since >= SUPERSEDE_MS)) r.revalidate();
     };
-    const id = window.setInterval(tick, ms);
+    const id = window.setInterval(() => tick(), ms);
     const onWake = () => tick();
+    // THE NETWORK CHANGED (M46 pass 3, 2026-10-07): `online` and `offline` ask for a read AT ONCE and
+    // supersede one already in flight, rather than waiting out the gap or a read that may now hang.
+    // The flag the events carry is never trusted (see the tick): the read that follows is what decides,
+    // and on `offline` it fails fast, which is what turns the screen into the saved copy without
+    // waiting for the next beat. Superseding aborts the old read as an AbortError, which counts as
+    // nothing (lib/api.ts `readFailureKind`).
+    const onNetwork = () => tick(true);
     const onVisible = () => {
       if (document.hidden) return;
       // Coming back to the foreground is the operator saying "show me now" — see lookNow. `focus`
@@ -281,15 +290,19 @@ export function usePolling(
       // `online` fires on a flag that is known to lie (see the tick), so either would spend a
       // listing on something that is not somebody returning to the app.
       lookNow(scopeRef.current);
-      tick();
+      // A read left in flight while the app was in the background is superseded too: the phone may
+      // have changed networks under it.
+      tick(true);
     };
     window.addEventListener("focus", onWake);
-    window.addEventListener("online", onWake);
+    window.addEventListener("online", onNetwork);
+    window.addEventListener("offline", onNetwork);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(id);
       window.removeEventListener("focus", onWake);
-      window.removeEventListener("online", onWake);
+      window.removeEventListener("online", onNetwork);
+      window.removeEventListener("offline", onNetwork);
       document.removeEventListener("visibilitychange", onVisible);
     };
     // `sendKick` is the reschedule: a send must not wait out the remainder of a gap that was timed

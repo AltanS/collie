@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
 import { useChatWindow } from "./use-chat-window";
@@ -215,25 +215,111 @@ describe("useChatWindow — the saved Chat tail", () => {
     expect(result.current.window.savedAt).toBeNull();
   });
 
-  it("marks a window it already holds as stale only once the outage is latched", async () => {
+  // M46 pass 3: a failed poll never drops what the window holds. A read that got NO answer (a network
+  // failure, the poll deadline) marks it at once; a 5xx needs a second one in a row.
+  it("keeps the turns it holds and marks them at once when a read gets no answer", async () => {
     let fail = false;
     server.use(
       http.get(/\/api\/pane\/[^/]+\/chat/, () => (fail ? HttpResponse.error() : HttpResponse.json(firstPage))),
     );
     const { result, rerender } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
     await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    const answeredAt = Date.now();
 
     fail = true;
     poll(rerender);
-    await waitFor(() => expect(result.current.answered).toBe(1));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    // A blip: nothing is marked, the connection strip owns the escalation.
-    expect(result.current.window.savedAt).toBeNull();
+    await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
+    // Dated by the last live answer, and every turn still held: memory, not the store.
+    expect(result.current.window.savedAt!).toBeLessThanOrEqual(answeredAt);
+    expect(result.current.window.entries.map((e) => e.uuid)).toEqual(["a"]);
+  });
 
-    latchLost();
+  it("the two-failure rule: one 5xx marks nothing, the second in a row marks the window", async () => {
+    let status = 200;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () =>
+        status === 200 ? HttpResponse.json(firstPage) : new HttpResponse("bad gateway", { status }),
+      ),
+    );
+    const { result, rerender } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+
+    status = 502;
+    poll(rerender);
+    await waitFor(() => expect(result.current.asked).toBe(2));
+    await waitFor(() => expect(result.current.tried).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // A blip: nothing is marked and nothing is dropped.
+    expect(result.current.window.savedAt).toBeNull();
+    expect(result.current.window.entries).toHaveLength(1);
+
     poll(rerender);
     await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
     expect(result.current.window.entries).toHaveLength(1);
+
+    // The mark stays until a live answer, and the live answer clears it.
+    status = 200;
+    poll(rerender);
+    await waitFor(() => expect(result.current.window.savedAt).toBeNull());
+  });
+
+  it("a 5xx between two good reads resets the count", async () => {
+    const answers = [200, 502, 200, 502];
+    let turn = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () => {
+        const status = answers[Math.min(turn, answers.length - 1)]!;
+        turn += 1;
+        return status === 200 ? HttpResponse.json(firstPage) : new HttpResponse("bad gateway", { status });
+      }),
+    );
+    const { result, rerender } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    for (let i = 0; i < 3; i++) {
+      poll(rerender);
+      await waitFor(() => expect(result.current.asked).toBe(i + 2));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(result.current.window.savedAt).toBeNull();
+  });
+
+  it("marks what it holds the moment the herd read latches the outage, before its own read fails", async () => {
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.json(firstPage)));
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    act(() => latchLost());
+    await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
+    expect(result.current.window.entries).toHaveLength(1);
+  });
+
+  it("an empty window reads its saved copy at once when the pane is already the saved copy", async () => {
+    const at = Date.now() - 60_000;
+    await saveChatTail(undefined, "w1:p1", [entry("s", 5, "saved turn")], "1d", at);
+    // The read never answers, the way a request into a VPN with the radio off does not.
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => new Promise<Response>(() => {})));
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true, savedCopy: true }));
+    await waitFor(() => expect(result.current.window.savedAt).toBe(at));
+    expect(result.current.window.entries.map((e) => e.uuid)).toEqual(["s"]);
+    expect(result.current.tried).toBe(false);
+  });
+
+  it("a pairing refusal takes back a saved copy the cold open drew", async () => {
+    await saveChatTail(undefined, "w1:p1", [entry("s", 5, "saved turn")], "1d");
+    let answer: () => void = () => {};
+    server.use(
+      http.get(
+        /\/api\/pane\/[^/]+\/chat/,
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = () => resolve(new HttpResponse("device not paired", { status: 403 }));
+          }),
+      ),
+    );
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true, savedCopy: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    answer();
+    await waitFor(() => expect(result.current.window.entries).toEqual([]));
+    expect(result.current.window.savedAt).toBeNull();
   });
 
   it("writes the rendered entries through, never the raw mirror", async () => {

@@ -1204,3 +1204,81 @@ describe("the two cache-key families stay apart", () => {
     expect(snapshotKey({})).toBe(scopeKey({}));
   });
 });
+
+// ── A FAILED POLL KEEPS WHAT IS ON SCREEN (M46 pass 3, 2026-10-07) ──────────────────────────────────
+// The herd and the mirror this page already holds stay exactly as they are, and become the dated
+// saved copy on the read that proves the outage: the first read that got no answer, or the second 5xx
+// in a row. Memory is dated by its own answer; the store is for a page with nothing in memory.
+describe("loaders — a failed poll keeps the herd and the mirror", () => {
+  // Every live read writes through to the fake store on a zero-delay timer. Let those land before the
+  // file-level teardown uninstalls the database, or a write left over from the last case fires into a
+  // torn-down jsdom under a loaded run.
+  afterEach(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+
+  const dropSnapshot = () => server.use(http.get("/api/snapshot", () => HttpResponse.error()));
+  const dropPane = () => server.use(http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.error()));
+
+  it("the first herd read that gets no answer keeps every row and marks the herd as of its last answer", async () => {
+    const { rootLoader } = await import("./loaders");
+    const before = Date.now();
+    await rootLoader({ request: new Request("http://localhost/") });
+    const after = Date.now();
+
+    dropSnapshot();
+    const data = await rootLoader({ request: new Request("http://localhost/") });
+    expect(data.error).toBe(true);
+    expect(data.stale).toBe(true);
+    expect(data.agents).toHaveLength(2);
+    // Dated by this page's own answer, not by a store record.
+    expect(data.lastSeenAt).toBeGreaterThanOrEqual(before);
+    expect(data.lastSeenAt).toBeLessThanOrEqual(after);
+  });
+
+  it("the two-failure rule: one 5xx is a blip, the second in a row is the saved copy", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/") });
+
+    failSnapshot();
+    const blip = await rootLoader({ request: new Request("http://localhost/") });
+    expect(blip.error).toBe(true);
+    expect(blip.stale).toBe(false);
+    expect(blip.agents).toHaveLength(2);
+
+    const outage = await rootLoader({ request: new Request("http://localhost/") });
+    expect(outage.stale).toBe(true);
+    expect(outage.agents).toHaveLength(2);
+  });
+
+  it("the first live answer restores the herd", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/") });
+    dropSnapshot();
+    await rootLoader({ request: new Request("http://localhost/") });
+    server.resetHandlers();
+    const live = await rootLoader({ request: new Request("http://localhost/") });
+    expect(live.error).toBe(false);
+    expect(live.stale).toBe(false);
+  });
+
+  it("a pane read that gets no answer is the saved copy at once, from memory, even before the herd read fails", async () => {
+    const { paneLoader } = await import("./loaders");
+    const { isLostLatched } = await import("./connection-health");
+    await paneLoader({ params: { paneId: "w1:p1" } });
+
+    dropPane();
+    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    expect(isLostLatched()).toBe(false);
+    expect(data.stale).toBe(true);
+    expect(data.text).toBe(paneTextWithDraft());
+    expect(data.lastSeenAt).toBeTypeOf("number");
+  });
+
+  it("a single 5xx on a pane read is a blip: the text stays, unmarked", async () => {
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p1" } });
+    failPane();
+    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    expect(data.stale).toBe(false);
+    expect(data.text).toBe(paneTextWithDraft());
+  });
+});

@@ -6,6 +6,7 @@ import {
   latchLost,
   useConnectionHealth,
   useLongUpload,
+  useLostLatched,
 } from "@/lib/connection-health";
 
 // Re-exported so the many call sites and tests that import the thresholds from here keep working; the
@@ -49,11 +50,16 @@ function useNotLiveFor(connecting: boolean, thresholdMs: number, latch: boolean)
   // The operator's own upload owns the uplink right now — see the header. Same store, same
   // subscription, so this and the anchor can never be read one render apart.
   const uploading = useLongUpload();
+  // A latched outage has already been proven, by a failed herd read (lib/connection-health.ts
+  // `noteNetworkFailure`, `noteServerFailure`) or by this clock. Both thresholds are reached at once
+  // then: the dog and the strip say "no connection" on the same failure that turned the screen into
+  // the saved copy.
+  const latched = useLostLatched();
   // A bare re-render nudge: `reached` below is the source of truth; this just makes React re-evaluate
   // it at the threshold moment (and on focus/online) even when no poll or store change re-renders us.
   const [, tick] = useState(0);
 
-  const reached = connecting && !uploading && Date.now() - anchor >= thresholdMs;
+  const reached = connecting && !uploading && (latched || Date.now() - anchor >= thresholdMs);
 
   // Latch the escalation the first time we observe it — but ONLY for the latching (15s lost) threshold.
   // Store-owned + idempotent, so all consumers agree and re-running is a no-op; it survives this

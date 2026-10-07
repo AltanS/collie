@@ -661,9 +661,17 @@ The connection bar names one of three causes:
 
 | Bar | Cause | What the phone shows |
 | --- | --- | --- |
-| You are offline | The phone has no network | The saved copy, with its time |
-| Bridge not reachable. Is Tailscale connected? | The phone is online, the bridge does not answer | The saved copy, with its time |
+| You are offline | The phone says it has no network | The saved copy, with its time |
+| No connection to the bridge. Check your connection or Tailscale. | Any other read that failed | The saved copy, with its time |
 | Pair screen | The bridge refused this device: not paired, revoked or expired | Nothing saved. The refusal deletes the copy |
+
+A VPN such as Tailscale keeps the phone's network flag on in airplane mode, so the bar cannot always
+tell "no network" from "the bridge is down". It then says only that the bridge does not answer.
+
+While the app is open, the bar and the saved copy appear on the first poll that gets no answer. A
+poll waits at most 6 seconds, one second longer than the bridge waits for the multiplexer. A server
+error (5xx) counts on the second one in a row. What is on screen stays there, and the first live
+answer brings back the live view.
 
 **Keep chat on this phone**, in **Settings → Device**, sets how long the Chat turns stay on the phone:
 

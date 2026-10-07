@@ -34,6 +34,11 @@ import { hasDocument } from "./env";
 // consumer actually crossing the threshold (not merely the wall-clock going stale) because the anchor
 // can go stale for benign reasons too — e.g. the idle-lock pausing polling — where nobody is
 // `connecting` and no red UI is showing, so nothing should latch.
+//
+// THE SECOND WAY IN (M46 pass 3, 2026-10-07): a failed herd read latches too, without the 15s wait
+// (`noteNetworkFailure`, `noteServerFailure`). A read that got no answer at all latches on the first failure, a 5xx on the
+// second in a row. On a phone with a VPN up and the radio off, nothing else says the network is gone:
+// `navigator.onLine` stays true, and the 15s clock made the app look live for far too long.
 
 // How long the app must stay continuously not-live before we escalate from the quiet header pill
 // ("reconnecting…") to a prominent prompt. Long enough that a normal poll blip, a pane-open hiccup,
@@ -56,6 +61,9 @@ let lastWakeAt = Date.now();
 // effectiveAnchor() drops the wake grace, so backgrounding + returning MID-OUTAGE can no longer
 // downgrade red → amber. Module-scoped so every consumer agrees on one escalated/not answer.
 let lostLatched = false;
+// How many HERD reads in a row came back as a server error (a 5xx, most often a proxy whose bridge is
+// down). See `noteServerFailure`: one such answer is a blip, two in a row are an outage.
+let serverFailures = 0;
 // How many long uploads the operator started are in flight right now. A counter, not a boolean: two
 // panes can each be transcribing a clip, and the second one finishing must not un-suspend the first.
 let longUploads = 0;
@@ -75,7 +83,43 @@ function emit() {
 export function markLive(): void {
   lastLiveAt = Date.now();
   lostLatched = false;
+  serverFailures = 0;
   emit();
+}
+
+/**
+ * What kind of failure a read was (lib/api.ts `readFailureKind`).
+ *
+ *  - `network`: the request never got an answer. A thrown `fetch` (no route, airplane mode) or the
+ *    poll timeout running out (lib/api.ts `POLL_TIMEOUT_MS`). A VPN that stays up while the radio is
+ *    off is this case: the request goes into the tunnel and nothing comes back.
+ *  - `server`: an answer came back, and it was a 5xx. A proxy in front of a stopped bridge says this,
+ *    and so does a bridge having one bad moment, so ONE of them proves nothing.
+ *  - `other`: a refusal or any other answer. It says nothing about the connection.
+ */
+export type ReadFailureKind = "network" | "server" | "other";
+
+/** How many server errors in a row latch the outage. A network failure latches on the first. */
+export const SERVER_FAILURES_TO_LATCH = 2;
+
+/**
+ * Count one failed HERD read that got NO answer (lib/api.ts `fetchSnapshot`, the read every poll
+ * makes): it latches the outage at once. M46 pass 3, decided 2026-10-07: the 15s wait made the phone
+ * slow to admit it had lost the bridge. A live answer clears the latch (markLive). The latch is what
+ * turns the screen into the saved copy (the loaders' `stale`, the Chat window's saved-copy mark, the
+ * red strip and the muted dog), so all of them flip on the same failure.
+ *
+ * Two nullary functions rather than one that takes the kind: this store has no parameters by design
+ * (host-health.test.ts pins every export's arity), and the caller already knows which one it is.
+ */
+export function noteNetworkFailure(): void {
+  latchLost();
+}
+
+/** Count one failed herd read that came back as a 5xx: the second in a row latches the outage. */
+export function noteServerFailure(): void {
+  serverFailures += 1;
+  if (serverFailures >= SERVER_FAILURES_TO_LATCH) latchLost();
 }
 
 /**
@@ -179,6 +223,11 @@ export function subscribeHealth(cb: () => void): () => void {
  * latchLost fires. Returns effectiveAnchor(), so it already honours the sticky latch (drops the wake
  * grace once escalated); consumers derive `lost` from this single value and cannot disagree.
  */
+/** {@link isLostLatched} for a component: re-renders when the latch is set or cleared. */
+export function useLostLatched(): boolean {
+  return useSyncExternalStore(subscribeHealth, isLostLatched, isLostLatched);
+}
+
 export function useConnectionHealth(): number {
   return useSyncExternalStore(subscribeHealth, effectiveAnchor, effectiveAnchor);
 }
@@ -202,6 +251,7 @@ export function __resetConnectionHealth(now = Date.now()): void {
   lastLiveAt = now;
   lastWakeAt = now;
   lostLatched = false;
+  serverFailures = 0;
   longUploads = 0;
   emit();
 }
