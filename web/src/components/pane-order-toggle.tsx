@@ -23,7 +23,7 @@ import { useLocale } from "@/hooks/use-locale";
 // control, the row it shares says what is on screen, and the section heading below spells the order
 // in words anyway ("Newest first", "Going cold first"). Settings keeps the labelled form, because
 // nobody arrives there already knowing which glyph is which.
-const SEGMENTS = {
+export const PANE_ORDER_SEGMENTS = {
   place: { label: "paneOrder.place", Icon: FolderTree },
   activity: { label: "paneOrder.activity", Icon: Clock },
   // The chip's own glyph (components/cache-chip.tsx), so the control and the number it sorts by are
@@ -39,7 +39,7 @@ export function PaneOrderToggle({
 }: {
   order: PaneOrder;
   onChange: (order: PaneOrder) => void;
-  /** Glyphs only, sized to share a row. See the note above {@link SEGMENTS}. */
+  /** Glyphs only, sized to share a row. See the note above {@link PANE_ORDER_SEGMENTS}. */
   compact?: boolean;
   className?: string;
 }) {
@@ -51,7 +51,7 @@ export function PaneOrderToggle({
       className={cn("flex gap-1", compact && "shrink-0", className)}
     >
       {PANE_ORDERS.map((value) => {
-        const { label, Icon } = SEGMENTS[value];
+        const { label, Icon } = PANE_ORDER_SEGMENTS[value];
         const selected = value === order;
         return (
           <button

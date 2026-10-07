@@ -1,23 +1,21 @@
-import { Inbox, KeyRound, Server, WifiOff } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { Inbox, KeyRound, WifiOff } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 
 import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
-import { Chip } from "@/components/ui/chip";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
-import { STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { ATTENTION, bucketOf, triage, worstTriage } from "@/lib/triage";
 import { groupHost, pinnedRows, shownGroups, stripEntries } from "@/lib/dash-view";
 import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView } from "@/lib/types";
-import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey, paneScope } from "@/lib/hosts";
+import { paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
 import { NeedsYouSwitch } from "@/components/needs-you-switch";
-import { PaneOrderToggle } from "@/components/pane-order-toggle";
+import { PaneOrderSelect, WorkspaceSelect } from "@/components/dash-selects";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
 import type { Scope } from "@/lib/scope";
@@ -80,45 +78,44 @@ interface AgentListProps {
    */
   newTab?: HeadingNewTab;
   /**
-   * The workspace filter the strip on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
-   * shows one workspace alone; `hidden` drops workspaces from the list while their chips stay in
-   * the strip, dimmed, still carrying their status dot, so a hidden workspace that needs you is
-   * never silent. Keys from `workspacePrefKey` (machine, session, workspace name). Omit both and the list shows everything.
+   * The workspace filter the select on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
+   * shows one workspace alone; `hidden` drops workspaces from the list while their options stay in
+   * the select, marked hidden, still carrying their state in words, so a hidden workspace that needs
+   * you is never silent. Keys from `workspacePrefKey` (machine, session, workspace name). Omit both and the list shows everything.
    */
   isolated?: string | null;
   hidden?: readonly string[];
-  /** Tap a chip: isolate that workspace, or clear the filter (null). */
+  /** Pick a workspace in the select: isolate it, or clear the filter (null). */
   onIsolate?: (key: string | null) => void;
-  /** Long-press a chip: hide the workspace, or show it again. */
+  /** Flip a workspace's hidden state. The select calls it for each hidden workspace on "Show hidden workspaces". */
   onToggleHidden?: (key: string) => void;
   /**
    * The machines this device leaves off the dashboard, as STORED (lib/hidden-machines.ts, issue
    * #288). The list never hides `addressedHost`, and an id `servers` does not list filters nothing.
-   * A hidden machine's workspace groups leave the list on every tab, and its chips give way to one
-   * dimmed stand-in chip in the strip. Pins and isolate still win. On a solo list, nothing. Omit and
+   * A hidden machine's workspace groups leave the list on every tab, and its workspaces give way to one
+   * "Show <machine>'s panes" option in the select. Pins and isolate still win. On a solo list, nothing. Omit and
    * the list renders as it did.
    */
   hiddenMachines?: readonly string[];
   /** The machine the dashboard addresses, the scope's `?h=`: undefined is the lead. It always shows. */
   addressedHost?: string | undefined;
-  /** Tap a hidden machine's stand-in chip: show that machine again. */
+  /** Pick a hidden machine's "Show <machine>'s panes" option: show that machine again. */
   onShowMachine?: (host: string) => void;
   /**
    * The "needs you" switch (issue 270, ADR 0066; the old Focus tab, now a switch by ADR 0085): a group
    * shows only its panes that need you, and a group with none is dropped. A filter, never a sort. The
-   * strip, the summary line and every heading's counts still count ALL panes, so the filter never
+   * workspace select, the summary line and every heading's counts still count ALL panes, so the filter never
    * understates the herd.
    */
   needsYouOnly?: boolean;
   /**
-   * Flip the needs-you switch. Given, the switch is drawn in the controls row beside the order toggle
-   * (which `onOrderChange` draws, so give both); withheld, it is not, and the list keeps whatever
-   * `needsYouOnly` says.
+   * Flip the needs-you switch. Given, the switch is drawn at the right end of the summary line;
+   * withheld, it is not, and the list keeps whatever `needsYouOnly` says.
    */
   onNeedsYouOnlyChange?: (on: boolean) => void;
   /**
-   * The Changes tab: draw its own body in place of the pane groups, from the workspaces the strip
-   * leaves shown. The strip and the summary line above stay exactly where they were. The Crew tab does
+   * The Changes tab: draw its own body in place of the pane groups, from the workspaces the select
+   * leaves shown. The summary line and the select row above stay exactly where they were. The Crew tab does
    * not come through here at all: it lists machines, so the dashboard draws it without this list and
    * with none of its pane chrome (ADR 0085).
    */
@@ -136,8 +133,8 @@ interface AgentListProps {
    */
   order?: PaneOrder;
   /**
-   * Store a new order. Given, the toggle is drawn beside the summary line on the Dashboard; withheld, it
-   * is not, and the list keeps whatever `order` says.
+   * Store a new order. Given, the order select is drawn at the right of the workspace select on the
+   * Dashboard; withheld, it is not, and the list keeps whatever `order` says.
    */
   onOrderChange?: (order: PaneOrder) => void;
   /** A hold on a pane row: open that pane's actions sheet. Omit and the rows have no hold. */
@@ -235,7 +232,7 @@ function revealElement(el: HTMLElement): void {
 // one place, and its marks say the rest.
 //
 // THE ORDER IS THE OPERATOR'S, AND IT STILL DOES NOT MOVE (ADR 0071). Place is the default and is
-// everything above. Activity and Cache, asked for with the toggle beside the summary line, fold the
+// everything above. Activity and Cache, asked for with the order select under the summary line, fold the
 // groups into one ranked list; the reading is taken once and held (hooks/use-frozen-ranks.ts), so a
 // poll repaints a row where it stands and never moves it.
 //
@@ -294,17 +291,6 @@ export function AgentList({
     const target = document.getElementById(rowDomId(reveal.rowKey)) ?? document.getElementById(SUMMARY_ID);
     if (target) revealElement(target);
   }, [reveal]);
-  // A tap on a hidden machine's stand-in chip shows the machine, and the chip itself leaves. Its place
-  // in the strip goes to the machine's first workspace chip, so focus goes there rather than falling
-  // to `body`. Runs after every render and is cheap: it acts once, after the tap set the index.
-  const stripRef = useRef<HTMLDivElement>(null);
-  const refocusChipAt = useRef<number | null>(null);
-  useEffect(() => {
-    const at = refocusChipAt.current;
-    if (at === null) return;
-    refocusChipAt.current = null;
-    stripRef.current?.querySelectorAll<HTMLElement>("button")[at]?.focus();
-  });
   // A herd with nothing but bare shells in it is still something to show, and "No agents running."
   // is then true rather than empty — so the placeholder waits for BOTH lists to be empty.
   if (agents.length === 0 && shellPanes.length === 0) {
@@ -496,115 +482,82 @@ export function AgentList({
       // Focus (the keyboard's) lands here when an unpin takes a row off the list, so the line must be able to hold
       // it. Only once pins are in play: with none, the line renders exactly as it did.
       focusable={pins.length > 0 || reveal !== null}
-      className={cn(onOrderChange && "min-w-0 flex-1", "transition-opacity", stale && "opacity-50")}
+      className={cn((onNeedsYouOnlyChange || onOrderChange) && "min-w-0 flex-1", "transition-opacity", stale && "opacity-50")}
     />
   );
 
-  // The controls the row ends in. The same markup is drawn invisibly on a tab that has none, so the
-  // row's width never depends on the tab. The needs-you switch is a pair with the order toggle and
-  // is drawn only when the route gave it a way to flip.
-  const controls = onOrderChange && (
-    <div className="flex shrink-0 gap-1">
-      {onNeedsYouOnlyChange && <NeedsYouSwitch on={needsYouOnly} onChange={onNeedsYouOnlyChange} />}
-      <PaneOrderToggle
-        order={order}
-        onChange={(next) => {
-          reread();
-          onOrderChange(next);
-        }}
-        compact
-      />
-    </div>
+  // THE SWITCH ENDS THE SUMMARY LINE'S ROW (ADR 0085). The same markup is drawn invisibly on a tab
+  // that has none, so the row's width never depends on the tab. It is drawn only when the route gave
+  // it a way to flip.
+  const switchSlot = onNeedsYouOnlyChange && (
+    <NeedsYouSwitch on={needsYouOnly} onChange={onNeedsYouOnlyChange} />
+  );
+
+  // The order select is drawn only when the route can store the answer; a change of order asks for
+  // a new reading (the freeze, ADR 0071), and a re-read of the order already chosen is no longer a
+  // gesture: a select reports a change, never a tap on the value it already shows.
+  const orderSlot = onOrderChange && (
+    <PaneOrderSelect
+      order={order}
+      className="shrink-0"
+      onChange={(next) => {
+        reread();
+        onOrderChange(next);
+      }}
+    />
   );
 
   return (
-    <div className="flex flex-col gap-5 px-4 py-4">
-      {/* THE WORKSPACE STRIP, a filter. "All", then one chip per workspace in the list's own order,
-          each lit with the worst status inside. Tap a chip to see that workspace alone, tap it or
-          All to see everything again. Long-press a chip to hide the workspace, and again to bring it
-          back; a hidden chip stays in the strip, dimmed, with its dot, so hiding never silences a
-          workspace that needs you. One height always, so nothing below moves.
-          A hidden MACHINE (issue #288) is one dimmed stand-in chip instead of its workspace chips:
-          the server glyph in its tint, its name, and the worst dot of all its panes, so a machine
-          that needs you is never silent either. A tap shows it again, which is also the way back
-          when the Machines sheet itself is hidden (a peer is down). An isolated workspace on a hidden
-          machine keeps its chip, right after the stand-in.
-          The scroller keeps STRIP_SCROLLER's own `py-1.5` and must: that padding is the room a
-          chip's STRIP_TAP_TARGET `::before` reaches into for the 44px tap floor. Trimmed to `py-0`
-          it cost both halves at once — the reach was clipped away, so the chips answered a 34px
-          touch, and the same overflow became 6px of vertical scroll that dragged their bottom edge
-          out of sight. `actions-row.tsx` hit this before; its note carries the mechanism. */}
-      <nav aria-label={t("space.strip.title")} className="-mx-4">
-        <div ref={stripRef} className={cn(STRIP_SCROLLER, "px-4")}>
-          <Chip label={t("space.tabStrip.all")} active={!isolatedGroup} onClick={() => onIsolate?.(null)} />
-          {strip.map((entry, i) => {
-            if (entry.kind === "machine") {
-              const name = hostName(servers, entry.host) ?? entry.host;
-              const slot = hostSlot(servers, entry.host);
-              return (
-                <Chip
-                  // A group key always holds two NULs and this one holds one, so they never collide.
-                  key={`machine\u0000${entry.host}`}
-                  glyph={
-                    <Server
-                      aria-hidden
-                      className={cn("size-3.5 shrink-0", slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot])}
-                    />
-                  }
-                  label={name}
-                  ariaLabel={t("home.machineHidden.show", { name })}
-                  active={false}
-                  dimmed
-                  status={worstTriage(entry.panes)}
-                  onClick={() => {
-                    if (!onShowMachine) return;
-                    // After "All", one button per entry: the machine's first chip takes this index.
-                    refocusChipAt.current = i + 1;
-                    onShowMachine(entry.host);
-                  }}
-                />
-              );
-            }
-            const g = entry.group;
-            return (
-              <Chip
-                key={g.key}
-                label={g.label}
-                active={isolatedGroup?.key === g.key}
-                dimmed={!isolatedGroup && hiddenSet.has(workspacePrefKey(g))}
-                status={worstTriage(g.panes)}
-                onClick={() => onIsolate?.(isolatedGroup?.key === g.key ? null : workspacePrefKey(g))}
-                onLongPress={onToggleHidden ? () => onToggleHidden(workspacePrefKey(g)) : undefined}
-              />
-            );
-          })}
-        </div>
-      </nav>
-
-      {/* The twenty-times-a-day glance, in ONE slot of one height: every state counted, with its
-          word, once for the whole dashboard (the headings below repeat the numbers, not the words).
-          The all-clear check leads when nothing needs you. A tap goes to the first workspace
-          holding something urgent. */}
-      {onOrderChange ? (
-        // THE CONTROLS ROW (ADR 0071, "The dashboard takes the setting"; ADR 0085): the summary keeps
-        // the left, where ADR 0063 point 3 puts urgency, and the controls take the right as glyphs,
-        // the way the switcher draws the order: the needs-you switch, then the order toggle. The row
-        // is drawn on EVERY pane tab so a switch between them moves neither the strip nor this row. A tap on the
-        // order toggle, the selected segment included, asks for a new reading. Changes orders
-        // nothing and filters nothing, so it draws no controls, but the slot is still there,
-        // invisible: the row keeps the controls' 44px AND their width, so a tab switch moves neither
-        // the line beside it nor anything below it (DESIGN.md §2, `e2e/dashboard-footer.spec.ts`).
-        <div className="flex min-h-11 items-center justify-between gap-2">
-          {summary}
-          {renderBody === undefined ? controls : (
-            <div className="invisible shrink-0" aria-hidden="true">
-              {controls}
+    <div className="flex flex-col gap-5 px-4 pb-4 pt-1">
+      {/* THE TOP OF THE DASHBOARD, one control block (2026-10-07, Altan's pick of "One control bar"):
+          ONE line of state words with the needs-you switch at its right end, then ONE row of two
+          selects, the workspace filter on the left and the pane order on the right. It replaced a chip
+          strip, a counts line with no words and three glyph toggles, which spread the same four
+          controls over three rows. Header unchanged above it, the list below.
+          Every row of the block is 44px and the block draws the same on every pane tab: a tab with
+          its own body (Changes) keeps the switch and the order select as invisible slots, so a switch
+          between tabs moves neither the line nor the row nor anything below it (DESIGN.md §2,
+          `e2e/dashboard-footer.spec.ts`). The workspace select stays live on Changes, where it
+          narrows the workspaces that body lists.
+          The workspace select is the old strip's filter, whole: the options run in the list's own order,
+          each with its state in words, the isolated workspace shows alone, a hidden workspace or
+          machine has its way back as an option (components/dash-selects.tsx). */}
+      <div className="flex flex-col gap-1">
+        {/* The twenty-times-a-day glance, in ONE slot of one height: every state counted, with its
+            word where the line has room for it, once for the whole dashboard (the headings below
+            repeat the numbers, not the words). The all-clear check leads when nothing needs you. A
+            tap goes to the first workspace holding something urgent. The switch sits 8px into the
+            gutter so its glyph, not its 44px box, lines up with the page edge. */}
+        {switchSlot || orderSlot ? (
+          <div className="flex min-h-11 items-center justify-between gap-2">
+            {summary}
+            {switchSlot && (
+              <div className={cn("-mr-2 shrink-0", renderBody !== undefined && "invisible")} aria-hidden={renderBody !== undefined ? true : undefined}>
+                {switchSlot}
+              </div>
+            )}
+          </div>
+        ) : (
+          summary
+        )}
+        <div className="flex items-center gap-2">
+          <WorkspaceSelect
+            className="min-w-0 flex-1"
+            entries={strip}
+            isolatedKey={isolatedGroup?.key}
+            isHidden={(g) => hiddenSet.has(workspacePrefKey(g))}
+            servers={servers}
+            onIsolate={(group) => onIsolate?.(group === null ? null : workspacePrefKey(group))}
+            onShowHidden={onToggleHidden && ((hiddenGroups) => hiddenGroups.forEach((g) => onToggleHidden(workspacePrefKey(g))))}
+            onShowMachine={onShowMachine}
+          />
+          {orderSlot && (
+            <div className={cn("shrink-0", renderBody !== undefined && "invisible")} aria-hidden={renderBody !== undefined ? true : undefined}>
+              {orderSlot}
             </div>
           )}
         </div>
-      ) : (
-        summary
-      )}
+      </div>
 
       {/* PINNED, the first group on every pane tab (ADR 0070; the Crew tab lists machines and draws none): under the summary line, so the strip and the
           line keep their place on every tab. The heading is the section voice the switcher's Shells

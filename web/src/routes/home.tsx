@@ -90,7 +90,7 @@ function ChangesTabBody({
 // Dashboard home screen. Every pane sits under the workspace it lives in, in the multiplexer's own
 // order (lib/pane-groups.ts, ADR 0063); urgency is a mark on a row and a heading and one summary
 // line on top, never a position. The operator may ask for Activity or Cache order instead, with the
-// toggle beside that line (ADR 0071): one ranked list, read once and held. The Spaces navigator sits
+// order select under that line (ADR 0071): one ranked list, read once and held. The Spaces navigator sits
 // last, under the thing it navigates to.
 // Launchers sit directly above Spaces: they are one-tap act-on-able actions like the herd above
 // them, but they CREATE rather than triage, so they sit under the herd and above the navigator

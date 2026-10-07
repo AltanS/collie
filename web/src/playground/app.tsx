@@ -47,6 +47,7 @@ import * as dashboard from "./sections/dashboard";
 import * as pane from "./sections/pane";
 import * as actionsRow from "./sections/actions-row";
 import * as leftHand from "./sections/left-hand";
+import * as dashboardTop from "./sections/dashboard-top";
 import * as crew from "./sections/crew";
 import * as machines from "./sections/machines";
 import * as settings from "./sections/settings";
@@ -101,6 +102,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: dashboardNav.DEF, render: () => <dashboardNav.DashboardNavSection /> },
   { def: attentionIcon.DEF, render: () => <attentionIcon.AttentionIconSection /> },
   { def: leftHand.DEF, render: () => <leftHand.LeftHandSection /> },
+  { def: dashboardTop.DEF, render: () => <dashboardTop.DashboardTopSection /> },
 ];
 
 const THEME_OPTIONS = [

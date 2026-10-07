@@ -1,6 +1,8 @@
 import { Check } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/status-badge";
+import { hasResizeObserver } from "@/lib/env";
 import { MASK, useOverflowEdges } from "@/components/ui/overflow-edges";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { isUnseen } from "@/lib/triage";
@@ -18,10 +20,6 @@ const ORDER: readonly Counted[] = [
   { kind: "status", status: "done" },
   { kind: "status", status: "idle" },
 ];
-
-/** The most counts a labelled row can hold and still spell its first one in words. Three or more
- *  and the words would push the later counts under the fade, so all of them go bare (2026-10-06). */
-const SPELLED_MAX_COUNTS = 2;
 
 /** The per-state tallies; `unseen` panes are counted there and not under their done/idle status. */
 export interface StateCounts {
@@ -51,29 +49,20 @@ export function countStates(panes: readonly AgentView[]): StateCounts {
 /**
  * A row of state counters: a mark and a number per state that has any, in urgency order.
  *
- * `labelled` is the dashboard's summary line, the one place a word is spelled: the first count only,
- * and only while the row holds two counts or fewer ("2 needs you", then a bare number); a workspace heading passes nothing and gets the numbers alone,
- * since the summary above has already taught what each mark means and a word on every heading was
- * the same word eight times.
+ * A workspace heading passes nothing and gets the numbers alone, since the summary above has already
+ * taught what each mark means and a word on every heading was the same word eight times. `labelled`
+ * is the dashboard's summary line and hands over to {@link SummaryCounts}, which spells the words.
  *
  * ONE BASELINE (2026-09-16): every mark sits in the same 12px box and every item is `leading-none`
  * inside one `items-center` row, so a square, a dot and a digit share a centre line. The unseen count
  * used to sit a pixel high because its mark and its text were centred in an inline-flex that sat on
  * the parent's text baseline.
  *
- * ONE COUNT, ONE PIECE: a count never breaks inside itself, and never wraps to a second line.
- *
- * ONE ROW, ALWAYS (2026-10-06): the dashboard's summary is a single line and never taller. The
- * controls beside it are 188px and `shrink-0`, so the line gets what is left: 162px at 390 and 92px
- * at 320. Labelled, the FIRST (worst) count keeps its word ("2 needs you") only while the row holds
- * two counts or fewer; with three or more, every count is a dot and a number in its own ink, the
- * way the numbers-only row draws them, so five fit the 162px slot at 390 (8px apart, 159px). A bare count's word moves
- * into an `aria-label`, so the button still reads every count in words. The row is `flex-nowrap` and
- * `overflow-hidden`, each count is `shrink-0` so a number never cuts mid-digit, and when the set
- * is still wider than the slot (huge numbers, a narrow phone) the right edge fades under the same
- * mask the belt's scrollers use (`ui/overflow-edges.tsx`, measured, so a row that fits is never
- * faded). It used to wrap whole counts onto further rows, up to five, and a long label ran under
- * the controls at 320.
+ * ONE COUNT, ONE PIECE: a count never breaks inside itself, and never wraps to a second line. The
+ * row is `flex-nowrap` and `overflow-hidden`, each count is `shrink-0` so a number never cuts
+ * mid-digit, and when the set is still wider than the slot the right edge fades under the same mask
+ * the belt's scrollers use (`ui/overflow-edges.tsx`, measured, so a row that fits is never faded).
+ * A bare count's word lives in an `aria-label`, so the button still reads every count in words.
  */
 export function StatusCounts({
   panes,
@@ -84,42 +73,161 @@ export function StatusCounts({
   labelled?: boolean;
   className?: string;
 }) {
+  if (labelled) return <SummaryCounts panes={panes} className={className} />;
+  return <BareCounts panes={panes} className={className} />;
+}
+
+/** The states a row shows, in urgency order, with their words: zero counts are omitted. */
+function shownCounts(panes: readonly AgentView[]) {
+  const n = countStates(panes);
+  return ORDER.filter((c) => n[keyOf(c)] > 0).map((c) => {
+    const k = keyOf(c);
+    const word = c.kind === "unseen" ? t("home.row.unseen") : statusLabel(c.status);
+    return { c, k, count: n[k], word };
+  });
+}
+
+function CountMark({ c }: { c: Counted }) {
+  return (
+    <span aria-hidden className="flex size-3 shrink-0 items-center justify-center">
+      {c.kind === "unseen" ? <UnseenMark size="sm" /> : <StatusDot status={c.status} className="size-2" />}
+    </span>
+  );
+}
+
+/** The numbers-only row: a workspace heading's counts, and the muted counts of the all-clear line. */
+function BareCounts({ panes, className }: { panes: readonly AgentView[]; className?: string | undefined }) {
   useLocale();
   const { ref, edge } = useOverflowEdges<HTMLSpanElement>();
-  const n = countStates(panes);
-  const shown = ORDER.filter((c) => n[keyOf(c)] > 0);
+  const shown = shownCounts(panes);
   if (shown.length === 0) return null;
   return (
     <span
       ref={ref}
       className={cn(
-        "flex min-w-0 flex-nowrap items-center overflow-hidden py-0.5 leading-none tabular-nums",
-        // The summary packs its counts 8px apart: five bare counts at realistic numbers measure 175px
-        // at 12px and 159px at 8px, against the 162px slot at 390. A heading's counts keep 12px.
-        labelled ? "gap-x-2" : "gap-x-3",
+        "flex min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden py-0.5 leading-none tabular-nums",
         edge === "right" && MASK.right,
         className,
       )}
     >
-      {shown.map((c, i) => {
-        const k = keyOf(c);
-        // Labelled, the first count alone spells its word, and only while the row holds two counts
-        // or fewer; with three or more every count is bare and names itself.
-        const spelled = labelled && i === 0 && shown.length <= SPELLED_MAX_COUNTS;
-        const word = c.kind === "unseen" ? t("home.row.unseen") : statusLabel(c.status);
+      {shown.map(({ c, k, count, word }) => (
+        <span
+          key={k}
+          className={cn("flex shrink-0 items-center gap-1.5 whitespace-nowrap", k === "blocked" && "text-status-blocked")}
+          // Numbers alone still say what they count to a screen reader.
+          aria-label={`${count} ${word}`}
+        >
+          <CountMark c={c} />
+          <span aria-hidden>{count}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** How far a summary row has been cut back: how many counts still spell their word, how many show. */
+interface SummaryFit {
+  key: string;
+  spelled: number;
+  shown: number;
+}
+
+/**
+ * The dashboard's summary words, ONE LINE AT EVERY WIDTH (2026-10-07). The line sits beside the
+ * needs-you switch and gets what is left of the row: 284px at 360, 314 at 390, 336 at 412. The rule
+ * that keeps it one line is applied in this order, and every step is a measurement of the real glyphs
+ * in the real locale, never a count of how many states there are:
+ *
+ *   1. A state with a zero count is not drawn.
+ *   2. Every count spells its word ("3 needs you", "2 unseen", "7 working", "2 idle").
+ *   3. Too wide, and the LOWEST-priority count drops its word and keeps its dot and number, then the
+ *      next one up, in the order idle, done, working, unseen. The worst count keeps its word longest.
+ *   4. Last, the worst count drops its word too, and the row is dots and numbers.
+ *   5. Wider still (huge numbers, a very narrow phone), whole counts leave the row from the right,
+ *      lowest priority first. Nothing is ever cut mid-word or mid-number and no ellipsis is drawn.
+ *
+ * A dropped word and a dropped count are not lost: every count keeps an `aria-label` in words, and
+ * a count that left the row stays in the document as screen-reader text. The words are the part of
+ * the line that costs width and carries the least: the mark is the state's colour, the number is the
+ * fact.
+ *
+ * HOW IT MEASURES. The row is `overflow-hidden` and `flex-nowrap`, and a layout effect after every
+ * render asks whether it overflows its slot; if it does it steps one rung down (step 3, 4, 5) and
+ * renders again BEFORE paint, so the line is never seen wider than its slot. A change of slot width,
+ * of the words (a locale) or of the counts starts again from step 2, because widening the slot has to
+ * give the words back. The slot is the row's own box, so it must be `flex-1` inside its button:
+ * a row sized by its content could never see that it was too wide. jsdom has no layout, so a test
+ * hands the row a width and reads which rung it stopped on.
+ */
+function SummaryCounts({ panes, className }: { panes: readonly AgentView[]; className?: string | undefined }) {
+  useLocale();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [slot, setSlot] = useState(0);
+  const [fontTick, setFontTick] = useState(0);
+  const [fit, setFit] = useState<SummaryFit | null>(null);
+  const shown = shownCounts(panes);
+  const present = shown.length > 0;
+  const key = `${slot}|${fontTick}|${shown.map((s) => `${s.count} ${s.word}`).join("|")}`;
+  // A fit measured for another slot, another word or another set of counts is stale: start over.
+  const now: SummaryFit = fit !== null && fit.key === key ? fit : { key, spelled: shown.length, shown: shown.length };
+
+  // Before paint, after every render that changes the words, the slot or the rung: one rung down
+  // while the row is wider than its slot. The 1px slack is the usual sub-pixel guard
+  // (`useOverflowEdges`). Each step lowers `spelled` or `shown`, so this stops.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null || el.scrollWidth - el.clientWidth <= 1) return;
+    if (now.spelled > 0) setFit({ key, spelled: now.spelled - 1, shown: now.shown });
+    else if (now.shown > 1) setFit({ key, spelled: 0, shown: now.shown - 1 });
+    // `now` is rebuilt every render, so the rung is what the effect depends on, not the object.
+  }, [key, now.spelled, now.shown]);
+
+  // The slot's width, and the fonts finishing: both change what fits without changing a render.
+  // Only the slot is observed, never the counts inside it, or each step would start a new round.
+  // The first read is before paint, so the slot the first fit used is the real one.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const measure = () => setSlot(Math.round(el.clientWidth));
+    measure();
+    const ro = hasResizeObserver() ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    // Guarded for jsdom, which has no font set.
+    const fonts = "fonts" in document ? document.fonts : null;
+    const onFonts = () => setFontTick((tick) => tick + 1);
+    fonts?.addEventListener("loadingdone", onFonts);
+    return () => {
+      ro?.disconnect();
+      fonts?.removeEventListener("loadingdone", onFonts);
+    };
+  }, [present]);
+
+  if (!present) return null;
+  return (
+    <span
+      ref={ref}
+      className={cn(
+        "flex min-w-0 flex-1 flex-nowrap items-center gap-x-2 overflow-hidden py-0.5 leading-none tabular-nums",
+        className,
+      )}
+    >
+      {shown.map(({ c, k, count, word }, i) => {
+        const spelled = i < now.spelled;
+        const visible = i < now.shown;
         return (
           <span
             key={k}
-            className={cn("flex shrink-0 items-center gap-1.5 whitespace-nowrap", k === "blocked" && "text-status-blocked")}
-            // Numbers alone still say what they count to a screen reader.
-            aria-label={spelled ? undefined : `${n[k]} ${word}`}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 whitespace-nowrap",
+              k === "blocked" && "text-status-blocked",
+              // Off the row, still in the document for a screen reader.
+              !visible && "sr-only",
+            )}
+            // A bare count still says what it counts to a screen reader.
+            aria-label={spelled ? undefined : `${count} ${word}`}
           >
-            <span aria-hidden className="flex size-3 shrink-0 items-center justify-center">
-              {c.kind === "unseen" ? <UnseenMark size="sm" /> : <StatusDot status={c.status} className="size-2" />}
-            </span>
-            <span aria-hidden={spelled ? undefined : true}>
-              {spelled ? `${n[k]} ${word}` : n[k]}
-            </span>
+            <CountMark c={c} />
+            <span aria-hidden={spelled ? undefined : true}>{spelled ? `${count} ${word}` : count}</span>
           </span>
         );
       })}

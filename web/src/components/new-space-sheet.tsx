@@ -12,6 +12,7 @@ import type { HostHealth } from "@/lib/host-health";
 import type { Launcher, ServerSummary, WorktreeView } from "@/lib/types";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
+import { Select } from "@/components/ui/select";
 import { SHELL_CHOICE, defaultLauncher, rememberLauncher } from "@/lib/branch-off";
 import { branchOffName, mintRequestId } from "@/lib/worktree-name";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -411,17 +412,13 @@ export function NewSpaceSheet({
           <>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-muted-foreground">{t("space.new.repo.label")}</span>
-              <select
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                className="h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
+              <Select value={repo} onChange={(e) => setRepo(e.target.value)}>
                 {repos.map((candidate) => (
                   <option key={candidate.workspaceId} value={candidate.workspaceId}>
                     {candidate.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-muted-foreground">{t("worktree.branchLabel")}</span>
@@ -438,13 +435,12 @@ export function NewSpaceSheet({
             {branchOff !== undefined && (
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{t("branchOff.agentLabel")}</span>
-                <select
+                <Select
                   value={pickedLauncher}
                   onChange={(e) => {
                     launcherTouched.current = true;
                     setLauncherChoice(e.target.value);
                   }}
-                  className="h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   <option value={SHELL_CHOICE}>{t("branchOff.shell")}</option>
                   {launcherRows.map((row) => (
@@ -452,7 +448,7 @@ export function NewSpaceSheet({
                       {row.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             )}
             <Button

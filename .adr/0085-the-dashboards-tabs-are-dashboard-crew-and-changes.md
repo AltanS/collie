@@ -95,3 +95,33 @@ toggle uses, because the screen it opens is Files now ([ADR 0083](./0083-the-fil
 With a crew the footer reads Crew, Dashboard, Files. The route, the paths, the `DashView` value
 `changes` and the stored tab are unchanged, so a device that stored the tab keeps it, and the tab
 still lists each workspace with its changed-file count. Read "Changes" above, for the tab, as Files.
+
+## Amended 2026-10-08: one control bar
+
+The summary row of points 2, 3 and 7 changed shape. The operator picked option 2, "one control bar",
+on 2026-10-07, and the Dashboard's top is now two lines. The first is **one line of state words**
+("3 needs you, 2 unseen, 7 working, 2 idle") with the **needs-you switch at its right end**. The second
+is a row of two selects, **Workspace** on the left and **Pane order** on the right. The chip strip, the
+counts line and the three-glyph order toggle are gone.
+
+- **Point 2:** the switch no longer sits beside the Activity/Cache toggle, because that toggle is gone.
+  It sits at the right end of the summary line. Its icon, 44px target, `aria-pressed`, accessible
+  name, primary tint and hairline ring (still needed against the near-black primary), the filter it
+  applies and the `needsYouOnly` storage are unchanged. The words stay one line at 360, 390 and
+  412px: when the line is too wide the lowest-priority counts drop their word and keep a dot and a
+  number, and past that whole counts leave the row, still named for a screen reader.
+- **Point 3:** unchanged. The launch strip, the Spaces navigator and the pin hint still show only
+  while the switch is off.
+- **Point 7:** the order control is now the Pane order select, drawn on the Dashboard in both switch
+  states. On Changes the row keeps the switch and the order select as invisible, `aria-hidden` slots,
+  so the summary line does not jump between the two pane tabs, and the Workspace select stays live
+  there. Crew still carries none of the pane chrome.
+- **Hide and the hidden machine:** the strip's long-press hide is gone, because a native select has
+  no long press. A hide stored on a device still applies. A workspace you hid is marked "hidden" in
+  the Workspace select and can still be picked, and a "Show hidden workspaces" option brings every
+  one back. A hidden machine is one "Show <machine>'s panes" option where its stand-in chip sat.
+- **Re-tap:** choosing the order already selected is no longer a gesture, so it takes no new reading
+  of the clock ([ADR 0071](./0071-the-operator-may-ask-for-activity-order.md), amended the same day).
+
+Where "Consequences" says the summary row holds the summary line, the switch and three order
+segments, read the summary line with the switch, and a second row for the two selects.

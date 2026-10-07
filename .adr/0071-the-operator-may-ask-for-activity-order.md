@@ -128,3 +128,27 @@ Focus. The Changes tab orders nothing, so it draws no toggle, and the row keeps 
 switch moves neither the strip nor that row. The summary line's tap, in a ranked order,
 jumps to the first urgent row in display order. Nothing here changes ADR 0063: no list is ordered by
 status, and urgency is still a mark with one place to go.
+
+## Amended 2026-10-08: the dashboard's order is a select
+
+The three rules in "The dashboard takes the setting" described controls that the dashboard no longer
+draws. The preference, the three orders, the freeze and the rule that a poll never reads the clock
+are unchanged; only the doors moved. This follows the operator's pick of option 2, "one control bar",
+on 2026-10-07, which put a **Pane order select** (Place, Activity, Cache, the glyph of the chosen
+order in front) at the right of the Workspace select, in one row under the summary line.
+
+1. **Point 1:** the workspace strip no longer stays, because it is gone. The Workspace select takes
+   its place, and a ranked order still folds the workspace headings into one list. The ranked
+   headings ("Newest first", "Going cold first") and the `space > tab` second line are as before.
+2. **Point 2:** the filters run first and never sort, as before. Isolate is the Workspace select's
+   choice. A workspace hidden on this device is left off the list, and a "Show hidden workspaces"
+   option in the select brings every one back. A long press no longer hides a workspace, because a
+   native select has no long press; a hide stored on a device keeps applying. A hidden machine is one
+   "Show <machine>'s panes" option in the same select.
+3. **Point 3:** the clock is no longer read on a tap of the segment already selected. A native select
+   reports a change and never a re-tap of the value it shows, so the gesture is gone with the
+   segments, and re-choosing the selected order does not refetch. A change of order, the first mount
+   and the page coming back into view still take a reading.
+
+The compact three-glyph toggle beside the status summary (`PaneOrderToggle`) is no longer drawn on the
+dashboard. The switcher keeps its own toggle, and Settings → Appearance still writes the same value.

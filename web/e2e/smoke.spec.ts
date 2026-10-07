@@ -27,8 +27,10 @@ test("the app shell renders on /", async ({ page }) => {
   await expect(page.getByRole("main")).toBeVisible();
 
   // And the shell is showing FIXTURE data, so the stub was reached and `rootLoader` resolved. A
-  // workspace label out of `fixtureSnapshot` is the shortest proof of that.
-  await expect(page.getByText(fixtureWorkspaces[0]!.label, { exact: false }).first()).toBeVisible();
+  // workspace label out of `fixtureSnapshot` is the shortest proof of that. It is addressed as the
+  // dashboard's section heading: the label also names an <option> in the Workspace select, which is
+  // never "visible" to a text query.
+  await expect(page.getByRole("heading", { name: fixtureWorkspaces[0]!.label, exact: true })).toBeVisible();
 });
 
 // The reason the service-worker cases can live in this tier at all. Recorded as a case rather than

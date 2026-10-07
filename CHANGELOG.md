@@ -162,6 +162,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
   with the left-hand layout, the left. It does what the arrow does and carries the same name. On a
   diff it sits in the Previous / Next bar. It hides while the keyboard is open, and a wider screen
   keeps the arrow alone.
+- **The dashboard's top is one control bar.** Under the header, one line of state words ("3 needs you,
+  2 unseen, 7 working, 2 idle") with the needs-you switch at its right end, then one row with a
+  Workspace select and a Pane order select. The chip strip, the counts line and the three glyph
+  toggles are gone. The words stay one line at 360, 390 and 412px: when the line is too wide the
+  lowest-priority counts drop their word and keep a dot and a number, and past that whole counts
+  leave the row, still named for a screen reader. A workspace's option says its state in words, a
+  workspace or machine you hid is brought back from the list, and a long press no longer hides a
+  workspace.
 
 ### Fixed
 

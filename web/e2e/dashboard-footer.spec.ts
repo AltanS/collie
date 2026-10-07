@@ -101,8 +101,8 @@ test("with a pane pinned, switching tabs still moves neither the footer nor the 
   }
 });
 
-// Crew lists machines, so it carries none of the pane chrome (ADR 0085): the space strip, the summary
-// line with its controls slot and the Pinned group filter and count panes, and sit above nothing here.
+// Crew lists machines, so it carries none of the pane chrome (ADR 0085): the workspace and order selects, the summary
+// line with its switch and the Pinned group filter and count panes, and sit above nothing here.
 // Dashboard and Changes keep them, and a switch between those two still moves nothing.
 test("the Crew tab starts with the machine cards, and Dashboard and Changes keep their summary line still", async ({ page }) => {
   await installCrewWorld(page);
@@ -112,9 +112,9 @@ test("the Crew tab starts with the machine cards, and Dashboard and Changes keep
   await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).first().click({ button: "right" });
   await page.getByRole("dialog").getByRole("button", { name: en["paneActions.pin.label"] }).click();
   const pinned = page.getByRole("region", { name: en["home.pinned.title"] });
-  const strip = page.getByRole("navigation", { name: en["space.strip.title"] });
+  const workspaceSelect = page.getByRole("combobox", { name: en["home.workspaceFilter.aria"] });
   await expect(pinned).toBeVisible();
-  await expect(strip).toBeVisible();
+  await expect(workspaceSelect).toBeVisible();
 
   const f0 = await box(footer(page));
   const s0 = await box(summary(page));
@@ -128,7 +128,7 @@ test("the Crew tab starts with the machine cards, and Dashboard and Changes keep
   await tab(page, CREW).click();
   await expect(tab(page, CREW)).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("button", { name: "workshop", exact: true })).toBeVisible();
-  await expect(strip).toHaveCount(0);
+  await expect(workspaceSelect).toHaveCount(0);
   await expect(pinned).toHaveCount(0);
   await expect(needsYou(page)).toHaveCount(0);
   await expect(summary(page)).toHaveCount(0);
@@ -149,8 +149,8 @@ test("the needs-you switch shows only the panes that need you, and survives a re
   await needsYou(page).click();
   await expect(page.getByRole("heading", { name: "webapp" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
-  // The strip still offers every workspace: a filter removes rows, it never places.
-  await expect(page.getByRole("navigation", { name: en["space.strip.title"] }).getByRole("button", { name: /collie/u })).toBeVisible();
+  // The select still offers every workspace: a filter removes rows, it never places.
+  await expect(page.getByRole("combobox", { name: en["home.workspaceFilter.aria"] }).getByRole("option", { name: /^collie/u })).toBeAttached();
   // The mark stays on the Dashboard tab with the switch on.
   await expect(tab(page, DASHBOARD)).toContainText("1");
 

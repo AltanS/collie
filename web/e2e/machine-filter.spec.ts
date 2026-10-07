@@ -6,8 +6,8 @@ import { fixtureServers } from "@/test/handlers";
 import { fill, installApiStub, installCrewWorld } from "./fixtures/api";
 
 // A CREW'S DASHBOARD CAN HIDE A MACHINE (issue #288, M40/01, Option A1). The Machines sheet carries
-// a Show switch per machine; a hidden machine's workspaces leave the list, and one dimmed stand-in
-// chip in the strip keeps its worst dot and brings it back. A filter, never an address: `?h=` and
+// a Show switch per machine; a hidden machine's workspaces leave the list, and one "Show <machine>'s panes"
+// option in the workspace select brings it back. A filter, never an address: `?h=` and
 // history stay as they were, and the summary line and the Dashboard badge keep counting every machine.
 // Pins ignore the filter (ADR 0070). 390x844, the phone.
 //
@@ -30,8 +30,8 @@ const LEAD = fixtureServers[0]!.name;
 const PEER = fixtureServers[1]!.name;
 
 const headings = (page: Page) => page.getByRole("main").getByRole("heading").allTextContents();
-const strip = (page: Page) => page.getByRole("navigation", { name: en["space.strip.title"] });
-const standIn = (page: Page) => strip(page).getByRole("button", { name: fill(en["home.machineHidden.show"], { name: PEER }) });
+const workspaceSelect = (page: Page) => page.getByRole("combobox", { name: en["home.workspaceFilter.aria"] });
+const standIn = (page: Page) => workspaceSelect(page).getByRole("option", { name: fill(en["home.machineHidden.show"], { name: PEER }) });
 const summary = (page: Page) => page.getByRole("main").getByRole("button", { name: /^\d+ needs you/u });
 const dashboardTab = (page: Page) =>
   page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: new RegExp(`^${en["home.tabs.dashboard"]}`, "u") });
@@ -64,7 +64,7 @@ async function hidePeer(page: Page): Promise<void> {
   await expect(sheet).toHaveCount(0);
 }
 
-test("hiding a machine drops its rows and chips, and its stand-in chip brings them back", async ({ page }) => {
+test("hiding a machine drops its rows and options, and its \"Show\" option brings them back", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => headings(page)).toContain("moonward");
   const historyBefore = await page.evaluate(() => window.history.length);
@@ -87,13 +87,12 @@ test("hiding a machine drops its rows and chips, and its stand-in chip brings th
 
   await hidePeer(page);
 
-  // workshop's workspace left the list and the strip, and one dimmed stand-in chip took its place.
+  // workshop's workspace left the list and the select, and one "Show" option took its place.
   await expect.poll(() => headings(page)).not.toContain("moonward");
   expect((await headings(page)).slice(0, 2)).toEqual(["webapp", "collie"]);
-  await expect(strip(page).getByRole("button", { name: /moonward/u })).toHaveCount(0);
-  await expect(standIn(page)).toBeVisible();
+  await expect(workspaceSelect(page).getByRole("option", { name: /moonward/u })).toHaveCount(0);
+  await expect(standIn(page)).toBeAttached();
   await expect(standIn(page)).toContainText(PEER);
-  await expect(standIn(page)).toHaveAccessibleDescription(/needs you/u);
   // Nothing is silenced: the summary line and the Dashboard badge still count the hidden machine.
   await expect(summary(page)).toHaveAccessibleName(/^2 needs you/u);
   await expect(dashboardTab(page)).toContainText("2");
@@ -103,14 +102,14 @@ test("hiding a machine drops its rows and chips, and its stand-in chip brings th
 
   // The choice is this device's: it survives a reload.
   await page.reload();
-  await expect(standIn(page)).toBeVisible();
+  await expect(standIn(page)).toBeAttached();
   await expect.poll(() => headings(page)).not.toContain("moonward");
 
-  // The stand-in chip shows the machine again, in place.
-  await standIn(page).click();
+  // Picking the option shows the machine again, in place.
+  await workspaceSelect(page).selectOption({ label: fill(en["home.machineHidden.show"], { name: PEER }) });
   await expect.poll(() => headings(page)).toContain("moonward");
   await expect(standIn(page)).toHaveCount(0);
-  await expect(strip(page).getByRole("button", { name: /moonward/u })).toBeVisible();
+  await expect(workspaceSelect(page).getByRole("option", { name: /moonward/u })).toBeAttached();
   await expect(page).toHaveURL(/\/$/u);
 
   // And the sheet agrees.
@@ -135,7 +134,7 @@ test("a pinned pane on a hidden machine still leads the list", async ({ page }) 
   await expect.poll(() => headings(page)).not.toContain("moonward");
   expect((await headings(page)).slice(0, 3)).toEqual([en["home.pinned.title"], "webapp", "collie"]);
   await expect(pinnedGroup(page).getByRole("button", { name: /^codex logo codex/u })).toHaveCount(1);
-  await expect(standIn(page)).toBeVisible();
+  await expect(standIn(page)).toBeAttached();
 
   // Its tap still opens the pane on its own machine.
   await pinnedGroup(page).getByRole("button", { name: /^codex logo codex/u }).click();
