@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -16,6 +16,8 @@ import {
   type CardWaiting,
 } from "./chat-cards";
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
+import { testFileOpener } from "@/test/file-links";
+import { FileLinksProvider } from "./file-links";
 
 // The blocks of a session stream. The load-bearing behaviours: a finished run folds to one line and
 // a live one does not, a refusal is not drawn like a fault, every string renders as TEXT (the same
@@ -487,5 +489,50 @@ describe("Disclosure", () => {
     expect(screen.queryByText("the body")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByText("the body")).toBeInTheDocument();
+  });
+});
+
+// A tool's path opens the file in Files when it resolves under the Changes root (ADR 0088).
+describe("ToolCard paths", () => {
+  const withLinks = (ui: ReactNode, opened: string[]) =>
+    render(<FileLinksProvider value={testFileOpener(opened)}>{ui}</FileLinksProvider>);
+
+  it("an Edit's path opens the file, a Read's at the first line it read", () => {
+    const opened: string[] = [];
+    const edit = withLinks(
+      <ToolCard tool={{ kind: "edit", path: "/home/you/webapp/src/cart.ts", added: 1, removed: 0 }} status="done" />,
+      opened,
+    );
+    expect(edit.container.querySelector("a")!.getAttribute("href")).toBe("/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts");
+    edit.unmount();
+    const read = withLinks(
+      <ToolCard tool={{ kind: "read", path: "/home/you/webapp/README.md", range: [40, 60] }} status="done" />,
+      opened,
+    );
+    const link = read.container.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/pane/w1%3Ap1/changes/files?path=README.md&line=40");
+    fireEvent.click(link);
+    expect(opened).toEqual(["/pane/w1%3Ap1/changes/files?path=README.md&line=40"]);
+  });
+
+  it("a path outside the root draws the plain label", () => {
+    const { container } = withLinks(<ToolCard tool={{ kind: "read", path: "/etc/hosts" }} status="done" />, []);
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toContain("hosts");
+  });
+
+  it("a search's output links the files it found, and its toggle stays one button", async () => {
+    const user = userEvent.setup();
+    const output = "src/cart.ts:3:const total\n/etc/hosts:1:localhost";
+    const { container } = withLinks(
+      <ToolCard tool={{ kind: "search", query: "total", where: "/home/you/webapp", output }} status="done" />,
+      [],
+    );
+    const fold = container.querySelector("button")!;
+    expect(fold.querySelector("a")).toBeNull();
+    await user.click(fold);
+    const links = [...container.querySelectorAll("pre a")];
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=3"]);
+    expect(container.querySelector("pre")!.textContent).toBe(output);
   });
 });

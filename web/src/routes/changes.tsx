@@ -347,6 +347,9 @@ function ChangesScreen() {
   const filesSplat = splat === "files";
   const dirParam = filesSplat ? (search.get("dir") ?? "") : "";
   const treePathParam = filesSplat ? (pathParam ?? "") : "";
+  // `&line=`: the line a path the agent printed named (ADR 0088). A file screen's own; never sent.
+  const lineParam = filesSplat && treePathParam !== "" ? Number(search.get("line") ?? "") : Number.NaN;
+  const treeLine = Number.isSafeInteger(lineParam) && lineParam > 0 ? lineParam : undefined;
   const fileRef: ChangeRef | null =
     !filesSplat && repoParam !== null && pathParam !== null ? { repo: repoParam, path: pathParam } : null;
   // The root: the screen itself, or `…/changes/files` with neither query, its address before the
@@ -583,7 +586,15 @@ function ChangesScreen() {
         ];
   const [viewChoice, setViewChoice] = useState<{ path: string; view: TreeView } | null>(null);
   const previewAsked = readPreviewAsked(location.state) && treeViews.includes("preview");
-  const treeDefault: TreeView = previewAsked ? "preview" : treeChange ? "diff" : defaultView(treeFile ?? "");
+  // A line asked for is a line of the Source, so a file opened at one opens on Source, changed or not.
+  const lineAsked = treeLine !== undefined && treeViews.includes("source");
+  const treeDefault: TreeView = previewAsked
+    ? "preview"
+    : lineAsked
+      ? "source"
+      : treeChange
+        ? "diff"
+        : defaultView(treeFile ?? "");
   const treeView: TreeView =
     treeFile !== null && viewChoice !== null && viewChoice.path === treeFile && treeViews.includes(viewChoice.view)
       ? viewChoice.view
@@ -1025,6 +1036,7 @@ function ChangesScreen() {
             diff={fileState}
             read={filesState}
             links={fileLinks}
+            line={treeLine}
             onPair={pair}
           />
         ) : treeDir !== null ? (
@@ -1355,6 +1367,7 @@ function TreeFileScreen({
   diff,
   read,
   links,
+  line,
   onPair,
 }: {
   path: string;
@@ -1369,6 +1382,8 @@ function TreeFileScreen({
   diff: FileState | null;
   read: FilesReadState<TreeRead>;
   links: FileLinks;
+  /** The line a printed path named, marked in the Source (ADR 0088). */
+  line?: number;
   onPair: () => void;
 }) {
   useLocale();
@@ -1389,7 +1404,7 @@ function TreeFileScreen({
   else if (!read.data.available) body = <Quiet>{t(unavailableKey(read.data.reason))}</Quiet>;
   // A link that led to a folder: the screen is moving there on its own.
   else if ("entries" in read.data) body = <FilesLoading />;
-  else body = <FileContent file={read.data} view={view} links={links} />;
+  else body = <FileContent file={read.data} view={view} links={links} line={line} />;
   return (
     <>
       {/* Sticky, so the reader always knows which file this is, however far down the page. ONE ROW

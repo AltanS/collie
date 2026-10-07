@@ -441,6 +441,28 @@ describe("Changes: one file of the tree", () => {
     expect(screen.getAllByText("Checkout", { exact: false }).length).toBeGreaterThan(0);
   });
 
+  // A path the agent printed with a line (`checkout.tsx:2`, ADR 0088): the line is of the Source, so
+  // the file opens there, changed or not, with that row marked. The line never reaches the bridge.
+  it("opens a file asked at a line on its Source, with the row marked, changed or not", async () => {
+    const asked: string[] = [];
+    const listener = ({ request }: { request: Request }) => {
+      if (new URL(request.url).pathname.includes("/files")) asked.push(request.url);
+    };
+    server.events.on("request:start", listener);
+    renderAt([`${FILES}?path=src%2Froutes%2Fcheckout.tsx&line=2`]);
+    const source = await screen.findByRole("radio", { name: en["files.view.source"] });
+    await waitFor(() => expect(source.getAttribute("aria-checked")).toBe("true"));
+    const marked = await waitFor(() => {
+      const row = document.querySelector("[data-slot='file-source'] [aria-current='location']");
+      expect(row).not.toBeNull();
+      return row!;
+    });
+    expect(marked.textContent?.startsWith("2")).toBe(true);
+    server.events.removeListener("request:start", listener);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((u) => !u.includes("line"))).toBe(true);
+  });
+
   it("draws the whole path on a thin row under the name row, ending in the file name", async () => {
     renderAt([`${FILES}?path=src%2Froutes%2Fcheckout.tsx`]);
     await screen.findAllByText("cartTotal", { exact: false });

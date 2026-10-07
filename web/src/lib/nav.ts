@@ -76,11 +76,14 @@ export function spaceChangesCommitPath(spaceId: string, scope: Scope | undefined
 /**
  * Where the Changes screen's folder tree is, inside the Changes root (ADR 0083): `dir` names a folder,
  * `path` a file, both relative to the root with `/` and never a leading one. Neither is the root,
- * which is the Changes screen itself.
+ * which is the Changes screen itself. `line` is a 1-based line of `path` to bring into view, as a
+ * path the agent printed named it (`src/a.ts:12`, ADR 0088). It rides in the query as `&line=`, and
+ * the screen alone reads it: the bridge is never asked for a line.
  */
 export interface FilesAt {
   dir?: string;
   path?: string;
+  line?: number;
 }
 
 /**
@@ -95,7 +98,10 @@ function filesUnder(base: string, at?: FilesAt): string {
   const [pathname, search] = cut === -1 ? [base, ""] : [base.slice(0, cut), base.slice(cut + 1)];
   const q = new URLSearchParams(search);
   if (at.dir) q.set("dir", at.dir);
-  else if (at.path) q.set("path", at.path);
+  else if (at.path) {
+    q.set("path", at.path);
+    if (at.line !== undefined && Number.isSafeInteger(at.line) && at.line > 0) q.set("line", String(at.line));
+  }
   return `${pathname}/files?${q.toString()}`;
 }
 

@@ -333,6 +333,12 @@ describe("the Changes tree's paths", () => {
     expect(spaceFilesPath("w1", undefined, { dir: "docs" })).toBe("/space/w1/changes/files?dir=docs");
   });
 
+  it("carries a file's line after its path, and only a real line of a file (ADR 0088)", () => {
+    expect(filesPath("w1:p1", undefined, { path: "src/a.ts", line: 12 })).toBe("/pane/w1%3Ap1/changes/files?path=src%2Fa.ts&line=12");
+    expect(filesPath("w1:p1", undefined, { path: "a.ts", line: 0 })).toBe("/pane/w1%3Ap1/changes/files?path=a.ts");
+    expect(filesPath("w1:p1", undefined, { dir: "src", line: 3 })).toBe("/pane/w1%3Ap1/changes/files?dir=src");
+  });
+
   it("keeps the machine and session in front of the folder", () => {
     expect(filesPath("w1:p1", { host: "badger" }, { dir: "a" })).toBe("/pane/w1%3Ap1/changes/files?h=badger&dir=a");
   });

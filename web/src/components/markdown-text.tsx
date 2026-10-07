@@ -1,5 +1,7 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
+import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
+import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
 import { splitHighlight } from "@/lib/transcript-search";
 
@@ -92,9 +94,85 @@ function isPlainClick(e: React.MouseEvent): boolean {
 
 const LINK_CLASS = "text-primary underline underline-offset-2";
 
+// Inside a link's label nothing else may be a link: an anchor inside an anchor is invalid HTML, and
+// the outer one is what the author meant.
+const InLinkContext = createContext(false);
+
+/**
+ * THE CODE CHIP. The same blue the docs site draws (`collie-website/src/components/prose.tsx`): one
+ * blue at 10% fill, 20% edge and full ink. See the `code` case of `Span` for why each part is what it is.
+ */
+const CHIP_CLASS =
+  "rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-status-info";
+
+/**
+ * A path the agent printed, as a chip that opens it in Files (ADR 0088). The chip is the code chip,
+ * and the link affordance is the one every in-app link here wears, an underline, in the chip's own
+ * ink: no new colour. A plain tap moves inside the app; a modified click is the browser's.
+ */
+function PathChip({ target, text }: { target: FileLinkTarget; text: string }) {
+  return (
+    <a
+      href={target.href}
+      onClick={(e) => {
+        if (e.defaultPrevented || !isPlainClick(e)) return;
+        e.preventDefault();
+        target.onOpen();
+      }}
+      className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
+      <code className={`${CHIP_CLASS} underline underline-offset-2 ${breakClass(text)}`}>
+        <Hit text={text} />
+      </code>
+    </a>
+  );
+}
+
+/**
+ * A run of plain prose. Every path in it that resolves under the Changes root becomes a chip; the
+ * rest, and every path that does not resolve, stays text. With no opener (History, a Files preview)
+ * this is the plain run it always was.
+ */
+function TextRun({ text }: { text: string }) {
+  const open = useFileLinks();
+  const inLink = useContext(InLinkContext);
+  const found = useMemo(() => (open === null || inLink ? [] : findFilePaths(text)), [open, inLink, text]);
+  if (open === null || found.length === 0) return <Hit text={text} />;
+  const nodes: ReactNode[] = [];
+  let at = 0;
+  for (const f of found) {
+    const target = open(f);
+    if (target === null) continue;
+    if (f.start > at) nodes.push(<Hit key={`t${at}`} text={text.slice(at, f.start)} />);
+    nodes.push(<PathChip key={`p${f.start}`} target={target} text={text.slice(f.start, f.end)} />);
+    at = f.end;
+  }
+  if (nodes.length === 0) return <Hit text={text} />;
+  if (at < text.length) nodes.push(<Hit key={`t${at}`} text={text.slice(at)} />);
+  return <>{nodes}</>;
+}
+
+/** A code span: a chip, and a tappable one when the whole span is a path that resolves. */
+function CodeSpan({ text }: { text: string }) {
+  const open = useFileLinks();
+  const inLink = useContext(InLinkContext);
+  const found = open === null || inLink ? null : codeSpanPath(text);
+  const target = found === null || open === null ? null : open(found);
+  if (target !== null) return <PathChip target={target} text={text} />;
+  return (
+    <code className={`${CHIP_CLASS} ${breakClass(text)}`}>
+      <Hit text={text} />
+    </code>
+  );
+}
+
 function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
   const resolve = useContext(LinkContext);
-  const label = <Spans spans={span.spans} />;
+  const label = (
+    <InLinkContext.Provider value>
+      <Spans spans={span.spans} />
+    </InLinkContext.Provider>
+  );
   if (!span.rel) {
     // `href` was scheme-checked in the parser. noreferrer/noopener because these URLs come from
     // agent output, and target=_blank keeps the PWA shell alive behind the tap.
@@ -163,17 +241,13 @@ function Span({ span }: { span: MdSpan }) {
       // plus the 1px edge made the box 23px tall inside a 22.75px line, and two chips on consecutive
       // wrapped lines touched. At 1px the box is 19px and the rhythm holds. The horizontal padding
       // is untouched; that one is only ever about the glyphs.
-      return (
-        <code
-          className={`rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-status-info ${breakClass(span.text)}`}
-        >
-          <Hit text={span.text} />
-        </code>
-      );
+      //
+      // A span that is one path the screen can open is the same chip, tappable (`CodeSpan`).
+      return <CodeSpan text={span.text} />;
     case "link":
       return <LinkSpan span={span} />;
     default:
-      return <Hit text={span.text} />;
+      return <TextRun text={span.text} />;
   }
 }
 

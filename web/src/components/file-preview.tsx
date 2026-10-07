@@ -10,6 +10,7 @@ import { RENDER_MAX_LINES, formatBytes, previewKindFor, splitLines, type Preview
 import { t, tn } from "@/lib/i18n";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import { parseJsonTree } from "@/lib/json-tree";
+import { cn } from "@/lib/utils";
 import type { FilesAt } from "@/lib/nav";
 import type { FileRead } from "@/lib/types";
 
@@ -83,25 +84,40 @@ function useFileTokens(lines: readonly string[], path: string): RowTokens | null
  * A file as monospace lines with one number gutter. Long lines WRAP, anywhere, so a minified file
  * cannot push the page wide. The gutter is sized once by the widest number, so no line's text starts
  * at a different x. Ligatures are off: source is read character by character.
+ *
+ * `line` is the 1-based line a printed path named (`src/a.ts:12`, ADR 0088). That row wears the
+ * "this is the current one" ground (`bg-accent`, the switchers' token) and is brought to the middle
+ * of the screen once, when it first draws, so the sticky file bar never covers it. The ground is
+ * paint only, so no row moves (DESIGN.md §2). A line past the end, or past the render cap, is no line.
  */
-export function SourceView({ text, path }: { text: string; path: string }) {
+export function SourceView({ text, path, line }: { text: string; path: string; line?: number }) {
   const lines = useMemo(() => splitLines(text), [text]);
   const syntax = useFileTokens(lines, path);
   const shown = lines.length > RENDER_MAX_LINES ? lines.slice(0, RENDER_MAX_LINES) : lines;
   const gutter = { width: `calc(${Math.max(String(shown.length).length, 2)}ch + 0.5rem)` };
+  const target = line !== undefined && line >= 1 && line <= shown.length ? line - 1 : -1;
+  const targetRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (target !== -1) targetRow.current?.scrollIntoView({ block: "center" });
+  }, [target, path]);
   return (
     <div
       className="font-mono text-xs leading-5 [font-variant-ligatures:none]"
       data-slot="file-source"
       data-highlighted={syntax ? "" : undefined}
     >
-      {shown.map((line, i) => (
-        <div key={i} className="flex pl-1">
+      {shown.map((row, i) => (
+        <div
+          key={i}
+          ref={i === target ? targetRow : undefined}
+          aria-current={i === target ? "location" : undefined}
+          className={cn("flex pl-1", i === target && "bg-accent")}
+        >
           <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
             {i + 1}
           </span>
           <span className="min-w-0 flex-1 pr-3 wrap-anywhere whitespace-pre-wrap">
-            {syntax?.[i] ? <TokenLine tokens={syntax[i]} /> : line}
+            {syntax?.[i] ? <TokenLine tokens={syntax[i]} /> : row}
           </span>
         </div>
       ))}
@@ -313,9 +329,10 @@ export function HtmlPreview({ text }: { text: string }) {
 
 /**
  * What the file screen shows under its header. `view` is ignored for a type with no preview. A binary
- * file shows its size and nothing else; a read cut at the cap says so after the drawing.
+ * file shows its size and nothing else; a read cut at the cap says so after the drawing. `line` marks
+ * one line of the Source (see `SourceView`); a Preview has no lines, and ignores it.
  */
-export function FileContent({ file, view, links }: { file: FileText; view: FileView; links?: FileLinks }) {
+export function FileContent({ file, view, links, line }: { file: FileText; view: FileView; links?: FileLinks; line?: number }) {
   useLocale();
   if (file.binary) return <Quiet>{t("files.binary", { size: formatBytes(file.size) })}</Quiet>;
   if (file.text === "") return <Quiet>{t("files.fileEmpty")}</Quiet>;
@@ -328,7 +345,7 @@ export function FileContent({ file, view, links }: { file: FileText; view: FileV
       {kind === "markdown" && <MarkdownPreview text={file.text} path={file.path} links={links} />}
       {kind === "json" && <JsonPreview text={file.text} path={file.path} />}
       {kind === "html" && <HtmlPreview text={file.text} />}
-      {kind === null && <SourceView text={file.text} path={file.path} />}
+      {kind === null && <SourceView text={file.text} path={file.path} line={line} />}
       {file.truncated && <Note>{t("files.fileTruncated")}</Note>}
     </>
   );

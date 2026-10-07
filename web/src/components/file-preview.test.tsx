@@ -36,6 +36,27 @@ describe("Source", () => {
     expect(container.textContent).toContain("cartTotal");
   });
 
+  it("marks the line a printed path named and brings it into view once (ADR 0088)", () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    scroll.mockClear();
+    const { container } = render(<FileContent file={file("src/cart.ts")} view="source" line={2} />);
+    const rows = [...container.querySelectorAll("[data-slot='file-source'] > div")];
+    expect(rows.map((r) => r.getAttribute("aria-current"))).toEqual([null, "location", null]);
+    expect(rows[1]!.className).toContain("bg-accent");
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(rows[1]);
+    scroll.mockRestore();
+  });
+
+  it("a line past the end marks nothing and scrolls nowhere", () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    scroll.mockClear();
+    const { container } = render(<FileContent file={file("src/cart.ts")} view="source" line={99} />);
+    expect(container.querySelector("[aria-current]")).toBeNull();
+    expect(scroll).not.toHaveBeenCalled();
+    scroll.mockRestore();
+  });
+
   it("says so after the text when the read was cut", () => {
     render(<FileContent file={file("src/cart.ts", { truncated: true })} view="source" />);
     expect(screen.getByText(en["files.fileTruncated"])).toBeTruthy();

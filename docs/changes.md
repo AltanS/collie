@@ -178,6 +178,15 @@ and the source shows instead.
 In **Changes**, a changed file whose type has a preview, and that is not deleted, shows a
 **Preview** button in the header of its diff. It opens the same file screen on Preview.
 
+### Paths the agent prints
+
+A file path the agent prints in Chat or in the terminal mirror is a link to that file in Files.
+`src/app.ts:42` opens the file on its Source at line 42, with that line marked. Chat draws the path
+as an underlined code chip, and the path on an Edit or a Read card works the same way.
+
+A path is a link only when it leads inside the workspace's folder, the folder Files reads. A path
+outside it, a web address, and a path the terminal broke across two lines stay plain text.
+
 A folder or a file is read when you open it, and again when you tap refresh. It never updates on a
 timer. The change marks follow the list of changes, which updates every 5 seconds while you look.
 

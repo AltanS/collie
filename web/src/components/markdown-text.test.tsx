@@ -1,5 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
+import { testFileOpener } from "@/test/file-links";
+
+import { FileLinksProvider } from "./file-links";
 import { MarkdownText } from "./markdown-text";
 
 // The renderer's one LAYOUT decision, which is here because no CSS property can make it.
@@ -73,5 +76,50 @@ describe("MarkdownText headings", () => {
       const below = Number(/\bmb-(\d+(?:\.\d+)?)\b/.exec(cls)?.[1]);
       expect(above).toBeGreaterThan(below);
     }
+  });
+});
+
+// ── Paths the agent printed (ADR 0088) ─────────────────────────────────────────────────────────
+
+describe("MarkdownText file paths", () => {
+  const withLinks = (text: string, opened: string[] = []) =>
+    render(
+      <FileLinksProvider value={testFileOpener(opened)}>
+        <MarkdownText text={text} />
+      </FileLinksProvider>,
+    );
+
+  it("a code span that is a path opens Files at its line", () => {
+    const opened: string[] = [];
+    const { container } = withLinks("see `src/cart.ts:12` for it", opened);
+    const link = container.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=12");
+    expect(link.querySelector("code")?.textContent).toBe("src/cart.ts:12");
+    fireEvent.click(link);
+    expect(opened).toEqual(["/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=12"]);
+  });
+
+  it("a path in plain prose becomes the same chip, and the prose around it stays", () => {
+    const { container } = withLinks("I saved it to docs/guide.md and stopped.");
+    const link = container.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/pane/w1%3Ap1/changes/files?path=docs%2Fguide.md");
+    expect(container.textContent).toBe("I saved it to docs/guide.md and stopped.");
+  });
+
+  it("a path outside the root, a code name and a bare word stay text", () => {
+    const { container } = withLinks("read /etc/hosts, call `process.env` and `items.map`, and/or not");
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelectorAll("code")).toHaveLength(2);
+  });
+
+  it("with no opener (History, a Files preview) nothing is a link", () => {
+    const { container } = render(<MarkdownText text="see `src/cart.ts` and docs/guide.md" />);
+    expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("never nests a path inside a link's label", () => {
+    const { container } = withLinks("[docs/guide.md](https://example.com/guide)");
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(container.querySelector("a")!.getAttribute("href")).toBe("https://example.com/guide");
   });
 });

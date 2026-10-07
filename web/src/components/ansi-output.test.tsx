@@ -4,6 +4,8 @@ import type { ComponentProps } from "react";
 
 import { http, HttpResponse } from "msw";
 import { AnsiOutput } from "./ansi-output";
+import { FileLinksProvider } from "./file-links";
+import { testFileOpener } from "@/test/file-links";
 import { server } from "@/test/setup";
 import { codexPaddingScreen } from "@/test/codex-padding";
 
@@ -805,5 +807,37 @@ describe("cell-filling glyphs", () => {
     const match = container.querySelector("[data-find-match]")!;
     expect(match.textContent).toBe(`r ${FULL_BLOCK}`);
     expect(match.querySelectorAll(".cell-glyph")).toHaveLength(1);
+  });
+});
+
+// The pane's own mirror links a path the agent printed beside the URLs it already links (ADR 0088).
+describe("terminal mirror file paths", () => {
+  const mirror = (text: string, opened: string[]) =>
+    render(
+      <FileLinksProvider value={testFileOpener(opened)}>
+        <AnsiOutput text={text} />
+      </FileLinksProvider>,
+    );
+
+  it("a path under the root opens Files in the app, a URL still opens a new tab", () => {
+    const opened: string[] = [];
+    const { container } = mirror("wrote docs/guide.md:3 see https://example.com/a.md", opened);
+    const [file, url] = [...container.querySelectorAll("a")];
+    expect(file!.textContent).toBe("docs/guide.md:3");
+    expect(file!.getAttribute("target")).toBeNull();
+    expect(url!.getAttribute("href")).toBe("https://example.com/a.md");
+    expect(url!.getAttribute("target")).toBe("_blank");
+    fireEvent.click(file!);
+    expect(opened).toEqual(["/pane/w1%3Ap1/changes/files?path=docs%2Fguide.md&line=3"]);
+  });
+
+  it("finds paths per row and keeps the find offsets of the rows below", () => {
+    const { container } = mirror("one src/a.ts\ntwo /etc/hosts\nthree lib/b.ts", []);
+    expect([...container.querySelectorAll("a")].map((a) => a.textContent)).toEqual(["src/a.ts", "lib/b.ts"]);
+  });
+
+  it("with no opener only URLs are links", () => {
+    const { container } = render(<AnsiOutput text="wrote docs/guide.md" />);
+    expect(container.querySelector("a")).toBeNull();
   });
 });

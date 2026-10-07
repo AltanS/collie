@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useLoaderData, useLocation, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
+import { FileLinksProvider, usePaneFileLinks } from "@/components/file-links";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useNav } from "@/hooks/use-nav";
@@ -103,50 +104,57 @@ export function DetailRoute() {
     else up();
   };
 
+  // Paths the agent prints open in Files (ADR 0088): the chat, its tool cards and the mirror below
+  // all ask this one opener, which knows the pane's Changes root, its cwd and its machine's home.
+  const herd = useMemo(() => [...root.agents, ...root.shellPanes], [root.agents, root.shellPanes]);
+  const fileLinks = usePaneFileLinks({ paneId, scope, pane: agent, panes: herd, workspaces: root.workspaces });
+
   return (
-    <AgentChat
-      // Keyed by the pane's FULL address, not its id. The key exists to remount the composer on a
-      // pane switch so a draft never follows you into another terminal — and `w1:p1` is a different
-      // terminal in every session and on every machine. Keyed by the id alone, walking from
-      // `w1:p1` on one session to `w1:p1` on another kept the same mounted composer, draft and all.
-      // `paneScopeKey` is the same triple every per-pane cache is keyed by.
-      key={paneScopeKey(scope, paneId)}
-      paneId={paneId}
-      scope={scope}
-      agent={agent}
-      agents={root.agents}
-      shellPanes={root.shellPanes}
-      tabs={root.tabs}
-      servers={root.servers}
-      text={pane.text}
-      logicalText={pane.logicalText}
-      requestedLines={pane.requestedLines}
-      revision={pane.revision}
-      device={root.device}
-      bridge={root.bridge}
-      error={root.error}
-      stalled={stalled}
-      // The saved copy (M46 spec 10): the pane view dates it, and nothing on it may act (spec 11).
-      stale={pane.stale === true}
-      lastSeenAt={pane.lastSeenAt}
-      // The pane's read got no answer and the phone keeps no text for it.
-      noSavedCopy={pane.error && pane.text === ""}
-      onBack={up}
-      onBackArrow={backArrow}
-      // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.
-      onSelect={(id) =>
-        nav.side(
-          panePath(
-            id,
-            paneScope(
-              scope,
-              findPane([...root.agents, ...root.shellPanes], id, scope, root.servers, root.sessions),
-              root.servers,
-              root.sessions,
+    <FileLinksProvider value={fileLinks}>
+      <AgentChat
+        // Keyed by the pane's FULL address, not its id. The key exists to remount the composer on a
+        // pane switch so a draft never follows you into another terminal — and `w1:p1` is a different
+        // terminal in every session and on every machine. Keyed by the id alone, walking from
+        // `w1:p1` on one session to `w1:p1` on another kept the same mounted composer, draft and all.
+        // `paneScopeKey` is the same triple every per-pane cache is keyed by.
+        key={paneScopeKey(scope, paneId)}
+        paneId={paneId}
+        scope={scope}
+        agent={agent}
+        agents={root.agents}
+        shellPanes={root.shellPanes}
+        tabs={root.tabs}
+        servers={root.servers}
+        text={pane.text}
+        logicalText={pane.logicalText}
+        requestedLines={pane.requestedLines}
+        revision={pane.revision}
+        device={root.device}
+        bridge={root.bridge}
+        error={root.error}
+        stalled={stalled}
+        // The saved copy (M46 spec 10): the pane view dates it, and nothing on it may act (spec 11).
+        stale={pane.stale === true}
+        lastSeenAt={pane.lastSeenAt}
+        // The pane's read got no answer and the phone keeps no text for it.
+        noSavedCopy={pane.error && pane.text === ""}
+        onBack={up}
+        onBackArrow={backArrow}
+        // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.
+        onSelect={(id) =>
+          nav.side(
+            panePath(
+              id,
+              paneScope(
+                scope,
+                findPane([...root.agents, ...root.shellPanes], id, scope, root.servers, root.sessions),
+                root.servers,
+                root.sessions,
+              ),
             ),
-          ),
-        )
-      }
-    />
+          )
+        }
+      />
+    </FileLinksProvider>
   );
 }
