@@ -18,6 +18,8 @@ import { installRoutesApi } from "./routes-api";
 //   (d) back returns to the dashboard
 //   (e) the static shell still boots when the document route answers 403, and offline (service worker)
 //   (f) a tall dashboard keeps its scroll position across hydration
+//   (g) every island the document lists (`rmx-data`) has its module preloaded or already loaded
+//   (h) no animation frame draws the body before the stylesheet applies, server document and static shell
 
 const NOW = 1_790_000_000_000;
 const SNAP = homeSnapshot(NOW, false);
@@ -217,6 +219,129 @@ test.describe("server document boot", () => {
     console.log(`ssr-boot (f): scrollTop before=${String(before.inner)} after=${String(after.inner)}; window ${String(before.window)} -> ${String(after.window)}`);
     expect(after.inner).toBe(900);
     expect(after.window).toBe(before.window);
+  });
+});
+
+// (g) remix-store's lesson (research note 09, 2.5): an island whose module is not preloaded hydrates
+// late and the server markup sits dead for a beat. `rmx-data` lists every island as `moduleUrl#exportName`.
+// Ours are registry ids the entry bundle answers (`loadModule`, main.tsx), so for those the module is
+// the document's entry script; a URL-shaped id must be a modulepreload or a script of the document.
+// The runtime drops `rmx-data` once it has read it, so the spec reads it off the served HTML.
+
+interface IslandEntry {
+  moduleUrl?: string;
+  exportName?: string;
+}
+
+function islandsOf(html: string): IslandEntry[] {
+  const match = /<script type="application\/json" id="rmx-data">([\s\S]*?)<\/script>/u.exec(html);
+  expect(match, "the document carries an rmx-data block").not.toBeNull();
+  const data: { h?: Record<string, IslandEntry> } = JSON.parse(match![1]!);
+  return Object.values(data.h ?? {});
+}
+
+/** Whether an island id names a file (a path or URL) and not an entry-bundle registry id. */
+const isFileUrl = (moduleUrl: string): boolean => /^(?:\/|\.\/|https?:)/u.test(moduleUrl);
+
+test.describe("server document islands", () => {
+  test.use({ serviceWorkers: "block" });
+
+  test("(g) every island in rmx-data has its module preloaded or already in the module map", async ({ page, context, baseURL }) => {
+    await installRoutesApi(page, homeHandlers(() => SNAP));
+    await useServerDocuments(context, baseURL!, SNAP);
+    const html = await (await context.request.get(`${baseURL!}/`)).text();
+    const islands = islandsOf(html);
+    expect(islands.length).toBeGreaterThanOrEqual(1);
+
+    await page.goto("/");
+    await hydrated(page);
+    const loaded = await page.evaluate(() => ({
+      preloads: [...document.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"]')].map((l) => new URL(l.href).pathname),
+      scripts: [...document.querySelectorAll<HTMLScriptElement>("script[type=module][src]")].map((s) => new URL(s.src).pathname),
+      fetched: performance.getEntriesByType("resource").map((r) => new URL(r.name).pathname),
+    }));
+    // The document's own module script is the entry bundle: it must be in the page AND have been fetched.
+    expect(loaded.scripts.length).toBeGreaterThanOrEqual(1);
+    for (const script of loaded.scripts) expect(loaded.fetched).toContain(script);
+
+    for (const island of islands) {
+      const id = `${island.moduleUrl ?? ""}#${island.exportName ?? ""}`;
+      expect(island.moduleUrl, `island ${id} has a module`).toBeTruthy();
+      expect(island.exportName, `island ${id} has an export`).toBeTruthy();
+      if (!isFileUrl(island.moduleUrl!)) {
+        // A registry id: answered by the entry bundle, which the assertions above proved loaded.
+        expect(id).toBe("collie:app#AppRoot");
+        continue;
+      }
+      const path = new URL(island.moduleUrl!, baseURL!).pathname;
+      const preloaded = loaded.preloads.includes(path) || loaded.scripts.includes(path) || loaded.fetched.includes(path);
+      expect(preloaded, `island module ${path} is preloaded or already fetched`).toBe(true);
+    }
+  });
+});
+
+// (h) The unstyled-frame detector: from `document_start` an animation-frame loop asks, each frame, whether
+// the body has content while the stylesheet's token (`--background`, set on `:root` by the main CSS) is
+// still missing. One such frame is a flash of unstyled content. The loop runs through the whole boot,
+// and the spec also requires that it saw frames, so a loop that never ran cannot pass.
+
+interface Frames {
+  frames: number;
+  withBody: number;
+  unstyled: number;
+  first: string;
+}
+
+declare global {
+  interface Window {
+    __frames?: Frames;
+  }
+}
+
+async function watchStyledFrames(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const seen: Frames = { frames: 0, withBody: 0, unstyled: 0, first: "" };
+    window.__frames = seen;
+    const tick = (): void => {
+      seen.frames++;
+      const root = document.documentElement;
+      const body = document.body;
+      if (body !== null && body.firstElementChild !== null) {
+        seen.withBody++;
+        if (getComputedStyle(root).getPropertyValue("--background").trim() === "") {
+          seen.unstyled++;
+          if (seen.first === "") seen.first = `frame ${String(seen.frames)} at ${String(Math.round(performance.now()))} ms`;
+        }
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+test.describe("unstyled frames", () => {
+  test.use({ serviceWorkers: "block" });
+
+  test("(h) the server document never draws a frame without its stylesheet", async ({ page, context, baseURL }) => {
+    await installRoutesApi(page, homeHandlers(() => SNAP));
+    await useServerDocuments(context, baseURL!, SNAP);
+    await watchStyledFrames(page);
+    await page.goto("/");
+    await hydrated(page);
+    const seen = await page.evaluate(() => window.__frames);
+    console.log(`ssr-boot (h): frames=${String(seen?.frames)} with-body=${String(seen?.withBody)} unstyled=${String(seen?.unstyled)}`);
+    expect(seen?.withBody ?? 0).toBeGreaterThan(0);
+    expect(seen?.unstyled, seen?.first).toBe(0);
+  });
+
+  test("(h) the static shell never draws a frame without its stylesheet either", async ({ page }) => {
+    await installRoutesApi(page, homeHandlers(() => SNAP));
+    await watchStyledFrames(page);
+    await page.goto("/");
+    await expect(page.getByTestId("pane-row").first()).toBeVisible();
+    const seen = await page.evaluate(() => window.__frames);
+    expect(seen?.withBody ?? 0).toBeGreaterThan(0);
+    expect(seen?.unstyled, seen?.first).toBe(0);
   });
 });
 
