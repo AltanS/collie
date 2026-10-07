@@ -603,7 +603,8 @@ describe("existingPaths: one lstat per path, under the same checks as a read", (
     expect(reads).toBe(0);
   });
 
-  test.if(POSIX)("a FIFO is neither a file nor a folder: absent", async () => {
+  test("a FIFO is neither a file nor a folder: absent", async () => {
+    if (!POSIX) return; // Windows has no FIFO in the file system; same guard as the read test above.
     const fifo = join(root, "exist.fifo");
     Bun.spawnSync(["mkfifo", fifo]);
     try {
