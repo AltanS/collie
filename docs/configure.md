@@ -215,6 +215,11 @@ becomes Undo, which puts the text and the attachments back. Undo stays until you
 keystroke, an attachment, a send, a tap on another belt button, or leaving the pane. Scrolling the
 belt keeps it.
 
+Left-handed? Set **Settings → Appearance → Hand** to **Left**. The belt turns round: the Switch button
+and the X move to its left end, still above Send, and Keys becomes the rightmost button, with the rest
+scrolling off toward the left. Send and Attach move to the left of the reply box. The setting is per
+device and applies the next time you open a pane.
+
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
 of the row above the keyboard. Turn that segment off per device in **Settings → Appearance → Harness shortcuts**;
 Collie's own controls stay.

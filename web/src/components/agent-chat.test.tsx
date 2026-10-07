@@ -3030,6 +3030,32 @@ describe("AgentChat — the belt's Files pill", () => {
 });
 
 
+// Settings -> Hand: the pane reads the stored hand and lays the belt and the reply box out for it.
+describe("AgentChat — the hand setting", () => {
+  afterEach(() => localStorage.clear());
+  const scrollerOf = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-slot="composer-actions"] .overflow-x-auto')!;
+  const boxOf = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="composer-box"]')!;
+
+  it("lays the pane out for the right hand by default", () => {
+    const { container } = renderChat();
+    expect(scrollerOf(container).className).not.toContain("[direction:rtl]");
+    expect(boxOf(container).className).not.toMatch(/(?:^|\s)flex-row-reverse(?=\s|$)/);
+  });
+
+  it("hands the stored left hand to the composer: the belt runs right to left and the box is mirrored", () => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ hand: "left" }));
+    const { container } = renderChat();
+    expect(scrollerOf(container).className).toContain("[direction:rtl]");
+    expect(boxOf(container).className).toMatch(/(?:^|\s)flex-row-reverse(?=\s|$)/);
+    // The Switch block stands at the belt's left end.
+    expect(screen.getByRole("button", { name: /^Switch pane/ }).parentElement!.parentElement!.className).toMatch(
+      /(?:^|\s)left-0(?=\s|$)/,
+    );
+  });
+});
+
+
 // ── Copy output ──────────────────────────────────────────────────────────────
 //
 // The SHEET's half of this is covered in pane-actions-sheet.test.tsx: which row shows, and that the

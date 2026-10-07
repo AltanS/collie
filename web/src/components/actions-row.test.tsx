@@ -539,3 +539,103 @@ describe("ActionsRow — the composer's clear slot", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 });
+
+// THE LEFT-HAND BELT (Settings -> Hand). The mirror is real CSS direction, not a transform: the DOM
+// keeps the right-hand order (Keys first), and the left-hand look comes from `rtl` runs with `ltr`
+// pills. jsdom has no layout, so these pin the classes and the order; the pixels were measured in
+// Chromium at 412px.
+describe("ActionsRow — hand", () => {
+  const handle = () => ({ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" });
+  const changes = () => ({ onClick: vi.fn(), label: "Changes" });
+  const clearX = () => ({ mode: "clear" as const, label: "Clear message", onClick: vi.fn() });
+  const rows = (hand?: "right" | "left") =>
+    render(
+      <ActionsRow
+        general={[general(), general({ id: "type", icon: Terminal, label: "Type into terminal" })]}
+        agent="claude"
+        onRun={took}
+        hand={hand}
+        handle={handle()}
+        changes={changes()}
+        clear={clearX()}
+      />,
+    );
+  const scroller = () => document.querySelector<HTMLElement>(".overflow-x-auto")!;
+  const block = () => screen.getByRole("button", { name: "Switch pane" }).parentElement!.parentElement!;
+
+  it("is the right hand by default: no direction class anywhere, pinned block at the right", () => {
+    rows();
+    expect(document.body.innerHTML).not.toMatch(/direction:(?:rtl|ltr)/);
+    expect(block().className).toMatch(/(?:^|\s)right-0(?=\s|$)/);
+    expect(block().className).not.toMatch(/(?:^|\s)left-0(?=\s|$)/);
+    expect(block().className).toMatch(/(?:^|\s)pl-16(?=\s|$)/);
+    expect(scroller().className).toMatch(/(?:^|\s)pl-3(?=\s|$)/);
+    expect(scroller().className).not.toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+  });
+
+  it("keeps the DOM, and so the tab and reading order, the same for both hands", () => {
+    const { unmount } = rows("right");
+    const right = names();
+    unmount();
+    rows("left");
+    expect(names()).toEqual(right);
+    expect(names().slice(0, 2)).toEqual(["Keys", "Type into terminal"]);
+  });
+
+  it("runs the scroller, the controls and the harness section right to left, and each pill back to left to right", () => {
+    rows("left");
+    expect(scroller().className).toContain("[direction:rtl]");
+    expect(screen.getByRole("group", { name: "Controls" }).className).toContain("[direction:rtl]");
+    expect(screen.getByRole("group", { name: "Harness shortcuts" }).className).toContain("[direction:rtl]");
+    // Words are not mirrored: every pill reads icon then word, left to right.
+    for (const name of ["Keys", "Type into terminal", "Model", "Effort", "Compact", "Resume"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("[direction:ltr]");
+    }
+  });
+
+  it("pins the block at the LEFT end, fades it toward the right, and mirrors its hairline and order", () => {
+    rows("left");
+    expect(block().className).toMatch(/(?:^|\s)left-0(?=\s|$)/);
+    expect(block().className).toMatch(/(?:^|\s)pr-16(?=\s|$)/);
+    expect(block().className).toMatch(/(?:^|\s)pl-3(?=\s|$)/);
+    expect(block().className).not.toMatch(/(?:^|\s)right-0(?=\s|$)/);
+    // The block's own fade runs to the left, so its solid side stands against the belt's edge.
+    expect(block().firstElementChild!.className).toContain("to_left");
+    // The block runs mirrored: Switch on the belt's edge, the hairline on the scroller's side.
+    const inner = screen.getByRole("button", { name: "Switch pane" }).parentElement!;
+    expect(inner.className).toMatch(/(?:^|\s)flex-row-reverse(?=\s|$)/);
+    expect(inner.firstElementChild!.className).toMatch(/(?:^|\s)ml-0\.5(?=\s|$)/);
+  });
+
+  it("keeps the trailing spacer last (the LEFT end of a right-to-left row) and gutters the right edge", () => {
+    rows("left");
+    expect(scroller().lastElementChild!.getAttribute("aria-hidden")).toBe("true");
+    expect(scroller().className).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+    expect(scroller().className).not.toMatch(/(?:^|\s)pl-3(?=\s|$)/);
+  });
+
+  it("mirrors the pinned pills' hit-box reach: 7px out at the block's ends, 3px toward a neighbour", () => {
+    rows("left");
+    const reach = (name: string) => {
+      const cls = screen.getByRole("button", { name }).className;
+      return [cls.match(/before:-left-\[(\d+)px\]/)?.[1], cls.match(/before:-right-\[(\d+)px\]/)?.[1]];
+    };
+    // Right to left on screen: Switch (outer, left edge), Changes, then the X on the inner side.
+    expect(reach("Switch pane")).toEqual(["7", "3"]);
+    expect(reach("Changes")).toEqual(["3", "3"]);
+    expect(reach("Clear message")).toEqual(["3", "7"]);
+  });
+
+  it("moves the muted harness section's hairline to the edge its mark stands on", () => {
+    render(<ActionsRow general={[general()]} agent="codex" onRun={took} hand="left" />);
+    const section = document.querySelector<HTMLElement>('[data-slot="harness-bar"]')!;
+    expect(section.className).toMatch(/(?:^|\s)border-r-border(?=\s|$)/);
+    expect(section.className).not.toMatch(/(?:^|\s)border-l-border(?=\s|$)/);
+  });
+
+  it("with nothing pinned keeps both gutters on a left-hand scroller", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} hand="left" />);
+    expect(scroller().className).toMatch(/(?:^|\s)pl-3(?=\s|$)/);
+    expect(scroller().className).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+  });
+});

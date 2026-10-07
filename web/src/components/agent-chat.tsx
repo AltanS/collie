@@ -18,7 +18,7 @@ import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useAgentStart } from "@/hooks/use-agent-start";
 import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
-import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { handOf, mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
 import { useChatReady } from "@/hooks/use-chat-ready";
 import { usePaneStart } from "@/hooks/use-pane-start";
@@ -2620,6 +2620,8 @@ export function AgentChat({
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}
                   prefs={prefs}
+                  // Settings → Hand: which thumb the belt and the reply box are laid out for.
+                  hand={handOf(prefs)}
                   // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
                   // beside the switcher's, for the stacking-context reason the pane-menu note gives.
                   display={{

@@ -3699,3 +3699,65 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
     });
   });
 });
+
+// THE LEFT-HAND COMPOSER (Settings -> Hand). The box runs mirrored in CSS and the DOM keeps the
+// right-hand order, so the tab and reading order are the same for both hands: field, Attach, Send.
+describe("Composer — hand", () => {
+  beforeEach(() => __resetOperatorCommands());
+  afterEach(() => __resetOperatorCommands());
+
+  const box = () => document.querySelector<HTMLElement>('[data-slot="composer-box"]')!;
+  const publishUpload = () =>
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          upload: { maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] },
+        }),
+      ),
+    );
+
+  it("is the right hand by default: the box is not mirrored and the attach panel opens right-aligned", async () => {
+    const user = userEvent.setup();
+    publishUpload();
+    renderComposer();
+    expect(box().className).not.toMatch(/(?:^|\s)flex-row-reverse(?=\s|$)/);
+    expect(document.body.innerHTML).not.toMatch(/direction:(?:rtl|ltr)/);
+    await user.click(await screen.findByRole("button", { name: "Attach file" }));
+    const panel = await screen.findByRole("dialog", { name: "Attach" });
+    expect(panel.className).toMatch(/(?:^|\s)right-0(?=\s|$)/);
+    expect(panel.className).not.toMatch(/(?:^|\s)left-0(?=\s|$)/);
+  });
+
+  it("left: mirrors the box so Send, Attach, then the field read left to right, in the same DOM order", () => {
+    renderComposer();
+    const order = (el: HTMLElement) =>
+      [...el.children]
+        .map((c) => c.getAttribute("aria-label") ?? c.tagName)
+        .filter((n) => ["TEXTAREA", "Attach file", "Send"].includes(n));
+    const right = order(box());
+    cleanup();
+    renderComposer({ hand: "left" });
+    expect(box().className).toMatch(/(?:^|\s)flex-row-reverse(?=\s|$)/);
+    expect(order(box())).toEqual(right);
+    // DOM: field, Attach, Send. Mirrored on screen that is Send, Attach, field.
+    expect(right).toEqual(["TEXTAREA", "Attach file", "Send"]);
+  });
+
+  it("left: opens the attach panel left-aligned, against the side Attach stands on", async () => {
+    const user = userEvent.setup();
+    publishUpload();
+    renderComposer({ hand: "left" });
+    await user.click(await screen.findByRole("button", { name: "Attach file" }));
+    const panel = await screen.findByRole("dialog", { name: "Attach" });
+    expect(panel.className).toMatch(/(?:^|\s)left-0(?=\s|$)/);
+    expect(panel.className).not.toMatch(/(?:^|\s)right-0(?=\s|$)/);
+  });
+
+  it("left: hands the belt the same hand, so it runs right to left with its block at the left", () => {
+    renderComposer({ hand: "left" });
+    const belt = document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(belt.querySelector(".overflow-x-auto")!.className).toContain("[direction:rtl]");
+  });
+});

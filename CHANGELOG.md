@@ -25,6 +25,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **A left-hand layout.** Settings → Appearance → Hand turns the pane screen round for a left thumb.
+  The belt mirrors: the Switch button, Changes and the X stand at its left end, still above Send, and
+  Keys is the rightmost pill with the harness shortcuts scrolling off toward the left. Send and Attach
+  sit left of the reply box. Pills still read icon then word, and the tab order is unchanged. The
+  default is Right, and the right-hand layout is untouched.
 - **Paths the agent prints are links.** A file path in the chat, on an Edit, Write or Read card, or in
   the terminal mirror opens that file in Files, at the line when the path names one (`src/a.ts:42`).
   The phone resolves the path against the pane's repo; a path outside it stays plain text, and only a

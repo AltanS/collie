@@ -5,6 +5,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { AGENT_BRANDS } from "@/components/agent-icon-data";
 import { Button } from "@/components/ui/button";
 import { BELT_ICON, BELT_SECTION, STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
+import type { Hand } from "@/hooks/use-display-prefs";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -101,6 +102,13 @@ export interface HarnessBarProps {
   onRun: (text: string) => Promise<boolean>;
   /** Bound to the composer's `locked`. Greys every button in place. */
   disabled?: boolean;
+  /**
+   * Which thumb the belt is laid out for (components/actions-row.tsx, `Hand`). `"left"` runs the
+   * section right to left: the mark stands at its RIGHT edge with Model, Effort and the rest to its
+   * left, each pill still reading icon then word, and the muted section's hairline moves to the
+   * edge the mark is on. Default `"right"`, the shipped layout, untouched.
+   */
+  hand?: Hand;
 }
 
 /**
@@ -118,7 +126,7 @@ export function useHarnessBarItems(
   return shown ? barFor(agent, mine) : [];
 }
 
-export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
+export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: HarnessBarProps) {
   useLocale();
   const echo = useActionEcho();
   const { pending, confirm, reset } = usePendingConfirm();
@@ -128,6 +136,7 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
   if (items.length === 0) return null;
 
   const accent = accentFor(agent);
+  const left = hand === "left";
 
   function fire(item: HarnessBarItem) {
     if (item.confirm === true && !confirm(item.id)) return; // first tap arms the confirm
@@ -164,7 +173,8 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
       className={cn(
         BELT_SECTION,
         "h-(--belt-band) -my-(--belt-pad)",
-        accent === undefined && "border-l-border bg-muted",
+        accent === undefined && (left ? "border-r-border bg-muted" : "border-l-border bg-muted"),
+        left && "[direction:rtl]",
       )}
       style={
         accent === undefined
@@ -209,6 +219,7 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
                   ? "bg-background border-foreground text-foreground"
                   : "bg-white"),
               !armed && phase === "idle" && "text-foreground",
+              left && "[direction:ltr]",
             )}
             style={
               !armed && phase !== "idle" && accent !== undefined

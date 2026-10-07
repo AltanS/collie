@@ -11,6 +11,7 @@ import { ConnectionInfo } from "@/components/connection-info";
 import { CrewSettingsCard } from "@/components/crew-settings-card";
 import { KeepChatControl } from "@/components/keep-chat-control";
 import { FontSettingsControl } from "@/components/font-settings";
+import { HandControl } from "@/components/hand-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
@@ -79,6 +80,9 @@ export function SettingsAppearanceRoute() {
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
       <HarnessBarControl />
       <BeltSizeControl />
+      {/* Which thumb the belt and the reply box are laid out for. Under the belt's size because both
+          decide how that one belt is drawn. */}
+      <HandControl />
       {/* Which way a pane list runs (ADR 0071). Here rather than in Device because it decides how a
           surface is ARRANGED, which is the same question every card above answers. The pane
           switcher's own toggle writes the same value; this is where you go to find it. */}

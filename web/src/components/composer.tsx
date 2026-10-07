@@ -5,7 +5,7 @@ import { useRevalidator } from "react-router";
 import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
-import type { DisplayPrefs } from "@/hooks/use-display-prefs";
+import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
@@ -179,6 +179,15 @@ interface ComposerProps {
    * the bridge comes back, because the words may answer a screen that has moved on.
    */
   stale?: boolean;
+
+  /**
+   * Which thumb the pane is laid out for (the Settings "Hand" choice). `"right"` (default) is the
+   * shipped layout, unchanged. `"left"` mirrors the two ends a thumb has to reach: the belt turns
+   * round, with its pinned block at the left end above Send and the pills running right to left
+   * from Keys ({@link Hand} in actions-row.tsx), and in the reply box Send and Attach move to the
+   * left of the field, Send on the outer edge, Attach beside the field.
+   */
+  hand?: Hand;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -308,7 +317,7 @@ interface ClearedDraft {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1661,6 +1670,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
           changes={changesPill}
+          hand={hand}
           // The X on the pinned block while the box holds a draft, then Undo in its place until
           // the next act (M40 spec 04). See `clearSlot` for when it shows.
           clear={clearSlot()}
@@ -1792,8 +1802,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
         <div
+          data-slot="composer-box"
           className={cn(
             "relative flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+            // `hand="left"`: the whole row runs mirrored, so Send stands on the box's left edge, then
+            // Attach, then the field. The DOM order is untouched, so the tab and reading order are
+            // too. With chips, `flex-wrap` still stacks the chip strip ABOVE the row.
+            hand === "left" && "flex-row-reverse",
             // Chips take a line of their own ABOVE the row (ADR 0060). `flex-wrap` plus a
             // full-basis strip does that without re-parenting the field, so the textarea is never
             // remounted (and never loses its caret) when the first chip arrives. With no chips the
@@ -1899,6 +1914,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // the field's right side takes no padding of its own, and the box's `gap-1` to attach
               // is what keeps the text off it.
               "min-w-0 flex-1 min-h-9 pl-2 py-1.5",
+              // Mirrored, the field's right side stands against the box's border, so it takes the
+              // inset the left used to take from Attach.
+              hand === "left" && "pr-2",
               // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
               // family the mirror above it renders in, not the app's chrome face. `font-mono` is
               // the mirror's own default; the style below follows the operator's mirror-family
@@ -1975,6 +1993,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             open={picking}
             onClose={() => setPicking(false)}
             label={translate("composer.attach.title")}
+            // Attach stands near the box's LEFT edge under `hand="left"`; the panel follows it.
+            className={hand === "left" ? "right-auto left-0" : undefined}
           >
             <ActionRow
               icon={<Image aria-hidden="true" className="size-4 shrink-0" />}

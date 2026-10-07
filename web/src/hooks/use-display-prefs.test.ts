@@ -5,6 +5,7 @@ import {
   DRAFT_FONT_MIN,
   FONT_STACKS,
   fontStack,
+  handOf,
   inputFocusZoomsPage,
   IOS_NO_ZOOM_FONT_PX,
   mirrorFont,
@@ -311,3 +312,29 @@ describe("useDisplayPrefs — keepChat", () => {
     expect(result.current.prefs.keepChat).toBe("1d");
   });
 });
+
+// ── "Hand" (Settings -> Appearance): which thumb the pane screen is laid out for ──────────────
+describe("useDisplayPrefs — hand", () => {
+  it("reads the right hand by default, and a payload written before the setting existed reads it too", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false }));
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(handOf(result.current.prefs)).toBe("right");
+  });
+
+  it("persists a choice under the display prefs and reads it back on mount", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    act(() => result.current.setHand("left"));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).hand).toBe("left");
+    const { result: reloaded } = renderHook(() => useDisplayPrefs());
+    expect(handOf(reloaded.current.prefs)).toBe("left");
+    act(() => reloaded.current.setHand("right"));
+    expect(handOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe("right");
+  });
+
+  it("reads an unknown stored value as the right hand", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ hand: "both" }));
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(handOf(result.current.prefs)).toBe("right");
+  });
+});
+

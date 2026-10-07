@@ -23,7 +23,7 @@ function pinMetrics(el: HTMLElement, { scrollWidth, clientWidth }: { scrollWidth
   };
 }
 
-function mount(insetRight?: number, cue?: "soft" | "none", edges?: "both" | "left") {
+function mount(insetRight?: number, cue?: "soft" | "none", edges?: "both" | "left" | "right") {
   const { container } = render(
     <OverflowEdges insetRight={insetRight} cue={cue} edges={edges}>
       {(ref) => (
@@ -158,3 +158,50 @@ describe("OverflowEdges", () => {
     });
   });
 });
+
+// A RIGHT-TO-LEFT SCROLLER (the left-hand belt, actions-row.tsx `hand="left"`) rests at its right end
+// with `scrollLeft` 0 and pans into NEGATIVE values. The same rule has to hold in the same words: a
+// side hides something exactly when content is off that side.
+describe("OverflowEdges — a right-to-left scroller", () => {
+  it("reads the rest position as 'content hidden on the left', and the far left as 'on the right'", () => {
+    const { wrapper, scroller } = mount();
+    scroller.style.direction = "rtl";
+    const scrollTo = pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 });
+
+    scrollTo(0);
+    expect(wrapper.dataset.overflow).toBe("left");
+    scrollTo(-300);
+    expect(wrapper.dataset.overflow).toBe("both");
+    scrollTo(-600);
+    expect(wrapper.dataset.overflow).toBe("right");
+  });
+
+  it("says nothing when the row fits", () => {
+    const { wrapper, scroller } = mount();
+    scroller.style.direction = "rtl";
+    pinMetrics(scroller, { scrollWidth: 400, clientWidth: 400 })(0);
+    expect(wrapper.dataset.overflow).toBe("none");
+  });
+
+  it("edges=\"right\" paints the right mask only: nothing at rest, the right fade once panned left", () => {
+    const { wrapper, scroller } = mount(undefined, "none", "right");
+    scroller.style.direction = "rtl";
+    const masked = scroller.parentElement!;
+    const scrollTo = pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 });
+
+    // At rest the left is the hidden side, and the left fade belongs to the caller's pinned block.
+    scrollTo(0);
+    expect(wrapper.dataset.overflow).toBe("left");
+    expect(masked.className).not.toContain("[mask-image");
+
+    scrollTo(-300);
+    expect(wrapper.dataset.overflow).toBe("both");
+    expect(masked.className).toContain("black_calc");
+    expect(masked.className).not.toContain("transparent,black_1.5rem");
+
+    scrollTo(-600);
+    expect(wrapper.dataset.overflow).toBe("right");
+    expect(masked.className).toContain("black_calc");
+  });
+});
+
