@@ -5,6 +5,19 @@
 // next screen's data (`glideForwardWhenReady`, prefetch on `pointerdown`), else a plain slide.
 // Skipped under reduced motion and where `document.startViewTransition` is missing.
 //
+// THE NAVIGATION API IS PART OF "CAN GLIDE" (research note 12). The runtime's `navigate()` uses
+// `navigation.navigate()` and reads `NavigateEvent.sourceElement`; without them it falls back to
+// `location.assign`, and that runs INSIDE the view transition's update callback, which unloads the
+// document mid-transition. So `canGlide()` also asks for `window.navigation` and
+// `NavigateEvent.prototype.sourceElement`. Where either is missing (iOS 26.1 and older, Chrome 123 to
+// 134, Firefox 146 and older) there is no glide, and a link is a plain document load, which the
+// precached shell keeps cheap.
+//
+// THE BROWSER'S OWN BACK ANIMATION. Safari animates its edge swipe itself, and then fires a `navigate`
+// event of type `traverse` with `hasUAVisualTransition` true. A second transition on top of it
+// flickers (Astro met this). So such a traverse skips the glide: a glide in flight is skipped, and none
+// starts for it (`uaAnimates`, `watchUaTraverse`).
+//
 // THE SEAM: probe 5's gated seam (spike/remix/probe5-motion/README.md, Q4). A navigation under
 // `remix/spa` commits in microtasks when its route is instant, so a transition that WAITS for
 // `reloadComplete` inside its update callback captures the new page as the "old" one, misses the event,
@@ -59,6 +72,24 @@ import { holdFrames } from "./store";
 declare global {
   var __collieGlide: boolean | undefined;
 }
+
+/**
+ * The Navigation API the runtime's `navigate()` needs (research note 12): `window.navigation` and
+ * `NavigateEvent.prototype.sourceElement`. Without both it falls back to `location.assign`.
+ */
+export function hasNavigationApi(): boolean {
+  if (!("navigation" in window) || !("NavigateEvent" in globalThis)) return false;
+  return "sourceElement" in NavigateEvent.prototype;
+}
+
+/** The browser already animates this traverse itself (Safari's swipe back). Pure, exported for tests. */
+export function uaAnimates(event: Pick<NavigateEvent, "navigationType"> & { hasUAVisualTransition?: boolean }): boolean {
+  return event.navigationType === "traverse" && event.hasUAVisualTransition === true;
+}
+
+/** Counted where the glide stands down for the browser's own animation (read by e2e/islands.spec.ts). */
+export const glideSkips = { ua: 0 };
+if ("document" in globalThis) Object.assign(globalThis, { __collieGlideSkips: glideSkips });
 
 let enabled: boolean | null = null;
 
@@ -174,8 +205,31 @@ function screenSettled(): Promise<void> {
   return Promise.race([pending.promise, late]).finally(() => clearTimeout(timer));
 }
 
+let watchingUa = false;
+
+/**
+ * A traverse the browser animates itself skips the glide (see the file header). The event fires inside
+ * `go()`, right after `startViewTransition`, so the glide that started it is skipped before its old
+ * snapshot is taken; a traverse with no glide of ours (the edge swipe) only counts.
+ */
+function watchUaTraverse(): void {
+  if (watchingUa || !("navigation" in window)) return;
+  watchingUa = true;
+  window.navigation.addEventListener("navigate", (event) => {
+    if (!uaAnimates(event)) return;
+    glideSkips.ua++;
+    uaTraverse = true;
+    queueMicrotask(() => (uaTraverse = false));
+    if (active !== null) supersede(active);
+  });
+}
+
+/** True for the rest of the task a UA-animated traverse began in: `run` moves instantly then. */
+let uaTraverse = false;
+
 /** The Shell hands over `handle.frames.top`, whose `reloadComplete` ends each navigation. */
 export function bindGlideFrame(top: EventTarget, signal: AbortSignal): void {
+  watchUaTraverse();
   frame = top;
   signal.addEventListener("abort", () => {
     if (frame === top) frame = null;
@@ -187,10 +241,14 @@ export function glideGate(): Promise<void> | null {
   return gate;
 }
 
-/** The glide can run here and now: flag on, frame bound, API present, no reduced motion (rule 10). */
+/**
+ * The glide can run here and now: flag on, frame bound, both APIs present (view transitions and the
+ * Navigation API the runtime navigates with), no reduced motion (rule 10), and not inside a traverse the
+ * browser animates itself.
+ */
 export function canGlide(): boolean {
-  if (!glideEnabled() || frame === null) return false;
-  if (!("startViewTransition" in document)) return false;
+  if (!glideEnabled() || frame === null || uaTraverse) return false;
+  if (!("startViewTransition" in document) || !hasNavigationApi()) return false;
   return !reducedMotion();
 }
 

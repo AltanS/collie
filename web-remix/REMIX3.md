@@ -676,6 +676,13 @@ costs one read (`R/routes/home/open-pane.ts`).
   Chromium; WebKit's old snapshot is right, its morph is unconfirmed by eye. `R/lib/glide.ts` and
   the first middleware in `R/router.tsx` implement it. Name only the parts that morph: named rows
   escape their scroller's clip.
+- `canGlide()` also needs the Navigation API the runtime navigates with: `window.navigation` and
+  `NavigateEvent.prototype.sourceElement` (research note 12). Without them the runtime's `navigate()`
+  calls `location.assign` inside the update callback and unloads the page mid-transition, so there is
+  no glide and a link is a plain document load (`e2e/islands.spec.ts` fakes the missing property).
+- A `navigate` event of type `traverse` with `hasUAVisualTransition` true skips the glide: the
+  browser (Safari's swipe back) already animated it, and a second transition flickers. A glide in
+  flight is skipped at once (`watchUaTraverse` in `R/lib/glide.ts`; `e2e/islands.spec.ts` fakes the flag).
 
 #### One transition at a time
 
