@@ -10,6 +10,7 @@ import { normalizeScope, type Scope } from "@web/lib/scope";
 import type { BridgeConfig, SnapshotResponse } from "@web/lib/types";
 
 import { createStore } from "./store";
+import { configUrl, snapshotUrl } from "./urls";
 
 /** Same header and value as web/src/lib/api.ts: a fronting proxy answers 401 instead of a redirect. */
 const XHR_HEADER = "x-requested-with";
@@ -134,7 +135,7 @@ export interface Fetched<T> {
 
 /** The herd snapshot. `all` widens it to every session on the addressed machine. */
 export async function fetchSnapshot(scope?: Scope, signal?: AbortSignal, all = false): Promise<Fetched<SnapshotResponse>> {
-  const scoped = withScope("/api/snapshot", scope);
+  const scoped = withScope(snapshotUrl(), scope);
   const path = all ? `${scoped}${scoped.includes("?") ? "&" : "?"}sessions=all` : scoped;
   const got = await conditional(path, snapshotCache, path, new Headers(), signal);
   if (got.body.bridge !== "disconnected") lastLiveAt.set(Date.now());
@@ -143,7 +144,7 @@ export async function fetchSnapshot(scope?: Scope, signal?: AbortSignal, all = f
 
 /** The bridge's capability and settings payload. */
 export async function fetchConfig(scope?: Scope, signal?: AbortSignal): Promise<BridgeConfig> {
-  const path = withScope("/api/config", scope);
+  const path = withScope(configUrl(), scope);
   const res = await get(path, new Headers({ "content-type": "application/json" }), signal);
   if (!res.ok) throw await failure(path, res);
   // SAFETY: a 200 on /api/config is the bridge's BridgeConfig by contract; non-ok threw above.

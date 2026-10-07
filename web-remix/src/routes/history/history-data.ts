@@ -7,11 +7,12 @@ import type { PaneHistoryResponse } from "@web/lib/types";
 
 import { bridgeGet } from "../../lib/api";
 import { HISTORY_PAGE_SIZE } from "./window";
+import { paneHistoryUrl } from "../../lib/urls";
 
 export type HistoryUnavailable = "disabled" | "no-session" | "no-log" | "error";
 
 export function historyPath(paneId: string, query: string): string {
-  return `/api/pane/${encodeURIComponent(paneId)}/history?${query}`;
+  return `${paneHistoryUrl(paneId)}?${query}`;
 }
 
 /** One page of the transcript. A throw is a failed read; `available: false` is an ordinary answer. */

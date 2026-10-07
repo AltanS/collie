@@ -14,6 +14,7 @@ import type { MachineHistoryResponse } from "@web/lib/types";
 import { bridgeGet, isAbort } from "../../lib/api";
 import { createStore, type Store } from "../../lib/store";
 import { machines } from "./data";
+import { machineHistoryUrl } from "../../lib/urls";
 
 /** How often an open page re-reads: one point per minute, so faster is waste. */
 export const HISTORY_REFRESH_MS = 60_000;
@@ -65,7 +66,7 @@ async function read(id: string, signal: AbortSignal): Promise<boolean> {
   const since = sinceOf(held);
   const query = since === undefined ? "" : `?since=${String(Math.max(0, Math.floor(since)))}`;
   try {
-    const answer = await bridgeGet<MachineHistoryResponse>(`/api/machines/${encodeURIComponent(id)}/history${query}`, undefined, signal);
+    const answer = await bridgeGet<MachineHistoryResponse>(`${machineHistoryUrl(id)}${query}`, undefined, signal);
     slot.lastAt = Date.now();
     slot.store.set({ history: mergeHistory(held, answer), failed: false });
     return true;

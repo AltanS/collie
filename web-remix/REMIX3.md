@@ -446,6 +446,16 @@ Never call `location.reload()`. The runtime intercepts it into a router re-run i
 which keeps the old entry chunk. Use `reloadDocument()` from `R/update/pwa.ts`, which passes the
 runtime's own marker (`info: "remix-document-reload"`).
 
+### API URLs
+
+The bridge's route map is `shared/routes.ts` (repo root), one file for the bridge router and this
+shell. This shell imports it as `@shared/routes`, and only `R/lib/urls.ts` turns it into URLs.
+Never write `"/api/..."` in a component, loader or store; add a builder to `urls.ts` and a case
+to `urls.test.ts`. A builder returns the same bytes `encodeURIComponent` gave (a dot stays bare),
+and the mount is added later by `mounted()`. Keep `shared/routes.ts` browser-safe: only
+`remix/routes` may come in, never a `bridge/` module. Calls that go through `@web/lib/api` are not
+covered, because web/ spells its own paths.
+
 ## Motion
 
 ### CSS first

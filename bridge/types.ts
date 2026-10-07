@@ -1216,29 +1216,9 @@ export interface MuxConfig {
   topologyLatency?: MuxTopologyLatency;
 }
 
-/**
- * The one path the mark is served from, spelled once.
- *
- * A CONSTANT rather than a literal at each end, because the bridge both routes it and publishes it
- * in {@link MuxConfig.logoUrl}; two spellings of one path is one release away from a broken image.
- * It is deliberately not per-multiplexer — a collie drives exactly one, so the path names the
- * question ("this bridge's mux") and the answer changes with the bridge, never with the URL.
- */
-export const MUX_LOGO_PATH = "/api/mux/logo.svg";
-
-/**
- * Where an operator's own font files are served — one file per request, appended:
- * `/api/fonts/<basename>`.
- *
- * A CONSTANT for the reason {@link MUX_LOGO_PATH} is one, and a PREFIX rather than a whole path
- * because the last segment is the only variable the surface has. It carries a basename the bridge
- * already declared in {@link BridgeConfig.operatorFonts} and nothing else — the client builds the
- * URL, the bridge looks the name up, and no path is built from either (ADR 0033).
- *
- * It lives under `/api/` deliberately: the service worker registers no runtime route there, so
- * these files are never precached and never swept, unlike the shipped faces under `/fonts/`.
- */
-export const OPERATOR_FONTS_PATH = "/api/fonts/";
+// The two paths are spelled once, in `shared/routes.ts`, so the phone shell can import them without
+// this file's Node-only neighbours. Re-exported here, where every bridge importer already reads them.
+export { MUX_LOGO_PATH, OPERATOR_FONTS_PATH } from "../shared/routes.ts";
 
 /**
  * One operator-declared Quick-dock group (a `[[replies]]` row in their `quick-replies.toml`). A

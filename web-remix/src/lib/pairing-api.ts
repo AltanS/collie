@@ -16,6 +16,7 @@ import type { DevicesResponse, PairFailure, PairedDeviceWire } from "@web/lib/ty
 import { ApiError, serverBuild } from "./api";
 import { authHeader, clearNotPaired, markNotPaired, notePairing } from "./pairing";
 import { createStore } from "./store";
+import { devicesRevokeUrl, devicesUrl, pairUrl } from "./urls";
 
 const XHR_HEADER = "x-requested-with";
 const XHR_HEADER_VALUE = "XMLHttpRequest";
@@ -98,7 +99,7 @@ export type PairResult = { ok: true; token: string; label: string } | { ok: fals
 /** Claim the code `bin/collie pair` printed and enrol this device under `label`. */
 export async function pairDevice(code: string, label: string): Promise<PairResult> {
   const res = await request<{ token: string; label: string } | { ok: false; reason: PairFailure }>(
-    "/api/pair",
+    pairUrl(),
     { method: "POST", body: JSON.stringify({ code, label }) },
     recoverPairFailure,
   );
@@ -107,12 +108,12 @@ export async function pairDevice(code: string, label: string): Promise<PairResul
 
 /** The paired-device registry. Read-level, so an unpaired device may ask (and learn it is unpaired). */
 export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
-  return request<DevicesResponse>("/api/devices", signal ? { signal } : {});
+  return request<DevicesResponse>(devicesUrl(), signal ? { signal } : {});
 }
 
 /** Revoke a paired device by label (this device included, which self-unpairs). Write-level. */
 export function revokeDevice(label: string): Promise<DevicesResponse> {
-  return request<DevicesResponse>("/api/devices/revoke", { method: "POST", body: JSON.stringify({ label }) });
+  return request<DevicesResponse>(devicesRevokeUrl(), { method: "POST", body: JSON.stringify({ label }) });
 }
 
 // ── The registry as a store (web/src/lib/loaders.ts `devicesLoader`) ─────────────────────────────

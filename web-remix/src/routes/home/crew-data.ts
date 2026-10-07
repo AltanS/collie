@@ -31,6 +31,7 @@ import { serverBuild } from "../../lib/api";
 import { authHeader } from "../../lib/pairing";
 import type { PollSource } from "../../lib/polling";
 import { createStore, type Store } from "../../lib/store";
+import { crewUrl, machinesUrl } from "../../lib/urls";
 
 /** The minutes each card's sparks span: the Crew tab's half hour (web/ loaders.ts). */
 export const MACHINE_SPARK_MINUTES = 30;
@@ -158,10 +159,10 @@ function reader<T>(key: string, path: string, gapMs: number): Reader<T> {
   };
 }
 
-const crew = reader<CrewStatusResponse>("crew-status", "/api/crew", 0);
+const crew = reader<CrewStatusResponse>("crew-status", crewUrl(), 0);
 const machines = reader<MachinesResponse>(
   "machines-census",
-  `/api/machines?spark=${String(MACHINE_SPARK_MINUTES)}`,
+  `${machinesUrl()}?spark=${String(MACHINE_SPARK_MINUTES)}`,
   MACHINES_GAP_MS,
 );
 

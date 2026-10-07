@@ -193,7 +193,11 @@ export default defineConfig({
     jsx: { runtime: "automatic", importSource: "remix/component" },
   },
   resolve: {
+    // `remix/routes` is imported from here AND from ../shared/routes.ts, which sits under the repo
+    // root's node_modules. One copy in the bundle.
+    dedupe: ["remix"],
     alias: [
+      { find: /^@shared\//, replacement: `${resolve(import.meta.dirname, "../shared")}/` },
       { find: /^@web\//, replacement: `${resolve(WEB, "src")}/` },
       { find: /^@\//, replacement: `${resolve(WEB, "src")}/` },
     ],

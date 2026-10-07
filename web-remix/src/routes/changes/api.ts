@@ -24,6 +24,7 @@ import type {
 import { ApiError, bridgeGet } from "../../lib/api";
 import { markNotPaired, NOT_PAIRED_BODY } from "../../lib/pairing";
 import type { ChangesTarget } from "./target";
+import { paneChangesUrl, paneFilesUrl, workspaceChangesUrl, workspaceFilesUrl } from "../../lib/urls";
 
 /** How far the Changes view looks for repos below the workspace folder (Settings, Changes card). */
 export interface ChangesLookup {
@@ -50,14 +51,14 @@ const NOT_AUTHORISED_BODY = "device not authorised";
 
 export function changesBase(target: ChangesTarget): string {
   return target.kind === "pane"
-    ? `/api/pane/${encodeURIComponent(target.paneId)}/changes`
-    : `/api/workspace/${encodeURIComponent(target.spaceId)}/changes`;
+    ? paneChangesUrl(target.paneId)
+    : workspaceChangesUrl(target.spaceId);
 }
 
 export function filesBase(target: ChangesTarget): string {
   return target.kind === "pane"
-    ? `/api/pane/${encodeURIComponent(target.paneId)}/files`
-    : `/api/workspace/${encodeURIComponent(target.spaceId)}/files`;
+    ? paneFilesUrl(target.paneId)
+    : workspaceFilesUrl(target.spaceId);
 }
 
 /** The query of a list read, a file's diff (`file`) or the commit view (`commit`, with a repo). */

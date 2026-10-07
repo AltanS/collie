@@ -19,7 +19,7 @@
     // `--external`. Bun's bundler honours this map, so the compiled binary and `bunx tsc` agree.
     "paths": { "react-devtools-core": ["./cli/ui/devtools-stub.ts"] }
   },
-  "include": ["bridge", "cli", "scripts/**/*.ts"],
+  "include": ["bridge", "cli", "shared", "scripts/**/*.ts"],
   // The two contract tests that import the phone's `api.ts` are checked by `tsconfig.contract.json`,
   // which knows the web tree's `@/` alias and does not hold its code to this file's stricter index rule.
   "exclude": ["bridge/files-web-contract.test.ts", "bridge/machines-web-contract.test.ts"]

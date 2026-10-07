@@ -7,6 +7,7 @@ import type { UpdateCheckResponse } from "@web/lib/types";
 import { serverBuild } from "../../lib/api";
 import { authHeader } from "../../lib/pairing";
 import { createStore } from "../../lib/store";
+import { updateCheckUrl } from "../../lib/urls";
 
 export interface UpdateCheckState {
   data: UpdateCheckResponse | undefined;
@@ -17,7 +18,7 @@ export const updateCheck = createStore<UpdateCheckState>({ data: undefined, erro
 
 export async function loadUpdateCheck(signal: AbortSignal): Promise<boolean> {
   try {
-    const res = await fetch(mounted("/api/update/check"), {
+    const res = await fetch(mounted(updateCheckUrl()), {
       headers: { "content-type": "application/json", "x-requested-with": "XMLHttpRequest", ...authHeader() },
       redirect: "manual",
       signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),

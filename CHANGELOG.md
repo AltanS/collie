@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The bridge routes its HTTP requests through `remix/router`.** Each route now lives in one typed table, `bridge/http/routes.ts`, with one controller per family and the gates as middleware. Every path, method, status, header and body answers as before, so nothing changes for a phone, a browser or a crew lead.
+- **The route table lives in `shared/routes.ts`.** The bridge router and the Remix phone shell import one typed map, so a renamed path or param stops `typecheck` on both sides. `bridge/http/routes.ts` re-exports it. No request changed.
 
 ## [1.17.0] - 2026-10-06
 

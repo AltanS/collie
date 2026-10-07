@@ -7,6 +7,7 @@ import type { CrewStatusResponse } from "@web/lib/types";
 
 import { ApiError, bridgeGet, isAbort } from "../../lib/api";
 import { createStore } from "../../lib/store";
+import { crewUrl } from "../../lib/urls";
 
 export interface CrewData {
   /** The census, or `null` when this collie leads no crew (404) or nothing has landed. */
@@ -24,7 +25,7 @@ export const crew = createStore<CrewData>(
 
 export async function loadCrew(signal: AbortSignal): Promise<boolean> {
   try {
-    const status = await bridgeGet<CrewStatusResponse>("/api/crew", undefined, signal);
+    const status = await bridgeGet<CrewStatusResponse>(crewUrl(), undefined, signal);
     const changed = JSON.stringify(status) !== JSON.stringify(crew.get().status);
     crew.set({ status: changed ? status : (crew.get().status ?? status), error: false, loaded: true });
     return changed;

@@ -16,6 +16,7 @@ import { asJsonString, type JsonObject } from "@web/lib/json";
 
 import { bridgeSend, fetchConfig } from "../../lib/api";
 import { createStore } from "../../lib/store";
+import { subscribeUrl } from "../../lib/urls";
 
 const PREF_KEY = "collie:push-disabled";
 const ENDPOINT_KEY = "collie:push-endpoint";
@@ -164,7 +165,7 @@ export async function enablePush(): Promise<EnableResult> {
     sub = await pushOperation(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey }));
   }
   const body = subscribeBody(sub.toJSON(), rememberedEndpoint());
-  await bridgeSend<void>("POST", "/api/subscribe", body);
+  await bridgeSend<void>("POST", subscribeUrl(), body);
   // `bridgeSend` throws on any non-2xx, so this runs only after the bridge took the registration.
   rememberEndpoint(asJsonString(body.endpoint) ?? null);
   setUserDisabled(false);

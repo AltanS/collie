@@ -16,6 +16,7 @@ import { BottomSheet } from "../../ui/sheet";
 import { Switch } from "../../ui/switch";
 import { mutate } from "../settings/mutate";
 import { getPushState, pushState } from "../settings/push";
+import { cacheWatchUrl } from "../../lib/urls";
 
 // Port of web/src/components/pane-settings-sheet.tsx and hooks/use-cache-watch.ts: one pane's own
 // settings. Warn me before this pane's prompt cache goes cold (ADR 0042), and Rename (the pane name
@@ -47,7 +48,7 @@ export interface PaneSettingsSheetProps {
   onRename?: (() => void) | undefined;
 }
 
-const cacheWatchPath = (paneId: string): string => `/api/notifications/cache-watch?pane=${encodeURIComponent(paneId)}`;
+const cacheWatchPath = (paneId: string): string => `${cacheWatchUrl()}?pane=${encodeURIComponent(paneId)}`;
 
 export function PaneSettingsSheet(handle: Handle<PaneSettingsSheetProps>) {
   useLocale(handle);

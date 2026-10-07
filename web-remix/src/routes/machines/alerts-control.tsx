@@ -36,6 +36,7 @@ import { Icon } from "../../ui/icon";
 import { OneOf } from "../../ui/one-of";
 import { Segmented } from "../../ui/segmented";
 import { Switch } from "../../ui/switch";
+import { machineAlertsUrl } from "../../lib/urls";
 
 const METRICS = ["cpu", "mem", "disk"] as const satisfies readonly MachineMetric[];
 
@@ -117,7 +118,7 @@ export function MachineAlertsControl(handle: Handle<MachineAlertsControlProps>) 
     try {
       const res = await bridgeSend<{ alerts: MachineAlerts }>(
         "POST",
-        `/api/machines/${encodeURIComponent(handle.props.machineId)}/alerts`,
+        machineAlertsUrl(handle.props.machineId),
         // SAFETY: MachineAlerts is plain JSON (rules of numbers); the cast only widens it to the wire type.
         JSON.parse(JSON.stringify(next)),
         undefined,

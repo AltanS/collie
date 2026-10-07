@@ -25,6 +25,7 @@ import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { loadUpdateCheck, updateCheck } from "./update-check";
 import { SettingsPage } from "./page";
+import { updateCheckRunUrl } from "../../lib/urls";
 
 export const UPDATE_CHECK_SOURCE = { key: "update-check", poll: loadUpdateCheck };
 
@@ -70,7 +71,7 @@ export function UpdatesRoute(handle: Handle) {
     void handle.update();
     const prior = updateCheck.get().data?.checkedAt ?? null;
     try {
-      const result = await bridgeSend<{ checkedAt: number | null }>("POST", "/api/update/check", undefined, undefined, signal);
+      const result = await bridgeSend<{ checkedAt: number | null }>("POST", updateCheckRunUrl(), undefined, undefined, signal);
       if (signal.aborted) return;
       if (result.checkedAt === null || result.checkedAt === prior) failed = true;
       else await loadUpdateCheck(signal);

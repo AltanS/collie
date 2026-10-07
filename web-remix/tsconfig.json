@@ -22,8 +22,10 @@
     "types": ["vite/client", "node"],
     // `@web/*` is how this project reuses web/'s React-free modules, read-only. `@/*` is web/'s own
     // alias: the reused modules import each other through it, so it has to resolve here too. Nothing
-    // under web-remix/src spells `@/`.
+    // under web-remix/src spells `@/`. `@shared/*` is the repo's `shared/`: the bridge's route map,
+    // which the bridge router and `lib/urls.ts` both import (browser-safe by contract).
     "paths": {
+      "@shared/*": ["../shared/*"],
       "@web/*": ["../web/src/*"],
       "@/*": ["../web/src/*"]
     }

@@ -13,6 +13,7 @@ import type { MachinesResponse } from "@web/lib/types";
 
 import { ApiError, bridgeGet, isAbort } from "../../lib/api";
 import { createStore } from "../../lib/store";
+import { machinesUrl } from "../../lib/urls";
 
 /** How many complete minutes the small charts of a card show: the Crew tab's half hour. */
 export const MACHINE_SPARK_MINUTES = 30;
@@ -39,7 +40,7 @@ export function leadFirst<T extends { isLead: boolean }>(rows: readonly T[]): T[
 /** One beat's read. Resolves true when the body changed. */
 export async function loadMachines(signal: AbortSignal): Promise<boolean> {
   try {
-    const fresh = await bridgeGet<MachinesResponse>(`/api/machines?spark=${String(MACHINE_SPARK_MINUTES)}`, undefined, signal);
+    const fresh = await bridgeGet<MachinesResponse>(`${machinesUrl()}?spark=${String(MACHINE_SPARK_MINUTES)}`, undefined, signal);
     const prev = machines.get().census;
     // Every row equal to the last census's row keeps that row's identity, so a tick that brings the
     // same numbers wakes no card (web/lib/loaders.ts `keepCensusIdentity`).

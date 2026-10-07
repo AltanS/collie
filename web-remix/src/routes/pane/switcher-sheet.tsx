@@ -31,6 +31,7 @@ import { AgentIcon } from "../home/agent-icon";
 import { FoldHeader } from "../home/fold-header";
 import { SectionHeader } from "../home/section-header";
 import { StatusCounts, StatusSummaryLine } from "../home/status-counts";
+import { launchersUrl } from "../../lib/urls";
 
 // Port of the pane screen's swipe-up "Switch pane" sheet: web/src/components/agent-sidebar.tsx
 // (`ThreadSidebar`) inside the BottomSheet of agent-chat.tsx, with the peek wired.
@@ -145,7 +146,7 @@ function SwitcherList(handle: Handle<SwitcherListProps>) {
   const loadLaunchers = (scope: Scope | undefined, key: string): void => {
     void (async () => {
       try {
-        const res = await bridgeGet<LaunchersResponse>("/api/launchers", scope, handle.signal);
+        const res = await bridgeGet<LaunchersResponse>(launchersUrl(), scope, handle.signal);
         if (handle.signal.aborted || askedKey !== key) return;
         launchRows = res.launchers;
         launchHome = res.home;
