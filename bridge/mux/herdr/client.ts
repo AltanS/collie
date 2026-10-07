@@ -237,6 +237,13 @@ let idCounter = 0;
 /** Per-request wall-clock budget. Exported so callers can pass it explicitly alongside a dial mode. */
 export const DEFAULT_TIMEOUT_MS = 5000;
 
+/**
+ * The budget of a worktree create or open, per call (ADR 0089). Herdr runs `git worktree add` and
+ * opens a workspace before it answers, and on a large repo that takes far longer than the 5 s every
+ * other call gets. Cut at 5 s, the create still finishes on the host, and the phone is told it failed.
+ */
+export const WORKTREE_TIMEOUT_MS = 60_000;
+
 export class HerdrClient {
   constructor(
     private readonly socketPath: string,
@@ -245,8 +252,12 @@ export class HerdrClient {
     private readonly dialMode: DialMode = "auto",
   ) {}
 
-  /** One request, one reply, one connection. Rejects on error reply, timeout, or early close. */
-  private request<T>(method: string, params: JsonObject = {}): Promise<T> {
+  /**
+   * One request, one reply, one connection. Rejects on error reply, timeout, or early close.
+   *
+   * `timeoutMs` overrides the client's budget for this one call; absent, the constructor's applies.
+   */
+  private request<T>(method: string, params: JsonObject = {}, timeoutMs = this.timeoutMs): Promise<T> {
     const id = `b${++idCounter}`;
     return new Promise<T>((resolve, reject) => {
       let buf = "";
@@ -285,8 +296,8 @@ export class HerdrClient {
         cancelDial = null;
       };
       const timer = setTimeout(
-        () => finish(() => reject(new Error(`herdr ${method}: timed out after ${this.timeoutMs}ms`))),
-        this.timeoutMs,
+        () => finish(() => reject(new Error(`herdr ${method}: timed out after ${timeoutMs}ms`))),
+        timeoutMs,
       );
 
       const dialed = dialHerdr(this.socketPath, {
@@ -555,9 +566,12 @@ export class HerdrClient {
    * taken), so the recovery is to open it, never to create it again.
    */
   async createWorktree(opts: { cwd: string; branch: string }): Promise<CreatedShell> {
+    // No `trust_repository`: that flag grants Git trust for the request (`safe.directory`), and the
+    // operator gives it in Herdr, never from the phone (ADR 0089).
     const r = await this.request<{ workspace: WireWorkspace; root_pane: WirePane }>(
       "worktree.create",
       { cwd: opts.cwd, branch: opts.branch, focus: false },
+      WORKTREE_TIMEOUT_MS,
     );
     const p = r.root_pane;
     return {
@@ -584,7 +598,7 @@ export class HerdrClient {
       workspace: WireWorkspace;
       root_pane: WirePane;
       already_open?: boolean;
-    }>("worktree.open", { cwd: opts.cwd, path: opts.path, focus: false });
+    }>("worktree.open", { cwd: opts.cwd, path: opts.path, focus: false }, WORKTREE_TIMEOUT_MS);
     const p = r.root_pane;
     return {
       shell: {

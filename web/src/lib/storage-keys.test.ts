@@ -65,6 +65,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:hidden-machines:v1", { area: "local", prefix: false, fate: "kept", why: "machine names hidden here" }],
   ["collie:mirror-native:", { area: "local", prefix: true, fate: "kept", why: "a per-pane colour choice" }],
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],
+  ["collie:branch-off-launcher", { area: "local", prefix: false, fate: "kept", why: "preference, a launcher row's command" }],
   ["collie:push-disabled", { area: "local", prefix: false, fate: "kept", why: "the operator's push choice" }],
   // Written BY the wipe, so it outlives it: the cause the pair screen names once, then clears.
   ["collie:wipe-last", { area: "local", prefix: false, fate: "kept", why: "a wipe reason word, no content" }],

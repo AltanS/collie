@@ -1,15 +1,17 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
-import { NewSpaceSheet } from "./new-space-sheet";
+import { NewSpaceSheet, type BranchOffSetup, type WorktreeRepo } from "./new-space-sheet";
+import { createWorktree } from "@/lib/api";
+import { BRANCH_OFF_LAUNCHER_KEY } from "@/lib/branch-off";
 import { CrewProvider } from "./crew-provider";
 import { fixtureServers } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { en } from "@/lib/i18n/messages/en";
 import { clearStatus, useStatus } from "@/lib/status";
 import type { Scope } from "@/lib/scope";
-import type { ServerSummary } from "@/lib/types";
+import type { Launcher, ServerSummary } from "@/lib/types";
 
 // The host picker in the new-space sheet. Two claims, and the first is the important one:
 //
@@ -334,5 +336,179 @@ describe("NewSpaceSheet — folders", () => {
     expect(document.querySelector('[data-probe="status"]')).toBeNull();
     // And the create still works on that machine, exactly as before.
     expect(screen.getByRole("button", { name: /create space/i })).toBeEnabled();
+  });
+});
+
+// "New agent on a branch" (ADR 0089): the same sheet, opened from a pane's ⋯ menu. It opens on the
+// worktree side with the pane's repo chosen, a fresh branch typed and an agent picker, and it holds
+// ONE create per opening however often the button is tapped.
+describe("NewSpaceSheet — New agent on a branch", () => {
+  const CLAUDE: Launcher = { command: "claude", label: "Claude" };
+  const CODEX: Launcher = { command: "codex --full-auto", label: "Codex" };
+  const repos: WorktreeRepo[] = [
+    { workspaceId: "w1", repoRoot: "/src/api", label: "api" },
+    { workspaceId: "w2", repoRoot: "/src/web", label: "web" },
+  ];
+  type OnCreate = BranchOffSetup["onCreate"];
+
+  beforeEach(() => localStorage.removeItem(BRANCH_OFF_LAUNCHER_KEY));
+
+  function mountBranchOff(
+    onCreate: OnCreate,
+    opts: { launchers?: Launcher[]; servers?: ServerSummary[]; onClose?: () => void } = {},
+  ) {
+    const props = (launchers: Launcher[], open = true) => (
+      <CrewProvider servers={opts.servers} ts={1_000} pollMs={3_000}>
+        <NewSpaceSheet
+          open={open}
+          onClose={opts.onClose ?? (() => {})}
+          onCreate={() => {}}
+          repos={repos}
+          branchOff={{ workspaceId: "w2", launchers, onCreate }}
+        />
+      </CrewProvider>
+    );
+    const view = render(props(opts.launchers ?? [CLAUDE, CODEX]));
+    return { ...view, rerenderWith: (launchers: Launcher[], open = true) => view.rerender(props(launchers, open)) };
+  }
+
+  const branchField = () => screen.getByDisplayValue<HTMLInputElement>(/^worktree\//u);
+  const picker = () => screen.getByRole("combobox", { name: "Agent" });
+  const createButton = () => screen.getByRole("button", { name: /^(Create|Creating…)$/u });
+
+  it("opens on the worktree side, on the pane's repo, with a fresh branch typed", () => {
+    mountBranchOff(vi.fn(async () => true), { servers: fixtureServers });
+    expect(screen.getByRole("dialog", { name: "New agent on a branch" })).toBeInTheDocument();
+    // No tab strip and no host row: a branch-off is a worktree, and the pane fixed the machine.
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Repository" })).toHaveValue("w2");
+    expect(branchField().value).toMatch(/^worktree\/[a-z]+-[a-z]+-[0-9a-f]{4}$/u);
+  });
+
+  it("keeps the branch editable", async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn<OnCreate>(async () => true);
+    mountBranchOff(onCreate);
+    await user.clear(branchField());
+    await user.type(screen.getByPlaceholderText("feature/my-change"), "feature/login");
+    await user.click(createButton());
+    expect(onCreate).toHaveBeenCalledWith("w2", "feature/login", expect.anything());
+  });
+
+  it("offers a plain shell and every launcher row, and defaults to the shell", () => {
+    mountBranchOff(vi.fn(async () => true));
+    const options = within(picker()).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["Shell", "Claude", "Codex"]);
+    expect(picker()).toHaveValue("");
+  });
+
+  it("defaults to the agent used last time", () => {
+    localStorage.setItem(BRANCH_OFF_LAUNCHER_KEY, "codex --full-auto");
+    mountBranchOff(vi.fn(async () => true));
+    expect(picker()).toHaveValue("codex --full-auto");
+  });
+
+  it("picks up the remembered agent when the rows land after the sheet opened", () => {
+    localStorage.setItem(BRANCH_OFF_LAUNCHER_KEY, "claude");
+    const { rerenderWith } = mountBranchOff(vi.fn(async () => true), { launchers: [] });
+    expect(picker()).toHaveValue("");
+    rerenderWith([CLAUDE, CODEX]);
+    expect(picker()).toHaveValue("claude");
+  });
+
+  it("remembers the agent it was asked to start", async () => {
+    const user = userEvent.setup();
+    mountBranchOff(vi.fn(async () => true));
+    await user.selectOptions(picker(), "claude");
+    await user.click(createButton());
+    expect(localStorage.getItem(BRANCH_OFF_LAUNCHER_KEY)).toBe("claude");
+  });
+
+  it("sends the branch, a request id and the launcher's command to the bridge", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/workspace/:id/worktree", async ({ request, params }) => {
+        bodies.push({ id: params.id, body: await request.json() });
+        return HttpResponse.json({
+          ok: true,
+          alreadyOpen: false,
+          launcherStarted: true,
+          pane: { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "web-x", tabId: "w9:t1", cwd: "/src/web/x" },
+        });
+      }),
+    );
+    const onCreate: OnCreate = async (workspaceId, branch, extras) =>
+      (await createWorktree(workspaceId, branch, undefined, extras)).ok;
+    mountBranchOff(onCreate);
+    const branch = branchField().value;
+    await user.selectOptions(picker(), "claude");
+    await user.click(createButton());
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({
+      id: "w2",
+      body: {
+        branch,
+        requestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u),
+        launcher: "claude",
+      },
+    });
+  });
+
+  it("sends no launcher for the shell", async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn<OnCreate>(async () => true);
+    mountBranchOff(onCreate);
+    await user.click(createButton());
+    expect(onCreate).toHaveBeenCalledWith("w2", expect.any(String), {
+      requestId: expect.any(String),
+      launcher: undefined,
+    });
+  });
+
+  it("holds one create however often the button is tapped, and shows it is busy", async () => {
+    const user = userEvent.setup();
+    let finish: (moved: boolean) => void = () => {};
+    const onCreate = vi.fn<OnCreate>(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const onClose = vi.fn();
+    mountBranchOff(onCreate, { onClose });
+    const button = createButton();
+    await user.click(button);
+    await user.click(button);
+    fireEvent.click(button);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleName("Creating…");
+    // The sheet stays open while the create runs, and closes once the phone has moved.
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => finish(true));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("a retry after a failed create carries the same request id; a new opening mints a new one", async () => {
+    const user = userEvent.setup();
+    const ids: string[] = [];
+    const onCreate = vi.fn<OnCreate>(async (_w, _b, extras) => {
+      ids.push(extras.requestId);
+      return false;
+    });
+    const { rerenderWith } = mountBranchOff(onCreate);
+    await user.click(createButton());
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    await user.click(createButton());
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+
+    rerenderWith([CLAUDE, CODEX], false);
+    rerenderWith([CLAUDE, CODEX], true);
+    await user.click(createButton());
+    expect(ids).toHaveLength(3);
+    expect(ids[2]).not.toBe(ids[0]);
   });
 });

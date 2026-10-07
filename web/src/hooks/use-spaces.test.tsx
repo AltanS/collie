@@ -5,17 +5,20 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import type { Scope } from "@/lib/scope";
+import { clearStatus, useStatus } from "@/lib/status";
 import { tabCreateKey, useSpaceActions } from "./use-spaces";
 
 // Stub the bridge's create endpoints at the api seam — same idiom launch-strip.test.tsx uses for
 // api.launch. Only the calls this tree can make are declared.
-const { mockCreateTab, mockCreateWorkspace } = vi.hoisted(() => ({
+const { mockCreateTab, mockCreateWorkspace, mockCreateWorktree } = vi.hoisted(() => ({
   mockCreateTab: vi.fn(),
   mockCreateWorkspace: vi.fn(),
+  mockCreateWorktree: vi.fn(),
 }));
 vi.mock("@/lib/api", () => ({
   createTab: mockCreateTab,
   createWorkspace: mockCreateWorkspace,
+  createWorktree: mockCreateWorktree,
 }));
 
 function homeData(): HomeData {
@@ -225,5 +228,75 @@ describe("useSpaceActions — newTab addressed to a scope", () => {
     expect(mockCreateTab).toHaveBeenLastCalledWith("w1", {}, {});
     release();
     await waitFor(() => expect(screen.getByTestId("creating-peer-w1")).toHaveTextContent("false"));
+  });
+});
+
+// "New agent on a branch" (ADR 0089): the create carries the sheet's request id and launcher, and a
+// launcher that failed after the create still lands the phone on the new space, with a status line
+// that says the agent did not start.
+describe("useSpaceActions — branchOff", () => {
+  const REQUEST_ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
+
+  beforeEach(() => {
+    mockCreateWorktree.mockReset();
+    delete document.body.dataset.moved;
+    clearStatus();
+    resetPollIntent();
+  });
+
+  /** The status line, outside the router, so it outlives the step into the new pane. */
+  function StatusProbe() {
+    return <span data-testid="status-probe">{useStatus()?.text ?? ""}</span>;
+  }
+
+  function BranchOffHarness({ launcher }: { launcher?: string }) {
+    const { branchOff } = useSpaceActions();
+    return (
+      <div>
+        <button
+          onClick={() => {
+            void (async () => {
+              const moved = await branchOff("w1", "worktree/x", { requestId: REQUEST_ID, launcher });
+              document.body.dataset.moved = String(moved);
+            })();
+          }}
+        >
+          branch-off
+        </button>
+      </div>
+    );
+  }
+
+  it("hands the request id and the launcher to the create, on the scope it was given", async () => {
+    mockCreateWorktree.mockResolvedValueOnce({ ...pane("w7"), alreadyOpen: false, launcherStarted: true });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<BranchOffHarness launcher="claude" />)} />);
+    await user.click(await screen.findByRole("button", { name: "branch-off" }));
+    await waitFor(() => expect(mockCreateWorktree).toHaveBeenCalledTimes(1));
+    expect(mockCreateWorktree).toHaveBeenCalledWith("w1", "worktree/x", {}, { requestId: REQUEST_ID, launcher: "claude" });
+    await screen.findByText("pane");
+  });
+
+  it("a launcher that did not start still lands on the new space, and says so", async () => {
+    mockCreateWorktree.mockResolvedValueOnce({
+      ...pane("w7"),
+      alreadyOpen: false,
+      launcherStarted: false,
+      launcherError: "pane is gone",
+    });
+    const user = userEvent.setup();
+    const router = makeRouter(<BranchOffHarness launcher="claude" />);
+    render(
+      <>
+        <RouterProvider router={router} />
+        <StatusProbe />
+      </>,
+    );
+    await user.click(await screen.findByRole("button", { name: "branch-off" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w7%3Ap1"));
+    expect(document.body.dataset.moved).toBe("true");
+    expect(screen.getByTestId("status-probe")).toHaveTextContent(
+      "The worktree is ready, but the agent did not start. Start it in the new shell.",
+    );
   });
 });

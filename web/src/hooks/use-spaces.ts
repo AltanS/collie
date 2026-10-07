@@ -178,6 +178,52 @@ export function useSpaceActions() {
     [open, blockedText],
   );
 
+  // "New agent on a branch" (ADR 0089): `newWorktree` plus a request id and, optionally, a launcher
+  // row to start in the new shell. Same write gate and the SAME in-flight flag, because it opens
+  // through the same sheet. `at` is the pane's scope, for the reason `newSpace` takes one: the create
+  // and the step into the new pane must address the same machine and session.
+  //
+  // Answers whether the phone moved to the new space, so the sheet knows to close. On a thrown error
+  // (a timeout on a slow `git worktree add`, a dropped connection) it answers false and the sheet
+  // stays open with the SAME request id, so the operator's second tap replays the first create
+  // rather than making another.
+  //
+  // A launcher that failed after the create is still a success: the worktree is there and the phone
+  // goes to it. The status line then says the agent did not start, so the operator starts it by hand
+  // instead of creating the worktree again.
+  const branchOff = useCallback(
+    async (
+      workspaceId: string,
+      branch: string,
+      extras: { requestId: string; launcher?: string },
+      at?: Scope,
+    ): Promise<boolean> => {
+      if (readOnlyRef.current) {
+        setStatus(blockedText(), "error");
+        return false;
+      }
+      if (creatingSpaceRef.current) return false;
+      creatingSpaceRef.current = true;
+      setCreatingSpace(true);
+      const scope = at ?? scopeRef.current;
+      try {
+        const res = await api.createWorktree(workspaceId, branch, scope, extras);
+        open(res, "space", scope);
+        if (res.ok && extras.launcher !== undefined && !res.launcherStarted) {
+          setStatus(t("branchOff.launcherFailed"), "error");
+        }
+        return res.ok;
+      } catch (e) {
+        setStatus(describeThrownError(e), "error");
+        return false;
+      } finally {
+        creatingSpaceRef.current = false;
+        setCreatingSpace(false);
+      }
+    },
+    [open, blockedText],
+  );
+
   // `alreadyOpen` is an ANSWER, not a refusal — either way the pane below is where to go — so this
   // reads exactly like a create and never branches on it.
   const showWorktree = useCallback(
@@ -228,6 +274,7 @@ export function useSpaceActions() {
     newTab,
     newSpace,
     newWorktree,
+    branchOff,
     showWorktree,
     launch,
     launching,

@@ -43,6 +43,8 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "checked",
   "passed",
   "reason",
+  // A worktree create's id (ADR 0089): a UUID the phone mints, never typed by a person.
+  "requestId",
   "saved",
   "sent",
   "size",

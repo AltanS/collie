@@ -56,6 +56,7 @@ import type {
   UpdateStartResponse,
   UploadResponse,
   WorktreeListResponse,
+  WorktreeCreateResponse,
   WorktreeOpenResponse,
 } from "./types";
 import type { SubscribeBody } from "./push";
@@ -179,6 +180,11 @@ export const POLL_TIMEOUT_MS = 6_000;
 const MUTATION_TIMEOUT_MS = 20_000;
 //   - Uploads carry a whole file over the phone's uplink — the most generous budget.
 const UPLOAD_TIMEOUT_MS = 60_000;
+//   - A worktree create or open waits on `git worktree add`, which Herdr gives 60 s, and a create
+//     may then wait for the new shell and type a launcher into it. 75 s covers both and stays under
+//     the bridge's own 90 s hold on the connection (ADR 0089). A create that outlives it is retried
+//     with the same request id, and the bridge answers from its receipt instead of creating twice.
+export const WORKTREE_TIMEOUT_MS = 75_000;
 
 // ── THE TRANSCRIPTION DEADLINE IS A FUNCTION OF THE CLIP, NOT A CONSTANT ────────────────────────
 //
@@ -1237,15 +1243,37 @@ export function listWorktrees(workspaceId: string, scope?: Scope): Promise<Workt
   );
 }
 
-/** Create a worktree on a new branch and open it as its own space. */
+/**
+ * What a worktree create may carry beyond the branch (ADR 0089). Both are optional, and the
+ * dashboard's sheet sends neither, which is the body the route has always taken.
+ */
+export interface WorktreeCreateExtras {
+  /** One id per intent, minted by the phone. A retry with the same id replays, never re-creates. */
+  requestId?: string;
+  /** A launcher row's `command`, typed into the new shell. Absent is a plain shell. */
+  launcher?: string;
+}
+
+/** The create's wire body: the branch, plus the two extras when the caller has them. */
+interface WorktreeCreateBody {
+  branch: string;
+  requestId?: string;
+  launcher?: string;
+}
+
+/** Create a worktree on a new branch and open it as its own space, optionally starting an agent in it. */
 export function createWorktree(
   workspaceId: string,
   branch: string,
   scope?: Scope,
-): Promise<WorktreeOpenResponse> {
-  return req<WorktreeOpenResponse>(
+  extras: WorktreeCreateExtras = {},
+): Promise<WorktreeCreateResponse> {
+  const body: WorktreeCreateBody = { branch };
+  if (extras.requestId !== undefined) body.requestId = extras.requestId;
+  if (extras.launcher !== undefined) body.launcher = extras.launcher;
+  return req<WorktreeCreateResponse>(
     withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree`, scope),
-    { method: "POST", body: JSON.stringify({ branch }) },
+    { method: "POST", body: JSON.stringify(body), timeoutMs: WORKTREE_TIMEOUT_MS },
   );
 }
 
@@ -1257,7 +1285,7 @@ export function openWorktree(
 ): Promise<WorktreeOpenResponse> {
   return req<WorktreeOpenResponse>(
     withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree/open`, scope),
-    { method: "POST", body: JSON.stringify({ path }) },
+    { method: "POST", body: JSON.stringify({ path }), timeoutMs: WORKTREE_TIMEOUT_MS },
   );
 }
 

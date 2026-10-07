@@ -1089,6 +1089,27 @@ export type WorktreeOpenResponse =
   | { ok: true; pane: CreatedPane; alreadyOpen: boolean }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
+/**
+ * POST /api/workspace/:id/worktree — the new worktree's space, plus what happened to the launcher
+ * (ADR 0089).
+ *
+ * `launcherStarted` is false when no launcher was asked for AND when one was asked for and could not
+ * be typed; `launcherError` says why in the second case. Either way the worktree EXISTS and `pane` is
+ * where it is, so a launcher failure is a 200: the recovery is "open it", never "create it again"
+ * (ADR 0032). `replayed` marks an answer read back from the receipt of an earlier request with the
+ * same `requestId`, so nothing ran this time.
+ */
+export type WorktreeCreateResponse =
+  | {
+      ok: true;
+      pane: CreatedPane;
+      alreadyOpen: false;
+      launcherStarted: boolean;
+      launcherError?: string;
+      replayed?: true;
+    }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+
 
 /**
  * Which role this collie plays in a crew (CREW_PROTOCOL.md §3). `solo` is a lead with zero peers —

@@ -25,6 +25,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **Paths the agent prints are links.** A file path in the chat, on an Edit, Write or Read card, or in
+  the terminal mirror opens that file in Files, at the line when the path names one (`src/a.ts:42`).
+  The phone resolves the path against the pane's repo; a path outside it stays plain text, and only a
+  root-relative path ever reaches the bridge (ADR 0088).
+- **A second agent on a branch.** A pane's menu offers "New agent on a branch": the branch name is
+  prefilled, pick one of your launchers or a shell, and Collie creates a git worktree and starts the
+  session in it beside the first. Each create carries a request id and the bridge keeps a receipt, so
+  a retry after a lost answer never makes two worktrees. Herdr only, on the lead (ADR 0089).
 - **Collie speaks five more languages.** Русский, Italiano, Français, Português (Brazilian wording) and
   Türkçe join the language list in Settings → Appearance, so the interface has twelve. Russian reads
   every count in a form that fits both 2 to 4 and 5 or more.

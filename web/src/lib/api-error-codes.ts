@@ -71,6 +71,7 @@ export const API_ERROR_CODES = [
   "worktree.ambiguous_branch",
   "worktree.branch_required",
   "worktree.not_a_repo",
+  "worktree.invalid_branch",
 
   // Attachment upload — POST /api/pane/:id/upload
   "upload.too_large",

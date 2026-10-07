@@ -28,6 +28,13 @@ import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-ca
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
+import { isValidWorktreeBranch } from "./worktree-branch.ts";
+import {
+  isRequestId,
+  memoryWorktreeReceipts,
+  type WorktreeReceipt,
+  type WorktreeReceiptSurface,
+} from "./worktree-receipts.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
@@ -93,6 +100,7 @@ import type {
   CreateResponse,
   WorktreeListResponse,
   WorktreeOpenResponse,
+  WorktreeCreateResponse,
   DeviceAuth,
   OperatorCommand,
   MuxConfig,
@@ -313,6 +321,12 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
  * route takes a path to a repo, only the checkout path inside one.
  */
 const WORKTREE_LIST_ROUTE = /^\/api\/workspace\/([^/]+)\/worktrees$/;
+/**
+ * How long a worktree create or open may hold its connection open, in seconds (ADR 0089). Above
+ * Herdr's own 60 s worktree budget plus the launcher's wait, so the bridge always answers before the
+ * listener gives up. The phone waits 75 s (web/src/lib/api.ts).
+ */
+const WORKTREE_ROUTE_BUDGET_S = 90;
 const WORKTREE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree(?:\/(open))?$/;
 
 /**
@@ -897,6 +911,15 @@ export function startServer(opts: {
    */
   folders?: FolderSurface;
   /**
+   * One receipt per worktree create the phone tagged with a `requestId` (ADR 0089,
+   * `bridge/worktree-receipts.ts`), so a retried create replays instead of making a second worktree.
+   *
+   * Absent means an in-memory store, which is every caller that builds this server by hand in a test:
+   * replays then work for the life of the process. `bridge/index.ts` passes the file-backed one, which
+   * writes nothing until a create succeeds.
+   */
+  worktreeReceipts?: WorktreeReceiptSurface;
+  /**
    * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
    *
    * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
@@ -922,6 +945,7 @@ export function startServer(opts: {
       ? undefined
       : browserPairingGate(pairing, localCredential, (req) => server.requestIP(req)?.address);
   const folders = opts.folders;
+  const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
   const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -1284,10 +1308,24 @@ export function startServer(opts: {
       const spaceId = decodeURIComponent(worktreeMatch[1]!);
       const action = worktreeMatch[2];
       const device = caller.device();
+      // Bun closes a request that has been idle for 10 s, and a worktree call may wait on Herdr for
+      // WORKTREE_TIMEOUT_MS (60 s) and then on a launcher. Without this the create finishes on the
+      // host and the phone is handed a dropped connection (ADR 0089). Probed on Bun 1.4.1.
+      server.timeout(req, WORKTREE_ROUTE_BUDGET_S);
       if (action === "open") {
         return openWorktree(rt.herdr, rt.engine, spaceId, req, caller.audit, device, rt.name);
       }
-      return createWorktree(rt.herdr, rt.engine, spaceId, req, caller.audit, device, rt.name);
+      return createWorktree(
+        rt.herdr,
+        rt.engine,
+        spaceId,
+        req,
+        caller.audit,
+        device,
+        rt.name,
+        operatorLaunchers,
+        worktreeReceipts,
+      );
     }
 
     // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
@@ -3174,6 +3212,34 @@ export async function awaitPaneReady(
   }
 }
 
+/**
+ * Type a launcher row's command into a pane the multiplexer has just created, and run it.
+ *
+ * The one step `POST /api/launch` and a worktree create with a `launcher` share (ADR 0089), so the
+ * wait and the keys cannot drift between them. The pane is allocated, but its shell may not have
+ * drawn a prompt yet, and typing into that gap is exactly how a launch used to vanish: the command
+ * printed above the greeting, the prompt empty. So it waits for the screen to settle first
+ * ({@link awaitPaneReady}) and sends anyway at the ceiling, because a shell that is merely slow still
+ * runs what it is handed and a swallowed launch is the worse failure.
+ *
+ * `["Enter"]` is literal, NOT `cfg.submitKeys`: `COLLIE_SUBMIT_KEYS` is the agent-dependent submit
+ * sequence for a TUI composer, and this is a bare shell prompt where Enter is the only key that
+ * means "run it". `tag` names the caller in the log line, so a repeat is traceable to one route.
+ */
+export async function typeIntoFreshShell(
+  herdr: GridReader & ReplySender,
+  paneId: string,
+  command: string,
+  wait: PaneReadyOptions = {},
+  tag = "launch",
+): Promise<ReplyOutcome> {
+  const ready = await awaitPaneReady(herdr, paneId, wait);
+  if (!ready.ready) {
+    console.warn(`[${tag}] pane ${paneId} did not settle after ${ready.ms}ms — sending "${command}" anyway`);
+  }
+  return sendReplySteps(herdr, paneId, command, true, ["Enter"], wait.sleep);
+}
+
 export async function replyPane(
   herdr: MuxAdapter,
   cfg: Config,
@@ -3877,7 +3943,60 @@ async function listWorktrees(
   );
 }
 
-async function createWorktree(
+/**
+ * What an earlier create with the same `requestId` answered, rebuilt from its receipt (ADR 0089).
+ *
+ * The label and tab come off the snapshot when the pane is still there; a pane that is gone keeps the
+ * receipt's own facts, and the phone's navigation then finds out the usual way.
+ */
+function replayOf(receipt: WorktreeReceipt, engine: StateEngine): WorktreeCreateResponse {
+  const snap = engine.current();
+  const pane = [...snap.agents, ...snap.shellPanes].find((p) => p.paneId === receipt.paneId);
+  const space = snap.workspaces.find((w) => w.workspaceId === receipt.workspaceId);
+  return {
+    ok: true,
+    alreadyOpen: false,
+    replayed: true,
+    launcherStarted: receipt.launcherStarted,
+    pane: {
+      paneId: receipt.paneId,
+      workspaceId: receipt.workspaceId,
+      workspaceLabel: space?.label ?? receipt.branch,
+      tabId: pane?.tabId ?? "",
+      cwd: receipt.path,
+    },
+  };
+}
+
+/** A create's answer while another request with the same id is still running it: the same answer. */
+async function joined(running: Promise<WorktreeCreateResponse>): Promise<WorktreeCreateResponse> {
+  const answer = await running;
+  return answer.ok ? { ...answer, replayed: true } : answer;
+}
+
+/**
+ * `POST /api/workspace/:id/worktree` — a new branch in a new worktree, opened as its own space, and
+ * optionally an agent started in it (ADR 0032, ADR 0089).
+ *
+ * The body is `{ branch, requestId?, launcher? }`:
+ *
+ * - `branch` is checked by {@link isValidWorktreeBranch} before anything else runs: 400 when it
+ *   would read as a flag or Git would refuse it.
+ * - `requestId` is a UUID the phone mints per intent. A known id replays its receipt and runs
+ *   nothing; an id still in flight is joined. Absent is a fresh request with no receipt, which is
+ *   the body the dashboard's sheet has always sent.
+ * - `launcher` names a `launchers.toml` row by its `command`, the same allowlist `/api/launch`
+ *   matches; anything else is a 400 before the multiplexer is touched. After the create, the
+ *   command is typed into the new root pane by {@link typeIntoFreshShell}.
+ *
+ * A launcher that fails after the create still answers 200 with the worktree and its pane, and
+ * `launcherStarted: false`: the worktree exists, so the recovery is "open it", never "create it
+ * again". Nothing is rolled back and nothing is removed.
+ *
+ * Lead-local: the crew does not forward this route, and `trust_repository` is never sent (the
+ * operator trusts a repository in Herdr, not from the phone).
+ */
+export async function createWorktree(
   herdr: MuxAdapter,
   engine: StateEngine,
   spaceId: string,
@@ -3885,6 +4004,10 @@ async function createWorktree(
   audit: AuditLog,
   device: string | null,
   session: string,
+  getLaunchers: () => Promise<Launcher[]>,
+  receipts: WorktreeReceiptSurface,
+  // The clock the launcher's wait runs on, injected so the tests drive it on a fake one.
+  wait: PaneReadyOptions = {},
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   let body: JsonValue;
@@ -3895,63 +4018,142 @@ async function createWorktree(
     return text("bad body", 400);
   }
   const fields = asJsonRecord(body) ?? {};
+
+  // The id first, because a known one answers without any other field being looked at again: the
+  // body that made the receipt was already checked.
+  const rawId = fields.requestId;
+  if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
+  const requestId = rawId;
+  if (requestId !== undefined) {
+    const stored = receipts.get(requestId);
+    if (stored) return json(replayOf(stored, engine), ae);
+    const running = receipts.inflight(requestId);
+    if (running) return json(await joined(running), ae);
+  }
+
   const branch = typeof fields.branch === "string" ? fields.branch.trim() : "";
   if (branch === "") {
     return json(
-      { ok: false, ...apiError("worktree.branch_required", {}) } satisfies WorktreeOpenResponse,
+      { ok: false, ...apiError("worktree.branch_required", {}) } satisfies WorktreeCreateResponse,
       ae,
     );
   }
+  if (!isValidWorktreeBranch(branch)) {
+    return json({ ok: false, ...apiError("worktree.invalid_branch") } satisfies WorktreeCreateResponse, ae, 400);
+  }
+
+  // The client names a row; the bridge supplies the command line. Absent or null is a plain shell.
+  let row: Launcher | undefined;
+  const rawLauncher = fields.launcher;
+  if (rawLauncher !== undefined && rawLauncher !== null) {
+    const command = typeof rawLauncher === "string" ? rawLauncher.trim() : "";
+    row = command === "" ? undefined : (await getLaunchers()).find((r) => r.command === command);
+    if (!row) {
+      return json({ ok: false, ...apiError("launch.not_allowlisted") } satisfies WorktreeCreateResponse, ae, 400);
+    }
+  }
+
   const repoRoot = repoRootOf(engine, spaceId);
   if (repoRoot === null) {
     return json(
       {
         ok: false,
         ...apiError("worktree.not_a_repo", { reason: "this space is not in a Git work tree" }),
-      } satisfies WorktreeOpenResponse,
+      } satisfies WorktreeCreateResponse,
       ae,
     );
   }
+
+  // Checked again with no await between it and `track`, so two requests with one id that both got
+  // past the check above cannot both start a create.
+  if (requestId !== undefined) {
+    const stored = receipts.get(requestId);
+    if (stored) return json(replayOf(stored, engine), ae);
+    const running = receipts.inflight(requestId);
+    if (running) return json(await joined(running), ae);
+  }
+  const work = runWorktreeCreate(herdr, engine, repoRoot, branch, row, requestId, audit, device, session, receipts, wait);
+  if (requestId !== undefined) receipts.track(requestId, work);
+  return json(await work, ae);
+}
+
+/** The half of a create that touches the multiplexer, run at most once per `requestId`. */
+async function runWorktreeCreate(
+  herdr: MuxAdapter,
+  engine: StateEngine,
+  repoRoot: string,
+  branch: string,
+  row: Launcher | undefined,
+  requestId: string | undefined,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+  receipts: WorktreeReceiptSurface,
+  wait: PaneReadyOptions,
+): Promise<WorktreeCreateResponse> {
   const outcome = await herdr.createWorktree({ repoRoot, branch });
   if (!outcome.ok) {
     // The half-done case gets its OWN code, because the recovery is the opposite one: the branch is
     // on disk and only the opening failed, so the phone must offer "open it", never "create it
     // again" (a second create refuses — the path is taken). Probed on herdr 0.8.2, 2026-08-28.
     const halfDone = outcome.detail.includes("worktree_open_failed");
-    return json(
-      {
-        ok: false,
-        ...apiError(
-          halfDone ? "worktree.created_not_opened" : worktreeCode(outcome.detail, "worktree.create_failed"),
-          { reason: outcome.detail },
-        ),
-      } satisfies WorktreeOpenResponse,
-      ae,
-    );
+    return {
+      ok: false,
+      ...apiError(
+        halfDone ? "worktree.created_not_opened" : worktreeCode(outcome.detail, "worktree.create_failed"),
+        { reason: outcome.detail },
+      ),
+    };
   }
   const created = outcome.value;
+  let launcherStarted = false;
+  let launcherError: string | undefined;
+  if (row !== undefined) {
+    const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "worktree");
+    launcherStarted = sent.ok;
+    if (!sent.ok) launcherError = sent.error;
+  }
+  // `launcher` redacts under COLLIE_AUDIT_CONTENT=none like `command` on a launch; `requestId` is an
+  // id the phone minted and survives it (audit.ts METADATA_KEYS).
   audit.record({
     action: "worktree.create",
     paneId: created.paneId,
     session,
     device,
-    detail: { branch, repoRoot },
+    detail: {
+      branch,
+      repoRoot,
+      requestId,
+      launcher: row?.command,
+      launcherStarted: row === undefined ? undefined : String(launcherStarted),
+    },
   });
+  if (requestId !== undefined) {
+    await receipts.record({
+      requestId,
+      at: Date.now(),
+      workspaceId: created.spaceId,
+      paneId: created.paneId,
+      path: created.cwd,
+      branch,
+      launcherStarted,
+    });
+  }
   await settleTopology(herdr, engine);
-  return json(
-    {
-      ok: true,
-      alreadyOpen: false,
-      pane: {
-        paneId: created.paneId,
-        workspaceId: created.spaceId,
-        workspaceLabel: created.spaceLabel,
-        tabId: created.tabId,
-        cwd: created.cwd,
-      },
-    } satisfies WorktreeOpenResponse,
-    ae,
-  );
+  const answer: WorktreeCreateResponse = {
+    ok: true,
+    alreadyOpen: false,
+    launcherStarted,
+    pane: {
+      paneId: created.paneId,
+      workspaceId: created.spaceId,
+      workspaceLabel: created.spaceLabel,
+      tabId: created.tabId,
+      cwd: created.cwd,
+    },
+  };
+  if (launcherError !== undefined) answer.launcherError = launcherError;
+  return answer;
 }
 
 async function openWorktree(
@@ -4275,11 +4477,8 @@ export async function cacheRulesRoute(
 // the whole security story of the route, and why `command` is an identity and not a free-text
 // argument. `createSpace`/`createTab` allocates the pane (a multiplexer deletes a tab whose last
 // pane closes and a space whose last tab closes, so a self-closing pane leaves nothing behind);
-// `awaitPaneReady` waits for that pane's shell to finish drawing; `sendReplySteps` then types the
-// line and sends Enter into it.
-// `["Enter"]` is literal here, NOT `cfg.submitKeys`: `COLLIE_SUBMIT_KEYS` is the agent-dependent
-// submit sequence for a TUI composer; this is a bare shell prompt where Enter is the only key that
-// means "run it".
+// `typeIntoFreshShell` then waits for that pane's shell to finish drawing and types the line and
+// Enter into it, the same step a worktree create with a launcher takes (ADR 0089).
 export async function launch(
   herdr: MuxAdapter,
   engine: StateEngine,
@@ -4346,19 +4545,7 @@ export async function launch(
     );
   }
   const created = outcome.value;
-  // The pane is allocated; its shell may not have drawn a prompt yet. Typing into that gap is
-  // exactly how a launch used to vanish — the command printed above the greeting, the prompt empty.
-  const ready = await awaitPaneReady(herdr, created.paneId, wait);
-  if (!ready.ready) {
-    // Send anyway: a shell that is merely slow still runs what it is handed, and a swallowed launch
-    // is the worse failure. The line names the pane so a repeat is traceable to one launcher.
-    console.warn(
-      `[launch] pane ${created.paneId} did not settle after ${ready.ms}ms — sending "${row.command}" anyway`,
-    );
-  }
-  // COLLIE_SUBMIT_KEYS is the agent-dependent submit sequence for a TUI composer; this is a bare
-  // shell prompt where Enter is the only key that means "run it".
-  const sent = await sendReplySteps(herdr, created.paneId, row.command, true, ["Enter"], wait.sleep);
+  const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "launch");
   if (!sent.ok) {
     // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
     // an empty shell nobody asked for. The rollback's own failure is swallowed because the original

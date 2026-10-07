@@ -12,6 +12,7 @@ import { computeEtag } from "./http-cache.ts";
 import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
+import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
 import { loadMachineHistory, saveMachineHistory } from "./machine-history.ts";
 import { machineRosterOf, MachineWatch, SOLO_MACHINE_ID } from "./machines.ts";
@@ -972,6 +973,11 @@ const STATE_DIR_ENTRIES = [
   "update.json",
   "update.lock",
   "uploads",
+  // One receipt per worktree create the phone tagged with a request id (ADR 0089), so a retried
+  // create replays instead of making a second worktree. Written by use and by nothing else: absent
+  // until the first create that carries an id succeeds. Driven in "the worktree receipts appear only
+  // on use".
+  "worktree-receipts.json",
 ];
 
 /**
@@ -1099,6 +1105,30 @@ describe("solo zero-tax — the filesystem", () => {
       await folders.recordRecent("/home/op/proj");
       expect(await readdir(stateDir)).toEqual(["folders.json"]);
       expect(STATE_DIR_ENTRIES).toContain("folders.json");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  // The same shape for the worktree receipts (ADR 0089): loading writes nothing, a create with a
+  // request id writes the one file.
+  test("the worktree receipts appear only on use: a create that carries a request id", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const receipts = new WorktreeReceiptStore(stateDir);
+      await receipts.load();
+      expect(await readdir(stateDir)).toEqual([]);
+      await receipts.record({
+        requestId: "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c",
+        at: 1,
+        workspaceId: "w2",
+        paneId: "w2:p1",
+        path: "/home/op/repo/.worktrees/x",
+        branch: "worktree/x",
+        launcherStarted: false,
+      });
+      expect(await readdir(stateDir)).toEqual(["worktree-receipts.json"]);
+      expect(STATE_DIR_ENTRIES).toContain("worktree-receipts.json");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

@@ -120,6 +120,11 @@ export const ERROR_CODES = {
   "worktree.branch_required": "branch required",
   /** This space is not in a Git work tree, so it has no worktrees to show. */
   "worktree.not_a_repo": "{reason}",
+  /**
+   * The branch name would read as a flag or is one Git refuses (`bridge/worktree-branch.ts`). Checked
+   * before the multiplexer is touched, so nothing was created (ADR 0089).
+   */
+  "worktree.invalid_branch": "invalid branch",
 
   // ── Attachment upload: POST /api/pane/:id/upload → UploadResponse ──────────────────
   /**

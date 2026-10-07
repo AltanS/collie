@@ -90,6 +90,9 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
+import { branchOffRepos } from "@/lib/branch-off";
+import { useOptionalRootData } from "@/lib/route-data";
+import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
@@ -251,7 +254,7 @@ export function AgentChat({
   // current while we're reconnecting/lost, and restores instantly on recovery. Both marks dim
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
-  const { newTab, launch, launching, creatingTab } = useSpaceActions();
+  const { newTab, newSpace, launch, launching, creatingTab, branchOff } = useSpaceActions();
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
@@ -278,6 +281,15 @@ export function AgentChat({
   );
 
   const { launchers, home: launchersHome } = useLaunchers(scope);
+  // "New agent on a branch" (ADR 0089): the repo this pane sits in, read off the root snapshot's
+  // spaces. Null for a pane outside a Git repo, which is what keeps the ⋯ row away from it. The
+  // other two gates (the capability, the lead scope) are the actions sheet's own.
+  const rootSpaces = useOptionalRootData()?.workspaces;
+  const branchOffTarget = useMemo(
+    () => (agent === undefined || rootSpaces === undefined ? null : branchOffRepos(rootSpaces, agent.workspaceId)),
+    [agent, rootSpaces],
+  );
+  const [branchOffOpen, setBranchOffOpen] = useState(false);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, stepChatFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
     useDisplayPrefs();
@@ -2738,7 +2750,25 @@ export function AgentChat({
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}
+          onBranchOff={branchOffTarget === null ? undefined : () => setBranchOffOpen(true)}
         />
+        {/* "New agent on a branch" (ADR 0089): the new-space sheet in worktree mode, on this pane's
+            repo, with a branch name typed and an agent picker. `onCreate` is the plain space create
+            the sheet's type requires; a branch-off sheet never shows that side. */}
+        {branchOffTarget !== null && (
+          <NewSpaceSheet
+            open={branchOffOpen}
+            onClose={() => setBranchOffOpen(false)}
+            onCreate={newSpace}
+            repos={branchOffTarget.repos}
+            scope={scope}
+            branchOff={{
+              workspaceId: branchOffTarget.selected,
+              launchers,
+              onCreate: (workspaceId, branch, extras) => branchOff(workspaceId, branch, extras, scope),
+            }}
+          />
+        )}
         {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to
             the PANE's machine, because `?host=` there names where the pane lives; the preference itself
             lands on the collie this phone is talking to, which is the only one that can push. */}

@@ -5,7 +5,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "@/test/setup";
 import { clearStatus, useStatus } from "@/lib/status";
 import { currentPins, pinMatcher, setPinned } from "@/lib/pins";
-import type { AgentView, ServerSummary } from "@/lib/types";
+import { __resetOperatorCommands } from "@/lib/operator-config";
+import type { AgentView, MuxConfig, ServerSummary } from "@/lib/types";
 import { CrewProvider } from "./crew-provider";
 import { PaneActionsSheet } from "./pane-actions-sheet";
 
@@ -566,5 +567,69 @@ describe("PaneActionsSheet — which body the pane draws", () => {
     });
     expect(screen.getByRole("button", { name: /Terminal view/ })).toBeInTheDocument();
     expect(screen.getByText("This pane keeps the terminal: no session.")).toBeInTheDocument();
+  });
+});
+
+// "New agent on a branch" (ADR 0089). Three gates: the caller passes `onBranchOff` (only for a pane
+// in a Git repo), the multiplexer declares `createWorktree`, and the scope is the lead.
+describe("PaneActionsSheet — New agent on a branch", () => {
+  afterEach(() => __resetOperatorCommands());
+
+  /** Serve an `/api/config` whose mux block says `createWorktree` is `capable`. */
+  function worktreeCapable(capable: boolean) {
+    const mux: MuxConfig = { name: "reference", capabilities: { createWorktree: capable }, unsupportedKeys: [], notes: {} };
+    server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
+  }
+  const row = () => screen.queryByRole("button", { name: "New agent on a branch" });
+
+  it("is offered on the lead when the multiplexer can create a worktree", async () => {
+    worktreeCapable(true);
+    renderSheet({ onBranchOff: vi.fn() });
+    expect(await screen.findByRole("button", { name: "New agent on a branch" })).toBeInTheDocument();
+  });
+
+  it("is withdrawn when the multiplexer declares no worktrees (tmux, zellij)", async () => {
+    worktreeCapable(false);
+    renderSheet({ onBranchOff: vi.fn() });
+    await waitFor(() => expect(row()).toBeNull());
+    // The other writes are untouched by it.
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+  });
+
+  it("is withdrawn on a crew member's pane: the route is lead-local", async () => {
+    worktreeCapable(true);
+    renderSheet({ onBranchOff: vi.fn(), scope: { host: "laptop" } });
+    await screen.findByRole("button", { name: "Rename" });
+    expect(row()).toBeNull();
+  });
+
+  it("is withdrawn when the caller passes nothing (a pane outside a repo)", async () => {
+    worktreeCapable(true);
+    renderSheet();
+    await screen.findByRole("button", { name: "Rename" });
+    expect(row()).toBeNull();
+  });
+
+  it("is withdrawn on a read-only device, like every write", async () => {
+    worktreeCapable(true);
+    renderSheet({ onBranchOff: vi.fn(), readOnly: true });
+    expect(row()).toBeNull();
+  });
+
+  it("closes the sheet first, then opens the branch-off sheet", async () => {
+    worktreeCapable(true);
+    const user = userEvent.setup();
+    const order: string[] = [];
+    renderSheet({ onClose: () => order.push("close"), onBranchOff: () => order.push("branchOff") });
+    await user.click(await screen.findByRole("button", { name: "New agent on a branch" }));
+    expect(order).toEqual(["close", "branchOff"]);
+  });
+
+  it("sits above Close pane, so the destructive row stays last", async () => {
+    worktreeCapable(true);
+    renderSheet({ onBranchOff: vi.fn() });
+    const branch = await screen.findByRole("button", { name: "New agent on a branch" });
+    const close = screen.getByRole("button", { name: "Close pane" });
+    expect(branch.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
