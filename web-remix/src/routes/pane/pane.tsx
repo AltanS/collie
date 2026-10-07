@@ -30,7 +30,7 @@
 //
 // LEAVING. A pane that is gone from a healthy snapshot taken after this screen opened says "Pane
 // closed" once and goes up (ADR 0067); a pane that never showed up waits for that same proof.
-import { on, type Handle } from "remix/component";
+import { Frame, on, type Handle } from "remix/component";
 import { KeyRound, Lock, Minimize2, TriangleAlert, WifiOff } from "lucide";
 
 import { mirrorFont } from "@web/hooks/use-display-prefs";
@@ -59,7 +59,7 @@ import { useLocale } from "../../lib/i18n-store";
 import { loadDraft } from "../../lib/drafts";
 import { clearNotPaired, markNotPaired, pairing } from "../../lib/pairing";
 import { focus, kick, want } from "../../lib/polling";
-import { buzz, dashPrefs, displayPrefs, setDashPref, stripsCollapsed, zen as zenPref } from "../../lib/prefs";
+import { buzz, dashPrefs, displayPrefs, paneFrames, setDashPref, stripsCollapsed, zen as zenPref } from "../../lib/prefs";
 import { countRender } from "../../lib/render-count";
 import { setStatus } from "../../lib/status";
 import { onServer } from "../../lib/server-render";
@@ -82,6 +82,8 @@ import { findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, pollPane, writeG
 import { CardDock, type CardActions } from "./dialog-card";
 import { answerMultiSelect, answerPreview, answerWizard } from "./dialogs/actions";
 import { FindBar } from "./find-bar";
+import { SCREEN_FRAME, STATUS_FRAME, type PaneFrameName } from "./frames";
+import { bindPaneFrames, framesActive, framesLatched, paneFrameSrc, pollPaneFrames } from "./pane-frames";
 import { createLatestReply, LatestReplyCard } from "./latest-reply";
 import { parseAgent, parseScreen } from "./parse";
 import { PaneIdentity } from "./identity";
@@ -112,8 +114,30 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   /** The mirror window: 600 rows, grown by Load older up to 1000 (web/src/lib/loaders.ts). */
   let lines = PANE_LINES;
   let olderLoading = false;
-  want({ key: `pane-screen:${key}`, poll: (signal) => pollPane(key, paneId, scope, signal, lines) }, handle.signal);
+  // THE HOW OF THE MIRROR READ (S2). The beat (lib/polling.ts) decides when; with the frames switch
+  // on, the read is the pane's two server frames and the read in one answer (pane-frames.ts), else
+  // web's JSON `fetchPane`. The parse's agent is read when the beat fires (the first beat runs before
+  // the first render), from the same snapshot and pref the render reads; the frames on screen come
+  // from the last render.
+  const agentNow = (): string | undefined => parseAgent(findPane(snapshot.get().data, paneId)?.agent, displayPrefs.get().rawTerminal);
+  let frameAgent = agentNow();
+  let frameTargets: readonly PaneFrameName[] = [SCREEN_FRAME, STATUS_FRAME];
+  const readMirror = (signal: AbortSignal, window: number): Promise<boolean> => {
+    if (!framesActive()) return pollPane(key, paneId, scope, signal, window);
+    frameAgent = agentNow();
+    return pollPaneFrames({ key, paneId, scope, lines: window, agent: frameAgent, targets: frameTargets }, signal);
+  };
+  want({ key: `pane-screen:${key}`, poll: (signal) => readMirror(signal, lines) }, handle.signal);
   focus.set({ paneId, following: true });
+  if (!onServer()) {
+    bindPaneFrames(
+      {
+        frame: (name) => handle.frames.get(name),
+        src: () => paneFrameSrc(paneId, scope, lines, frameAgent),
+      },
+      handle.signal,
+    );
+  }
 
   // Every write here goes through web's api.ts, which reads each answer into WEB's pairing latch.
   // Each move of that latch is carried into this shell's own (lib/pairing.ts).
@@ -136,6 +160,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const readZenAvailable = useStore(handle, zenPref);
   const find = createFind();
   const readFind = useStore(handle, find.state);
+  const readFramesOn = useStore(handle, paneFrames);
+  const readLatched = useStore(handle, framesLatched);
   const gate = createGate(() => scheduleUpdate(handle), handle.signal);
   /** The `answered` count the gate last read: a reply wakes this screen only when it settles the gate. */
   let gateAnswered = chatCounters.replies.get();
@@ -291,7 +317,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     lines = Math.min(lines + PANE_LINES_STEP, PANE_LINES_MAX);
     olderLoading = true;
     wake();
-    void pollPane(key, paneId, scope, new AbortController().signal, lines).finally(() => {
+    void readMirror(new AbortController().signal, lines).finally(() => {
       olderLoading = false;
       wake();
     });
@@ -396,7 +422,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     const override = paneMirrorOverride(scope, paneId);
     const native = rendersNativeMirror(pane?.agent, override);
     const text = read.data?.text ?? "";
-    const parsed = parseScreen(text, parseAgent(pane?.agent, rawMirror));
+    frameAgent = parseAgent(pane?.agent, rawMirror);
+    const parsed = parseScreen(text, frameAgent);
     if (parsed.blocks !== lastBlocks) {
       lastBlocks = parsed.blocks;
       card = parsed.card;
@@ -602,6 +629,10 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     const hostHealth = hostHealthOf(crewOf(data), pane?.host ?? scope.host);
     const hostStale = hostStaleSpeaks(hostHealth);
     const body = chatShown ? "chat" : "terminal";
+    // The server frames (S2): the Terminal's rows and the statusline's rows, while the switch is on.
+    frameTargets = chatShown ? [STATUS_FRAME] : [SCREEN_FRAME, STATUS_FRAME];
+    const framesOn = readFramesOn() && !readLatched();
+    const frameSrc = framesOn ? paneFrameSrc(paneId, scope, lines, frameAgent) : undefined;
 
     return (
       <main class="flex min-h-0 flex-1 flex-col" data-testid="pane-view" data-tab={body} data-body={reading.body} data-zen={zenOn ? "" : undefined}>
@@ -674,6 +705,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               faceClass={face.className}
               faceFamily={face.style?.fontFamily}
               find={find}
+              frameSrc={frameSrc}
               top={top}
               notes={notes}
               tailRev={tailRev}
@@ -690,7 +722,15 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
         <Collapse open={!zenOn}>
           <div class="relative shrink-0" data-slot="bottom-region">
           <Collapse open={!vp.keyboard && statusLines.length > 0}>
-            {statusLines.length > 0 ? <StatusStrip rows={statusLines} native={rendersNativeMirror(pane?.agent)} faceClass={face.className} faceFamily={face.style?.fontFamily} /> : null}
+            {statusLines.length > 0 ? (
+              <StatusStrip
+                rows={statusLines}
+                frame={frameSrc === undefined ? undefined : <Frame name={STATUS_FRAME} src={frameSrc} />}
+                native={rendersNativeMirror(pane?.agent)}
+                faceClass={face.className}
+                faceFamily={face.style?.fontFamily}
+              />
+            ) : null}
           </Collapse>
           <Collapse open={!vp.keyboard && agentsFooter.length > 0}>
             {agentsFooter.length > 0 ? <AgentsFooter rows={agentsFooter} faceClass={face.className} faceFamily={face.style?.fontFamily} /> : null}

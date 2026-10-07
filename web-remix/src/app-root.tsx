@@ -17,7 +17,7 @@ import { clientEntry, type Handle, type RemixNode } from "remix/component";
 import { createMultiMatcher } from "remix/route-pattern/match";
 
 import { paneScopeKey } from "@web/lib/scope";
-import type { BridgeConfig, SnapshotResponse } from "@web/lib/types";
+import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
 import { address } from "./lib/data";
 import { HomeRoute } from "./routes/home/home";
@@ -38,6 +38,11 @@ export interface AppRootProps {
   snapshotAt: number;
   /** The `/api/config` body. */
   config: BridgeConfig;
+  /**
+   * A pane document's pane read and its ETag (S2): the frames are drawn from it, and the browser primes
+   * the pane's store and the frames' ETag from it, so the first beat answers 304 when nothing moved.
+   */
+  pane?: { read: PaneReadResponse; etag: string | null; frames: boolean };
 }
 
 /** The routes a server document exists for. Every other path gets the static shell. */

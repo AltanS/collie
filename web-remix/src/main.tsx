@@ -21,11 +21,16 @@ import { basePath } from "@web/lib/base-path";
 
 import { APP_ROOT_ENTRY, AppRoot, type AppRootProps } from "./app-root";
 import { startAppRuntime } from "./lib/app-runtime";
-import { config, noteAddress, snapshot, snapshotAt } from "./lib/data";
+import { address, config, noteAddress, paneStore, snapshot, snapshotAt } from "./lib/data";
+import { PANE_LINES, findPane } from "./routes/pane/data";
+import { primePaneFrames, paneFrameSrc } from "./routes/pane/pane-frames";
+import { parseAgent } from "./routes/pane/parse";
+import { matchAppRoute } from "./app-root";
+import { paneScopeKey } from "@web/lib/scope";
 import { startIdleLock } from "./lib/idle";
 import { quietCurrentEntry } from "./lib/navigate";
 import { installPolyfills } from "./lib/polyfills";
-import { startPrefCookie, startPrefSync } from "./lib/prefs";
+import { applyFramesParam, displayPrefs, paneFrames, startPrefCookie, startPrefSync } from "./lib/prefs";
 import { startPolling } from "./lib/polling";
 import { mountedRouter } from "./router";
 import { startUpdates } from "./update/boot";
@@ -69,7 +74,22 @@ function prime(props: AppRootProps): void {
   config.set({ data: props.config, error: undefined, status: undefined });
   // The snapshot is a live answer from the bridge, as a poll's would be.
   if (props.snapshot.bridge !== "disconnected") markLive();
+  // A pane document drew its frames from this read (S2): the pane's store and the frames' ETag start
+  // from it, with the src the pane route will draw.
+  const route = matchAppRoute(new URL(props.path, window.location.origin));
+  if (route?.kind === "pane" && props.pane !== undefined) {
+    // Hydrate in the mode the document was drawn in (a first visit has no prefs cookie yet), for this
+    // page only: `prime` leaves the stored switch alone.
+    paneFrames.prime(props.pane.frames ? "1" : "0");
+    const { scope } = address.get();
+    paneStore(paneScopeKey(scope, route.paneId)).set({ data: props.pane.read, error: undefined, status: undefined });
+    const agent = parseAgent(findPane(props.snapshot, route.paneId)?.agent, displayPrefs.get().rawTerminal);
+    primePaneFrames(paneFrameSrc(route.paneId, scope, PANE_LINES, agent), route.paneId, scope, props.pane.etag, props.pane.read);
+  }
 }
+
+// `?frames=0|1` sets the pane frames switch for this device before anything renders (lib/prefs.ts).
+applyFramesParam(new URL(window.location.href), false);
 
 const fromServer = serverProps();
 if (fromServer !== null) prime(fromServer);

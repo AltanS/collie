@@ -194,6 +194,29 @@ export const stripsCollapsed = persisted(PREF_KEYS.stripsCollapsed, flag(false))
 /** web/src/lib/harness-bar-pref.ts: on by default. */
 export const harnessBar = persisted(PREF_KEYS.harnessBar, flag(true));
 
+/**
+ * The pane's server frames (S2, routes/pane/frames.ts): on, the open pane's beat reloads two server
+ * frames instead of reading `/api/pane/:id` as JSON; off, the shell draws every row itself, as before
+ * S2. A device switch, carried to the bridge in the prefs cookie so a server document draws the same
+ * mode; `?frames=0` or `?frames=1` on a page load sets it (`applyFramesParam`). The default is the
+ * measured verdict (experiments/remix-v3/COMPARE.md, round 8).
+ */
+export const PANE_FRAMES_DEFAULT = true;
+/** This shell's own key: web/ has no frames, so it is not in `PREF_KEYS` (the keys web/ uses). */
+export const PANE_FRAMES_KEY = "collie:pane-frames:v1";
+export const paneFrames = persisted(PANE_FRAMES_KEY, flag(PANE_FRAMES_DEFAULT));
+
+/**
+ * `?frames=0|1` on the page's URL sets the switch: stored in the browser, primed for one render on the
+ * server (which has no storage), so both sides draw the same mode for that load.
+ */
+export function applyFramesParam(url: URL, onServer: boolean): void {
+  const asked = url.searchParams.get("frames");
+  if (asked !== "0" && asked !== "1") return;
+  if (onServer) paneFrames.prime(asked);
+  else paneFrames.set(asked === "1");
+}
+
 /** Duration of one press tick (web/src/lib/haptics.ts `TICK_MS`). */
 const TICK_MS = 10;
 

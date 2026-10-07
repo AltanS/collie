@@ -491,6 +491,23 @@ export async function fetchPane(
 }
 
 /**
+ * A pane read that reached this page another way than {@link fetchPane}: the Remix shell's pane frames
+ * (web-remix/src/routes/pane/pane-frames.ts) carry the same body and ETag in an HTML answer. Recorded
+ * exactly as `fetchPane` records a 200, so the next `fetchPane` of this pane asks with that ETag and
+ * the dialog guard's baseline (`textBeforeLastSend`) is the text on screen.
+ */
+export function notePaneRead(paneId: string, scope: Scope | undefined, etag: string, response: PaneReadResponse): void {
+  const cacheKey = paneScopeKey(scope, paneId);
+  paneCache.delete(cacheKey);
+  paneCache.set(cacheKey, { etag, response });
+  if (paneCache.size > PANE_CACHE_MAX) {
+    const oldest = paneCache.keys().next().value;
+    if (oldest !== undefined) paneCache.delete(oldest);
+  }
+  remember(lastSeenText, cacheKey, response.text);
+}
+
+/**
  * Fetch a page of the pane's conversation history — the scrollback its terminal can't hold (a Claude
  * pane runs on the alternate screen, which has no scrollback ring). Newest-anchored: no cursor gives
  * the most recent turns; `before` walks backwards from a turn already on screen.

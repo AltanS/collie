@@ -20,6 +20,13 @@
 // binary gets Remix JSX. Bun's runtime does not (it takes the working directory's tsconfig), so
 // `bun run bridge/index.ts` from the repo root loads a renderer whose JSX is React's: the load check
 // below sees that and serves the static shell, with one log line.
+//
+// A PANE DOCUMENT CARRIES ITS PANE (S2). For `/pane/:paneId` the pane is read too, through the pane
+// route's own body (`browserPaneRead`: its gate, its crew forward), with the 600-row window the shell
+// polls, and the shell draws its two frames from that read inline (./frames.ts says what they are).
+// The read sends no `x-collie-seen`: a document GET is a navigation, which a page on another site can
+// start, so it never clears an alert; the shell's first poll marks the pane seen, as before. A read
+// that fails leaves the document as S1 drew it, with the screen's skeleton.
 
 import { join } from "node:path";
 import { mountIndexHtml, buildId, BUILD_HEADER, checkAccess, CSP, WEB_DIR } from "../../server.ts";
@@ -28,6 +35,8 @@ import type { SnapshotResponse } from "../../types.ts";
 import type { BridgeHttp } from "../deps.ts";
 import { secure } from "../middleware/secure.ts";
 import { configFor } from "./config.ts";
+import { FRAME_VARY, type FrameRenderer } from "./frames.ts";
+import { browserPaneRead } from "./pane.ts";
 import { snapshotFor } from "./snapshot.ts";
 
 /** The build stamp the bundle on disk carries (`web/dist/build-info.json`). */
@@ -48,12 +57,16 @@ export interface DocumentInput {
   config: Awaited<ReturnType<typeof configFor>>;
   prefs: string | null;
   now: number;
+  /** A pane document's pane read (S2), and its ETag. */
+  pane?: { read: unknown; etag: string | null };
 }
 
 /** The shell's renderer, as `web-remix/src/ssr/render.tsx` exports it. */
-export interface ShellRenderer {
+export interface ShellRenderer extends FrameRenderer {
   isDocumentRoute(url: URL): boolean;
   snapshotApiPath(url: URL): string;
+  /** The `/api/pane/:id` path a pane document reads (the shell's poll window), or null for another page. */
+  documentPaneReadPath(url: URL): string | null;
   renderAppDocument(indexHtml: string, input: DocumentInput): Promise<string>;
 }
 
@@ -62,6 +75,8 @@ export interface DocumentDeps {
   cfg: Config;
   snapshot(req: Request, apiUrl: URL): SnapshotResponse | Response;
   config(req: Request, apiUrl: URL): Promise<DocumentInput["config"] | Response>;
+  /** The pane route's own GET of `/api/pane/:paneId` (`browserPaneRead`). */
+  paneRead(req: Request, apiUrl: URL, rawPaneId: string): Promise<Response>;
   renderer(): Promise<ShellRenderer | null>;
   /** Where `index.html` is read from. */
   webDir: string;
@@ -98,13 +113,15 @@ function documentResponse(html: string, method: string, acceptEncoding: string |
     "content-type": "text/html; charset=utf-8",
     "content-security-policy": CSP,
     "cache-control": "no-store",
+    // The frames share this URL (./frames.ts): a cache must never hand one for the other.
+    vary: FRAME_VARY,
     [BUILD_HEADER]: build,
   });
   let bytes = new TextEncoder().encode(html);
   if (bytes.byteLength >= GZIP_MIN_BYTES && /\bgzip\b/.test(acceptEncoding ?? "")) {
     bytes = Bun.gzipSync(bytes);
     headers.set("content-encoding", "gzip");
-    headers.set("vary", "accept-encoding");
+    headers.set("vary", `${FRAME_VARY}, Accept-Encoding`);
   }
   headers.set("content-length", String(bytes.byteLength));
   return secure(new Response(method === "HEAD" ? null : bytes, { headers }));
@@ -141,10 +158,11 @@ export async function serveDocument(deps: DocumentDeps, req: Request, url: URL):
   // a spliced body would remove (see the marker in web-remix/index.html).
   if (!built.includes(SHELL_MARKER)) return null;
   const indexHtml = mountIndexHtml(built, deps.cfg.basePath);
+  const pane = await paneFor(deps, renderer, req, url);
   const now = deps.now();
   let html: string;
   try {
-    html = await renderer.renderAppDocument(indexHtml, {
+    const input: DocumentInput = {
       url,
       base: deps.cfg.basePath,
       snapshot,
@@ -152,12 +170,37 @@ export async function serveDocument(deps: DocumentDeps, req: Request, url: URL):
       config,
       prefs: prefsFromCookie(req.headers.get("cookie")),
       now,
-    });
+    };
+    if (pane !== null) input.pane = pane;
+    html = await renderer.renderAppDocument(indexHtml, input);
   } catch (error) {
     console.error("collie: server document failed, static shell served", error);
     return null;
   }
   return documentResponse(html, req.method, req.headers.get("accept-encoding"), await deps.buildId());
+}
+
+/**
+ * The pane a pane document draws, read as the shell's poll reads it (see the file header), or null:
+ * not a pane page, or the read did not answer 200.
+ */
+async function paneFor(deps: DocumentDeps, renderer: ShellRenderer, req: Request, url: URL): Promise<DocumentInput["pane"] | null> {
+  const path = renderer.documentPaneReadPath(url);
+  const raw = /^\/pane\/([^/]+)\/?$/.exec(url.pathname)?.[1];
+  if (path === null || raw === undefined) return null;
+  const apiUrl = new URL(path, url);
+  const headers = new Headers(req.headers);
+  for (const name of ["accept-encoding", "accept", "if-none-match", "x-collie-seen"]) headers.delete(name);
+  try {
+    const res = await deps.paneRead(new Request(apiUrl, { method: "GET", headers, signal: req.signal }), apiUrl, raw);
+    if (res.status !== 200) return null;
+    // SAFETY: a 200 from the pane route is its `PaneReadResponse`; the shell's renderer reads `text`
+    // and `logicalText` from it and nothing else, and a body that does not parse is caught here.
+    const read: unknown = JSON.parse(await res.text());
+    return { read, etag: res.headers.get("etag") };
+  } catch {
+    return null;
+  }
 }
 
 // ── The renderer, loaded once ──────────────────────────────────────────────────────────────────────
@@ -214,6 +257,7 @@ export function documentDeps(deps: BridgeHttp): DocumentDeps {
     cfg: deps.cfg,
     snapshot: (req, apiUrl) => snapshotFor(deps, req, apiUrl),
     config: (req, apiUrl) => configFor(deps, req, apiUrl),
+    paneRead: (req, apiUrl, rawPaneId) => browserPaneRead(deps, req, apiUrl, rawPaneId),
     renderer: () => loadShellRenderer(),
     webDir: WEB_DIR,
     buildId,

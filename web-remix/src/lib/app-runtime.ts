@@ -7,13 +7,18 @@
 // lines with the one change that matters: `loadModule` answers the shell's island registry instead
 // of throwing. Navigation stays in the browser: the top frame and unnamed frames resolve through the
 // local router with the shell's existing `render` middleware and come back as `spaResponse`
-// (08, 2.4); a named frame (none yet, S2) is fetched from the bridge.
+// (08, 2.4). A named frame is fetched from the bridge: the pane's two (S2, `pane-screen` and
+// `pane-status`) through routes/pane/pane-frames.ts, which answers from what the beat already brought,
+// any other through remix/component's default request.
 //
 // The first routed navigation after a server boot replaces the body once (08, 2.4.3): the top frame
 // has no content root yet, so it clears the hydrated island and builds one. The route tree is the
 // same as the island's (app-root.tsx), so the swap draws the same screen.
 import { run, spaResponse, type AppRuntime, type LoadModule, type ResolveFrameOptions } from "remix/component";
 import type { Router } from "remix/spa";
+
+import { isPaneFrameName } from "../routes/pane/frames";
+import { resolvePaneFrame } from "../routes/pane/pane-frames";
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 10;
@@ -96,7 +101,9 @@ export function startAppRuntime(router: Router, loadModule: LoadModule): AppRunt
   return run({
     loadModule,
     async resolveFrame(src, options) {
-      if (options?.target != null) return fetchNamedFrame(src, options.target, options);
+      const target = options?.target;
+      if (isPaneFrameName(target)) return resolvePaneFrame(src, target, options?.signal);
+      if (target != null) return fetchNamedFrame(src, target, options ?? {});
       const { response, redirectedTo } = await followRedirects(router, new URL(src, document.baseURI), {
         method: options?.method,
         body: requestBody(options),

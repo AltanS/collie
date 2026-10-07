@@ -123,6 +123,8 @@ function deps(over: Partial<DocumentDeps> & { snap?: SnapshotResponse } = {}, se
     // SAFETY: the config fields the render reads; the rest are optional in the wire shape or unread.
     config: async () => ({ push: false, vapidPublicKey: "", build: "b1", mode: "solo" }) as DocumentInput["config"],
     renderer: async () => renderer,
+    // No pane read unless a test gives one: the document is drawn as S1 drew it.
+    paneRead: async () => new Response("herdr read failed", { status: 502 }),
     webDir: dir,
     buildId: async () => "build-1",
     now: () => TS,

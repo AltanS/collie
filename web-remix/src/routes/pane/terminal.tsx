@@ -24,7 +24,7 @@
 // LOAD OLDER. A pane with real scrollback grows its requested window (`onOlder`); the reader's place
 // is held by keeping the distance from the bottom across the longer text. A pane with an agent
 // session links to its History instead, because its alternate screen keeps no scrollback.
-import { on, ref, type Handle, type RemixNode } from "remix/component";
+import { Frame, on, ref, type Handle, type RemixNode } from "remix/component";
 import { ArrowDown, ArrowUpToLine, LoaderCircle, ScrollText } from "lucide";
 
 import type { StyledLine } from "@web/lib/blocks";
@@ -41,6 +41,8 @@ import { Button } from "../../ui/button";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { UnseenMark } from "../../ui/unseen-mark";
+import { bindGlideScreenFrame } from "../../lib/glide";
+import { SCREEN_FRAME } from "./frames";
 
 /** The top-of-mirror affordance (agent-chat.tsx): History for a session, Load older for scrollback. */
 export type MirrorTop = { kind: "history"; onOpen: () => void } | { kind: "older"; loading: boolean; onOlder: () => void } | null;
@@ -123,6 +125,12 @@ export interface TerminalViewProps {
   faceClass?: string;
   faceFamily?: string;
   find: Find;
+  /**
+   * The rows come from the `pane-screen` server frame at this src (S2, routes/pane/frames.ts), or the
+   * browser draws them when undefined. While the find bar is open the browser draws them anyway: its
+   * marks are the browser's, and a server row cannot carry them.
+   */
+  frameSrc?: string;
   top: MirrorTop;
   /** Muted lines under the top affordance (no session reported, no log yet, the mux's own note). */
   notes: readonly string[];
@@ -196,7 +204,9 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
 
   return () => {
     countRender("TerminalView");
-    const { lines, loading, blank, lead, hideLeading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText } = handle.props;
+    const { lines, loading, blank, lead, hideLeading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText, frameSrc } = handle.props;
+    // The server frame draws the rows unless the find bar needs the browser's own (see `frameSrc`).
+    const framed = frameSrc !== undefined && !find.state.get().open;
     if (tailRev !== seenTail) {
       seenTail = tailRev;
       following = true;
@@ -204,23 +214,28 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
       anchor = null;
       pinNext = true;
     }
-    if (lines !== lastLines) {
+    // Framed, the rows are the server's: nothing to build here, and `rows` stays as it was.
+    if (!framed && lines !== lastLines) {
       lastLines = lines;
       rows = toRows(lines, rows);
     }
     const olderLoading = top?.kind === "older" && top.loading;
     // A Load older that landed takes the new rows even while scrolled up: the reader asked for them.
-    if (following || shown.length === 0 || (anchor !== null && shown !== rows)) {
+    if (framed) {
+      // The frame is not reloaded while scrolled up (pane-frames.ts, FROZEN): the lines it shows are
+      // the ones last taken while following, which is what the jump button's dot compares against.
+      if (following || shownLines.length === 0 || anchor !== null) shownLines = lines;
+    } else if (following || shown.length === 0 || (anchor !== null && shown !== rows)) {
       shown = rows;
       shownLines = lines;
     }
-    if (anchor !== null && !olderLoading && shown === rows) {
+    if (anchor !== null && !olderLoading && (framed ? shownLines === lines : shown === rows)) {
       const held = anchor;
       handle.queueTask(() => {
         if (anchor === held) anchor = null;
       });
     }
-    const hasNew = !following && shown !== rows;
+    const hasNew = !following && (framed ? shownLines !== lines : shown !== rows);
     // The reply card's rows come off what is SHOWN, frozen or live, so folding the card gives them
     // back at once even while the reader is scrolled up (web hides them off its frozen `display`).
     if (cut === null || cut.rows !== shown || cut.n !== hideLeading) {
@@ -228,16 +243,24 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
     }
     const visibleRows = cut.outRows;
     const visibleLines = cut.outLines;
+    const framedRows = Math.max(0, shownLines.length - hideLeading);
 
-    const hay = haystackOf(visibleLines);
-    if (hay.text !== lastHaystack || logicalText !== lastLogical) {
-      lastHaystack = hay.text;
-      lastLogical = logicalText;
-      links = findLinks(hay.text, logicalText);
+    // Links and find marks are laid over the browser's own rows only; a framed row has its links from
+    // the server (ssr/frames.tsx) and find never runs while framed.
+    let drawn = visibleRows;
+    let found: ReturnType<Find["measure"]> = { matches: [], current: -1 };
+    if (!framed) {
+      const hay = haystackOf(visibleLines);
+      if (hay.text !== lastHaystack || logicalText !== lastLogical) {
+        lastHaystack = hay.text;
+        lastLogical = logicalText;
+        links = findLinks(hay.text, logicalText);
+      }
+      found = find.measure(hay.text);
+      drawn = decorateRows(visibleRows, visibleLines, hay.starts, found.matches, found.current, links);
     }
-    const found = find.measure(hay.text);
-    const drawn = decorateRows(visibleRows, visibleLines, hay.starts, found.matches, found.current, links);
     handle.queueTask(() => {
+      if (framed) bindGlideScreenFrame(handle.frames.get(SCREEN_FRAME), handle.signal);
       pinAfterCommit();
       find.report(found.matches.length, found.current);
       if (found.current >= 0 && found.current !== lastFocus) {
@@ -321,7 +344,24 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
               <p class="py-16 text-center text-sm text-muted-foreground" data-testid="mirror-empty">
                 {t("chat.output.empty")}
               </p>
-            ) : drawn.length > 0 ? (
+            ) : framed && framedRows > 0 ? (
+              // The rows the reply card covers stay in the frame's HTML and are hidden by position: the
+              // frame is the server's, and its rows carry no client state to cut them by.
+              <>
+                {hideLeading > 0 ? <style>{`[data-frame="pane-screen"] > div:nth-child(-n+${String(hideLeading)}){display:none}`}</style> : null}
+                <Screen
+                  rows={drawn}
+                  frame={<Frame name={SCREEN_FRAME} src={frameSrc ?? ""} />}
+                  frameRows={framedRows}
+                  wrap={wrap}
+                  fontSize={fontSize}
+                  native={native}
+                  faceClass={faceClass}
+                  faceFamily={faceFamily}
+                  testId="pane-text"
+                />
+              </>
+            ) : !framed && drawn.length > 0 ? (
               <Screen rows={drawn} wrap={wrap} fontSize={fontSize} native={native} faceClass={faceClass} faceFamily={faceFamily} testId="pane-text" />
             ) : null}
           </div>

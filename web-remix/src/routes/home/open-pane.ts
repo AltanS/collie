@@ -15,6 +15,10 @@
 // (routes/pane/parse.ts: blocks, card, mirror rows, tail reads), in that network task, between the
 // finger going down and the tap. The pane's first render finds the parse in the shared cache and only
 // draws, so the parse (about 35 ms at 4x CPU) leaves the tap's render task.
+//
+// WITH THE PANE FRAMES ON (S2) the prefetch is the frames' own first read (routes/pane/pane-frames.ts
+// `prefetchPaneFrames`): the read and both frames' rows in one answer, held for the screen's first
+// frame, so the rows land in the same task as the route's commit with no second request.
 
 import { fetchPane } from "@web/lib/api";
 import { paneScope } from "@web/lib/hosts";
@@ -28,6 +32,7 @@ import { displayPrefs } from "../../lib/prefs";
 import { glideForwardWhenReady } from "../../lib/glide";
 import { href } from "../../routes";
 import { PANE_LINES } from "../pane/data";
+import { framesActive, prefetchPaneFrames } from "../pane/pane-frames";
 import { parseAgent, warmParse } from "../pane/parse";
 
 /** How long a started read stays on offer to a tap (web/'s PREFETCH_TTL_MS). */
@@ -61,9 +66,12 @@ export function prefetchPane(pane: AgentView): void {
   const now = Date.now();
   if (warming?.key === key && now - warming.at < PREFETCH_TTL_MS) return;
   const agent = parseAgent(pane.agent, displayPrefs.get().rawTerminal);
-  const read = fetchPane(pane.paneId, PANE_LINES, scope, undefined, { seen: false }).then(
+  const fetched = framesActive()
+    ? prefetchPaneFrames(pane.paneId, scope, PANE_LINES, agent)
+    : fetchPane(pane.paneId, PANE_LINES, scope, undefined, { seen: false });
+  const read = fetched.then(
     (body) => {
-      warmParse(body.text, agent);
+      if (body !== undefined) warmParse(body.text, agent);
       return body;
     },
     () => undefined,

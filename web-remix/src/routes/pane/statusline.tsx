@@ -19,7 +19,7 @@
 // "●" is the "main" header, so the folded row shows the agent under it. The extra rows arrive
 // through `Collapse` (REMIX3.md rule 7); web draws them bare. No new UI string: the button's name is
 // the agent row itself, and `aria-expanded` carries the state.
-import { on, type Handle } from "remix/component";
+import { on, type Handle, type RemixNode } from "remix/component";
 import { ChevronDown } from "lucide";
 
 import type { StyledLine } from "@web/lib/blocks";
@@ -53,8 +53,19 @@ function StyledRow(handle: Handle<{ row: StyledLine; class?: string }>) {
   };
 }
 
+/**
+ * The statusline's rows alone: what the strip draws in the browser, and what the bridge renders as the
+ * `pane-status` frame's fragment (routes/pane/frames.ts). Positional, so no key: a status row is a
+ * slot in the pane's tail, re-derived each read, and the HTML diff pairs rows by position.
+ */
+export function StatusRows(handle: Handle<{ rows: readonly StyledLine[] }>) {
+  return () => handle.props.rows.map((row, i) => <StyledRow key={String(i)} row={row} />);
+}
+
 export interface StatusStripProps {
   rows: readonly StyledLine[];
+  /** The rows come from the `pane-status` server frame instead: this `<Frame>` stands in their place. */
+  frame?: RemixNode;
   /** A native-mirror agent (ADR 0047): native ground, no inversion. */
   native: boolean;
   faceClass?: string;
@@ -63,7 +74,7 @@ export interface StatusStripProps {
 
 export function StatusStrip(handle: Handle<StatusStripProps>) {
   return () => {
-    const { rows, native, faceClass, faceFamily } = handle.props;
+    const { rows, frame, native, faceClass, faceFamily } = handle.props;
     return (
       <div
         data-slot="statusline"
@@ -71,9 +82,7 @@ export function StatusStrip(handle: Handle<StatusStripProps>) {
         class={cn("max-h-[18dvh] overflow-y-auto overscroll-contain", BAND, native ? MUSE_MIRROR : MIRROR_SPACE, native ? null : MIRROR_INVERT, faceClass)}
         style={face(faceFamily)}
       >
-        {rows.map((row, i) => (
-          <StyledRow key={String(i)} row={row} />
-        ))}
+        {frame === undefined ? <StatusRows rows={rows} /> : frame}
       </div>
     );
   };

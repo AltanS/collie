@@ -4,15 +4,17 @@
 
 import type { RequestContext } from "remix/router";
 import { createController } from "remix/router";
-import { isReservedAuthPath, reservedAuthPlaceholder, serveStatic, WEB_DIR } from "../../server.ts";
+import { buildId, isReservedAuthPath, reservedAuthPlaceholder, serveStatic, WEB_DIR } from "../../server.ts";
 import type { BridgeHttp } from "../deps.ts";
 import { routes } from "../routes.ts";
-import { documentDeps, serveDocument } from "./document.ts";
+import { documentDeps, loadShellRenderer, serveDocument } from "./document.ts";
+import { frameDeps, serveFrame } from "./frames.ts";
 
 /** The catch-all: the reserved `/auth/` placeholder, or a file out of `web/dist`, or the app shell. */
 export function appShell(deps: BridgeHttp): (context: RequestContext) => Promise<Response> {
   const { cfg } = deps;
   const documents = documentDeps(deps);
+  const frames = frameDeps(deps, () => loadShellRenderer(), buildId);
   return async ({ request: req, url }) => {
     const { pathname } = url;
     // ── Reserved for a fronting proxy's sign-in page ─────────────────────
@@ -22,6 +24,11 @@ export function appShell(deps: BridgeHttp): (context: RequestContext) => Promise
     // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
     // leave the operator staring at the UI they were trying to escape.
     if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
+
+    // ── The pane's server frames (S2): a named-frame request on `/pane/:paneId` ──
+    // Answered here and never by the document or the static shell below (./frames.ts).
+    const frame = await serveFrame(frames, req, url);
+    if (frame !== null) return frame;
 
     // ── The server document (S1): `/` and `/pane/:paneId` for a request that may read the snapshot ──
     // Null for everything else, and then the static shell answers exactly as before (./document.ts).

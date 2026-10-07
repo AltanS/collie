@@ -74,8 +74,35 @@ function paintedNode(span: Span): RemixNode {
   );
 }
 
+/**
+ * The rows alone, each a `<div>` of styled spans. The mirror's own `<pre>` (below) draws them in the
+ * browser, and the bridge renders them as the `pane-screen` frame's fragment (routes/pane/frames.ts,
+ * ssr/frames.tsx). Every row carries its key as `data-rmx-key`: the runtime's HTML diff matches
+ * reloaded rows by that attribute and nothing else, and the JSX `key` is not written into server
+ * HTML (research note 08, trap 10.7). So an unchanged row keeps its node across a frame reload and a
+ * scrolled terminal moves nodes instead of rewriting them (REMIX3.md, "Frames").
+ */
+export function ScreenRows(handle: Handle<{ rows: readonly Row[]; native?: boolean }>) {
+  return () => {
+    const { rows, native = false } = handle.props;
+    return rows.map((row) => (
+      <div key={row.key} data-rmx-key={row.key} class={cn("min-h-[1.25em]", row.noWrap && "overflow-hidden whitespace-pre")}>
+        {row.spans.map((span) => spanNode(span, native))}
+      </div>
+    ));
+  };
+}
+
 export interface ScreenProps {
   rows: readonly Row[];
+  /**
+   * The rows come from a server frame instead (routes/pane/frames.ts): this node, a `<Frame>`, stands
+   * where the rows would be, and `rows` only sizes `data-rows`. The `<pre>` stays the browser's, so a
+   * font, wrap or theme change never waits for a reload.
+   */
+  frame?: RemixNode;
+  /** With `frame`: the row count to report in `data-rows`. */
+  frameRows?: number;
   /** Soft-wrap long rows at the phone's width (the mirror's default), or scroll them sideways. */
   wrap?: boolean;
   /** The mirror's font size in px (web's display pref default is 10). */
@@ -92,12 +119,13 @@ export interface ScreenProps {
 
 export function Screen(handle: Handle<ScreenProps>) {
   return () => {
-    const { rows, wrap = true, fontSize = 10, inset = false, testId, native = false, faceClass, faceFamily } = handle.props;
+    const { rows, frame, frameRows, wrap = true, fontSize = 10, inset = false, testId, native = false, faceClass, faceFamily } = handle.props;
     return (
       <pre
         data-testid={testId}
         data-slot="screen"
-        data-rows={rows.length}
+        data-rows={frame === undefined ? rows.length : (frameRows ?? 0)}
+        data-frame={frame === undefined ? undefined : "pane-screen"}
         class={cn(
           "m-0 font-mono leading-[1.25] [font-variant-ligatures:none] select-text [-webkit-user-select:text]",
           native ? MUSE_MIRROR : MIRROR_SPACE,
@@ -114,11 +142,7 @@ export function Screen(handle: Handle<ScreenProps>) {
         )}
         style={faceFamily === undefined ? { fontSize: `${String(fontSize)}px` } : { fontSize: `${String(fontSize)}px`, fontFamily: faceFamily }}
       >
-        {rows.map((row) => (
-          <div key={row.key} class={cn("min-h-[1.25em]", row.noWrap && "overflow-hidden whitespace-pre")}>
-            {row.spans.map((span) => spanNode(span, native))}
-          </div>
-        ))}
+        {frame === undefined ? <ScreenRows rows={rows} native={native} /> : frame}
       </pre>
     );
   };

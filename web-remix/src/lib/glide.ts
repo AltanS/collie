@@ -31,6 +31,15 @@
 // arriving header draws inside the callback, and the parts morph (REMIX3.md, "Frames during a view
 // transition"). Without it the callback waited the full ARRIVE_TIMEOUT_MS and crossfaded.
 //
+// THE SCREEN FRAME (S2). With the pane's server frames on, the Terminal's rows are the `pane-screen`
+// frame, and a beat that brought new rows reloads it: the runtime dispatches `reloadStart`, diffs the
+// rows in, then `reloadComplete` (C/src/runtime/frame.ts). Those are the real events the seam named in
+// research note 01 §4. The Terminal binds the frame (`bindGlideScreenFrame`); the update callback,
+// once the landing element is there, waits for a reload in flight to complete (at most
+// ARRIVE_TIMEOUT_MS), so the new snapshot never holds half-diffed rows. A frame's FIRST content in the
+// browser is not a reload (reconcile.ts `resolveClientFrame` dispatches nothing): it lands in the
+// microtasks after the route's commit, from rows the prefetch already holds, before any paint.
+//
 // A route marks its parts with `data-glide="dot" | "tile" | "name"` (pane) or `"label" | "count"`
 // (changes), the origin row with `data-glide-origin` + `data-glide-key`, and the destination with
 // `data-glide-destination`. The pane's identity block (routes/pane/identity.tsx) is the pane
@@ -92,6 +101,69 @@ export const GATE_MAX_MS = 500;
 
 let frame: EventTarget | null = null;
 let gate: Promise<void> | null = null;
+
+/** The pane's screen frame, its reload in flight, and the runtime events seen (read by e2e). */
+let screenFrame: EventTarget | null = null;
+let screenBinding: AbortController | null = null;
+let screenReload: PromiseWithResolvers<void> | null = null;
+export const screenFrameEvents = { start: 0, complete: 0 };
+// Read by e2e/pane-frames.spec.ts: the runtime's own events, counted where the glide hears them.
+if ("document" in globalThis) Object.assign(globalThis, { __collieScreenFrameEvents: screenFrameEvents });
+
+/**
+ * The Terminal hands over its `pane-screen` frame after each commit (routes/pane/terminal.tsx), with
+ * its own lifetime signal. A new frame replaces the old binding; the same frame again is a no-op.
+ */
+export function bindGlideScreenFrame(next: EventTarget | undefined, signal: AbortSignal): void {
+  if (next === undefined || next === screenFrame || signal.aborted) return;
+  screenBinding?.abort();
+  const binding = new AbortController();
+  screenBinding = binding;
+  screenFrame = next;
+  screenReload?.resolve();
+  screenReload = null;
+  const end = (): void => binding.abort();
+  signal.addEventListener("abort", end, { once: true, signal: binding.signal });
+  next.addEventListener(
+    "reloadStart",
+    () => {
+      screenFrameEvents.start++;
+      screenReload ??= Promise.withResolvers<void>();
+    },
+    { signal: binding.signal },
+  );
+  next.addEventListener(
+    "reloadComplete",
+    () => {
+      screenFrameEvents.complete++;
+      screenReload?.resolve();
+      screenReload = null;
+    },
+    { signal: binding.signal },
+  );
+  binding.signal.addEventListener(
+    "abort",
+    () => {
+      if (screenBinding !== binding) return;
+      screenBinding = null;
+      screenFrame = null;
+      screenReload?.resolve();
+      screenReload = null;
+    },
+    { once: true },
+  );
+}
+
+/** Resolves when the screen frame has no reload in flight, or after ARRIVE_TIMEOUT_MS. */
+function screenSettled(): Promise<void> {
+  const pending = screenReload;
+  if (pending === null) return Promise.resolve();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ARRIVE_TIMEOUT_MS);
+  });
+  return Promise.race([pending.promise, late]).finally(() => clearTimeout(timer));
+}
 
 /** The Shell hands over `handle.frames.top`, whose `reloadComplete` ends each navigation. */
 export function bindGlideFrame(top: EventTarget, signal: AbortSignal): void {
@@ -272,6 +344,8 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
       // 4. The new route has committed.
       await Promise.race([done.promise, arrived(landing)]);
       await arrived(landing);
+      // A screen-frame reload in flight lands before the new snapshot is taken (see the file header).
+      await screenSettled();
       unname(before);
       const arriving = move === "forward" ? destination(id) : (origins(id, key).find(isOnScreen) ?? null);
       if (arriving === null || me.superseded) {
