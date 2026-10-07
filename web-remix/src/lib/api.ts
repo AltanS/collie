@@ -9,6 +9,7 @@ import { mounted } from "@web/lib/base-path";
 import { normalizeScope, type Scope } from "@web/lib/scope";
 import type { BridgeConfig, SnapshotResponse } from "@web/lib/types";
 
+import { sendRetryingOnce } from "./retry-get";
 import { createStore } from "./store";
 import { configUrl, snapshotUrl } from "./urls";
 
@@ -67,7 +68,8 @@ function deadline(signal: AbortSignal | undefined): AbortSignal {
 async function get(path: string, headers: Headers, signal: AbortSignal | undefined): Promise<Response> {
   headers.set(XHR_HEADER, XHR_HEADER_VALUE);
   for (const [name, value] of Object.entries(authHeader())) headers.set(name, value);
-  const res = await fetch(mounted(path), { headers, signal: deadline(signal), redirect: "manual" });
+  // A safe GET: one immediate retry on a browser's network blip (lib/retry-get.ts), a fresh deadline each send.
+  const res = await sendRetryingOnce(() => fetch(mounted(path), { headers, signal: deadline(signal), redirect: "manual" }), signal);
   const build = res.headers.get(SERVER_BUILD_HEADER);
   if (build) serverBuild.set(build);
   if (res.type === "opaqueredirect" || REDIRECT_STATUSES.has(res.status)) {

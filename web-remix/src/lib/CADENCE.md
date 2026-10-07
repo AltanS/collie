@@ -72,6 +72,7 @@ shell would send one if the bridge ever adds it (`R/lib/api.ts:115`).
 | idle lock released | "look now" and one read, cover held through it | `hooks/use-polling.ts:228` | `lib/polling.ts:243` |
 | `focus`, `online` | one read at once, no "look now" | `hooks/use-polling.ts:286` | `lib/polling.ts:253` |
 | a read stuck 12 s | superseded | `hooks/use-polling.ts:273` | `lib/polling.ts:165` |
+| a GET rejects with a browser network blip (`Load failed`, `Failed to fetch`, `NetworkError when attempting to fetch resource.`) | one immediate retry of the same GET; an outage fails the retry too and the poll reports it as before (web: none) | none | `lib/retry-get.ts`, `lib/api.ts` `get` (the snapshot, config and `bridgeGet` reads; the pane mirror read is web's `fetchPane` and is not covered) |
 
 Rows never move on a poll (REMIX3.md rule 8): the beat only writes stores, and lists keep their
 frozen order until a tap.
