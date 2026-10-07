@@ -135,6 +135,8 @@ it also knows which entries git ignores, and hides them for you.
 Tap a folder to open it and a file to read it. The path above the rows is a breadcrumb, and each
 folder in it is a link. The back arrow goes up one level: from a file to its folder, from a folder
 to the one above, and from the top to wherever Files was opened from.
+On a phone the same Back also stands at the foot of the screen, on the side of your thumb, so you
+reach it with one hand: the right end, or the left end with the left-hand layout.
 
 ### The All files | Changes control
 

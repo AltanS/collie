@@ -1493,6 +1493,7 @@ export const es: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Archivos",
   "files.title": "Archivos",
+  "files.back": "Volver",
   "changes.backAria.dashboard": "Volver al panel principal",
   "changes.backAria.workspace": "Volver al espacio de trabajo",
   "changes.backAria.pane": "Volver al panel",

@@ -156,6 +156,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   file bar held the top 227 px of 844 before the first line of the file, and stayed pinned while
   you read. While a file is open the control leaves, and the file's name, size and Source | Preview
   control share one 44 px row, so the file starts 122 px higher.
+- **Files repeats its Back at the foot of a phone.** The arrow in the header is out of a thumb's reach
+  on a large phone, so on a phone every level of the Files screen (the list, a diff, the commit, a
+  folder, a file, a picture) ends in a bar with a Back button on your thumb's side, the right end or,
+  with the left-hand layout, the left. It does what the arrow does and carries the same name. On a
+  diff it sits in the Previous / Next bar. It hides while the keyboard is open, and a wider screen
+  keeps the arrow alone.
 
 ### Fixed
 

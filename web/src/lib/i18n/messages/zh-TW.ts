@@ -1457,6 +1457,7 @@ export const zhTW: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "檔案",
   "files.title": "檔案",
+  "files.back": "返回",
   "changes.backAria.dashboard": "返回資訊主頁",
   "changes.backAria.workspace": "返回工作區",
   "changes.backAria.pane": "返回窗格",

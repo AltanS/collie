@@ -1292,6 +1292,7 @@ export const fr: Dictionary = {
   "updateScreen.reading.subtitle": "Lecture de l'avancement de la mise à jour. Cela prend une seconde.",
   "chat.changes.label": "Fichiers",
   "files.title": "Fichiers",
+  "files.back": "Retour",
   "changes.backAria.dashboard": "Retour au tableau de bord",
   "changes.backAria.workspace": "Retour à l'espace de travail",
   "changes.backAria.pane": "Retour au volet",

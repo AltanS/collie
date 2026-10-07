@@ -5,6 +5,7 @@ import type { PaneChangesResponse } from "@/lib/types";
 import { fixtureAgents, fixtureChanges, fixtureCleanChanges, fixtureCommit } from "@/test/handlers";
 
 import { installApiStub, seedChangesOnly } from "./fixtures/api";
+import { expectBottomBack, headerBack } from "./fixtures/back";
 
 // THE CHANGES VIEW ON A SMALL PHONE (ADR 0065). The list and one file's diff at 375x812, the
 // narrowest iPhone still sold, in a real engine: jsdom cannot say whether a long diff line wraps or
@@ -333,7 +334,9 @@ test("the header names the workspace and its folder, and the space form shows th
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
   await expect(page.locator('[data-slot="files-root-folder"]')).toHaveCount(0);
   expect(asked).toContain(`/api/workspace/${PANE.workspaceId}/changes`);
-  await page.getByRole("button", { name: en["changes.backAria.workspace"] }).click();
+  // A phone also draws a bottom Back under the arrow's name; it is there on a phone and not on a tablet.
+  await expectBottomBack(page, en["changes.backAria.workspace"]);
+  await headerBack(page, en["changes.backAria.workspace"]).click();
   await expect(page).toHaveURL(new RegExp(`/space/${PANE.workspaceId}$`));
 });
 

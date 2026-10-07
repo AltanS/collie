@@ -26,7 +26,8 @@ import {
   StatusLetter,
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
-import { TREE_VIEW_ICON } from "@/routes/changes";
+import { BackBar, FileScreen, TREE_VIEW_ICON, type BackControl } from "@/routes/changes";
+import type { Hand } from "@/hooks/use-display-prefs";
 import { summarizeChanges } from "@/lib/workspace-changes";
 import { folderView } from "@/lib/files-filter";
 import { previewKindFor } from "@/lib/files-view";
@@ -245,6 +246,9 @@ const README_WITH_IMAGES = [
 
 type CardView = "diff" | FileView;
 
+/** The bottom Back's act and name, as the folder level gives it; the playground's tap goes nowhere. */
+const BACK_TO_FOLDER: BackControl = { label: "Back to the folder", go: () => {} };
+
 /**
  * The file screen's sticky bar and body, live: the Diff | Source | Preview choice is a real control.
  * A file the change set names shows its letter and opens on Diff; another opens on its default.
@@ -254,11 +258,14 @@ function FileCard({
   initial,
   height = 380,
   images,
+  hand,
 }: {
   file: FileText;
   initial: CardView;
   height?: number;
   images?: FileImages;
+  /** Draw the phone's bottom Back under the file, on this hand's side. */
+  hand?: Hand;
 }) {
   const [view, setView] = useState<CardView>(initial);
   const change = changeAt(CHANGES, file.path);
@@ -271,7 +278,8 @@ function FileCard({
   const label = { diff: t("files.view.diff"), source: t("files.view.source"), preview: t("files.view.preview") };
   return (
     <Stage height={height}>
-      <div className="h-full overflow-y-auto">
+      <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-rule bg-background px-4 py-2">
           <div className="flex min-h-7 items-center gap-3">
             {change && <StatusLetter status={change.status} />}
@@ -295,6 +303,8 @@ function FileCard({
           )}
         </div>
       </div>
+      {hand && <BackBar back={BACK_TO_FOLDER} hand={hand} />}
+      </div>
     </Stage>
   );
 }
@@ -310,6 +320,7 @@ function FolderCard({
   query: initialQuery = "",
   filterOpen = false,
   deleted = false,
+  hand,
 }: {
   dir: string;
   showIgnored?: boolean;
@@ -317,6 +328,8 @@ function FolderCard({
   filterOpen?: boolean;
   /** Add a deleted file to the change set, so the row the disk no longer lists shows struck through. */
   deleted?: boolean;
+  /** Draw the phone's bottom Back under the rows, on this hand's side. */
+  hand?: Hand;
 }) {
   const [showIgnored, setShowIgnored] = useState(initialShow);
   const [query, setQuery] = useState(initialQuery);
@@ -365,6 +378,47 @@ function FolderCard({
             onOpen={() => {}}
           />
         </div>
+        {hand && <BackBar back={BACK_TO_FOLDER} hand={hand} />}
+      </div>
+    </Stage>
+  );
+}
+
+/** The Changes list with the phone's bottom Back under it, on this hand's side. */
+function ListBackCard({ hand }: { hand: Hand }) {
+  return (
+    <Stage height={480}>
+      <div className="flex h-full flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <ChangesList repos={repos} onOpen={() => {}} />
+        </div>
+        <BackBar back={{ label: "Back to the pane", go: () => {} }} hand={hand} />
+      </div>
+    </Stage>
+  );
+}
+
+/** A diff screen: Previous, Next and Back share one bar, Back on this hand's side. */
+function DiffBackCard({ hand }: { hand: Hand }) {
+  const change = changeAt(CHANGES, "src/routes/checkout.tsx");
+  const diff = change ? fixtureChangeDiff(change.repo, change.path) : null;
+  if (!change || !diff?.available) return null;
+  return (
+    <Stage height={480}>
+      <div className="flex h-full flex-col overflow-y-auto">
+        <FileScreen
+          path={change.path}
+          oldPath={undefined}
+          status={change.status}
+          gone={false}
+          onPreview={undefined}
+          state={{ phase: "ready", key: "playground", data: diff }}
+          prev={{ repo: change.repo, path: "src/lib/cart.ts" }}
+          next={undefined}
+          onStep={() => {}}
+          back={{ label: "Back to the list", go: () => {} }}
+          hand={hand}
+        />
       </div>
     </Stage>
   );
@@ -682,6 +736,75 @@ export function ChangesSection() {
             height={460}
             images={PLAYGROUND_IMAGES}
           />
+        </Card>
+      </Group>
+
+      <Group title="The phone's bottom Back">
+        <Card
+          state="files-back-list-right"
+          label="back bar, the list, right hand"
+          reach="on a phone, open Files with Changes on. A bar under the list holds Back at its right end,
+            the right thumb's side, as wide as its word."
+        >
+          <ListBackCard hand="right" />
+        </Card>
+
+        <Card
+          state="files-back-list-left"
+          label="back bar, the list, left hand"
+          reach="the same with Settings, Appearance, Hand on Left: Back moves to the left end."
+        >
+          <ListBackCard hand="left" />
+        </Card>
+
+        <Card
+          state="files-back-folder-right"
+          label="back bar, a folder, right hand"
+          reach="on a phone, open a folder in Files. The Show / Hide ignored line stays in the rows and
+            scrolls clear above the bar."
+        >
+          <FolderCard dir="src" showIgnored hand="right" />
+        </Card>
+
+        <Card
+          state="files-back-folder-left"
+          label="back bar, a folder, left hand"
+          reach="the same with the left-hand layout."
+        >
+          <FolderCard dir="src" showIgnored hand="left" />
+        </Card>
+
+        <Card
+          state="files-back-file-right"
+          label="back bar, a file, right hand"
+          reach="on a phone, open a file in the tree. Back alone, as under a folder."
+        >
+          <FileCard file={fileOf("src/cart.ts")} initial="source" hand="right" height={420} />
+        </Card>
+
+        <Card
+          state="files-back-image-left"
+          label="back bar, a picture, left hand"
+          reach="on a phone with the left-hand layout, open a picture in the tree."
+        >
+          <FileCard file={fileOf("logo.png")} initial="source" hand="left" height={420} images={PLAYGROUND_IMAGES} />
+        </Card>
+
+        <Card
+          state="files-back-diff-right"
+          label="back bar, a diff, right hand"
+          reach="on a phone, open a changed file from the list. Previous, Next and Back share one bar, Back
+            at the right end. Next is dimmed when there is no next file, and keeps its place."
+        >
+          <DiffBackCard hand="right" />
+        </Card>
+
+        <Card
+          state="files-back-diff-left"
+          label="back bar, a diff, left hand"
+          reach="the same with the left-hand layout: Back first, then Previous and Next."
+        >
+          <DiffBackCard hand="left" />
         </Card>
       </Group>
 

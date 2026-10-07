@@ -1292,6 +1292,7 @@ export const it: Dictionary = {
   "updateScreen.reading.subtitle": "Verifica dell'aggiornamento. Richiede un attimo.",
   "chat.changes.label": "File",
   "files.title": "File",
+  "files.back": "Indietro",
   "changes.backAria.dashboard": "Torna alla dashboard",
   "changes.backAria.workspace": "Torna all'area di lavoro",
   "changes.backAria.pane": "Torna al riquadro",

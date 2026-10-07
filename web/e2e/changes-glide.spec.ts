@@ -5,6 +5,7 @@ import type { ChangesResponse } from "@/lib/types";
 import { fixtureChanges } from "@/test/handlers";
 
 import { installApiStub, seedChangesOnly } from "./fixtures/api";
+import { headerBack } from "./fixtures/back";
 
 // A TAP ON A FILES TAB ROW CARRIES ITS NUMBERS INTO THE SCREEN (operator, 2026-09-23; the numbers
 // moved from the header to the head of the list on 2026-10-06, and only the label still glides). On a
@@ -259,7 +260,8 @@ async function expectNoGlideLeft(page: Page) {
   expect(named).toBe(0);
 }
 
-const backArrow = (page: Page) => page.getByRole("button", { name: en["changes.backAria.dashboard"] });
+// The header's arrow: a phone also draws a bottom Back under the same name (`fixtures/back.ts`).
+const backArrow = (page: Page) => headerBack(page, en["changes.backAria.dashboard"]);
 const W1 = "/space/w1/changes";
 
 test("the tap starts one view transition, and the phone's own back starts none", async ({ page }) => {

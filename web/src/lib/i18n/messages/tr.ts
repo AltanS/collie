@@ -1292,6 +1292,7 @@ export const tr: Dictionary = {
   "updateScreen.reading.subtitle": "Güncellemenin nerede olduğu okunuyor. Bu bir saniye sürer.",
   "chat.changes.label": "Dosyalar",
   "files.title": "Dosyalar",
+  "files.back": "Geri",
   "changes.backAria.dashboard": "Gösterge paneline dön",
   "changes.backAria.workspace": "Çalışma alanına dön",
   "changes.backAria.pane": "Bölmeye dön",

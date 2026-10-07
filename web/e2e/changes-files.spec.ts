@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import { fixtureAgents, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 
 import { fill, installApiStub } from "./fixtures/api";
+import { expectBottomBack, headerBack } from "./fixtures/back";
 import { serveWithShellCsp } from "./fixtures/csp";
 
 // THE CHANGES SCREEN'S FOLDER TREE (ADR 0083, merged with the list 2026-10-06) IN A REAL ENGINE. jsdom
@@ -46,11 +47,13 @@ test("open Changes, enter a folder, open a Markdown file, go back twice", async 
   await expect(page.getByText("Read the cart code first.")).toBeVisible();
   await expect(page.getByRole("radio", { name: en["files.view.preview"] })).toBeChecked();
 
-  // Back, once: the file's folder.
-  await page.getByRole("button", { name: en["files.backAria.folder"] }).click();
+  // Back, once: the file's folder. The header's arrow, and on a phone the bottom Back repeats it.
+  await expectBottomBack(page, en["files.backAria.folder"]);
+  await headerBack(page, en["files.backAria.folder"]).click();
   await expect(page).toHaveURL(/\/changes\/files\?dir=docs$/);
   // Back, twice: the root, which is the Changes screen itself.
-  await page.getByRole("button", { name: en["files.backAria.parent"] }).click();
+  await expectBottomBack(page, en["files.backAria.parent"]);
+  await headerBack(page, en["files.backAria.parent"]).click();
   await expect(page).toHaveURL(new RegExp(`/pane/${PANE}/changes$`));
   await expect(page.getByRole("button", { name: /^src, folder/ })).toBeVisible();
 });
@@ -201,10 +204,12 @@ test("a Markdown link opens the other file in Files, an anchor scrolls in place,
   await expect(page.getByRole("link", { name: "the readme" })).toBeVisible();
 
   // And the arrow, by the back-level rules (ADR 0067, amended 2026-10-07), steps back to where the
-  // file was opened from: here the guide, the same screen the edge swipe lands on.
+  // file was opened from: here the guide, the same screen the edge swipe lands on. A phone's
+  // bottom Back does the same move.
   await page.getByRole("link", { name: "the readme" }).click();
   await expect(page).toHaveURL(/\/changes\/files\?path=README\.md$/);
-  await page.getByRole("button", { name: en["files.backAria.folder"] }).click();
+  await expectBottomBack(page, en["files.backAria.folder"]);
+  await headerBack(page, en["files.backAria.folder"]).click();
   await expect(page).toHaveURL(/\/changes\/files\?path=docs%2Fguide\.md$/);
 });
 

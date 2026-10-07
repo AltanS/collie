@@ -1292,6 +1292,7 @@ export const ru: Dictionary = {
   "updateScreen.reading.subtitle": "Чтение статуса обновления. Это займет секунду.",
   "chat.changes.label": "Файлы",
   "files.title": "Файлы",
+  "files.back": "Назад",
   "changes.backAria.dashboard": "Назад к панели управления",
   "changes.backAria.workspace": "Назад в рабочую область",
   "changes.backAria.pane": "Назад к панели",

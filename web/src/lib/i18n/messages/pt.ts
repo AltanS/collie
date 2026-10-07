@@ -1292,6 +1292,7 @@ export const pt: Dictionary = {
   "updateScreen.reading.subtitle": "Lendo o status da atualização. Isso leva um segundo.",
   "chat.changes.label": "Arquivos",
   "files.title": "Arquivos",
+  "files.back": "Voltar",
   "changes.backAria.dashboard": "Voltar ao painel",
   "changes.backAria.workspace": "Voltar ao workspace",
   "changes.backAria.pane": "Voltar ao painel",

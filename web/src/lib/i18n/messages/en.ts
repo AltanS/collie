@@ -1637,6 +1637,7 @@ export const en = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Files",
   "files.title": "Files",
+  "files.back": "Back",
   "changes.backAria.dashboard": "Back to the dashboard",
   "changes.backAria.workspace": "Back to the workspace",
   "changes.backAria.pane": "Back to the pane",

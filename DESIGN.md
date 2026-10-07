@@ -32,6 +32,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes. |
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |
+| `ui/bottom-bar.tsx` | The band at the foot of a screen that holds its own controls: a rule above, the page colour, the safe area under the buttons. It owns the band and nothing in it. The Changes screen's Previous / Next pair, and the Back it repeats on a phone (§12). |
 | `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). Space and tab strips. |
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
@@ -745,6 +746,11 @@ On a phone the edge swipe is history back, so the history stack must be the leve
 - **A new route** gets its place in `ancestorsOf` and `parentChain` (`web/src/lib/nav.ts`) in the
   same change.
 - **A sheet owns no history entry.** It opens and closes without navigating.
+- **On phones, a screen below a pane repeats its Back at the bottom on the thumb side.** The header
+  arrow is out of reach of a thumb on a large phone. The bottom Back (`ui/bottom-bar.tsx`) takes the
+  same handler and the same name as the arrow, from one object, so the two cannot drift; it sits at
+  the right end, or the left with the `hand` pref on `left`, and it hides while the keyboard is up.
+  The arrow stays at every width.
 
 **A glide is reserved for the one case where a row IS the next screen's header** — one element
 carries its identity forward, not merely its position ([ADR 0069](./.adr/0069-a-row-glides-into-its-header.md),

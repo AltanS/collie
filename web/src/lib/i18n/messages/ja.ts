@@ -1483,6 +1483,7 @@ export const ja: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "ファイル",
   "files.title": "ファイル",
+  "files.back": "戻る",
   "changes.backAria.dashboard": "ダッシュボードに戻る",
   "changes.backAria.workspace": "ワークスペースに戻る",
   "changes.backAria.pane": "ペインに戻る",

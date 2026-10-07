@@ -30,13 +30,17 @@ import {
   StatusLetter,
   type ChangeRef,
 } from "@/components/changes-view";
+import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { Notice } from "@/components/ui/notice";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Segmented } from "@/components/ui/segmented";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
+import { handOf, useDisplayPrefs, type Hand } from "@/hooks/use-display-prefs";
+import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useLocale } from "@/hooks/use-locale";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNav } from "@/hooks/use-nav";
 import { CHANGES_POLL_MS, useVisibleInterval } from "@/hooks/use-visible-interval";
 import { keepChangeCount, keptChangeCount } from "@/hooks/use-workspace-change-counts";
@@ -258,6 +262,50 @@ function RootSegment({ folder, label }: { folder: string | null; label: string }
   );
 }
 
+/**
+ * A phone, as this screen draws it: under Tailwind's `md` (768px), where the column stops filling
+ * the width and caps at `md:max-w-screen-md`. From there up the header arrow is in reach and the
+ * bottom Back is not drawn.
+ */
+const PHONE_QUERY = "(max-width: 767.98px)";
+
+/**
+ * The screen's one Back: what the header arrow does and what it is called, at the level on screen.
+ * The header arrow and the bottom Back (a phone's thumb cannot reach the header) both take this
+ * object, so the two cannot drift apart; a level that changes its way back changes both at once.
+ */
+export interface BackControl {
+  /** ALREADY TRANSLATED. Where the tap lands, the arrow's accessible name. */
+  label: string;
+  go: () => void;
+}
+
+/** The Back button of the bottom bar: the header arrow's act and name, plus the word. */
+function BackButton({ back, className }: { back: BackControl; className?: string }) {
+  return (
+    <Button variant="outline" className={cn("h-11", className)} onClick={back.go} aria-label={back.label}>
+      <ArrowLeft className="size-4" />
+      {t("files.back")}
+    </Button>
+  );
+}
+
+/**
+ * The bar under a level that has no Previous / Next: Back alone, on the side of the hand that holds
+ * the phone, as wide as its word and not the row. Gone while the on-screen keyboard is up, which only
+ * a filter field raises on this screen: the bar would ride up over the keys and cost the list
+ * a row's height it needs to show what is being typed.
+ */
+export function BackBar({ back, hand }: { back: BackControl; hand: Hand }) {
+  const keyboard = useKeyboardOpen();
+  if (keyboard) return null;
+  return (
+    <BottomBar className={cn("flex", hand === "left" ? "justify-start" : "justify-end")}>
+      <BackButton back={back} className="min-w-28" />
+    </BottomBar>
+  );
+}
+
 /** Where the back arrow of a file view goes: the list entry it came from, when there is one. */
 interface FromList {
   fromList: true;
@@ -287,6 +335,12 @@ export const TREE_VIEW_ICON = {
  */
 const STEP_OFF =
   "disabled:border-transparent disabled:bg-transparent disabled:shadow-none disabled:text-muted-foreground disabled:opacity-40";
+
+/**
+ * Previous / Next beside Back: the pair gives up some padding and its gap, and a label too long for
+ * its half (a long file label on a narrow phone) clips with an ellipsis instead of pushing Back off the bar.
+ */
+const STEP_TIGHT = "min-w-0 gap-1 px-2 has-[>svg]:px-2";
 
 /** The mono class the path row draws in, and the hidden `0` that measures one character of it. */
 const PATH_ROW_MONO = "font-mono text-[11px] leading-4";
@@ -352,6 +406,9 @@ function ChangesScreen() {
   const [search] = useSearchParams();
   const root = useRootData();
   const { prefs, setChangesLayout, setChangesOnly, setFilesShowIgnored } = useDashPrefs();
+  // The thumb side of the bottom Back (display pref `hand`, as the pane screen reads it).
+  const hand = handOf(useDisplayPrefs().prefs);
+  const phone = useMediaQuery(PHONE_QUERY);
   const layout = prefs.changesLayout;
   const lookup: ChangesLookup = useMemo(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
@@ -847,6 +904,17 @@ function ChangesScreen() {
     : backDestination.startsWith("/space/")
       ? "changes.backAria.workspace"
       : "changes.backAria.dashboard";
+  // The one way back of the level on screen, for the header arrow and the phone's bottom Back alike.
+  const back: BackControl = {
+    go: current ? backToList : commitView ? upToList : treeParent !== null ? () => upTree(treeParent) : backOut,
+    label: commitOpen
+      ? t("changes.commit.backAria")
+      : open || commitView
+        ? t("changes.listBackAria")
+        : treeParent !== null
+          ? t(treeBackAria)
+          : t(backAriaKey),
+  };
 
   // The header names the scope: the workspace, then its folder. The list's own answer wins, because
   // the bridge resolved the root; before it arrives the snapshot's label stands in.
@@ -932,18 +1000,8 @@ function ChangesScreen() {
                 variant="ghost"
                 size="icon"
                 className="size-11 shrink-0"
-                onClick={
-                  current ? backToList : commitView ? upToList : treeParent !== null ? () => upTree(treeParent) : backOut
-                }
-                aria-label={
-                  commitOpen
-                    ? t("changes.commit.backAria")
-                    : open || commitView
-                      ? t("changes.listBackAria")
-                      : treeParent !== null
-                        ? t(treeBackAria)
-                        : t(backAriaKey)
-                }
+                onClick={back.go}
+                aria-label={back.label}
               >
                 <ArrowLeft className="size-5" />
               </Button>
@@ -1053,6 +1111,8 @@ function ChangesScreen() {
             prev={prev}
             next={next}
             onStep={stepTo}
+            back={phone ? back : null}
+            hand={hand}
           />
         ) : commitView ? (
           <div className="p-4">
@@ -1132,6 +1192,9 @@ function ChangesScreen() {
           </div>
         )}
       </main>
+      {/* A phone's thumb cannot reach the header arrow: the same Back repeats here, under the
+          scroller so nothing scrolls behind it. A file's diff carries it in its Previous / Next bar. */}
+      {phone && !current && <BackBar back={back} hand={hand} />}
     </div>
   );
 }
@@ -1298,7 +1361,7 @@ function CommitBody({
   );
 }
 
-function FileScreen({
+export function FileScreen({
   path,
   oldPath,
   status,
@@ -1308,6 +1371,8 @@ function FileScreen({
   prev,
   next,
   onStep,
+  back,
+  hand,
 }: {
   path: string;
   oldPath: string | undefined;
@@ -1320,6 +1385,9 @@ function FileScreen({
   prev: ChangeRef | undefined;
   next: ChangeRef | undefined;
   onStep: (ref: ChangeRef) => void;
+  /** The screen's Back, on a phone only: it joins Previous / Next in their bar, on the thumb side. */
+  back: BackControl | null;
+  hand: Hand;
 }) {
   return (
     <>
@@ -1353,16 +1421,20 @@ function FileScreen({
 
       {/* Across what the list shows, repos included: the filtered files, in the layout's order.
           Disabled rather than hidden at either end, so the pair never moves. */}
-      <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-rule bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <Button variant="outline" className={cn("h-11", STEP_OFF)} disabled={!prev} onClick={() => prev && onStep(prev)}>
-          <ChevronLeft className="size-4" />
-          {t("changes.file.prev")}
+      <BottomBar
+        className={cn("grid gap-2", back === null ? "grid-cols-2" : hand === "left" ? "grid-cols-[auto_1fr_1fr]" : "grid-cols-[1fr_1fr_auto]")}
+      >
+        {back && hand === "left" && <BackButton back={back} className="px-3" />}
+        <Button variant="outline" className={cn("h-11", STEP_OFF, back && STEP_TIGHT)} disabled={!prev} onClick={() => prev && onStep(prev)}>
+          <ChevronLeft className="size-4 shrink-0" />
+          <span className="min-w-0 truncate">{t("changes.file.prev")}</span>
         </Button>
-        <Button variant="outline" className={cn("h-11", STEP_OFF)} disabled={!next} onClick={() => next && onStep(next)}>
-          {t("changes.file.next")}
-          <ChevronRight className="size-4" />
+        <Button variant="outline" className={cn("h-11", STEP_OFF, back && STEP_TIGHT)} disabled={!next} onClick={() => next && onStep(next)}>
+          <span className="min-w-0 truncate">{t("changes.file.next")}</span>
+          <ChevronRight className="size-4 shrink-0" />
         </Button>
-      </div>
+        {back && hand !== "left" && <BackButton back={back} className="px-3" />}
+      </BottomBar>
     </>
   );
 }
