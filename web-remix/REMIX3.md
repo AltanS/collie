@@ -635,6 +635,18 @@ costs one read (`R/routes/home/open-pane.ts`).
   the first middleware in `R/router.tsx` implement it. Name only the parts that morph: named rows
   escape their scroller's clip.
 
+#### One transition at a time
+
+`startViewTransition` never runs while the previous transition's update callback is pending
+(Chrome throws `InvalidStateError`; research note 07, c.3). `R/lib/glide-queue.ts` keeps ONE pending
+slot: a glide asked for in that window waits for `updateCallbackDone` and starts then, latest wins.
+A move that loses the slot or meets an instant path (reduced motion, a glide in flight, no API) still
+happens, instantly and in arrival order; only its transition is cancelled, because the move is the
+operator's tap and its history entry counts (ADR 0067). A queued move the location outran is dropped.
+A superseded transition's callback stops waiting for its landing at once, `ready`/`finished`
+rejections are swallowed, and a `startViewTransition` that throws moves instantly. `R/lib/glide.test.ts`
+holds the scheduler, in the shape of kody's.
+
 #### Frames during a view transition
 
 Chromium runs no animation frames while a view transition's update callback is pending. Every

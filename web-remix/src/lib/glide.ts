@@ -40,10 +40,19 @@
 // browser is not a reload (reconcile.ts `resolveClientFrame` dispatches nothing): it lands in the
 // microtasks after the route's commit, from rows the prefetch already holds, before any paint.
 //
+// SERIALISED (research note 07, c.3): `startViewTransition` never runs while the previous transition's
+// update callback is pending. A tap in that window waits in ONE slot (`lib/glide-queue.ts`), latest
+// wins, and starts when `updateCallbackDone` settles. A move that loses the slot, or meets an instant
+// path (reduced motion, a glide already in flight, no API), still happens: only its transition is
+// cancelled. A skipped transition's callback stops waiting for the landing at once (`stop`), so the
+// window stays short, and `ready`/`finished` rejections are swallowed. If `startViewTransition`
+// throws, the move is instant.
+//
 // A route marks its parts with `data-glide="dot" | "tile" | "name"` (pane) or `"label" | "count"`
 // (changes), the origin row with `data-glide-origin` + `data-glide-key`, and the destination with
 // `data-glide-destination`. The pane's identity block (routes/pane/identity.tsx) is the pane
 // destination; the override row of a space's Files root (shell/header.tsx) is the changes one.
+import { createGlideScheduler } from "./glide-queue";
 import { reducedMotion } from "./motion";
 import { holdFrames } from "./store";
 
@@ -254,6 +263,8 @@ interface Active {
   move: GlideMove;
   landed: boolean;
   superseded: boolean;
+  /** Resolves when the transition is superseded, so its callback stops waiting for a landing. */
+  stop: PromiseWithResolvers<void>;
   transition?: ViewTransition;
 }
 
@@ -268,6 +279,7 @@ function landsOn(a: Active, pathname: string): boolean {
 
 function supersede(a: Active): void {
   a.superseded = true;
+  a.stop.resolve();
   if (active === a) active = null;
   a.transition?.skipTransition();
 }
@@ -293,22 +305,50 @@ export function glideInFlight(): boolean {
   return active !== null;
 }
 
+/** One wanted move: the pair, the direction, the navigation, and where the location stood when it was asked. */
+interface Job {
+  id: GlidePairId;
+  move: GlideMove;
+  key: string;
+  go: () => void;
+  from?: HTMLElement;
+  seen: number;
+}
+
+const scheduler = createGlideScheduler<Job>({
+  begin: startGlide,
+  instant: (job) => job.go(),
+  // A location change that was not this job's own: the reader went elsewhere while it waited.
+  isStale: (job) => job.seen !== waiting,
+});
+
 function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from?: HTMLElement): void {
+  const job: Job = { id, move, key, go, from, seen: waiting };
   if (!canGlide()) {
-    go();
+    scheduler.instant(job);
     return;
   }
   if (active !== null) {
     supersede(active);
-    go();
+    scheduler.instant(job);
     return;
   }
+  scheduler.schedule(job);
+}
+
+/**
+ * Start the transition and the move, and return the callback's end. Throws (after cleaning up) when
+ * `startViewTransition` does, and the scheduler moves instantly.
+ */
+function startGlide(job: Job): Promise<void> {
+  const { id, move, key, go } = job;
+  const from = job.from?.isConnected === true ? job.from : undefined;
   const leaving = move === "forward" ? (from ?? origins(id, key)[0] ?? null) : destination(id);
   const before = leaving ? partsOf(id, leaving) : [];
   let after: NamedPart[] = [];
   const root = document.documentElement;
   const classes = [GLIDE_CLASS, glidePairClass(id), ...(move === "back" ? [GLIDE_BACK_CLASS] : [])];
-  const me: Active = { id, move, landed: false, superseded: false };
+  const me: Active = { id, move, landed: false, superseded: false, stop: Promise.withResolvers<void>() };
   const clean = (): void => {
     releaseFrames();
     root.classList.remove(...classes, GLIDE_CROSSFADE_CLASS);
@@ -341,34 +381,39 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
       clearTimeout(gateTimer);
       openGate();
       if (me.superseded) return;
-      // 4. The new route has committed.
-      await Promise.race([done.promise, arrived(landing)]);
-      await arrived(landing);
+      // 4. The new route has committed. A superseded transition stops waiting for it.
+      await Promise.race([done.promise, arrived(landing), me.stop.promise]);
+      if (me.superseded) return;
+      await Promise.race([arrived(landing), me.stop.promise]);
+      if (me.superseded) return;
       // A screen-frame reload in flight lands before the new snapshot is taken (see the file header).
-      await screenSettled();
+      await Promise.race([screenSettled(), me.stop.promise]);
+      if (me.superseded) return;
       unname(before);
       const arriving = move === "forward" ? destination(id) : (origins(id, key).find(isOnScreen) ?? null);
-      if (arriving === null || me.superseded) {
+      if (arriving === null) {
         root.classList.add(GLIDE_CROSSFADE_CLASS);
         return;
       }
       after = partsOf(id, arriving);
       name(after);
     });
-  } catch {
+  } catch (error) {
     clearTimeout(gateTimer);
     openGate();
     clean();
-    go();
-    return;
+    throw error;
   }
+  const transition = me.transition;
   go();
-  me.transition.ready.catch(() => {});
-  void me.transition.finished.then(clean, clean);
-  void me.transition.updateCallbackDone.then(releaseFrames, () => {
+  // `skipTransition()` rejects `ready` (and may reject `finished`): neither is ours to report.
+  transition.ready.catch(() => {});
+  void transition.finished.then(clean, clean);
+  const callbackDone = transition.updateCallbackDone.then(releaseFrames, () => {
     releaseFrames();
     openGate();
   });
+  return callbackDone;
 }
 
 export function glideForward(id: GlidePairId, key: string, go: () => void, from?: HTMLElement): void {
