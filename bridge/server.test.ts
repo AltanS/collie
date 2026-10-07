@@ -1805,6 +1805,10 @@ describe("startupWarnings — security-posture nags", () => {
     const ws = startupWarnings(cfg({ skipServe: false, trustedUser: "" }));
     expect(has(ws, "COLLIE_TRUSTED_USER is empty")).toBe(true);
     expect(has(ws, "README → Variant A")).toBe(true);
+    // Pairing is always on (ADR 0086): an empty login no longer hands anyone write access, and the
+    // warning must not say it does. The token is what is left.
+    expect(has(ws, "full write access")).toBe(false);
+    expect(has(ws, "pairing token alone")).toBe(true);
   });
 
   test("no skipServe + trustedUser set: no identity warning (correctly configured)", () => {

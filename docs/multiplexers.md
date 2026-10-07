@@ -197,13 +197,15 @@ collie doctor   # the `mux` check names the multiplexer, its endpoint,
 # startup; a multiplexer it cannot reach is one warning line more
 collie logs
 
-# the herd, as the phone is given it
-curl -s http://127.0.0.1:8787/api/snapshot | head -c 400
+# the herd, as the phone is given it; reads need the pairing token
+curl -s -H "Authorization: Bearer $COLLIE_TOKEN" http://127.0.0.1:8787/api/snapshot | head -c 400
 ```
 
-This `curl` call works without auth headers. Read requests bypass device validation even when
-`COLLIE_DEVICE_HEADER` is enabled ([Configure](configure.md#configure)). Only write actions require
-the configured header.
+Every read needs a paired device's token, so this `curl` call sends one. Without it, the bridge
+answers `403 device not paired`. To get a token for a script, see
+[Upgrading to 1.18.0](upgrading.md#upgrading-to-1180). `collie doctor` needs no token on the host.
+`COLLIE_DEVICE_HEADER` still gates only writes and the Files view
+([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 Check the phone UI: the dashboard should display your **tmux windows** or **zellij tabs**, and the
 Claude pane should identify as an agent instead of `bash`. If panes still display as standard

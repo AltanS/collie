@@ -83,6 +83,8 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "crew-trust.json",
   "folders.json",
   "local-secret",
+  "machine-alerts.json",
+  "machine-history.json",
   "notify-prefs.json",
   "pack-ops.json",
   "pack-runtime.json",
@@ -97,6 +99,7 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "update-state.json",
   "update.json",
   "update.lock",
+  "worktree-receipts.json",
   // Config folder.
   ".env",
   "cache-rules.toml",

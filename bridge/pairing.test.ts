@@ -8,6 +8,7 @@ import { HOST } from "./host.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 import {
   addDevice,
+  enrolDevice,
   bearerToken,
   checkClaim,
   CODE_ALPHABET,
@@ -411,6 +412,71 @@ describe("PairingStore", () => {
     expect(await store.claim("ABCD2345", "phone")).toEqual({ ok: false, reason: "duplicate-label" });
     expect(state.pending).not.toBeNull();
     expect((await store.claim("ABCD2345", "tablet")).ok).toBe(true);
+  });
+
+  // "Pair again" after an expiry: the person types the name the expired device had. That label is
+  // taken over, and the old token is revoked by the same write; a LIVE device's label still refuses.
+  test("pairing again under an expired device's label replaces it and revokes its token in one write", async () => {
+    const { io, state } = memoryIo({ pending: newPending("ABCD2345", 0) });
+    const store = new PairingStore(io, () => 1000);
+    state.registry = {
+      devices: [
+        { label: "phone", tokenHash: sha256Hex("old-token"), createdAt: 1, lastSeenAt: 1, expiresAt: 1000 },
+        { label: "tablet", tokenHash: sha256Hex("tab-token"), createdAt: 1, lastSeenAt: 1 },
+      ],
+    };
+    const writesBefore = state.writes;
+    const claimed = await store.claim("ABCD2345", "phone");
+    if (!claimed.ok) throw new Error(`expected success, got ${claimed.reason}`);
+    expect(claimed.replacedExpired).toBe(true);
+    expect(state.writes).toBe(writesBefore + 1);
+    const devices = coerceRegistry(state.registry).devices;
+    expect(devices.map((d) => d.label)).toEqual(["tablet", "phone"]);
+    expect(devices.find((d) => d.label === "phone")).toEqual({
+      label: "phone",
+      tokenHash: sha256Hex(claimed.token),
+      createdAt: 1000,
+      lastSeenAt: 1000,
+    });
+    expect(store.resolve("old-token")).toBeNull();
+    expect(store.expired("old-token")).toBe(false);
+    expect(store.resolve(claimed.token)?.label).toBe("phone");
+    expect(store.resolve("tab-token")?.label).toBe("tablet");
+    expect(state.pending).toBeNull();
+  });
+
+  test("a label whose expiry has not passed yet is still a live duplicate", async () => {
+    const { io, state } = memoryIo({ pending: newPending("ABCD2345", 0) });
+    const store = new PairingStore(io, () => 1000);
+    state.registry = {
+      devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1, expiresAt: 1001 }],
+    };
+    expect(await store.claim("ABCD2345", "phone")).toEqual({ ok: false, reason: "duplicate-label" });
+    expect(store.resolve("t")?.label).toBe("phone");
+    expect(state.pending).not.toBeNull();
+  });
+
+  test("a fresh label reports no replacement", async () => {
+    const { io } = memoryIo({ pending: newPending("ABCD2345", 0) });
+    const store = new PairingStore(io, () => 1000);
+    const claimed = await store.claim("ABCD2345", "phone");
+    expect(claimed.ok && claimed.replacedExpired).toBe(false);
+  });
+
+  test("enrolDevice is pure: it neither mutates the registry nor touches other entries", () => {
+    const registry: PairedRegistry = {
+      devices: [
+        { label: "a", tokenHash: sha256Hex("a"), createdAt: 1, lastSeenAt: 1, expiresAt: 5 },
+        { label: "b", tokenHash: sha256Hex("b"), createdAt: 1, lastSeenAt: 1, expiresAt: 5 },
+      ],
+    };
+    const before = JSON.stringify(registry);
+    const next = enrolDevice(registry, { label: "a", tokenHash: sha256Hex("n"), now: 9 });
+    expect(JSON.stringify(registry)).toBe(before);
+    expect(next?.replaced).toBe(true);
+    // The other expired device stays listed: only the label being claimed is taken over.
+    expect(next?.registry.devices.map((d) => d.label)).toEqual(["b", "a"]);
+    expect(enrolDevice(registry, { label: "a", tokenHash: sha256Hex("n"), now: 4 })).toBeNull();
   });
 
   test("resolve stamps lastSeenAt at most once per throttle window", async () => {
@@ -931,5 +997,76 @@ describe("concurrent lastSeenAt stamps (#159)", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+// ── Claims that race (pre-push hardening, 2026-10-08) ────────────────────────────────────────────
+// The whole claim runs in the store's write queue, the code check included, so a second claim reads
+// what the first one wrote. Run over a real on-disk io, whose awaits interleave as a server's would.
+describe("concurrent claims", () => {
+  async function seeded(registry: PairedRegistry, lifetimeMs?: number) {
+    const stateDir = await tempStateDir();
+    const io = filePairingIo(stateDir);
+    await io.writeRegistry(registry);
+    const pending = newPending("ABCD2345", 0);
+    if (lifetimeMs !== undefined) pending.tokenLifetimeMs = lifetimeMs;
+    await io.writePending(pending);
+    const store = new PairingStore(io, () => 1000);
+    return { io, store };
+  }
+  const expiredPhone: PairedRegistry = {
+    devices: [{ label: "phone", tokenHash: sha256Hex("old-token"), createdAt: 1, lastSeenAt: 1, expiresAt: 500 }],
+  };
+
+  test("two claims at once for the same expired name end with exactly one device under it", async () => {
+    const { io, store } = await seeded(expiredPhone);
+    const results = await Promise.all([store.claim("ABCD2345", "phone"), store.claim("ABCD2345", "phone")]);
+    const won = results.filter((r) => r.ok);
+    expect(won).toHaveLength(1);
+    // The loser finds the code already spent: the winner deleted it in the same queued step.
+    expect(results.find((r) => !r.ok)).toEqual({ ok: false, reason: "no-pending" });
+    const devices = coerceRegistry(await io.readRegistry()).devices;
+    expect(devices.map((d) => d.label)).toEqual(["phone"]);
+    const winner = won[0];
+    if (winner === undefined || !winner.ok) throw new Error("no winner");
+    expect(devices[0]?.tokenHash).toBe(sha256Hex(winner.token));
+    expect(store.resolve("old-token")).toBeNull();
+  });
+
+  test("two claims at once on one code under two names enrol one device: a code is single-use", async () => {
+    const { io, store } = await seeded({ devices: [] });
+    const results = await Promise.all([store.claim("ABCD2345", "phone"), store.claim("ABCD2345", "tablet")]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(coerceRegistry(await io.readRegistry()).devices).toHaveLength(1);
+    expect(await io.readPending()).toBeNull();
+  });
+
+  test("wrong guesses at once are each counted: five spend the code, and the right one then finds none", async () => {
+    const { io, store } = await seeded({ devices: [] });
+    const guesses = Array.from({ length: CODE_ATTEMPTS }, (_, i) => store.claim(`WRONG${String(i).padStart(3, "2")}`, "phone"));
+    const results = await Promise.all(guesses);
+    expect(results.at(-1)).toEqual({ ok: false, reason: "exhausted" });
+    expect(await io.readPending()).toBeNull();
+    expect(await store.claim("ABCD2345", "phone")).toEqual({ ok: false, reason: "no-pending" });
+  });
+
+  test("the new device inherits nothing from the expired one: its own token, times and lifetime only", async () => {
+    // The old entry carried an expiry; the new code carries a different lifetime. The new entry is
+    // built from the claim alone (`addDevice`): label, the new token's hash, now, now + its lifetime.
+    const { io, store } = await seeded(expiredPhone, 60_000);
+    const claimed = await store.claim("ABCD2345", "phone");
+    if (!claimed.ok) throw new Error(claimed.reason);
+    expect(coerceRegistry(await io.readRegistry()).devices).toEqual([
+      { label: "phone", tokenHash: sha256Hex(claimed.token), createdAt: 1000, lastSeenAt: 1000, expiresAt: 61_000 },
+    ]);
+  });
+
+  test("expired is the stored expiry against the bridge's clock: one millisecond before, the name is live", async () => {
+    const stateDir = await tempStateDir();
+    const io = filePairingIo(stateDir);
+    await io.writeRegistry({ devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1, expiresAt: 1000 }] });
+    await io.writePending(newPending("ABCD2345", 0));
+    expect(await new PairingStore(io, () => 999).claim("ABCD2345", "phone")).toEqual({ ok: false, reason: "duplicate-label" });
+    expect((await new PairingStore(io, () => 1000).claim("ABCD2345", "phone")).ok).toBe(true);
   });
 });

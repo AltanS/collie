@@ -32,20 +32,30 @@
 // Every refusal is the same answer, `unknown-path`: absent, outside, denied, a folder read as a file
 // and a file listed as a folder cannot be told apart by anything the client sees.
 //
-// ── THE RACE THIS ACCEPTS ───────────────────────────────────────────────────────────────────────
+// ── THE RACE, AND THE CHECK ON THE OPENED FILE ──────────────────────────────────────────────────
 // Between the containment check and the read, a path component can be swapped for a symlink. The
 // final component is opened with O_NOFOLLOW (POSIX) so a swap of the file itself fails the open,
 // O_NONBLOCK so a FIFO swapped in cannot hang the request, and the opened handle must be a regular
-// file. A swap of a folder ABOVE it is not closed: that needs `openat2(RESOLVE_BENEATH)`, which Bun
-// does not expose. The only party who can win that race is someone who can write inside the root,
-// which is the agent running as the operator's own user, and that agent can already read every file
-// the bridge can. ADR 0065 accepted the same race for the untracked read.
+// file. A swap of a folder ABOVE it would still open a file elsewhere, so containment is checked a
+// SECOND time, on the handle, before a byte is read ({@link openedFileAllowed}):
+//   - Linux: the kernel's own name for the open file (`/proc/self/fd/<fd>`) must lie inside the
+//     root's real path and pass the deny rules. That name is the file the handle holds, so no later
+//     swap can change the answer.
+//   - Elsewhere (no `/proc`): the path is resolved and checked again, and its `lstat` must be the
+//     handle's own file (same device and inode). A swap still in place fails the containment; a swap
+//     put back fails the identity.
+// A hard link cannot be told apart by either check: it is the same inode under a name inside the
+// root, so its real path and the kernel's name are both inside. It is served. Making one needs write
+// access inside the root and (with Linux's `protected_hardlinks`) ownership of the target, which is
+// the agent running as the operator's own user, and that agent can already read every file the
+// bridge can. A file with more than one link is not refused either: package managers (pnpm) and
+// tools hard-link ordinary files, and refusing them would refuse the files a root is made of.
 //
 // Pure where it can be (the path grammar, the order, the decoding); the disk half takes its file
 // calls through {@link FilesFs}, so a test can stand one in.
 
 import { constants, type Dirent } from "node:fs";
-import { lstat, open, opendir, stat } from "node:fs/promises";
+import { lstat, open, opendir, readlink, stat } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
 import { isStateSecretName } from "./acl-policy.ts";
@@ -168,6 +178,19 @@ export interface FilesStat {
   isDirectory(): boolean;
   isSymbolicLink(): boolean;
   size: number;
+  /** The file's identity, compared against an open handle's ({@link openedFileAllowed}). */
+  dev?: number;
+  ino?: number;
+}
+
+/**
+ * The file an open handle holds, as the check on the opened file reads it. `path` is the kernel's
+ * own name for it (Linux, `/proc/self/fd/<fd>`), or null where there is no such name to ask.
+ */
+export interface OpenedFile {
+  path: string | null;
+  dev: number;
+  ino: number;
 }
 
 /** The file calls this module makes. {@link NODE_FILES_FS} in production. */
@@ -178,16 +201,32 @@ export interface FilesFs {
   /** Up to `limit` names in `dir`, in the order the disk gives them, and whether more were there. */
   names(dir: string, limit: number, keep: (name: string) => boolean): Promise<{ names: string[]; more: boolean }>;
   /**
-   * Open `path` without following a final symlink, refuse anything but a regular file, and read at
-   * most `max` bytes from its start. `null` when the open or the type check refused it.
+   * Open `path` without following a final symlink, refuse anything but a regular file, ask
+   * `confirm` about the opened file BEFORE any byte is read, and read at most `max` bytes from its
+   * start. `null` when the open, the type check or `confirm` refused it.
    */
-  readHead(path: string, max: number): Promise<{ bytes: Uint8Array; size: number; mtimeMs?: number } | null>;
+  readHead(
+    path: string,
+    max: number,
+    confirm?: (opened: OpenedFile) => Promise<boolean>,
+  ): Promise<{ bytes: Uint8Array; size: number; mtimeMs?: number } | null>;
   /** The real path containment, `containedRealpath` in production. */
   contained(candidate: string, root: string, host: Host): Promise<string | null>;
 }
 
 /** O_NOFOLLOW and O_NONBLOCK exist on POSIX only; Windows reads them as 0 (no flag). */
 const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+/**
+ * The kernel's name for an open descriptor, on Linux, or null. `/proc/self/fd/<fd>` is a link the
+ * kernel answers from the open file itself, so it names the file the handle holds, not whatever a
+ * path names now. A file deleted since the open reads as `<path> (deleted)`, which is no path inside
+ * any root, so it is refused.
+ */
+async function kernelPathOf(fd: number): Promise<string | null> {
+  if (HOST.platform !== "linux") return null;
+  return readlink(`/proc/self/fd/${String(fd)}`).catch(() => null);
+}
 
 export const NODE_FILES_FS: FilesFs = {
   realpath: (path) => realpathOf(path),
@@ -212,12 +251,15 @@ export const NODE_FILES_FS: FilesFs = {
     }
     return { names, more };
   },
-  async readHead(path, max) {
+  async readHead(path, max, confirm) {
     const handle = await open(path, OPEN_FLAGS).catch(() => null);
     if (handle === null) return null;
     try {
       const st = await handle.stat();
       if (!st.isFile()) return null;
+      if (confirm !== undefined && !(await confirm({ path: await kernelPathOf(handle.fd), dev: st.dev, ino: st.ino }))) {
+        return null;
+      }
       const want = Math.min(st.size, max);
       const bytes = new Uint8Array(want);
       let got = 0;
@@ -314,6 +356,30 @@ async function checkedTarget(segments: readonly string[], r: Resolved): Promise<
   const real = await r.fs.contained(candidate, r.rootReal, r.host);
   if (real === null) return null;
   return isDeniedReal(real, r) ? null : real;
+}
+
+/**
+ * The check on the OPENED file (see "THE RACE, AND THE CHECK ON THE OPENED FILE" above): whether the
+ * file a handle holds is still the one {@link checkedTarget} allowed. `real` is what that check
+ * answered for `segments` before the open.
+ *
+ * With the kernel's name for the handle (Linux), that name must lie inside the root's real path and
+ * pass the same deny rules; nothing that happens to the path afterwards changes which file the handle
+ * holds. Without one, the path is checked again from the start and must answer `real` once more, and
+ * the file there must be the handle's own (device and inode), so a folder swapped and swapped back
+ * around the open is caught by the identity, and one still swapped by the containment.
+ */
+function openedFileAllowed(segments: readonly string[], r: Resolved, real: string) {
+  return async (opened: OpenedFile): Promise<boolean> => {
+    if (opened.path !== null) {
+      return isInside(r.host, opened.path, r.rootReal) && !isDeniedReal(opened.path, r);
+    }
+    const again = await checkedTarget(segments, r).catch(() => null);
+    if (again !== real) return false;
+    const st = await r.fs.lstat(again).catch(() => null);
+    if (st === null || st.isSymbolicLink() || !st.isFile()) return false;
+    return st.dev !== undefined && st.ino !== undefined && st.dev === opened.dev && st.ino === opened.ino;
+  };
 }
 
 /** `unknown-path`: the one answer for absent, outside, denied, and the wrong kind. */
@@ -450,7 +516,7 @@ export async function readFile(ctx: FilesContext, path: string): Promise<FilesRe
   try {
     const real = await checkedTarget(segments, r);
     if (real === null) return UNKNOWN_PATH;
-    const head = await r.fs.readHead(real, MAX_FILES_READ_BYTES);
+    const head = await r.fs.readHead(real, MAX_FILES_READ_BYTES, openedFileAllowed(segments, r, real));
     if (head === null) return UNKNOWN_PATH;
     const truncated = head.size > MAX_FILES_READ_BYTES;
     const { binary, text } = decodeFileText(head.bytes, truncated);
@@ -551,7 +617,7 @@ export async function readImage(ctx: FilesContext, path: string): Promise<FilesR
     const st = await r.fs.stat(real).catch(() => null);
     if (st === null || !st.isFile()) return UNKNOWN_PATH;
     if (st.size > MAX_IMAGE_READ_BYTES) return { available: true, kind: "too-large", size: st.size };
-    const head = await r.fs.readHead(real, MAX_IMAGE_READ_BYTES);
+    const head = await r.fs.readHead(real, MAX_IMAGE_READ_BYTES, openedFileAllowed(segments, r, real));
     if (head === null) return UNKNOWN_PATH;
     if (head.size > MAX_IMAGE_READ_BYTES) return { available: true, kind: "too-large", size: head.size };
     const type = sniffImageType(head.bytes.subarray(0, IMAGE_SNIFF_BYTES));

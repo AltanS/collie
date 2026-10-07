@@ -17,9 +17,14 @@ import { hashesEqual } from "./pairing.ts";
 // WHAT IT OPENS, AND WHY THAT IS ALL:
 //   - Reads only. `guard` asks for it at the `"read"` level and at no other, so it never types into a
 //     terminal, never opens the Files view (`device-read`), never revokes a device.
-//   - From a loopback peer only. The front door dials from loopback too, so this is not the boundary;
-//     the file's owner-only mode is. Whoever can read the file can already read the state folder,
-//     which holds the pairing registry and the crew secret.
+//   - From this host, through nothing: a request carrying a proxy's header (`X-Forwarded-For`,
+//     `Forwarded`, `X-Real-IP` and the like) is refused, and the TCP peer must be loopback. Only when
+//     the bridge binds one concrete non-loopback address (a crew peer on its tailnet address, where
+//     the CLI dials that address) does one of this host's own interface addresses count too
+//     (`browserPairingGate` in server.ts says why, and why no other machine passes). A plain TCP relay
+//     on this host (socat, `ssh -L`) still passes, as it always passed the loopback rule, so the peer
+//     rule is not the boundary; the file's owner-only mode is. Whoever can read the file can already
+//     read the state folder, which holds the pairing registry and the crew secret.
 //   - Rotated on every start, deleted on a clean stop. A stale file from a crash names a secret no
 //     running bridge holds.
 //

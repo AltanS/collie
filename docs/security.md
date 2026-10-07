@@ -69,6 +69,11 @@ At each start the bridge writes a new random secret to `local-secret` in its sta
 `collie doctor` and `collie crew update` send it to read their own bridge on the same machine.
 The file is owner-only, so only your account can read it, and a clean stop deletes it. The
 bridge takes it for reads only, never for a write or the Files view, and never from another machine.
+It accepts the secret from loopback only, and never on a request that carries a proxy's header such
+as `X-Forwarded-For`. A crew member that binds `COLLIE_HOST` to its tailnet address has nothing on
+loopback, so there the bridge also accepts it from this machine's own addresses. A plain TCP relay
+on the same machine, such as `socat` or `ssh -L`, can still pass the secret on. The file is what
+keeps the secret yours, so keep the state folder owner-only.
 
 ### Give a device an expiry
 
@@ -86,7 +91,10 @@ token with `device expired` instead of `device not paired`. The phone then
 [clears what the pairing left](#what-unpair-clears-on-the-phone) and shows **Pair again** in
 Settings, so run `collie pair` for a new code. `collie devices list` and the Settings screen show
 each device's expiry. An expired device stays in the list until you revoke it or give it a new
-expiry with `set-expiry`. A crew deputy's standby door refuses an expired token too.
+expiry with `set-expiry`. To pair it again, you can use the same name: the new pairing replaces
+the expired entry and revokes its old token, and the audit log records the revoke. A name that a
+device still uses, with a token that has not expired, is refused. A crew deputy's standby door
+refuses an expired token too.
 
 On a host running multiple instances, prefix commands with `COLLIE_INSTANCE=<name>` and open that
 specific instance URL on the phone
@@ -238,6 +246,11 @@ It matches high-confidence shapes only:
 Some ordinary text is masked too, for example a line of prose or YAML that reads `token: something`.
 What you type and send is never masked, and the audit trail keeps its own rules
 (`COLLIE_AUDIT_CONTENT`).
+
+In a crew, the mask runs on the machine that reads the text. A lead passes a member's pane text,
+Chat and diffs on as the member sent them, and does not mask them a second time. So a member that
+still runs 1.17.x sends its text unmasked until it updates. Crew members update to the lead's
+version on their own ([Updating the rest of the crew](upgrading.md#updating-the-rest-of-the-crew)).
 
 A push notification also names a pane only by the name you gave it: the pane's label, Claude's
 `/rename` name, or a one-pane tab's name. It never uses the title a program in the pane set, because

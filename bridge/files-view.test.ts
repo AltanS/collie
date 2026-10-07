@@ -1,13 +1,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
   truncateSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,6 +32,7 @@ import {
   MAX_FILES_READ_BYTES,
   MAX_IMAGE_READ_BYTES,
   NODE_FILES_FS,
+  type OpenedFile,
   parseRelPath,
   readFile,
   readImage,
@@ -1287,5 +1291,197 @@ describe("GET /api/pane/:id/files/image and /api/workspace/:id/files/image", () 
     expect(bare.headers.get("x-collie-file-mtime")).toBeNull();
     // A refusal carries no version: it says nothing about a file.
     expect(filesImageResponse({ available: true, kind: "not-image" }).headers.get("x-collie-file-size")).toBeNull();
+  });
+});
+
+// ── The opened file, and the edge spellings (pre-push hardening, 2026-10-08) ─────────────────────
+
+describe("the opened file is checked, not only the path", () => {
+  let race = "";
+  let held = "";
+  let away = "";
+  const inRoot = bytes(HEADS.png, 40);
+  const outsideBytes = bytes(HEADS.png, 80);
+
+  beforeAll(() => {
+    race = join(root, "race");
+    held = join(root, "race-held");
+    away = join(outside, "race");
+    mkdirSync(race, { recursive: true });
+    mkdirSync(away, { recursive: true });
+    write(join(race, "pic.png"), inRoot);
+    write(join(race, "note.txt"), "inside\n");
+    write(join(away, "pic.png"), outsideBytes);
+    write(join(away, "note.txt"), "OUTSIDE\n");
+  });
+
+  /** The folder above the file, swapped for a link that leads out of the root. */
+  function swap(): void {
+    renameSync(race, held);
+    symlinkSync(away, race, "dir");
+  }
+  function restore(): void {
+    unlinkSync(race);
+    renameSync(held, race);
+  }
+
+  /**
+   * A disk that swaps the folder between the containment check and the open, the race a writer
+   * inside the root could try. `confirmAs` changes what the check on the opened file is shown:
+   * `kernel` is the real Linux answer, `no-proc` drops the kernel's name to run the fallback, and
+   * `restored` also puts the folder back before the fallback looks again.
+   */
+  function racingFs(confirmAs: "kernel" | "no-proc" | "restored") {
+    return {
+      ...NODE_FILES_FS,
+      async readHead(path: string, max: number, confirm?: (o: OpenedFile) => Promise<boolean>) {
+        swap();
+        let swapped = true;
+        try {
+          const wrapped =
+            confirm === undefined
+              ? undefined
+              : async (o: OpenedFile): Promise<boolean> => {
+                  if (confirmAs === "kernel") return confirm(o);
+                  if (confirmAs === "restored") {
+                    restore();
+                    swapped = false;
+                  }
+                  return confirm({ ...o, path: null });
+                };
+          return await NODE_FILES_FS.readHead(path, max, wrapped);
+        } finally {
+          if (swapped) restore();
+        }
+      },
+    };
+  }
+
+  test("the race is real: without the check, the swapped folder's file is what opens", async () => {
+    if (!POSIX) return;
+    swap();
+    try {
+      const head = await NODE_FILES_FS.readHead(join(race, "pic.png"), MAX_IMAGE_READ_BYTES);
+      expect(head?.bytes).toEqual(outsideBytes);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a folder swapped for a link out, after the check and before the open, is refused (kernel's name)", async () => {
+    if (process.platform !== "linux") return;
+    const fs = racingFs("kernel");
+    expect(await readImage({ ...ctx, fs }, "race/pic.png")).toBe(UNKNOWN_PATH);
+    expect(await readFile({ ...ctx, fs }, "race/note.txt")).toBe(UNKNOWN_PATH);
+  });
+
+  test("without the kernel's name, a swap still in place fails the second containment check", async () => {
+    if (!POSIX) return;
+    const fs = racingFs("no-proc");
+    expect(await readImage({ ...ctx, fs }, "race/pic.png")).toBe(UNKNOWN_PATH);
+    expect(await readFile({ ...ctx, fs }, "race/note.txt")).toBe(UNKNOWN_PATH);
+  });
+
+  test("without the kernel's name, a swap put back before the second look fails the identity check", async () => {
+    if (!POSIX) return;
+    const fs = racingFs("restored");
+    expect(await readImage({ ...ctx, fs }, "race/pic.png")).toBe(UNKNOWN_PATH);
+    expect(await readFile({ ...ctx, fs }, "race/note.txt")).toBe(UNKNOWN_PATH);
+  });
+
+  test("an untouched file passes both forms of the check", async () => {
+    const noProc = {
+      ...NODE_FILES_FS,
+      readHead: (path: string, max: number, confirm?: (o: OpenedFile) => Promise<boolean>) =>
+        NODE_FILES_FS.readHead(path, max, confirm && ((o) => confirm({ ...o, path: null }))),
+    };
+    for (const c of [ctx, { ...ctx, fs: noProc }]) {
+      const pic = await readImage(c, "race/pic.png");
+      if (pic === UNKNOWN_PATH || !pic.available || pic.kind !== "image") throw new Error(JSON.stringify(pic));
+      expect(pic.bytes).toEqual(inRoot);
+      const note = await readFile(c, "race/note.txt");
+      if (note === UNKNOWN_PATH || !note.available) throw new Error(JSON.stringify(note));
+      expect(note.text).toBe("inside\n");
+    }
+  });
+});
+
+describe("edge paths on the image read and the text read", () => {
+  let edge = "";
+
+  beforeAll(() => {
+    edge = join(root, "edge");
+    mkdirSync(edge, { recursive: true });
+    write(join(outside, "edge-out.png"), bytes(HEADS.png, 30));
+    // A link inside the root that leads out, and one to `.git/config` wearing a picture's name.
+    symlinkSync(join(outside, "edge-out.png"), join(edge, "out.png"));
+    symlinkSync(join(root, ".git", "config"), join(edge, "x.png"));
+    // A HARD link to a file outside the root: the same inode, under a name inside it.
+    linkSync(join(outside, "edge-out.png"), join(edge, "hard.png"));
+    // On a case-sensitive disk `.GIT` is its own folder, not `.git`; it is refused all the same.
+    mkdirSync(join(root, ".GIT"), { recursive: true });
+    write(join(root, ".GIT", "config"), "[core]\n");
+    symlinkSync(join(root, ".GIT", "config"), join(edge, "upper.png"));
+  });
+
+  test("a link inside the root that leads out, and a link to .git/config named x.png, are refused", async () => {
+    for (const bad of ["edge/out.png", "edge/x.png", "edge/upper.png", ".GIT/config", ".Git/config"]) {
+      expect({ bad, image: await readImage(ctx, bad) }).toEqual({ bad, image: UNKNOWN_PATH });
+      expect({ bad, text: await readFile(ctx, bad) }).toEqual({ bad, text: UNKNOWN_PATH });
+    }
+  });
+
+  test("the .git deny folds case on a case-sensitive host too, on the asked name and the real path", () => {
+    expect(LINUX.caseInsensitive).toBeFalsy();
+    for (const p of [".GIT/config", "a/.Git/HEAD", ".gIt"]) expect(parseRelPath(p, LINUX)).toBeNull();
+  });
+
+  test("a hard link to a file outside the root is served: its real path is inside, and nothing can tell", async () => {
+    // Documented in files-view.ts ("THE RACE, AND THE CHECK ON THE OPENED FILE"): a hard link is the
+    // same inode under a name inside the root, so realpath, the kernel's name and the identity check
+    // all answer "inside". Making one takes write access inside the root and, under Linux's
+    // protected_hardlinks, ownership of the target: the operator's own user, who reads it anyway.
+    const got = await readImage(ctx, "edge/hard.png");
+    if (got === UNKNOWN_PATH || !got.available || got.kind !== "image") throw new Error(JSON.stringify(got));
+    expect(got.bytes).toEqual(new Uint8Array(readFileSync(join(outside, "edge-out.png"))));
+  });
+
+  test("encoded traversal, double encoding, NUL and a backslash on the route are all 404 unknown-path", async () => {
+    const engine = {
+      current: (): RootSnapshot => ({
+        agents: [pane("w1:p1", "w1", join(root, "c", "deep"))],
+        shellPanes: [],
+        workspaces: [space("w1", "ws")],
+      }),
+    };
+    for (const q of [
+      "..%2foutside%2fedge-out.png",
+      "..%2Foutside%2Fedge-out.png",
+      "%2e%2e%2foutside%2fedge-out.png",
+      "%252e%252e%252foutside%252fedge-out.png",
+      "edge%2F..%2F..%2Foutside%2Fedge-out.png",
+      "img%2Fa.png%00",
+      "img%2Fa.png%00.png",
+      "img%5Ca.png",
+      "..%5C..%5Coutside%5Cedge-out.png",
+      "%2Fetc%2Fpasswd",
+    ]) {
+      const res = await filesImage(engine, { kind: "pane", paneId: "w1:p1" }, new URL(`http://x/i?path=${q}`), [state, config], home);
+      expect({ q, status: res.status }).toEqual({ q, status: 404 });
+      expect(await res.json()).toEqual({ error: "unknown-path" });
+      // Every answer, a refusal too, carries nosniff from the shared headers.
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    }
+  });
+
+  test("the image read's every answer carries nosniff: 200, 404, 413 and 415", () => {
+    for (const answer of [
+      { available: true, kind: "image", type: "image/png", bytes: bytes(HEADS.png, 20), size: 20 },
+      UNKNOWN_PATH,
+      { available: true, kind: "too-large", size: MAX_IMAGE_READ_BYTES + 1 },
+      { available: true, kind: "not-image" },
+    ] as const) {
+      expect(filesImageResponse(answer).headers.get("x-content-type-options")).toBe("nosniff");
+    }
   });
 });

@@ -11,6 +11,10 @@ import { DEVICES_FILENAME, filePairingIo, PairingStore, sha256Hex } from "./pair
 import {
   apiFrontGate,
   browserPairingGate,
+  hostInterfaceAddresses,
+  isConcreteNonLoopbackBind,
+  isSameHostPeer,
+  normalizePeerAddress,
   guard,
   isOpenApiRoute,
   OPEN_API_ROUTES,
@@ -372,46 +376,197 @@ describe("guard while paired-devices.json cannot be read", () => {
 
 // ── The host's own read credential (bridge/local-secret.ts) ────────────────────────────────────
 
-describe("the local credential: reads only, from a loopback peer only", () => {
+describe("the local credential: reads only, from this host through nothing", () => {
   const secret = mintLocalSecret();
   const credential = localCredentialOf(secret);
   const bearer = { authorization: `Bearer ${secret}` };
   const loopback = () => "127.0.0.1";
+  // This host's interfaces, as a test names them: never the real ones, so a case cannot pass or fail
+  // on the machine it runs on.
+  const OWN = new Set(["100.64.0.8", "192.168.1.10", "fd7a:115c:a1e0::8", "fe80::1"]);
+  const own = () => OWN;
+  /** A lead or a single-machine install: the default bind. */
+  const LOOPBACK_BIND = "127.0.0.1";
+  /** A crew peer: one concrete tailnet address, nothing on loopback. */
+  const CONCRETE_BIND = "100.64.0.8";
 
-  async function gateFrom(peer: () => string | null | undefined, paired = true) {
+  async function gateFrom(
+    peer: () => string | null | undefined,
+    bindHost = LOOPBACK_BIND,
+    paired = true,
+    addresses = own,
+  ) {
     const { store, dir } = await storeWith(paired);
-    return { gate: browserPairingGate(store, credential, peer), dir };
+    return { gate: browserPairingGate(store, credential, peer, bindHost, addresses), dir };
   }
 
-  test("a read from loopback is admitted, and attributed to `local`, never authorised to write", async () => {
-    const { gate } = await gateFrom(loopback);
-    expect(guard(request("GET", "/api/snapshot", bearer), config(), "read", gate)).toBeNull();
-    expect(apiFrontGate(request("GET", "/api/update/check", bearer), "/api/update/check", config(), gate)).toBeNull();
-    expect(requestDevice(request("GET", "/api/snapshot", bearer), config(), gate)).toEqual({
-      enforced: true,
-      device: "local",
-      authorized: false,
-    });
-    // v4-mapped and IPv6 loopback are loopback too.
-    for (const peer of ["::1", "::ffff:127.0.0.1"]) {
-      const { gate: g } = await gateFrom(() => peer);
-      expect(guard(request("GET", "/api/snapshot", bearer), config(), "read", g)).toBeNull();
+  test("a read from loopback is admitted on either bind, attributed to `local`, never authorised to write", async () => {
+    for (const bind of [LOOPBACK_BIND, CONCRETE_BIND]) {
+      const { gate } = await gateFrom(loopback, bind);
+      expect(guard(request("GET", "/api/snapshot", bearer), config(), "read", gate)).toBeNull();
+      expect(apiFrontGate(request("GET", "/api/update/check", bearer), "/api/update/check", config(), gate)).toBeNull();
+      expect(requestDevice(request("GET", "/api/snapshot", bearer), config(), gate)).toEqual({
+        enforced: true,
+        device: "local",
+        authorized: false,
+      });
+      // v4-mapped, IPv6 loopback, and a zone or upper case on either, are loopback too.
+      for (const peer of ["::1", "::ffff:127.0.0.1", "::FFFF:127.0.0.1", "::1%lo"]) {
+        const { gate: g } = await gateFrom(() => peer, bind);
+        expect({ bind, peer, gate: guard(request("GET", "/api/snapshot", bearer), config(), "read", g) }).toEqual({
+          bind,
+          peer,
+          gate: null,
+        });
+      }
     }
   });
 
-  test("it is refused for a write and for the Files view's device-read", async () => {
-    const { gate } = await gateFrom(loopback);
-    const write = guard(request("POST", "/api/tab", { ...bearer, origin: "http://127.0.0.1:8787" }), config(), "write", gate)!;
-    expect(write.status).toBe(403);
-    expect(await write.text()).toBe("device not paired");
-    expect(guard(request("GET", "/api/pane/w1/files", bearer), config(), "device-read", gate)!.status).toBe(403);
+  test("on a loopback bind, this host's own addresses do NOT count: the 1.17.2 rule exactly", async () => {
+    // A forwarder on this host (socat, ssh -L, Docker's userland proxy) dialling the host's own
+    // address would otherwise speak for whoever reached it. Nothing legitimate needs it here: the
+    // CLI dials loopback when the bridge listens there.
+    for (const bind of [LOOPBACK_BIND, "localhost", "::1", "[::1]", "127.0.0.2"]) {
+      for (const peer of ["100.64.0.8", "::ffff:100.64.0.8", "192.168.1.10", "FD7A:115C:A1E0::8", "fe80::1%eth0"]) {
+        const { gate } = await gateFrom(() => peer, bind);
+        const denied = guard(request("GET", "/api/snapshot", bearer), config(), "read", gate);
+        expect({ bind, peer, status: denied?.status }).toEqual({ bind, peer, status: 403 });
+        expect(requestDevice(request("GET", "/api/snapshot", bearer), config(), gate).device).toBeNull();
+      }
+    }
   });
 
-  test("it is refused from a non-loopback peer, and from a peer the runtime cannot name", async () => {
-    for (const peer of ["100.64.0.9", "192.168.1.20", "fd7a:115c:a1e0::1", "", null, undefined]) {
-      const { gate } = await gateFrom(() => peer);
-      const denied = guard(request("GET", "/api/snapshot", bearer), config(), "read", gate);
-      expect({ peer, status: denied?.status }).toEqual({ peer, status: 403 });
+  test("a wildcard or a host-name bind keeps the loopback-only rule too", async () => {
+    for (const bind of ["", "0.0.0.0", "::", "[::]", "0:0:0:0:0:0:0:0", "bluefin", "bluefin.tailnet.ts.net"]) {
+      const { gate } = await gateFrom(() => "100.64.0.8", bind);
+      expect({ bind, status: guard(request("GET", "/api/snapshot", bearer), config(), "read", gate)?.status }).toEqual({
+        bind,
+        status: 403,
+      });
+    }
+  });
+
+  test("on a concrete non-loopback bind, a read from this host's own addresses is admitted: a crew peer's CLI dials its bind", async () => {
+    // A deputy binds COLLIE_HOST to its tailnet address and nothing answers on 127.0.0.1, so doctor
+    // dials that address and the kernel reports it as the peer. Every spelling of it counts.
+    for (const bind of [CONCRETE_BIND, "::ffff:100.64.0.8", "[fd7a:115c:a1e0::8]", "192.168.1.10"]) {
+      for (const peer of ["100.64.0.8", "::ffff:100.64.0.8", "192.168.1.10", "FD7A:115C:A1E0::8", "fe80::1%eth0"]) {
+        const { gate } = await gateFrom(() => peer, bind);
+        expect({ bind, peer, gate: guard(request("GET", "/api/snapshot", bearer), config(), "read", gate) }).toEqual({
+          bind,
+          peer,
+          gate: null,
+        });
+        expect(requestDevice(request("GET", "/api/snapshot", bearer), config(), gate).device).toBe("local");
+      }
+    }
+  });
+
+  test("a request carrying a proxy's header is never admitted, from loopback or from an own address", async () => {
+    // The CLI sends none of these (cli/doctor.ts, cli/crew-update.ts, scripts/capture-fixture.sh,
+    // scripts/crew-mux-probe.ts); `tailscale serve`, Caddy, Traefik and nginx always add one.
+    const markers: Record<string, string>[] = [
+      { "x-forwarded-for": "100.64.0.9" },
+      { forwarded: "for=100.64.0.9" },
+      { "x-real-ip": "100.64.0.9" },
+      { "x-forwarded-host": "bluefin:8787" },
+      { "x-forwarded-proto": "https" },
+      { "cf-connecting-ip": "203.0.113.9" },
+      { "tailscale-user-name": "Someone" },
+      // An empty value is still the header: the proxy's word is that it was there.
+      { "X-Forwarded-For": "" },
+    ];
+    for (const [bind, peer] of [
+      [LOOPBACK_BIND, "127.0.0.1"],
+      [LOOPBACK_BIND, "::1"],
+      [CONCRETE_BIND, "127.0.0.1"],
+      [CONCRETE_BIND, "100.64.0.8"],
+    ] as const) {
+      for (const marker of markers) {
+        const { gate } = await gateFrom(() => peer, bind);
+        const req = request("GET", "/api/snapshot", { ...bearer, ...marker });
+        expect({ bind, peer, marker, status: guard(req, config(), "read", gate)?.status }).toEqual({
+          bind,
+          peer,
+          marker,
+          status: 403,
+        });
+        expect(requestDevice(request("GET", "/api/snapshot", { ...bearer, ...marker }), config(), gate).device).toBeNull();
+      }
+    }
+  });
+
+  test("the configured Tailscale login alone does not refuse it: doctor sends that header (issue #238)", async () => {
+    // `checkAccess` fails closed without the login while COLLIE_TRUSTED_USER is set, so doctor sends
+    // the configured login beside the secret. A request through `tailscale serve` carries
+    // X-Forwarded-For as well, and is refused on that header (above).
+    const cfg = config({ trustedUser: "operator@example.com" });
+    const { gate } = await gateFrom(loopback);
+    const withLogin = request("GET", "/api/snapshot", { ...bearer, "tailscale-user-login": "operator@example.com" });
+    expect(guard(withLogin, cfg, "read", gate)).toBeNull();
+    const throughServe = request("GET", "/api/snapshot", {
+      ...bearer,
+      "tailscale-user-login": "operator@example.com",
+      "x-forwarded-for": "100.64.0.9",
+    });
+    expect(guard(throughServe, cfg, "read", gate)?.status).toBe(403);
+  });
+
+  test("it stays read-only on every bind: a write, the Files read, files/image and files/exist all 403", async () => {
+    for (const [bind, peer] of [
+      [LOOPBACK_BIND, "127.0.0.1"],
+      [CONCRETE_BIND, "100.64.0.8"],
+    ] as const) {
+      const { gate } = await gateFrom(() => peer, bind);
+      const write = guard(request("POST", "/api/tab", { ...bearer, origin: "http://127.0.0.1:8787" }), config(), "write", gate)!;
+      expect(write.status).toBe(403);
+      expect(await write.text()).toBe("device not paired");
+      // The three Files routes ask `device-read` (pinned by source below); each is refused.
+      for (const path of ["/api/pane/w1/files", "/api/pane/w1/files/image?path=x.png", "/api/workspace/w1/files/exist"]) {
+        const method = path.endsWith("/exist") ? "POST" : "GET";
+        const denied = guard(request(method, path, { ...bearer, origin: "http://127.0.0.1:8787" }), config(), "device-read", gate);
+        expect({ bind, path, status: denied?.status }).toEqual({ bind, path, status: 403 });
+      }
+      expect(requestDevice(request("GET", "/api/snapshot", bearer), config(), gate).authorized).toBe(false);
+    }
+  });
+
+  test("the Files read, files/image and files/exist routes ask device-read, never read (by source)", () => {
+    for (const route of ["WORKSPACE_FILES_ROUTE", "PANE_FILES_EXIST_ROUTE", "PANE_FILES_IMAGE_ROUTE"]) {
+      const at = SERVER_CODE.indexOf(`pathname.match(${route})`);
+      expect({ route, found: at > 0 }).toEqual({ route, found: true });
+      const nextGate = SERVER_CODE.slice(at).match(/caller\.gate\("([a-z-]+)"\)/);
+      expect({ route, level: nextGate?.[1] }).toEqual({ route, level: "device-read" });
+    }
+    // The pane Files read takes its level from the action table.
+    expect(SERVER_CODE).toContain('if (action === "files") return "device-read";');
+  });
+
+  test("the host's addresses are asked only once the secret matched, on a concrete bind, and read fresh each time", async () => {
+    let asked = 0;
+    const counting = () => {
+      asked += 1;
+      return OWN;
+    };
+    const { gate } = await gateFrom(() => "100.64.0.8", CONCRETE_BIND, true, counting);
+    guard(request("GET", "/api/snapshot", { authorization: `Bearer ${TOKEN}` }), config(), "read", gate);
+    expect(asked).toBe(0);
+    guard(request("GET", "/api/snapshot", bearer), config(), "read", gate);
+    guard(request("GET", "/api/snapshot", bearer), config(), "read", gate);
+    expect(asked).toBe(2);
+    // A loopback bind never asks at all.
+    const { gate: loopbackBound } = await gateFrom(() => "100.64.0.8", LOOPBACK_BIND, true, counting);
+    guard(request("GET", "/api/snapshot", bearer), config(), "read", loopbackBound);
+    expect(asked).toBe(2);
+  });
+
+  test("it is refused from another machine, and from a peer the runtime cannot name", async () => {
+    for (const bind of [LOOPBACK_BIND, CONCRETE_BIND]) {
+      for (const peer of ["100.64.0.9", "192.168.1.20", "fd7a:115c:a1e0::1", "::ffff:100.64.0.9", "", null, undefined]) {
+        const { gate } = await gateFrom(() => peer, bind);
+        const denied = guard(request("GET", "/api/snapshot", bearer), config(), "read", gate);
+        expect({ bind, peer, status: denied?.status }).toEqual({ bind, peer, status: 403 });
+      }
     }
   });
 
@@ -424,7 +579,7 @@ describe("the local credential: reads only, from a loopback peer only", () => {
     }
     // A bridge that could not write the file holds no credential: the secret is then just a token.
     const { store } = await storeWith(true);
-    const none = browserPairingGate(store, undefined, loopback);
+    const none = browserPairingGate(store, undefined, loopback, LOOPBACK_BIND);
     expect(guard(request("GET", "/api/snapshot", bearer), config(), "read", none)?.status).toBe(403);
   });
 
@@ -435,10 +590,54 @@ describe("the local credential: reads only, from a loopback peer only", () => {
     expect(guard(request("GET", "/api/snapshot", { authorization: `Bearer ${TOKEN}` }), config(), "read", gate)!.status).toBe(503);
   });
 
-  test("a paired phone's token still works through the same gate", async () => {
+  test("a paired phone's token still works through the same gate, proxy headers and all", async () => {
     const { gate } = await gateFrom(() => "127.0.0.1");
-    const phone = { authorization: `Bearer ${TOKEN}` };
+    const phone = { authorization: `Bearer ${TOKEN}`, "x-forwarded-for": "100.64.0.9" };
     expect(guard(request("GET", "/api/snapshot", phone), config(), "read", gate)).toBeNull();
     expect(requestDevice(request("GET", "/api/snapshot", phone), config(), gate).device).toBe("phone");
+  });
+
+  test("server.ts wires the listener's own bind into the gate, not a global", () => {
+    expect(SERVER_CODE).toContain("browserPairingGate(pairing, localCredential, (req) => server.requestIP(req)?.address, cfg.host)");
+  });
+});
+
+describe("isSameHostPeer: loopback, or this host's own addresses on a concrete bind only", () => {
+  test("addresses are compared in one spelling", () => {
+    expect(normalizePeerAddress("::FFFF:100.64.0.8")).toBe("100.64.0.8");
+    expect(normalizePeerAddress("fe80::1%eth0")).toBe("fe80::1");
+    expect(normalizePeerAddress(" FD7A::8 ")).toBe("fd7a::8");
+    // A v4-mapped prefix on a pure IPv6 address is not an IPv4 address and stays as it is.
+    expect(normalizePeerAddress("::ffff:abcd")).toBe("::ffff:abcd");
+  });
+
+  test("the real interface list holds loopback, and loopback counts on every bind", () => {
+    expect(hostInterfaceAddresses().has("127.0.0.1")).toBe(true);
+    for (const bind of ["127.0.0.1", "100.64.0.8", ""]) {
+      expect(isSameHostPeer("127.0.0.1", bind, () => new Set())).toBe(true);
+      expect(isSameHostPeer("::1", bind, () => new Set())).toBe(true);
+      expect(isSameHostPeer("::ffff:127.0.0.1", bind, () => new Set())).toBe(true);
+    }
+  });
+
+  test("an own address counts only on a concrete non-loopback bind, in every spelling", () => {
+    const own = () => new Set(["100.64.0.8", "fe80::1"]);
+    expect(isSameHostPeer("::ffff:100.64.0.8", "100.64.0.8", own)).toBe(true);
+    expect(isSameHostPeer("FE80::1%eth0", "100.64.0.8", own)).toBe(true);
+    expect(isSameHostPeer("::ffff:100.64.0.8", "127.0.0.1", own)).toBe(false);
+    expect(isSameHostPeer("fe80::1%eth0", "127.0.0.1", own)).toBe(false);
+  });
+
+  test("an unnamed peer is never this host, whatever the interfaces say", () => {
+    for (const peer of ["", "  ", null, undefined]) expect(isSameHostPeer(peer, "100.64.0.8", () => new Set([""]))).toBe(false);
+  });
+
+  test("which binds are concrete and non-loopback", () => {
+    for (const bind of ["100.64.0.8", "192.168.1.10", "fd7a:115c:a1e0::8", "[fd7a:115c:a1e0::8]", "::ffff:100.64.0.8", " 100.64.0.8 "]) {
+      expect({ bind, concrete: isConcreteNonLoopbackBind(bind) }).toEqual({ bind, concrete: true });
+    }
+    for (const bind of ["", "  ", "127.0.0.1", "127.1.2.3", "localhost", "::1", "[::1]", "::ffff:127.0.0.1", "0.0.0.0", "::", "[::]", "::0", "0:0:0:0:0:0:0:0", "bluefin", "999.1.1.1"]) {
+      expect({ bind, concrete: isConcreteNonLoopbackBind(bind) }).toEqual({ bind, concrete: false });
+    }
   });
 });

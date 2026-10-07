@@ -61,6 +61,10 @@ from screenshots. The loop:
    ```sh
    scripts/capture-fixture.sh <paneId> <name>   # paneIds: GET /api/snapshot
    ```
+   Reads need the pairing token. The script sends `COLLIE_TOKEN` when it is set (a paired device's
+   token). Otherwise it sends the bridge's own read credential from `$COLLIE_STATE_DIR/local-secret`
+   (default `~/.local/state/collie`), which works on the host. For a second instance, set
+   `COLLIE_STATE_DIR` and `COLLIE_PORT` to that instance's.
    The capture is real terminal output and **this repo is public** — review every file for secrets
    before `git add` (`less -R`), per
    [`web/src/fixtures/panes/README.md`](./web/src/fixtures/panes/README.md).

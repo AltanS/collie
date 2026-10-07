@@ -244,3 +244,15 @@ list's head line names the root at the left and the `+added −removed` totals a
 left the header's second line. The header keeps Filter, the Tree toggle (Changes only) and Refresh.
 The "{count} ignored hidden" footer is the only switch for ignored rows: once they are shown it
 reads "{count} ignored shown" and offers **Hide**. Read "Changes only" above as the Changes segment.
+
+## Amended 2026-10-08: the opened file is checked too
+
+The race above is now closed on the handle, before any byte is read, for the text read and the image
+read alike (`openedFileAllowed` and `kernelPathOf`, `bridge/files-view.ts`). On Linux the kernel's
+own name for the open file, read from `/proc/self/fd/<fd>`, must lie inside the root's real path and
+pass the deny rules. Where there is no `/proc`, the path is resolved and checked again, and its
+`lstat` must be the handle's own file (device and inode). A folder swapped for a link out between the
+check and the open now answers `unknown-path`. `openat2(RESOLVE_BENEATH)` would still be the cleaner
+tool. The hard-link consequence above stands: a hard link is the same inode under a name inside the
+root, so both checks pass it, and a file with more than one link is not refused, because package
+managers such as pnpm hard-link ordinary files.

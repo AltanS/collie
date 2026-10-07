@@ -94,3 +94,69 @@ same hole: anything that reached the port could read.
   header back through `.device` need another probe.
 - **Revisit if** a read must be shared without a device, for example a status badge. That would be
   a new route with its own named exception here, never a relaxed gate on an existing one.
+
+## Amendment — 2026-10-08: the local credential is accepted from this host, through no proxy, and from an own address on a concrete bind only
+
+The host's own read credential (`<stateDir>/local-secret`, `bridge/local-secret.ts`) lets
+`collie doctor` and `collie crew update` read their own bridge. It was accepted from a loopback peer
+only. A crew peer binds one concrete address (`COLLIE_HOST`, its tailnet or LAN address,
+CREW_PROTOCOL.md), nothing answers on 127.0.0.1 there, and both verbs dial the bound address. The
+kernel then reports that address as the peer, so every deputy refused its own CLI: `doctor` showed
+its own snapshot refused and `crew update` lost the members' verdicts. Confirmed 2026-10-08 against a
+throwaway bridge bound to a tailnet address: `403 device not paired` with the valid secret.
+
+**The credential is now accepted from this host, through nothing, and from an own address only on
+a concrete bind** (`browserPairingGate` and `isSameHostPeer` in `bridge/server.ts`). Narrowed the same
+day after counsel, before release. All three must hold:
+
+1. The token matches the owner-only `local-secret` file.
+2. The request carries no proxy header: `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`,
+   `Forwarded`, `X-Real-IP`, Cloudflare's edge headers and Access token, `Tailscale-User-Name` or
+   `Tailscale-User-Profile-Pic`. The CLI sends none of them, and every front door adds one
+   (`tailscale serve` adds `X-Forwarded-For` to every request). `Tailscale-User-Login` is not on the
+   list, because `collie doctor` sends the configured login itself (issue #238).
+3. The kernel's TCP peer is loopback. Only when the listener is bound to one concrete non-loopback IP
+   address (a crew peer's `COLLIE_HOST`) does one of this host's own interface addresses count too,
+   read fresh from `os.networkInterfaces()` on each local-credential request. On a loopback bind,
+   which is every lead and every single-machine install, the rule is loopback only, exactly as in
+   1.17.2. A wildcard bind and a host-name bind keep the loopback-only rule too: the CLI dials
+   127.0.0.1 on a wildcard, and what a name resolves to is not the gate's to guess.
+
+Everything else in decision 1 to 8 stands: reads only, never a write, never the Files view, its
+image read or its existence check.
+
+Why another machine is not admitted directly:
+
+- The peer is the kernel's TCP peer, never a header. Another machine on the tailnet or the LAN
+  connects from its own address, which is not in this host's set, so a stolen secret is refused
+  from there exactly as before.
+- A machine cannot borrow one of this host's addresses. A TCP connection needs the handshake's
+  reply, and a reply to this host's own address stays on this host. Linux also drops an arriving
+  packet whose source is a local address before TCP sees it.
+
+**The residual, stated plainly.** A forwarder running on this host (socat, `ssh -L`, Docker's
+userland proxy, a reverse proxy that adds no header) connects to the bridge from this host, so its
+peer is loopback or an own address, and the peer rule passes for whoever reached the forwarder. The
+header rule catches every HTTP proxy that says what it is. A plain TCP relay says nothing and
+passes. That was already true of the loopback rule in 1.17.2: a relay pointed at 127.0.0.1 passed
+then. A relay only helps a caller who already holds the secret, so the boundary is the owner-only
+file, not the peer rule.
+
+Checked 2026-10-08 against throwaway bridges built from source, with a temporary state folder:
+
+| Bind | Caller | Answer |
+| --- | --- | --- |
+| tailnet address | this host, to its own tailnet address, with the secret | 200 |
+| tailnet address | the same, with `X-Forwarded-For`, `Forwarded` or `X-Real-IP` | 403 |
+| tailnet address | the same, to a write, the Files read, `files/image`, `files/exist` | 403 |
+| tailnet address | socat on 127.0.0.1 relaying to the tailnet address, with the secret | 200 (the residual) |
+| tailnet address | the same relay, with `X-Forwarded-For` | 403 |
+| tailnet address | minibuch over the tailnet, with the secret | 403 |
+| 127.0.0.1 | this host, on loopback, with the secret | 200 |
+| 127.0.0.1 | the same, with `X-Forwarded-For` | 403 |
+| 127.0.0.1 | this host, to its tailnet address | no connection |
+| 127.0.0.1 | minibuch, through socat on the tailnet address relaying to 127.0.0.1, with the secret | 200 (the residual, as in 1.17.2) |
+
+The other fix, dialling loopback, was declined: on a concrete bind nothing listens there, and a
+second loopback listener would carry the whole browser surface, which is more to defend than an
+address check.

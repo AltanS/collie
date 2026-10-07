@@ -42,14 +42,17 @@ Running a crew? Update the lead first; members follow on their own. Details:
   before, and no existing token changes. `collie devices set-expiry` and `clear-expiry` adjust a
   paired device by label, `devices list` and the Settings screen show each expiry, and an expired
   token is refused as `device expired` so the phone offers **Pair again**. An expired device still
-  keeps pairing on until you revoke it.
+  keeps pairing on until you revoke it. Pairing again under the expired device's name replaces it
+  and revokes its old token in the same write; a name a live device holds is still refused.
 - **Known secret shapes are masked before pane text leaves the machine.** API keys with a
   known prefix, JWTs, PEM private keys, bearer tokens and `password=`-style values become `•` marks
   of the same width on the bridge, so the mirror, the Chat and History views and every push
   notification carry the mask, never the key. A mitigation, not a guarantee: plain passwords and
   bare hex are not matched. `COLLIE_REDACT=off` turns it off. Push bodies now name a pane by the
   label you gave it, never by the program's own title. File bodies in Files and diffs in Changes
-  are masked the same way.
+  are masked the same way, and so is every text of a tool call in Chat and History, its paths and
+  a question's options and answers included. A crew member masks its own text, so a member still on 1.17.x sends
+  unmasked text through the lead until it updates.
 - **Stricter response headers, a private blob cache and a pair rate limit.** Every answer now
   carries a `Permissions-Policy` that denies camera, location, payment and USB and keeps the
   microphone for hands-free speech; the content policy adds `object-src 'none'` and
@@ -132,7 +135,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   `collie pair --expires 30d` for a script), and the script claims the code with a label such as
   `script`; the token comes back once, in the pair answer. A CLI on the host (`doctor`, `history`,
   the crew update sweep) reads its own bridge with a local credential the bridge writes to the state
-  directory, so nothing changes there.
+  directory, so nothing changes there. The bridge takes it from loopback only and never on a request
+  that carries a proxy's header such as `X-Forwarded-For`; a crew member bound to its tailnet
+  address also takes it from its own addresses. `scripts/capture-fixture.sh` and `scripts/crew-mux-probe.ts` send `COLLIE_TOKEN`
+  or that local credential. The startup warning for an empty `COLLIE_TRUSTED_USER` no longer
+  claims full write access. Two claims racing on one pairing code now enrol one device, and wrong
+  guesses that race each count toward the five tries.
 - **Rolling back below 1.18.0 ignores token expiries.** An older bridge does not know the
   `expiresAt` field, so an expired device works again until the bridge is updated; revoke it instead
   if that matters.

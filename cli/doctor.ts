@@ -1215,8 +1215,9 @@ function identityHeader(deps: DoctorDeps): Record<string, string> | undefined {
  * Everything this verb shows its own bridge on a read: the configured login (issue #238, above) and
  * the bridge's local read credential (`<stateDir>/local-secret`, bridge/local-secret.ts), because
  * reads need a pairing token now (ADR 0086) and this process holds none. The credential reads only,
- * from loopback only; with no file (the bridge is down, or older) nothing is sent and the bridge
- * refuses as it did before, which `ownAnswerSentence` and the history section report as a refusal.
+ * and only from this host (loopback or the host's own bound address); with no file (the bridge is
+ * down, or older) nothing is sent and the bridge refuses as it did before, which `ownAnswerSentence`
+ * and the history section report as a refusal.
  */
 function ownReadHeaders(deps: DoctorDeps) {
   return {

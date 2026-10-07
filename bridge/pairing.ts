@@ -395,6 +395,31 @@ export function addDevice(registry: PairedRegistry, device: Enrolment): PairedRe
 }
 
 /**
+ * Enrol a device through a CLAIM: like {@link addDevice}, except that an EXPIRED device under the same
+ * label is replaced instead of refused. Null when a LIVE device holds the label.
+ *
+ * Why a claim may replace an expired entry. An expired device stays listed until it is revoked, so
+ * the phone can say "pair again" (docs/security.md). The person who pairs again types the name they
+ * used before, and `addDevice` answered "A device is already using that name" about a device whose
+ * token already authenticates as nobody. The old entry is dropped and the new one appended IN THE
+ * SAME REGISTRY VALUE, so the one write that enrols the new token also revokes the old one: there is
+ * no moment with both, and none with neither. A live device's label is still refused, because
+ * replacing it would revoke a working phone on the say-so of whoever holds the current code.
+ *
+ * `replaced` is true when an expired entry went, so the caller can audit the revoke.
+ */
+export function enrolDevice(
+  registry: PairedRegistry,
+  device: Enrolment,
+): { registry: PairedRegistry; replaced: boolean } | null {
+  const holder = registry.devices.find((d) => d.label === device.label);
+  if (holder !== undefined && !isExpired(holder, device.now)) return null;
+  const rest = holder === undefined ? registry : { devices: registry.devices.filter((d) => d.label !== device.label) };
+  const next = addDevice(rest, device);
+  return next === null ? null : { registry: next, replaced: holder !== undefined };
+}
+
+/**
  * Set (a number) or clear (null) one device's expiry, by exact label. Null when there is no such
  * device. Clearing REMOVES the key rather than writing `null`, so a cleared entry is shaped exactly
  * like one that never had an expiry.
@@ -728,8 +753,28 @@ export class PairingStore {
    * Claim the pending code and enrol `label`. On success the token is returned ONCE — it is not
    * stored, recoverable or re-derivable — and the pending pairing is destroyed, so a code is
    * single-use even within its TTL.
+   *
+   * A label held by an EXPIRED device is taken over, and that device's token revoked in the same
+   * write ({@link enrolDevice}); `replacedExpired` says so, for the audit trail. A live device's label
+   * is still `duplicate-label`.
    */
-  async claim(code: string, label: string): Promise<{ ok: true; token: string } | { ok: false; reason: ClaimFailure }> {
+  async claim(
+    code: string,
+    label: string,
+  ): Promise<{ ok: true; token: string; replacedExpired: boolean } | { ok: false; reason: ClaimFailure }> {
+    // The WHOLE claim runs in the write queue, the code check included. Two claims racing on one
+    // code would otherwise both read the pending pairing before either deleted it, and both enrol:
+    // one code, two devices. Two wrong guesses racing would both read the same attempt count and
+    // write it back once, and the five-tries rule would count one. In the queue the second claim
+    // reads what the first wrote: no pending pairing, or the higher count.
+    return this.serialize(() => this.claimInQueue(code, label));
+  }
+
+  /** {@link claim}'s body. Runs inside {@link serialize} only, so it must not queue anything itself. */
+  private async claimInQueue(
+    code: string,
+    label: string,
+  ): Promise<{ ok: true; token: string; replacedExpired: boolean } | { ok: false; reason: ClaimFailure }> {
     const pending = coercePending(await this.io.readPending());
     const verdict = checkClaim(pending, code, this.now());
     if (!verdict.ok) {
@@ -738,26 +783,22 @@ export class PairingStore {
       return { ok: false, reason: verdict.reason };
     }
     const token = generateToken(this.random);
-    const enrolled = await this.serialize(async () => {
-      const now = this.now();
-      // The operator's `--expires`, carried on the pending code, counts from THIS moment.
-      const lifetime = pending?.tokenLifetimeMs;
-      const enrolment: Enrolment = {
-        label,
-        tokenHash: sha256Hex(token),
-        now,
-      };
-      if (lifetime !== undefined) enrolment.expiresAt = now + lifetime;
-      const next = addDevice(coerceRegistry(await this.io.readRegistry()), enrolment);
-      if (!next) return false;
-      await this.io.writeRegistry(next);
-      return true;
-    });
+    const now = this.now();
+    // The operator's `--expires`, carried on the pending code, counts from THIS moment.
+    const lifetime = pending?.tokenLifetimeMs;
+    const enrolment: Enrolment = {
+      label,
+      tokenHash: sha256Hex(token),
+      now,
+    };
+    if (lifetime !== undefined) enrolment.expiresAt = now + lifetime;
+    const enrolled = enrolDevice(coerceRegistry(await this.io.readRegistry()), enrolment);
     // A duplicate label leaves the pending pairing alive: the operator retries with another name
     // rather than re-running `collie pair`.
     if (!enrolled) return { ok: false, reason: "duplicate-label" };
+    await this.io.writeRegistry(enrolled.registry);
     await this.io.deletePending();
-    return { ok: true, token };
+    return { ok: true, token, replacedExpired: enrolled.replaced };
   }
 
   /**

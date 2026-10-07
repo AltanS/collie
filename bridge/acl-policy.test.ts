@@ -137,6 +137,14 @@ describe("names", () => {
     for (const name of ["notes.txt", "src", ".git", "envelope"]) expect(isCollieName(name)).toBe(false);
   });
 
+  test("the history, alerts and worktree receipt files, and their temporary files, are Collie names", () => {
+    for (const stem of ["machine-history.json", "machine-alerts.json", "worktree-receipts.json"]) {
+      expect(isCollieName(stem)).toBe(true);
+      expect(isCollieName(`${stem}.tmp`)).toBe(true);
+      expect(isCollieName(`${stem}.old`)).toBe(false);
+    }
+  });
+
   test("only Collie's own suffixes follow a Collie name: a rotation and its temporary files", () => {
     for (const name of ["audit.log.1", "crew-trust.json.tmp", "collie-processes.4242.tmp", "paired-devices.json.4242.7.tmp", ".env.collie-tmp", ".env.push-keys.tmp"]) {
       expect(isCollieName(name)).toBe(true);

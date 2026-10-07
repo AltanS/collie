@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
+import { isIP } from "node:net";
+import { homedir, networkInterfaces } from "node:os";
 import { dirname, extname, join, normalize, sep } from "node:path";
-import { createAccessGate } from "./access-jwt.ts";
+import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
@@ -968,13 +969,15 @@ export function startServer(opts: {
   const localCredential = opts.localCredential;
   /**
    * What every gate on the browser surface asks: the pairing store, plus the host's local read
-   * credential from a loopback peer. The peer is the kernel's (`server.requestIP`), never a header.
-   * `server` is the listener below; this closure only runs for a request it accepted.
+   * credential from a peer on this host. The peer is the kernel's (`server.requestIP`), never a header.
+   * `server` is the listener below; this closure only runs for a request it accepted. `cfg.host` is
+   * the address that listener binds, passed in so the gate knows whether this host's own interface
+   * addresses count at all ({@link browserPairingGate}).
    */
   const pairingGate: PairingGate | undefined =
     pairing === undefined
       ? undefined
-      : browserPairingGate(pairing, localCredential, (req) => server.requestIP(req)?.address);
+      : browserPairingGate(pairing, localCredential, (req) => server.requestIP(req)?.address, cfg.host);
   const folders = opts.folders;
   const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
   const machines = opts.machines;
@@ -2457,6 +2460,15 @@ export function startServer(opts: {
             req.headers.get("accept-encoding"),
           );
         }
+        // Pairing again under an expired device's name replaced that device and revoked its token in
+        // the same write (`enrolDevice`, bridge/pairing.ts). The revoke is recorded as one, first.
+        if (claimed.replacedExpired) {
+          audit.record({
+            action: "device.revoke",
+            device: parsed.label,
+            detail: { label: parsed.label, reason: "expired-replaced" },
+          });
+        }
         audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
@@ -2632,11 +2644,11 @@ export function startupWarnings(cfg: Config): string[] {
     }
   } else if (!cfg.trustedUser) {
     warnings.push(
-      `[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).`,
+      `[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge is checked by its pairing token alone. Set it to your tailnet login (see README → Variant A).`,
     );
   } else if (cfg.trustedUserOptional) {
     warnings.push(
-      `[bridge] WARNING: COLLIE_TRUSTED_USER_OPTIONAL=1 — a request with no Tailscale-User-Login is accepted, so any TAGGED tailnet node (which serve injects no identity for) gets full write access. Unset it outside host-local development.`,
+      `[bridge] WARNING: COLLIE_TRUSTED_USER_OPTIONAL=1 — a request with no Tailscale-User-Login is accepted, so any TAGGED tailnet node (which serve injects no identity for) is checked by its pairing token alone. Unset it outside host-local development.`,
     );
   }
   if (cfg.allowAnyHost) {
@@ -5041,7 +5053,8 @@ export function guard(
   if (pairing !== undefined) {
     const token = bearerToken(req.headers);
     // The host's own CLI (`<stateDir>/local-secret`, bridge/local-secret.ts): a READ credential and
-    // nothing else, from a loopback peer only — `local` answers false otherwise. Asked first, so a
+    // nothing else, from this host through no proxy only (`browserPairingGate`) — `local` answers
+    // false otherwise. Asked first, so a
     // `collie doctor` still reads while the registry is the thing that is broken.
     if (level === "read" && pairing.local?.(token, req) === true) return null;
     try {
@@ -5068,24 +5081,138 @@ export function pairingUnavailable(): Response {
 }
 
 /**
+ * A peer or interface address in one spelling, so the two compare: lower case, no IPv6 zone
+ * (`fe80::1%eth0`), and an IPv4 address a dual-stack listener reports in v4-mapped form
+ * (`::ffff:100.64.0.3`) as the plain IPv4 one.
+ */
+export function normalizePeerAddress(address: string): string {
+  const a = address.trim().toLowerCase().replace(/%.*$/, "");
+  return a.startsWith("::ffff:") && a.includes(".") ? a.slice(7) : a;
+}
+
+/**
+ * This host's own interface addresses, normalised, read fresh on every call. Fresh on purpose: a
+ * tailnet address can arrive after the bridge started, and the gate asks only once the local secret
+ * has already matched, so this costs one `getifaddrs` per CLI read and nothing for any phone.
+ */
+export function hostInterfaceAddresses(): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const list of Object.values(networkInterfaces())) {
+    for (const entry of list ?? []) out.add(normalizePeerAddress(entry.address));
+  }
+  return out;
+}
+
+/**
+ * Whether a bind host is one concrete, non-loopback IP address: the crew-peer case, where
+ * `COLLIE_HOST` is the machine's tailnet or LAN address and nothing listens on loopback. False for
+ * every loopback spelling, for a wildcard (`""`, `0.0.0.0`, `::`, which answer on loopback too, so the
+ * CLI dials 127.0.0.1 there), and for a host NAME: what a name resolves to is not this function's to
+ * guess, and a name bind keeps the strict loopback-only rule, which costs the CLI a refusal and
+ * admits nobody.
+ */
+export function isConcreteNonLoopbackBind(host: string): boolean {
+  const h = normalizePeerAddress(host.replace(/^\[|\]$/g, ""));
+  if (isIP(h) === 0 || isLoopbackBindHost(h)) return false;
+  // The unspecified address in every spelling: 0.0.0.0, ::, 0:0:0:0:0:0:0:0, ::0.
+  return !(h === "0.0.0.0" || /^[0:]+$/.test(h));
+}
+
+/**
+ * Whether a TCP peer is THIS host, for the local credential: loopback always, and one of this host's
+ * own interface addresses ONLY when `bindHost` is a concrete non-loopback address
+ * ({@link isConcreteNonLoopbackBind}). On a loopback bind (every lead, every single-machine install)
+ * the rule is loopback-only, exactly as in 1.17.2. Strict: an address the runtime cannot name is not
+ * this host, unlike {@link isLoopbackPeer}'s default for a missing one, because this admits a
+ * credential rather than refusing a caller.
+ */
+export function isSameHostPeer(
+  peer: string | null | undefined,
+  bindHost: string,
+  ownAddresses: () => ReadonlySet<string> = hostInterfaceAddresses,
+): boolean {
+  if (typeof peer !== "string" || peer.trim() === "") return false;
+  if (isLoopbackPeer(normalizePeerAddress(peer))) return true;
+  if (!isConcreteNonLoopbackBind(bindHost)) return false;
+  return ownAddresses().has(normalizePeerAddress(peer));
+}
+
+/**
+ * Headers a front door adds and the host's own CLI never sends: the forwarding set every proxy
+ * writes (`tailscale serve`, Caddy, Traefik, nginx; {@link FORWARDING_HEADERS}), Cloudflare's edge
+ * headers and Access token, and the two Tailscale identity headers `tailscale serve` adds for a user
+ * node beside the login. A request carrying any of them came THROUGH something, so the local
+ * credential is never admitted on it, from loopback or from an own address.
+ *
+ * `Tailscale-User-Login` is deliberately NOT here: `collie doctor` sends the configured login itself
+ * (issue #238, `identityHeader` in cli/doctor.ts), because `checkAccess` fails closed without it
+ * while `COLLIE_TRUSTED_USER` is set. `tailscale serve` adds `X-Forwarded-For` to every request it
+ * proxies, so a request through serve is caught by that header, not by the login.
+ */
+export const PROXY_MARKER_HEADERS: readonly string[] = [
+  ...FORWARDING_HEADERS,
+  ...DOOR_PRESETS.cloudflare.edgeHeaders,
+  DOOR_PRESETS.cloudflare.header,
+  "tailscale-user-name",
+  "tailscale-user-profile-pic",
+];
+
+/** Whether a request carries any {@link PROXY_MARKER_HEADERS} entry. */
+export function carriesProxyMarker(headers: Headers): boolean {
+  return PROXY_MARKER_HEADERS.some((h) => headers.has(h));
+}
+
+/**
  * The gate every browser-surface `guard` call asks: the pairing store, plus the host's local read
- * credential (bridge/local-secret.ts) when the request's TCP peer is loopback. `peerOf` is the
- * listener's `requestIP`, injected so the loopback rule is tested without a socket. Strict on the
- * peer: an address the runtime cannot name is NOT loopback here, unlike {@link isLoopbackPeer}'s
- * default for a missing one, because this admits a credential rather than refusing a caller.
+ * credential (bridge/local-secret.ts) when the request came from this host and through nothing.
+ * `peerOf` is the listener's `requestIP`, injected so the peer rule is tested without a socket;
+ * `bindHost` is the listener's own bind (`cfg.host`), passed explicitly so the rule never reads a
+ * global; `ownAddresses` is injected so a test names the host's interfaces instead of reading the
+ * real ones.
+ *
+ * THE RULE. The local credential is admitted when all three hold:
+ *   1. the token matches the owner-only `local-secret` file;
+ *   2. the request carries no proxy header ({@link carriesProxyMarker}): the CLI sends none, a front
+ *      door always adds one;
+ *   3. the kernel's TCP peer is loopback, or, ONLY when the listener is bound to one concrete
+ *      non-loopback address, one of this host's own interface addresses ({@link isSameHostPeer}).
+ *
+ * WHY OWN ADDRESSES, AND ONLY ON A CONCRETE BIND. A crew peer binds one concrete address
+ * (`COLLIE_HOST`, its tailnet or LAN address, CREW_PROTOCOL.md "The bind is `COLLIE_HOST`"), and
+ * `Bun.serve` takes one hostname, so nothing answers on 127.0.0.1 there. `collie doctor` and
+ * `collie crew update` dial the bound address, and a connection from this host to its own address
+ * reports that address as the peer, not 127.0.0.1. Loopback-only refused the host's own CLI on every
+ * deputy. On a loopback bind the CLI dials loopback and the wider rule buys nothing, so it is off:
+ * a lead and a single-machine install keep 1.17.2's rule exactly.
+ *
+ * WHY THIS ADMITS NO OTHER MACHINE DIRECTLY. The peer is the kernel's, never a header. Another machine
+ * connects from its OWN address, which is not in this host's set. It cannot borrow one of this host's
+ * addresses: a TCP connection needs the handshake's reply, and a reply to this host's own address
+ * stays on this host (and Linux drops an arriving packet whose source is a local address).
+ *
+ * THE RESIDUAL. A forwarder running ON THIS HOST (socat, `ssh -L`, Docker's userland proxy, a reverse
+ * proxy that adds no header) connects to the bind FROM this host, so its peer is loopback or an own
+ * address and rule 3 passes for whoever reached the forwarder. Rule 2 catches every forwarder that
+ * says so (any HTTP proxy that writes `X-Forwarded-For` or `Forwarded`); a plain TCP relay says
+ * nothing and passes. That is accepted: the same relay pointed at 127.0.0.1 always passed the
+ * loopback rule too, and a relay only helps a caller who already HOLDS the secret. The peer rule was
+ * never the boundary: the owner-only `local-secret` file is (bridge/local-secret.ts, ADR 0086's
+ * amendment of 2026-10-08).
  */
 export function browserPairingGate(
   store: Pick<PairingStore, "resolve" | "expired">,
   localCredential: LocalCredential | undefined,
   peerOf: (req: Request) => string | null | undefined,
+  bindHost: string,
+  ownAddresses: () => ReadonlySet<string> = hostInterfaceAddresses,
 ): PairingGate {
   return {
     resolve: (token) => store.resolve(token),
     expired: (token) => store.expired(token),
     local: (token, req) => {
       if (localCredential === undefined || !localCredential.matches(token)) return false;
-      const peer = peerOf(req);
-      return typeof peer === "string" && peer !== "" && isLoopbackPeer(peer);
+      if (carriesProxyMarker(req.headers)) return false;
+      return isSameHostPeer(peerOf(req), bindHost, ownAddresses);
     },
   };
 }
@@ -5160,7 +5287,8 @@ export interface PairingGate {
   expired?(token: string | null): boolean;
   /**
    * Whether this token is the host's own local credential (bridge/local-secret.ts) AND this request
-   * came from a loopback peer. A READ credential only: {@link guard} asks it for `"read"` and for no
+   * came from this host through nothing: no proxy header, and a loopback peer or, on a concrete
+   * non-loopback bind only, one of the host's own addresses ({@link browserPairingGate}). A READ credential only: {@link guard} asks it for `"read"` and for no
    * other level, so it never types into a terminal and never opens the Files view. Optional: a gate
    * without it (a test's, or a bridge that could not write the file) knows no local credential.
    */

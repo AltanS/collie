@@ -102,7 +102,7 @@ export const ACCESS_JWT_HEADER = CLOUDFLARE.header;
  * to a loopback Host, is a local process (`collie doctor`, `curl`): it can already reach the
  * loopback port directly, so the gate has nothing to protect there, and pairing still guards it.
  */
-const FORWARDING_HEADERS = ["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "x-real-ip"] as const;
+export const FORWARDING_HEADERS = ["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "x-real-ip"] as const;
 
 const LOOPBACK_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i;
 

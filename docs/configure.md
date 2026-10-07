@@ -1,7 +1,9 @@
 # Configure
 
-By default, Collie runs in open single-user mode: anyone on your tailnet who can reach the URL has
-full control. This triggers the `TRUSTED_USER` warning. Restrict access:
+By default, Collie answers only a device you paired with `collie pair`. A paired device has full
+control, so anyone on your tailnet who can reach the URL still needs a paired phone first. Without
+`COLLIE_TRUSTED_USER`, the bridge prints a `TRUSTED_USER` warning, because every tailnet login can
+reach the pair screen. Restrict access further:
 
 ```bash
 # in your .env

@@ -4,6 +4,18 @@
 //
 //   bun scripts/crew-mux-probe.ts --lead http://127.0.0.1:8787 --host member
 //
+// THE TOKEN. Every read needs the pairing token (ADR 0086), so each call carries
+// `Authorization: Bearer …`, taken from the first of these that holds one:
+//
+//   • `COLLIE_TOKEN`, a paired device's token (`collie pair`, then claim the code; docs/upgrading.md
+//     "Scripts must pair once"). Use this against any lead, local or remote.
+//   • the lead's own local read credential, `$COLLIE_STATE_DIR/local-secret` (default
+//     `~/.local/state/collie`), and ONLY when `--lead` names loopback (`127.0.0.1`, `localhost`,
+//     `[::1]`): that file is this machine's own secret and is never sent to another host. For a
+//     second instance, set `COLLIE_STATE_DIR` to its state folder.
+//
+// The token goes in an environment variable, never a flag, so it does not show in `ps`.
+//
 // WHY IT IS NOT `scripts/mux-probe.ts` WITH A FLAG. That script builds an adapter from the registry
 // and talks to a multiplexer on THIS machine. `MuxTarget` has no host and must never grow one
 // (ADR 0011, ADR 0022, ADR 0036), so there is no way to point an adapter at another machine's
@@ -44,6 +56,10 @@
 // only calls it makes are the reads in {@link MUX_READ_ONLY_CHECKS} plus calls to UNDECLARED verbs,
 // which refuse before they touch anything.
 
+import { readFileSync } from "node:fs";
+
+import { resolveStateDir } from "../bridge/config.ts";
+import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { declareCapabilities, MUX_CAPABILITIES } from "../bridge/mux/capabilities.ts";
 import { MUX_READ_ONLY_CHECKS } from "../bridge/mux/conformance.ts";
 import {
@@ -93,9 +109,47 @@ function flag(args: readonly string[], name: string): string | undefined {
   return at < 0 ? undefined : args[at + 1];
 }
 
-async function fetchJson(url: string): Promise<string> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`${url} answered ${String(res.status)}`);
+/** Whether a base URL names this machine's loopback, the only place the local secret may go. */
+export function isLoopbackUrl(base: string): boolean {
+  let host: string;
+  try {
+    host = new URL(base).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return host === "localhost" || host === "[::1]" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
+}
+
+/**
+ * The `Authorization` header for every call, or none (see "THE TOKEN" above). `COLLIE_TOKEN` wins;
+ * the local secret is read only for a loopback lead. `read` is the file seam, so a test reads no disk.
+ */
+export function authHeaders(
+  lead: string,
+  env: Record<string, string | undefined>,
+  read: (path: string) => string | null,
+) {
+  const token = env.COLLIE_TOKEN?.trim() ?? "";
+  if (token !== "") return { authorization: `Bearer ${token}` };
+  if (!isLoopbackUrl(lead)) return {};
+  return localAuthHeader(readLocalSecret(resolveStateDir(env), read));
+}
+
+/** A file's text, or null when it cannot be read. */
+function readOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function fetchJson(url: string, headers: Record<string, string>): Promise<string> {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (!res.ok) {
+    const hint = res.status === 403 ? " (set COLLIE_TOKEN to a paired device's token)" : "";
+    throw new Error(`${url} answered ${String(res.status)}${hint}`);
+  }
   return await res.text();
 }
 
@@ -160,6 +214,7 @@ class CrewFacade implements MuxAdapter {
     private readonly member: string,
     mux: string,
     capabilities: MuxCapabilityDeclaration,
+    private readonly headers: Record<string, string>,
   ) {
     this.mux = mux;
     this.capabilities = capabilities;
@@ -168,7 +223,7 @@ class CrewFacade implements MuxAdapter {
   /** The lead's own answer about this member's link. Not a `?host=` route: the lead knows. */
   async reachable(): Promise<boolean> {
     // SAFETY: `GET /api/crew` answers `CrewStatusResponse` on every build that has this script.
-    const body = JSON.parse(await fetchJson(`${this.lead}/api/crew`)) as CrewStatusResponse;
+    const body = JSON.parse(await fetchJson(`${this.lead}/api/crew`, this.headers)) as CrewStatusResponse;
     const row = body.members.find((member) => member.id === this.member);
     return row !== undefined && row.health === "reachable";
   }
@@ -183,7 +238,7 @@ class CrewFacade implements MuxAdapter {
   async snapshot(): Promise<MuxSnapshot> {
     // SAFETY: `GET /api/snapshot` answers `SnapshotResponse`; `servers`/`host` are present exactly
     // when this collie is a lead, which `reachable()` has already established.
-    const body = JSON.parse(await fetchJson(`${this.lead}/api/snapshot`)) as SnapshotResponse;
+    const body = JSON.parse(await fetchJson(`${this.lead}/api/snapshot`, this.headers)) as SnapshotResponse;
     this.gap("MuxPane.alive", "the crew wire carries no `alive`: the lead publishes only live panes");
     this.gap(
       "MuxPane.agentSession",
@@ -240,7 +295,7 @@ class CrewFacade implements MuxAdapter {
       );
     }
     const url = `${this.lead}/api/pane/${encodeURIComponent(paneId)}?host=${encodeURIComponent(this.member)}&lines=${String(request.lines)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await fetch(url, { headers: this.headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) {
       return muxRefused(`${url} answered ${String(res.status)}: ${(await res.text()).slice(0, 200)}`);
     }
@@ -326,18 +381,19 @@ async function main(): Promise<void> {
   const lead = (flag(args, "--lead") ?? "").replace(/\/$/u, "");
   const member = flag(args, "--host") ?? "";
   if (lead === "" || member === "") usage();
+  const headers = authHeaders(lead, process.env, readOrNull);
 
   // SAFETY: `GET /api/config` answers `BridgeConfig`, and with `?host=` its `mux` block is that
   // member's own declaration or absent (M22/03) — the absent case is refused below.
   const config = JSON.parse(
-    await fetchJson(`${lead}/api/config?host=${encodeURIComponent(member)}`),
+    await fetchJson(`${lead}/api/config?host=${encodeURIComponent(member)}`, headers),
   ) as BridgeConfig;
   const wire = config.mux;
   if (wire === undefined) {
     console.error(`the lead published no mux block for "${member}" — nothing to grade.`);
     process.exit(2);
   }
-  const facade = new CrewFacade(lead, member, wire.name, declarationFromWire(wire));
+  const facade = new CrewFacade(lead, member, wire.name, declarationFromWire(wire), headers);
 
   console.log(`collie crew mux probe — ${wire.name} on member "${member}", through the lead at ${lead}.`);
   console.log("Read-only. Writes are never sent across the link: a live peer's pane is somebody's session.\n");
@@ -373,4 +429,5 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-await main();
+// Run only as a script: a test imports `authHeaders` without starting a probe.
+if (import.meta.main) await main();
