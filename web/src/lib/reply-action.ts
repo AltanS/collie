@@ -324,7 +324,10 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     try {
       const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
       const lines = splitLines(parseAnsi(fresh.text));
-      if (!adapter.composerReady?.(lines)) return { status: "blocked", error: noBoxMessage() };
+      // Same box check as the sweep's re-confirm above: a chunked send's reads can land on a
+      // different screen than the probe, and the tail alone cannot tell an overlay from a composer.
+      if (!adapter.composerReady?.(lines) || adapter.overlayHoldsKeyboard?.(lines) === true)
+        return { status: "blocked", error: noBoxMessage() };
       const split = newlineRefusal(adapter, args.text, lines);
       if (split !== null) return split;
       previousDraft = adapter.extractInputDraft(lines);
@@ -379,6 +382,10 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // harness with no `composerReady`, and a `force` the operator armed against a mis-detected screen,
   // both arrive here having typed the secret into a prompt that will never echo it.
   let lastSeen: string | null = null;
+  // The last successfully parsed screen beside it, so a stalled send can name a dialog, menu or
+  // overlay box that opened mid-send instead of guessing. Only ever read through the adapter's
+  // own positive-evidence predicates — no new shapes.
+  let lastLines: StyledLine[] | null = null;
   for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
     // Read BEFORE the first sleep: pane.read is an on-demand live read, not a cached poll, so the
     // text is often already on screen by the time the type call returns. That saves a whole
@@ -389,6 +396,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     try {
       const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
       const lines = splitLines(parseAnsi(fresh.text));
+      lastLines = lines;
       // Only a screen the adapter does NOT recognise as its composer can be a raw password prompt.
       // Without that gate a match on the tail is dangerous rather than merely wrong: the notice this
       // feeds tells the operator to press Enter in Type, so a stall that was really a dialog eating
@@ -439,6 +447,18 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
       error: t("reply.stalled.noEcho"),
       noEcho: lastSeen,
     };
+  }
+  // The verify polls watched the text vanish into a dialog, menu or overlay box that opened
+  // mid-send: name it instead of guessing — unless the send was forced, where the operator typed
+  // knowingly into a refused screen and the "that key likely landed" warning below is the news that
+  // matters. Same positive-evidence predicates as the pre-flight above, no new shapes.
+  if (
+    !args.force &&
+    lastLines !== null &&
+    (adapter.modalOnScreen?.(lastLines) === true ||
+      adapter.overlayHoldsKeyboard?.(lastLines) === true)
+  ) {
+    return { status: "stalled", error: t("reply.stalled.modal") };
   }
   return {
     status: "stalled",
@@ -545,7 +565,11 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
     return blind(null); // transient read failure
   }
   const seen = splitLines(parseAnsi(probe.text));
-  if (!composerReady(seen)) {
+  // A full overlay box (the /models-style overlay, the slash palette) holds the keyboard while
+  // the composer tail stays intact, so `composerReady` still answers true although typing would
+  // land in the overlay's filter, never the input box. Refused on the same terms as a missing
+  // composer: the one screen with positive evidence says "no input box", whatever the tail claims.
+  if (!composerReady(seen) || adapter.overlayHoldsKeyboard?.(seen) === true) {
     // `force` is the user's deliberate "type anyway", so it overrides the refusal — but this is the
     // one screen we have POSITIVE evidence about, and what it says is "no composer". Keys stay home.
     if (args.force) return blind(null);
@@ -587,7 +611,11 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
       try {
         const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
         const lines = splitLines(parseAnsi(fresh.text));
-        if (composerReady(lines)) return newlineRefusal(adapter, args.text, lines);
+        // The sweep's keys are on the wire: an overlay box that opened since the probe would eat
+        // the message next, so the re-confirm consults the box predicate too — same screen, no
+        // new read, and a miss still only ever refuses.
+        if (composerReady(lines) && adapter.overlayHoldsKeyboard?.(lines) !== true)
+          return newlineRefusal(adapter, args.text, lines);
       } catch {
         return null;
       }

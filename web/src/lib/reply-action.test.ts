@@ -675,6 +675,139 @@ describe("sendGuardedReply", () => {
     expect(out).toMatchObject({ error: expect.stringMatching(/that key likely landed/i) });
   });
 
+  // The Navi stall: the /models-style overlay box holds the keyboard while the composer tail
+  // stays intact, so the composer gate answers true although typing would land in the overlay's
+  // filter. The pre-flight refuses on the box predicate, on the same terms as a missing composer
+  // (force still overrides) — nothing is typed and Enter is never sent.
+  it("refuses an overlay box the composer gate still calls a composer", async () => {
+    const calls = harness(() => fixtureText("oc--slash-palette.txt"));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "summarise the diff",
+      agent: "opencode",
+      ...instant,
+    });
+
+    expect(out.status).toBe("blocked");
+    expect(calls).toEqual([]);
+  });
+
+  // The companion case: the box opens AFTER the probe, while the pre-clear sweep's keys are on
+  // the wire. The sweep's own re-confirming read consults the box predicate too, so the message
+  // never goes out — the sweep ran, the type never happens. Reads: probe, re-confirm.
+  it("refuses when the overlay box opens between the sweep and the message", async () => {
+    let reads = 0;
+    const idle = fixtureText("oc--fresh-idle.txt");
+    const overlay = fixtureText("oc--slash-palette.txt");
+    const log: string[] = [];
+    const calls: Array<{ text: string; submit: boolean }> = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads++;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: reads === 1 ? idle : overlay,
+          truncated: false,
+          revision: 1,
+        });
+      }),
+      http.post<never, { text: string; submit: boolean }>(
+        /\/api\/pane\/[^/]+\/reply$/,
+        async ({ request }) => {
+          const body = await request.json();
+          calls.push(body);
+          return HttpResponse.json({ ok: true });
+        },
+      ),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "summarise the diff",
+      agent: "opencode",
+      onComposerSeen: async () => {
+        log.push("sweep");
+        return { ok: true as const, keysSent: true };
+      },
+      ...instant,
+    });
+
+    expect(out.status).toBe("blocked");
+    expect(log).toEqual(["sweep"]);
+    expect(calls).toEqual([]);
+  });
+
+  // The chunked-send read lands on a different screen than the probe (the operator opens the
+  // box mid-plan), so it consults the box predicate too. Two chunks force the plan's own read;
+  // read 1 probes the composer, read 2 plans on the overlay.
+  it("refuses a chunked send when the overlay box owns the chunk-plan read", async () => {
+    const real = registry.adapterFor("opencode")!;
+    const spy = vi.spyOn(registry, "adapterFor").mockReturnValue({
+      ...real,
+      replyChunks: () => ["summarise ", "the diff"],
+    });
+    try {
+      let reads = 0;
+      const idle = fixtureText("oc--fresh-idle.txt");
+      const overlay = fixtureText("oc--slash-palette.txt");
+      const calls = harness(() => (++reads === 1 ? idle : overlay));
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "summarise the diff",
+        agent: "opencode",
+        ...instant,
+      });
+
+      expect(out.status).toBe("blocked");
+      expect(calls).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // `force` is the operator's deliberate "type anyway" after a `blocked`: it overrides the box
+  // refusal exactly like a missing composer, the text is typed — and the verify loop still never
+  // sees it in an input box, so the stall keeps the generic "that key likely landed" warning
+  // rather than naming a dialog the operator already knew about. Enter stays home throughout.
+  it("force overrides the overlay refusal, types, and the stall keeps the key-landed warning", async () => {
+    const calls = harness(() => fixtureText("oc--slash-palette.txt"));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "summarise the diff",
+      agent: "opencode",
+      force: true,
+      ...instant,
+    });
+
+    expect(out.status).toBe("stalled");
+    expect(out).toMatchObject({ error: expect.stringMatching(/that key likely landed/i) });
+    expect(calls.some((c) => c.submit)).toBe(false);
+  });
+
+  // The companion case: the dialog opens AFTER typing, so the verify polls watch the text vanish
+  // into it. The stall then names the dialog instead of guessing. Read 1 sees the composer
+  // (pre-flight probe); every verify poll sees the permission dialog.
+  it("names the dialog when the text vanishes into one mid-send", async () => {
+    let reads = 0;
+    const idle = fixtureText("oc--fresh-idle.txt");
+    const dialog = fixtureText("oc--permission-bash.txt");
+    const calls = harness(() => (++reads <= 2 ? idle : dialog));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "summarise the diff",
+      agent: "opencode",
+      ...instant,
+    });
+
+    expect(out.status).toBe("stalled");
+    expect(out).toMatchObject({ error: expect.stringMatching(/dialog, menu, or overlay/i) });
+    expect(calls.some((c) => c.submit)).toBe(false);
+  });
+
   it("#34: does not mistake somebody else's stranded draft for our text", async () => {
     const calls = harness(() => paneWithDraft("an unrelated leftover line"));
 

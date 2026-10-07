@@ -1168,6 +1168,8 @@ export const zhTW: Dictionary = {
     "目前處於密碼提示狀態，終端機沒有回顯，因此無法確認文字且尚未提交。輸入的內容已寫入窗格。",
   "reply.stalled.generic":
     "訊息未送達輸入框。可能有對話框正在等待輸入；如果是按鍵回應，該按鍵可能已生效。未提交任何內容。",
+  "reply.stalled.modal":
+    "訊息未送達輸入框。對話框、選單或懸浮層之一佔用了鍵盤，文字被送到了那裡。未提交任何內容。",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "備註輸入框未能開啟，請檢查對應窗格",

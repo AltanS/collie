@@ -1044,6 +1044,7 @@ export const it: Dictionary = {
   "reply.refused.multilineMidway": "Questo campo invia con un a capo, quindi un messaggio su più righe è stato troncato al primo stacco. La prima parte è già nel riquadro. Mettilo su una sola riga.",
   "reply.stalled.noEcho": "È una richiesta di password: non mostra nulla mentre digiti, quindi non si può confermare il testo e nulla è stato inviato. Il testo digitato è già nel riquadro.",
   "reply.stalled.generic": "Il messaggio non ha raggiunto il campo di input: potrebbe esserci una finestra di dialogo in attesa. Se rispondevi da tastiera, il tasto è probabilmente arrivato. Nulla è stato inviato.",
+  "reply.stalled.modal": "Il messaggio non ha raggiunto il campo di input: una finestra di dialogo, un menu o un overlay tratteneva la tastiera e il testo è finito lì. Nulla è stato inviato.",
   "previewAction.note.notOpened": "L'input della nota non si è aperto: controlla il riquadro",
   "previewAction.note.clearFailed": "Impossibile cancellare la nota esistente: controlla il riquadro",
   "previewAction.note.textFailed": "Il testo della nota non è arrivato: controlla il riquadro",
