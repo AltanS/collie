@@ -40,6 +40,7 @@ const PINNED = [
   "grok--ask-z-parked.txt",
   "grok--ask-z-typed.txt",
   "grok--done.txt",
+  "grok--draft-scrollbar.txt",
   "grok--draft-single.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
@@ -87,6 +88,9 @@ describeAdapterConformance(grokAdapter, {
   ownFixtures,
   foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allCodexFixtures, ...allOpencodeFixtures],
   neutralFixtures,
+  // A long draft pushes the hint row out of the tail the bridge binds to, so this capture must not
+  // be read as a short composer that can be bound.
+  unboundComposerFixtures: ["grok--draft-scrollbar.txt"],
 });
 
 describe("the grok corpus", () => {

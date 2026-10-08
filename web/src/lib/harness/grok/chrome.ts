@@ -211,6 +211,24 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   return sliced.segments.length === 0 ? [] : [sliced];
 }
 
+// A long draft makes Grok draw a scrollbar just inside the right border, and read as text it fails
+// the send's verification. Only the captured shape is dropped (that position, a segment of its own,
+// that grey), so the same glyph typed by the user stays in the draft.
+function draftLineText(line: StyledLine): string {
+  const text = lineText(line);
+  const rail = / {2,}█ (?=│\s*$)/.exec(text);
+  if (rail === null) return text;
+  const position = rail.index + rail[0].length - 2;
+  let offset = 0;
+  for (const segment of line.segments) {
+    if (offset === position && segment.text === "█" && segment.style.color === "rgb(60,60,65)") {
+      return text.slice(0, position) + text.slice(position + 1);
+    }
+    offset += segment.text.length;
+  }
+  return text;
+}
+
 /**
  * The user's draft stranded in the composer. Grok writes it on the `│ ❯ … │` row and wraps onto
  * indented continuation rows below. Fragments join with a single space (soft wrap). Empty box → null.
@@ -226,14 +244,12 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (detectPermissionRegion(lines) !== null) return null;
   const box = locateComposer(lines);
   if (box === null) return null;
-  const texts = lines.map((l) => rstrip(lineText(l)));
-
   const parts: string[] = [];
-  const prompt = composerPromptText(texts[box.firstDraftRow]!);
+  const prompt = composerPromptText(draftLineText(lines[box.firstDraftRow]!));
   if (prompt === null) return null;
   parts.push(prompt.trim());
   for (let i = box.firstDraftRow + 1; i < box.bottom; i++) {
-    parts.push(composerInnerText(texts[i]!)!.trim());
+    parts.push(composerInnerText(draftLineText(lines[i]!))!.trim());
   }
 
   const draft = parts.filter((p) => p.length > 0).join(" ");
