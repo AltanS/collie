@@ -256,5 +256,26 @@ describe("agyAdapter unit & footer safety", () => {
 
     expect(agyAdapter.extractInputDraft!(lines)).toBe("write a python fibonacci function");
   });
+
+  it("finds the input box under a four-row custom statusLine", () => {
+    // A `statusLine` command prints as many rows as the user wrote. Four used to push the bottom
+    // border out of the search window, and the idle pane read as an unread dialog.
+    const raw = [
+      "Done.",
+      "────────────────────────────────────────────────────────────",
+      ">",
+      "────────────────────────────────────────────────────────────",
+      "host-1 [Flash] user@example.com",
+      "C 91%",
+      "~/project",
+      "main",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(raw));
+
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractStatusLines!(lines)).toHaveLength(4);
+    const blocks = agyAdapter.buildBlocks(lines);
+    expect(blocks[0]!.lines.map((l) => l.segments.map((s) => s.text).join(""))).toEqual(["Done."]);
+  });
 });
 
