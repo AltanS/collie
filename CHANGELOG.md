@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   lists scroll, and the app still fills to the bottom edge. A Safari tab and other devices are
   unchanged. (#371)
 - **Chat no longer repeats a message after CJK or emoji text.** A journal read found its row boundary by string index instead of by byte, so the next read started short of it and sent again rows the phone already had. Thanks @GGGODLIN (#377).
+- **A send no longer stalls when a Claude Code background agent is active.** Claude Code 2.1.293 marks the active agent's row in the footer with `❯`, and Collie took that row as foreign and lost the input box, so a send from the phone typed its text and never pressed Enter. The footer's own rows are now accepted. Thanks @thelinuxlich (#382).
 
 ## [1.18.0] - 2026-10-08
 

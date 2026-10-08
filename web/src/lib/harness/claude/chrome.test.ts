@@ -143,6 +143,19 @@ describe("stripChrome — trims the input box off the tail", () => {
     expect(kept).not.toContain("soft-wraps it onto several"); // wrapped continuation gone
     expect(kept).not.toContain("worker:scout"); // footer gone
   });
+
+  // Claude Code 2.1.293 paints "❯" on the ACTIVE agent's footer row. Step 1 of the locator stepped
+  // over that row (it is the lowest "❯"-led line) and the ownership check refused it for sitting
+  // below the statusline run — so the whole box vanished: no draft, and a send from the phone typed
+  // its text and then never submitted. The pointed row must strip with the rest of the footer.
+  it("footer variant (pointed agent row): strips the box and the pointed footer row", () => {
+    const lines = fixtureLines("claude--footer-pointed-agent.txt");
+    const kept = joined(stripChrome(lines));
+    expect(kept).not.toContain("● main"); // footer header gone
+    expect(kept).not.toContain("worker:scout"); // first agent row gone
+    expect(kept).not.toContain("worker:fix"); // the POINTED agent row went with the footer
+    expect(kept).not.toContain("auto mode on"); // statusline gone
+  });
 });
 
 describe("stripChrome — conservative: leaves non-chrome untouched", () => {
@@ -288,6 +301,16 @@ describe("extractAgentsFooter — the background-agents block under the statusli
     },
   );
 
+  it("footer-pointed-agent: the pointed active-agent row is part of the block", () => {
+    const rows = footerText(fixtureLines("claude--footer-pointed-agent.txt"));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toBe("● main");
+    expect(rows[1]).toContain("worker:scout");
+    expect(rows[2]!.startsWith("❯ ◯ worker:fix")).toBe(true);
+    expect(rows[2]).toContain("Chasing the footer pointer");
+    expect(rows.join("\n")).not.toContain("auto mode on"); // the statusline above stays out
+  });
+
   it("keeps each row styled, as the pane painted it", () => {
     const [header] = extractAgentsFooter(fixtureLines("claude--draft-footer-single.txt"));
     expect(header!.segments.some((s) => s.bold)).toBe(true);
@@ -422,6 +445,16 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
     expect(extractInputDraft(fixtureLines("claude--draft-footer-wrapped.txt"))).toBe(
       "this stranded draft is long enough that the Claude Code TUI soft-wraps it onto several continuation lines inside the input box while the background-agents footer sits below the box",
     );
+  });
+
+  // The fixture the 2026-10-08 regression was captured for: the pointer on the active agent's footer
+  // row (`❯ ◯ worker:fix …`) is the lowest frame mark, step 1 of the locator stepped over it, and the
+  // ownership check refused it for sitting below the statusline run — `hasInputBox` answered false,
+  // no draft surfaced, and a guarded send typed the text and then withheld its submit forever.
+  it("footer variant (pointed agent row): the box survives the pointer on the footer", () => {
+    const lines = fixtureLines("claude--footer-pointed-agent.txt");
+    expect(hasInputBox(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe("the agents footer hides the input box");
   });
 
   it("folds a WRAPPED draft back into one line (real capture)", () => {
@@ -813,6 +846,7 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "draft-footer-empty", statusRows: 2, draft: null, stripped: 9 },
     { fixture: "draft-footer-single", statusRows: 2, draft: "remember to update the changelo", stripped: 9 },
     { fixture: "draft-footer-wrapped", statusRows: 2, draft: "this stranded draft is long eno", stripped: 11 },
+    { fixture: "footer-pointed-agent", statusRows: 1, draft: "the agents footer hides the input", stripped: 8 },
     { fixture: "draft-paste-placeholder", statusRows: 2, draft: "[Pasted text #3 +3 lines]", stripped: 7 },
     // The split shape (#110): a token plus the literal tail beside it, captured complete and
     // half-arrived. Three status rows here — the sandbox pane also carries a transcript warning.

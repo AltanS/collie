@@ -48,6 +48,9 @@ const NEUTRAL = new Set([
   "claude--draft-footer-empty.txt",
   "claude--draft-footer-single.txt",
   "claude--draft-footer-wrapped.txt",
+  // The same footer with Claude Code 2.1.293's active-agent pointer (`❯ ◯ …`) on its last row — still
+  // composer chrome below a live box, never a dialog.
+  "claude--footer-pointed-agent.txt",
   // The /model picker DISMISSED: the input box is back, so this is an ordinary idle screen. It is the
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.

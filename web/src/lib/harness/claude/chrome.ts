@@ -406,7 +406,7 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
     { prompt: frame.prompt, bottomBorder: b },
     end,
   );
-  if (!steppedMarksAreOwned(texts, stepped, tail, b, statusEnd, popupPointer)) return null;
+  if (!steppedMarksAreOwned(texts, stepped, tail, b, statusEnd, agentsStart, popupPointer)) return null;
 
   // 4. No modal on screen.
   for (let j = b + 1; j < end; j++) {
@@ -442,9 +442,14 @@ function isStatuslineFrameMark(text: string): boolean {
  * Under an `autocomplete` tail that is the popup's own pointed entry row (Claude Code 2.1.291 marks
  * the selected completion with "❯", autocomplete.ts), and nothing else: the popup grammar named every
  * row and allows exactly one pointer, so any other stepped mark refuses. Otherwise it is the statusline
- * run: the tail is `statusline`, each mark sits inside its run (`bottomBorder + 1` to `statusEnd`) and
- * at most MAX_STATUS_LINES rows under the border, and no labelled rule sits directly on a "❯" row, the
- * shape of a second box's top border and prompt. True when nothing was stepped over.
+ * run: the tail is `statusline` and each mark sits inside one of the two runs that tail draws — the
+ * statusline run itself (`bottomBorder + 1` to `statusEnd`, at most MAX_STATUS_LINES rows under the
+ * border) or the background-agents footer walkStatusline peeled below it (`agentsStart` to the last
+ * non-blank row, at most MAX_FOOTER_LINES rows). Claude Code 2.1.293 paints "❯" on the ACTIVE agent's
+ * footer row (`claude--footer-pointed-agent.txt`); that pointer is the composer's own chrome, not a
+ * dialog's, and refusing it used to take the whole box down with it. And no labelled rule sits
+ * directly on a "❯" row, the shape of a second box's top border and prompt. True when nothing was
+ * stepped over.
  */
 function steppedMarksAreOwned(
   texts: string[],
@@ -452,13 +457,19 @@ function steppedMarksAreOwned(
   tail: InputBoxTail,
   bottomBorder: number,
   statusEnd: number,
+  agentsStart: number,
   popupPointer: number,
 ): boolean {
   if (stepped.length === 0) return true;
   if (tail === "autocomplete") return stepped.every((j) => j === popupPointer);
   if (tail !== "statusline") return false;
   for (const j of stepped) {
-    if (j >= statusEnd || j - bottomBorder > MAX_STATUS_LINES) return false;
+    // `agentsStart` is `end` when no footer was peeled, so a row falls into exactly one of the two.
+    if (j >= agentsStart) {
+      if (j - agentsStart >= MAX_FOOTER_LINES) return false;
+    } else if (j >= statusEnd || j - bottomBorder > MAX_STATUS_LINES) {
+      return false;
+    }
     const below = texts[j + 1];
     if (!texts[j]!.trimStart().startsWith("❯") && below !== undefined && below.trimStart().startsWith("❯")) {
       return false;
