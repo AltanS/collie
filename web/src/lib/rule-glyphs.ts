@@ -77,6 +77,10 @@ export const FRAME_EDGE_GLYPH_CLASS = "│┌└├┏┗┣╔╚╠╟╞┐�
  *  has the measurement and the trade. */
 export const BOX_COLUMN_JUNCTION_GLYPH_CLASS = "┬-╋╤-╬";
 
+/** Crosses only (`┼ ╋ ╪ ╬`). The reply probe reorders a wrapped Markdown table by these, and a tee
+ *  is a two-pane box rather than that table (ADR 0072 keeps the wider class above for panning). */
+export const BOX_CROSS_GLYPH_CLASS = "┼-╋╪-╬";
+
 /** Vertical strokes that can stand at a column boundary on a content row: solid, heavy, both
  *  dashed weights of each, and double. */
 export const BOX_VERTICAL_GLYPH_CLASS = "│┃┆┇┊┋╎╏║";

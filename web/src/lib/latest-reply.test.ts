@@ -1,4 +1,4 @@
-import { fold, locateReply, newestReply, PROBE_CHARS, replyProse } from "./latest-reply";
+import { fold, locateReply, newestReply, PROBE_CHARS, replyProse, sourceOrderRows } from "./latest-reply";
 import type { TranscriptEntry, TranscriptPart } from "./types";
 
 // The predicates behind "the mirror is only showing the end of this reply". The cases that matter are
@@ -184,5 +184,58 @@ describe("locateReply — where the reply ends", () => {
   it("reports no row at all when the reply is not the clipped message on screen", () => {
     expect(locateReply("some other screen entirely", reply).endLine).toBe(-1);
     expect(locateReply(rendered(REPLY), reply).endLine).toBe(-1);
+  });
+});
+
+// Laid out as a real Claude pane painted it, 2026-09-27, with neutral words: the reply ended in a
+// Markdown table whose cells Claude wrapped. The
+// renderer prints a wrapped row line by line ACROSS the columns, so the screen reads a row's cells in
+// a different order than the source does, and a tail probe that reached into the table missed.
+describe("locateReply — a reply that ends in a wrapped table", () => {
+  const source = [
+    "下面整理三盆植物的照顧方式，理由都寫在表格裡，可以逐盆對照。",
+    "",
+    "| 植物 | 照顧方式 | 難度 |",
+    "|---|---|---|",
+    "| 1. 窗台上的小盆薄荷 | 早上看一次土壤，摸起來乾了再澆水。夏天中午不要在太陽底下澆，水珠會把葉片曬傷，傍晚再補一次就好，冬天改成三天澆一次 | 低 |",
+    "| 2. 客廳角落的龜背芋 | 光線不用太強，放在離窗戶兩公尺的地方就夠。新葉剛長出來時不要轉動盆子，讓它自己朝光的方向長，一個月施一次薄肥 | 中 |",
+    "| 3. 浴室門口的大盆觀葉 | 葉子大又容易積灰，每兩週用濕布輕輕擦一次，盆土表面乾了五公分以上再澆水 | 高 |",
+    "",
+    "照顧方式都不難，先從最常澆水的薄荷開始，一週後再看葉片的狀況調整。",
+  ].join("\n");
+  // The screen as painted: the table's top has scrolled off, so the reply is clipped.
+  const painted = [
+    "  │ 1. 窗台上的小盆薄荷  │ 早上看一次土壤，摸起來乾了再澆水。夏天中午不要在太陽底下澆，水珠會把葉片曬傷，        │ 低   │",
+    "  │                      │ 傍晚再補一次就好，冬天改成三天澆一次                                                  │      │",
+    "  ├──────────────────────┼───────────────────────────────────────────────────────────────────────────────────────┼──────┤",
+    "  │ 2. 客廳角落的龜背芋  │ 光線不用太強，放在離窗戶兩公尺的地方就夠。新葉剛長出來時不要轉動盆子，                │ 中   │",
+    "  │                      │ 讓它自己朝光的方向長，一個月施一次薄肥                                                │      │",
+    "  ├──────────────────────┼───────────────────────────────────────────────────────────────────────────────────────┼──────┤",
+    "  │ 3.                   │ 葉子大又容易積灰，每兩週用濕布輕輕擦一次，盆土表面乾了五公分以上再澆水                │ 高   │",
+    "  │ 浴室門口的大盆觀葉   │                                                                                       │      │",
+    "  └──────────────────────┴───────────────────────────────────────────────────────────────────────────────────────┴──────┘",
+    "",
+    "  照顧方式都不難，先從最常澆水的薄荷開始，一週後再看葉片的狀況調整。",
+  ];
+  const after = ["", "✻ Cogitated for 36s · done 12:11 PM"];
+
+  it("still finds the reply, and still ends it on its last row", () => {
+    const { fit, endLine } = locateReply([...painted, ...after].join("\n"), turn("assistant", source));
+    expect(fit).toBe("clipped");
+    expect(endLine).toBe(painted.length - 1);
+  });
+
+  it("leaves a screen with no crossed frame row exactly as painted", () => {
+    const inputBox = ["╭────────────────╮", "│ > type here    │", "│   second line  │", "╰────────────────╯"];
+    const prose = ["⏺ A reply with a │ pipe-ish glyph", "  and a second │ line"];
+    expect(sourceOrderRows([...prose, ...inputBox])).toEqual([...prose, ...inputBox]);
+  });
+
+  it("finds a tail that lies wholly inside the table's last row", () => {
+    const tableEnd = source.slice(0, source.lastIndexOf("\n\n"));
+    const { fit, endLine } = locateReply(painted.slice(0, 9).join("\n"), turn("assistant", tableEnd));
+    expect(fit).toBe("clipped");
+    // The last source row spans two painted rows; the reply ends on the lower one, above the frame.
+    expect(endLine).toBe(7);
   });
 });
