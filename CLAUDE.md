@@ -692,7 +692,7 @@ its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it throug
 `fetch` to share them.
 
 **The bridge makes no outbound call and spawns no long-running child for content — unless the
-operator ran `collie stt setup`.** Speech-to-text (`bridge/stt/`, CLI `cli/stt.ts`) is a registered
+operator ran `collie stt setup` or set `COLLIE_GITHUB`.** Speech-to-text (`bridge/stt/`, CLI `cli/stt.ts`) is a registered
 provider seam, absent until that verb writes `stt.json`: it then holds a provider credential at 0600,
 opens an operator-configured outbound path carrying microphone audio, on the `codex` provider
 spawns a `codex app-server` child, and on the `local-cli` provider spawns the operator's named
@@ -701,6 +701,12 @@ command as the bridge user, once per dictation, argv only and never a shell (ADR
 configuration keeps the egress on loopback, and the wire identity is probed honest-first and recorded
 ([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)). Setup is a CLI act, never
 a web form, for the reason pairing is.
+
+**GitHub work (`COLLIE_GITHUB`, off by default) is read through the host's `gh`, and only read.**
+`GET /api/github` runs one `gh api graphql` query, argv only, when a paired device asks and never
+on a timer, behind a 60 s single-flight cache. No token goes into `.env` or reaches the phone, the
+query text holds no `mutation`, and a write (merge, approve, comment) needs its own ADR
+([ADR 0091](./.adr/0091-github-work-is-read-through-the-hosts-gh.md)).
 
 **Two device gates guard writes, independently, and compose by AND.** `COLLIE_DEVICE_HEADER` trusts
 a name a proxy injects; **pairing** (`bridge/pairing.ts`, `collie pair` / `collie devices`) requires a

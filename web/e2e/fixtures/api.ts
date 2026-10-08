@@ -233,6 +233,9 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
   }
   if (path === "/api/config") return fulfillJson(route, { push: false, vapidPublicKey: "" });
   if (path === "/api/launchers") return fulfillJson(route, { launchers: [], home: "" });
+  // GitHub work is opt-in (ADR 0091), so the stub's world has it off and the dashboard footer draws
+  // no GitHub line. A case that wants the screen registers its own route with `fixtureGithubOk`.
+  if (path === "/api/github") return fulfillJson(route, { state: "off", machine: "desk" });
   // Nothing paired on a fresh install, and pairing is always on (ADR 0086). The stub answers every
   // other read without a token, so the cases need not pair first: it stands in for a paired phone.
   if (path === "/api/devices" || path === "/api/devices/revoke") {

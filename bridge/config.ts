@@ -327,6 +327,12 @@ export interface Config {
    */
   redact: boolean;
   /**
+   * Whether the GitHub work screen is on (`COLLIE_GITHUB`, default off): `GET /api/github` then runs
+   * the host user's own `gh api graphql`, read-only, when a paired device asks and never on a timer.
+   * Off, the route answers `off` and spawns nothing — see `bridge/github-work.ts`.
+   */
+  github: boolean;
+  /**
    * Per-device authorisation. Name of a request header carrying an opaque device identifier,
    * injected by a trusted upstream reverse proxy. Empty = the feature is off (no behaviour change).
    * When set, devices whose header value isn't in {@link deviceAllowlist} are read-only. See
@@ -676,6 +682,7 @@ export function loadConfig(env: Environment = process.env): Config {
     accessAud: envList("COLLIE_ACCESS_AUD", env),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview", env),
     redact: envBool("COLLIE_REDACT", true, env),
+    github: envBool("COLLIE_GITHUB", false, env),
     deviceHeader: (env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST", env),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS", env),

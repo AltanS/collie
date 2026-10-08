@@ -126,7 +126,7 @@ describe("which answers the lead masks", () => {
     expect(textAnswerOf("workspace/w1/changes")).toBe("changes");
     expect(textAnswerOf("pane/w1%3Ap1/files")).toBe("files");
     expect(textAnswerOf("workspace/w1/files")).toBe("files");
-    for (const route of ["pane/w1/files/image", "workspace/w1/files/image", `blobs/${"ab".repeat(32)}`, "launchers", "folders", "pane/w1/reply", "tab"]) {
+    for (const route of ["pane/w1/files/image", "workspace/w1/files/image", `blobs/${"ab".repeat(32)}`, "launchers", "folders", "github", "pane/w1/reply", "tab"]) {
       expect(textAnswerOf(route)).toBeNull();
     }
   });

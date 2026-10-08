@@ -667,6 +667,11 @@ describe("solo zero-tax — routes", () => {
       // about its own `folders.json`, which it writes only once the operator uses it (see §6 below).
       "/api/folders",
       "/api/folders/star",
+      // The GitHub work screen (bridge/github-work.ts) — a SOLO route that legitimately extends this
+      // list, named here rather than exempted. Session-scoped and read-gated through the same closure
+      // `/api/launchers` rides, so a `?host=` call forwards to the member whose `gh` it is. Off by
+      // default (`COLLIE_GITHUB`): a solo instance registers it, answers `off`, and runs nothing.
+      "/api/github",
       // The detached updater's probe (M15/04) — a solo feature that legitimately extends this list,
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
       // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
@@ -757,6 +762,7 @@ const CONFIG_KEYS = {
   dialMode: true,
   auditContent: true,
   redact: true,
+  github: true,
   commandsFile: true,
   keysFile: true,
   quickRepliesFile: true,
@@ -814,6 +820,7 @@ describe("solo zero-tax — config", () => {
       "deviceHeader",
       "dialMode",
       "fontsDir",
+      "github",
       "host",
       "journalRoots",
       "keysFile",
@@ -869,7 +876,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT` and the two `COLLIE_ACCESS_*` keys (ADR 0081) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, the two `COLLIE_ACCESS_*` keys (ADR 0081) and `COLLIE_GITHUB` (off by default; the GitHub work screen) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -892,6 +899,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_CODEX_ROOT",
       "COLLIE_DEVICE_ALLOWLIST",
       "COLLIE_DEVICE_HEADER",
+      "COLLIE_GITHUB",
       "COLLIE_GROK_ROOT",
       "COLLIE_HERDR_DIAL",
       "COLLIE_HERMES_ROOT",

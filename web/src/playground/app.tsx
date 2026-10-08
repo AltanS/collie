@@ -64,6 +64,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "actions-row", title: "Actions row" }, load: () => import("./sections/actions-row").then((m) => ({ default: m.ActionsRowSection })) },
   { def: { id: "crew", title: "Crew" }, load: () => import("./sections/crew").then((m) => ({ default: m.CrewSection })) },
   { def: { id: "machines", title: "Machines" }, load: () => import("./sections/machines").then((m) => ({ default: m.MachinesSection })) },
+  { def: { id: "github", title: "GitHub" }, load: () => import("./sections/github").then((m) => ({ default: m.GithubSection })) },
   { def: { id: "settings", title: "Settings" }, load: () => import("./sections/settings").then((m) => ({ default: m.SettingsSection })) },
   {
     def: { id: "boot", title: "Boot & connection" },

@@ -89,6 +89,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // phone reads that as "no list", never as an error.
   /^folders$/,
   /^folders\/star$/,
+  // The GitHub work screen (bridge/github-work.ts): the pull requests and issues of the member's OWN
+  // `gh` user, so the answer is read where that login lives and the lead keeps no copy. Not pane text,
+  // so it is not in `textAnswerOf`'s mask list. Additive-optional (CREW_PROTOCOL.md §7.1): a member
+  // that predates it answers 404, and the phone reads that as "not available on that machine".
+  /^github$/,
   // A blob is bytes on ONE machine's disk: the journal that named it is that member's journal, and
   // the lead holds no copy. So a `?host=` blob read is proxied byte for byte exactly like
   // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
@@ -141,6 +146,16 @@ export function apiPathFor(route: string): string | null {
 export type ForwardKind = "read" | "write";
 
 /**
+ * The dial deadline of a forwarded `github` read. That answer can be a fresh `gh api graphql` on the
+ * member (measured at 7 to 9 s, killed at 20 s: `GH_TIMEOUT_MS` in bridge/github-work.ts), which the
+ * poll budget would cut off every time the member's cache is cold. 25 s outlasts the member's own
+ * kill and still lands inside the phone's 30 s wait for that screen, so the deadline that fires is
+ * the member's and the phone reads its `timeout` answer, not a dead link. Lead-local, never on the
+ * wire, like {@link WRITE_BUDGET_MS}.
+ */
+export const GITHUB_READ_BUDGET_MS = 25_000;
+
+/**
  * Read or write, decided the way bridge/server.ts decides it and for the same reason: `history` is a
  * READ despite being an action segment — it only ever reads a log off disk — and everything else with
  * an action segment types into or restructures a terminal.
@@ -155,6 +170,9 @@ export function forwardKind(route: string): ForwardKind {
   // refuses it before it is tried (§10.3), as a read-only device does on the member itself.
   if (route === "folders") return "read";
   if (route === "folders/star") return "write";
+  // The GitHub work answer is a GET that changes nothing on the member (`gh` only reads), so it is
+  // attempted against a stale member like the rows above.
+  if (route === "github") return "read";
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
@@ -199,6 +217,7 @@ export function forwardAuditAction(route: string): string | null {
   if (route === "launch") return "launch";
   if (route === "launchers") return null;
   if (route === "folders" || route === "folders/star") return null; // a read, and a preference
+  if (route === "github") return null; // a read
   if (route.startsWith("blobs/")) return null; // a read
   if (isWorkspaceRead(route)) return null; // a read
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
@@ -659,13 +678,10 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // on a zellij member in the VM lab, 2026-09-08: roughly two launches in three straddled the poll
   // budget and came back `write_outcome_unknown` over a tab that existed. So a write carries
   // WRITE_BUDGET_MS, on this operator's own request path, and spends none of the sweep's accounting.
-  const outcome = await deps.transport(
-    deps.link,
-    route,
-    forwardParams(url),
-    init,
-    kind === "write" ? WRITE_BUDGET_MS : undefined,
-  );
+  // The one READ that is not a poll either is `github`: it may wait on a `gh` child on the member,
+  // so it carries GITHUB_READ_BUDGET_MS for the same reason.
+  const budgetMs = kind === "write" ? WRITE_BUDGET_MS : route === "github" ? GITHUB_READ_BUDGET_MS : undefined;
+  const outcome = await deps.transport(deps.link, route, forwardParams(url), init, budgetMs);
   const action = forwardAuditAction(route);
   const paneId = forwardPaneId(route);
   const session = url.searchParams.get("session");

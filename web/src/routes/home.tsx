@@ -15,6 +15,7 @@ import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
+import { GithubFooterLink } from "@/components/github-footer-link";
 import { useCrew } from "@/components/crew-provider";
 import { CrewTab } from "@/components/crew-tab";
 import { UpdateBanner } from "@/components/update-banner";
@@ -323,10 +324,12 @@ export function HomeRoute() {
           )}
         </main>
 
-        {/* The footer is the dashboard's meta zone, in widening order: the crew you're part of, an
-            available update / needed restart, then the build stamp (which bundle you're running,
-            with a stale-cache nudge). The crew line self-hides on a solo install. */}
+        {/* The footer is the dashboard's meta zone, in widening order: the crew you're part of, the
+            GitHub work of this machine's `gh` user, an available update / needed restart, then the
+            build stamp (which bundle you're running, with a stale-cache nudge). The crew line
+            self-hides on a solo install; the GitHub line is drawn only where the feature is on. */}
         <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
+        <GithubFooterLink scope={data.scope} className="px-4 pt-3" />
         <UpdateBanner className="px-4 pt-3" />
         {/* The footer below owns the safe area now, so the stamp only keeps its own air. */}
         <BuildStamp className="px-4 pt-3 pb-2" />

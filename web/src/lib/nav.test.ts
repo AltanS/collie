@@ -5,6 +5,7 @@ import {
   filesFolders,
   filesParent,
   filesPath,
+  githubPath,
   homePath,
   decodedPath,
   isAncestor,
@@ -32,6 +33,13 @@ describe("the commit view's paths", () => {
     expect(changesCommitPath("w1:p1", undefined, ".")).toBe("/pane/w1%3Ap1/changes/commit?repo=.");
     expect(changesCommitPath("w1:p1", undefined, "one", "a b.ts")).toBe("/pane/w1%3Ap1/changes/commit?repo=one&path=a+b.ts");
     expect(spaceChangesCommitPath("w1", undefined, ".")).toBe("/space/w1/changes/commit?repo=.");
+  });
+});
+
+describe("the GitHub work path", () => {
+  it("names the screen and carries the scope, so its lists stay the scoped machine's", () => {
+    expect(githubPath()).toBe("/github");
+    expect(githubPath({ host: "workshop", session: undefined })).toBe("/github?h=workshop");
   });
 });
 
@@ -221,6 +229,11 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings", "/machines/bluefin", true],
     ["/machines/workshop", "/machines/bluefin", false],
     ["/pane/w1%3Ap1", "/machines/bluefin", false],
+    // GitHub work is a child of the dashboard (ADR 0091), and of nothing else.
+    ["/", "/github", true],
+    ["/?h=workshop", "/github", true],
+    ["/settings", "/github", false],
+    ["/github", "/settings", false],
     ["/", "/nowhere", false],
   ])("%s above %s: %s", (from, here, expected) => {
     expect(isAncestor(from, here)).toBe(expected);
@@ -323,6 +336,8 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/machines", "", ["/", "/settings"]],
     ["/machines/bluefin", "", ["/", "/settings", "/machines"]],
     ["/machines/bluefin", "?h=badger", ["/?h=badger", "/settings?h=badger", "/machines?h=badger"]],
+    ["/github", "", ["/"]],
+    ["/github", "?h=workshop", ["/?h=workshop"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);

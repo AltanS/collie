@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { GH_TIMEOUT_MS } from "../github-work.ts";
 import { computeEtag } from "../http-cache.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import {
@@ -12,6 +13,7 @@ import {
   forwardPaneId,
   forwardParams,
   forwardToPeer,
+  GITHUB_READ_BUDGET_MS,
   crewRouteFor,
   proxiedResponse,
   type ForwardDeps,
@@ -160,6 +162,17 @@ describe("which routes cross a link", () => {
     // Neither is audited on either side: a star is a preference and reaches no terminal.
     expect(forwardAuditAction("folders")).toBeNull();
     expect(forwardAuditAction("folders/star")).toBeNull();
+  });
+
+  test("the GitHub work answer crosses the link as a READ — it is the member's own gh user", () => {
+    expect(crewRouteFor("/api/github")).toBe("github");
+    expect(apiPathFor("github")).toBe("/api/github");
+    // Nothing else under `github` rides the link.
+    expect(crewRouteFor("/api/github/x")).toBeNull();
+    expect(crewRouteFor("/api/githubx")).toBeNull();
+    // A GET that changes nothing: attempted against a stale member, audited on neither side.
+    expect(forwardKind("github")).toBe("read");
+    expect(forwardAuditAction("github")).toBeNull();
   });
 
   test("a blob crosses the link as a READ — the bytes live on the member that named them", () => {
@@ -757,6 +770,25 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0]!.budgetMs).toBeUndefined();
     }
+  });
+
+  test("a GitHub read dials on GITHUB_READ_BUDGET_MS, with its query intact", async () => {
+    const { transport, calls } = transportOf(() => ok(new Response("{}")));
+    const [req, url] = get("/api/github?host=laptop&fresh=1");
+    await forward(req, url, { transport, state: DEAD });
+    // Attempted even though the member is stale: a read is never refused before it is tried.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe("github");
+    expect(calls[0]!.budgetMs).toBe(GITHUB_READ_BUDGET_MS);
+    // `fresh=1` reaches the member; `host=` does not (a peer has no peers, §4).
+    expect(calls[0]!.params).toEqual({ fresh: "1" });
+  });
+
+  test("the GitHub read budget outlasts the member's own gh kill and the poll budget", () => {
+    // The member answers `timeout` at GH_TIMEOUT_MS; the lead must still be listening then, or the
+    // phone reads a dead link where the member had a legible answer.
+    expect(GITHUB_READ_BUDGET_MS).toBeGreaterThan(GH_TIMEOUT_MS);
+    expect(GITHUB_READ_BUDGET_MS).toBeGreaterThan(crewTimeoutBudget(1500, {}));
   });
 
   test("the write budget outlasts the poll budget it replaced", () => {

@@ -1746,3 +1746,92 @@ export type WorktreeCreateResponse =
     }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
+// ── GitHub work (GET /api/github, ADR 0091) ──────────────────────────────────
+// The host user's own `gh` answer, read-only. Every type below mirrors its namesake in
+// bridge/types.ts verbatim.
+
+/**
+ * statusCheckRollup.state: SUCCESS→success; FAILURE|ERROR→failure; PENDING|EXPECTED→pending; no rollup→none.
+ * Mirrors `GithubChecks` in bridge/types.ts.
+ */
+export type GithubChecks = "success" | "failure" | "pending" | "none";
+/**
+ * reviewDecision: APPROVED→approved; CHANGES_REQUESTED→changes-requested; REVIEW_REQUIRED→required; null→none.
+ * Mirrors `GithubReview` in bridge/types.ts.
+ */
+export type GithubReview = "approved" | "changes-requested" | "required" | "none";
+/**
+ * MERGEABLE→mergeable; CONFLICTING→conflicting; UNKNOWN or anything else→unknown. `unknown` is never
+ * "no conflict". Mirrors `GithubMergeable` in bridge/types.ts.
+ */
+export type GithubMergeable = "mergeable" | "conflicting" | "unknown";
+
+/** Mirrors `GithubCheckCounts` in bridge/types.ts. */
+export interface GithubCheckCounts {
+  /** check runs FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED|STARTUP_FAILURE + status contexts FAILURE|ERROR */
+  failing: number;
+  /** check runs QUEUED|IN_PROGRESS|WAITING|PENDING|REQUESTED + status contexts PENDING|EXPECTED */
+  pending: number;
+  /** check runs SUCCESS|NEUTRAL|SKIPPED + status contexts SUCCESS */
+  passing: number;
+  /** contexts.totalCount */
+  total: number;
+}
+
+/** Mirrors `GithubPr` in bridge/types.ts. */
+export interface GithubPr {
+  repo: string; // "owner/name"
+  number: number;
+  title: string;
+  url: string;
+  author: string | null;
+  draft: boolean;
+  updatedAt: string; // ISO 8601, as GitHub sent it
+  checks: GithubChecks;
+  checkCounts: GithubCheckCounts;
+  review: GithubReview;
+  mergeable: GithubMergeable;
+}
+
+/** Mirrors `GithubIssue` in bridge/types.ts. */
+export interface GithubIssue {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  author: string | null;
+  updatedAt: string;
+  labels: { name: string; color: string }[]; // color: 6 hex digits, no '#'
+}
+
+/** Mirrors `GithubList` in bridge/types.ts. */
+export interface GithubList<T> {
+  items: T[];
+  /** search issueCount — may exceed items.length (items are capped at 30) */
+  total: number;
+}
+
+/** GET /api/github. Mirrors `GithubWorkResponse` in bridge/types.ts. */
+export type GithubWorkResponse =
+  /** COLLIE_GITHUB is off on this machine */
+  | { state: "off"; machine: string }
+  /** on, nothing cached yet (only ever answered to ?peek=1) */
+  | { state: "cold"; machine: string }
+  /** on, and the fetch failed with nothing good cached */
+  | {
+      state: "unavailable";
+      machine: string;
+      reason: "gh-missing" | "gh-unauthenticated" | "timeout" | "error";
+      message: string; // first stderr line or a short cause, ≤ 300 chars, no token
+    }
+  | {
+      state: "ok";
+      machine: string; // this bridge's machine name, as the crew/machines UI names it
+      login: string; // viewer.login — which GitHub account the lists belong to
+      fetchedAt: string; // ISO, when this answer was fetched from GitHub
+      stale: boolean; // older than the TTL, or the last refresh failed
+      error?: string; // set when the last refresh failed and this is the previous answer
+      mine: GithubList<GithubPr>;
+      review: GithubList<GithubPr>;
+      issues: GithubList<GithubIssue>;
+    };

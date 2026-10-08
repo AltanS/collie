@@ -67,6 +67,7 @@ import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./not
 import { pushTitle } from "./push-titles.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
+import { GithubWork, realGhDeps } from "./github-work.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
@@ -1693,16 +1694,22 @@ const machineSampler = new MachineSampler({
 });
 
 /**
+ * This collie's own machine: `local` and the hostname until it enrolls, then its crew identity. The
+ * one place both `machineRoster` (Machines, the crew overview) and `GET /api/github` name it, so the
+ * two pages cannot call one machine two names.
+ */
+function selfMachine(): { id: string; name: string } {
+  const data = trustStore.current();
+  return data === null ? { id: SOLO_MACHINE_ID, name: hostname() } : crewSelfOf(data);
+}
+
+/**
  * The machines a lead or a solo collie answers for, read on every call. A lead's list is the crew
  * overview's own rows (the same closure `GET /api/crew` answers from), so the two pages cannot name a
  * machine two ways. A solo collie that never enrolled has no member id and answers as `local`.
  */
 function machineRoster(): MachineRosterEntry[] {
-  const data = trustStore.current();
-  return machineRosterOf(
-    crewStatus?.() ?? null,
-    data === null ? { id: SOLO_MACHINE_ID, name: hostname() } : crewSelfOf(data),
-  );
+  return machineRosterOf(crewStatus?.() ?? null, selfMachine());
 }
 
 const machineWatch =
@@ -1976,6 +1983,10 @@ const server = startServer({
   worktreeReceipts,
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
+  // The GitHub work screen (bridge/github-work.ts). Built always and spawns nothing on its own: with
+  // COLLIE_GITHUB off the route answers `off` before it reaches the cache, and `gh` is only ever run
+  // for a paired device's request.
+  github: { machine: () => selfMachine().name, work: new GithubWork(realGhDeps()) },
   crew,
   pairing,
   localCredential,

@@ -1364,6 +1364,84 @@ export interface FoldersResponse {
   home: string;
 }
 
+// ── GitHub work (GET /api/github, bridge/github-work.ts) ──────────────────────────
+//
+// The host's own `gh` user's open pull requests, the ones waiting on their review, and the issues
+// assigned to them. Read-only, opt-in (`COLLIE_GITHUB`), one answer per MACHINE: session-scoped only
+// so a `?host=` call forwards to the member whose `gh` it is (CREW_PROTOCOL.md §5).
+
+/** statusCheckRollup.state: SUCCESS→success; FAILURE|ERROR→failure; PENDING|EXPECTED→pending; no rollup→none */
+export type GithubChecks = "success" | "failure" | "pending" | "none";
+/** reviewDecision: APPROVED→approved; CHANGES_REQUESTED→changes-requested; REVIEW_REQUIRED→required; null→none */
+export type GithubReview = "approved" | "changes-requested" | "required" | "none";
+/** MERGEABLE→mergeable; CONFLICTING→conflicting; UNKNOWN or anything else→unknown */
+export type GithubMergeable = "mergeable" | "conflicting" | "unknown";
+
+export interface GithubCheckCounts {
+  /** check runs FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED|STARTUP_FAILURE + status contexts FAILURE|ERROR */
+  failing: number;
+  /** check runs QUEUED|IN_PROGRESS|WAITING|PENDING|REQUESTED + status contexts PENDING|EXPECTED */
+  pending: number;
+  /** check runs SUCCESS|NEUTRAL|SKIPPED + status contexts SUCCESS */
+  passing: number;
+  /** contexts.totalCount */
+  total: number;
+}
+
+export interface GithubPr {
+  repo: string; // "owner/name"
+  number: number;
+  title: string;
+  url: string;
+  author: string | null;
+  draft: boolean;
+  updatedAt: string; // ISO 8601, as GitHub sent it
+  checks: GithubChecks;
+  checkCounts: GithubCheckCounts;
+  review: GithubReview;
+  mergeable: GithubMergeable;
+}
+
+export interface GithubIssue {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  author: string | null;
+  updatedAt: string;
+  labels: { name: string; color: string }[]; // color: 6 hex digits, no '#'
+}
+
+export interface GithubList<T> {
+  items: T[];
+  /** search issueCount — may exceed items.length (items are capped at 30) */
+  total: number;
+}
+
+export type GithubWorkResponse =
+  /** COLLIE_GITHUB is off on this machine */
+  | { state: "off"; machine: string }
+  /** on, nothing cached yet (only ever answered to ?peek=1) */
+  | { state: "cold"; machine: string }
+  /** on, and the fetch failed with nothing good cached */
+  | {
+      state: "unavailable";
+      machine: string;
+      reason: "gh-missing" | "gh-unauthenticated" | "timeout" | "error";
+      message: string; // first stderr line or a short cause, ≤ 300 chars, no token
+    }
+  | {
+      state: "ok";
+      machine: string; // this bridge's machine name, as the crew/machines UI names it
+      login: string; // viewer.login — which GitHub account the lists belong to
+      fetchedAt: string; // ISO, when this answer was fetched from GitHub
+      stale: boolean; // older than the TTL, or the last refresh failed
+      error?: string; // set when the last refresh failed and this is the previous answer
+      mine: GithubList<GithubPr>;
+      review: GithubList<GithubPr>;
+      issues: GithubList<GithubIssue>;
+    };
+
 /**
  * One rule as the pane sheet reads it — the catalog entry behind a pane's `cache.ruleId`.
  *

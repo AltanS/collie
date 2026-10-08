@@ -16,6 +16,7 @@ import { CrewProvider } from "@/components/crew-provider";
 import { StripHost } from "@/components/ui/strip-host";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import type { MachineHistoryState } from "@/hooks/use-machine-history";
+import type { GithubWorkState } from "@/hooks/use-github-work";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { saveDraft } from "@/lib/drafts";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@/lib/loaders";
 import { internScope, scopeFromUrl, scopeKey } from "@/lib/scope";
 import type { DeviceAuth } from "@/lib/types";
+import { GithubRoute } from "@/routes/github";
 import { CrewRoute } from "@/routes/crew";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
@@ -196,6 +198,38 @@ export function MachinesRouter({
         },
       ],
       { initialEntries: [start] },
+    ),
+  );
+  return <RouterProvider router={router} />;
+}
+
+/**
+ * The GitHub work screen on a memory router, its answer handed in: the playground has no bridge, so
+ * `GithubRoute`'s `given` switches its live read off and the card shows exactly that state. The root
+ * route carries the header host and the crew provider, as the app's root does.
+ */
+export function GithubRouter({ home, state }: { home: HomeData; state: GithubWorkState }) {
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => home,
+          element: (
+            <CrewProvider servers={home.servers} sessions={home.sessions} ts={home.ts} pollMs={3_000}>
+              <AppHeaderHost bridge={home.bridge} error={false}>
+                <Outlet />
+              </AppHeaderHost>
+            </CrewProvider>
+          ),
+          children: [
+            { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
+            { path: "github", element: <GithubRoute given={state} /> },
+          ],
+        },
+      ],
+      { initialEntries: ["/github"] },
     ),
   );
   return <RouterProvider router={router} />;

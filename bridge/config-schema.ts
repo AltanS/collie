@@ -217,6 +217,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "transcript",
   },
   {
+    key: "github",
+    env: "COLLIE_GITHUB",
+    section: "bridge",
+    kind: "bool",
+    default: false,
+    doc: "Show the host gh user's open pull requests, review requests and assigned issues on the phone.",
+    configField: "github",
+  },
+  {
     key: "state_dir",
     env: "COLLIE_STATE_DIR",
     section: "bridge",

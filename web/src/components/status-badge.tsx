@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { type AgentStatus, statusLabel, statusLabelPast } from "@/lib/types";
@@ -128,12 +130,32 @@ export function StatusBadge({
 }) {
   useLocale();
   return (
-    <Badge
-      variant="outline"
-      className={cn("gap-1.5 transition-opacity", CHIP[status], stale && "opacity-40", className)}
-    >
-      <span className={cn("size-1.5 rounded-full", DOT[status])} />
+    <StatusChip status={status} className={cn("transition-opacity", stale && "opacity-40", className)}>
       {past ? statusLabelPast(status) : statusLabel(status)}
+    </StatusChip>
+  );
+}
+
+/**
+ * The status chip itself, carrying the caller's own WORD: the badge's tinted pill and dot, for a
+ * status the agent vocabulary has no word for. The GitHub screen's PR rows (`failing 2`, `approved`,
+ * `conflict`, ADR 0091) wear the palette through it, so a stuck PR and a pane that needs you are the
+ * same red and the same shape. The word is required: status is never colour alone (DESIGN.md §4).
+ */
+export function StatusChip({
+  status,
+  children,
+  className,
+}: {
+  /** The palette key: which `--status-*` tints the pill and fills the dot. */
+  status: AgentStatus;
+  children: ReactNode;
+  className?: string;
+}): ReactNode {
+  return (
+    <Badge variant="outline" className={cn("gap-1.5", CHIP[status], className)}>
+      <span className={cn("size-1.5 rounded-full", DOT[status])} aria-hidden />
+      {children}
     </Badge>
   );
 }

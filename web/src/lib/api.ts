@@ -37,6 +37,7 @@ import type {
   CacheWatchState,
   FoldersResponse,
   LaunchersResponse,
+  GithubWorkResponse,
   NotifyPrefs,
   ChangeCommitDiffResponse,
   ChangeCommitResponse,
@@ -187,6 +188,10 @@ const UPLOAD_TIMEOUT_MS = 60_000;
 //     the bridge's own 90 s hold on the connection (ADR 0089). A create that outlives it is retried
 //     with the same request id, and the bridge answers from its receipt instead of creating twice.
 export const WORKTREE_TIMEOUT_MS = 75_000;
+//   - GitHub work (ADR 0091): a read with no cache behind it waits on the host's `gh api graphql`,
+//     which the bridge kills at 20 s (measured 7–9 s for 30 items a list). 30 s lets the bridge's
+//     own `timeout` answer arrive instead of the phone giving up first and calling it an outage.
+const GITHUB_TIMEOUT_MS = 30_000;
 
 // ── THE TRANSCRIPTION DEADLINE IS A FUNCTION OF THE CLIP, NOT A CONSTANT ────────────────────────
 //
@@ -1281,6 +1286,32 @@ export function launch(command: string, besidePaneId?: string, scope?: Scope): P
  */
 export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
   return req<LaunchersResponse>(withScope("/api/launchers", scope));
+}
+
+/**
+ * What the phone can know about one machine's GitHub work: that machine's answer, or `absent` — it
+ * answered 404, so its Collie predates the route (a forwarded older crew member, CREW_PROTOCOL.md
+ * §7.1, or an older bridge). Not an outage, and the screen says so: "not available on that machine".
+ */
+export type GithubWorkAnswer = GithubWorkResponse | { state: "absent" };
+
+/**
+ * GET /api/github — the scope's host user's open PRs, review requests and assigned issues, read
+ * through that machine's `gh` (ADR 0091). `peek` never makes the bridge run `gh`: it answers `off`,
+ * `cold` or what is cached, which is all the dashboard's footer line may ask. `fresh` asks past the
+ * bridge's 60 s TTL (the bridge floors it at 10 s and keeps it single-flight). Host-aware through
+ * `?host=`, like every scoped read.
+ */
+export function getGithubWork(
+  scope: Scope | undefined,
+  opts: { peek?: boolean; fresh?: boolean; signal?: AbortSignal } = {},
+): Promise<GithubWorkAnswer> {
+  const query = opts.peek ? "?peek=1" : opts.fresh ? "?fresh=1" : "";
+  return req<GithubWorkAnswer>(
+    withScope(`/api/github${query}`, scope),
+    { signal: opts.signal, timeoutMs: GITHUB_TIMEOUT_MS },
+    (status) => (status === 404 ? { state: "absent" } : null),
+  );
 }
 
 /**

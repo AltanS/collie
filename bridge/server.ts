@@ -41,6 +41,7 @@ import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-ca
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
+import { githubAnswer, type GithubWorkSurface } from "./github-work.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import {
   isRequestId,
@@ -346,6 +347,12 @@ const WORKTREE_LIST_ROUTE = /^\/api\/workspace\/([^/]+)\/worktrees$/;
  * listener gives up. The phone waits 75 s (web/src/lib/api.ts).
  */
 const WORKTREE_ROUTE_BUDGET_S = 90;
+/**
+ * How long `GET /api/github` may hold its connection open, in seconds: past the member's forward
+ * budget (`GITHUB_READ_BUDGET_MS`, 25 s, which itself outlasts `gh`'s 20 s kill), so the bridge
+ * always answers before Bun's 10 s idle close. The phone waits 30 s (web/src/lib/api.ts).
+ */
+const GITHUB_ROUTE_BUDGET_S = 30;
 const WORKTREE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree(?:\/(open))?$/;
 
 /**
@@ -980,6 +987,12 @@ export function startServer(opts: {
    * front door (ADR 0013), and its own load already reaches the lead beside its snapshot.
    */
   machines?: MachineSurface;
+  /**
+   * The GitHub work screen's machine name and answer cache (bridge/github-work.ts). Always supplied;
+   * `cfg.github` decides whether `GET /api/github` ever reaches the cache — off, it answers `off`
+   * and nothing is looked up or run.
+   */
+  github: GithubWorkSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -1003,6 +1016,7 @@ export function startServer(opts: {
   const folders = opts.folders;
   const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
   const machines = opts.machines;
+  const github = opts.github;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
   // the same bounded process-local capacity (bridge/stt/http.ts).
@@ -1286,6 +1300,14 @@ export function startServer(opts: {
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
     const folderAnswer = await serveFolderRoute(req, pathname, caller, folders);
     if (folderAnswer !== null) return folderAnswer;
+    // The host `gh` user's pull requests and issues (bridge/github-work.ts). One answer per MACHINE,
+    // session-scoped for `/api/launchers`' reason: a `?host=` call forwards to the member whose `gh`
+    // it is, and the lead's answer would name the wrong account. Bun closes a request idle for 10 s,
+    // and this one may wait on a `gh` child here (killed at 20 s) or on a member through the link
+    // (`GITHUB_READ_BUDGET_MS`, 25 s), so it is held open the way the worktree routes are.
+    if (url.pathname === "/api/github") server.timeout(req, GITHUB_ROUTE_BUDGET_S);
+    const githubResponse = await serveGithubRoute(req, url, caller, cfg.github, github);
+    if (githubResponse !== null) return githubResponse;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
     // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
@@ -4573,6 +4595,34 @@ export async function serveFolderRoute(
       return jsonError(refusal, 409, ae);
     }
     return json(foldersBody(folders), ae);
+  }
+  return null;
+}
+
+// ── GitHub work (bridge/github-work.ts) ──────────────────────────────────────────
+//
+// One read, `GET /api/github`, pulled out like the folder routes so `bun test` can hold its ORDER
+// with a fake caller: the read gate first, then the resolver (which forwards a `?host=` call to the
+// member whose `gh` it is and hands its answer back untouched), and only then this machine's own
+// answer. Every state is a 200: `off`, `cold`, `unavailable` and `ok` are answers, not faults.
+
+/** What the GitHub route needs of its caller: its gate and its resolver, and nothing else. */
+export type GithubRouteCaller = Pick<RouteCaller, "gate" | "resolve">;
+
+/** `GET /api/github`, or `null` when the request is not that route. */
+export async function serveGithubRoute(
+  req: Request,
+  url: URL,
+  caller: GithubRouteCaller,
+  enabled: boolean,
+  github: GithubWorkSurface,
+): Promise<Response | null> {
+  if (url.pathname === "/api/github" && req.method === "GET") {
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    return json(await githubAnswer(enabled, github, url), req.headers.get("accept-encoding"));
   }
   return null;
 }

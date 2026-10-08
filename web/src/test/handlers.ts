@@ -797,6 +797,10 @@ export const handlers = [
   // Default world: no `launchers.toml`. Session-scoped (server.ts), so a test that wants rows
   // overrides this with its own `/api/launchers` handler rather than adding a field to `/api/config`.
   http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "" })),
+  // Default world: GitHub work is off (ADR 0091, opt-in), which is every bridge that never set
+  // COLLIE_GITHUB. The dashboard's footer line then draws nothing; a test that wants the screen's
+  // lists overrides this with `fixtureGithubOk` from ./github-fixtures.
+  http.get("/api/github", () => HttpResponse.json({ state: "off", machine: "desk" })),
   // Default world: no folder recorded yet (#289), which is every bridge that never created a space
   // in a folder. The new-space sheet then renders exactly as it did before the list existed; a test
   // that wants a list overrides these two with its own.

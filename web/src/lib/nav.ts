@@ -178,6 +178,15 @@ export function crewPath(scope?: Scope): string {
 }
 
 /**
+ * GitHub work (ADR 0091) — the host user's open PRs, review requests and assigned issues, read through
+ * that machine's `gh`. A child of the dashboard, whose meta footer opens it. Carries the scope like the
+ * others: the lists are the scoped machine's, so "back" returns to that machine's dashboard.
+ */
+export function githubPath(scope?: Scope): string {
+  return `/github${scopeSearch(scope)}`;
+}
+
+/**
  * The Updates page — a CHILD of Settings, not an anchor inside it. Updating is a flow with a lead,
  * N peers, progress and a rollback state, so it gets a page and Settings keeps one row that links
  * here. Carries the scope like the others, so "back" returns to the machine you came from.
@@ -297,7 +306,7 @@ const ANY_SPACE = "/space/*";
  * Every pathname that may legitimately sit above `pathname` in the level tree, nearest first.
  *
  *   L0 `/`
- *   L1 `/space/:id`, `/settings`, `/crew`
+ *   L1 `/space/:id`, `/settings`, `/crew`, `/github`
  *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
@@ -333,6 +342,7 @@ export function ancestorsOf(pathname: string): string[] {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "settings" && seg.length === 1) return ["/"];
+  if (head === "github" && seg.length === 1) return ["/"];
   // Updates and the crew census are opened from the System section, so that is their nearest
   // legitimate parent. `/settings` stays in the list behind it: both were reachable straight from
   // the index before the split, and a stored `from` pointing there is still a step UP, not a push.
@@ -549,6 +559,7 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
+  if (head === "github" && seg.length === 1) return [home];
   if (head === "settings" && seg.length === 2 && id === "updates") {
     return [home, `/settings${q}`, `/settings/system${q}`];
   }

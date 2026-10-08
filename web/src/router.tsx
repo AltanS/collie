@@ -24,6 +24,7 @@ import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
 import { UpdatesRoute } from "@/routes/updates";
+import { GithubRoute } from "@/routes/github";
 import {
   devicesLoader,
   historyLoader,
@@ -121,6 +122,10 @@ export const router = createBrowserRouter([
       // active loader is refetched on each tick and 1440 points a tick would be pure waste.
       { path: "machines", loader: machinesListLoader, element: <MachinesRoute /> },
       { path: "machines/:id", loader: machinesLoader, element: <MachineRoute /> },
+      // GitHub work (ADR 0091), a child of the dashboard. No loader, like Changes: the screen reads
+      // for itself on open, on its own 60 s beat while visible and on its refresh button, because a
+      // read can wait seconds on the host's `gh` and the poll loop would re-run a loader every tick.
+      { path: "github", element: <GithubRoute />, shouldRevalidate: () => false },
       // The path was `crew` until 1.7.0 (M24 renamed the word a person reads). The service worker
       // caches the app shell, so a client sitting on /crew when the new bundle arrives, a bookmark
       // and an installed PWA's start URL all still ask for the old spelling. `replace` rather than

@@ -92,7 +92,7 @@ The config file groups every setting under a `[section]`. The environment name o
 
 | section | what it holds |
 | --- | --- |
-| `bridge` | poll cadence, how many lines are read, where state lives |
+| `bridge` | poll cadence, how many lines are read, where state lives, the GitHub work screen |
 | `network` | the port, the bind address, allowed hosts and origins |
 | `mux` | which multiplexer this collie mirrors, and where it lives |
 | `access` | the Tailscale identity gate, the device header, the audit trail, the secret mask |
@@ -550,6 +550,33 @@ mirror's layout holds. It catches high-confidence shapes only; the limits are in
 
 In a crew, the lead also masks the text its members send, by its own setting. A member's text
 reaches your phone unmasked only when the lead and that member both set `COLLIE_REDACT=off`.
+
+## GitHub work
+
+Collie can show the pull requests and issues of the host's own `gh` user on the phone.
+
+```bash
+# in your .env; the default is off
+COLLIE_GITHUB=on
+```
+
+| variable | default | what it does |
+| --- | --- | --- |
+| `COLLIE_GITHUB` | `off` | Lists your open pull requests with their checks, review and merge state, the pull requests waiting on your review, and the issues assigned to you. `off` runs nothing and the screen does not appear. |
+
+In the config file this is `[bridge] github`. The bridge runs the host's `gh api graphql` as the
+user the service runs as, with the login `gh auth login` already stored. Collie keeps no token of
+its own, and every request is a read.
+
+The bridge asks GitHub only when a paired device opens the screen or refreshes it, never on a
+timer. One answer is reused for 60 seconds, and a refresh within 10 seconds of the last fetch gets
+that fetch's answer back.
+
+> **Note.** `gh` must be on the service's `PATH`, and logged in for that user. When it is not, the
+> screen says which of the two is missing instead of showing an empty list.
+
+In a [crew](crew.md), each machine answers with its own `gh` user and its own setting. A machine
+that runs an older Collie has no GitHub screen, and the phone says so.
 
 ## Multi-session
 

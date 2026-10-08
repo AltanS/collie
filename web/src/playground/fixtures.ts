@@ -28,6 +28,7 @@
 //     The anchor is captured ONCE, at module load, from the wall clock — see the constant's own
 //     note for why that is the right shape for a page and not a violation of the rule above.
 
+import type { GithubWorkState } from "@/hooks/use-github-work";
 import type { HostHealth } from "@/lib/host-health";
 import type { DevicesData, HomeData } from "@/lib/loaders";
 import type {
@@ -52,6 +53,7 @@ import type {
 // escape sequences and all, rather than a re-typed approximation of one.
 import claudePermissionBash from "@/fixtures/panes/claude--permission-bash.txt?raw";
 import claudeWorking from "@/fixtures/panes/claude--working.txt?raw";
+import { fixtureGithubOk } from "@/test/github-fixtures";
 
 // ── The one clock ────────────────────────────────────────────────────────────────────────────────
 
@@ -1111,3 +1113,51 @@ export const cacheWatchOff: CacheWatchState = { on: false, global: false, watcha
  *  the render it exists to be checked against. Verbatim off the mirror, the way the real notice quotes it. */
 export const noEchoPrompt =
   "Password for deploy@prod-db-03.internal.corp (sudo -u postgres psql -h 10.20.30.41 -p 5432 -d production_replica):";
+
+// ── GitHub work (ADR 0091) ───────────────────────────────────────────────────────────────────────
+//
+// The screen's states, each handed in whole (`GithubRoute`'s `given`): the playground has no bridge.
+// The lists are the unit suite's own (`@/test/github-fixtures`), dated from this file's one clock.
+
+/** COLLIE_GITHUB is off on the machine: the card that names the switch. */
+export const githubOff: GithubWorkState = { answer: { state: "off", machine: "workshop" }, failed: false };
+
+/** On, nothing cached yet: the first read is on its way through the host's `gh`. */
+export const githubCold: GithubWorkState = { answer: { state: "cold", machine: "workshop" }, failed: false };
+
+/** `gh` is there but signed out: the card says to run `gh auth login` on that machine. */
+export const githubUnauthenticated: GithubWorkState = {
+  answer: {
+    state: "unavailable",
+    machine: "workshop",
+    reason: "gh-unauthenticated",
+    message: "To get started with GitHub CLI, please run:  gh auth login",
+  },
+  failed: false,
+};
+
+/** A crew member whose Collie predates the route: it answered 404. */
+export const githubAbsent: GithubWorkState = { answer: { state: "absent" }, failed: false };
+
+/** The lists: two stuck PRs, one waiting on checks with an unknown merge state, a draft, one ready. */
+export const githubOk: GithubWorkState = { answer: fixtureGithubOk(TS), failed: false };
+
+/** The last refresh failed; the previous lists stay under a notice quoting what `gh` said. */
+export const githubStale: GithubWorkState = {
+  answer: fixtureGithubOk(TS, {
+    stale: true,
+    fetchedAt: new Date(TS - 18 * MIN).toISOString(),
+    error: "HTTP 502: Bad Gateway (https://api.github.com/graphql)",
+  }),
+  failed: false,
+};
+
+/** Signed in, and nothing open anywhere: three lists that each say so. */
+export const githubEmpty: GithubWorkState = {
+  answer: fixtureGithubOk(TS, {
+    mine: { items: [], total: 0 },
+    review: { items: [], total: 0 },
+    issues: { items: [], total: 0 },
+  }),
+  failed: false,
+};
