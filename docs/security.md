@@ -141,6 +141,12 @@ raw terminal screen. "Keep chat on this phone" set to Off keeps none and deletes
 When a pane asks for a password, the phone drops that pane's entries. Nothing in the store can send a key or a reply. The deletions at unpair are the ones in
 [What unpair clears on the phone](#what-unpair-clears-on-the-phone).
 
+The phone's app switcher can also show a pane. When you leave Collie, the phone keeps a picture of
+the screen for its list of recent apps, and that picture can show pane text. A web app cannot stop
+this: Android took its picture before the page heard that it went to the background (tested on a
+Pixel, 2026-10-08), and iOS gives no promise either. If that matters to you, lock the phone or close
+Collie before you hand it to someone.
+
 ## Risk model
 
 Key security boundaries and risks:
