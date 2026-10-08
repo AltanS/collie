@@ -50,6 +50,8 @@ const PINNED = [
   "grok--plan-approval.txt",
   "grok--plan-request-changes.txt",
   "grok--plan-tab-prompt.txt",
+  "grok--reply-table-highlighted.txt",
+  "grok--reply-table-scrollbar.txt",
   "grok--reporter-294-draft-newline-hint.txt",
   "grok--startup.txt",
   "grok--user-bubble.txt",

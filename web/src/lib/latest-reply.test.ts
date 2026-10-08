@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fold, locateReply, newestReply, PROBE_CHARS, replyProse, sourceOrderRows } from "./latest-reply";
 import type { TranscriptEntry, TranscriptPart } from "./types";
 
@@ -359,5 +361,37 @@ describe("locateReply — source spelled differently on screen", () => {
     const source = `${lead}\n\n這一句只是為了讓結尾比對用的四十八個字全部落在畫面上，所以先寫長一點再收尾：分工寫在 [分工說明](file:///tmp/split.md)，路徑是 \`<repo>/wt\``;
     const painted = ["  這一句只是為了讓結尾比對用的四十八個字全部落在畫面上，所以先寫長一點再收尾：分工寫在 分工說明，路徑是 <repo>/wt"];
     expect(locateReply(painted.join("\n"), turn("assistant", source)).fit).toBe("clipped");
+  });
+});
+
+// Real Grok Build 1.0.46 panes, 2026-10-08: the reply's text, and the screen captured beside it.
+describe("locateReply — real Grok replies", () => {
+  const pane = (name: string) =>
+    readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", `${name}.txt`), "utf8");
+  const water = [
+    "家庭用水先分清楚喝、洗、沖三種用途，再依水壓與水質決定要不要過濾或軟水。設備不必一次買齊，先處理每天入口的水與最耗水的淋浴，其餘位置再依使用頻率補上。",
+    "",
+    "一、建議怎麼配置",
+    "",
+    "| 用水位置 | 建議設備 |",
+    "| --- | --- |",
+    "| 廚房是全家備餐與清洗餐具最頻繁的位置，日常洗滌與飲用出水必須分開，才不會把清潔劑味道帶進飲用水。 | 建議在廚房龍頭加裝可切換的淨水龍頭，並在水槽下配置五微米前置濾心與活性碳濾心，專門供應烹飪與直接飲用。 |",
+    "| 浴室同時承擔淋浴、洗臉與洗衣之前的取水，熱水要在短時間內到達且溫度穩定，避免反覆放掉冷水造成浪費。 | 浴室建議裝上恆溫淋浴龍頭與低流量蓮蓬頭，並在熱水器出水管加裝防燙閥，讓全家使用時水溫固定且比較省水。 |",
+    "| 洗衣機多半放在陽台或洗衣間，進水水壓要足夠且水質不能太硬，否則衣物容易殘留皂垢並縮短機器的壽命。 | 洗衣機進水端建議加裝專用前置過濾器，並搭配軟水濾心降低水垢，洗衣程式再選用適量洗劑的模式以減少漂洗次數。 |",
+    "| 全家人每天喝水與煮開水都集中在飲用水這一處，水源要穩定去除餘氯與異味，濾心週期也必須跟得上實際用量。 | 飲用水建議採用逆滲透或中空絲膜系統，出水再經過活性碳改善口感，並設定半年更換濾心的提醒以免過濾效果衰退。 |",
+  ].join("\n");
+
+  it("a long reply ending in a wide table, with the scrollbar painted", () => {
+    expect(locateReply(pane("grok--reply-table-scrollbar"), turn("assistant", water))).toEqual({
+      fit: "clipped",
+      endLine: 25,
+    });
+  });
+
+  it("the same reply while Grok highlights the message", () => {
+    expect(locateReply(pane("grok--reply-table-highlighted"), turn("assistant", water))).toEqual({
+      fit: "clipped",
+      endLine: 25,
+    });
   });
 });
