@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Chat shows /subtask, /rename and other slash commands again.** Claude Code records some commands (`/subtask`, `/rename`, `/model`, `/color`, `/resume`, `/cd`, `/memory`, `/context`) as a system row in its session log, and Chat skipped those rows. Chat now shows the command you ran, with its arguments, and the output it printed.
 - **A long Grok draft no longer stalls a reply, and the phone view drops Grok's scrollbar track.** The scrollbar Grok draws beside a long draft is ignored when the send is verified, and the dark track on the right of Grok's output no longer shows in the phone mirror. Grok's `/model` picker now has buttons for the model, the context window and the effort. Thanks @GGGODLIN (#378).
 - **The New space sheet opens at its final height.** Favourites and Recent used to appear after the
   sheet had slid in, so the sheet grew upward under your thumb on the first open after a page load.

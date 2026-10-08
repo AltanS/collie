@@ -136,6 +136,17 @@ export function classifyUserText(
   return text.trim() === "" ? null : { role: "user", text };
 }
 
+/**
+ * The string a `system` / `local_command` row carries, when it is a slash command or that command's
+ * output, else null. Only these two envelopes are read: any other `system` row stays bookkeeping.
+ * The string goes through {@link classifyUserText}, exactly as the same envelope on a `user` row does.
+ */
+function localCommandContent(row: RawRow): string | null {
+  if (row.subtype !== "local_command" || typeof row.content !== "string") return null;
+  const text = stripAnsi(row.content);
+  return isEnvelope("command-name", text) || isEnvelope("local-command-stdout", text) ? row.content : null;
+}
+
 /** Flatten a `tool_result.content`, which is either a plain string or a list of text blocks. */
 function toolResultText(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
@@ -669,12 +680,25 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     // compaction is already visible and already set apart from speech; the boundary row would add a
     // second mark for the same event, and widening this gate to admit it means admitting a subtype
     // test into the one line that keeps 1,060 `attachment` rows off the screen.
-    if (type !== "user" && type !== "assistant") return NO_CHANGE;
+    //
+    // One `system` row is the exception, and it is not bookkeeping: `local_command`. Claude Code writes
+    // a slash command run as a `user` row (`/compact`) or, for others, as a `system` row
+    // (`/subtask`, `/rename`, `/model`, `/color`, `/resume`, `/cd`, `/memory`, `/context`: 282 command
+    // rows and 319 stdout rows across the local logs on 2026-10-08). Same envelope, other carrier, and
+    // never both for one run (the two `/model` pairs found were separate runs minutes apart), so it is
+    // read through the `user` path below and cannot show twice.
+    const systemCommand = type === "system" ? localCommandContent(row) : null;
+    if (type !== "user" && type !== "assistant" && systemCommand === null) return NO_CHANGE;
     if (row.isSidechain === true && !opts.includeSidechains) return NO_CHANGE;
 
-    const message = row.message;
-    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
-    const content = message.content;
+    let content: JsonValue | undefined;
+    if (systemCommand !== null) {
+      content = systemCommand;
+    } else {
+      const message = row.message;
+      if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
+      content = message.content;
+    }
     // A `user` turn is how a dequeued message reaches the agent, so it clears that message's place if
     // the `dequeue` took another (createQueueTracker § 2). Not one the operator typed straight into an
     // idle prompt (`promptSource: "typed"`): that one never sat in the queue.
