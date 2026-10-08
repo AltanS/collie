@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   under the app's own lists, so a drag moved two things. The page is now pinned there, so only the
   lists scroll, and the app still fills to the bottom edge. A Safari tab and other devices are
   unchanged. (#371)
+- **Chat no longer repeats a message after CJK or emoji text.** A journal read found its row boundary by string index instead of by byte, so the next read started short of it and sent again rows the phone already had. Thanks @GGGODLIN (#377).
 
 ## [1.18.0] - 2026-10-08
 
