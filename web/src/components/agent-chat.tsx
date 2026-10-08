@@ -77,6 +77,7 @@ import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/l
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { MaskedHint } from "@/components/masked-hint";
+import { ModelTag } from "@/components/model-tag";
 import { useMaskedHintRetired } from "@/lib/masked-hint";
 import { entriesHoldMask, holdsMask } from "@/lib/masked-text";
 import { useHostHealth } from "@/components/crew-provider";
@@ -2443,6 +2444,9 @@ export function AgentChat({
               data-slot="draft-notice-slot"
               className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-2"
             />
+            {/* The pane's model, small on the mirror's bottom-right corner, over both bodies alike
+                and under the notice slot above (model-tag.tsx says why there). */}
+            <ModelTag model={agent?.model} />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,

@@ -143,6 +143,12 @@ export interface AgentView {
    */
   cache?: PaneCache;
   /**
+   * The model this pane's agent is on, in the harness's own words. Mirrors `PaneWire.model` in
+   * bridge/types.ts. **Absent, never a placeholder**, and text only: read it through `modelLabel`
+   * (lib/model-label.ts), which shortens it and drops anything that is not a name.
+   */
+  model?: string;
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,

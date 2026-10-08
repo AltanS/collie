@@ -53,6 +53,12 @@
 // the engine. The next probe replaces the list whole; its turn is newer than the action, so the action
 // stops being pending without anything clearing it.
 //
+// THE MODEL RIDES ALONG, ON ITS OWN MAP. The same probe names the model the last turn ran on (and, on
+// Claude, a `/model` chosen since), and the pane's model label wants exactly that, so `model()` answers
+// it without a second read. It is kept apart from the cache entry because the engine DROPS that entry
+// when it has nothing to say about the cache, and a model is worth showing even then. It is reaped by
+// the same rule as the entries: its pane left this session's list.
+//
 // NOTHING IS PERSISTED. A restart costs one poll, and a memo that survived a restart would be a
 // countdown for a process that is gone.
 
@@ -126,8 +132,18 @@ interface Entry extends Owner, Chosen {
   cache: PaneCache;
 }
 
+/** The model label a session last read, with the same owner the cache entry carries. */
+interface ModelEntry extends Owner {
+  model: string;
+}
+
+/** Longest model name the wire carries. A real one is under 40; this only bounds a hostile file. */
+const MODEL_MAX = 80;
+
 export class CacheTracker {
   private readonly bySession = new Map<string, Entry>();
+
+  private readonly modelBySession = new Map<string, ModelEntry>();
 
   constructor(
     private readonly registry: Record<string, JournalAdapter>,
@@ -148,9 +164,20 @@ export class CacheTracker {
     return this.bySession.get(sessionKey)?.cache;
   }
 
+  /**
+   * The model one harness session is on, as the harness names it, or undefined: a `/model` chosen
+   * since the last turn first, else the last turn's own. Display only, never a rule input.
+   */
+  model(sessionKey: string): string | undefined {
+    return this.modelBySession.get(sessionKey)?.model;
+  }
+
   /** Drop these sessions outright. Called by {@link refresh} for panes that are gone. */
   forget(sessionKeys: readonly string[]): void {
-    for (const key of sessionKeys) this.bySession.delete(key);
+    for (const key of sessionKeys) {
+      this.bySession.delete(key);
+      this.modelBySession.delete(key);
+    }
   }
 
   /**
@@ -180,14 +207,17 @@ export class CacheTracker {
         // Under the floor nothing is read, but the pane is still this session's — re-stamp the owner
         // so a pane that moved between sessions is reaped by the one that now holds it.
         this.bySession.set(ref.value, { ...entry, ...owner });
+        const known = this.modelBySession.get(ref.value);
+        if (known !== undefined) this.modelBySession.set(ref.value, { ...known, ...owner });
         continue;
       }
       await this.look(adapter, harness, ref, at, owner);
     }
     // Reap THIS session's departed panes, on the same poll the activity ledger reconciles on. Another
     // session's entries are none of this poll's business.
+    const owned: [string, Owner][] = [...this.bySession.entries(), ...this.modelBySession.entries()];
     this.forget(
-      [...this.bySession.entries()]
+      owned
         .filter(([key, entry]) => entry.session === session && departed(named, key, entry.paneId))
         .map(([key]) => key),
     );
@@ -231,6 +261,13 @@ export class CacheTracker {
       // so the file the memo came from is still what the next successful stat is compared against.
       if (previous !== undefined) this.keep(key, at, previous.seen, previous, overrides, owner);
       return;
+    }
+    // The model label stands on its own map (see the module header), so it is recorded before the
+    // engine decides whether the cache has anything to say. A probe that names no model keeps the
+    // last one: the window may simply hold no turn that says.
+    const shown = (probe?.selectedModel ?? probe?.model)?.trim();
+    if (shown !== undefined && shown !== "") {
+      this.modelBySession.set(key, { model: shown.slice(0, MODEL_MAX), session: owner.session, paneId: owner.paneId });
     }
     if (probe === null || probe === undefined) {
       // A read that found no turn in the window — see the module header. Keep what the last successful

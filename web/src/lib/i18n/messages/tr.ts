@@ -1509,6 +1509,7 @@ export const tr: Dictionary = {
   "updateScreen.row.reading": "durumu okunuyor",
   "updateScreen.reading.subtitle": "Güncellemenin nerede olduğu okunuyor. Bu bir saniye sürer.",
   "chat.changes.label": "Dosyalar",
+  "chat.model.label": "Model",
   "files.title": "Dosyalar",
   "branch.aria": "Dal {name}",
   "branch.detachedAria": "{sha} üzerinde ayrık",

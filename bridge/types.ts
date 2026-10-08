@@ -146,6 +146,15 @@ export interface AgentView {
    */
   cache?: PaneCache;
   /**
+   * The model this pane's agent is on, as its harness names it: a `/model` chosen since the last turn
+   * first (Claude), else the model that turn ran on (`claude-opus-5-5`, `provider:model` for opencode
+   * and pi). Read by the cache tracker's probe and attached at serialise time exactly as {@link cache}
+   * is. Display only: the phone draws it small above the belt and nothing decides on it.
+   *
+   * ABSENT, NEVER A PLACEHOLDER: no journal adapter, no session, no turn yet, or an older bridge.
+   */
+  model?: string;
+  /**
    * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
    * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and
    * attached at serialise time exactly as {@link cache} is.

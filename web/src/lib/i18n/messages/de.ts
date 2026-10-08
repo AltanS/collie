@@ -1714,6 +1714,7 @@ export const de: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Dateien",
+  "chat.model.label": "Modell",
   "files.title": "Dateien",
   "branch.aria": "Branch {name}",
   "branch.detachedAria": "Losgelöst bei {sha}",

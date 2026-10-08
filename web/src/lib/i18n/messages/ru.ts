@@ -1595,6 +1595,7 @@ export const ru: Dictionary = {
   "updateScreen.row.reading": "чтение состояния",
   "updateScreen.reading.subtitle": "Чтение статуса обновления. Это займет секунду.",
   "chat.changes.label": "Файлы",
+  "chat.model.label": "Модель",
   "files.title": "Файлы",
   "branch.aria": "Ветка {name}",
   "branch.detachedAria": "Отсоединено на {sha}",

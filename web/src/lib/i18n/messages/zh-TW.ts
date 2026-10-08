@@ -1674,6 +1674,7 @@ export const zhTW: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "檔案",
+  "chat.model.label": "模型",
   "files.title": "檔案",
   "branch.aria": "分支 {name}",
   "branch.detachedAria": "分離於 {sha}",

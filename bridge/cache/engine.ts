@@ -40,6 +40,12 @@ export interface CacheProbe {
   observedTtlSeconds?: Sourced<number>;
   /** The model, in whatever shape the harness writes it (`providerID:modelID` where it fans out). */
   model?: string;
+  /**
+   * A model the operator chose AFTER the turn above (Claude's `/model`), in the harness's own display
+   * words ("Fable 5.1"). The next turn will run on it, so the pane's model label shows it ahead of
+   * `model`. Display only: no rule and no TTL reads it.
+   */
+  selectedModel?: string;
   /** Subscription or API key, where the transcript says so. */
   tier?: Tier;
   /**

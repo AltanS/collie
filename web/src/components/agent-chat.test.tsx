@@ -4120,3 +4120,19 @@ describe("AgentChat header — the branch on the path line", () => {
     expect(pathLine(container).querySelector('[data-slot="branch-label"]')).toBeNull();
   });
 });
+
+// The pane's model floats on the mirror's bottom-right corner, in the box the draft notice pins to.
+describe("AgentChat — the model above the belt", () => {
+  it("draws the pane's model on the mirror box, under the draft-notice slot", () => {
+    const agent: AgentView = { ...fixtureAgents[0]!, model: "claude-fable-5-1" };
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    const tag = container.querySelector<HTMLElement>('[data-slot="model-tag"]')!;
+    expect(tag.textContent).toBe("Model: Fable 5.1");
+    expect(tag.previousElementSibling).toHaveAttribute("data-slot", "draft-notice-slot");
+  });
+
+  it("draws no model when the pane names none", () => {
+    const { container } = renderChat();
+    expect(container.querySelector('[data-slot="model-tag"]')).toBeNull();
+  });
+});

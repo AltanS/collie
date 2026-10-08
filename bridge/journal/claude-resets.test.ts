@@ -11,6 +11,7 @@ import {
   CLAUDE_RESET_IDS,
   claudeResets,
   lastTwoTurns,
+  modelChosenAfter,
   modelSetBy,
   normaliseModel,
   resetsBetween,
@@ -214,6 +215,43 @@ describe("lastTwoTurns", () => {
   });
 });
 
+// The pane's model label: what the NEXT request runs on. A `/model` after the newest turn says that
+// ahead of the turn itself; one before it is already in the turn's own `message.model`.
+describe("modelChosenAfter", () => {
+  const systemStdout = (text: string, at: string): JsonObject => ({
+    type: "system",
+    subtype: "local_command",
+    timestamp: at,
+    content: `<local-command-stdout>${text}</local-command-stdout>`,
+  });
+
+  test("names the newest /model written after the newest turn, in either record shape", () => {
+    const lines = [
+      turn("msg_a", "2026-09-17T09:00:00Z", "claude-opus-5"),
+      JSON.stringify(stdout("Set model to `Fable 5.1` for this session only", "2026-09-17T09:01:00Z")),
+      JSON.stringify(systemStdout("Set model to `Opus 5 (1M context)` for this session only", "2026-09-17T09:02:00Z")),
+    ];
+    const turns = lastTwoTurns(lines);
+    if (turns === null) throw new Error("no turns");
+    expect(modelChosenAfter(turns)).toBe("Opus 5 (1M context)");
+  });
+
+  test("ignores a /model the newest turn already ran on, a cancelled pick and a subagent's record", () => {
+    const lines = [
+      JSON.stringify(stdout("Set model to `Fable 5.1` for this session only", "2026-09-17T08:59:00Z")),
+      turn("msg_a", "2026-09-17T09:00:00Z", "claude-fable-5-1"),
+      JSON.stringify(stdout("Kept model as `Fable 5.1`", "2026-09-17T09:01:00Z")),
+      JSON.stringify({
+        ...stdout("Set model to `Haiku 4.5` for this session only", "2026-09-17T09:02:00Z"),
+        isSidechain: true,
+      }),
+    ];
+    const turns = lastTwoTurns(lines);
+    if (turns === null) throw new Error("no turns");
+    expect(modelChosenAfter(turns)).toBeUndefined();
+  });
+});
+
 describe("claudeResets", () => {
   test("a model change between two turns with no /model behind it still explains the newer turn", () => {
     // An automatic fallback, or a skill that names its own model: nothing on disk but the turns.
@@ -298,11 +336,23 @@ describe("the Claude probe, end to end", () => {
     expect((out?.cache.expiresAt ?? 0) > Date.parse("2026-09-17T09:03:00Z")).toBe(true);
   });
 
+  test("carries the turn's model and the /model chosen after it, for the pane's label", async () => {
+    const dir = await fixture([
+      turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5"),
+      JSON.stringify(stdout("Set model to `Fable 5.1` for this session only", "2026-09-17T09:02:00Z")),
+    ]);
+    const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
+    await rm(dir, { recursive: true, force: true });
+    expect(probe?.model).toBe("claude-opus-5");
+    expect(probe?.selectedModel).toBe("Fable 5.1");
+  });
+
   test("a session with no action since its last turn reports no resets at all", async () => {
     const dir = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5")]);
     const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
     await rm(dir, { recursive: true, force: true });
     expect(probe?.turnId).toBe("msg_1");
     expect(probe?.resets).toBeUndefined();
+    expect(probe?.selectedModel).toBeUndefined();
   });
 });

@@ -46,7 +46,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
-import { claudeResets, lastTwoTurns } from "./claude-resets.ts";
+import { claudeResets, lastTwoTurns, modelChosenAfter } from "./claude-resets.ts";
 // The shared guard on what an image block may become. It lives in pi's adapter because it also
 // resolves pi's `blob:sha256:` refs against pi's own store, and `bridge/server.ts` reaches for it
 // from there for the same reason. The rule it enforces is not pi's, though: a journal is an AGENT's
@@ -1193,6 +1193,8 @@ async function claudeCacheProbe(
   if (observed !== undefined) probe.observedTtlSeconds = observed;
   const model = asText(message.model);
   if (model !== undefined) probe.model = model;
+  const chosen = modelChosenAfter(turns);
+  if (chosen !== undefined) probe.selectedModel = chosen;
   const resets = claudeResets(turns, tail.path);
   if (resets.length > 0) probe.resets = resets;
   return probe;

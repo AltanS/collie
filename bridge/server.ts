@@ -989,7 +989,7 @@ export function startServer(opts: {
    * means no pane carries a `cache` key — which is every test, and every install with
    * `COLLIE_TRANSCRIPT` off.
    */
-  cache?: { get(sessionKey: string): PaneCache | undefined };
+  cache?: { get(sessionKey: string): PaneCache | undefined; model?(sessionKey: string): string | undefined };
   /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
@@ -1263,7 +1263,10 @@ export function startServer(opts: {
       const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);
-      const withCache = reading === undefined ? withTimes : { ...withTimes, cache: reading };
+      const read = reading === undefined ? withTimes : { ...withTimes, cache: reading };
+      // The model label rides beside it, from the same probe's memo (bridge/cache/tracker.ts).
+      const model = key === undefined ? undefined : cache?.model?.(key);
+      const withCache = model === undefined ? read : { ...read, model };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
       return gitHead === undefined ? withCache : { ...withCache, gitHead };

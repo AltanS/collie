@@ -1509,6 +1509,7 @@ export const it: Dictionary = {
   "updateScreen.row.reading": "lettura dello stato",
   "updateScreen.reading.subtitle": "Verifica dell'aggiornamento. Richiede un attimo.",
   "chat.changes.label": "File",
+  "chat.model.label": "Modello",
   "files.title": "File",
   "branch.aria": "Branch {name}",
   "branch.detachedAria": "Scollegato su {sha}",

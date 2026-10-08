@@ -616,3 +616,68 @@ test("a subscription-tier probe takes the longer claude rule", async () => {
   expect(tracker.get("ses-1")?.ruleId).toBe("claude.subscription");
   expect(tracker.get("ses-1")?.ttlSeconds).toBe(3600);
 });
+
+describe("the model label", () => {
+  test("is the /model chosen since the last turn first, else the turn's own model", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe({ model: "claude-opus-5-5" });
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.model("ses-1")).toBe("claude-opus-5-5");
+
+    c.advance(2000);
+    state.stat = { size: 20, mtimeMs: 200 };
+    state.probe = probe({ model: "claude-opus-5-5", selectedModel: "Fable 5.1" });
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.model("ses-1")).toBe("Fable 5.1");
+  });
+
+  test("a probe that names no model, or finds no turn, keeps the last one", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe({ model: "claude-opus-5-5" });
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("claude", "ses-1")]);
+
+    c.advance(2000);
+    state.stat = { size: 20, mtimeMs: 200 };
+    state.probe = probe();
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.model("ses-1")).toBe("claude-opus-5-5");
+
+    c.advance(2000);
+    state.stat = { size: 30, mtimeMs: 300 };
+    state.probe = null;
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.model("ses-1")).toBe("claude-opus-5-5");
+  });
+
+  test("is reaped with its pane, and only by its own session's poll", async () => {
+    const c = clock();
+    const one = fakeAdapter("claude");
+    one.state.probe = probe({ model: "claude-opus-5-5" });
+    const two = fakeAdapter("codex");
+    two.state.probe = probe({ model: "gpt-5.6-sol" });
+    const tracker = new CacheTracker({ claude: one.adapter, codex: two.adapter }, noOverrides, c.now, {
+      floorMs: 1000,
+    });
+    await tracker.refresh([pane("claude", "ses-a", "w1:p1")], { session: "one" });
+    await tracker.refresh([pane("codex", "ses-b", "w2:p1")], { session: "two" });
+
+    c.advance(2000);
+    await tracker.refresh([], { session: "one" });
+    expect(tracker.model("ses-a")).toBeUndefined();
+    expect(tracker.model("ses-b")).toBe("gpt-5.6-sol");
+    tracker.forget(["ses-b"]);
+    expect(tracker.model("ses-b")).toBeUndefined();
+  });
+
+  test("a hostile name is trimmed and capped", async () => {
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe({ model: `  ${"m".repeat(500)}  ` });
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.model("ses-1")).toHaveLength(80);
+  });
+});

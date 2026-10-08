@@ -175,6 +175,25 @@ export function resetsBetween(
   return events.toSorted((a, b) => a.at - b.at);
 }
 
+/**
+ * The newest `/model` choice written AFTER the newest turn, by its display name, or undefined.
+ *
+ * The turn's own `message.model` says what the last request ran on; a `/model` after it says what the
+ * next one will. The pane's model label wants the second when there is one. A subagent's record is
+ * not the conversation's choice, so a sidechain is skipped, as `resetsBetween` skips it.
+ */
+export function modelChosenAfter(turns: ClaudeTurns): string | undefined {
+  let chosen: string | undefined;
+  for (const record of stretch(turns.records, turns.newest.index + 1, turns.records.length)) {
+    if (record.isSidechain === true) continue;
+    const text = commandText(record);
+    if (text === undefined) continue;
+    const model = modelSetBy(text);
+    if (model !== null) chosen = model;
+  }
+  return chosen;
+}
+
 /** One assistant record that stands for a request Claude Code really sent. */
 export interface ClaudeTurn {
   /** Its line index in the window. */

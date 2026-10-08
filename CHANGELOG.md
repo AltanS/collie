@@ -46,6 +46,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The key builder makes sticky modifier keys.** A new Modifier kind beside Character, Named and F keys saves a Ctrl, Alt or Shift key that arms the next key like the ones on the default pad (off, once, locked), and opens the key queue strip. Removing such a key from the pad lets go of it if it was armed. A modifier key stands alone: it has no steps and no name.
 - **The Keys pad is now a board of cells.** The pad is a 7-column grid where each cell holds one key or nothing, and it starts as today's pad: Space is three cells wide, Enter sits at the left end of the second row with Space between it and the arrows, and the stock `^C` still sends at one tap. A key can send a chord of up to three modifiers plus a key, or a short sequence of up to four steps, through the same send path as every other key, so the lock, the offline check, the danger second tap and the multiplexer's grey keys all apply.
 - **The Keys editor no longer talks about devices.** The sheet's intro, the Share section (formerly Copy to another device) and the empty import line now speak of a layout and a layout code only. The pad is still kept in this browser.
+- **The pane shows which model its agent is on.** A small label on the bottom-right corner of the
+  pane, above the belt, names the model, for example "Opus 5.5". After a `/model` in Claude Code it
+  shows the new choice before the next turn runs. It shows for Claude Code, Codex, opencode and pi,
+  and stays away when the session has not said yet.
 
 ### Changed
 

@@ -314,6 +314,9 @@ const PANE_WIRE_KEYS = {
   // pane in this baseline names a session a probe could read, so no golden byte moved — which is the
   // claim the feature makes, not an aside. The bridge never guesses a number before it measures one.
   cache: true,
+  // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache` and absent
+  // here for the same reason, so no golden byte moved.
+  model: true,
   // Not crew dimensions: the operator's name for this pane's one-pane tab, and the pane's position in
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
@@ -444,6 +447,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "kind",
       "lastActiveAt",
       "lastSeenAt",
+      "model",
       "paneId",
       "paneLabel",
       "readableLines",

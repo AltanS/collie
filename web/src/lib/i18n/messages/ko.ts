@@ -1693,6 +1693,7 @@ export const ko: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "파일",
+  "chat.model.label": "모델",
   "files.title": "파일",
   "branch.aria": "브랜치 {name}",
   "branch.detachedAria": "{sha}에서 분리됨",
