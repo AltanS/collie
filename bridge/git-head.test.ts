@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 
 import {
   findGitDir,
@@ -57,7 +57,7 @@ describe("parseGitFile", () => {
   });
 
   test("a relative gitdir (a submodule) resolves against the folder holding the file", () => {
-    expect(parseGitFile("gitdir: ../.git/modules/sub\n", "/repo/sub")).toBe("/repo/.git/modules/sub");
+    expect(parseGitFile("gitdir: ../.git/modules/sub\n", "/repo/sub")).toBe(resolvePath("/repo/.git/modules/sub"));
   });
 
   test("a file that is not a gitdir line is nothing", () => {
@@ -147,16 +147,21 @@ function memoryDisk(files: Record<string, string>, dirList: readonly string[]) {
   const dirs = new Set(dirList);
   const reads: string[] = [];
   let gate: Promise<void> = Promise.resolve();
+  // The cases spell paths POSIX-style; the code joins them with the platform's separator, so on
+  // Windows "/r/a" walks up through backslashed paths. Both sides are compared resolved, as one path.
+  const same = (a: string, b: string): boolean => resolvePath(a) === resolvePath(b);
+  const fileKey = (path: string): string | undefined => Object.keys(files).find((key) => same(key, path));
   const disk: GitHeadDisk = {
     async kind(path) {
       await gate;
-      if (dirs.has(path)) return "dir";
-      return path in files ? "file" : null;
+      if ([...dirs].some((dir) => same(dir, path))) return "dir";
+      return fileKey(path) === undefined ? null : "file";
     },
     async readHead(path) {
       await gate;
-      reads.push(path);
-      return files[path] ?? null;
+      const key = fileKey(path);
+      reads.push(key ?? path);
+      return key === undefined ? null : (files[key] ?? null);
     },
   };
   return {
