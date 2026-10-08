@@ -71,6 +71,12 @@ on a branch**. Collie creates a worktree of that pane's repo on a new branch, op
 workspace, and starts the agent you pick in it. The branch is named `worktree/<word>-<word>-<hex>`,
 and you can change the name before you tap Create.
 
+Under the name, **Start from** picks where the new branch begins: the repo's default branch (for
+example `main`), or **This branch**, the branch the pane is on. The choice shows only when the pane
+is on a branch other than the default, and it opens on **This branch**. Changes you have not
+committed stay behind, because the new worktree starts from the last commit. Collie never fetches,
+so the default is the copy of the branch you already have.
+
 The agent list is your [launchers](configure.md#your-own-launchers), plus a plain shell. Collie
 remembers the last one you picked. A create can take up to a minute on a large repo. If the phone
 loses the reply, tap Create again: Collie answers with the worktree it already made, and does not

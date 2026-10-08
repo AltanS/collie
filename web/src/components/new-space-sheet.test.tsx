@@ -452,6 +452,7 @@ describe("NewSpaceSheet — New agent on a branch", () => {
         branch,
         requestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u),
         launcher: "claude",
+        base: { kind: "default" },
       },
     });
   });
@@ -464,6 +465,7 @@ describe("NewSpaceSheet — New agent on a branch", () => {
     expect(onCreate).toHaveBeenCalledWith("w2", expect.any(String), {
       requestId: expect.any(String),
       launcher: undefined,
+      base: { kind: "default" },
     });
   });
 
@@ -538,3 +540,170 @@ describe("NewSpaceSheet — New agent on a branch", () => {
     expect(ids[3]).toBe(ids[2]);
   });
 });
+
+// "Start from" (ADR 0089, amended): where the new branch begins. The control exists only when there
+// is something to choose, which needs a source pane on a named branch AND a default branch that is
+// a different one. Otherwise the sheet shows nothing and sends the default.
+describe("NewSpaceSheet — Start from", () => {
+  const repos: WorktreeRepo[] = [
+    { workspaceId: "w1", repoRoot: "/src/api", label: "api" },
+    { workspaceId: "w2", repoRoot: "/src/web", label: "web" },
+  ];
+  type OnCreate = BranchOffSetup["onCreate"];
+
+  /** The bridge's answer to the listing read the sheet makes for the default branch's name. */
+  function listing(byRepo: Record<string, string | null | undefined>) {
+    server.use(
+      http.get("/api/workspace/:id/worktrees", ({ params }) => {
+        const defaultBranch = byRepo[String(params.id)];
+        return HttpResponse.json(
+          defaultBranch === undefined ? { ok: true, worktrees: [] } : { ok: true, worktrees: [], defaultBranch },
+        );
+      }),
+    );
+  }
+
+  function mountFrom(onCreate: OnCreate, branch: string | null | undefined, opts: { onCreateWorktree?: () => void } = {}) {
+    return render(
+      <NewSpaceSheet
+        open
+        onClose={() => {}}
+        onCreate={() => {}}
+        repos={repos}
+        onCreateWorktree={opts.onCreateWorktree}
+        branchOff={{ workspaceId: "w2", launchers: [], branch, onCreate }}
+      />,
+    );
+  }
+
+  const control = () => screen.queryByRole("radiogroup", { name: "Start from" });
+  const createButton = () => screen.getByRole("button", { name: /^(Create|Creating…)$/u });
+  const NOTE = /Changes that are not committed stay behind/u;
+
+  it("offers both starting points, and opens on This branch", async () => {
+    listing({ w2: "main" });
+    mountFrom(vi.fn<OnCreate>(async () => true), "feature/login");
+    const group = await screen.findByRole("radiogroup", { name: "Start from" });
+    expect(within(group).getAllByRole("radio").map((r) => r.textContent)).toEqual(["main", "This branch"]);
+    expect(within(group).getByRole("radio", { name: "This branch" })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: "main" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("says what travels and what stays behind, naming the branch, only while This branch is on", async () => {
+    const user = userEvent.setup();
+    listing({ w2: "main" });
+    mountFrom(vi.fn<OnCreate>(async () => true), "feature/login");
+    const note = await screen.findByText(NOTE);
+    expect(note).toHaveTextContent("Starts from the last commit of feature/login.");
+    await user.click(screen.getByRole("radio", { name: "main" }));
+    await waitFor(() => expect(screen.queryByText(NOTE)).toBeNull());
+    await user.click(screen.getByRole("radio", { name: "This branch" }));
+    expect(await screen.findByText(NOTE)).toBeInTheDocument();
+  });
+
+  it("sends the pane's branch as a ref while This branch is on", async () => {
+    const user = userEvent.setup();
+    listing({ w2: "main" });
+    const onCreate = vi.fn<OnCreate>(async () => true);
+    mountFrom(onCreate, "feature/login");
+    await screen.findByRole("radiogroup", { name: "Start from" });
+    await user.click(createButton());
+    expect(onCreate).toHaveBeenCalledWith("w2", expect.any(String), expect.objectContaining({ base: { kind: "ref", ref: "feature/login" } }));
+  });
+
+  it("sends the default after the operator picks the default branch", async () => {
+    const user = userEvent.setup();
+    listing({ w2: "main" });
+    const onCreate = vi.fn<OnCreate>(async () => true);
+    mountFrom(onCreate, "feature/login");
+    await user.click(await screen.findByRole("radio", { name: "main" }));
+    await user.click(createButton());
+    expect(onCreate).toHaveBeenCalledWith("w2", expect.any(String), expect.objectContaining({ base: { kind: "default" } }));
+  });
+
+  it("keeps the operator's pick when the sheet re-renders", async () => {
+    const user = userEvent.setup();
+    listing({ w2: "main" });
+    const view = mountFrom(vi.fn<OnCreate>(async () => true), "feature/login");
+    await user.click(await screen.findByRole("radio", { name: "main" }));
+    view.rerender(
+      <NewSpaceSheet
+        open
+        onClose={() => {}}
+        onCreate={() => {}}
+        repos={repos}
+        branchOff={{ workspaceId: "w2", launchers: [], branch: "feature/login", onCreate: vi.fn<OnCreate>(async () => true) }}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "main" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("a retry with the other starting point is a new request and gets a new id", async () => {
+    const user = userEvent.setup();
+    listing({ w2: "main" });
+    const ids: string[] = [];
+    mountFrom(
+      vi.fn<OnCreate>(async (_w, _b, extras) => {
+        ids.push(extras.requestId);
+        return false;
+      }),
+      "feature/login",
+    );
+    await screen.findByRole("radiogroup", { name: "Start from" });
+    await user.click(createButton());
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    await user.click(createButton());
+    expect(ids[1]).toBe(ids[0]);
+    await user.click(screen.getByRole("radio", { name: "main" }));
+    await user.click(createButton());
+    expect(ids).toHaveLength(3);
+    expect(ids[2]).not.toBe(ids[0]);
+  });
+
+  describe("shows no control, and sends the default, when there is nothing to choose", () => {
+    const cases: Array<[string, Record<string, string | null | undefined>, string | null | undefined]> = [
+      ["the pane is on the default branch", { w2: "main" }, "main"],
+      ["the pane is on a detached head", { w2: "main" }, null],
+      ["the pane's branch is unknown", { w2: "main" }, undefined],
+      ["the repo has no default branch to name", { w2: null }, "feature/login"],
+      ["the bridge predates the field", { w2: undefined }, "feature/login"],
+    ];
+    for (const [name, answers, branch] of cases) {
+      it(name, async () => {
+        const user = userEvent.setup();
+        listing(answers);
+        const onCreate = vi.fn<OnCreate>(async () => true);
+        mountFrom(onCreate, branch);
+        // The listing read has landed once the repo picker is up; give it a turn to settle.
+        await screen.findByRole("combobox", { name: "Repository" });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(control()).toBeNull();
+        expect(screen.queryByText(NOTE)).toBeNull();
+        await user.click(createButton());
+        expect(onCreate).toHaveBeenCalledWith("w2", expect.any(String), expect.objectContaining({ base: { kind: "default" } }));
+      });
+    }
+  });
+
+  it("goes away when another repo is picked, because the pane's branch is not that repo's", async () => {
+    const user = userEvent.setup();
+    listing({ w1: "main", w2: "main" });
+    const onCreate = vi.fn<OnCreate>(async () => true);
+    mountFrom(onCreate, "feature/login");
+    await screen.findByRole("radiogroup", { name: "Start from" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Repository" }), "w1");
+    await waitFor(() => expect(control()).toBeNull());
+    await user.click(createButton());
+    expect(onCreate).toHaveBeenCalledWith("w1", expect.any(String), expect.objectContaining({ base: { kind: "default" } }));
+  });
+
+  it("the dashboard's Worktree tab has no pane to start from, so it shows no control", async () => {
+    const user = userEvent.setup();
+    listing({ w1: "main", w2: "main" });
+    render(<NewSpaceSheet open onClose={() => {}} onCreate={() => {}} repos={repos} onCreateWorktree={() => {}} />);
+    await user.click(screen.getByRole("tab", { name: /worktree/i }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(control()).toBeNull();
+  });
+});
+

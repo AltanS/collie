@@ -78,3 +78,56 @@ optionally, a launcher row.**
   first) but a fresh create with it is refused, as `/api/launch` would refuse it.
 - Removing a worktree stays out of the phone. Revisit only with a design for what a removal does to
   an agent still running in it.
+
+## Amendment — 2026-10-08: the operator chooses where the branch starts
+
+Status: **Accepted** (2026-10-08). Shipped in: pending. Adds one request field and one state file.
+Everything above stands.
+
+### What changed
+
+Herdr cuts a new worktree's branch from `base`, or from the HEAD of the folder it was asked from
+(`WorktreeCreateParams.base` in `herdr api schema --json`, Herdr 0.9.3, protocol 22; the socket docs
+say a missing branch is created "from the requested base or `HEAD`"). That HEAD is whatever the repo's
+own checkout is on. The create body now takes an optional `base`:
+
+- `{ "kind": "default" }` is the repo's default branch, resolved on the bridge: the local branch
+  named by `refs/remotes/origin/HEAD`, else a local `main`, else a local `master`, else nothing (no
+  `base` is sent and Herdr starts from its own HEAD).
+- `{ "kind": "ref", "ref": "<name>" }` is a named ref. The ref is checked as strictly as the branch
+  name is (no leading `-`, no whitespace or control character, no `..`, `@{`, trailing `.lock`, at
+  most 200 characters), then by Git itself (`check-ref-format`, and `rev-parse --verify` that it
+  names a commit). Anything else is a 400, `worktree.invalid_base`, before the multiplexer is touched.
+- No `base` is today's create, to the byte: nothing is passed to Herdr and no `git` runs.
+
+Git is only ever started with an argv array and the hardening `bridge/changes.ts` gives every run
+(no `GIT_*` from the environment, no transport). **Nothing fetches**, so the default is the one the
+repo last saw, not the remote's latest. The resolved ref goes to Herdr as `base`.
+
+### The sheet
+
+"Start from" is a two-segment control in the new-space sheet: the default branch by name, and
+"This branch" for the pane's own. It shows only when the sheet was opened from a pane on a named
+branch that differs from the default, and only for that pane's repo; otherwise there is nothing to
+choose and the create sends `{ "kind": "default" }`. From a pane it opens on "This branch". The
+dashboard's Worktree tab has no pane, so it always starts from the default branch. On "This branch" a
+line says that changes not yet committed stay behind: the new worktree starts from the last commit.
+The default branch's name comes from the `defaultBranch` field `GET /api/workspace/:id/worktrees`
+now carries (`null` when none can be named), so the label and the create share one resolver.
+
+### What is stored
+
+`<stateDir>/worktree-bases.json` (0600, `{ version: 1, bases: { "<checkout folder>": { base,
+createdAt } } }`, at most 500, oldest dropped) is written after Herdr reports success, and only when
+a ref was sent. Nothing reads it yet: a later "vs base" view in Changes will. It holds no branch
+name, request id or launcher.
+
+### Consequences
+
+- A tap on "main" while the main checkout sits on another branch now starts from `main`, where it
+  used to start from that other branch.
+- A repo whose default cannot be named (no `origin/HEAD`, no local `main` or `master`) still starts
+  from Herdr's HEAD, and the sheet shows no control for it.
+- A retry that changes the starting point is a new request and gets a new id, like a changed branch.
+- Trail: `bridge/worktree-base.ts` · `bridge/worktree-bases.ts` · `web/src/lib/branch-off.ts`
+  (`startFromChoices`, `startFromBase`).

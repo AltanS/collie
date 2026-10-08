@@ -260,7 +260,7 @@ describe("useSpaceActions — branchOff", () => {
         <button
           onClick={() => {
             void (async () => {
-              const moved = await branchOff("w1", "worktree/x", { requestId: REQUEST_ID, launcher });
+              const moved = await branchOff("w1", "worktree/x", { requestId: REQUEST_ID, launcher, base: { kind: "default" } });
               document.body.dataset.moved = String(moved);
             })();
           }}
@@ -277,7 +277,7 @@ describe("useSpaceActions — branchOff", () => {
     render(<RouterProvider router={makeRouter(<BranchOffHarness launcher="claude" />)} />);
     await user.click(await screen.findByRole("button", { name: "branch-off" }));
     await waitFor(() => expect(mockCreateWorktree).toHaveBeenCalledTimes(1));
-    expect(mockCreateWorktree).toHaveBeenCalledWith("w1", "worktree/x", {}, { requestId: REQUEST_ID, launcher: "claude" });
+    expect(mockCreateWorktree).toHaveBeenCalledWith("w1", "worktree/x", {}, { requestId: REQUEST_ID, launcher: "claude", base: { kind: "default" } });
     await screen.findByText("pane");
   });
 
@@ -305,6 +305,30 @@ describe("useSpaceActions — branchOff", () => {
   });
 });
 
+// The dashboard's Worktree tab has no pane to branch from, so its create names the one starting point
+// it can mean: the repo's default branch (ADR 0089, amended).
+describe("useSpaceActions — newWorktree", () => {
+  beforeEach(() => {
+    mockCreateWorktree.mockReset();
+    clearStatus();
+    resetPollIntent();
+  });
+
+  function NewWorktreeHarness() {
+    const { newWorktree } = useSpaceActions();
+    return <button onClick={() => void newWorktree("w1", "feature/x")}>new-worktree</button>;
+  }
+
+  it("asks for the default branch as the base", async () => {
+    mockCreateWorktree.mockResolvedValueOnce({ ...pane("w7"), alreadyOpen: false, launcherStarted: false });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<NewWorktreeHarness />)} />);
+    await user.click(await screen.findByRole("button", { name: "new-worktree" }));
+    await waitFor(() => expect(mockCreateWorktree).toHaveBeenCalledTimes(1));
+    expect(mockCreateWorktree).toHaveBeenCalledWith("w1", "feature/x", {}, { base: { kind: "default" } });
+  });
+});
+
 // NOTHING SAVED CAN ACT (M46, ADR 0087 rule 8). A cold open draws the saved herd before the bridge
 // answers; every create here is a write at ids read from that snapshot. Each entry point refuses and
 // sends nothing, whether the herd is the saved copy (the dashboard) or the caller's own liveness says
@@ -325,7 +349,7 @@ describe("useSpaceActions — a saved copy refuses every structural write", () =
       "new-tab": () => void actions.newTab("w1"),
       "new-space": () => void actions.newSpace({}),
       "new-worktree": () => void actions.newWorktree("w1", "feature/x"),
-      "branch-off": () => void actions.branchOff("w1", "feature/x", { requestId: "r1" }),
+      "branch-off": () => void actions.branchOff("w1", "feature/x", { requestId: "r1", base: { kind: "default" } }),
       "show-worktree": () => void actions.showWorktree("w1", "/tmp/wt"),
       launch: () => void actions.launch("claude"),
     } satisfies Record<(typeof ALL)[number], () => void>;

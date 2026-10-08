@@ -42,6 +42,8 @@ import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
+import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
+import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import {
   isRequestId,
   memoryWorktreeReceipts,
@@ -973,6 +975,13 @@ export function startServer(opts: {
    */
   worktreeReceipts?: WorktreeReceiptSurface;
   /**
+   * The ref each new worktree was cut from (ADR 0089, amended, `bridge/worktree-bases.ts`). Absent
+   * means an in-memory store, which is every caller that builds this server by hand in a test.
+   * `bridge/index.ts` passes the file-backed one, which writes nothing until a create that named a
+   * starting point succeeds.
+   */
+  worktreeBases?: WorktreeBaseSurface;
+  /**
    * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
    *
    * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
@@ -1002,6 +1011,7 @@ export function startServer(opts: {
       : browserPairingGate(pairing, localCredential, (req) => server.requestIP(req)?.address, cfg.host);
   const folders = opts.folders;
   const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
+  const worktreeBases = opts.worktreeBases ?? memoryWorktreeBases();
   const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -1426,6 +1436,8 @@ export function startServer(opts: {
         rt.name,
         operatorLaunchers,
         worktreeReceipts,
+        {},
+        { bases: worktreeBases },
       );
     }
 
@@ -4158,11 +4170,16 @@ function worktreeCode(detail: string, fallback: ErrorCode): ErrorCode {
   return fallback;
 }
 
-async function listWorktrees(
+/**
+ * `GET /api/workspace/:id/worktrees` — the repo's worktrees, and the branch a create with
+ * `base: { kind: "default" }` would start from (`defaultBranch`, `null` when there is none).
+ */
+export async function listWorktrees(
   herdr: MuxAdapter,
   engine: StateEngine,
   spaceId: string,
   req: Request,
+  ask: GitAsk = askGit,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   const repoRoot = repoRootOf(engine, spaceId);
@@ -4175,7 +4192,10 @@ async function listWorktrees(
       ae,
     );
   }
-  const outcome = await herdr.listWorktrees({ repoRoot });
+  const [outcome, defaultBranch] = await Promise.all([
+    herdr.listWorktrees({ repoRoot }),
+    resolveDefaultBranch(repoRoot, ask),
+  ]);
   if (!outcome.ok) {
     return json(
       {
@@ -4188,6 +4208,9 @@ async function listWorktrees(
   return json(
     {
       ok: true,
+      // What a create with `base: { kind: "default" }` would start from, so the sheet can name it.
+      // `null` when the repo has no branch to name (the create then starts from Herdr's own HEAD).
+      defaultBranch,
       worktrees: outcome.value.map((w) => ({
         path: w.path,
         branch: w.branch,
@@ -4235,7 +4258,7 @@ async function joined(running: Promise<WorktreeCreateResponse>): Promise<Worktre
  * `POST /api/workspace/:id/worktree` — a new branch in a new worktree, opened as its own space, and
  * optionally an agent started in it (ADR 0032, ADR 0089).
  *
- * The body is `{ branch, requestId?, launcher? }`:
+ * The body is `{ branch, requestId?, launcher?, base? }`:
  *
  * - `branch` is checked by {@link isValidWorktreeBranch} before anything else runs: 400 when it
  *   would read as a flag or Git would refuse it.
@@ -4245,6 +4268,13 @@ async function joined(running: Promise<WorktreeCreateResponse>): Promise<Worktre
  * - `launcher` names a `launchers.toml` row by its `command`, the same allowlist `/api/launch`
  *   matches; anything else is a 400 before the multiplexer is touched. After the create, the
  *   command is typed into the new root pane by {@link typeIntoFreshShell}.
+ *
+ * - `base` says where the new branch starts: `{ kind: "default" }` (the repo's default branch, resolved
+ *   by {@link resolveDefaultBranch}) or `{ kind: "ref", ref }` (a ref that must name a commit in the
+ *   repo). A malformed or unknown one is a 400 (`worktree.invalid_base`) before the multiplexer is
+ *   touched. Absent keeps the old behaviour: nothing is passed, so Herdr starts from its own HEAD.
+ *   Nothing is fetched. After a successful create the ref is stored by folder
+ *   (`bridge/worktree-bases.ts`).
  *
  * A launcher that fails after the create still answers 200 with the worktree and its pane, and
  * `launcherStarted: false`: the worktree exists, so the recovery is "open it", never "create it
@@ -4265,6 +4295,9 @@ export async function createWorktree(
   receipts: WorktreeReceiptSurface,
   // The clock the launcher's wait runs on, injected so the tests drive it on a fake one.
   wait: PaneReadyOptions = {},
+  // The starting-point half (ADR 0089, amended): where the base is remembered and how git is asked.
+  // Both default to the real thing, so a caller that predates `base` passes neither.
+  deps: { bases?: WorktreeBaseSurface; ask?: GitAsk } = {},
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   let body: JsonValue;
@@ -4299,6 +4332,12 @@ export async function createWorktree(
     return json({ ok: false, ...apiError("worktree.invalid_branch") } satisfies WorktreeCreateResponse, ae, 400);
   }
 
+  // Where the branch starts, read strictly. Resolved against the repo below, once it is known.
+  const parsedBase = parseBase(fields.base);
+  if (!parsedBase.ok) {
+    return json({ ok: false, ...apiError("worktree.invalid_base") } satisfies WorktreeCreateResponse, ae, 400);
+  }
+
   // The client names a row; the bridge supplies the command line. Absent or null is a plain shell.
   let row: Launcher | undefined;
   const rawLauncher = fields.launcher;
@@ -4321,6 +4360,12 @@ export async function createWorktree(
     );
   }
 
+  // Git answers here (a few small reads, never a fetch), so this stays ABOVE the second check below.
+  const resolved = await resolveBase(parsedBase.base, repoRoot, deps.ask);
+  if (!resolved.ok) {
+    return json({ ok: false, ...apiError("worktree.invalid_base") } satisfies WorktreeCreateResponse, ae, 400);
+  }
+
   // Checked again with no await between it and `track`, so two requests with one id that both got
   // past the check above cannot both start a create.
   if (requestId !== undefined) {
@@ -4329,7 +4374,21 @@ export async function createWorktree(
     const running = receipts.inflight(requestId);
     if (running) return json(await joined(running), ae);
   }
-  const work = runWorktreeCreate(herdr, engine, repoRoot, branch, row, requestId, audit, device, session, receipts, wait);
+  const work = runWorktreeCreate(
+    herdr,
+    engine,
+    repoRoot,
+    branch,
+    resolved.ref,
+    row,
+    requestId,
+    audit,
+    device,
+    session,
+    receipts,
+    deps.bases ?? memoryWorktreeBases(),
+    wait,
+  );
   if (requestId !== undefined) receipts.track(requestId, work);
   return json(await work, ae);
 }
@@ -4340,15 +4399,19 @@ async function runWorktreeCreate(
   engine: StateEngine,
   repoRoot: string,
   branch: string,
+  base: string | undefined,
   row: Launcher | undefined,
   requestId: string | undefined,
   audit: AuditLog,
   device: string | null,
   session: string,
   receipts: WorktreeReceiptSurface,
+  bases: WorktreeBaseSurface,
   wait: PaneReadyOptions,
 ): Promise<WorktreeCreateResponse> {
-  const outcome = await herdr.createWorktree({ repoRoot, branch });
+  // `base` joins the request only when there is one, so a call without it is the call this route
+  // always made.
+  const outcome = await herdr.createWorktree(base === undefined ? { repoRoot, branch } : { repoRoot, branch, base });
   if (!outcome.ok) {
     // The half-done case gets its OWN code, because the recovery is the opposite one: the branch is
     // on disk and only the opening failed, so the phone must offer "open it", never "create it
@@ -4363,6 +4426,8 @@ async function runWorktreeCreate(
     };
   }
   const created = outcome.value;
+  // Written only now, once the multiplexer said yes: a refusal leaves no checkout to describe.
+  if (base !== undefined) await bases.record(created.cwd, { base, createdAt: Date.now() });
   let launcherStarted = false;
   let launcherError: string | undefined;
   if (row !== undefined) {
@@ -4379,6 +4444,7 @@ async function runWorktreeCreate(
     device,
     detail: {
       branch,
+      base,
       repoRoot,
       requestId,
       launcher: row?.command,

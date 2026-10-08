@@ -58,6 +58,7 @@ import type {
   UpdateStartResponse,
   UploadResponse,
   WorktreeListResponse,
+  WorktreeBaseChoice,
   WorktreeCreateResponse,
   WorktreeOpenResponse,
 } from "./types";
@@ -1333,21 +1334,24 @@ export function listWorktrees(workspaceId: string, scope?: Scope): Promise<Workt
 }
 
 /**
- * What a worktree create may carry beyond the branch (ADR 0089). Both are optional, and the
- * dashboard's sheet sends neither, which is the body the route has always taken.
+ * What a worktree create may carry beyond the branch (ADR 0089). All are optional, and a caller that
+ * sends none is the body the route has always taken.
  */
 export interface WorktreeCreateExtras {
   /** One id per intent, minted by the phone. A retry with the same id replays, never re-creates. */
   requestId?: string;
   /** A launcher row's `command`, typed into the new shell. Absent is a plain shell. */
   launcher?: string;
+  /** Where the branch starts. Absent leaves it to the multiplexer, which cuts from the repo's own HEAD. */
+  base?: WorktreeBaseChoice;
 }
 
-/** The create's wire body: the branch, plus the two extras when the caller has them. */
+/** The create's wire body: the branch, plus the extras when the caller has them. */
 interface WorktreeCreateBody {
   branch: string;
   requestId?: string;
   launcher?: string;
+  base?: WorktreeBaseChoice;
 }
 
 /** Create a worktree on a new branch and open it as its own space, optionally starting an agent in it. */
@@ -1360,6 +1364,7 @@ export function createWorktree(
   const body: WorktreeCreateBody = { branch };
   if (extras.requestId !== undefined) body.requestId = extras.requestId;
   if (extras.launcher !== undefined) body.launcher = extras.launcher;
+  if (extras.base !== undefined) body.base = extras.base;
   return req<WorktreeCreateResponse>(
     withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree`, scope),
     { method: "POST", body: JSON.stringify(body), timeoutMs: WORKTREE_TIMEOUT_MS },

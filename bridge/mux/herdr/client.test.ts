@@ -19,10 +19,13 @@ const CLIENT_BUDGET_MS = 40;
 let dir: string | null = null;
 let server: net.Server | null = null;
 let counter = 0;
+/** The last request line the stand-in read, parsed. */
+let lastRequest: { method: string; params: JsonObject } | null = null;
 
 afterEach(() => {
   server?.close();
   server = null;
+  lastRequest = null;
   if (dir !== null) rmSync(dir, { recursive: true, force: true });
   dir = null;
 });
@@ -52,7 +55,8 @@ async function lateHerdr(result: JsonObject): Promise<string> {
       const nl = buf.indexOf("\n");
       if (nl < 0) return;
       // SAFETY: the client under test writes exactly one JSON request line per connection.
-      const req = JSON.parse(buf.slice(0, nl)) as { id: string };
+      const req = JSON.parse(buf.slice(0, nl)) as { id: string; method: string; params: JsonObject };
+      lastRequest = { method: req.method, params: req.params };
       buf = "";
       setTimeout(() => {
         if (conn.destroyed) return;
@@ -99,5 +103,19 @@ describe("HerdrClient per-call timeout", () => {
     );
     const opened = await client.openWorktree({ cwd: "/repo", path: "/repo/.worktrees/x" });
     expect(opened.alreadyOpen).toBe(true);
+  });
+
+  test("worktree.create sends `base` when given, between branch and focus", async () => {
+    const client = new HerdrClient(await lateHerdr({ workspace: { label: "x" }, root_pane: PANE }), 1_000);
+    await client.createWorktree({ cwd: "/repo", branch: "worktree/x", base: "main" });
+    expect(lastRequest?.method).toBe("worktree.create");
+    expect(lastRequest?.params).toEqual({ cwd: "/repo", branch: "worktree/x", base: "main", focus: false });
+  });
+
+  test("worktree.create without a base is the call it always was: no `base` key at all", async () => {
+    const client = new HerdrClient(await lateHerdr({ workspace: { label: "x" }, root_pane: PANE }), 1_000);
+    await client.createWorktree({ cwd: "/repo", branch: "worktree/x" });
+    expect(lastRequest?.params).toEqual({ cwd: "/repo", branch: "worktree/x", focus: false });
+    expect(Object.keys(lastRequest?.params ?? {})).not.toContain("base");
   });
 });

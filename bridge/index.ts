@@ -67,6 +67,7 @@ import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./not
 import { pushTitle } from "./push-titles.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
+import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
@@ -694,6 +695,11 @@ await folders.load();
 // nothing: the file appears on the first create that carries an id.
 const worktreeReceipts = new WorktreeReceiptStore(cfg.stateDir);
 await worktreeReceipts.load();
+
+// Which ref each new worktree was cut from (ADR 0089, amended, bridge/worktree-bases.ts). Nothing
+// reads it yet. Loading writes nothing: the file appears on the first create that named a start.
+const worktreeBases = new WorktreeBaseStore(cfg.stateDir);
+await worktreeBases.load();
 
 // The warden that judges them. A DEPS LITERAL WITH NO LOGIC IN IT, for the reason
 // `bridge/update.ts`'s monitor is built the same way: there is no `bridge/index.test.ts`, so every gate
@@ -1974,6 +1980,7 @@ const server = startServer({
   cacheWatch,
   folders,
   worktreeReceipts,
+  worktreeBases,
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
   crew,

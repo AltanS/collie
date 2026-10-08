@@ -1720,15 +1720,26 @@ export interface WorktreeView {
   prunable: boolean;
 }
 
-/** GET /api/workspace/:id/worktrees */
+/**
+ * GET /api/workspace/:id/worktrees. `defaultBranch` is the local branch a create with
+ * `base: { kind: "default" }` starts from; `null` when the repo has none to name, absent from a
+ * bridge that predates "Start from".
+ */
 export type WorktreeListResponse =
-  | { ok: true; worktrees: WorktreeView[] }
+  | { ok: true; worktrees: WorktreeView[]; defaultBranch?: string | null }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /** POST /api/workspace/:id/worktree[/open] — `alreadyOpen` is an answer, never a failure. */
 export type WorktreeOpenResponse =
   | { ok: true; pane: CreatedPane; alreadyOpen: boolean }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
+/**
+ * Where a new worktree's branch starts (ADR 0089, amended): the repo's default branch, which the
+ * bridge resolves, or a named ref (the sheet sends the pane's own branch). Mirrors
+ * `WorktreeBaseRequest` in bridge/worktree-base.ts.
+ */
+export type WorktreeBaseChoice = { kind: "default" } | { kind: "ref"; ref: string };
 
 /**
  * POST /api/workspace/:id/worktree — the new space, and whether the launcher was typed into it

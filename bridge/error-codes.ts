@@ -125,6 +125,12 @@ export const ERROR_CODES = {
    * before the multiplexer is touched, so nothing was created (ADR 0089).
    */
   "worktree.invalid_branch": "invalid branch",
+  /**
+   * The starting point is not `{ kind: "default" }` or `{ kind: "ref", ref }`, the ref is one Git
+   * refuses, or it names no commit in this repo. Checked before the multiplexer is touched, so
+   * nothing was created (ADR 0089, amended).
+   */
+  "worktree.invalid_base": "invalid base",
 
   // ── Attachment upload: POST /api/pane/:id/upload → UploadResponse ──────────────────
   /**

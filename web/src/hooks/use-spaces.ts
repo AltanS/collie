@@ -8,7 +8,7 @@ import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
 import { panePath } from "@/lib/nav";
 import { useNav } from "@/hooks/use-nav";
-import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
+import { isReadOnly, type AgentView, type CreateResponse, type WorktreeBaseChoice } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -191,7 +191,10 @@ export function useSpaceActions(canWrite?: () => boolean) {
       creatingSpaceRef.current = true;
       setCreatingSpace(true);
       try {
-        open(await api.createWorktree(workspaceId, branch, scopeRef.current), "space");
+        // The dashboard has no pane to branch from, so the only starting point it can mean is the
+        // repo's default branch. Without this the worktree would start from whatever the repo's own
+        // checkout happens to be on (ADR 0089, amended).
+        open(await api.createWorktree(workspaceId, branch, scopeRef.current, { base: { kind: "default" } }), "space");
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {
@@ -219,7 +222,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
     async (
       workspaceId: string,
       branch: string,
-      extras: { requestId: string; launcher?: string },
+      extras: { requestId: string; launcher?: string; base: WorktreeBaseChoice },
       at?: Scope,
     ): Promise<boolean> => {
       if (readOnlyRef.current) {

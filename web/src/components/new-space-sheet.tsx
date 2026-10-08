@@ -9,11 +9,20 @@ import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost } from "@/lib/hosts"
 import { useCrew } from "@/components/crew-provider";
 import type { Scope } from "@/lib/scope";
 import type { HostHealth } from "@/lib/host-health";
-import type { Launcher, ServerSummary, WorktreeView } from "@/lib/types";
+import type { Launcher, ServerSummary, WorktreeBaseChoice, WorktreeView } from "@/lib/types";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
 import { Select } from "@/components/ui/select";
-import { SHELL_CHOICE, defaultLauncher, rememberLauncher } from "@/lib/branch-off";
+import { Segmented } from "@/components/ui/segmented";
+import {
+  SHELL_CHOICE,
+  defaultLauncher,
+  pickedStart,
+  rememberLauncher,
+  startFromBase,
+  startFromChoices,
+  type StartFrom,
+} from "@/lib/branch-off";
 import { branchOffName, mintRequestId } from "@/lib/worktree-name";
 import { BottomSheet } from "@/components/ui/sheet";
 import { FolderSections } from "@/components/new-space-folders";
@@ -46,11 +55,22 @@ export interface BranchOffSetup {
   /** This scope's launcher rows. The picker offers them, plus a plain shell. */
   launchers: readonly Launcher[];
   /**
+   * The branch the pane is on, when it is on a named one. It is the second segment of "Start from",
+   * and only when it differs from the repo's default branch. Absent or `null` (a detached head, an
+   * older bridge) leaves no choice to make.
+   */
+  branch?: string | null;
+  /**
    * Run the create. Resolves true once the phone has moved to the new space, which closes the sheet.
    * `launcher` is a row's `command`, absent for a shell; `requestId` is one per sheet opening and is
-   * reused by a retry, so a second tap after a lost reply replays rather than creating again.
+   * reused by a retry, so a second tap after a lost reply replays rather than creating again. `base`
+   * is where the branch starts: the default branch, or the pane's own branch as a ref.
    */
-  onCreate: (workspaceId: string, branch: string, extras: { requestId: string; launcher?: string }) => Promise<boolean>;
+  onCreate: (
+    workspaceId: string,
+    branch: string,
+    extras: { requestId: string; launcher?: string; base: WorktreeBaseChoice },
+  ) => Promise<boolean>;
 }
 
 /**
@@ -149,6 +169,19 @@ export function NewSpaceSheet({
   // Whether the operator moved the picker in this opening: until they do, a row list that arrives
   // after the sheet opened may still supply the remembered default.
   const launcherTouched = useRef(false);
+  // "Start from" (ADR 0089, amended). `defaultBranch` is what the bridge said the repo's default is:
+  // `undefined` until the answer arrives (and for good from a bridge that predates the field), `null`
+  // for a repo with none to name. `startPick` is the operator's tap; `null` until they make one, so
+  // the shown segment follows the default rule without any effect to set it.
+  const [defaultBranch, setDefaultBranch] = useState<string | null | undefined>(undefined);
+  const [startPick, setStartPick] = useState<StartFrom | null>(null);
+  // The pane's branch belongs to the pane's repo. Choosing another repo in the picker leaves it
+  // nothing to be a base of, so the control goes with it and the create sends the default.
+  const startChoices =
+    branchOff !== undefined && repo === branchOff.workspaceId
+      ? startFromChoices(branchOff.branch, defaultBranch)
+      : null;
+  const shownStart = pickedStart(startPick);
   // ONE create per opening. The state paints the busy button; the ref is the guard, because it is
   // already set inside the handler a second tap lands in, before React has re-rendered.
   const [creating, setCreating] = useState(false);
@@ -218,6 +251,7 @@ export function NewSpaceSheet({
         setBranch(branchOffName());
         setLauncherChoice(defaultLauncher(branchOff.launchers));
         launcherTouched.current = false;
+        setStartPick(null);
         requestId.current = mintRequestId();
         lastAsk.current = null;
       }
@@ -239,22 +273,30 @@ export function NewSpaceSheet({
   // Only a sheet that can OPEN one lists them. A boolean, not the callback: a caller's inline arrow is
   // a new function every render, and the read must not re-run on each one.
   const listsUnopened = onOpenWorktree !== undefined;
+  // The same read names the repo's default branch, which "Start from" labels its first segment with.
+  // Only a branch-off has a pane to start from, so only it needs the name.
+  const namesDefault = branchOff !== undefined;
   useEffect(() => {
-    if (!open || mode !== "worktree" || repo === "" || !listsUnopened) {
+    if (!open || mode !== "worktree" || repo === "" || !(listsUnopened || namesDefault)) {
       setUnopened([]);
+      setDefaultBranch(undefined);
       return;
     }
     let live = true;
+    setDefaultBranch(undefined);
     void (async () => {
-      const res = await listWorktrees(repo, scope);
       // A read the operator asked for by opening this tab — not a poll, so it runs once per repo
-      // choice and never on the list behind it.
-      if (live) setUnopened(res.ok ? res.worktrees.filter((w) => w.linked && w.openWorkspaceId === null) : []);
+      // choice and never on the list behind it. A read that fails leaves nothing to list and no
+      // default to name, which is the sheet as it was before either existed.
+      const res = await listWorktrees(repo, scope).catch(() => null);
+      if (!live) return;
+      setUnopened(listsUnopened && res?.ok ? res.worktrees.filter((w) => w.linked && w.openWorkspaceId === null) : []);
+      setDefaultBranch(res?.ok ? res.defaultBranch : undefined);
     })();
     return () => {
       live = false;
     };
-  }, [open, mode, repo, scope, listsUnopened]);
+  }, [open, mode, repo, scope, listsUnopened, namesDefault]);
 
   function create() {
     if (refusal !== undefined) return;
@@ -301,13 +343,15 @@ export function NewSpaceSheet({
     // An unchanged retry keeps its id: that is the point of it, a lost reply replays instead of
     // creating twice. A retry with another branch, agent or repo is a different request, and the
     // bridge would answer it with the OLD worktree if it kept the id.
-    const ask = JSON.stringify([repo, name, pickedLauncher]);
+    const base = startFromBase(startChoices, startPick);
+    const ask = JSON.stringify([repo, name, pickedLauncher, base]);
     if (lastAsk.current !== null && lastAsk.current !== ask) requestId.current = mintRequestId();
     lastAsk.current = ask;
     try {
       const moved = await setup.onCreate(repo, name, {
         requestId: requestId.current,
         launcher: pickedLauncher === SHELL_CHOICE ? undefined : pickedLauncher,
+        base,
       });
       if (moved) onClose();
     } finally {
@@ -445,6 +489,34 @@ export function NewSpaceSheet({
                 className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
             </label>
+            {/* Where the branch starts. It arrives from the listing read above, after the sheet is
+                open, and it is in flow, so it comes in through Collapse (DESIGN.md §1, §2). The
+                condition stays in the children, per Collapse's contract. */}
+            <Collapse open={startChoices !== null}>
+              {startChoices !== null ? (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground">{t("branchOff.startFrom.label")}</span>
+                  <Segmented
+                    label={t("branchOff.startFrom.label")}
+                    value={shownStart}
+                    onChange={setStartPick}
+                    options={[
+                      { value: "default", label: startChoices.defaultBranch },
+                      { value: "branch", label: t("branchOff.startFrom.thisBranch") },
+                    ]}
+                  />
+                  {/* Only on "This branch", where the words matter: an uncommitted edit does not
+                      travel. A slot that opens and closes, so it moves nothing around it. */}
+                  <Collapse open={shownStart === "branch"}>
+                    {shownStart === "branch" ? (
+                      <p className="pt-1 text-[11px] leading-tight text-muted-foreground">
+                        {t("branchOff.startFrom.note", { branch: startChoices.paneBranch })}
+                      </p>
+                    ) : null}
+                  </Collapse>
+                </div>
+              ) : null}
+            </Collapse>
             {branchOff !== undefined && (
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{t("branchOff.agentLabel")}</span>

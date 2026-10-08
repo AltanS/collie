@@ -1,5 +1,6 @@
 import { normalizeHost, type Scope } from "@/lib/scope";
-import type { Launcher, WorkspaceView } from "@/lib/types";
+import { paneGitHead } from "@/lib/git-head";
+import type { AgentView, Launcher, WorkspaceView, WorktreeBaseChoice } from "@/lib/types";
 
 // "New agent on a branch" (ADR 0089): a pane's ⋯ menu opens the new-space sheet in worktree mode
 // with the pane's repo chosen, a fresh branch name, and an agent picker. Two small rules live here so
@@ -93,4 +94,65 @@ export function branchOffRepos(
     repos: [{ workspaceId: space.workspaceId, repoRoot, label: space.label }, ...repos],
     selected: space.workspaceId,
   };
+}
+
+// ── "Start from" (ADR 0089, amended) ─────────────────────────────────────────────────────────────
+//
+// A new worktree can start from the repo's default branch or from the branch the pane is on. The
+// sheet offers the choice only when there is one to make; these rules sit here so they can be tested
+// without rendering it.
+
+/** Which starting point the sheet's "Start from" control has picked. */
+export type StartFrom = "default" | "branch";
+
+/** The two names the control labels its segments with. Present only when there is a choice. */
+export interface StartFromChoices {
+  /** The repo's default branch, by name. */
+  defaultBranch: string;
+  /** The branch the source pane is on. Never equal to `defaultBranch`. */
+  paneBranch: string;
+}
+
+/**
+ * The branch the pane's folder is on, or `null` for a detached head, a folder in no checkout, or an
+ * older bridge that sends no head. Only a NAMED branch can be a base: a detached head has no name to
+ * start a worktree from, and a short object name would be a guess.
+ */
+export function paneBranchName(pane: Pick<AgentView, "gitHead"> | undefined): string | null {
+  if (pane === undefined) return null;
+  const head = paneGitHead(pane);
+  return head?.kind === "branch" ? head.name : null;
+}
+
+/**
+ * The control's two names, or `null` when there is nothing to choose between.
+ *
+ * Needs a source pane on a named branch AND a default branch the bridge could name, and the two must
+ * differ: a pane on `main` of a repo whose default is `main` has one possible answer. Anything
+ * missing (a dashboard sheet, a detached pane, a bridge that predates the field, a repo with no
+ * default) offers no control, and the create then sends `{ kind: "default" }`.
+ */
+export function startFromChoices(
+  paneBranch: string | null | undefined,
+  defaultBranch: string | null | undefined,
+): StartFromChoices | null {
+  if (paneBranch === null || paneBranch === undefined || paneBranch === "") return null;
+  if (defaultBranch === null || defaultBranch === undefined || defaultBranch === "") return null;
+  return paneBranch === defaultBranch ? null : { defaultBranch, paneBranch };
+}
+
+/**
+ * Which segment the control shows: the operator's pick once they made one, else "This branch".
+ *
+ * The default is "This branch" because the sheet was opened FROM that pane, so continuing from its
+ * work is the likelier intent. The dashboard never reaches this: it has no pane, hence no choices.
+ */
+export function pickedStart(picked: StartFrom | null): StartFrom {
+  return picked ?? "branch";
+}
+
+/** The `base` the create sends: the pane's branch when that segment is on, else the default. */
+export function startFromBase(choices: StartFromChoices | null, picked: StartFrom | null): WorktreeBaseChoice {
+  if (choices === null) return { kind: "default" };
+  return pickedStart(picked) === "branch" ? { kind: "ref", ref: choices.paneBranch } : { kind: "default" };
 }

@@ -605,13 +605,20 @@ export class HerdrClient {
    * window server, the checkout was created and the OPEN failed with `worktree_open_failed` — the
    * branch exists, nothing shows it. A retry then fails as `worktree_create_failed` (the path is
    * taken), so the recovery is to open it, never to create it again.
+   *
+   * `base` is `WorktreeCreateParams.base` (`herdr api schema --json`, 0.9.3, protocol 22; the socket
+   * docs say a missing branch is created "from the requested base or `HEAD`"). It is sent only when
+   * given, so a call without one is byte-for-byte the call this method always made.
    */
-  async createWorktree(opts: { cwd: string; branch: string }): Promise<CreatedShell> {
+  async createWorktree(opts: { cwd: string; branch: string; base?: string }): Promise<CreatedShell> {
     // No `trust_repository`: that flag grants Git trust for the request (`safe.directory`), and the
     // operator gives it in Herdr, never from the phone (ADR 0089).
+    const { cwd, branch, base } = opts;
+    const params =
+      base === undefined ? { cwd, branch, focus: false } : { cwd, branch, base, focus: false };
     const r = await this.request<{ workspace: WireWorkspace; root_pane: WirePane }>(
       "worktree.create",
-      { cwd: opts.cwd, branch: opts.branch, focus: false },
+      params,
       WORKTREE_TIMEOUT_MS,
     );
     const p = r.root_pane;

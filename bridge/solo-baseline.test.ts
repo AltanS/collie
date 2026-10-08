@@ -12,6 +12,7 @@ import { computeEtag } from "./http-cache.ts";
 import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
+import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
 import { loadMachineHistory, saveMachineHistory } from "./machine-history.ts";
@@ -988,6 +989,10 @@ const STATE_DIR_ENTRIES = [
   "update.json",
   "update.lock",
   "uploads",
+  // The ref each new worktree was cut from (ADR 0089, amended). Written by use and by nothing else:
+  // absent until the first create that named a starting point succeeds. Driven in "the worktree
+  // bases appear only on use".
+  "worktree-bases.json",
   // One receipt per worktree create the phone tagged with a request id (ADR 0089), so a retried
   // create replays instead of making a second worktree. Written by use and by nothing else: absent
   // until the first create that carries an id succeeds. Driven in "the worktree receipts appear only
@@ -1144,6 +1149,22 @@ describe("solo zero-tax — the filesystem", () => {
       });
       expect(await readdir(stateDir)).toEqual(["worktree-receipts.json"]);
       expect(STATE_DIR_ENTRIES).toContain("worktree-receipts.json");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  // The same shape for the worktree bases (ADR 0089, amended): loading writes nothing, a create that
+  // named a starting point writes the one file.
+  test("the worktree bases appear only on use: a create that named a starting point", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const bases = new WorktreeBaseStore(stateDir);
+      await bases.load();
+      expect(await readdir(stateDir)).toEqual([]);
+      await bases.record("/home/op/repo/.worktrees/x", { base: "main", createdAt: 1 });
+      expect(await readdir(stateDir)).toEqual(["worktree-bases.json"]);
+      expect(STATE_DIR_ENTRIES).toContain("worktree-bases.json");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

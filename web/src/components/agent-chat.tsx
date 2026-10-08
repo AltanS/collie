@@ -96,7 +96,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { branchOffRepos } from "@/lib/branch-off";
+import { branchOffRepos, paneBranchName } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
@@ -2873,6 +2873,7 @@ export function AgentChat({
             branchOff={{
               workspaceId: branchOffTarget.selected,
               launchers,
+              branch: paneBranchName(agent),
               onCreate: (workspaceId, branch, extras) => branchOff(workspaceId, branch, extras, scope),
             }}
           />

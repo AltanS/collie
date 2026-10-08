@@ -99,6 +99,7 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "update-state.json",
   "update.json",
   "update.lock",
+  "worktree-bases.json",
   "worktree-receipts.json",
   // Config folder.
   ".env",

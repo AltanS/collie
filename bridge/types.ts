@@ -1092,9 +1092,14 @@ export interface WorktreeView {
   prunable: boolean;
 }
 
-/** GET /api/workspace/:id/worktrees — the worktrees of the repo that space sits in. */
+/**
+ * GET /api/workspace/:id/worktrees — the worktrees of the repo that space sits in.
+ *
+ * `defaultBranch` is the LOCAL branch a create with `base: { kind: "default" }` starts from
+ * (`resolveDefaultBranch`, bridge/worktree-base.ts), or `null` when the repo has none to name.
+ */
 export type WorktreeListResponse =
-  | { ok: true; worktrees: WorktreeView[] }
+  | { ok: true; worktrees: WorktreeView[]; defaultBranch: string | null }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**

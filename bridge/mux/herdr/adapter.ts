@@ -535,10 +535,8 @@ export class HerdrMux implements MuxAdapter {
 
   async createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     try {
-      const created = await this.client.createWorktree({
-        cwd: request.repoRoot,
-        branch: request.branch,
-      });
+      const { repoRoot: cwd, branch, base } = request;
+      const created = await this.client.createWorktree(base === undefined ? { cwd, branch } : { cwd, branch, base });
       return muxOk(toCreatedPane(created));
     } catch (err) {
       return worktreeRefusal(err);

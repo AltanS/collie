@@ -137,8 +137,8 @@ describe("names", () => {
     for (const name of ["notes.txt", "src", ".git", "envelope"]) expect(isCollieName(name)).toBe(false);
   });
 
-  test("the history, alerts and worktree receipt files, and their temporary files, are Collie names", () => {
-    for (const stem of ["machine-history.json", "machine-alerts.json", "worktree-receipts.json"]) {
+  test("the history, alerts, worktree receipt and worktree base files, and their temporary files, are Collie names", () => {
+    for (const stem of ["machine-history.json", "machine-alerts.json", "worktree-receipts.json", "worktree-bases.json"]) {
       expect(isCollieName(stem)).toBe(true);
       expect(isCollieName(`${stem}.tmp`)).toBe(true);
       expect(isCollieName(`${stem}.old`)).toBe(false);

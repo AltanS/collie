@@ -130,6 +130,8 @@
         "**/bridge/notify-prefs.ts",
         "**/bridge/folders.ts",
         "**/bridge/worktree-receipts.ts",
+        "**/bridge/worktree-bases.ts",
+        "**/bridge/worktree-base.ts",
         "**/bridge/cache/watch.ts",
         "**/bridge/activity.ts",
         "**/bridge/operator-commands.ts",
