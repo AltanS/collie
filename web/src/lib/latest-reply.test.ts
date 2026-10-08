@@ -283,7 +283,7 @@ describe("locateReply — a reply whose tail holds Markdown links", () => {
 // More source that Claude does not paint as written. Each case pairs the journal's Markdown with the
 // rows Claude drew for it, and each would have missed with the raw text alone.
 describe("locateReply — source spelled differently on screen", () => {
-  const lead = "開頭已經捲出畫面的一段很長的前文，只是為了讓這則回覆被判定成 clipped。";
+  const lead = "開頭已經捲出畫面的一段很長的前文，只是為了讓這則回覆被判定成 clipped，也讓整則回覆長過短回覆的門檻。";
 
   // A real Claude pane, 2026-09-27: the fence's info string is not painted.
   it("a code block's language tag", () => {
@@ -301,6 +301,15 @@ describe("locateReply — source spelled differently on screen", () => {
     const source = `${lead}\n\n前面再多墊一行夠長的文字，確保比對範圍不會伸進畫面外的前文。\n這一句只是為了讓結尾比對用的四十八個字全部落在畫面上，所以先寫長一點再收尾：A &amp; B<br>C`;
     const painted = ["  前面再多墊一行夠長的文字，確保比對範圍不會伸進畫面外的前文。", "  這一句只是為了讓結尾比對用的四十八個字全部落在畫面上，所以先寫長一點再收尾：A & BC"];
     expect(locateReply(painted.join("\n"), turn("assistant", source)).fit).toBe("clipped");
+  });
+
+  it("never throws on an entity outside Unicode, and leaves it as written", () => {
+    const tail = "這一句只是為了讓結尾比對用的四十八個字全部落在畫面上，所以先寫長一點再收尾：&#x110000; 和 &#1114112; 都照原樣";
+    const painted = [`  ${tail}`];
+    for (const text of [`${lead}\n\n${tail}`]) {
+      expect(() => locateReply(painted.join("\n"), turn("assistant", text))).not.toThrow();
+      expect(locateReply(painted.join("\n"), turn("assistant", text)).fit).toBe("clipped");
+    }
   });
 
   it("keeps code spans literal while it reduces the link beside them", () => {

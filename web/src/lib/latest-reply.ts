@@ -215,9 +215,11 @@ const NAMED_ENTITIES = new Map([["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot",
 
 function decodeEntity(entity: string): string {
   const body = entity.slice(1, -1);
-  if (body.startsWith("#x")) return String.fromCodePoint(Number.parseInt(body.slice(2), 16));
-  if (body.startsWith("#")) return String.fromCodePoint(Number(body.slice(1)));
-  return NAMED_ENTITIES.get(body) ?? entity;
+  if (!body.startsWith("#")) return NAMED_ENTITIES.get(body) ?? entity;
+  const code = body.startsWith("#x") ? Number.parseInt(body.slice(2), 16) : Number(body.slice(1));
+  // fromCodePoint throws past U+10FFFF, and this runs during render: a reply that merely mentions
+  // such a reference must not take the pane view down with it.
+  return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
 }
 
 /**
