@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { adapterFor, hasBlockGrammar } from "./registry";
+import { prepareGrokDisplay } from "./grok/chrome";
+import { adapterFor, hasBlockGrammar, registeredAgents } from "./registry";
 
 // The single source of truth for "which agents get the block grammars". Both gates (the render
 // pipeline's buildBlocks and agent-chat's status strip) route through the registry, so it is worth
@@ -49,5 +50,21 @@ describe("hasBlockGrammar", () => {
       expect(adapterFor(key)).toBeUndefined();
       expect(hasBlockGrammar(key)).toBe(false);
     }
+  });
+});
+
+// The shared terminal mirror tidies a raw block for display through the adapter, never through an
+// import of a harness module, so the hook is what the registry hands back.
+describe("prepareDisplay", () => {
+  it("is Grok's display pass on the grok adapter", () => {
+    expect(adapterFor("grok")?.prepareDisplay).toBe(prepareGrokDisplay);
+  });
+
+  it("is absent on every other adapter and on an unknown agent", () => {
+    for (const agent of registeredAgents().filter((a) => a !== "grok")) {
+      expect(adapterFor(agent)?.prepareDisplay).toBeUndefined();
+    }
+    expect(adapterFor("shell")?.prepareDisplay).toBeUndefined();
+    expect(adapterFor(undefined)?.prepareDisplay).toBeUndefined();
   });
 });

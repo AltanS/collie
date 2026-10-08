@@ -15,6 +15,16 @@ import { codexPaddingScreen } from "@/test/codex-padding";
 const ESC = "\x1b";
 const MUTED_RULE_COLOUR = "var(--terminal-muted-fg, #a1a1a1)"; // dark half as the fallback
 
+// The mirror is shared by every harness. What it does per harness comes through the adapter registry
+// (`adapterFor(agent)?.prepareDisplay`), so it must not import a harness module of its own.
+describe("ansi-output's harness boundary", () => {
+  it("imports nothing from a lib/harness/<name>/ module", () => {
+    const source = readFileSync(join(import.meta.dirname, "ansi-output.tsx"), "utf8");
+    const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!);
+    expect(imports.filter((spec) => /lib\/harness\/[^"]+/.test(spec))).toEqual([]);
+  });
+});
+
 describe("Grok's phone display", () => {
   const captured = readFileSync(
     join(import.meta.dirname, "..", "fixtures", "panes", "grok--output-scrollbar.txt"),

@@ -34,6 +34,7 @@ import {
   composerReady,
   extractInputDraft,
   extractStatusLines,
+  prepareGrokDisplay,
   stripCanvasBackground,
   stripChrome,
 } from "./chrome";
@@ -105,4 +106,6 @@ export const grokAdapter: HarnessAdapter = {
   // view. Ctrl+C is the cancel.
   cancelKey: "ctrl+c",
   composerPrompt,
+  // Drops the scrollbar track and the terminal padding from the phone mirror's wrapped view.
+  prepareDisplay: prepareGrokDisplay,
 };

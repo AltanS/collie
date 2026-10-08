@@ -136,4 +136,16 @@ export interface HarnessAdapter {
    * heuristic gets, and is the pre-existing behaviour.
    */
   draftIsOpaque?(draft: string): boolean;
+  /**
+   * Tidy one raw block's rows for display only, after every grammar has run: chrome the harness paints
+   * inside the transcript that is not content (Grok's dark scrollbar track and its right padding).
+   * The terminal mirror calls it through the registry, on the wrapped view with grammars on, so the
+   * shared component never imports a harness module.
+   *
+   * Display only. Never hand the result back to a grammar, a guard or the reply path: it may drop or
+   * collapse rows, which would break the raw screen coordinates the send's verification reads.
+   *
+   * OPTIONAL; absence means the rows are shown as they are.
+   */
+  prepareDisplay?(lines: StyledLine[]): StyledLine[];
 }
