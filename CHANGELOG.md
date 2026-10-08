@@ -252,6 +252,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   strike: the phone asks again half a second later, and shows the red bar and the saved copy only if
   that poll gets no answer too. At any other time the first poll with no answer still shows them at
   once.
+- **An Antigravity pane with a tall status line is no longer read as an unread dialog.** A custom
+  `statusLine` that prints four or more rows pushed the input box's bottom rule out of the part of
+  the screen Collie searched, so an idle pane read as not ready and the phone drew the unread-dialog
+  card over it. Collie now looks up to eight status rows under the box, as it does for Claude Code.
+  Thanks @alvinycheung (#374).
 
 ## [1.17.2] - 2026-10-06
 

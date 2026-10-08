@@ -1,7 +1,9 @@
 import type { StyledLine } from "../../blocks";
 import { isBlank, isBoxBorder, lineText } from "./markers";
 
-const MAX_STATUS_LINES = 4;
+// Rows under the bottom border. A custom `statusLine` command prints as many rows as the user wrote,
+// so this matches the Claude reader's ceiling (claude/chrome.ts MAX_STATUS_LINES).
+const MAX_STATUS_LINES = 8;
 const MAX_DRAFT_LINES = 100;
 const PROMPT_REGEX = /^[❯›>]\s*/;
 
@@ -22,7 +24,7 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
   // 1. Look for bottom border within MAX_STATUS_LINES from the tail (allowing status/hint lines below)
   let bottomBorder = -1;
   let statusEnd = end;
-  for (let s = 0; s < MAX_STATUS_LINES && bot - s >= 0; s++) {
+  for (let s = 0; s <= MAX_STATUS_LINES && bot - s >= 0; s++) {
     const idx = bot - s;
     if (isBoxBorder(texts[idx]!)) {
       bottomBorder = idx;
