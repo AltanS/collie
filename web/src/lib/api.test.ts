@@ -995,8 +995,12 @@ describe("the Files image read (ADR 0090)", () => {
     expect(got.version).toMatch(/^\d+:\d+$/);
     server.use(http.get(/\/files\/image$/, () => new HttpResponse(new Uint8Array(3), { headers: { "content-type": "image/png" } })));
     const bare = await fetchFileImage({ kind: "pane", paneId: "w1:p1" }, "logo.png");
-    expect(bare).toEqual({ outcome: "image", blob: expect.any(Blob) });
-    expect("version" in bare).toBe(false);
+    // Not `expect.any(Blob)`: the fetch polyfill's Blob and jsdom's are different classes on some
+    // Node versions (CI's), so the class check fails there while the answer is right.
+    if (bare.outcome !== "image") throw new Error(bare.outcome);
+    expect(bare.blob.type).toBe("image/png");
+    expect(bare.blob.size).toBe(3);
+    expect(Object.keys(bare).toSorted()).toEqual(["blob", "outcome"]);
     server.resetHandlers();
     for (const [status, outcome] of [
       [413, "too-large"],
