@@ -5,6 +5,7 @@ import {
   HOME_BUSY_MS,
   HOT_MS,
   IDLE_MS,
+  RETRY_MS,
   SUPERSEDE_MS,
   intervalFor,
   type PollIntent,
@@ -162,6 +163,93 @@ describe("intervalFor", () => {
 
   it("a pane the snapshot no longer knows about is not 'open'", () => {
     expect(intervalFor(idlePane, "w99:phantom", on({ changed: true }))).toBe(IDLE_MS);
+  });
+
+  it("polls that got no answer retry on a doubling backoff that never exceeds the cadence", () => {
+    const home = makeData([]);
+    expect(intervalFor(home, null, on({ failures: 0 }))).toBe(IDLE_MS);
+    expect(intervalFor(home, null, on({ failures: 1 }))).toBe(RETRY_MS);
+    expect(intervalFor(home, null, on({ failures: 2 }))).toBe(RETRY_MS * 2);
+    expect(intervalFor(home, null, on({ failures: 3 }))).toBe(RETRY_MS * 4);
+    expect(intervalFor(home, null, on({ failures: 50 }))).toBe(IDLE_MS);
+    expect(intervalFor(home, null, on({ failures: 3, topologyBursting: true }))).toBe(BURST_MS);
+  });
+});
+
+describe("usePolling — retrying failed polls", () => {
+  // A stale render as the root loader hands it back: `failure` is what the run's own herd read said.
+  const failing = (failure: HomeData["failure"] = "network"): HomeData => ({
+    ...makeData([]),
+    error: true,
+    authError: failure === "other",
+    failure,
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    rr.state = "idle";
+    rr.revalidate.mockClear();
+    resetPollIntent();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Each loader result is a new object, so each rerender below is one more poll's answer.
+  it("backs off per failed result, resets on success, and does not hurry an auth refusal", () => {
+    const { rerender } = renderHook(({ data }: { data: HomeData }) => usePolling(data), {
+      initialProps: { data: failing() },
+    });
+    const expectNextTickAt = (ms: number) => {
+      rr.revalidate.mockClear();
+      vi.advanceTimersByTime(ms - 1);
+      expect(rr.revalidate).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(rr.revalidate).toHaveBeenCalledTimes(1);
+    };
+
+    expectNextTickAt(RETRY_MS);
+    act(() => rerender({ data: failing() }));
+    expectNextTickAt(RETRY_MS * 2);
+    act(() => rerender({ data: makeData([]) }));
+    expectNextTickAt(IDLE_MS);
+    act(() => rerender({ data: failing("other") }));
+    expectNextTickAt(IDLE_MS);
+    act(() => rerender({ data: failing() }));
+    expectNextTickAt(RETRY_MS);
+  });
+
+  // A 5xx is an answer: the proxy is up and the bridge behind it is not, most often mid-restart. A
+  // retry 0.5s later would be one more 5xx, and the second in a row latches the outage
+  // (lib/connection-health.ts `noteServerFailure`), so one proxy blip would turn the screen red.
+  it("a 5xx result does not shorten the gap, alone or in a run", () => {
+    const { rerender } = renderHook(({ data }: { data: HomeData }) => usePolling(data), {
+      initialProps: { data: failing("server") },
+    });
+    rr.revalidate.mockClear();
+    vi.advanceTimersByTime(IDLE_MS - 1);
+    expect(rr.revalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+
+    // A 5xx between two no-answer polls ends the run: the next no-answer starts again at RETRY_MS.
+    act(() => rerender({ data: failing() }));
+    act(() => rerender({ data: failing("server") }));
+    act(() => rerender({ data: failing() }));
+    rr.revalidate.mockClear();
+    vi.advanceTimersByTime(RETRY_MS);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  // A stale render that made no read of its own (the latched navigation fast path) carries no
+  // `failure`, so it is not hurried either: the next ordinary poll is the read that decides.
+  it("a stale render with no read of its own keeps the ordinary gap", () => {
+    renderHook(({ data }: { data: HomeData }) => usePolling(data), {
+      initialProps: { data: { ...makeData([]), error: true } },
+    });
+    rr.revalidate.mockClear();
+    vi.advanceTimersByTime(IDLE_MS - 1);
+    expect(rr.revalidate).not.toHaveBeenCalled();
   });
 });
 

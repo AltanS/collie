@@ -324,7 +324,8 @@ graph TD
     path (`web/src/hooks/use-latest-reply.ts`), and switchable off in ⚙ View.
 - **The browser polls too.** `useRevalidator` → `/api/snapshot` on an adaptive interval. There is no
   WebSocket fan-out to the browser and no push of state; pulling is what makes the two recovery loops
-  below trivial.
+  below trivial. A snapshot poll that got no answer at all is retried on a short backoff (0.5, 1, 2,
+  4 s, never slower than the normal gap); a poll that got any answer, a 5xx included, keeps the gap.
 - **Two independent recovery loops, designed in from the start** (not retrofitted):
   - *bridge ↔ multiplexer*: the snapshot poll doubles as resync — a failed tick marks the herd
     disconnected (the UI's connection bar names the multiplexer that went away) and keeps retrying;

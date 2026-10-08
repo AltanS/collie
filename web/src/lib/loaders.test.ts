@@ -111,6 +111,20 @@ describe("rootLoader", () => {
     expect(data.authError).toBe(false);
   });
 
+  // The poll cadence reads this (hooks/use-polling.ts): only a read that got no answer is retried
+  // early, so the loader must say which kind of failure its own read was, and nothing on a live run.
+  it("names what its own failed read said: no answer, a 5xx, or a refusal", async () => {
+    const { rootLoader } = await import("./loaders");
+    expect((await rootLoader()).failure).toBeUndefined();
+
+    server.use(http.get("/api/snapshot", () => HttpResponse.error()));
+    expect((await rootLoader()).failure).toBe("network");
+    failSnapshot();
+    expect((await rootLoader()).failure).toBe("server");
+    rejectSnapshot(403);
+    expect((await rootLoader()).failure).toBe("other");
+  });
+
   it("returns empty + error when there is no last-good snapshot", async () => {
     failSnapshot();
     const { rootLoader } = await import("./loaders");

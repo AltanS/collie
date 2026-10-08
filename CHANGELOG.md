@@ -241,6 +241,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   box, typing a slash command opens a palette below the box and hides the status row, and Collie no
   longer found the box, so the command stayed typed and never sent. The palette now counts as the
   box's footer, and the command is read back and then submitted. Thanks @thelinuxlich (#373).
+- **A poll that got no answer is retried within a second.** After a poll timed out or never reached
+  the bridge, the next one waited the full gap of four to six seconds, so a link that came back at
+  once still looked down. Such a poll is now retried after 0.5, 1, 2 and 4 seconds, never slower than
+  the normal gap, and the first answer ends the run. An error from the bridge or a refusal keeps the
+  normal gap. Thanks @kekefigure (#375).
 
 ## [1.17.2] - 2026-10-06
 
