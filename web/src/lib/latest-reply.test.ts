@@ -283,6 +283,30 @@ describe("locateReply — a reply that ends in a wrapped table", () => {
     // The last source row spans two painted rows; the reply ends on the lower one, above the frame.
     expect(endLine).toBe(7);
   });
+
+  // The table's floor ends it. Prose under the table and the next prompt each hold one `│`, the
+  // count a one-column-boundary row carries, and must stay where they were painted: joined onto the
+  // prompt row, the reply's end would move onto the operator's next message.
+  it("stops at the table's floor, so a line holding a vertical below it keeps its own row", () => {
+    const tail = "The final printed delimiter uses the box drawing vertical separator shown here │";
+    const screen = ["├───────┼─────┤", "│ Ready │ Yes │", "└───────┴─────┘", tail, "❯ 下一題：請說明 │ 與 | 的差異"];
+    const reply = `${source}\n\n| State | Result |\n|---|---|\n| Ready | Yes |\n\n${tail}`;
+    expect(locateReply(screen.join("\n"), turn("assistant", reply))).toEqual({ fit: "clipped", endLine: 3 });
+  });
+
+  // Painted lines of one logical row that disagree on their vertical count are not one row of this
+  // table. Joining them by the first line's columns dropped the extra text, so a different ending
+  // passed as this reply.
+  it("leaves a row whose painted lines disagree on their columns as painted", () => {
+    const screen = [
+      "├────────────────┼───────────────────────────┤",
+      "│ left one │ The unique ending │",
+      "│ left two │ explains the intended │ final state │ ACTUAL ENDING DIFFERS │",
+      "└────────────────┴───────────────────────────┘",
+    ];
+    const reply = `${source}\n\n| left one left two | The unique ending explains the intended final state |`;
+    expect(locateReply(screen.join("\n"), turn("assistant", reply)).fit).toBe("off-screen");
+  });
 });
 
 // Laid out as a real Claude pane painted it, 2026-09-27, with neutral words: the reply's last table

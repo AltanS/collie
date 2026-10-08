@@ -70,6 +70,9 @@ const BOX_FRAME = /^[─-╿\s]+$/;
 // reply outgrows the pane (harness/grok/chrome.ts). Left on a frame row, it hides the row's frame and
 // the table's last row stays interleaved, which is the reply's tail.
 const TRAILING_RAIL = /[▁-█]\s*$/;
+// A table's lid and floor: the corners and outward tees of its top and bottom border.
+const BOX_LID = /[┌┐╭╮┏┓╔╗┬┳╤╦]/;
+const BOX_FLOOR = /[└┘╰╯┗┛╚╝┴┻╧╩]/;
 
 /**
  * The mirror's rows with every wrapped box-table row put back in SOURCE order.
@@ -84,8 +87,12 @@ const TRAILING_RAIL = /[▁-█]\s*$/;
  * The table is found by COUNT, not by `table-run.ts`'s column offsets: those are string indices, so a
  * cell holding double-width text (any CJK reply) misaligns them and no run is found. The anchor is a
  * frame row carrying a cross, as there; rows join while they are frame rows or carry that many
- * verticals (with or without outer borders, and inside a box drawn round the whole message), and a
- * blank row ends the table. This only reorders the
+ * verticals (with or without outer borders, and inside a box drawn round the whole message). A blank
+ * row ends the table, and so does its own lid or floor: a frame row with a top corner or tee is the
+ * last row taken going up, one with a bottom corner or tee the last going down, so a line of prose
+ * under the table that happens to hold a `│` is never pulled into its last row. A logical row whose
+ * painted lines disagree on their vertical count is not one row of this table, and is left as painted
+ * rather than joined, which would drop or shuffle its extra text. This only reorders the
  * text the probes compare; what the mirror draws is untouched.
  */
 export function sourceOrderRows(rows: readonly string[]): string[] {
@@ -105,14 +112,14 @@ export function sourceOrderRows(rows: readonly string[]): string[] {
     const member = (row: string) =>
       isFrame(row) || [crosses, crosses + 2, crosses + 4].includes(verticals(row));
     let start = anchor;
-    while (start > floor && member(rows[start - 1]!)) start--;
+    while (start > floor && !BOX_LID.test(rows[start]!) && member(rows[start - 1]!)) start--;
     let end = anchor;
-    while (end + 1 < rows.length && member(rows[end + 1]!)) end++;
+    while (end + 1 < rows.length && !BOX_FLOOR.test(rows[end]!) && member(rows[end + 1]!)) end++;
     floor = end + 1;
 
     let group: number[] = [];
     const flush = () => {
-      if (group.length > 1) {
+      if (group.length > 1 && group.every((i) => verticals(rows[i]!) === verticals(rows[group[0]!]!))) {
         const cells = group.map((i) => rows[i]!.split(BOX_VERTICAL));
         const joined = cells[0]!.map((_, col) => cells.map((c) => c[col] ?? "").join(" "));
         for (const i of group) out[i] = "";
