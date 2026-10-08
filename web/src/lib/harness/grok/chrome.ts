@@ -101,6 +101,57 @@ export function stripCanvasBackground(lines: StyledLine[]): StyledLine[] {
   });
 }
 
+// Grok's canvas, and the darker column it ends every row with.
+const GROK_CANVAS = new Set(["rgb(20,20,20)", "rgb(17,17,17)"]);
+
+// Where a row's right padding starts. Trailing blanks are padding on the canvas, unstyled, or in a
+// colour the row's own text sits on (a code block filled out to its width). Blanks in any other
+// colour are content, a swatch for one, so the trim stops there.
+function paddingEnd(line: StyledLine, length: number): number {
+  const textBackgrounds = new Set(
+    line.segments.filter((s) => s.text.trim() !== "").map((s) => s.style.backgroundColor),
+  );
+  let end = length;
+  for (let i = line.segments.length - 1; i >= 0; i--) {
+    const segment = line.segments[i]!;
+    const background = segment.style.backgroundColor;
+    const padding =
+      background === undefined || GROK_CANVAS.has(background) || textBackgrounds.has(background);
+    if (!padding) break;
+    const kept = segment.text.replace(/ +$/, "");
+    end -= segment.text.length - kept.length;
+    if (kept !== "") break;
+  }
+  return end;
+}
+
+// Display only, after every grammar has run: the dark track on the right and the terminal's padding
+// are not reply content. Never hand the result back to a grammar or a guard: collapsing empty rows
+// would break the raw screen coordinates and the send's verification.
+export function prepareGrokDisplay(lines: StyledLine[]): StyledLine[] {
+  const out: StyledLine[] = [];
+  let previousTrackOnly = false;
+  for (const line of lines) {
+    const tail = line.segments.at(-1);
+    const rail = tail?.text === "█" &&
+      tail.style.color === "rgb(25,25,25)" &&
+      tail.style.backgroundColor === "rgb(25,25,25)" &&
+      line.segments.at(-2)?.style.backgroundColor === "rgb(20,20,20)" &&
+      line.segments.at(-2)?.style.color === undefined &&
+      line.segments.at(-2)?.text.endsWith("  ") === true;
+    const content = rail ? { ...line, segments: line.segments.slice(0, -1) } : line;
+    const text = lineText(content);
+    const end = paddingEnd(content, text.length);
+    const trimmed = end === text.length
+      ? content
+      : { ...content, segments: sliceStyledLine(content, 0, end).segments };
+    const trackOnly = rail && end === 0;
+    if (!trackOnly || !previousTrackOnly) out.push(trimmed);
+    previousTrackOnly = trackOnly;
+  }
+  return stripCanvasBackground(out);
+}
+
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
   const end = lastNonBlankIndex(texts);

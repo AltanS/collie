@@ -45,6 +45,7 @@ const PINNED = [
   "grok--draft-single.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
+  "grok--output-scrollbar.txt",
   "grok--permission-edit.txt",
   "grok--permission-rm-feedback.txt",
   "grok--permission-rm-moved.txt",
