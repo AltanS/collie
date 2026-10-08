@@ -22,7 +22,8 @@ import {
   rosterFive,
   rosterPalette,
 } from "../fixtures";
-import { Card, CrewRouter, Group, PackedRootRouter, PaneRouter, Section, Stage, type SectionDef } from "../harness";
+import { CrewRouter, PackedRootRouter, PaneRouter } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {

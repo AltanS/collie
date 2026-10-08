@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Keyboard, Settings2, Slash, Terminal, Zap } from "lucide-react";
 
 import type { GeneralAction } from "@/components/actions-row";
-import { PhoneFrame } from "../harness";
+import { PhoneFrame } from "../layout";
 
 /**
  * A phone frame that centres itself in its (two-column) card. Route-level components are written for

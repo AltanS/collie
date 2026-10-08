@@ -34,7 +34,7 @@ import { previewKindFor } from "@/lib/files-view";
 import { changeAt, indexChanges, markFolder } from "@/lib/files-marks";
 import { countFiles, filterRepos, type ChangesFilter, type ChangesLayout } from "@/lib/changes-tree";
 import { fixtureChangeDiff, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
-import { Card, Group, Section, Stage, type SectionDef } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "changes",

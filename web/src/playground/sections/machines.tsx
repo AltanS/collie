@@ -22,7 +22,8 @@ import {
   withSpark,
 } from "@/test/machine-fixtures";
 import { homeCrew, homeSolo } from "../fixtures";
-import { Card, Group, MachinesRouter, Section, type SectionDef } from "../harness";
+import { MachinesRouter } from "../harness";
+import { Card, Group, Section, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {

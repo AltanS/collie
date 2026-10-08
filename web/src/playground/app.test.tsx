@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PlaygroundApp, SECTIONS } from "./app";
+import type { SectionDef } from "./layout";
 
 // jsdom doesn't implement scrollTo; the terminal mirror's auto-scroll (use-auto-scroll.ts) calls it
 // on mount. Same shim agent-chat.test.tsx uses to mount the real component under jsdom.
@@ -77,7 +78,7 @@ describe("the states playground", () => {
   );
 });
 
-// The handles a browser case addresses. `state` on `Card` (playground/harness.tsx) renders as
+// The handles a browser case addresses. `state` on `Card` (playground/layout.tsx) renders as
 // `data-state` on the card's wrapper, so a Playwright case says
 // `[data-state="update-band-in-flight"]` instead of matching the card's label — the labels are
 // prose, they carry em dashes and curly quotes, they get reworded, and two of them are identical
@@ -216,4 +217,37 @@ describe("the playground's tab bar", () => {
     fireEvent.keyDown(second, { key: "ArrowRight" });
     expect(second).toHaveAttribute("aria-selected", "true");
   });
+});
+
+// Each section is its own page now, loaded when it is opened, so the nav names a section before its
+// file is there. The registry's id and title must stay the file's own `DEF`, or the tab and the
+// heading drift apart.
+describe("the playground's pages", () => {
+  it("names every section as its own file does", async () => {
+    for (const entry of SECTIONS) {
+      // SAFETY: every file under sections/ that the registry names exports `DEF: SectionDef`; a file
+      // without one fails the toEqual below on `undefined`, which is the failure this test wants.
+      const mod = (await import(`./sections/${entry.def.id}.tsx`)) as { DEF: SectionDef };
+      expect({ id: mod.DEF.id, title: mod.DEF.title }).toEqual(entry.def);
+    }
+  });
+
+  it(
+    "shows one group as a sub-page and goes back to all of them",
+    async () => {
+      window.location.hash = "#changes:one-file";
+      render(<PlaygroundApp />);
+
+      const nav = await screen.findByRole("navigation", { name: "Changes pages" }, SLOW);
+      expect(within(nav).getByRole("link", { name: "One file" })).toHaveAttribute("aria-current", "page");
+      expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["One file"]);
+
+      fireEvent.click(within(nav).getByRole("link", { name: "All" }));
+      await waitFor(() => expect(screen.getAllByRole("heading", { level: 3 }).length).toBeGreaterThan(1));
+      expect(window.location.hash).toBe("#changes");
+
+      window.location.hash = "";
+    },
+    30_000,
+  );
 });

@@ -17,7 +17,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { Composer } from "@/components/composer";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 
-import { Card, Group, Section, type SectionDef } from "../harness";
+import { Card, CardControls, Group, Section, type SectionDef } from "../layout";
 import { ChromeBlock, PhoneMock } from "./shared";
 
 export const DEF: SectionDef = {
@@ -138,12 +138,12 @@ function OptionCard({ def, state }: { def: VariantDef; state: string }) {
       reach="Settings -> Appearance -> Hand."
       note={def.line}
     >
-      <div className="mb-2 flex items-center gap-3">
+      <CardControls className="flex items-center gap-3">
         <NumberBadge n={def.n} />
         <p className="text-sm font-semibold text-foreground">
           {def.n}: {def.title}
         </p>
-      </div>
+      </CardControls>
       <LeftHandPhone def={def} />
     </Card>
   );

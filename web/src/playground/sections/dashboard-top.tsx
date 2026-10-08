@@ -23,7 +23,8 @@ import type { AgentView, ServerSummary, WorkspaceView } from "@/lib/types";
 import type { HomeData } from "@/lib/loaders";
 
 import { herd, homeSolo, sessionsSolo, shells, spaces, tabs, TS } from "../fixtures";
-import { Card, Group, PackedRootRouter, Section, type SectionDef } from "../harness";
+import { PackedRootRouter } from "../harness";
+import { Card, Group, Section, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "dashboard-top",
@@ -199,6 +200,7 @@ function Phone({ width, height, children }: { width: number; height: number; chi
       // `--app-h` is what a sheet sizes itself to; the frame's height stands in for the viewport's.
       ref={(el) => el?.style.setProperty("--app-h", `${height}px`)}
       data-pg-phone
+      data-pg-frame=""
       // A sheet focuses its panel on open, and the browser then scrolls this overflow-hidden frame to
       // show it, which would carry the sheet's own containing block off the screen. The frame never scrolls.
       onScroll={(e) => {

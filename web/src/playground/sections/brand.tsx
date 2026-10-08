@@ -6,7 +6,8 @@ import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
 import { CollieMark } from "@/components/collie-mark";
 import { homeSolo } from "../fixtures";
-import { Card, Group, RootRouter, Section, Stage, type SectionDef } from "../harness";
+import { RootRouter } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 import { TypefaceCard } from "../typeface-card";
 
 export const DEF: SectionDef = {

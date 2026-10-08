@@ -10,7 +10,7 @@
 
 import { PaneSettingsView } from "@/components/pane-settings-sheet";
 import { cacheWatchOff } from "../fixtures";
-import { Card, Group, Section, Stage, type SectionDef } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "pane-settings",

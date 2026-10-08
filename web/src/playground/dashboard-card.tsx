@@ -19,7 +19,8 @@ import type { HomeData } from "@/lib/loaders";
 import { triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import { dashboardLive } from "./fixtures/dashboard-live";
-import { Card, PackedRootRouter, PhoneFrame } from "./harness";
+import { PackedRootRouter } from "./harness";
+import { Card, PhoneFrame } from "./layout";
 
 /** The captured snapshot as the root loader's own shape, so `PackedRootRouter` and the real
  *  `CrewProvider` inside it derive host health from it exactly as the app would. */
@@ -65,7 +66,7 @@ export function DashboardRowsCard() {
             so this one declaration puts every real component below into the app's dark half without
             touching the page's own theme control. `text-foreground` re-resolves the inherited colour under it: without it the rows keep the LIGHT page's near-black text, resolved once at `body`, and paint it on the dark ground. The `dark` class rides with it for the handful of
             `dark:` utilities (PhoneFrame's bezel) that are class-driven rather than token-driven. */}
-        <div className="dark mt-3 flex gap-4 overflow-x-auto pb-3 text-foreground" style={{ colorScheme: "dark" }}>
+        <div className="dark flex gap-4 overflow-x-auto pb-3 text-foreground" style={{ colorScheme: "dark" }}>
           <Frame width={390} />
           <Frame width={360} />
         </div>
@@ -74,18 +75,19 @@ export function DashboardRowsCard() {
   );
 }
 
-/** One width: the number it is showing, then the rows at it. */
+/** One width: the rows at it, then the number it is showing. The number sits UNDER the frame so the
+ *  frame starts level with the frames of the cards beside this one (`.pg-card`, playground.css). */
 function Frame({ width }: { width: number }) {
   return (
     <div className="flex shrink-0 flex-col gap-1.5">
-      <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-        {width}px · {ROWS.length} rows
-      </p>
       <div style={{ width }} className="shrink-0">
         <PhoneFrame height={660}>
           <RowList />
         </PhoneFrame>
       </div>
+      <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+        {width}px · {ROWS.length} rows
+      </p>
     </div>
   );
 }

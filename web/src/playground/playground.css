@@ -47,9 +47,23 @@
    class strings on every section and every card — the same rule, expressed nine times. */
 .pg-grid {
   display: grid;
-  gap: 1.25rem 1rem;
+  column-gap: 1rem;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   align-items: start;
+}
+
+/* Every card takes THREE rows of its group's grid and lays its own parts on them (`Card` in
+   layout.tsx): the label block, the controls, the component. With `subgrid` those rows are shared by
+   all the cards in one grid row, so each row is as tall as the tallest card's, and every frame in the
+   row starts at the same height. Without it a card with a longer "reach it for real" line, or a
+   Segmented above its stage, started its frame lower than the card beside it. The space between grid
+   rows is the card's own bottom padding, so the three rows inside a card sit flush. */
+.pg-card {
+  grid-row: span 3;
+  display: grid;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+  padding-bottom: 1.25rem;
 }
 
 /* Route-level mounts (the dashboard list, a pane view, the pack census, settings) are SCREENS, not

@@ -387,7 +387,7 @@ case never invents its own payload.
 **The selector rule.** A case addresses a role and an accessible name, `getByRole` or `getByText`,
 never a CSS class. No case adds a `data-testid` anywhere in `web/src`. The one exception is the
 playground: every card carries an explicit `data-state` handle, set by a `state` prop on `Card`
-(`web/src/playground/harness.tsx`), never derived from its label.
+(`web/src/playground/layout.tsx`), never derived from its label.
 
 **The locale rule.** A case that checks translated text pins the locale before the first
 navigation, by writing the bare locale code into `collie:locale:v1` in `localStorage`

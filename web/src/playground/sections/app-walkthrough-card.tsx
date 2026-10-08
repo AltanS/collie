@@ -29,7 +29,8 @@ import { __resetReloadGuard } from "@/lib/reload-guard";
 import { __resetSelfUpdate } from "@/lib/self-update";
 import { markTourSeen } from "@/lib/tour";
 
-import { Card, FullAppRouter, PhoneFrame, createFullAppRouter } from "../harness";
+import { FullAppRouter, createFullAppRouter } from "../harness";
+import { Card, CardControls, PhoneFrame } from "../layout";
 import { censusTrio, devicesPaired } from "../fixtures";
 import { SlowStage } from "./motion-harness";
 import {
@@ -254,7 +255,7 @@ export function AppWalkthroughCard() {
       note={`Real: every route component, the shell around them (the band, the one header, the 240ms ScreenTransition), the route ids the app reads its data by, the loaders' result shapes, the address in the query, and the poll loop the root layout runs. Not real: the loaders themselves, which return fixtures instead of fetching. Every pane in this snapshot lives on ${WALKTHROUGH_HOST}, the lead, so the space and tab strips are complete: the space navigator is lead-local by design, and the two peers in the roster hold no panes here. Switching host or session is a change of address, so it lands on that machine's dashboard, and the line above says so when it happens. /api answers 503 in the playground, so the connection state you see is the page's own top-bar clock control, and there is no service worker here. The frame meter samples this tab's main thread, not a phone's, and every other card on this page shares that thread.`}
       span={2}
     >
-      <div className="mb-2 flex flex-col gap-2">
+      <CardControls className="flex flex-col gap-2">
         {/* `data-slot`, the same handle `ui/collapse.tsx` carries and the same one the vitest case
             reads: the label and the reach line above are also plain <p>s, so "the route readout" has
             to be addressable as itself. It wraps the CURRENT path only, so a case asking what is on
@@ -294,7 +295,7 @@ export function AppWalkthroughCard() {
             Back
           </Button>
         </div>
-      </div>
+      </CardControls>
       <SlowStage>
         <PhoneFrame height={720}>
           <FullAppRouter router={router} />

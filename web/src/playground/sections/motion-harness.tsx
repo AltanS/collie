@@ -9,7 +9,7 @@ import { useState, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Segmented } from "../harness";
+import { CardControls, Segmented } from "../layout";
 
 const ON_OFF = [
   { value: "off", label: "Off" },
@@ -24,7 +24,7 @@ export function Replay({ children }: { children: ReactNode }) {
   const [key, setKey] = useState(0);
   return (
     <div>
-      <div className="mb-2">
+      <CardControls>
         <Button
           type="button"
           variant="outline"
@@ -35,7 +35,7 @@ export function Replay({ children }: { children: ReactNode }) {
           <RotateCcw className="size-3" />
           Replay
         </Button>
-      </div>
+      </CardControls>
       <div key={key}>{children}</div>
     </div>
   );
@@ -51,14 +51,14 @@ export function SlowStage({ children }: { children: ReactNode }) {
   const [slow, setSlow] = useState(false);
   return (
     <div>
-      <div className="mb-2">
+      <CardControls>
         <Segmented
           name="slow motion"
           value={slow ? "on" : "off"}
           options={ON_OFF}
           onChange={(next) => setSlow(next === "on")}
         />
-      </div>
+      </CardControls>
       <div className={slow ? "pg-slow" : undefined}>{children}</div>
     </div>
   );

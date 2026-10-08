@@ -10,24 +10,20 @@
 // if you can also get to it, and writing that sentence is what keeps a card from drifting into a
 // state the app can no longer produce.
 //
-// THE PAGE IS TABBED, and this file owns only the chrome and the registry — one section at a time is
-// mounted (see `useSelectedSection` in harness.tsx), and every section's cards live in its own file
+// THE PAGE IS SPLIT INTO PAGES, and this file owns only the chrome and the registry. Each section is
+// its own page with its own address (`#changes`), and its code is loaded only when it is opened: the
+// page used to import all of them up front, so even a three-card tab paid for every section's module
+// graph. A section's groups are sub-pages of it (`#changes:one-file`, the bar `Section` draws). See
+// `useSelectedSection` in harness.tsx for the routes. Every section's cards live in its own file
 // under `sections/`. A helper used by exactly one section lives beside it there; a helper two
 // sections share lives in `sections/shared.tsx`.
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type ReactNode } from "react";
 
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { loadOperatorCommands } from "@/lib/operator-config";
 import { cn } from "@/lib/utils";
-import {
-  CLOCK_OPTIONS,
-  Segmented,
-  useConnectionClock,
-  useSelectedSection,
-  type ClockMode,
-  type SectionDef,
-} from "./harness";
+import { CLOCK_OPTIONS, Segmented, SubPageContext, useConnectionClock, useSelectedSection, type ClockMode, type SectionDef } from "./layout";
 import {
   ACCENT_IDS,
   ACCENTS,
@@ -39,71 +35,57 @@ import {
   useFace,
   type FaceId,
 } from "./prefs";
-import * as brand from "./sections/brand";
-import * as boot from "./sections/boot";
-import * as tour from "./sections/tour";
-import * as idle from "./sections/idle";
-import * as dashboard from "./sections/dashboard";
-import * as pane from "./sections/pane";
-import * as actionsRow from "./sections/actions-row";
-import * as leftHand from "./sections/left-hand";
-import * as dashboardTop from "./sections/dashboard-top";
-import * as crew from "./sections/crew";
-import * as machines from "./sections/machines";
-import * as settings from "./sections/settings";
-import * as notices from "./sections/notices";
-import * as updateScreen from "./sections/update-screen";
-import * as motion from "./sections/motion";
-import * as cache from "./sections/cache";
-import * as paneSettings from "./sections/pane-settings";
-import * as changes from "./sections/changes";
-import * as dashboardNav from "./sections/dashboard-nav";
-import * as attentionIcon from "./sections/attention-icon";
 
-/** What a section's `render` gets handed — the page-level knobs a section needs. Today only the
- *  shared connection clock (`BootSection`'s `clock` prop); a section that needs nothing reads
- *  nothing off it. */
+/** What a section page gets handed — the page-level knobs a section needs. Today only the shared
+ *  connection clock (`BootSection`'s `clock` prop); a section that needs nothing reads nothing off it. */
 export interface SectionRenderCtx {
   readonly clock: ClockMode;
 }
 
-/** One row of the section registry: the tab's own definition, and how to render its body. Only the
- *  SELECTED entry's `render` is ever called — see `PlaygroundApp` below. */
+/** One row of the section registry. `def` is what the nav needs before the section's code is
+ *  there (its file's own `DEF` carries the same id and title, and `app.test.tsx` holds the two
+ *  equal); `load` fetches the section's module when its page is opened. */
 export interface SectionEntry {
-  readonly def: SectionDef;
-  readonly render: (ctx: SectionRenderCtx) => ReactNode;
+  readonly def: Pick<SectionDef, "id" | "title">;
+  readonly load: () => Promise<{ default: ComponentType<SectionRenderCtx> }>;
 }
 
 /**
- * The page's tabs, in the order they are shown. Exported so `app.test.tsx` can iterate every
+ * The page's sections, in the order they are shown. Exported so `app.test.tsx` can iterate every
  * section rather than special-casing whatever the page happens to mount by default.
  *
- * Adding a section is a one-line addition here, plus its own file under `sections/`:
- * `{ def: motion.DEF, render: () => <motion.MotionSection /> }`, with
- * `import * as motion from "./sections/motion";` added to the imports above.
+ * Adding a section is one entry here plus its own file under `sections/`:
+ * `{ def: { id: "motion", title: "Motion" }, load: () => import("./sections/motion").then((m) => ({ default: m.MotionSection })) }`.
+ * Keep the `import()` a literal path, so Vite can split it into its own chunk.
  */
 export const SECTIONS: readonly SectionEntry[] = [
-  { def: dashboard.DEF, render: () => <dashboard.DashboardSection /> },
-  { def: pane.DEF, render: () => <pane.PaneSection /> },
-  { def: actionsRow.DEF, render: () => <actionsRow.ActionsRowSection /> },
-  { def: crew.DEF, render: () => <crew.CrewSection /> },
-  { def: machines.DEF, render: () => <machines.MachinesSection /> },
-  { def: settings.DEF, render: () => <settings.SettingsSection /> },
-  { def: boot.DEF, render: (ctx) => <boot.BootSection clock={ctx.clock} /> },
-  { def: tour.DEF, render: () => <tour.TourSection /> },
-  { def: idle.DEF, render: () => <idle.IdleSection /> },
-  { def: brand.DEF, render: () => <brand.BrandSection /> },
-  { def: notices.DEF, render: () => <notices.NoticesSection /> },
-  { def: updateScreen.DEF, render: () => <updateScreen.UpdateScreenSection /> },
-  { def: motion.DEF, render: () => <motion.MotionSection /> },
-  { def: cache.DEF, render: () => <cache.CacheSection /> },
-  { def: paneSettings.DEF, render: () => <paneSettings.PaneSettingsSection /> },
-  { def: changes.DEF, render: () => <changes.ChangesSection /> },
-  { def: dashboardNav.DEF, render: () => <dashboardNav.DashboardNavSection /> },
-  { def: attentionIcon.DEF, render: () => <attentionIcon.AttentionIconSection /> },
-  { def: leftHand.DEF, render: () => <leftHand.LeftHandSection /> },
-  { def: dashboardTop.DEF, render: () => <dashboardTop.DashboardTopSection /> },
+  { def: { id: "dashboard", title: "Dashboard" }, load: () => import("./sections/dashboard").then((m) => ({ default: m.DashboardSection })) },
+  { def: { id: "pane", title: "Pane" }, load: () => import("./sections/pane").then((m) => ({ default: m.PaneSection })) },
+  { def: { id: "actions-row", title: "Actions row" }, load: () => import("./sections/actions-row").then((m) => ({ default: m.ActionsRowSection })) },
+  { def: { id: "crew", title: "Crew" }, load: () => import("./sections/crew").then((m) => ({ default: m.CrewSection })) },
+  { def: { id: "machines", title: "Machines" }, load: () => import("./sections/machines").then((m) => ({ default: m.MachinesSection })) },
+  { def: { id: "settings", title: "Settings" }, load: () => import("./sections/settings").then((m) => ({ default: m.SettingsSection })) },
+  {
+    def: { id: "boot", title: "Boot & connection" },
+    load: () => import("./sections/boot").then((m) => ({ default: (ctx: SectionRenderCtx) => <m.BootSection clock={ctx.clock} /> })),
+  },
+  { def: { id: "tour", title: "First run" }, load: () => import("./sections/tour").then((m) => ({ default: m.TourSection })) },
+  { def: { id: "idle", title: "Idle & resume" }, load: () => import("./sections/idle").then((m) => ({ default: m.IdleSection })) },
+  { def: { id: "brand", title: "Brand" }, load: () => import("./sections/brand").then((m) => ({ default: m.BrandSection })) },
+  { def: { id: "notices", title: "Notices" }, load: () => import("./sections/notices").then((m) => ({ default: m.NoticesSection })) },
+  { def: { id: "update-screen", title: "Update mode" }, load: () => import("./sections/update-screen").then((m) => ({ default: m.UpdateScreenSection })) },
+  { def: { id: "motion", title: "Motion" }, load: () => import("./sections/motion").then((m) => ({ default: m.MotionSection })) },
+  { def: { id: "cache", title: "Cache" }, load: () => import("./sections/cache").then((m) => ({ default: m.CacheSection })) },
+  { def: { id: "pane-settings", title: "Pane settings" }, load: () => import("./sections/pane-settings").then((m) => ({ default: m.PaneSettingsSection })) },
+  { def: { id: "changes", title: "Changes" }, load: () => import("./sections/changes").then((m) => ({ default: m.ChangesSection })) },
+  { def: { id: "dashboard-nav", title: "Dashboard nav" }, load: () => import("./sections/dashboard-nav").then((m) => ({ default: m.DashboardNavSection })) },
+  { def: { id: "attention-icon", title: "Attention icon" }, load: () => import("./sections/attention-icon").then((m) => ({ default: m.AttentionIconSection })) },
+  { def: { id: "left-hand", title: "Left-hand layout" }, load: () => import("./sections/left-hand").then((m) => ({ default: m.LeftHandSection })) },
+  { def: { id: "dashboard-top", title: "Dashboard top" }, load: () => import("./sections/dashboard-top").then((m) => ({ default: m.DashboardTopSection })) },
 ];
+
+/** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */
+const PAGES = new Map(SECTIONS.map((s) => [s.def.id, lazy(s.load)]));
 
 const THEME_OPTIONS = [
   { value: "system", label: "System" },
@@ -120,7 +102,7 @@ export function PlaygroundApp({ tab }: { tab?: string } = {}) {
   const [clock, setClock] = useState<ClockMode>("live");
   const [phoneWidth, setPhoneWidth] = useState(false);
   const sectionDefs = SECTIONS.map((s) => s.def);
-  const { activeId, selectTab, cardHandle } = useSelectedSection(sectionDefs, tab);
+  const { activeId, selectTab, cardHandle, group, selectGroup } = useSelectedSection(sectionDefs, tab);
   const face = useFace();
   const accent = useAccent();
   useConnectionClock(clock);
@@ -132,21 +114,9 @@ export function PlaygroundApp({ tab }: { tab?: string } = {}) {
     void loadOperatorCommands();
   }, []);
 
-  // `#pane/<card-handle>` names a card to scroll into view once its section has mounted. Runs after
-  // every tab switch and after the hash changes; a re-run against a `cardHandle` the current section
-  // does not carry (a stale hash left over from another tab) simply finds nothing and does nothing.
-  useEffect(() => {
-    if (cardHandle === null) return;
-    // Not a template-built CSS selector: the e2e handle roll call (`web/e2e/handles.spec.ts`) and
-    // app.test.tsx's own handle test both grep this tree for a card's `state` prop by pattern, and a
-    // selector string assembled the same way would read back as one more handle no card actually has.
-    const el = [...document.querySelectorAll("[data-state]")].find(
-      (node) => node.getAttribute("data-state") === cardHandle,
-    );
-    el?.scrollIntoView();
-  }, [activeId, cardHandle]);
-
   const active = SECTIONS.find((s) => s.def.id === activeId) ?? SECTIONS[0];
+  const Page = PAGES.get(active.def.id);
+  const subPage = useMemo(() => ({ group, selectGroup }), [group, selectGroup]);
 
   return (
     // The prefs land HERE, on the root, not on any card: the typeface and accent overrides cascade
@@ -181,12 +151,37 @@ export function PlaygroundApp({ tab }: { tab?: string } = {}) {
             aria-labelledby={`pg-tab-h-${active.def.id} pg-tab-v-${active.def.id}`}
             className="pt-6 lg:pt-0"
           >
-            {active.render({ clock })}
+            <SubPageContext.Provider value={subPage}>
+              <Suspense fallback={<p className="text-xs text-muted-foreground">Loading {active.def.title}…</p>}>
+                {Page !== undefined && <Page clock={clock} />}
+                <ScrollToCard handle={cardHandle} section={active.def.id} />
+              </Suspense>
+            </SubPageContext.Provider>
           </div>
         </main>
       </div>
     </div>
   );
+}
+
+/**
+ * `#pane/<card-handle>` names a card to scroll into view. Rendered INSIDE the section's Suspense
+ * boundary, beside the section, so its effect runs only once the section's code has loaded and its
+ * cards are committed. A handle the current section does not carry (a stale hash left over from
+ * another tab) simply finds nothing and does nothing.
+ */
+function ScrollToCard({ handle, section }: { handle: string | null; section: string }) {
+  useEffect(() => {
+    if (handle === null) return;
+    // Not a template-built CSS selector: the e2e handle roll call (`web/e2e/handles.spec.ts`) and
+    // app.test.tsx's own handle test both grep this tree for a card's `state` prop by pattern, and a
+    // selector string assembled the same way would read back as one more handle no card actually has.
+    const el = [...document.querySelectorAll("[data-state]")].find(
+      (node) => node.getAttribute("data-state") === handle,
+    );
+    el?.scrollIntoView();
+  }, [handle, section]);
+  return null;
 }
 
 // ── The page's own chrome ────────────────────────────────────────────────────
@@ -199,7 +194,7 @@ export function PlaygroundApp({ tab }: { tab?: string } = {}) {
 // own element ids (`idPrefix`) and the tabpanel below is labelled by both.
 
 interface ChromeProps {
-  sections: readonly SectionDef[];
+  sections: readonly SectionEntry["def"][];
   activeId: string;
   onSelect: (id: string) => void;
   clock: ClockMode;
@@ -273,7 +268,7 @@ function TabBar({
   onSelect,
 }: {
   orientation: "horizontal" | "vertical";
-  sections: readonly SectionDef[];
+  sections: readonly SectionEntry["def"][];
   activeId: string;
   onSelect: (id: string) => void;
 }) {

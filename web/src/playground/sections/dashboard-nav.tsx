@@ -46,7 +46,7 @@ import { bucketOf, worstTriage, type TriageKey } from "@/lib/triage";
 import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
 import type { AgentView, ChangedRepo } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Card, Group, Section, type SectionDef } from "../harness";
+import { Card, CardControls, Group, Section, type SectionDef } from "../layout";
 import { navAgents, navChanges, navShells } from "./dashboard-nav-fixtures";
 
 export const DEF: SectionDef = {
@@ -102,6 +102,7 @@ function Phone({ caption, children }: { caption: string; children: ReactNode }) 
     <figure className="flex shrink-0 flex-col gap-2">
       <figcaption className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{caption}</figcaption>
       <div
+        data-pg-frame=""
         className="relative isolate h-[824px] w-[387px] overflow-hidden rounded-[1.75rem] border-[6px] border-zinc-800 bg-background text-foreground shadow-xl dark:border-zinc-700 [--sim-sab:34px]"
         style={{ transform: "translate(0)" }}
       >
@@ -606,7 +607,7 @@ function OptionToggleAndSheet({
 /** An option's head: the big number Altan picks by, its short name, and the trade-off lines. */
 function OptionHead({ n, name, lines }: { n: number; name: string; lines: readonly string[] }) {
   return (
-    <div className="mb-4 flex items-start gap-4 rounded-sm border border-rule bg-card p-4 shadow-sm">
+    <CardControls className="mb-2 flex items-start gap-4 rounded-sm border border-rule bg-card p-4 shadow-sm">
       <span className="font-mono text-6xl font-bold leading-none tabular-nums">{n}</span>
       <div className="flex min-w-0 flex-col gap-1.5">
         <span className="text-lg font-semibold leading-tight">{name}</span>
@@ -616,7 +617,7 @@ function OptionHead({ n, name, lines }: { n: number; name: string; lines: readon
           </p>
         ))}
       </div>
-    </div>
+    </CardControls>
   );
 }
 

@@ -22,16 +22,8 @@ import {
   uploadedImagePath,
   type PaneFixture,
 } from "../fixtures";
-import {
-  Card,
-  Group,
-  PaneRouter,
-  PaneStackRouter,
-  Section,
-  Segmented,
-  Stage,
-  type SectionDef,
-} from "../harness";
+import { PaneRouter, PaneStackRouter } from "../harness";
+import { Card, CardControls, Group, Section, Segmented, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
@@ -207,9 +199,9 @@ function NoEchoNoticeHarness() {
   const [dismissed, setDismissed] = useState(false);
   return (
     <>
-      <div className="mb-2">
+      <CardControls>
         <Segmented name="no-echo prompt" value={typed} options={NO_ECHO_OPTIONS} onChange={setTyped} />
-      </div>
+      </CardControls>
       <Stage>
         <div className="p-3">
           <Collapse open={!dismissed}>

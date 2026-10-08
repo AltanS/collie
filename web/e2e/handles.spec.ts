@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 
 // The `states` target's roll call. Spec 02 gave every card a required `state` prop, rendered as
-// `data-state` on the card's wrapper (`src/playground/harness.tsx`'s `Card`), and a vitest test
+// `data-state` on the card's wrapper (`src/playground/layout.tsx`'s `Card`), and a vitest test
 // refuses a missing or repeated one from inside jsdom. This case asks the SAME question of a real
 // Chromium tab on the real page the playground serves on 5199.
 //
@@ -14,15 +14,15 @@ import { expect, test, type Page } from "@playwright/test";
 // `app.test.tsx` reads through the rendered DOM. Restating the ids in this file would let the two
 // drift the moment a card is added, renamed, removed, or moves into its own file — as most of the
 // 56+ already have, into `src/playground/sections/*.tsx` — so every `.tsx` under `src/playground/`
-// and `src/playground/sections/` is read, not just `app.tsx`. `harness.tsx` (the `Card` definition
-// and its doc comment) and `*.test.tsx` files are excluded: neither ever holds a real `state="…"`
-// prop use.
+// and `src/playground/sections/` is read, not just `app.tsx`. `layout.tsx` (the `Card` definition
+// and its doc comment), `harness.tsx` (the routers) and `*.test.tsx` files are excluded: none ever
+// holds a real `state="…"` prop use.
 //
 // THE PAGE IS TABBED and only the SELECTED tab mounts (M?? — see README.md → "The states
 // playground"), so a card's handle is only in the DOM while its own tab is open. Both cases below
 // tour every tab in turn (`#<tab-id>`) and pool what they find, rather than reading the page once.
 const PLAYGROUND_DIR = fileURLToPath(new URL("../src/playground/", import.meta.url));
-const EXCLUDED_FILES = new Set(["harness.tsx"]);
+const EXCLUDED_FILES = new Set(["harness.tsx", "layout.tsx"]);
 
 function listSourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

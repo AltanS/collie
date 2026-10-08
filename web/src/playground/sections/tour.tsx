@@ -12,7 +12,8 @@ import { TourSheet, type TourExit } from "@/components/tour-sheet";
 import { TourControl } from "@/components/tour-control";
 import type { PushState } from "@/lib/push";
 
-import { Card, Group, RootRouter, Section, Stage, type SectionDef } from "../harness";
+import { RootRouter } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 import { homeSolo } from "../fixtures";
 
 export const DEF: SectionDef = {

@@ -33,7 +33,7 @@ import type { UpdateAsk } from "@/lib/update-ask";
 import type { UpdateClaim } from "@/lib/update-ribbon";
 import type { UpdateCrewMember, UpdatePeerLeg, UpdateRun, UpdateRunState } from "@/lib/types";
 
-import { Card, Group, Section, type SectionDef } from "../harness";
+import { Card, Group, Section, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "update-screen",

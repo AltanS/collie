@@ -2,7 +2,7 @@
 // comment for the whole page's rules.
 
 import { IdleLock } from "@/components/idle-lock";
-import { Card, Group, Section, Stage, type SectionDef } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "idle",

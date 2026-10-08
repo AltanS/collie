@@ -32,7 +32,7 @@ import {
 import type { ReactNode } from "react";
 
 import { TabBar } from "@/components/ui/tab-bar";
-import { Card, Group, Section, type SectionDef } from "../harness";
+import { Card, CardControls, Group, Section, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "attention-icon",
@@ -115,11 +115,11 @@ function CandidateRow({ state, c }: { state: string; c: Candidate }) {
   return (
     <Card state={state} label={`option ${c.n} · ${c.name}`} reach="not in the app. Pick a number." span={2}>
       <div className="flex flex-col gap-3">
-        <div className="flex items-baseline gap-3">
+        <CardControls className="flex items-baseline gap-3 pb-1">
           <span className="text-4xl font-bold tabular-nums leading-none">{c.n}</span>
           <span className="font-mono text-base">{c.name}</span>
           {c.note !== undefined && <span className="text-xs text-muted-foreground">({c.note})</span>}
-        </div>
+        </CardControls>
         <div className="flex flex-wrap gap-4">
           <Strip caption="Attention selected · 2 blocked">
             <Footer Icon={c.Icon} active="needs" mark="count" />

@@ -19,7 +19,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { __resetHarnessBar } from "@/lib/harness-bar-pref";
 
-import { Card, Group, Section, type SectionDef } from "../harness";
+import { Card, Group, Section, type SectionDef } from "../layout";
 import { took, useRoomyActions } from "./shared";
 
 export const DEF: SectionDef = {

@@ -302,12 +302,16 @@ disables `/api`, preventing requests to a live Collie instance. Vite targets onl
 during production builds, keeping `playground.html` and `src/playground/` out of `dist` and the PWA
 precache. This exclusion is tested in `src/playground/playground-entry.test.ts`.
 
-The page is tabbed: one section is shown at a time, picked from a sidebar on wide screens and a top
-bar on narrow ones, and only the selected section's components are mounted. The selected tab lives
-in the URL hash. `#pane` opens
-the Pane tab, and `#pane/<card-handle>` also scrolls that card into view once it mounts (the handle
-is the card's `data-state`, e.g. `pane-mid-tool-run`). With no hash, the last tab you were on is
-remembered (`localStorage`); with neither, the page opens on the first tab.
+The page is split into pages: one section is shown at a time, picked from a sidebar on wide screens
+and a top bar on narrow ones. Each section's code loads only when you open it, and only its
+components are mounted. The section lives in the URL hash, and a click pushes it, so Back returns to
+the page before. `#pane` opens the Pane section, and `#pane/<card-handle>` also scrolls that card
+into view once it mounts (the handle is the card's `data-state`, e.g. `pane-mid-tool-run`). A
+section's groups are sub-pages: the bar under its title opens one, `#changes:one-file`, and mounts
+only that group's cards. With no hash, the last section you were on is remembered (`localStorage`);
+with neither, the page opens on the first. `src/playground/layout.tsx` holds the page's layout and
+routes; `src/playground/harness.tsx` holds the routers that mount real app routes, so a section that
+needs no router never loads them.
 
 The tabs, in order: Dashboard, Pane, Crew, Settings, Boot & connection, Idle & resume, Brand,
 Notices, Motion. Notices covers everything that ANNOUNCES (the notice primitive, the strip band,

@@ -47,16 +47,8 @@ import {
   updateRelease,
   updateRestart,
 } from "../fixtures";
-import {
-  Card,
-  Group,
-  PackedRootRouter,
-  RootRouter,
-  Section,
-  Segmented,
-  Stage,
-  type SectionDef,
-} from "../harness";
+import { PackedRootRouter, RootRouter } from "../harness";
+import { Card, CardControls, Group, Section, Segmented, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
@@ -496,9 +488,9 @@ function WriteGateCard() {
       }
       note="The pairing latch is set through lib/pairing's own markNotPaired/clearNotPaired, and it OUTRANKS the device gate — the two can never both show, so pick one."
     >
-      <div className="mb-2">
+      <CardControls>
         <Segmented name="write gate" value={gate} options={GATE_OPTIONS} onChange={setGate} />
-      </div>
+      </CardControls>
       {/* 390px and the routes' own `mx-4 mt-3`: this box WRAPS in five of six locales, so its
           height is a function of the width it is read at, and a card-wide stage measures a box
           nobody has. The gutter rides the component the way home.tsx and space.tsx pass it. */}
@@ -681,14 +673,16 @@ function PlaygroundToggle({
   offLabel: string;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={name}
-      aria-pressed={on}
-      onClick={onToggle}
-      className="mb-2 w-full rounded-md border border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
-    >
-      {on ? onLabel : offLabel}
-    </button>
+    <CardControls>
+      <button
+        type="button"
+        aria-label={name}
+        aria-pressed={on}
+        onClick={onToggle}
+        className="w-full rounded-md border border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
+      >
+        {on ? onLabel : offLabel}
+      </button>
+    </CardControls>
   );
 }

@@ -6,7 +6,8 @@ import { CollieHome } from "@/components/collie-home";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { BootSplash } from "@/routes/root";
 import { homeSolo } from "../fixtures";
-import { Card, Group, RootRouter, Section, Stage, type ClockMode, type SectionDef } from "../harness";
+import { RootRouter } from "../harness";
+import { Card, Group, Section, Stage, type ClockMode, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "boot",

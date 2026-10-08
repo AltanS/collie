@@ -14,7 +14,8 @@ import {
   spacesWithWorktrees,
   watchedPanes,
 } from "../fixtures";
-import { Card, Group, Section, SettingsRouter, Stage, type SectionDef } from "../harness";
+import { SettingsRouter } from "../harness";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
