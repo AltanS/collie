@@ -23,8 +23,8 @@ export { isBlank, lineText };
  * whitespace is deliberately NOT dropped: Grok indents the box by two columns, and that indent is
  * not load-bearing beyond "optional spaces before the corner".
  *
- * The pad is spaces on the ANSI grid Collie actually parses. Herdr's *text* snapshot sometimes
- * draws a `█` scrollbar instead; that glyph never reaches this layer.
+ * The pad outside the frame is spaces on the ANSI grid Collie parses. Grok's separately styled
+ * scrollbar INSIDE a long draft is handled only by draft extraction, never by this global trim.
  */
 export function rstrip(text: string): string {
   return text.replace(/\s+$/, "");

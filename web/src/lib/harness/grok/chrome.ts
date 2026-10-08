@@ -101,6 +101,57 @@ export function stripCanvasBackground(lines: StyledLine[]): StyledLine[] {
   });
 }
 
+// Grok's canvas, and the darker column it ends every row with.
+const GROK_CANVAS = new Set(["rgb(20,20,20)", "rgb(17,17,17)"]);
+
+// Where a row's right padding starts. Trailing blanks are padding on the canvas, unstyled, or in a
+// colour the row's own text sits on (a code block filled out to its width). Blanks in any other
+// colour are content, a swatch for one, so the trim stops there.
+function paddingEnd(line: StyledLine, length: number): number {
+  const textBackgrounds = new Set(
+    line.segments.filter((s) => s.text.trim() !== "").map((s) => s.style.backgroundColor),
+  );
+  let end = length;
+  for (let i = line.segments.length - 1; i >= 0; i--) {
+    const segment = line.segments[i]!;
+    const background = segment.style.backgroundColor;
+    const padding =
+      background === undefined || GROK_CANVAS.has(background) || textBackgrounds.has(background);
+    if (!padding) break;
+    const kept = segment.text.replace(/ +$/, "");
+    end -= segment.text.length - kept.length;
+    if (kept !== "") break;
+  }
+  return end;
+}
+
+// Display only, after every grammar has run: the dark track on the right and the terminal's padding
+// are not reply content. Never hand the result back to a grammar or a guard: collapsing empty rows
+// would break the raw screen coordinates and the send's verification.
+export function prepareGrokDisplay(lines: StyledLine[]): StyledLine[] {
+  const out: StyledLine[] = [];
+  let previousTrackOnly = false;
+  for (const line of lines) {
+    const tail = line.segments.at(-1);
+    const rail = tail?.text === "█" &&
+      tail.style.color === "rgb(25,25,25)" &&
+      tail.style.backgroundColor === "rgb(25,25,25)" &&
+      line.segments.at(-2)?.style.backgroundColor === "rgb(20,20,20)" &&
+      line.segments.at(-2)?.style.color === undefined &&
+      line.segments.at(-2)?.text.endsWith("  ") === true;
+    const content = rail ? { ...line, segments: line.segments.slice(0, -1) } : line;
+    const text = lineText(content);
+    const end = paddingEnd(content, text.length);
+    const trimmed = end === text.length
+      ? content
+      : { ...content, segments: sliceStyledLine(content, 0, end).segments };
+    const trackOnly = rail && end === 0;
+    if (!trackOnly || !previousTrackOnly) out.push(trimmed);
+    previousTrackOnly = trackOnly;
+  }
+  return stripCanvasBackground(out);
+}
+
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
   const end = lastNonBlankIndex(texts);
@@ -211,6 +262,24 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   return sliced.segments.length === 0 ? [] : [sliced];
 }
 
+// A long draft makes Grok draw a scrollbar just inside the right border, and read as text it fails
+// the send's verification. Only the captured shape is dropped (that position, a segment of its own,
+// that grey), so the same glyph typed by the user stays in the draft.
+function draftLineText(line: StyledLine): string {
+  const text = lineText(line);
+  const rail = / {2,}[▁-█] (?=│\s*$)/.exec(text);
+  if (rail === null) return text;
+  const position = rail.index + rail[0].length - 2;
+  let offset = 0;
+  for (const segment of line.segments) {
+    if (offset === position && segment.text === text[position] && segment.style.color === "rgb(60,60,65)") {
+      return text.slice(0, position) + text.slice(position + 1);
+    }
+    offset += segment.text.length;
+  }
+  return text;
+}
+
 /**
  * The user's draft stranded in the composer. Grok writes it on the `│ ❯ … │` row and wraps onto
  * indented continuation rows below. Fragments join with a single space (soft wrap). Empty box → null.
@@ -226,14 +295,12 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (detectPermissionRegion(lines) !== null) return null;
   const box = locateComposer(lines);
   if (box === null) return null;
-  const texts = lines.map((l) => rstrip(lineText(l)));
-
   const parts: string[] = [];
-  const prompt = composerPromptText(texts[box.firstDraftRow]!);
+  const prompt = composerPromptText(draftLineText(lines[box.firstDraftRow]!));
   if (prompt === null) return null;
   parts.push(prompt.trim());
   for (let i = box.firstDraftRow + 1; i < box.bottom; i++) {
-    parts.push(composerInnerText(texts[i]!)!.trim());
+    parts.push(composerInnerText(draftLineText(lines[i]!))!.trim());
   }
 
   const draft = parts.filter((p) => p.length > 0).join(" ");

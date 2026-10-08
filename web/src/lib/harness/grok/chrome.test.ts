@@ -25,6 +25,8 @@ function fixtureLines(name: string): StyledLine[] {
 const COMPOSER_FIXTURES = [
   "grok--done.txt",
   "grok--draft-single.txt",
+  "grok--draft-scrollbar.txt",
+  "grok--draft-scrollbar-partial.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
   "grok--reporter-294-draft-newline-hint.txt",
@@ -35,6 +37,8 @@ describe("locateComposer — the real corpus", () => {
   const PINNED: { fixture: string; top: number; bottom: number }[] = [
     { fixture: "grok--fresh-idle.txt", top: 19, bottom: 21 },
     { fixture: "grok--draft-single.txt", top: 19, bottom: 21 },
+    { fixture: "grok--draft-scrollbar.txt", top: 0, bottom: 21 },
+    { fixture: "grok--draft-scrollbar-partial.txt", top: 0, bottom: 17 },
     { fixture: "grok--draft-wrapped.txt", top: 2, bottom: 5 },
     { fixture: "grok--working.txt", top: 3, bottom: 5 },
     { fixture: "grok--done.txt", top: 8, bottom: 10 },
@@ -106,6 +110,33 @@ describe("extractStatusLines / extractInputDraft", () => {
     expect(extractInputDraft(fixtureLines("grok--working.txt"))).toBeNull();
   });
 
+  it("reads a windowed multiline draft without Grok's separately styled scrollbar", () => {
+    const expected = Array.from(
+      { length: 20 },
+      (_, i) => `Collie Grok probe line ${String(i + 21)}: 繁體中文測試，不執行任何工具。`,
+    ).join(" ");
+    expect(extractInputDraft(fixtureLines("grok--draft-scrollbar.txt"))).toBe(expected);
+  });
+
+  it("reads a real draft whose scrollbar ends on a partial block", () => {
+    const expected = Array.from(
+      { length: 15 },
+      (_, i) => `GB_LONG_${String(i + 26)}：繁體中文測試。`,
+    ).join(" ") + " 不要使用工具。請只回覆 GB_LONG_CONFIRMED_40。";
+    expect(extractInputDraft(fixtureLines("grok--draft-scrollbar-partial.txt"))).toBe(expected);
+  });
+
+  it.each(["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"])("keeps a literal %s typed at the right edge of a draft", (glyph) => {
+    const screen = [
+      "  ╭────────────────────────────────────────╮",
+      `  │ ❯ keep this block   \x1b[38;2;225;225;225m${glyph}\x1b[0m │`,
+      "  ╰──────────────────── Grok 4.7 (high) ─╯",
+      "",
+      "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+    ].join("\n");
+    expect(extractInputDraft(splitLines(parseAnsi(screen)))).toBe(`keep this block   ${glyph}`);
+  });
+
   it("recovers a one-line stranded draft", () => {
     expect(extractInputDraft(fixtureLines("grok--draft-single.txt"))).toBe("testing stuff");
   });
@@ -138,7 +169,11 @@ describe("composerPrompt / hasComposer / composerReady", () => {
     const lines = fixtureLines(fixture);
     expect(hasComposer(lines)).toBe(true);
     expect(composerReady(lines)).toBe(true);
-    expect(composerPrompt(lines)).toMatch(/❯/);
+    if (fixture === "grok--draft-scrollbar.txt" || fixture === "grok--draft-scrollbar-partial.txt") {
+      expect(composerPrompt(lines)).toBeNull();
+    } else {
+      expect(composerPrompt(lines)).toMatch(/❯/);
+    }
   });
 
   it("refuses a frame with no composer", () => {

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A long Grok draft no longer stalls a reply, and the phone view drops Grok's scrollbar track.** The scrollbar Grok draws beside a long draft is ignored when the send is verified, and the dark track on the right of Grok's output no longer shows in the phone mirror. Grok's `/model` picker now has buttons for the model, the context window and the effort. Thanks @GGGODLIN (#378).
+
 ## [1.18.0] - 2026-10-08
 
 ### Added

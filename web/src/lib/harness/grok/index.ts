@@ -40,6 +40,7 @@ import {
 import { detectAskRegion } from "./ask";
 import { detectPermissionRegion } from "./permission";
 import { detectPlanMenuRegion } from "./plan-menu";
+import { detectModelPickerRegion } from "./model-picker";
 
 export function grokBuildBlocks(lines: StyledLine[]): Block[] {
   // Drop Grok's full-screen theme-canvas paint before any block is built, so every rendered
@@ -74,6 +75,15 @@ export function grokBuildBlocks(lines: StyledLine[]): Block[] {
     const blocks: Block[] = [];
     if (before.length > 0) blocks.push({ kind: "raw", lines: before });
     blocks.push({ kind: "menu", menu: plan.model, lines: lines.slice(plan.startLine) });
+    return blocks;
+  }
+
+  const picker = detectModelPickerRegion(lines);
+  if (picker) {
+    const before = trimTrailingBlank(lines.slice(0, picker.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "prompt-select", prompt: picker.model, lines: lines.slice(picker.startLine) });
     return blocks;
   }
 

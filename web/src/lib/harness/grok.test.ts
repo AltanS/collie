@@ -40,9 +40,18 @@ const PINNED = [
   "grok--ask-z-parked.txt",
   "grok--ask-z-typed.txt",
   "grok--done.txt",
+  "grok--draft-scrollbar-partial.txt",
+  "grok--draft-scrollbar.txt",
   "grok--draft-single.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
+  "grok--model-effort-moved.txt",
+  "grok--model-effort.txt",
+  "grok--model-picker-moved.txt",
+  "grok--model-picker.txt",
+  "grok--model-window-moved.txt",
+  "grok--model-window.txt",
+  "grok--output-scrollbar.txt",
   "grok--permission-edit.txt",
   "grok--permission-rm-feedback.txt",
   "grok--permission-rm-moved.txt",
@@ -66,6 +75,12 @@ const DIALOG = [
   "grok--ask-z-focused.txt",
   "grok--ask-z-parked.txt",
   "grok--ask-z-typed.txt",
+  "grok--model-effort-moved.txt",
+  "grok--model-effort.txt",
+  "grok--model-picker-moved.txt",
+  "grok--model-picker.txt",
+  "grok--model-window-moved.txt",
+  "grok--model-window.txt",
   "grok--permission-edit.txt",
   "grok--permission-rm-feedback.txt",
   "grok--permission-rm-moved.txt",
@@ -87,6 +102,9 @@ describeAdapterConformance(grokAdapter, {
   ownFixtures,
   foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allCodexFixtures, ...allOpencodeFixtures],
   neutralFixtures,
+  // A long draft pushes the hint row out of the tail the bridge binds to, so these captures must
+  // not be read as a short composer that can be bound.
+  unboundComposerFixtures: ["grok--draft-scrollbar.txt", "grok--draft-scrollbar-partial.txt"],
 });
 
 describe("the grok corpus", () => {

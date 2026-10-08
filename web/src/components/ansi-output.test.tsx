@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
@@ -12,6 +14,96 @@ import { codexPaddingScreen } from "@/test/codex-padding";
 
 const ESC = "\x1b";
 const MUTED_RULE_COLOUR = "var(--terminal-muted-fg, #a1a1a1)"; // dark half as the fallback
+
+describe("Grok's phone display", () => {
+  const captured = readFileSync(
+    join(import.meta.dirname, "..", "fixtures", "panes", "grok--output-scrollbar.txt"),
+    "utf8",
+  );
+
+  it("shows the reply without terminal padding or the scrollbar's empty viewport rows", () => {
+    const { container } = render(
+      <AnsiOutput text={captured} agent="grok" query="GB_BROWSER_RENDER_END" currentMatch={0} />,
+    );
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toContain("GB_BROWSER_RENDER_BEGIN");
+    expect(pre.textContent).toContain("GB_BROWSER_RENDER_END");
+    expect(pre.textContent).not.toContain("█");
+    expect(pre.textContent).not.toMatch(/\n(?: *\n){3}/);
+    expect(pre.textContent).not.toMatch(/ {10,}(?:\n|$)/);
+    expect(pre.querySelector('[data-find-match="current"]')!.textContent).toBe("GB_BROWSER_RENDER_END");
+    expect([...pre.querySelectorAll("span")].some(
+      (s) => s.style.backgroundColor === "rgb(28, 28, 28)" && s.textContent!.trim() !== "",
+    )).toBe(true);
+  });
+
+  it("applies screen-row hiding before compacting Grok's display", () => {
+    const { container } = render(<AnsiOutput text={captured} agent="grok" hideLeadingLines={20} />);
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toContain("Help improve Grok");
+    expect(pre.textContent).not.toContain("const message");
+    expect(pre.textContent).not.toMatch(/ {10,}(?:\n|$)/);
+  });
+
+  it("keeps a typed block and its meaningful background while dropping only right padding", () => {
+    const text = [
+      `${ESC}[48;2;36;36;36m literal ${ESC}[38;2;225;225;225m█${ESC}[0m          `,
+      "  ╭────────────────────────────────────────╮",
+      "  │ ❯                                      │",
+      "  ╰──────────────────── Grok 4.7 (high) ─╯",
+      "",
+      "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+    ].join("\n");
+    const { container } = render(<AnsiOutput text={text} agent="grok" />);
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toBe(" literal █");
+    expect([...pre.querySelectorAll("span")].some(
+      (s) => s.style.backgroundColor === "rgb(36, 36, 36)",
+    )).toBe(true);
+  });
+
+  // A run of coloured blanks after text is a swatch, not padding: no text on the row wears that
+  // colour, so it is the content. Only blanks on the canvas, or in a colour the row's own text sits
+  // on (a code block's fill), are padding.
+  it("keeps trailing blanks in a colour no text on the row uses", () => {
+    const text = [
+      `${ESC}[48;2;20;20;20mswatch:${ESC}[48;2;200;30;30m   ${ESC}[48;2;20;20;20m          ${ESC}[0m`,
+      "  ╭────────────────────────────────────────╮",
+      "  │ ❯                                      │",
+      "  ╰──────────────────── Grok 4.7 (high) ─╯",
+      "",
+      "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+    ].join("\n");
+    const { container } = render(<AnsiOutput text={text} agent="grok" />);
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toBe("swatch:   ");
+    expect([...pre.querySelectorAll("span")].some(
+      (s) => s.style.backgroundColor === "rgb(200, 30, 30)" && s.textContent === "   ",
+    )).toBe(true);
+  });
+
+  it("keeps a painted dark block when it belongs to colored message text, not canvas padding", () => {
+    const text = [
+      `${ESC}[48;2;20;20;20m${ESC}[38;2;225;225;225m literal   ${ESC}[38;2;25;25;25m${ESC}[48;2;25;25;25m█${ESC}[0m`,
+      "  ╭────────────────────────────────────────╮",
+      "  │ ❯                                      │",
+      "  ╰──────────────────── Grok 4.7 (high) ─╯",
+      "",
+      "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+    ].join("\n");
+    const { container } = render(<AnsiOutput text={text} agent="grok" />);
+    expect(container.querySelector("pre")!.textContent).toBe(" literal   █");
+  });
+
+  it.each([
+    { agent: "grok", grammars: false, wrap: true },
+    { agent: "grok", grammars: true, wrap: false },
+    { agent: undefined, grammars: true, wrap: true },
+  ])("keeps column-faithful output outside Grok's wrapped normal view ($agent, $grammars, $wrap)", (props) => {
+    const { container } = render(<AnsiOutput text={captured} {...props} />);
+    expect(container.querySelector("pre")!.textContent).toContain("█");
+  });
+});
 
 // The mirror renders in DARK space under every theme, and the light theme inverts it wholesale
 // (.adr/0002). These guard the two ways that arrangement silently breaks.

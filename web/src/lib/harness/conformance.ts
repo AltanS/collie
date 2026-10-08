@@ -463,8 +463,8 @@ export function describeAdapterConformance(
     ownFixtures: string[];
     foreignFixtures: string[];
     neutralFixtures: string[];
-    /** Captures where the composer is ready but no region can bind, because the harness repaints
-     *  the prompt rows between two reads (Codex Astra's starfield). Each one is a named exception
+    /** Captures where the composer is ready but no region can bind: an animated prompt row or one
+     *  outside the bridge's tail window. Each one is a named exception
      *  to "a region exists exactly when the composer is ready": the sweep goes out unbound there,
      *  and the list says so in the test output rather than in a silent null. */
     unboundComposerFixtures?: string[];
@@ -518,7 +518,7 @@ export function describeAdapterConformance(
         const ready = adapter.composerReady.bind(adapter);
         for (const name of all) {
           if (unbound.includes(name)) {
-            it(`${name}: the composer is ready, and no region binds (animated prompt rows)`, () => {
+            it(`${name}: the composer is ready, and no region can bind`, () => {
               const lines = loadLines(name);
               expect(ready(lines)).toBe(true);
               expect(prompt(lines)).toBeNull();
