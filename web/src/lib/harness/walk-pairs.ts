@@ -47,6 +47,9 @@ export function walkGroupKey(agent: string, model: PromptModel): string {
 }
 
 export const WALK_PAIRS: readonly WalkPair[] = [
+  ["grok", "grok--model-picker.txt", "grok--model-picker-moved.txt"],
+  ["grok", "grok--model-window.txt", "grok--model-window-moved.txt"],
+  ["grok", "grok--model-effort.txt", "grok--model-effort-moved.txt"],
   // omp tool approval, `unicode` preset (18.4.10) and `nerd` preset (18.1.17): Approve and Deny.
   ["omp", "omp--v18-4-approval-bash.txt", "omp--v18-4-approval-bash-moved.txt"],
   ["omp", "omp--v18-4-approval-write.txt", "omp--v18-4-approval-write-moved.txt"],
