@@ -174,6 +174,13 @@ export interface ReplyPlacement {
 const elsewhere = (fit: ReplyFit): ReplyPlacement => ({ fit, endLine: -1 });
 
 /**
+ * The painted spelling is built only for a reply up to this long. Its patterns run on every poll on the
+ * phone, so a hostile or merely huge reply must not cost seconds of main-thread time whatever the
+ * regexes do. Past the cap only the raw spelling is tried, as before the painted one existed.
+ */
+const PAINTED_SPELLING_MAX_CHARS = 65_536;
+
+/**
  * Locate a journal turn on the mirror.
  *
  * Two probes, and the ORDER OF THE VERDICTS matters more than either of them:
@@ -210,7 +217,7 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
   // Both spellings are this same reply. The painted one is tried first and only when it still holds
   // two whole probes: what it drops (a link's target, a tag) can leave too little to tell one reply
   // from another, and the short-reply rule above judged the raw text, not this.
-  const painted = fold(paintedSpelling(prose));
+  const painted = prose.length > PAINTED_SPELLING_MAX_CHARS ? "" : fold(paintedSpelling(prose));
   const spellings = painted.length >= PROBE_CHARS * 2 ? [painted, fold(prose)] : [fold(prose)];
   for (const reply of new Set(spellings)) {
     const tail = reply.slice(-PROBE_CHARS);
@@ -228,7 +235,13 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
 // `[label](target)` and `![alt](target)`, with an optional `"title"`. The label may hold single-backtick
 // code spans and no `[`: a run of backticks must not split more than one way, or a line of many spans
 // and no `](` backtracks for minutes, and a nested `[` simply is no link (the mirror decides then).
-const MARKDOWN_LINK_SOURCE = String.raw`!?\[((?:\x60[^\x60\n]*\x60|[^\][\x60\n])*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)`;
+// The tail runs in linear time on purpose: the target cannot hold whitespace, `<`, `>`, `[` or `)`, and
+// no whitespace sits inside the parentheses, so no two quantifiers overlap and a scan from one `[a](`
+// cannot run on to the end of the text. A link this does not match, such as `[a]( url )` or
+// `http://[::1]/`, is deliberately left alone: the painted spelling keeps its source, and the raw
+// spelling, which {@link locateReply} tries second, still matches the screen. Linear time on a 100 KB
+// reply beats painting a rare form.
+const MARKDOWN_LINK_SOURCE = String.raw`!?\[((?:\x60[^\x60\n]*\x60|[^\][\x60\n])*)\]\(<?[^)\s<>\[]*>?(?:[ \t]+"[^"\n]*")?\)`;
 // An inline code span, kept whole: Claude paints what is inside it exactly as written.
 const CODE_SPAN_SOURCE = String.raw`(\x60+)[^\x60\n]*?\x60+`;
 // One inline token: a code span (group 1 is its opening run) or a link (group 2 is its label).

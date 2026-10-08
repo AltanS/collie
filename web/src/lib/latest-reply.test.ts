@@ -376,6 +376,54 @@ describe("locateReply — a line the link pattern could backtrack on", () => {
   });
 });
 
+describe("locateReply — the link pattern runs in linear time", () => {
+  const painted = "⏺ Pick a flag.\n\n  That is all for now, and the screen ends here.";
+  const tail = "\n\nThat is all for now, and the screen ends here.";
+  const lead = "A long lead that is not on the screen, written so that the whole reply is longer than two probes of text.\n";
+
+  const hostile = {
+    "`[a](` and 20 000 spaces": "[a](" + " ".repeat(20_000),
+    "`[a](<` repeated": "[a](<".repeat(10_000),
+    "`![a](` repeated": "![a](".repeat(10_000),
+    "`[](` repeated": "[](".repeat(10_000),
+  } satisfies Record<string, string>;
+  for (const [name, body] of Object.entries(hostile)) {
+    it(`returns quickly for ${name}`, () => {
+      const source = `${lead}${body}${tail}`;
+      const started = performance.now();
+      locateReply(painted, turn("assistant", source));
+      expect(performance.now() - started).toBeLessThan(200);
+    });
+  }
+
+  it("returns quickly for a reply past the painted-spelling cap, and still locates it", () => {
+    const closing = "\n\nThat is all for now, and the screen ends here, with a sentence long enough for a probe.";
+    const source = `${lead}${"[a](<x> ".repeat(12_000)}${closing}`;
+    expect(source.length).toBeGreaterThan(65_536);
+    const screen = "⏺ Pick a flag." + closing;
+    const started = performance.now();
+    const placement = locateReply(screen, turn("assistant", source));
+    expect(performance.now() - started).toBeLessThan(200);
+    expect(placement.fit).toBe("clipped");
+  });
+
+  // The screen holds only the labels, so these match through the painted spelling alone.
+  const run = "Pick the flag that you want from the list below, then use the one that fits, which is ";
+  const forms = {
+    "a plain link": ["[label](https://x.y/z)", "label"],
+    "an angle-bracket target": ["[label](<https://x.y/z>)", "label"],
+    "a link with a title": ['[label](https://x.y "title")', "label"],
+    "a double-backtick label": ["[``x``](u)", "``x``"],
+  } satisfies Record<string, [string, string]>;
+  for (const [name, [link, label]] of Object.entries(forms)) {
+    it(`reads ${name} as its label`, () => {
+      const source = `${lead}${run}${link}`;
+      const screen = `⏺ ${run}${label}`;
+      expect(locateReply(screen, turn("assistant", source)).fit).toBe("clipped");
+    });
+  }
+});
+
 // More source that Claude does not paint as written. Each case pairs the journal's Markdown with the
 // rows Claude drew for it, and each would have missed with the raw text alone.
 describe("locateReply — source spelled differently on screen", () => {
