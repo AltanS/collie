@@ -1,12 +1,16 @@
 # Security — read before you run it
 
 **Collie provides remote shell access to your machine by design.** A single Collie API call sends
-arbitrary keystrokes directly to a live terminal pane. Anyone with network access to the URL can
-read every pane (source code, secrets, environment variables, agent output) and execute commands as
-your user.
+arbitrary keystrokes directly to a live terminal pane. Any device you paired can read every pane
+(source code, secrets, environment variables, agent output) and execute commands as your user.
+Since 1.18.0 every API request needs a paired device's token, reads included, so the door is
+pairing itself: anyone who can reach the URL and holds a valid pairing code gets the same access.
+Before 1.18.0, anyone who could reach the URL could read every pane.
 
 There is no sandbox and no command allow-list, as filtering commands would defeat the purpose of
-the tool. Treat the URL as a root login.
+the tool. Treat every paired device as a root login, and a pairing code as a password. Revoke a
+lost device at once with `collie devices revoke <label>`. Pairing lowers the risk but does not
+remove it, so keep the URL on a private network such as a tailnet, never on the public internet.
 
 ## Pair a device — the write credential
 
