@@ -1100,6 +1100,8 @@ export const en = {
   "directTyping.status.draftPending": "Send or clear the draft before typing into the terminal.",
   "directTyping.status.armed": "Typing into the terminal — keys send as you type.",
   "directTyping.status.disarmed": "Back to sending replies",
+  "directTyping.status.misdirected":
+    "That went to the terminal as shell — type mode was on. You're back on agent chat.",
   "directTyping.status.interrupted":
     "Stopped typing into the terminal — the pane view was interrupted.",
   "directTyping.status.backgrounded":

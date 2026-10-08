@@ -1009,6 +1009,8 @@ export const zh: Dictionary = {
   "directTyping.status.draftPending": "直接输入终端前，需先发送或清空草稿。",
   "directTyping.status.armed": "已直连终端，按键实时发送。",
   "directTyping.status.disarmed": "已切换为发送普通消息",
+  "directTyping.status.misdirected":
+    "该内容已作为shell命令发送到终端。当时输入模式处于开启状态。已回到智能体聊天。",
   "directTyping.status.interrupted": "已断开终端直连：窗格视图被中断。",
   "directTyping.status.backgrounded": "已断开终端直连：应用进入后台。",
 

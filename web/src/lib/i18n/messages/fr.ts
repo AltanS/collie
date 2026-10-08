@@ -873,6 +873,7 @@ export const fr: Dictionary = {
   "directTyping.status.draftPending": "Envoyez ou effacez le brouillon avant de saisir dans le terminal.",
   "directTyping.status.armed": "Saisie dans le terminal : les touches s'envoient lors de la frappe.",
   "directTyping.status.disarmed": "Retour à l'envoi de réponses",
+  "directTyping.status.misdirected": "C'est parti au terminal comme du shell : le mode de saisie était actif. Retour au chat de l'agent.",
   "directTyping.status.interrupted": "Saisie dans le terminal interrompue : la vue du volet a été interrompue.",
   "directTyping.status.backgrounded": "Saisie dans le terminal interrompue : l'application est passée en arrière-plan.",
   "apiError.unknown": "Une erreur est survenue. Réessayez.",

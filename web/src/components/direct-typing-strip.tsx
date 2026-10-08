@@ -17,12 +17,15 @@ import { t } from "@/lib/i18n";
 // main, so the chip goes in at the merge, next to the label below.
 export function DirectTypingStrip({ onStop }: { onStop: () => void }) {
   useLocale();
+  // Full-width banner, not a quiet row: this mode streams keystrokes into a
+  // live terminal, and the 2026-10-07 phone trap was an armed session nobody
+  // noticed. Destructive tint + STOP button, always in flow above the input.
   return (
-    <div className="flex items-center gap-2 px-1 pb-1 text-xs text-primary">
+    <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
       <Keyboard className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">
-        <span className="font-medium">{t("sendMode.armed.title")}</span>
-        <span className="text-muted-foreground"> — {t("sendMode.armed.hint")}</span>
+        <span>{t("sendMode.armed.title")}</span>
+        <span className="opacity-80"> — {t("sendMode.armed.hint")}</span>
       </span>
       <button
         type="button"

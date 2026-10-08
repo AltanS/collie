@@ -873,6 +873,7 @@ export const pt: Dictionary = {
   "directTyping.status.draftPending": "Envie ou limpe o rascunho antes de digitar no terminal.",
   "directTyping.status.armed": "Digitando no terminal: as teclas são enviadas ao digitar.",
   "directTyping.status.disarmed": "Voltar a enviar respostas",
+  "directTyping.status.misdirected": "Isso foi para o terminal como shell: o modo de digitação estava ativo. Você voltou ao chat do agente.",
   "directTyping.status.interrupted": "Digitação no terminal interrompida: a exibição do painel foi interrompida.",
   "directTyping.status.backgrounded": "Digitação no terminal interrompida: o app foi para segundo plano.",
   "apiError.unknown": "Ocorreu um erro. Tente novamente.",

@@ -1023,6 +1023,8 @@ export const ja: Dictionary = {
     "ターミナルへ入力する前に、下書きを送信または破棄してください。",
   "directTyping.status.armed": "ターミナル直接入力中: キー入力が即座に送信されます。",
   "directTyping.status.disarmed": "通常返信モードに復帰",
+  "directTyping.status.misdirected":
+    "シェルコマンドとしてターミナルに送信されました。入力モードが有効でした。エージェントチャットに戻りました。",
   "directTyping.status.interrupted":
     "ターミナル入力を中断しました。ペイン表示が切り替わりました。",
   "directTyping.status.backgrounded":

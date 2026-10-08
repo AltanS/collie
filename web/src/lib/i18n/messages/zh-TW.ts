@@ -1005,6 +1005,8 @@ export const zhTW: Dictionary = {
   "directTyping.status.draftPending": "直接輸入終端機前，必須先傳送或清空草稿。",
   "directTyping.status.armed": "已直接連線終端機，按鍵即時傳送。",
   "directTyping.status.disarmed": "已切換為傳送一般訊息",
+  "directTyping.status.misdirected":
+    "該內容已作為shell指令傳送到終端機。當時輸入模式處於開啟狀態。已回到智能體聊天。",
   "directTyping.status.interrupted": "已中斷終端機直接連線：窗格檢視被中斷。",
   "directTyping.status.backgrounded": "已中斷終端機直接連線：應用程式進入背景。",
 

@@ -52,6 +52,15 @@ interface DirectTypingOptions {
   sendKeys: (keys: string[]) => Promise<boolean>;
   onActivate: () => void;
   focusInput: () => void;
+  /**
+   * Fired with the session's typed text whenever an armed session ends, for
+   * the misdirected-typing notice (the sticky-mode trap: armed once, then
+   * chat streams into the shell). The text never leaves a local string
+   * comparison — no logging, no network. Empty sessions do not fire. Return
+   * true when the notice went out: deactivate() then skips its own
+   * "back to sending replies", which would overwrite it.
+   */
+  onDisarm?: (session: { text: string }) => boolean;
 }
 
 // The composer textarea's direct-terminal mode: what you type goes to the pane as keystrokes,
@@ -93,6 +102,7 @@ export function useDirectTyping({
   sendKeys,
   onActivate,
   focusInput,
+  onDisarm,
 }: DirectTypingOptions) {
   const [active, setActive] = useState(false);
   const [value, setValue] = useState("");
@@ -104,6 +114,16 @@ export function useDirectTyping({
   const composing = useRef(false);
   const committedComposition = useRef<string | null>(null);
   const pendingBlur = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What this armed session typed (printable text only — keys add nothing).
+  // Read once at disarm for the misdirected-typing notice, then cleared; a
+  // new arming starts empty. Latest-callback ref, same pattern as `lifecycle`
+  // below: resetMode runs from effects whose closures would otherwise go stale.
+  const sessionTextRef = useRef("");
+  const onDisarmRef = useRef(onDisarm);
+  onDisarmRef.current = onDisarm;
+  // Whether the last disarm named the trap: consumed by deactivate() so its
+  // own status does not overwrite the notice. Reset on every fresh arming.
+  const namedRef = useRef(false);
   const sender = useOrderedKeySender(sendKeys, () => {
     resetMode();
     // Stop the phone keyboard too: otherwise continued typing after a transport failure silently
@@ -124,6 +144,8 @@ export function useDirectTyping({
     // and this cancellation is what keeps it from landing on the session that replaced it.
     cancelPendingBlur();
     setValue("");
+    sessionTextRef.current = "";
+    namedRef.current = false;
     composing.current = false;
     committedComposition.current = null;
     activeRef.current = true;
@@ -139,11 +161,14 @@ export function useDirectTyping({
 
   /** Disarm and forget the transient state. Leaves the field alone — callers decide about focus. */
   function resetMode() {
+    const text = sessionTextRef.current;
+    sessionTextRef.current = "";
     activeRef.current = false;
     setActive(false);
     setValue("");
     composing.current = false;
     committedComposition.current = null;
+    namedRef.current = text.length > 0 && (onDisarmRef.current?.({ text }) ?? false);
   }
 
   function clearMode() {
@@ -184,11 +209,18 @@ export function useDirectTyping({
 
   function deactivate() {
     clearMode();
-    setStatus(t("directTyping.status.disarmed"), "info");
+    // A named trap replaces the routine message: both describe the same
+    // disarm, and the routine one would bury the actionable one.
+    if (!namedRef.current) setStatus(t("directTyping.status.disarmed"), "info");
+    namedRef.current = false;
   }
 
   function deactivateSilently() {
     clearMode();
+    // Silent about the mode, not about the trap: a session that named it
+    // keeps its notice. Consume the flag so a later deactivate() still
+    // announces its own routine message.
+    namedRef.current = false;
   }
 
   // The effects below are LIFECYCLE handlers, not reactive computations: they must fire on the
@@ -212,7 +244,13 @@ export function useDirectTyping({
   useEffect(() => {
     if (!active || !suspended) return;
     lifecycle.current.clearMode();
-    setStatus(t("directTyping.status.interrupted"), "info");
+    // A disarm that named the trap already raised its persistent error: the
+    // routine "interrupted" info must not bury it. Consume the flag either way.
+    if (namedRef.current) {
+      namedRef.current = false;
+    } else {
+      setStatus(t("directTyping.status.interrupted"), "info");
+    }
   }, [active, suspended]);
 
   // The backgrounded-tab disarm has to announce itself on the way BACK, not on the way out. A
@@ -226,12 +264,19 @@ export function useDirectTyping({
   // Mounted for the hook's whole life, NOT keyed on `active`: hiding the document is what disarms,
   // so an effect keyed on `active` tears its own listener down in the same commit and the return
   // trip has nobody left to report it. The armed state is read through a ref for the same reason.
+  // Whether the hide-time disarm named the trap: read at hide time, because
+  // by the return trip an intervening reset may have overwritten namedRef.
+  // A named trap already raised its persistent error — the return trip must
+  // not bury it under "backgrounded".
+  const hideNamed = useRef(false);
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         if (!activeRef.current) return;
         backgrounded.current = true;
         lifecycle.current.resetMode();
+        hideNamed.current = namedRef.current;
+        namedRef.current = false;
         // Put the keyboard away rather than hand the field back focused. The notice below is the
         // only thing telling you the mode is gone, and it expires; a primed field outlasts it, and
         // typing into it is exactly the mistake being warned about.
@@ -240,7 +285,11 @@ export function useDirectTyping({
       }
       if (!backgrounded.current) return;
       backgrounded.current = false;
-      setStatus(t("directTyping.status.backgrounded"), "info");
+      if (hideNamed.current) {
+        hideNamed.current = false;
+      } else {
+        setStatus(t("directTyping.status.backgrounded"), "info");
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
@@ -295,12 +344,16 @@ export function useDirectTyping({
     if (committed !== null) {
       committedComposition.current = null;
       const remainder = next.startsWith(committed) ? next.slice(committed.length) : next;
-      if (remainder.length > 0) sender.enqueue(textToKeySequence(remainder));
+      if (remainder.length > 0) {
+        sessionTextRef.current += remainder;
+        sender.enqueue(textToKeySequence(remainder));
+      }
       setValue("");
       return;
     }
 
     if (next.length === 0) return;
+    sessionTextRef.current += next;
     sender.enqueue(textToKeySequence(next));
     setValue("");
   }
@@ -315,6 +368,7 @@ export function useDirectTyping({
     const committed = event.currentTarget.value || event.data;
     if (committed.length === 0) return;
     committedComposition.current = committed;
+    sessionTextRef.current += committed;
     sender.enqueue(textToKeySequence(committed));
     setValue("");
   }

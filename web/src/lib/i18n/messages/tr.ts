@@ -873,6 +873,7 @@ export const tr: Dictionary = {
   "directTyping.status.draftPending": "Terminale yazmadan önce taslağı gönderin veya temizleyin.",
   "directTyping.status.armed": "Terminale yazılıyor, tuşlar siz yazdıkça gönderilir.",
   "directTyping.status.disarmed": "Yanıt göndermeye geri dön",
+  "directTyping.status.misdirected": "Bu, kabuk komutu olarak terminale gitti; yazma modu açıktı. Aracı sohbetine geri döndünüz.",
   "directTyping.status.interrupted": "Terminale yazma durduruldu, bölme görünümü kesintiye uğradı.",
   "directTyping.status.backgrounded": "Terminale yazma durduruldu, uygulama arka plana alındı.",
   "apiError.unknown": "Bir sorun oluştu. Tekrar deneyin.",
