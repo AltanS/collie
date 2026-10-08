@@ -14,8 +14,12 @@ import {
   markLive,
   markWake,
   noteNetworkFailure,
+  noteReadStart,
   noteServerFailure,
+  WAKE_STRIKE_MS,
 } from "@/lib/connection-health";
+import { RETRY_MS } from "@/hooks/use-polling";
+import { POLL_TIMEOUT_MS } from "@/lib/api";
 
 // Wall-clock derived, so fake timers (which also advance Date.now in Vitest) drive both the countdown
 // and the elapsed-time comparison the hook reads. Escalation now anchors on the SHARED
@@ -297,5 +301,145 @@ describe("an outage a failed read already proved", () => {
     expect(result.current).toBe(true);
     act(() => markLive());
     expect(result.current).toBe(false);
+  });
+});
+
+// 2026-10-08: right after a wake the first herd read with no answer is ONE STRIKE, not the outage. A
+// phone that reaches the bridge through a Tailscale relay needs a moment after it returns from the
+// background, and its first poll often gets no answer although nothing is wrong. The retry 0.5s later
+// (hooks/use-polling.ts RETRY_MS) decides. Each `read` below is one herd read as lib/api.ts
+// `fetchSnapshot` makes it: stamped at its start, counted at its failure.
+describe("right after a wake, one read with no answer is one strike", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetConnectionHealth();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const failedRead = () => {
+    noteReadStart();
+    noteNetworkFailure();
+  };
+  const hidden = (yes: boolean) =>
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue(yes ? "hidden" : "visible");
+
+  it("(a) awake and visible, one read with no answer is red at once, as before", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => failedRead());
+    expect(result.current).toBe(true);
+  });
+
+  it("(a) a wake long past grants nothing: a read started after the window is red at once", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => markWake());
+    act(() => vi.advanceTimersByTime(WAKE_STRIKE_MS));
+    act(() => failedRead());
+    expect(result.current).toBe(true);
+  });
+
+  it("(b) a wake, one read with no answer: no red; the retry gets no answer either: red at once", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => markWake());
+    act(() => failedRead());
+    expect(result.current).toBe(false);
+    expect(isLostLatched()).toBe(false);
+    act(() => vi.advanceTimersByTime(RETRY_MS));
+    act(() => failedRead());
+    expect(result.current).toBe(true);
+  });
+
+  it("(b) a wake, one read with no answer, the retry answers: never red", () => {
+    const { result, rerender } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    const seen: boolean[] = [];
+    act(() => markWake());
+    act(() => failedRead());
+    seen.push(result.current);
+    act(() => vi.advanceTimersByTime(RETRY_MS));
+    act(() => markLive());
+    rerender({ c: false });
+    seen.push(result.current);
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS * 2));
+    seen.push(result.current);
+    expect(seen).toEqual([false, false, false]);
+    // The live answer spent the strike's reason: the next failure, outside the window, is red at once.
+    rerender({ c: true });
+    act(() => failedRead());
+    expect(result.current).toBe(true);
+  });
+
+  it("(b) the wake's own read started in the window and ran out of time after it: still one strike", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => markWake());
+    act(() => noteReadStart());
+    act(() => vi.advanceTimersByTime(POLL_TIMEOUT_MS));
+    act(() => noteNetworkFailure());
+    expect(result.current).toBe(false);
+  });
+
+  it("(b) a read in flight across the wake is one strike, however long it then took", () => {
+    // The phone slept with the read in flight; the hook mounts on the return, as the screen does.
+    act(() => noteReadStart());
+    act(() => vi.advanceTimersByTime(60_000));
+    act(() => markWake());
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => vi.advanceTimersByTime(WAKE_STRIKE_MS * 2));
+    act(() => noteNetworkFailure());
+    expect(result.current).toBe(false);
+    act(() => failedRead());
+    expect(result.current).toBe(true);
+  });
+
+  it("(b) every wake grants its own strike, and only one", () => {
+    act(() => markWake());
+    act(() => failedRead());
+    expect(isLostLatched()).toBe(false);
+    act(() => vi.advanceTimersByTime(60_000));
+    act(() => markWake());
+    act(() => failedRead());
+    expect(isLostLatched()).toBe(false);
+    act(() => failedRead());
+    expect(isLostLatched()).toBe(true);
+  });
+
+  it("(c) a read started while the page was hidden, failing after the return: no red alone", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    hidden(true);
+    act(() => noteReadStart());
+    hidden(false);
+    act(() => vi.advanceTimersByTime(POLL_TIMEOUT_MS));
+    act(() => noteNetworkFailure());
+    expect(result.current).toBe(false);
+    act(() => failedRead());
+    expect(result.current).toBe(true);
+  });
+
+  it("(c) a read that fails while the page is hidden latches nothing alone", () => {
+    act(() => noteReadStart());
+    hidden(true);
+    act(() => noteNetworkFailure());
+    expect(isLostLatched()).toBe(false);
+  });
+
+  it("(d) the 5xx rule is unchanged right after a wake: the second in a row is red", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => markWake());
+    act(() => noteServerFailure());
+    expect(result.current).toBe(false);
+    act(() => noteServerFailure());
+    expect(result.current).toBe(true);
+  });
+
+  it("(e) the long-upload rule is unchanged: nothing escalates while the operator uploads", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => beginLongUpload());
+    act(() => failedRead());
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS * 2));
+    expect(result.current).toBe(false);
+    act(() => endLongUpload());
+    // The failure before the upload ended was proof: the latch stands once the upload is done.
+    expect(result.current).toBe(true);
   });
 });

@@ -8,7 +8,10 @@ import {
   latchLost,
   markLive,
   markWake,
+  noteNetworkFailure,
+  noteReadStart,
   subscribeHealth,
+  wakeStrikeHolds,
 } from "./connection-health";
 
 // Fake timers drive Date.now in Vitest, so the wall-clock anchors advance deterministically. Re-pin
@@ -144,6 +147,54 @@ describe("connection-health store", () => {
       expect(isLostLatched()).toBe(true);
       __resetConnectionHealth();
       expect(isLostLatched()).toBe(false);
+    });
+  });
+
+  // The pane and Chat reads fail in the same poll as the herd read, in either order. Whichever lands
+  // first, neither may draw the saved copy over the strike the herd read took (2026-10-08).
+  describe("wakeStrikeHolds", () => {
+    it("holds nothing with no wake: a read with no answer is the outage", () => {
+      noteReadStart();
+      expect(wakeStrikeHolds()).toBe(false);
+    });
+
+    it("holds while the wake's read is in flight, before the herd read has failed", () => {
+      markWake();
+      noteReadStart();
+      expect(wakeStrikeHolds()).toBe(true);
+    });
+
+    it("holds after the herd read took the strike, and stops once the retry latches", () => {
+      markWake();
+      noteReadStart();
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      expect(wakeStrikeHolds()).toBe(true);
+      noteReadStart();
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(true);
+      expect(wakeStrikeHolds()).toBe(false);
+    });
+
+    it("a live answer ends it", () => {
+      markWake();
+      noteReadStart();
+      noteNetworkFailure();
+      markLive();
+      vi.advanceTimersByTime(60_000);
+      noteReadStart();
+      expect(wakeStrikeHolds()).toBe(false);
+    });
+
+    it("__resetConnectionHealth leaves no wake and no strike behind", () => {
+      markWake();
+      noteReadStart();
+      noteNetworkFailure();
+      __resetConnectionHealth();
+      noteReadStart();
+      expect(wakeStrikeHolds()).toBe(false);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(true);
     });
   });
 });

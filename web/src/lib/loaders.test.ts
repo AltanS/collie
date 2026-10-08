@@ -1287,6 +1287,34 @@ describe("loaders — a failed poll keeps the herd and the mirror", () => {
     expect(data.lastSeenAt).toBeTypeOf("number");
   });
 
+  // 2026-10-08: right after a wake the herd read's first failure is one strike, and the pane read of
+  // the same poll must not draw the saved copy over it either, in whichever order the two land. Red
+  // on the pane screen comes from the pane's own `stale` (routes/root.tsx `shownStale`).
+  it("right after a wake, one poll with no answer marks neither herd nor pane; the retry's does", async () => {
+    const { paneLoader, rootLoader } = await import("./loaders");
+    const { markWake } = await import("./connection-health");
+    const home = () => rootLoader({ request: new Request("http://localhost/pane/w1:p1") });
+    const pane = () => paneLoader({ params: { paneId: "w1:p1" } });
+    await home();
+    await pane();
+
+    markWake();
+    dropSnapshot();
+    dropPane();
+    const [herd, mirror] = await Promise.all([home(), pane()]);
+    expect(herd.failure).toBe("network");
+    expect(herd.stale).toBe(false);
+    expect(mirror.stale).toBe(false);
+    expect(mirror.text).toBe(paneTextWithDraft());
+
+    // The pane read lands first on the retry too, so it still sees the strike; the herd read latches.
+    const retryPane = await pane();
+    expect(retryPane.stale).toBe(false);
+    const retryHerd = await home();
+    expect(retryHerd.stale).toBe(true);
+    expect((await pane()).stale).toBe(true);
+  });
+
   it("a single 5xx on a pane read is a blip: the text stays, unmarked", async () => {
     const { paneLoader } = await import("./loaders");
     await paneLoader({ params: { paneId: "w1:p1" } });

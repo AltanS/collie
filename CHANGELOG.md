@@ -246,6 +246,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   once still looked down. Such a poll is now retried after 0.5, 1, 2 and 4 seconds, never slower than
   the normal gap, and the first answer ends the run. An error from the bridge or a refusal keeps the
   normal gap. Thanks @kekefigure (#375).
+- **Coming back to the app no longer flashes the connection bar red.** Over a Tailscale relay, the
+  first poll after you return often gets no answer while the link wakes up, and the phone took that
+  one poll as a lost bridge. Right after a return, one poll with no answer now counts as a first
+  strike: the phone asks again half a second later, and shows the red bar and the saved copy only if
+  that poll gets no answer too. At any other time the first poll with no answer still shows them at
+  once.
 
 ## [1.17.2] - 2026-10-06
 

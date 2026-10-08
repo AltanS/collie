@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
-import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
+import { __resetConnectionHealth, isLostLatched, lastHealthyAt, markWake } from "./connection-health";
 import { isConnecting } from "./connection";
 import { DEAD_DEBOUNCE_MS, isLive, resetLiveness } from "./liveness";
 import { resetBasePathForTests } from "./base-path";
@@ -433,6 +433,26 @@ describe("api client — failed reads and the outage latch", () => {
     const controller = new AbortController();
     controller.abort();
     await fetchSnapshot(undefined, controller.signal).catch(() => {});
+    expect(isLostLatched()).toBe(false);
+  });
+
+  // 2026-10-08: the herd read stamps its own start, so the store can tell the wake's first read from
+  // an ordinary one (lib/connection-health.ts `noteReadStart`).
+  it("right after a wake, the first herd read with no answer is one strike, the second latches", async () => {
+    server.use(http.get("/api/snapshot", () => HttpResponse.error()));
+    markWake();
+    await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
+    expect(isLostLatched()).toBe(false);
+    await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
+    expect(isLostLatched()).toBe(true);
+  });
+
+  it("a herd read started while the page was hidden is one strike when it fails after the return", async () => {
+    server.use(http.get("/api/snapshot", () => HttpResponse.error()));
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const read = fetchSnapshot();
+    visibility.mockReturnValue("visible");
+    await expect(read).rejects.toBeInstanceOf(TypeError);
     expect(isLostLatched()).toBe(false);
   });
 

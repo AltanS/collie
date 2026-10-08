@@ -12,7 +12,12 @@ import {
   type ChatAnswer,
   type ChatWindow,
 } from "@/lib/chat-window";
-import { isLostLatched, SERVER_FAILURES_TO_LATCH, useLostLatched } from "@/lib/connection-health";
+import {
+  isLostLatched,
+  SERVER_FAILURES_TO_LATCH,
+  useLostLatched,
+  wakeStrikeHolds,
+} from "@/lib/connection-health";
 import { t } from "@/lib/i18n";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
@@ -54,7 +59,9 @@ import { REWRITE_AFTER_MS } from "@/lib/store";
 // to the time of the last live answer, so the view draws the saved-copy line) on the same rule the
 // connection strip uses: at once for a read that got no answer (a network failure or the poll
 // deadline), on the second 5xx in a row, or when the herd read has already latched the outage. The
-// mark stays until a live answer, so the line appears once and does not flap.
+// mark stays until a live answer, so the line appears once and does not flap. Right after a wake the
+// first read with no answer is one strike and marks nothing (lib/connection-health.ts
+// `wakeStrikeHolds`); the herd read's retry decides, and its latch marks the window.
 //
 // ── THE COLD OPEN, AS THE LOADERS DO IT (lib/loaders.ts COLD_OPEN_WAIT_MS) ──
 // What blanked the Chat body on Altan's phone (airplane mode, Tailscale up, 2026-10-07): a view that
@@ -285,7 +292,8 @@ export function useChatWindow({
         } else if (!isRefusalStatus(error)) {
           const kind = readFailureKind(error);
           serverFailures.current = kind === "server" ? serverFailures.current + 1 : 0;
-          const outage = kind === "network" || serverFailures.current >= SERVER_FAILURES_TO_LATCH;
+          const noAnswer = kind === "network" && !wakeStrikeHolds();
+          const outage = noAnswer || serverFailures.current >= SERVER_FAILURES_TO_LATCH;
           await readBack(outage);
         }
       } finally {

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
 import { useChatWindow } from "./use-chat-window";
-import { latchLost } from "@/lib/connection-health";
+import { latchLost, markWake, noteNetworkFailure, noteReadStart } from "@/lib/connection-health";
 import { loadChatTail, saveChatTail } from "@/lib/chat-tail";
 import { paneScopeKey } from "@/lib/scope";
 import { __resetStore, getRecord } from "@/lib/store";
@@ -281,6 +281,37 @@ describe("useChatWindow — the saved Chat tail", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(result.current.window.savedAt).toBeNull();
+  });
+
+  // 2026-10-08: right after a wake the herd read's first failure is one strike. The Chat read rides the
+  // same poll, after the herd read, and must not mark the window over that strike; the retry decides.
+  it("right after a wake, a read with no answer under the herd's strike marks nothing", async () => {
+    let fail = false;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () => (fail ? HttpResponse.error() : HttpResponse.json(firstPage))),
+    );
+    const { result, rerender } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+
+    act(() => markWake());
+    act(() => {
+      noteReadStart();
+      noteNetworkFailure();
+    });
+    fail = true;
+    poll(rerender);
+    await waitFor(() => expect(result.current.asked).toBe(2));
+    await waitFor(() => expect(result.current.tried).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.window.savedAt).toBeNull();
+    expect(result.current.window.entries).toHaveLength(1);
+
+    // The retry's herd read gets no answer either: that latches, and the latch marks the window.
+    act(() => {
+      noteReadStart();
+      noteNetworkFailure();
+    });
+    await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
   });
 
   it("marks what it holds the moment the herd read latches the outage, before its own read fails", async () => {

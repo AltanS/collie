@@ -106,7 +106,8 @@ export const GREEN_MS = 1_800;
 // WHEN IT APPEARS, AND WHY IT DOES NOT FLAP (M46 pass 3). The saved-copy strip is red at once when the
 // screen IS the saved copy (`stale`), and the screen becomes that on the read that proves the outage
 // (lib/connection-health.ts `noteNetworkFailure` and `noteServerFailure`: the first read that got no
-// answer, or the second 5xx in a row). It goes only on a live answer. Amber no longer stands in front
+// answer, the second one right after a wake, or the second 5xx in a row). It goes only on a live
+// answer. Amber no longer stands in front
 // of it: amber is kept for the one case where the bridge answers and says its multiplexer is down, so
 // a failing read goes from nothing straight to the saved-copy strip, and a slow read (a stall) moves
 // only the header dog. Every red variant reserves the height of the tallest one, so a change of

@@ -688,6 +688,10 @@ poll waits at most 6 seconds, one second longer than the bridge waits for the mu
 error (5xx) counts on the second one in a row. What is on screen stays there, and the first live
 answer brings back the live view.
 
+Right after you return to the app, the first poll that gets no answer does not count alone. A
+Tailscale link can need a moment to come back, so the phone asks again half a second later, and
+shows the bar only when that poll gets no answer too.
+
 **Keep chat on this phone**, in **Settings → Device**, sets how long the Chat turns stay on the phone:
 
 | Value | What it does |
