@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **One floating New button on the dashboard.** A round "+" sits at the bottom right, above the footer, and opens one sheet with Agent (your launchers), Space and Agent on a branch. A row is hidden when it cannot work on your machine, and the Spaces header's folder button stays.
+
+### Fixed
+
+- **The dashboard no longer offers a worktree on a multiplexer that cannot make one.** The check read the capability's answer object instead of its yes or no, so "Worktree" in the New space sheet showed even when the multiplexer declared it unsupported.
+
 ## [1.18.1] - 2026-10-09
 
 ### Fixed

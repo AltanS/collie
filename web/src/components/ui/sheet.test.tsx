@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { BottomSheet, SideSheet } from "./sheet";
+import { act } from "react";
+
+import { BottomSheet, SideSheet, useAnySheetOpen } from "./sheet";
 
 // Focus + labelling: the sheets are role=dialog/aria-modal, so they should be named by their title,
 // move focus inside on open, restore it on close, and expose exactly ONE accessible "Close" (the
@@ -305,5 +307,61 @@ describe("BottomSheet: pull-driven peek", () => {
     expect(panel.className).toMatch(/\bmax-w-screen-sm\b/);
     const backdrop = container.querySelector<HTMLElement>('button[aria-hidden="true"]');
     expect(backdrop?.className).toMatch(/\babsolute inset-0\b/);
+  });
+});
+
+// The count behind the dashboard's floating New button, which steps aside while any sheet is open.
+describe("useAnySheetOpen", () => {
+  function Probe() {
+    return <output>{useAnySheetOpen() ? "open" : "none"}</output>;
+  }
+
+  it("follows the number of open BottomSheets, and ignores a closed one", () => {
+    const { rerender } = render(
+      <>
+        <Probe />
+        <BottomSheet open={false} onClose={vi.fn()} title="A">a</BottomSheet>
+      </>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("none");
+    rerender(
+      <>
+        <Probe />
+        <BottomSheet open onClose={vi.fn()} title="A">a</BottomSheet>
+        <BottomSheet open onClose={vi.fn()} title="B">b</BottomSheet>
+      </>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("open");
+    rerender(
+      <>
+        <Probe />
+        <BottomSheet open={false} onClose={vi.fn()} title="A">a</BottomSheet>
+        <BottomSheet open onClose={vi.fn()} title="B">b</BottomSheet>
+      </>,
+    );
+    // One of the two closed; one is still up.
+    expect(screen.getByRole("status")).toHaveTextContent("open");
+    act(() => {
+      rerender(
+        <>
+          <Probe />
+          <BottomSheet open={false} onClose={vi.fn()} title="A">a</BottomSheet>
+          <BottomSheet open={false} onClose={vi.fn()} title="B">b</BottomSheet>
+        </>,
+      );
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("none");
+  });
+
+  it("drops the count when an open sheet unmounts", () => {
+    const { rerender } = render(
+      <>
+        <Probe />
+        <BottomSheet open onClose={vi.fn()} title="A">a</BottomSheet>
+      </>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("open");
+    rerender(<Probe />);
+    expect(screen.getByRole("status")).toHaveTextContent("none");
   });
 });

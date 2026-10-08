@@ -11,6 +11,7 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
+import { NewSheet } from "@/components/new-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
@@ -18,16 +19,21 @@ import { CrewFooterLink } from "@/components/crew-footer-link";
 import { useCrew } from "@/components/crew-provider";
 import { CrewTab } from "@/components/crew-tab";
 import { UpdateBanner } from "@/components/update-banner";
+import { Fab } from "@/components/ui/fab";
+import { useAnySheetOpen } from "@/components/ui/sheet";
 import { TabBar } from "@/components/ui/tab-bar";
 import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/workspace-changes-list";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
+import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useLocale } from "@/hooks/use-locale";
 import { useWorkspaceChangeCounts } from "@/hooks/use-workspace-change-counts";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
+import { useLaunchers } from "@/lib/launchers";
 import { useMuxCapability } from "@/lib/mux-capability";
+import { setStatus } from "@/lib/status";
 import { isolateSpaces } from "@/lib/spaces";
 import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
@@ -100,20 +106,28 @@ function ChangesTabBody({
 export function HomeRoute() {
   const data = useRootData();
   const nav = useNav();
-  const { newSpace, newWorktree, showWorktree, creatingSpace, newTab, creatingTab } = useSpaceActions();
+  const { newSpace, newWorktree, showWorktree, creatingSpace, newTab, creatingTab, launch, launching } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
   // shows the repo ITSELF (a worktree's own space would branch from the same repo, so listing both
   // would offer the same thing twice under two names). In the spaces list's order, so the first
   // entry — the sheet's default — is the repo most recently used.
   // Asked of the machine this view is showing (M22/03): absent `?h=` is the lead, as everywhere.
-  const canCreateWorktree = useMuxCapability("createWorktree", data.scope);
+  const canCreateWorktree = useMuxCapability("createWorktree", data.scope).capable;
   const worktreeRepos: WorktreeRepo[] = canCreateWorktree
     ? data.workspaces
         .filter((w) => w.repoRoot !== undefined && w.isWorktree === false)
         .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  // Which side the new-space sheet opens on: the Spaces header's FolderPlus and the New sheet's
+  // "Space" row open the plain one, the New sheet's "Agent on a branch" row the Worktree one.
+  const [newSpaceMode, setNewSpaceMode] = useState<"space" | "worktree">("space");
+  const [newOpen, setNewOpen] = useState(false);
+  const openNewSpace = (mode: "space" | "worktree") => {
+    setNewSpaceMode(mode);
+    setNewSpaceOpen(true);
+  };
   // The new-space sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
   // final height (lib/folders.ts). Once per mount, for the machine this view shows.
   const folderHost = data.scope?.host;
@@ -194,6 +208,22 @@ export function HomeRoute() {
   const revalidator = useRevalidator();
   const { refused: notPaired } = usePairing();
   const readOnly = isReadOnly(data.device) || notPaired;
+
+  // THE FLOATING NEW BUTTON (DESIGN.md §1, card 1.3, 2026-10-08). Drawn when at least one of its three
+  // rows could work, and the rows ask the questions their own flows ask: the Spaces header's FolderPlus
+  // asks `createSpace`, the sheet's Worktree tab asks `createWorktree` and a repo, the Launch strip
+  // asks for rows. A device that may not write gets none of it. A saved copy keeps the button drawn
+  // and refuses on the tap (`workspace-new-tab.tsx` does the same): a control that comes and goes
+  // moves what is around it.
+  const { launchers } = useLaunchers(data.scope);
+  const canCreateSpace = useMuxCapability("createSpace").capable;
+  const canBranch = worktreeRepos.length > 0;
+  const fabOffered = !readOnly && (canCreateSpace || canBranch || launchers.length > 0);
+  // Hidden while a sheet is up (it would sit dimmed under the backdrop, a second create entry next
+  // to the one being used) and while the keyboard is (the dashboard's filter field raises it, and
+  // the button would ride up over the list). Neither moves anything: the layer is fixed.
+  const sheetOpen = useAnySheetOpen();
+  const keyboardOpen = useKeyboardOpen();
   const herd = useMemo(() => [...data.agents, ...data.shellPanes], [data.agents, data.shellPanes]);
   // THE MACHINE FILTER (issue #288): the machines this device leaves off the list, as stored. The
   // list itself keeps the addressed machine and drops ids off the roster (lib/hidden-machines.ts). A
@@ -314,7 +344,7 @@ export function HomeRoute() {
                 shellPanes={navPanes.shellPanes}
                 host={navHost}
                 onOpen={drillInto}
-                onNewSpace={() => setNewSpaceOpen(true)}
+                onNewSpace={() => openNewSpace("space")}
                 creatingSpace={creatingSpace}
                 open={spacesOpen}
                 onOpenChange={setSpacesOpen}
@@ -329,7 +359,10 @@ export function HomeRoute() {
         <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
         <UpdateBanner className="px-4 pt-3" />
         {/* The footer below owns the safe area now, so the stamp only keeps its own air. */}
-        <BuildStamp className="px-4 pt-3 pb-2" />
+        {/* With the New button drawn, the stamp's air grows so the last row scrolls clear of it:
+            16px gap + 56px button + 8px, from the footer's top edge. Set by capability, not by the
+            button's transient hides, so a sheet or the keyboard never moves the list. */}
+        <BuildStamp className={fabOffered ? "px-4 pt-3 pb-20" : "px-4 pt-3 pb-2"} />
       </div>
 
       {/* The dashboard's footer (ADR 0066, ADR 0085): lists, each named for what it holds. Crew
@@ -369,7 +402,10 @@ export function HomeRoute() {
           z-rung, the safe-area inset — belongs to ToastViewport and is stated there once, which is
           what stopped it being three hand-rolled copies of the same four utilities. DESIGN.md §1. */}
       {/* Lifted by the footer's 56px row and its 1px rule, so a toast floats above the tabs. */}
-      <ToastViewport className="bottom-[calc(3.5rem+1px)]">
+      {/* With the New button drawn, the lift also clears it: the footer's 56px and 1px rule, the
+          button's 16px gap and 56px face (the `bottom-` of the Fab below), so a toast floats above
+          the button's top edge, never over it. Capability, not the button's transient hides. */}
+      <ToastViewport className={fabOffered ? "bottom-[calc(3.5rem+1px+1rem+3.5rem)]" : "bottom-[calc(3.5rem+1px)]"}>
         <StatusArea />
       </ToastViewport>
 
@@ -391,10 +427,36 @@ export function HomeRoute() {
         onPinChange={(pane) => setReveal({ rowKey: paneRowKey(pane) })}
       />
 
+      {fabOffered && !sheetOpen && !keyboardOpen && (
+        <Fab
+          label={t("home.new.label")}
+          // The footer's 56px row and 1px rule and the safe area under it, then 16px of air.
+          bottom="bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]"
+          busy={creatingSpace || launching.size > 0}
+          onClick={() => {
+            if (data.stale === true) return setStatus(t("space.readOnly.savedCopy"), "error");
+            setNewOpen(true);
+          }}
+        />
+      )}
+
+      <NewSheet
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        launchers={launchers}
+        scope={data.scope}
+        canSpace={canCreateSpace}
+        canBranch={canBranch}
+        onLaunch={(command) => void launch(command)}
+        onSpace={() => openNewSpace("space")}
+        onBranch={() => openNewSpace("worktree")}
+      />
+
       <NewSpaceSheet
         open={newSpaceOpen}
         onClose={() => setNewSpaceOpen(false)}
         onCreate={newSpace}
+        initialMode={newSpaceMode}
         repos={worktreeRepos}
         scope={data.scope}
         onOpenWorktree={(workspaceId, path) => void showWorktree(workspaceId, path)}

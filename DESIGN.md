@@ -37,6 +37,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). Space and tab strips. |
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
+| `ui/fab.tsx` | The floating New button: a 56px round "+" in the primary fill, `fixed` at the right edge of the content column, portalled to `<body>`, at `z-30` (under the toast's `z-40` and the sheets' `z-50`). The ONE exception to "the sheet is the app's only floating layer", and only on the dashboard. It owns the look, the busy spinner swap and the name; the caller owns whether it is drawn and the `bottom-` that clears its footer. Exception rules below the table. |
 | `ui/image-card.tsx` | One journal picture, framed, as an anchor to its bytes, with a caption saying where it came from. The mirror's placeholder clusters, and the newest turn's picture right after the mirror. Every element is a `<span>`, so it may sit inside the mirror's `<pre>`. `surface` picks the frame: dark-space inside the mirror, the app's tokens on the page. |
 | `ui/image-frame.tsx` | One picture shown whole in the content column: at most the column's width and 70% of the screen's height, centred, on a checkerboard of `--card` and `--muted` that shows transparency in both themes, with one caption line under it that is always there, so filling it moves nothing. The Files view's picture and SVG previews (ADR 0090). Not for a journal picture, which is `ImageCard`. |
 | `ui/list-group.tsx` | A run of flat rows drawn as ONE bordered region. Gives a `divide-y` list a first and last edge. |
@@ -46,7 +47,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/segmented.tsx` | Two or three labelled segments in one row, exactly one selected: Diff \| Source \| Preview, the Files screen's All files \| Changes, the 1 h / 24 h chart switch, the alert threshold and duration choices. Values are strings or numbers. Every segment reserves its 1px border and the selected one only recolours it, so a switch moves nothing (§2), and a tap on the selected segment does nothing. `semantics` picks a tab list (a switch between screens) or a radio group (one setting); `disabled` makes the row inert. A segment may carry a count (`badge`, with `badgeLabel` for the screen reader), floated on its top-right corner like the toggle button's, as the Files screen's Changes segment does. Theme and Belt size predate it and still carry their own copy. |
 | `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
 | `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The "New agent on a branch" sheet's Repository and Agent fields, and the dashboard's workspace and order selects (`dash-selects.tsx`). The three Settings selects (language, typeface, terminal font) carry the same construction by hand and have not been moved onto it. |
-| `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer; there is no popover, no dialog, no tooltip. |
+| `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer, with one exception: the dashboard's floating New button (`ui/fab.tsx`, below). There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on. |
 | `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
 | `ui/tab-bar.tsx` | A bottom tab bar: equal icon-over-word tabs on the page colour, a rule above, the safe area below. The active mark is a reserved 2px top edge, and a count badge floats on the icon, so a switch or a count never moves a word. The dashboard footer (ADR 0066, ADR 0085): with a crew, Crew, Dashboard, Changes, so the default tab sits in the middle under the thumb and the two side tabs are the side trips. |
@@ -56,6 +57,31 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/chat/chat-message-list.tsx` | The transcript's scrolling list. |
 
 If the thing you need is not in that table, say so in the diff and put it in that folder.
+
+### The one exception to "the sheet is the only floating layer": the dashboard's New button
+
+`BottomSheet` is the app's only floating layer, with **exactly one exception: the dashboard's
+floating New button** (`ui/fab.tsx`, mounted by `routes/home.tsx` and by no other route). Why: the
+only create control on the dashboard was a FolderPlus in the Spaces section header, low on a long
+scrolling page and out of reach of the thumb, and a worktree was two taps behind it. One create entry
+under the thumb, opening one sheet with Agent, Space and Agent on a branch, was the pick (card 1.3,
+2026-10-08). The exception is bounded by these rules, and a second floating control must change this
+section first:
+
+- **It reserves nothing in flow.** It is `fixed`, so showing, hiding or going busy moves no content
+  (§2). The dashboard's scroll content ends with enough bottom padding that the last row scrolls clear
+  of it, set by whether the button is offered and never by its transient hides.
+- **Toasts clear it.** The dashboard's `ToastViewport` is lifted by the footer, the button's gap and the
+  button's face (`bottom-[calc(3.5rem+1px+1rem+3.5rem)]` against the Fab's
+  `bottom-[calc(3.5rem+1px+safe-area+1rem)]`), so a toast floats above the button's top edge and never
+  covers it. The two sums live side by side in `routes/home.tsx`; change one, change both.
+- **It hides, it does not dim,** while any `BottomSheet` is open (`useAnySheetOpen`) and while the
+  on-screen keyboard is up (`useKeyboardOpen`). Under a sheet's backdrop it would be a second create
+  entry beside the one in use; over the keyboard it would ride up onto the list.
+- **It is drawn only if a row could work.** Not on a device that may not write, and not when the
+  multiplexer cannot make a space, no launcher is configured and no repo is open. On a saved copy it
+  stays drawn and refuses on the tap, as `workspace-new-tab.tsx` does.
+- **The Spaces header's FolderPlus stays.** The button adds an entry; it removes none.
 
 ### The alert family: the primitive landed, the conversion did not finish
 
@@ -239,7 +265,7 @@ round came back softer than the direction that was chosen.
 
 **Full-round is RESERVED** for shapes whose width equals their height, where it draws a
 circle: status dots, the avatar, the switch thumb, a bead, the dashed "+" of
-`ui/add-button.tsx` at both its sizes. Anything wider than it is tall becomes a *stadium*,
+`ui/add-button.tsx` at both its sizes, the floating New button of `ui/fab.tsx`. Anything wider than it is tall becomes a *stadium*,
 and there is no stadium in the mark. The chip, the pane pill and the switch track all take
 2px, each with a comment at the line saying why, so nobody "fixes" one back.
 

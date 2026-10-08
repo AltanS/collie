@@ -112,6 +112,8 @@ interface NewSpaceSheetProps {
   scope?: Scope;
   /** Open as "New agent on a branch" (ADR 0089). Absent is the dashboard's sheet, exactly as before. */
   branchOff?: BranchOffSetup;
+  /** The side the sheet opens on. Absent is the plain space. A "worktree" with no `repos` falls back to it. */
+  initialMode?: "space" | "worktree";
 }
 
 // Create a new space (workspace). Both fields are optional and dictation-friendly: leave the
@@ -126,6 +128,7 @@ export function NewSpaceSheet({
   onOpenWorktree,
   scope,
   branchOff,
+  initialMode = "space",
 }: NewSpaceSheetProps) {
   useLocale();
   const [label, setLabel] = useState("");
@@ -202,7 +205,7 @@ export function NewSpaceSheet({
       setLabel("");
       setCwd("");
       setBranch("");
-      setMode("space");
+      setMode(initialMode);
       // Default to the first repo, which is the most recently used one: the list arrives in the
       // spaces list's own order, so the top entry is the repo you were last in.
       setRepo(repos[0]?.workspaceId ?? "");
