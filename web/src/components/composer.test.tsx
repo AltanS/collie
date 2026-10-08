@@ -844,7 +844,8 @@ describe("Composer — typing into the terminal", () => {
       Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
       fireEvent(document, new Event("visibilitychange"));
       fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i })); // re-arm
-      act(() => vi.runOnlyPendingTimers());
+      // Run the zero-delay blur, and stop well short of the re-armed session's 60s watchdog.
+      act(() => vi.advanceTimersByTime(1000));
     } finally {
       vi.useRealTimers();
     }
@@ -939,9 +940,11 @@ describe("Composer — typing into the terminal", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(/agent changed/i);
   });
 
-  // Same pane, same agent, untouched for a minute: the mode disarms with a
-  // notice. A keystroke at 59s restarts the clock — only 60s of true silence
-  // fires. Fake timers: the watchdog is the only clock under test.
+  // Same pane, same agent, a minute without a key: the mode disarms with a
+  // notice. The clock starts at the arming, because arming and then typing
+  // chat after the agent exited is the trap. A keystroke at 59s restarts it,
+  // so only 60s of true silence fires. Fake timers: the watchdog is the only
+  // clock under test.
   it("disarms after 60 seconds without a keystroke, restarted by activity", async () => {
     server.use(
       http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
@@ -949,13 +952,10 @@ describe("Composer — typing into the terminal", () => {
       }),
     );
     renderComposerWithStatus();
-    // Fake timers BEFORE arming: the watchdog must not exist until the first
-    // keystroke, so 60s untouched stays armed — this order pins that a
-    // start-on-arm implementation fails here.
     vi.useFakeTimers();
     const box = startDirectTyping();
     try {
-      act(() => vi.advanceTimersByTime(60_000));
+      act(() => vi.advanceTimersByTime(59_000));
       expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
       fireEvent.change(box, { target: { value: "y" } });
       act(() => vi.advanceTimersByTime(59_000));
@@ -971,6 +971,23 @@ describe("Composer — typing into the terminal", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(/no key for 60 seconds/i);
   });
 
+  it("disarms an armed mode that was never touched after 60 seconds", async () => {
+    renderComposerWithStatus();
+    vi.useFakeTimers();
+    startDirectTyping();
+    try {
+      act(() => vi.advanceTimersByTime(59_000));
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1000));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+    expect(screen.getByTestId("status")).toHaveTextContent(/no key for 60 seconds/i);
+  });
 
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];

@@ -155,11 +155,9 @@ export function useDirectTyping({
     // React swaps the controlled value so selection lands at the end.
     inputRef.current?.focus();
     focusInput();
-    // No watchdog yet: the clock starts with the first keystroke, not the
-    // arming. An armed-but-untouched mode has sent nothing, so there is
-    // nothing to protect — and starting the timer here would fire it under
-    // fake-timer tests that never type. Walking away untouched is still
-    // bounded by the idle-pause disarm below.
+    // The watchdog starts at the arming, not at the first key: the trap is arming, then typing a
+    // chat message after the agent underneath has exited, so an untouched mode must expire too.
+    pokeIdleTimer();
   }
 
   /** Disarm and forget the transient state. Leaves the field alone — callers decide about focus. */
