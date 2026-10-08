@@ -239,3 +239,43 @@ describe("locateReply — a reply that ends in a wrapped table", () => {
     expect(endLine).toBe(7);
   });
 });
+
+// Laid out as a real Claude pane painted it, 2026-09-27, with neutral words: the reply's last table
+// linked each row to a file.
+// Claude painted only the link text, so the URL the journal holds was nowhere on screen and a tail
+// probe that reached into it missed.
+describe("locateReply — a reply whose tail holds Markdown links", () => {
+  const source = [
+    "兩種做法的說明都在下表的連結裡，你可以逐項打開來看。這段是為了讓回覆夠長。",
+    "",
+    "| 做法 | 內容 | 說明 |",
+    "|---|---|---|",
+    "| **a．建議** | 每週澆一次水，夏天改成每三天一次 | [澆水頻率與季節調整](https://example.com/plants/watering.md) |",
+    "| b | 不調整，照原樣澆；葉子可能變黃 | [葉片變黃的常見原因](https://example.com/plants/watering.md) |",
+    "",
+    "🌱 That is all for now.",
+  ].join("\n");
+  const painted = [
+    "  ┌─────────┬──────────────────────────────────┬────────────────────┐",
+    "  │  做法   │               內容               │        說明        │",
+    "  ├─────────┼──────────────────────────────────┼────────────────────┤",
+    "  │ a．建議 │ 每週澆一次水，夏天改成每三天一次 │ 澆水頻率與季節調整 │",
+    "  ├─────────┼──────────────────────────────────┼────────────────────┤",
+    "  │ b       │ 不調整，照原樣澆；葉子可能變黃   │ 葉片變黃的常見原因 │",
+    "  └─────────┴──────────────────────────────────┴────────────────────┘",
+    "",
+    "  🌱 That is all for now.",
+  ];
+
+  it("finds the reply when only the link text was painted", () => {
+    const { fit, endLine } = locateReply(painted.join("\n"), turn("assistant", source));
+    expect(fit).toBe("clipped");
+    expect(endLine).toBe(painted.length - 1);
+  });
+
+  it("still finds it when the renderer printed the URL as well", () => {
+    const withUrls = painted.map((row) => row.replace("常見原因 │", "常見原因 (https://example.com/plants/watering.md) │"));
+    const tailOnly = "[葉片變黃的常見原因](https://example.com/plants/watering.md) |\n\n🌱 That is all for now.";
+    expect(locateReply(withUrls.join("\n"), turn("assistant", `開頭不在畫面上的一段很長的前文，長到整則回覆超過兩個探針的長度，所以這裡多寫了幾句說明，讓它不會被當成短回覆。\n${tailOnly}`)).fit).toBe("clipped");
+  });
+});
