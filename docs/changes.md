@@ -262,7 +262,7 @@ open like any other row.
   own rule.
 - **No folder, no files.** A workspace whose folder is your home folder, a folder above it, or `/`
   shows no folder. Files says so and offers **Show changes** when it still has a list of
-  changes. A zellij pane has no Files button. A workspace folder that is a symlink to one of those
+  changes. A pane on zellij older than 0.44 has no Files button. A workspace folder that is a symlink to one of those
   counts as that folder.
 
 The full rules are in [ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md).
@@ -290,8 +290,9 @@ Files hides nothing for it.
 
 ## Limits
 
-- **zellij panes have no Files button.** zellij does not report a pane's folder. The dashboard row
-  for a zellij workspace reads "No folder", and zellij panes show no branch.
+- **zellij before 0.44 reports no pane folder.** On those versions zellij panes have no Files button
+  and show no branch. zellij 0.44 and later reports the folder, and tmux always does. A zellij
+  workspace has no folder of its own on any version, so its dashboard row reads "No folder".
 - **Git must be installed** on the machine that owns the pane.
 - **Git LFS files may show as modified.** With filters off, Collie compares an LFS file with its
   pointer. It can only show too much, never hide a change.

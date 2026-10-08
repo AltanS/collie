@@ -2655,8 +2655,8 @@ export function AgentChat({
                   pullHandle={pullHandle}
                   // EXPERIMENT (operator, 2026-09-23): the Changes entry rides the belt's pinned
                   // block beside the switcher mark instead of the ⋮ sheet. Hidden when the pane
-                  // reports no folder: zellij gives an empty cwd, and the view would only be able
-                  // to say so (ADR 0065).
+                  // reports no folder: zellij before 0.44 gives an empty cwd, and the view would
+                  // only be able to say so (ADR 0065).
                   changesPill={
                     agent?.cwd
                       ? { onClick: () => nav.down(filesEntryPath), label: t("chat.changes.label") }

@@ -79,7 +79,19 @@ describe("parsePaneList", () => {
       // The probe's own value: zellij reports `null` for a pane it did not start with an explicit
       // command, which reaches the port as "no foreground command" rather than as a name.
       command: "",
+      // The M10/05 probe's listing carried no `pane_cwd`, so this pane's folder is unknown.
+      cwd: "",
     });
+  });
+
+  // Probed 2026-10-08 on zellij 0.44.2: `--all` carries `pane_cwd` for a running terminal pane.
+  test("a pane_cwd is the pane's folder, and its absence is an unknown folder", () => {
+    const listing = JSON.stringify([
+      { id: 0, is_plugin: false, title: "Pane #1", exited: false, tab_id: 0, pane_command: "/bin/bash", pane_cwd: "/home/op/repo" },
+      { id: 1, is_plugin: false, title: "Pane #2", exited: true, tab_id: 0 },
+      { id: 2, is_plugin: false, title: "Pane #3", exited: false, tab_id: 0, pane_cwd: 7 },
+    ]);
+    expect(parsePaneList(listing)?.map((pane) => pane.cwd)).toEqual(["/home/op/repo", "", ""]);
   });
 
   test("a terminal_command is carried raw — a fact, never an identity", () => {

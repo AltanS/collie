@@ -136,6 +136,9 @@ zellij 0.44.2).
 
 > **Note.** Collie manages active sessions, but it does not create or restart them.
 
+Zellij 0.44 and later reports each pane's folder, so zellij panes get the Files button and show
+their branch. An older zellij reports no folder, and its panes have neither.
+
 ### tern notes
 
 Point Collie at Tern:

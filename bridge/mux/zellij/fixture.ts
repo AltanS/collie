@@ -71,6 +71,8 @@ interface FakePane {
   exited: boolean;
   title: string;
   rows: number;
+  /** `pane_cwd` as zellij 0.44 reports it; undefined leaves the field out, as an older zellij does. */
+  cwd?: string;
   /** Lines that have scrolled off — what only a `--full` dump reaches. */
   scrollback: string[];
   /** Lines on screen now. */
@@ -340,7 +342,10 @@ export class FakeZellij implements ZellijExec {
       active: false,
     };
     this.tabs.push(tab);
-    this.newPaneIn(tab);
+    const pane = this.newPaneIn(tab);
+    // A tab opened in a folder reports it, as zellij 0.44 does for the shell it starts there.
+    const cwd = flagValue(args, "--cwd");
+    if (cwd !== undefined) pane.cwd = cwd;
     return said(`${String(tabNumber)}\n`);
   }
 
@@ -393,7 +398,7 @@ export class FakeZellij implements ZellijExec {
 
   private paneJson(pane: FakePane): JsonObject {
     const tab = this.tabs.find((candidate) => candidate.tabNumber === pane.tabNumber);
-    return {
+    const json: JsonObject = {
       id: Number.parseInt(pane.paneId.replace("terminal_", ""), 10),
       is_plugin: false,
       is_focused: pane.focused,
@@ -405,6 +410,8 @@ export class FakeZellij implements ZellijExec {
       tab_position: tab?.position ?? 0,
       tab_name: tab?.name ?? "",
     };
+    if (pane.cwd !== undefined) json.pane_cwd = pane.cwd;
+    return json;
   }
 
   private tabJson(tab: FakeTab): JsonObject {
@@ -449,6 +456,8 @@ export class FakeZellij implements ZellijExec {
     this.tabs.push(first, second);
     const labelled = this.newPaneIn(first);
     labelled.title = "the pane the operator named";
+    // One pane reports its folder, as zellij 0.44 does; the others leave it out, as an older one does.
+    labelled.cwd = "/home/op/agents";
     this.newPaneIn(first);
     this.newPaneIn(second);
   }

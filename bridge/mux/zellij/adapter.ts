@@ -454,9 +454,9 @@ export class ZellijMux implements MuxAdapter {
       spaceId: ZELLIJ_SPACE_ID,
       spaceLabel: this.session.label(),
       tabId: tabId(tabNumber),
-      // zellij's listing reports no working directory for a pane, so the honest answer is the one the
-      // request asked for and nothing invented when it asked for none.
-      cwd: request.cwd ?? "",
+      // The folder the listing reports for the fresh shell (zellij 0.44 and later), else the one the
+      // request asked for, and nothing invented when it asked for none.
+      cwd: fresh.cwd !== "" ? fresh.cwd : (request.cwd ?? ""),
     });
   }
 
@@ -723,8 +723,8 @@ function toMuxPane(
     spaceLabel: sessionLabel,
     spaceNumber: 1,
     tabId: tabId(raw.tabNumber),
-    // zellij reports no working directory for a pane, in any of `list-panes`' field groups.
-    cwd: "",
+    // `pane_cwd`, read live by zellij 0.44 and later; empty when it reports none (protocol.ts).
+    cwd: raw.cwd,
     // The pane the operator's terminal is showing, and it takes BOTH flags. `is_focused` is a
     // property of the TAB — every tab remembers its own focused pane, so several report it at once
     // (probed: two panes in one tab both read `is_focused` after a split) — and `active` is the tab

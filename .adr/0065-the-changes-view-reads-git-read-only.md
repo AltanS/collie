@@ -23,7 +23,9 @@ syntax highlighting. Three facts shaped the answer.
 
 - **A pane already carries its folder.** `AgentView.cwd` is on the snapshot, so the bridge can find
   the repo without the client naming a path. zellij reports no folder (`cwd` is `""`), so the view
-  cannot exist for its panes.
+  cannot exist for its panes. *Amended 2026-10-08:* zellij 0.44 reports `pane_cwd` in
+  `list-panes --all --json`, read live from the OS, so on 0.44 and later its panes have the view;
+  an older zellij still reports none.
 - **The workspace shape matters.** Altan's own workspace is a git repo that keeps its member repos
   gitignored inside it. `git status` in the workspace does not see them, so a view that asks only
   the containing repo shows almost nothing.

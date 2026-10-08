@@ -180,6 +180,13 @@ export interface ZellijPaneRecord {
    * never pick a harness grammar or a journal adapter. It travels as the raw fact it is.
    */
   readonly command: string;
+  /**
+   * `pane_cwd` — the pane's working directory, or `""` when the listing carries none. zellij asks the
+   * OS for the pane process's directory at the moment of the listing, so it follows a `cd`. It is
+   * there since zellij 0.44 (in `--all`, probed 2026-10-08 on 0.44.2) and absent when the pane has
+   * exited or zellij could not read it, or on an older zellij: all of those mean "unknown".
+   */
+  readonly cwd: string;
 }
 
 /** Field separator inside one census row. A byte no zellij label can carry. */
@@ -258,6 +265,7 @@ export function parsePaneList(stdout: string): ZellijPaneRecord[] | null {
       tabName: readText(row, "tab_name") ?? "",
       contentRows: readInteger(row, "pane_content_rows") ?? 0,
       command: readText(row, "terminal_command") ?? "",
+      cwd: readText(row, "pane_cwd") ?? "",
     });
   }
   return panes;

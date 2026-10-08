@@ -112,7 +112,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   the branch, the pane header shows it after the workspace, and the Files header after the folder. A
   detached head reads `detached @abc1234`, and a long name keeps its end. The bridge reads it from
   two small files in the repo, with no git process and no lock, and never makes a snapshot wait for
-  it. A pane outside a repo, a zellij pane and a crew member on an older version show none.
+  it. A pane outside a repo, a pane on zellij older than 0.44 and a crew member on an older version
+  show none.
+- **zellij panes know their folder.** On zellij 0.44 and later, Collie reads each pane's folder from
+  zellij's own pane listing, which zellij takes live from the system. A zellij pane now gets the Files
+  button and the Changes mark, shows its branch, and a launcher started beside it opens in that
+  folder. An older zellij still reports none, and its panes stay as they were.
 
 ### Changed
 
