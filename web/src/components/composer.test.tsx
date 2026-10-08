@@ -896,6 +896,82 @@ describe("Composer — typing into the terminal", () => {
     expect(screen.getByTestId("status")).not.toHaveTextContent(/backgrounded/i);
   });
 
+  // AltanS #379: the mode belongs to the session that armed it. When the
+  // agent under the pane changes (exit to shell), the mode disarms with a
+  // notice instead of streaming into the stranger. Mounting with an agent
+  // already set is not a change — no disarm, no notice.
+  it("disarms with a notice when the pane's agent changes", async () => {
+    function Harness() {
+      const [agent, setAgent] = useState<string | undefined>("claude");
+      return (
+        <>
+          <StatusSentinel />
+          <button type="button" onClick={() => setAgent(undefined)}>
+            agent exits
+          </button>
+          <Composer
+            paneId="w1:p1"
+            agent={agent}
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={false}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            display={{ open: false, onToggle: vi.fn() }}
+            onSent={vi.fn()}
+          />
+        </>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    startDirectTyping();
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "agent exits" }));
+
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+    expect(screen.getByTestId("status")).toHaveTextContent(/agent changed/i);
+  });
+
+  // Same pane, same agent, untouched for a minute: the mode disarms with a
+  // notice. A keystroke at 59s restarts the clock — only 60s of true silence
+  // fires. Fake timers: the watchdog is the only clock under test.
+  it("disarms after 60 seconds without a keystroke, restarted by activity", async () => {
+    server.use(
+      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposerWithStatus();
+    // Fake timers BEFORE arming: the watchdog must not exist until the first
+    // keystroke, so 60s untouched stays armed — this order pins that a
+    // start-on-arm implementation fails here.
+    vi.useFakeTimers();
+    const box = startDirectTyping();
+    try {
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+      fireEvent.change(box, { target: { value: "y" } });
+      act(() => vi.advanceTimersByTime(59_000));
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1000));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+    expect(screen.getByTestId("status")).toHaveTextContent(/no key for 60 seconds/i);
+  });
+
+
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];
     let replyCalls = 0;

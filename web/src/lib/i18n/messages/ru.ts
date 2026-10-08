@@ -921,6 +921,8 @@ export const ru: Dictionary = {
   "directTyping.status.draftPending": "Отправьте или очистите черновик перед вводом в терминал.",
   "directTyping.status.armed": "Ввод в терминал: клавиши отправляются при нажатии.",
   "directTyping.status.disarmed": "Назад к отправке ответов",
+  "directTyping.status.agentChanged": "Режим ввода выключен: агент панели изменился.",
+  "directTyping.status.idleTimeout": "Режим ввода выключен: 60 секунд без клавиш.",
   "directTyping.status.interrupted": "Ввод в терминал остановлен: отображение панели прервано.",
   "directTyping.status.backgrounded": "Ввод в терминал остановлен: приложение перешло в фоновый режим.",
   "apiError.unknown": "Произошла ошибка. Попробуйте снова.",

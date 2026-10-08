@@ -873,6 +873,8 @@ export const pt: Dictionary = {
   "directTyping.status.draftPending": "Envie ou limpe o rascunho antes de digitar no terminal.",
   "directTyping.status.armed": "Digitando no terminal: as teclas são enviadas ao digitar.",
   "directTyping.status.disarmed": "Voltar a enviar respostas",
+  "directTyping.status.agentChanged": "Modo de digitação desligado: o agente do painel mudou.",
+  "directTyping.status.idleTimeout": "Modo de digitação desligado: 60 segundos sem teclas.",
   "directTyping.status.interrupted": "Digitação no terminal interrompida: a exibição do painel foi interrompida.",
   "directTyping.status.backgrounded": "Digitação no terminal interrompida: o app foi para segundo plano.",
   "apiError.unknown": "Ocorreu um erro. Tente novamente.",

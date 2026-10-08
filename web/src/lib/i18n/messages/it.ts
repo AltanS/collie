@@ -873,6 +873,8 @@ export const it: Dictionary = {
   "directTyping.status.draftPending": "Invia o cancella la bozza prima di digitare nel terminale.",
   "directTyping.status.armed": "Digitazione nel terminale: i tasti vengono inviati mentre scrivi.",
   "directTyping.status.disarmed": "Torna all'invio delle risposte",
+  "directTyping.status.agentChanged": "Modalità di digitazione disattivata: l'agente del riquadro è cambiato.",
+  "directTyping.status.idleTimeout": "Modalità di digitazione disattivata: nessun tasto da 60 secondi.",
   "directTyping.status.interrupted": "Digitazione nel terminale interrotta: la vista del riquadro è stata interrotta.",
   "directTyping.status.backgrounded": "Digitazione nel terminale interrotta: l'app è passata in background.",
   "apiError.unknown": "Si è verificato un errore. Riprova.",

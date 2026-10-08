@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   unchanged. (#371)
 - **Chat no longer repeats a message after CJK or emoji text.** A journal read found its row boundary by string index instead of by byte, so the next read started short of it and sent again rows the phone already had. Thanks @GGGODLIN (#377).
 - **A send no longer stalls when a Claude Code background agent is active.** Claude Code 2.1.293 marks the active agent's row in the footer with `❯`, and Collie took that row as foreign and lost the input box, so a send from the phone typed its text and never pressed Enter. The footer's own rows are now accepted. Thanks @thelinuxlich (#382).
+- **Type mode switches off when the agent under it exits, and after a minute without a key.** Type mode sends each key straight to the pane, so when the agent quit and the pane fell back to a shell, a chat message ran as a shell command. It now switches off with a notice when the pane's agent changes, and after 60 seconds without a keystroke. The armed strip uses the red tint for an armed control. Thanks @AndiWandHerd (#379).
 
 ## [1.18.0] - 2026-10-08
 
