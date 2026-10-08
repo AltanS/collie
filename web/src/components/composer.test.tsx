@@ -896,71 +896,27 @@ describe("Composer — typing into the terminal", () => {
     expect(screen.getByTestId("status")).not.toHaveTextContent(/backgrounded/i);
   });
 
-  // The sticky-mode trap (phone, 2026-10-07): armed once, then every chat
-  // message streams into the shell. Stopping the mode names what happened so
-  // the operator learns the mode was on, instead of re-arming into the shell.
-  it("names the trap when an armed session typed chat into a rejecting shell", async () => {
-    server.use(
-      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-    renderComposerWithStatus({
-      text: "andiw@omaya:~$ bleibt wieder hängen\nbleibt: command not found",
-    });
-    const box = startDirectTyping();
-    fireEvent.change(box, { target: { value: "bleibt wieder hängen hier" } });
-    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent(/terminal as shell/i),
-    );
-  });
-
-  // The other half: a clean burst (y/n, filter text) with no rejection on the
-  // mirror stops silently — the notice must not cry wolf on ordinary use.
-  it("stays quiet when the mirror never rejected anything", async () => {
-    server.use(
-      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-    renderComposerWithStatus({ text: "andiw@omaya:~$ y\nok" });
-    const box = startDirectTyping();
-    fireEvent.change(box, { target: { value: "y" } });
-    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
-
-    await waitFor(() =>
-      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
-    );
-    expect(screen.getByTestId("status")).not.toHaveTextContent(/terminal as shell/i);
-  });
-
-  // The mirror poll lags the disarm: the rejection lands after Stop, so the
-  // synchronous check misses and the stashed session must fire on the next
-  // mirror update instead. The live proof is a PWA run; this pins the wiring.
-  it("names the trap when the rejection lands after the disarm", async () => {
-    server.use(
-      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
+  // AltanS #379: the mode belongs to the session that armed it. When the
+  // agent under the pane changes (exit to shell), the mode disarms with a
+  // notice instead of streaming into the stranger. Mounting with an agent
+  // already set is not a change — no disarm, no notice.
+  it("disarms with a notice when the pane's agent changes", async () => {
     function Harness() {
-      const [text, setText] = useState("andiw@omaya:~$");
+      const [agent, setAgent] = useState<string | undefined>("claude");
       return (
         <>
           <StatusSentinel />
-          <button type="button" onClick={() => setText("andiw@omaya:~$ bleibt wieder hängen\nbleibt: command not found")}>
-            poll lands
+          <button type="button" onClick={() => setAgent(undefined)}>
+            agent exits
           </button>
           <Composer
             paneId="w1:p1"
-            agent="claude"
+            agent={agent}
             isShell={false}
             gone={false}
             readOnly={false}
             dialogPresent={false}
-            text={text}
+            text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
             prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
@@ -972,114 +928,49 @@ describe("Composer — typing into the terminal", () => {
     }
     const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
     render(<RouterProvider router={router} />);
-    const box = startDirectTyping();
-    fireEvent.change(box, { target: { value: "bleibt wieder hängen hier" } });
-    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
+    startDirectTyping();
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
 
-    // Mirror has not caught up: no notice yet, mode already stopped.
+    fireEvent.click(screen.getByRole("button", { name: "agent exits" }));
+
     await waitFor(() =>
       expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
     );
-    expect(screen.getByTestId("status")).not.toHaveTextContent(/terminal as shell/i);
-
-    fireEvent.click(screen.getByRole("button", { name: "poll lands" }));
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent(/terminal as shell/i),
-    );
+    expect(screen.getByTestId("status")).toHaveTextContent(/agent changed/i);
   });
 
-  // An idle-pause disarm with the rejection already on the mirror names the
-  // trap too — the routine "interrupted" info must not bury the error.
-  it("keeps the trap notice when an idle pause disarms the session", async () => {
+  // Same pane, same agent, untouched for a minute: the mode disarms with a
+  // notice. A keystroke at 59s restarts the clock — only 60s of true silence
+  // fires. Fake timers: the watchdog is the only clock under test.
+  it("disarms after 60 seconds without a keystroke, restarted by activity", async () => {
     server.use(
       http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
         return HttpResponse.json({ ok: true });
       }),
     );
-    function Harness() {
-      const [gone, setGone] = useState(false);
-      return (
-        <>
-          <StatusSentinel />
-          <button type="button" onClick={() => setGone(true)}>
-            lock it
-          </button>
-          <Composer
-            paneId="w1:p1"
-            agent="claude"
-            isShell={false}
-            gone={gone}
-            readOnly={false}
-            dialogPresent={false}
-            text="andiw@omaya:~$ bleibt wieder hängen\nbleibt: command not found"
-            terminalDraft={null}
-            rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-            display={{ open: false, onToggle: vi.fn() }}
-            onSent={vi.fn()}
-          />
-        </>
-      );
-    }
-    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
-    render(<RouterProvider router={router} />);
+    renderComposerWithStatus();
+    // Fake timers BEFORE arming: the watchdog must not exist until the first
+    // keystroke, so 60s untouched stays armed — this order pins that a
+    // start-on-arm implementation fails here.
+    vi.useFakeTimers();
     const box = startDirectTyping();
-    fireEvent.change(box, { target: { value: "bleibt wieder hängen hier" } });
-    fireEvent.click(screen.getByRole("button", { name: "lock it" }));
+    try {
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+      fireEvent.change(box, { target: { value: "y" } });
+      act(() => vi.advanceTimersByTime(59_000));
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1000));
+    } finally {
+      vi.useRealTimers();
+    }
 
     await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent(/terminal as shell/i),
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
     );
+    expect(screen.getByTestId("status")).toHaveTextContent(/no key for 60 seconds/i);
   });
 
-  // A re-arm supersedes the stashed session: the old mirror can no longer
-  // confirm it, so a rejection landing mid-new-session must stay quiet (and
-  // must not steal focus from live typing).
-  it("drops the stashed session when the mode is re-armed", async () => {
-    server.use(
-      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-    function Harness() {
-      const [text, setText] = useState("andiw@omaya:~$");
-      return (
-        <>
-          <StatusSentinel />
-          <button type="button" onClick={() => setText("andiw@omaya:~$ bleibt wieder hängen\nbleibt: command not found")}>
-            poll lands
-          </button>
-          <Composer
-            paneId="w1:p1"
-            agent="claude"
-            isShell={false}
-            gone={false}
-            readOnly={false}
-            dialogPresent={false}
-            text={text}
-            terminalDraft={null}
-            rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-            display={{ open: false, onToggle: vi.fn() }}
-            onSent={vi.fn()}
-          />
-        </>
-      );
-    }
-    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
-    render(<RouterProvider router={router} />);
-    const box = startDirectTyping();
-    fireEvent.change(box, { target: { value: "bleibt wieder hängen hier" } });
-    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
-    // Re-arm before the mirror catches up: the stash belongs to the old session.
-    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
-    fireEvent.click(screen.getByRole("button", { name: "poll lands" }));
-
-    await waitFor(() =>
-      expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId("status")).not.toHaveTextContent(/terminal as shell/i);
-  });
 
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];

@@ -57,7 +57,6 @@ import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { keyLabel } from "@/lib/key-queue";
 import { sendGuardedReply } from "@/lib/reply-action";
-import { isMessageLike, looksMisdirected } from "@/lib/direct-misdirect";
 import { useLive } from "@/lib/liveness";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -413,14 +412,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // functional update AND to persist the result, without either reading stale state or doing the
   // save inside a (double-invoked) state updater.
   const inputValueRef = useRef(input);
-  // Latest mirror text for the misdirected-typing notice: the disarm callback
-  // fires from hook effects, so it must read the current render's value.
-  const textRef = useRef(text);
-  textRef.current = text;
-  // Session text awaiting its mirror: set by onDisarm above when the
-  // rejection has not landed yet, consumed by the effect below, dropped on
-  // pane change (a new pane's mirror can never confirm the old session).
-  const pendingMisdirectRef = useRef<string | null>(null);
   // Which pane the current `input` belongs to. DetailRoute keys AgentChat by paneId, so in the app a
   // pane→pane navigation remounts this component and the lazy initialiser above does the work — but
   // the component must not depend on that: if it is ever rendered with a changed paneId/session in
@@ -624,54 +615,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       sendConfirm.reset();
       forceConfirm.reset();
       noticeNoEcho(null); // the notice's whole job was to get you here
-      // A fresh arming supersedes any stashed session: its mirror can no
-      // longer confirm the old one, and a late fire would steal focus
-      // mid-new-session.
-      pendingMisdirectRef.current = null;
       // The field is a live keyboard from here, not a draft, so an Undo would have nowhere to go.
       endUndoWindow();
     },
     focusInput: focusInputEnd,
-    // Misdirected-typing notice (the sticky-mode trap): an armed session just
-    // ended; if what it typed reads as chat answered by a shell rejection on
-    // the mirror, say so and put the focus back on agent chat. The mode is
-    // already disarmed by resetMode — recovery is focus, not a second action —
-    // and error tone keeps the notice until dismissed (info auto-clears).
-    // When the mirror has not caught up yet (rejection lands a poll after the
-    // disarm), stash the session: the effect below re-checks on the next
-    // mirror update instead of missing it.
-    onDisarm: ({ text: sessionText }) => {
-      if (looksMisdirected(sessionText, textRef.current)) {
-        focusInputEnd();
-        setStatus(translate("directTyping.status.misdirected"), "error");
-        return true;
-      }
-      // Stash message-like sessions only: a "y" burst or a typed passphrase
-      // must not sit in the ref awaiting a mirror it can never confirm.
-      // Cleared on match, on re-arm above, on pane change below, and by the
-      // next disarm overwriting it.
-      pendingMisdirectRef.current = isMessageLike(sessionText) ? sessionText : null;
-      return false;
-    },
+    // Identity for the agent-change disarm: the mode belongs to the session
+    // that armed it. "shell" when the pane has no agent (agent exits, pane
+    // falls back to shell) — a change there disarms with a notice.
+    agentKey: agent ?? "shell",
   });
-
-  // Late half of the notice above: the mirror poll lags the disarm, so a
-  // rejection that lands afterwards must still name the trap. Fires at most
-  // once per session (cleared on match, on re-arm via the next disarm
-  // overwriting it, and on pane change below).
-  useEffect(() => {
-    const pending = pendingMisdirectRef.current;
-    if (pending === null) return;
-    if (!looksMisdirected(pending, text)) return;
-    pendingMisdirectRef.current = null;
-    focusInputEnd();
-    setStatus(translate("directTyping.status.misdirected"), "error");
-  }, [text]);
-
-  // A new pane's mirror can never confirm the old session: drop the wait.
-  useEffect(() => {
-    pendingMisdirectRef.current = null;
-  }, [paneId]);
 
   // ── VOICE (ADR 0029) ──────────────────────────────────────────────────────────────────────────
   //

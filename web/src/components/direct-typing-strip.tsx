@@ -21,7 +21,7 @@ export function DirectTypingStrip({ onStop }: { onStop: () => void }) {
   // live terminal, and the 2026-10-07 phone trap was an armed session nobody
   // noticed. Destructive tint + STOP button, always in flow above the input.
   return (
-    <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+    <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
       <Keyboard className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">
         <span>{t("sendMode.armed.title")}</span>

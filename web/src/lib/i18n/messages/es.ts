@@ -1032,8 +1032,8 @@ export const es: Dictionary = {
     "Envía o descarta el borrador antes de escribir en la terminal.",
   "directTyping.status.armed": "Escribiendo en la terminal. Las pulsaciones se envían al instante.",
   "directTyping.status.disarmed": "Restablecido el envío de respuestas.",
-  "directTyping.status.misdirected":
-    "Eso llegó al terminal como shell: el modo de escritura estaba activo. Volviste al chat del agente.",
+  "directTyping.status.agentChanged": "Modo de escritura desactivado: el agente del panel cambió.",
+  "directTyping.status.idleTimeout": "Modo de escritura desactivado: 60 segundos sin teclas.",
   "directTyping.status.interrupted":
     "Escritura en terminal detenida. Se interrumpió la vista del panel.",
   "directTyping.status.backgrounded":

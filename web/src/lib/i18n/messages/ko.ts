@@ -1021,8 +1021,8 @@ export const ko: Dictionary = {
   "directTyping.status.draftPending": "터미널에 입력하려면 먼저 작성 중인 초안을 전송하거나 삭제하세요.",
   "directTyping.status.armed": "터미널 직접 입력 활성화됨. 키 입력이 즉시 전달됩니다.",
   "directTyping.status.disarmed": "일반 메시지 전송 모드로 복귀",
-  "directTyping.status.misdirected":
-    "셸 명령으로 터미널에 전달되었습니다. 입력 모드가 켜져 있었습니다. 에이전트 채팅으로 돌아왔습니다.",
+  "directTyping.status.agentChanged": "입력 모드가 꺼졌습니다. 창의 에이전트가 변경되었습니다.",
+  "directTyping.status.idleTimeout": "입력 모드가 꺼졌습니다. 60초 동안 키 입력이 없습니다.",
   "directTyping.status.interrupted": "터미널 입력 중단됨. 창 뷰가 끊겼습니다.",
   "directTyping.status.backgrounded": "터미널 입력 중단됨. 앱이 백그라운드로 전환되었습니다.",
 
