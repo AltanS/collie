@@ -190,7 +190,7 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
   }
 
   // Both spellings are this same reply, so either one found is still the identity check passing.
-  for (const reply of new Set([fold(linkTextOnly(prose)), fold(prose)])) {
+  for (const reply of new Set([fold(paintedSpelling(prose)), fold(prose)])) {
     const tail = reply.slice(-PROBE_CHARS);
     const at = mirror.indexOf(tail);
     if (at === -1) continue;
@@ -205,13 +205,49 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
 
 // `[label](target)` and `![alt](target)`, with an optional `"title"`.
 const MARKDOWN_LINK = /!?\[([^\]]*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)/g;
+const HTML_TAG = /<\/?[A-Za-z][^<>\n]*>/g;
+const HTML_ENTITY = /&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/g;
+const FENCE_OPEN = /^(\s*)(`{3,}|~{3,})[^`\n]*$/;
+// An inline code span, kept whole: Claude paints what is inside it exactly as written.
+const CODE_SPAN = /(`+[^`\n]*`+)/;
+
+const NAMED_ENTITIES = new Map([["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", '"'], ["apos", "'"], ["nbsp", " "]]);
+
+function decodeEntity(entity: string): string {
+  const body = entity.slice(1, -1);
+  if (body.startsWith("#x")) return String.fromCodePoint(Number.parseInt(body.slice(2), 16));
+  if (body.startsWith("#")) return String.fromCodePoint(Number(body.slice(1)));
+  return NAMED_ENTITIES.get(body) ?? entity;
+}
 
 /**
- * The reply with every inline Markdown link reduced to its label. Claude paints a link as its label
- * alone where the terminal takes hyperlinks (Herdr's grid, 2026-09-27), so the target the journal
- * holds is nowhere on screen; a renderer that prints the target too is still matched by the raw
- * spelling, which {@link locateReply} tries second.
+ * The reply spelled the way Claude paints it, 2026-09-27 on Herdr's grid. Each rule drops or rewrites
+ * source that never reaches the screen as written: a link keeps only its label (the terminal takes
+ * hyperlinks, so the target is not printed), a fence loses its language tag, an HTML tag is dropped
+ * and an entity decoded. Code is left alone, a fenced block's body and an inline span alike, because
+ * Claude prints those verbatim. A renderer that differs is still matched by the raw spelling, which
+ * {@link locateReply} tries second.
  */
-function linkTextOnly(prose: string): string {
-  return prose.replace(MARKDOWN_LINK, "$1");
+function paintedSpelling(prose: string): string {
+  let inFence = false;
+  return prose
+    .split("\n")
+    .map((line) => {
+      const fence = FENCE_OPEN.exec(line);
+      if (fence) {
+        const opening = !inFence;
+        inFence = !inFence;
+        return opening ? `${fence[1]}${fence[2]}` : line;
+      }
+      if (inFence) return line;
+      return line
+        .split(CODE_SPAN)
+        .map((part, i) =>
+          i % 2 === 1
+            ? part
+            : part.replace(MARKDOWN_LINK, "$1").replace(HTML_TAG, "").replace(HTML_ENTITY, decodeEntity),
+        )
+        .join("");
+    })
+    .join("\n");
 }
