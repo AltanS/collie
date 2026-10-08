@@ -216,12 +216,12 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 // that grey), so the same glyph typed by the user stays in the draft.
 function draftLineText(line: StyledLine): string {
   const text = lineText(line);
-  const rail = / {2,}█ (?=│\s*$)/.exec(text);
+  const rail = / {2,}[▁-█] (?=│\s*$)/.exec(text);
   if (rail === null) return text;
   const position = rail.index + rail[0].length - 2;
   let offset = 0;
   for (const segment of line.segments) {
-    if (offset === position && segment.text === "█" && segment.style.color === "rgb(60,60,65)") {
+    if (offset === position && segment.text === text[position] && segment.style.color === "rgb(60,60,65)") {
       return text.slice(0, position) + text.slice(position + 1);
     }
     offset += segment.text.length;

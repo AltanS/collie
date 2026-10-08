@@ -232,6 +232,24 @@ describe("sendGuardedReply", () => {
     ]);
   });
 
+  it("verifies a long Grok draft with a fractional scrollbar thumb", async () => {
+    const text = Array.from(
+      { length: 40 },
+      (_, i) => `GB_LONG_${String(i + 1).padStart(2, "0")}：繁體中文測試。`,
+    ).join("\n") + "\n不要使用工具。請只回覆 GB_LONG_CONFIRMED_40。";
+    const calls = harness(() =>
+      fixtureText(calls.length === 0 ? "grok--fresh-idle.txt" : "grok--draft-scrollbar-partial.txt"),
+    );
+
+    const out = await sendGuardedReply({ paneId: "w1:p1", text, agent: "grok", ...instant });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text, submit: false },
+      { text: "", submit: true },
+    ]);
+  });
+
   // RED-FIRST regression: the visible Codex composer used to be classified as absent when its queue
   // hint and context percentage shared one raw terminal row. This must still verify before submit.
   it("types, verifies, and submits on Codex's inline queue/context footer", async () => {
