@@ -1115,12 +1115,14 @@ reuse of the four-field one above, for two reasons that are both load-bearing:
 
 ## 9. Reads — what is proxied, what is merged
 
-**Exactly one route is merged. Everything else is proxied byte-for-byte.**
+**Exactly one route is merged. Everything else is proxied byte-for-byte**, except that the lead masks
+the secrets in the text answers it relays (§9.1, "The lead masks a member's text").
 
 ### 9.1 Proxied reads (pane mirror, history)
 
 The lead forwards the request to the owning peer and returns the peer's response **unmodified**:
-status, body bytes, `content-type`, and — critically — **`etag`**.
+status, body bytes, `content-type`, and — critically — **`etag`**. The one change it may make to a
+body is the secret mask below, and that change keeps the status and the ETag.
 
 - `If-None-Match` from the phone is passed through to the peer.
 - **Compression is hop-local: the peer hop is `Accept-Encoding: identity`, and the peer's
@@ -1129,8 +1131,8 @@ status, body bytes, `content-type`, and — critically — **`etag`**.
   anyway, it does *not* strip the stale `content-encoding` from the response headers, and re-emitting
   that header describes bytes that no longer exist.
 - **The lead→phone hop is compressed by the lead itself**, on the phone's own `Accept-Encoding`, as a
-  **stream transform** over the identity bytes (`CompressionStream("gzip")`) — never a buffer, so a
-  400-turn history is still never held whole. It applies to JSON and text bodies with a body to send;
+  **stream transform** over the identity bytes (`CompressionStream("gzip")`) — the transform itself
+  never buffers (a text answer the lead masks is held once, for the mask, below). It applies to JSON and text bodies with a body to send;
   a `304`/`204` and a non-compressible type stream through untouched. When it applies, the lead sets
   `content-encoding: gzip` and merges `accept-encoding` into the peer's `Vary` (setting it when the
   peer sent none) — the same negotiation, and the same `Vary`, a local route already declares
@@ -1148,6 +1150,44 @@ status, body bytes, `content-type`, and — critically — **`etag`**.
   silently-different value across a version skew at worst.
 - The 304-skips-the-transfer win (`bridge/server.ts:460-462`) is preserved end to end, which is the
   entire reason proxying is byte-for-byte rather than parse-and-re-emit.
+
+**The lead masks a member's text** *(added 2026-10-08, 1.18.0)*. Every collie masks known secret
+shapes in the text it sends a phone (`bridge/redact.ts`, `COLLIE_REDACT`, on by default), and a
+member does so for its own answers. A member one release behind does not, so a lead with the mask on
+masks five answers again before the phone reads them: the mirror (`pane/:id`), `history`, `chat`,
+and `changes` and `files`, asked by pane or by workspace. It uses the functions its own routes use
+for the same answers (`bridge/answer-mask.ts`, through `bridge/crew/mask.ts`), so a member's answer
+is masked exactly as the lead's own would be, whatever the member's version. Nothing changes on the
+peer surface, and `CREW_PROTOCOL_VERSION` does not move.
+
+- **Only a `2xx` with a body is read.** A `304` has none, and an error answer carries no session text
+  on either side, so both stream on as themselves. Every other route, `files/image` and `blobs`
+  included, is never read on the lead: a picture is bytes, not text.
+- **The mask is idempotent.** A masked span becomes `•` marks, which no pattern matches, so masking a
+  masked body changes nothing. A body a 1.18 member already masked is re-serialised with
+  `JSON.stringify`, the member's own serialiser, and comes back byte for byte. An answer with nothing
+  to mask (`available: false`, a listing, a commit list) is passed on as the member's bytes, unparsed
+  past its shape check.
+- **The member's ETag rides on unchanged.** The mask is a function of the member's bytes alone, so the
+  member's tag still names exactly one body the phone can hold, and the member keeps answering the
+  phone's `If-None-Match` with its own `304`. A tag hashed over the masked body would never match on
+  the member, and every Chat and mirror poll would cost a full body. `content-length` is never copied,
+  as above, so the new body is framed by its own length.
+- **It fails closed.** A `2xx` body that is not the answer its route makes (not JSON, or a field the
+  mask walks of the wrong type) is never passed on raw: the lead answers `502 answer_unmaskable`
+  naming the member (§10.3). A body the link loses mid-read is `503 host_unreachable`.
+- **It costs one parse per changed body.** Unchanged polls are `304`s and read nothing. A changed
+  body is held whole while it is masked, about 1 ms for a 128 KB mirror and 2 ms for a 200-turn
+  History page (measured 2026-10-08), then compressed for the phone as above.
+- **Either switch masks.** The lead masks by its own `COLLIE_REDACT`, and the member by its own. Text
+  reaches the phone in clear only when both are off.
+- **The merged snapshot masks its titles too.** A pane's program-set `terminalTitle` is masked in the
+  lead's own snapshot, so the lead masks it on its members' panes in the merged body (§9.2) as well.
+
+A prompt answer bound to the mirror (`expected`, `verifyPromptBinding` in `bridge/server.ts`) is
+read off the masked text, and a member compares it with its own mask applied. A member that does not mask therefore refuses such a send as
+`prompt_changed` when a secret sits inside the compared lines. That refusal is the safe side, and it
+ends when the member updates.
 
 **A blob read is proxied byte for byte, exactly like `history`** *(added 2026-09-09)*. `GET
 /api/blobs/<hash>` serves one content-addressed image out of a pi/omp journal's blob store, and that
@@ -1337,7 +1377,8 @@ bytes may already be in the terminal, and a retry types them twice. Concretely:
 **On the wire** (what the phone renders on — `bridge/crew/forward.ts`): every lead-generated refusal
 is JSON with `{ok: false, code, error, host}` and a distinct status — `host_unreachable` (503),
 `host_incompatible` (503), `write_outcome_unknown` (504), `upload_too_large` (413),
-`route_not_federated` (501, for a route outside §5's table). Never a bare 500,
+`route_not_federated` (501, for a route outside §5's table), `answer_unmaskable` (502, a member's
+text answer the lead could not read to mask, §9.1). Never a bare 500,
 and never a silent success. A peer's *own* answer is never given one of these: it is passed through
 as itself (§9.1), including its 403 when the peer's write gate refuses.
 

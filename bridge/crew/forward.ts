@@ -15,10 +15,19 @@ import { HOST_PARAM, type PeerState } from "./registry.ts";
 // this module is reached from the ONE place that resolves `(host, session)`.
 //
 // ── WHAT MAKES IT A PROXY AND NOT A RE-IMPLEMENTATION ────────────────────────
-// The lead does not parse a forwarded body, does not recompute an ETag, does not touch a disk on a
-// peer's behalf, and does not interpret a send/verify sequence (.adr/0010 lives client-side and on
-// the OWNING host — §9.1). Everything here is request-shaping in, response-classification out; the
-// transport is the injected peer client, so all of it is unit-testable without a socket.
+// The lead does not recompute an ETag, does not touch a disk on a peer's behalf, and does not
+// interpret a send/verify sequence (.adr/0010 lives client-side and on the OWNING host — §9.1).
+// Everything here is request-shaping in, response-classification out; the transport is the injected
+// peer client, so all of it is unit-testable without a socket.
+//
+// ── THE ONE BODY IT READS: TEXT THE PHONE WILL SHOW ──────────────────────────
+// A member masks secrets in its own text before it answers (bridge/redact.ts), but a member one
+// release behind does not, and the phone must not get a key in clear because of a member's version.
+// So five answers are masked again on the lead, with the injected {@link AnswerMask} (the same
+// functions the local routes use, through `bridge/crew/mask.ts`): the mirror, History, Chat, a
+// Changes diff and a Files body ({@link textAnswerOf}). The mask is idempotent, so an answer a member
+// already masked comes back byte for byte. Every other route, a picture and a blob included, still
+// streams unread. An answer that should be masked and cannot be read is refused, never passed on raw.
 //
 // ── AND THE ONE THING IT REFUSES TO GUESS ────────────────────────────────────
 // §10.3: an attempted write whose outcome is unknown is SURFACED, never retried and never reported
@@ -85,6 +94,32 @@ const FORWARDABLE: readonly RegExp[] = [
   // `BLOB_ROUTE` in bridge/server.ts one-for-one — `forward.test.ts` pins that correspondence.
   /^blobs\/[^/]+$/,
 ];
+
+/**
+ * The answers that carry text a pane or an agent wrote, which the lead masks before the phone reads
+ * them (§9.1): the mirror (`pane`), a History page, a Chat body, and a Changes or Files answer, asked
+ * by pane or by space. A picture (`files/image`) and a blob are bytes, never text, and stay byte for
+ * byte, and so does every write's answer.
+ */
+export type TextAnswer = "pane" | "history" | "chat" | "changes" | "files";
+
+/** Which {@link TextAnswer} a crew route answers with, or `null` for a route whose answer is not text. */
+export function textAnswerOf(route: string): TextAnswer | null {
+  if (/^pane\/[^/]+$/.test(route)) return "pane";
+  if (/^pane\/[^/]+\/history$/.test(route)) return "history";
+  if (/^pane\/[^/]+\/chat$/.test(route)) return "chat";
+  if (/^(?:pane|workspace)\/[^/]+\/changes$/.test(route)) return "changes";
+  if (/^(?:pane|workspace)\/[^/]+\/files$/.test(route)) return "files";
+  return null;
+}
+
+/**
+ * The lead's mask over one text answer: the member's body in, the body to send out, or `null` when
+ * the body is not the answer it should be and so cannot be masked. Injected rather than imported, so
+ * this module still reads no journal and touches no disk; absent when the lead's own `COLLIE_REDACT`
+ * is off, which leaves every answer byte for byte.
+ */
+export type AnswerMask = (answer: TextAnswer, body: string) => string | null;
 
 /** `workspace/<id>/changes`, `.../files` and `.../files/image` — the workspace routes that are reads. */
 function isWorkspaceRead(route: string): boolean {
@@ -287,16 +322,17 @@ function varyWithAcceptEncoding(existing: string | null): string {
 
 /**
  * The peer's answer, re-emitted for the phone **unmodified** — status, body bytes and, critically,
- * `etag` (§9.1) — and compressed for this hop when the phone asked for it.
+ * `etag` (§9.1) — and compressed for this hop when the phone asked for it. A text answer reaches
+ * here already masked ({@link maskedAnswer}); the bytes this function sees are the ones it sends.
  *
  * ── COMPRESSION IS HOP-LOCAL, AND IT IS A TRANSFORM ──────────────────────────
  * The peer hop is identity so the lead's headers can describe the lead's bytes ({@link
  * forwardHeaders}). That left the lead→phone hop plain for *forwarded* routes only — ~136 KB per poll
  * where a local pane ships ~6 KB, which on cellular is the difference between usable and not. So the
  * lead compresses this hop itself, on the phone's own `accept-encoding`, via
- * `CompressionStream("gzip")`: the body is still never buffered, so a 400-turn history is transformed
- * chunk by chunk rather than held whole. The peer's ETag rides through untouched — it names the
- * identity bytes, exactly as `gzipJsonResponse` intends it on a local route (.adr/0023).
+ * `CompressionStream("gzip")`: the transform never buffers, so a body the lead does not mask is
+ * transformed chunk by chunk rather than held whole. The peer's ETag rides through untouched — it
+ * names the identity bytes, exactly as `gzipJsonResponse` intends it on a local route (.adr/0023).
  *
  * `content-length` is absent by construction in both branches: it is not copied, and a transform
  * cannot know it. A copied one would be the peer's pre-decompression length — the same lie as a
@@ -330,7 +366,8 @@ export type ForwardErrorCode =
   | "host_incompatible"
   | "write_outcome_unknown"
   | "upload_too_large"
-  | "route_not_federated";
+  | "route_not_federated"
+  | "answer_unmaskable";
 
 /** A refusal the LEAD generated (as opposed to a peer's answer). Always JSON, never a bare 500. */
 export function forwardError(
@@ -465,6 +502,52 @@ export interface ForwardDeps {
    * peer with a different one enforces its own when the bytes arrive.
    */
   readonly maxUploadBytes: number;
+  /**
+   * The mask for the answers that carry text (§9.1), when the LEAD's `COLLIE_REDACT` is on. Absent
+   * means every answer is re-emitted byte for byte, as before the lead masked anything.
+   */
+  readonly mask?: AnswerMask | undefined;
+}
+
+/**
+ * A member's text answer, masked for the phone. Only a `2xx` with a body is read: a `304` has no
+ * body, and an error body (`404 unknown-path`, `502 transcript read failed`) carries no session text
+ * on either side, so it streams on as itself.
+ *
+ * ── FAIL CLOSED ──────────────────────────────────────────────────────────────
+ * A body that is not the answer it should be (not JSON, or not the shape the route answers with) is
+ * never passed on raw: it is a `502 answer_unmaskable` naming the member. Raw would be the one way a
+ * member's key reached the phone through a lead that masks, and a failed read is a state the phone
+ * already draws (the last mirror stays, Chat says it could not load). A body the transport lost
+ * mid-read is a failed read like any other, `host_unreachable`.
+ *
+ * ── HEADERS ─────────────────────────────────────────────────────────────────
+ * The member's ETag rides on unchanged. The mask is a function of the member's bytes alone, so the
+ * member's tag still names exactly one body the phone can hold, and the member keeps answering the
+ * phone's `If-None-Match` with its own `304`. A tag the lead hashed over the masked body would be one
+ * the member never recognises, and every Chat and mirror poll would then cost a full body. No
+ * `content-length` is copied ({@link proxiedResponse}), so the new body is framed by its own length.
+ */
+async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask, memberId: string): Promise<Response> {
+  if (res.status < 200 || res.status >= 300 || res.status === 204 || res.body === null) return res;
+  let raw: string;
+  try {
+    raw = await res.text();
+  } catch (err) {
+    return forwardError("host_unreachable", `host ${memberId}: the answer broke off (${String(err)})`, 503, {
+      host: memberId,
+    });
+  }
+  const masked = mask(answer, raw);
+  if (masked === null) {
+    return forwardError(
+      "answer_unmaskable",
+      `host ${memberId} sent an answer this collie could not read to mask its secrets, so it was not passed on`,
+      502,
+      { host: memberId },
+    );
+  }
+  return new Response(masked, { status: res.status, headers: res.headers });
 }
 
 /**
@@ -568,8 +651,15 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // `receivedAt` is when the response landed on this lead, not when the phone finished reading it.
   deps.onExchange?.(outcome.receivedAt);
   record(`http ${outcome.value.status}`);
+  // Text the phone will show is masked here, whatever the member's version (§9.1). Every other answer
+  // is not read at all.
+  const answer = deps.mask === undefined ? null : textAnswerOf(route);
+  const answered =
+    answer === null || deps.mask === undefined
+      ? outcome.value
+      : await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId);
   // The phone's own `accept-encoding` — never the peer's, which was pinned to `identity` on the way
   // out. Compression is decided once per hop (.adr/0023).
-  return proxiedResponse(outcome.value, req.headers.get("accept-encoding"));
+  return proxiedResponse(answered, req.headers.get("accept-encoding"));
 }
 

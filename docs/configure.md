@@ -548,6 +548,9 @@ In the config file this is `[access] redact`. The mask keeps the width of what i
 mirror's layout holds. It catches high-confidence shapes only; the limits are in
 [Security](security.md#what-leaves-the-machine-is-masked).
 
+In a crew, the lead also masks the text its members send, by its own setting. A member's text
+reaches your phone unmasked only when the lead and that member both set `COLLIE_REDACT=off`.
+
 ## Multi-session
 
 By default, one Collie instance serves every Herdr session it finds.

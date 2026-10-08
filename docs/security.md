@@ -247,10 +247,14 @@ Some ordinary text is masked too, for example a line of prose or YAML that reads
 What you type and send is never masked, and the audit trail keeps its own rules
 (`COLLIE_AUDIT_CONTENT`).
 
-In a crew, the mask runs on the machine that reads the text. A lead passes a member's pane text,
-Chat and diffs on as the member sent them, and does not mask them a second time. So a member that
-still runs 1.17.x sends its text unmasked until it updates. Crew members update to the lead's
-version on their own ([Updating the rest of the crew](upgrading.md#updating-the-rest-of-the-crew)).
+In a crew, each member masks its own text, and the lead masks it again before your phone gets it.
+The lead masks a member's mirror, Chat, History, diffs, file text and pane titles with the same mask
+it uses for its own, so a member that still runs 1.17.x cannot send a key to your phone in clear.
+Masked text stays as it is when it is masked again. Text reaches the phone unmasked only when
+`COLLIE_REDACT=off` is set on both the lead and the member.
+
+If the lead cannot read a member's answer to mask it, it does not pass the answer on. The phone then
+shows that read as failed, as it does for a member it cannot reach.
 
 A push notification also names a pane only by the name you gave it: the pane's label, Claude's
 `/rename` name, or a one-pane tab's name. It never uses the title a program in the pane set, because

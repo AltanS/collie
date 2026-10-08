@@ -964,7 +964,11 @@ export class CrewLead {
     req: Request,
     url: URL,
     resolved: { readonly link: CrewLink; readonly state: PeerState },
-    opts: { readonly audit?: ForwardDeps["audit"]; readonly device?: string | null } = {},
+    opts: {
+      readonly audit?: ForwardDeps["audit"];
+      readonly device?: string | null;
+      readonly mask?: ForwardDeps["mask"];
+    } = {},
   ): Promise<Response> {
     return forwardToPeer(req, url, {
       link: resolved.link,

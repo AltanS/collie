@@ -655,9 +655,9 @@ Version 1.18.0 makes pairing mandatory for reads as well as writes
 - **Masking may get in the way.** File bodies in Files and diffs in Changes now pass through the
   same secret mask as pane text. If it hides something you need, set `COLLIE_REDACT=off` in your
   `.env` and restart ([configure](configure.md)).
-- **A crew member masks its own text.** A member still on 1.17.x sends its pane text unmasked
-  through a 1.18.0 lead until it updates. Members update to the lead's version on their own
-  ([Updating the rest of the crew](#updating-the-rest-of-the-crew)).
+- **A 1.18.0 lead masks its members' text too.** A member still on 1.17.x does not mask, so the
+  lead masks that member's text before your phone gets it. To see a member's text unmasked, set
+  `COLLIE_REDACT=off` on the lead as well as on the member.
 
 ## Upgrading from 0.x to 1.0
 

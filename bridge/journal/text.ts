@@ -129,7 +129,8 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
 // is masked by shape. The entry's own `uuid`, `ts` and `role` are never walked. Numbers and flags
 // are not strings and pass as they are.
 //
-// Called by the History and Chat routes (server.ts) when `COLLIE_REDACT` is on. Never on what the
+// Called by the History and Chat routes (server.ts) when `COLLIE_REDACT` is on, and by a crew lead
+// on a member's History and Chat answers (bridge/answer-mask.ts, crew/mask.ts). Never on what the
 // operator sends, and never on the audit trail.
 
 /** Keys whose string values the bridge wrote itself, left unmasked wherever they sit inside a part. */

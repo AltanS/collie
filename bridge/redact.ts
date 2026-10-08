@@ -2,11 +2,13 @@
 //
 // A MITIGATION, NOT A GUARANTEE. Text a pane shows can hold a secret: an `env` dump, a `cat .env`,
 // a curl line with a bearer token, a key an agent echoed back. Every path that carries that text
-// toward a phone runs it through this module first: the terminal mirror (`paneReadResponse` in
-// server.ts), the journal reader's Chat and History bodies (`journal/text.ts` § redactEntry), every
-// push payload (`push.ts` § Push.send), and file content: the Changes view's diffs and the Files
-// view's file bodies (`maskDiff` and `maskFileBody` in server.ts). One pattern list serves them all,
-// so a shape caught in one place is caught in every one.
+// toward a phone runs it through this module first: the terminal mirror, the journal reader's Chat
+// and History bodies (`journal/text.ts` § redactEntry), every push payload (`push.ts` § Push.send),
+// and file content: the Changes view's diffs and the Files view's file bodies. The per-answer masks
+// live in `answer-mask.ts`, shared by this bridge's own routes and by a crew lead re-masking what a
+// member sent (`crew/mask.ts`). One pattern list serves them all, so a shape caught in one place is
+// caught in every one. Every mask is idempotent: `MASK` matches no pattern, so masked text masks to
+// itself, which is what lets a lead mask an answer a member may already have masked.
 //
 // ── ONLY HIGH-CONFIDENCE SHAPES ──────────────────────────────────────────────
 // The list below matches shapes that are secrets by construction: a vendor prefix that exists only

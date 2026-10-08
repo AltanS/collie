@@ -57,8 +57,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   bare hex are not matched. `COLLIE_REDACT=off` turns it off. Push bodies now name a pane by the
   label you gave it, never by the program's own title. File bodies in Files and diffs in Changes
   are masked the same way, and so is every text of a tool call in Chat and History, its paths and
-  a question's options and answers included. A crew member masks its own text, so a member still on 1.17.x sends
-  unmasked text through the lead until it updates.
+  a question's options and answers included.
 - **Stricter response headers, a private blob cache and a pair rate limit.** Every answer now
   carries a `Permissions-Policy` that denies camera, location, payment and USB and keeps the
   microphone for hands-free speech; the content policy adds `object-src 'none'` and
@@ -105,6 +104,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   multiplexer can send Ctrl+Enter, which today is Herdr: tmux and zellij deliver it as a plain Enter,
   which would send your draft instead. A read-only device, a saved copy and a pane the bridge cannot
   reach do not show it either.
+- **A crew lead masks its members' text too.** The lead masks a member's mirror, Chat, History,
+  diffs, file text and pane titles with its own mask before your phone gets them, so a member still
+  on 1.17.x cannot send a key in clear. Text a member already masked comes through unchanged. An
+  answer the lead cannot read to mask is refused, never passed on raw.
 
 ### Changed
 

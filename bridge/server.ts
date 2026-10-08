@@ -72,9 +72,18 @@ import {
 } from "./update-action.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
-import { chatParams, LiveWindows, redactChatBody } from "./journal/live.ts";
-import { redactEntry } from "./journal/text.ts";
-import { redactAnsi, redactText } from "./redact.ts";
+import { chatParams, LiveWindows } from "./journal/live.ts";
+import {
+  maskChatBody,
+  maskDiff,
+  maskFileBody,
+  maskHistoryPage,
+  maskPaneRead,
+  maskSnapshotTitles,
+  maskTerminalTitle,
+} from "./answer-mask.ts";
+import { maskForwardedAnswer } from "./crew/mask.ts";
+import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
@@ -131,10 +140,6 @@ import type {
   PaneChangeCommitDiffResponse,
   PaneChangeCommitResponse,
   PaneChangeDiffResponse,
-  ChangeCommitDiff,
-  ChangeDiff,
-  FileReadAnswer,
-  FilesListing,
   PaneChangesResponse,
   PaneFilesResponse,
   WorkspaceChangeCommitDiffResponse,
@@ -1072,8 +1077,7 @@ export function startServer(opts: {
       const a = activity.get(from.name, p.paneId);
       // The title is the one string here a program in the pane writes, so it is masked like the
       // mirror (bridge/redact.ts) before it reaches the phone and the phone's cache.
-      const titled =
-        cfg.redact && p.terminalTitle !== undefined ? { ...p, terminalTitle: redactText(p.terminalTitle) } : p;
+      const titled = cfg.redact ? maskTerminalTitle(p) : p;
       const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);
@@ -1796,6 +1800,9 @@ export function startServer(opts: {
             const forwarded = secure(
               await crewLead!.forward(req, url, resolved, {
                 device: whois(req).device,
+                // A member's text is masked here too, by the lead's own switch, so a member one
+                // release behind cannot send a key to the phone in clear (CREW_PROTOCOL.md §9.1).
+                mask: cfg.redact ? maskForwardedAnswer : undefined,
                 audit: (entry) => {
                   // Assigned, never conditionally spread: an entry without a pane or session must
                   // carry NO such key rather than record it as `undefined`.
@@ -1855,10 +1862,12 @@ export function startServer(opts: {
         // peer's ETag is never recomputed here, because no peer body is re-hashed on this path.
         // Tag every snapshot poll with the on-disk build id so an open client notices a live rebuild
         // between polls — the no-service-worker self-update path (web/src/lib/self-update.ts).
-        return withBuildHeader(
-          json(crewLead ? crewLead.merge(body, plan) : body, req.headers.get("accept-encoding")),
-          await buildId(),
-        );
+        // A member's panes arrive as the member sent them, and one release behind it sent each
+        // program-set title in clear, so the lead masks the merged titles by its own switch. Its own
+        // titles are already masked, and the mask leaves a masked title as it is.
+        const merged = crewLead ? crewLead.merge(body, plan) : body;
+        const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
+        return withBuildHeader(json(out, req.headers.get("accept-encoding")), await buildId());
       }
 
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
@@ -2809,14 +2818,15 @@ export function paneReadResponse(
 ): PaneReadResponse {
   const body: PaneReadResponse = {
     paneId,
-    text: redact ? redactAnsi(read.text) : read.text,
+    text: read.text,
     truncated: read.truncated,
     revision: read.revision,
   };
   // Absent, never empty, when there is nothing to repair: the ETag is computed over this body, so an
   // always-present key would invalidate every client's cached copy once for no gain.
-  if (logicalText !== undefined) body.logicalText = redact ? redactText(logicalText) : logicalText;
-  return body;
+  if (logicalText !== undefined) body.logicalText = logicalText;
+  // The same mask a crew lead puts on a member's mirror (bridge/answer-mask.ts).
+  return redact ? maskPaneRead(body) : body;
 }
 
 /**
@@ -2885,7 +2895,7 @@ async function paneHistory(
     if (read === null) return unavailable("no-log");
     // Secrets are masked here, after the store, so the cached parse stays the log's own words and a
     // `COLLIE_REDACT` change needs no cache flush (bridge/redact.ts).
-    const page = cfg.redact ? { ...read, entries: read.entries.map(redactEntry) } : read;
+    const page = cfg.redact ? maskHistoryPage(read) : read;
     return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
   } catch (err) {
     return text(`transcript read failed: ${errorText(err)}`, 502);
@@ -2950,7 +2960,7 @@ async function paneChat(
         : await live.older(adapter, ref, params.before, params.limit);
     if (read === null) return unavailable("no-log");
     // Masked before the ETag is hashed, so the tag describes what was actually sent (bridge/redact.ts).
-    const body = chatBodyForMux(cfg.redact ? redactChatBody(read) : read, mux);
+    const body = chatBodyForMux(cfg.redact ? maskChatBody(read) : read, mux);
     const data = { paneId, available: true, ...body } satisfies PaneChatResponse;
     const etag = computeEtag(JSON.stringify(data));
     if (notModified(req.headers.get("if-none-match"), etag)) {
@@ -2983,24 +2993,6 @@ export function chatBodyForMux(
   if (keysDeliverable(mux, body.sendQueuedNow)) return body;
   const { sendQueuedNow: _undeliverable, ...rest } = body;
   return rest;
-}
-
-/**
- * A Changes diff with its text masked (bridge/redact.ts), when the mask is on (`cfg.redact`, as the
- * mirror). A diff is file content, and file content is where a key sits: a `.env` an agent edited, a
- * config with a token in it. Masked here, on the machine whose disk the diff came off, so a crew
- * member's own setting decides for its own files. The mask keeps every line and every column, so
- * the hunk headers still count what the view draws.
- */
-function maskDiff<TDiff extends ChangeDiff | ChangeCommitDiff>(answer: TDiff, redact: boolean): TDiff {
-  if (!redact || !answer.available) return answer;
-  return { ...answer, diff: redactText(answer.diff) };
-}
-
-/** A Files view answer with a file's text masked, as {@link maskDiff} masks a diff. A listing is names only. */
-function maskFileBody<TAnswer extends FilesListing | FileReadAnswer>(answer: TAnswer, redact: boolean): TAnswer {
-  if (!redact || !answer.available || !("text" in answer)) return answer;
-  return { ...answer, text: redactText(answer.text) };
 }
 
 /** The snapshot a Changes route reads its root off. The state engine is one. */
