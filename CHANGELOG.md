@@ -23,33 +23,35 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-08
+
 ### Added
 
 - **A left-hand layout.** Settings → Appearance → Hand turns the pane screen round for a left thumb.
   The belt mirrors: the Switch button, Changes and the X stand at its left end, still above Send, and
   Keys is the rightmost pill with the harness shortcuts scrolling off toward the left. Send and Attach
   sit left of the reply box. Pills still read icon then word, and the tab order is unchanged. The
-  default is Right, and the right-hand layout is untouched.
+  default is Right, and the right-hand layout is untouched. ([5a51c13e](https://github.com/AltanS/collie/commit/5a51c13e))
 - **Paths the agent prints are links.** A file path in the chat, on an Edit, Write or Read card, or in
   the terminal mirror opens that file in Files, at the line when the path names one (`src/a.ts:42`).
   The phone resolves the path against the pane's repo; a path outside it stays plain text, and only a
   root-relative path ever reaches the bridge, and a path becomes a link only once the bridge has
   confirmed the file is there, one batched check per view. On a crew member's pane paths stay plain
-  text (ADR 0088).
+  text (ADR 0088). ([d9cb1ec9](https://github.com/AltanS/collie/commit/d9cb1ec9))
 - **A second agent on a branch.** A pane's menu offers "New agent on a branch": the branch name is
   prefilled, pick one of your launchers or a shell, and Collie creates a git worktree and starts the
   session in it beside the first. Each create carries a request id and the bridge keeps a receipt, so
-  a retry after a lost answer never makes two worktrees. Herdr only, on the lead (ADR 0089).
+  a retry after a lost answer never makes two worktrees. Herdr only, on the lead (ADR 0089). ([d9cb1ec9](https://github.com/AltanS/collie/commit/d9cb1ec9))
 - **Collie speaks five more languages.** Русский, Italiano, Français, Português (Brazilian wording) and
   Türkçe join the language list in Settings → Appearance, so the interface has twelve. Russian reads
-  every count in its own form: 1 файл, 2 файла, 5 файлов, 21 файл.
+  every count in its own form: 1 файл, 2 файла, 5 файлов, 21 файл. ([637280e4](https://github.com/AltanS/collie/commit/637280e4))
 - **A paired device can carry an expiry you chose.** `collie pair --expires 30d` (also `h`, `w`)
   puts a lifetime on the token the phone claims. Without the flag a token never expires, exactly as
   before, and no existing token changes. `collie devices set-expiry` and `clear-expiry` adjust a
   paired device by label, `devices list` and the Settings screen show each expiry, and an expired
   token is refused as `device expired` so the phone offers **Pair again**. An expired device still
   keeps pairing on until you revoke it. Pairing again under the expired device's name replaces it
-  and revokes its old token in the same write; a name a live device holds is still refused.
+  and revokes its old token in the same write; a name a live device holds is still refused. ([e1a8e93e](https://github.com/AltanS/collie/commit/e1a8e93e))
 - **Known secret shapes are masked before pane text leaves the machine.** API keys with a
   known prefix, JWTs, PEM private keys, bearer tokens and `password=`-style values become `•` marks
   of the same width on the bridge, so the mirror, the Chat and History views and every push
@@ -57,25 +59,25 @@ Running a crew? Update the lead first; members follow on their own. Details:
   bare hex are not matched. `COLLIE_REDACT=off` turns it off. Push bodies now name a pane by the
   label you gave it, never by the program's own title. File bodies in Files and diffs in Changes
   are masked the same way, and so is every text of a tool call in Chat and History, its paths and
-  a question's options and answers included.
+  a question's options and answers included. ([f3365bbf](https://github.com/AltanS/collie/commit/f3365bbf))
 - **Stricter response headers, a private blob cache and a pair rate limit.** Every answer now
   carries a `Permissions-Policy` that denies camera, location, payment and USB and keeps the
   microphone for hands-free speech; the content policy adds `object-src 'none'` and
   `form-action 'self'`; HSTS is sent when the request arrived over HTTPS. Pane images under
   `/api/blobs` are no longer cached by the browser (they were public for a year). `/api/pair` refuses
-  more than ten attempts per source address per minute with `429`.
+  more than ten attempts per source address per minute with `429`. ([5f257d3a](https://github.com/AltanS/collie/commit/5f257d3a))
 - **Unpairing wipes what the pairing left on the phone.** One wipe routine clears the token, every
   draft, the saved pane text, the push subscription and the runtime caches when you unpair, when
   the bridge revokes or expires the device, and (for one pane only) when a password prompt shows.
   Settings and the app shell stay. Before it wipes, the phone confirms the refusal with one more
   call, and a wipe cut short resumes on the next open. Revoking a device now asks once more and
   says what is cleared, and the pair screen names the cause afterwards. "Clear saved copies now"
-  in Settings → Device empties the store by hand.
+  in Settings → Device empties the store by hand. ([e52c8851](https://github.com/AltanS/collie/commit/e52c8851))
 - **The phone keeps session content in one store.** The last herd snapshot and the last pane text
   move from the tab's session storage into one IndexedDB database with a 24-hour lifetime, a
   256 KiB cap per pane and a 10 MiB cap in all, purged on open and deleted whole on unpair
   (ADR 0087). A cold open can read it back; nothing in it can trigger an action. Without IndexedDB
-  the store falls back to memory for the session.
+  the store falls back to memory for the session. ([e52c8851](https://github.com/AltanS/collie/commit/e52c8851))
 - **Read a session offline.** The phone keeps the newest Chat turns of each pane on the device
   (Settings → Device → "Keep chat on this phone": off, 1 day, 7 days; 1 day is the default) and
   reads them back when the bridge does not answer, under "Saved copy from {time}". A cold open with
@@ -86,45 +88,45 @@ Running a crew? Update the lead first; members follow on their own. Details:
   A poll waits at most 6 seconds, one second longer than the bridge waits for the multiplexer, so a
   phone whose VPN is up but whose radio is off learns within one poll that the bridge is gone. The
   banner then says either "You are offline" or "No connection to the bridge"; the phone cannot tell
-  a dead internet from a dead Tailscale, so it no longer guesses.
+  a dead internet from a dead Tailscale, so it no longer guesses. ([6e02b31b](https://github.com/AltanS/collie/commit/6e02b31b))
 - **Nothing saved on the phone can act.** While the last read of a pane failed, the phone is
   offline, or the screen is a saved copy, dialog options and the send button are disabled with
   "Reconnect to answer" and "Reconnect to send". Typing still works and the draft still saves.
-  There is no queue, no retry and no send on reconnect.
+  There is no queue, no retry and no send on reconnect. ([6e02b31b](https://github.com/AltanS/collie/commit/6e02b31b))
 - **Files shows pictures.** A PNG, JPEG, GIF, WebP or AVIF opens as the picture, fitted to the
   screen on a checkerboard that shows transparency, with its size and type under it. An SVG gets a
   Source | Preview control and opens on Preview, drawn as a picture that runs no script. A README's
   relative pictures draw in its preview. The bridge reads the type from the file's bytes, never its
   name, and serves up to 16 MiB; anything else keeps the "Binary file" line with the reason (ADR 0090). A picture
-  you open again draws from memory until the file changes or you tap refresh.
+  you open again draws from memory until the file changes or you tap refresh. ([e7c82688](https://github.com/AltanS/collie/commit/e7c82688))
 - **Send now on a waiting message.** When you queue a message while Claude Code works, Chat's
   "Waiting to send" card gets a **Send now** button. It presses Ctrl+Enter, which hands the whole
   queue to the running turn at its next tool call. The bridge declares the key for each harness, and
   only Claude Code declares one today, so no other pane shows the button. It shows only where the
   multiplexer can send Ctrl+Enter, which today is Herdr: tmux and zellij deliver it as a plain Enter,
   which would send your draft instead. A read-only device, a saved copy and a pane the bridge cannot
-  reach do not show it either.
+  reach do not show it either. ([3281c35b](https://github.com/AltanS/collie/commit/3281c35b))
 - **A crew lead masks its members' text too.** The lead masks a member's mirror, Chat, History,
   diffs, file text and pane titles with its own mask before your phone gets them, so a member still
   on 1.17.x cannot send a key in clear. Text a member already masked comes through unchanged. An
   answer the lead cannot read to mask is refused, never passed on raw. A copy the phone got before
-  the lead masked it is fetched again, not kept on a `304`.
+  the lead masked it is fetched again, not kept on a `304`. ([d54c626d](https://github.com/AltanS/collie/commit/d54c626d))
 - **Every pane shows the branch its folder is on.** The dashboard row leads its second line with
   the branch, the pane header shows it after the workspace, and the Files header after the folder. A
   detached head reads `detached @abc1234`, and a long name keeps its end. The bridge reads it from
   two small files in the repo, with no git process and no lock, and never makes a snapshot wait for
   it. A pane outside a repo, a pane on zellij older than 0.44 and a crew member on an older version
-  show none.
+  show none. ([e8901aeb](https://github.com/AltanS/collie/commit/e8901aeb))
 - **zellij panes know their folder.** On zellij 0.44 and later, Collie reads each pane's folder from
   zellij's own pane listing, which zellij takes live from the system. A zellij pane now gets the Files
   button and the Changes mark, shows its branch, and a launcher started beside it opens in that
-  folder. An older zellij still reports none, and its panes stay as they were.
+  folder. An older zellij still reports none, and its panes stay as they were. ([ff713b34](https://github.com/AltanS/collie/commit/ff713b34))
 - **Settings shows whether secrets are masked.** Settings → System has a read-only Secret masking
   row that says On or Off, as the bridge reports it. The first time a pane shows masked text, a short
   line says the dots are on purpose and the value is to be read on the machine; the X retires it on
   that device for good. A reply that holds masked text gets a caution under the box, and Send still
   works. The switch stays `COLLIE_REDACT` on the bridge: the phone has none, so a paired or stolen
-  phone cannot turn the mask off. An older bridge shows a dash.
+  phone cannot turn the mask off. An older bridge shows a dash. ([a96f732b](https://github.com/AltanS/collie/commit/a96f732b))
 
 ### Changed
 
@@ -134,24 +136,24 @@ Running a crew? Update the lead first; members follow on their own. Details:
   covers the pane strip or the filter row while it shows, and the X uncovers it. The header owns the
   notch inset for good, the "as of" chip left it, and the brand column cannot be squeezed by the
   chips beside it. "Saved copy from …" left its own bar too: it is the first line of the transcript
-  or the mirror, where "Start of the conversation" and "Load older" sit, and scrolls with the text.
+  or the mirror, where "Start of the conversation" and "Load older" sit, and scrolls with the text. ([a1365ba8](https://github.com/AltanS/collie/commit/a1365ba8))
 - **The connection strip can be hidden, and the Collie mark shows the state after that.** The red
   strip keeps one button, Retry, and gets an X. Hidden, it stays hidden for the rest of that outage
   and comes back on the next one; recovery after a hide shows no green flash. While the connection is
   lost, the Collie mark in the header carries a small badge with the same icon as the strip, so the
-  state stays visible with the strip gone.
+  state stays visible with the strip gone. ([cad7da56](https://github.com/AltanS/collie/commit/cad7da56))
 - **The offline draft note floats above the belt and can be dismissed.** "The draft stays on this
   phone" used to open under the input field and push the field up. It now shows in the same floating
   card as the terminal-draft notice, one notice at a time, with an X, and moves nothing. It shows
-  only on the first keystroke while offline that leaves text in the field, not on going offline.
+  only on the first keystroke while offline that leaves text in the field, not on going offline. ([cad7da56](https://github.com/AltanS/collie/commit/cad7da56))
 - **The file screen in Changes: icons, a path row, and a clearer end of the list.** The Diff, Source
   and Preview switcher shows icons, each with its word as the title and the accessible name. A thin
   mono row under the name shows the path from the repo root, only when the name row has to cut the
   path short, and folds the middle folders to an ellipsis when the row is too narrow, the file name
-  last to go. Previous and Next lose their border and go muted when there is nothing to step to.
+  last to go. Previous and Next lose their border and go muted when there is nothing to step to. ([cad7da56](https://github.com/AltanS/collie/commit/cad7da56))
 - **Switching a changed file between Changes and Code shows the held diff at once.** The diff of the
   open file stays read while its source shows, and the poll keeps it fresh, so the way back no
-  longer reloads it. The refresh button still reads it again.
+  longer reloads it. The refresh button still reads it again. ([918576dd](https://github.com/AltanS/collie/commit/918576dd))
 - **Pairing is always on, and every request needs the token, reads included.** A bridge with no
   paired device answers `403 device not paired` to every `/api/*` route except `/api/health` and
   `/api/pair`, so run `collie pair` on the host first; `collie doctor` and the installers now say so.
@@ -169,20 +171,20 @@ Running a crew? Update the lead first; members follow on their own. Details:
   address also takes it from its own addresses. `scripts/capture-fixture.sh` and `scripts/crew-mux-probe.ts` send `COLLIE_TOKEN`
   or that local credential. The startup warning for an empty `COLLIE_TRUSTED_USER` no longer
   claims full write access. Two claims racing on one pairing code now enrol one device, and wrong
-  guesses that race each count toward the five tries.
+  guesses that race each count toward the five tries. ([e52c8851](https://github.com/AltanS/collie/commit/e52c8851))
 - **Rolling back below 1.18.0 ignores token expiries.** An older bridge does not know the
   `expiresAt` field, so an expired device works again until the bridge is updated; revoke it instead
-  if that matters.
+  if that matters. ([52df1b5e](https://github.com/AltanS/collie/commit/52df1b5e))
 - **A file in Files gets the screen.** On a phone the All files | Changes control and the two-row
   file bar held the top 227 px of 844 before the first line of the file, and stayed pinned while
   you read. While a file is open the control leaves, and the file's name, size and Source | Preview
-  control share one 44 px row, so the file starts 122 px higher.
+  control share one 44 px row, so the file starts 122 px higher. ([be6d473c](https://github.com/AltanS/collie/commit/be6d473c))
 - **Files repeats its Back at the foot of a phone.** The arrow in the header is out of a thumb's reach
   on a large phone, so on a phone every level of the Files screen (the list, a diff, the commit, a
   folder, a file, a picture) ends in a bar with a Back button on your thumb's side, the right end or,
   with the left-hand layout, the left. It does what the arrow does and carries the same name. On a
   diff it sits in the Previous / Next bar. It hides while the keyboard is open, and a wider screen
-  keeps the arrow alone.
+  keeps the arrow alone. ([93124ff9](https://github.com/AltanS/collie/commit/93124ff9))
 - **The dashboard's top is one control bar.** Under the header, one line of state words ("3 needs you,
   2 unseen, 7 working, 2 idle") with the needs-you switch at its right end, then one row with a
   Workspace select and a Pane order select. The chip strip, the counts line and the three glyph
@@ -190,85 +192,85 @@ Running a crew? Update the lead first; members follow on their own. Details:
   lowest-priority counts drop their word and keep a dot and a number, and past that whole counts
   leave the row, still named for a screen reader. A workspace's option says its state in words, a
   workspace or machine you hid is brought back from the list, and a long press no longer hides a
-  workspace.
+  workspace. ([d7a323c3](https://github.com/AltanS/collie/commit/d7a323c3))
 
 ### Fixed
 
 - **Russian has its own letters in the interface face.** Aldrich draws no Cyrillic, so Russian fell back
   to the system font, about 13% too large. A 5 KB Cyrillic companion (Play, SIL OFL 1.1) now loads
   only once Cyrillic text is on screen, so English devices never fetch it, and it matches Aldrich's
-  letter size and line height. Under Space Grotesk, Russian no longer renders about 7.5% too large.
+  letter size and line height. Under Space Grotesk, Russian no longer renders about 7.5% too large. ([636396c6](https://github.com/AltanS/collie/commit/636396c6))
 - **Herdr 0.9.3 hid every repository from Collie.** The workspace row no longer carries the repo, so
   the New worktree tab listed nothing and the Files view lost the workspace folder. The bridge now
-  asks Herdr's worktree list once per workspace and caches it (ADR 0032 addendum).
+  asks Herdr's worktree list once per workspace and caches it (ADR 0032 addendum). ([52a89b69](https://github.com/AltanS/collie/commit/52a89b69))
 - **Six older translations had lost a placeholder.** "Show in {mux}" had become "Show in the
   terminal" in German, Spanish, Japanese, Korean and both Chinese files, and the Korean status label
   kept an em dash. A parity test now checks every translation against English for keys,
-  placeholders and em dashes.
+  placeholders and em dashes. ([e628a92e](https://github.com/AltanS/collie/commit/e628a92e))
 - **A pane opened while offline no longer reads as gone.** A pane address carries no dashboard
   scope, so with the bridge away the herd for that address was empty and the pane looked closed:
   "(agent gone)", "Pane is gone". "Gone" now needs a live answer. Offline, the pane's row comes
   from any herd the phone kept for that machine, and a pane with no saved text says "No saved copy
-  of this pane on this phone." with Send off.
+  of this pane on this phone." with Send off. ([297fb93f](https://github.com/AltanS/collie/commit/297fb93f))
 - **A link right under the tab row takes the tap.** The tab and pane pills' tap areas reached 14 to
   18px below their rows, over the first line of the content, so a path link there mostly opened a
-  tab instead. Each pill's tap area now ends at its own row: 30px tall for tabs, 26px for panes.
+  tab instead. Each pill's tap area now ends at its own row: 30px tall for tabs, 26px for panes. ([25e7988b](https://github.com/AltanS/collie/commit/25e7988b))
 - **A Chat no longer stays blank when you come back to it early.** Leaving a pane for Files,
   History or Changes and returning before its first refresh could show an empty Chat until the
   session changed: the phone asked "anything new?" for a window it no longer held. It now asks only
-  when it says which window it holds.
+  when it says which window it holds. ([d2a35456](https://github.com/AltanS/collie/commit/d2a35456))
 - **Back in Files goes where you came from.** A file opened from a path a pane printed, from a diff's
   Preview or from a link in a Markdown file now backs out to that pane, diff or file with the arrow,
   the same screen the edge swipe lands on. It used to walk up the folders one at a time. A breadcrumb
   to a folder above you pops back to it instead of stacking a second copy. Files opened from a pane
-  that has moved into a subfolder now starts in that folder, with the root one crumb away (ADR 0067).
+  that has moved into a subfolder now starts in that folder, with the root one crumb away (ADR 0067). ([918576dd](https://github.com/AltanS/collie/commit/918576dd))
 - **Typed characters never reach the audit log.** Type mode sends one key per character, and the
   audit trail listed `keys` as a parameter, so a password typed on the phone landed in `audit.log`
   character by character, even with `COLLIE_AUDIT_CONTENT=none`. Typed characters, spaces and tabs
   are now a body: redacted under `none`, a count of `•` marks under the default preview. Named keys
   such as Enter and Ctrl+C stay readable. Audit files written before 1.18.0 may still hold typed
-  characters; rotate or delete them.
+  characters; rotate or delete them. ([2871d0fd](https://github.com/AltanS/collie/commit/2871d0fd))
 - **Chat dropped queued messages while a background task finished.** Claude Code keeps one queue for
   your messages and its own notifications, and takes the front one off. Collie counted only your
   messages, so each finished task or subagent pushed your oldest waiting message off its list while
   Claude Code still showed it queued. Two queued messages could show as one, or none. The queue now
   keeps a place for every entry, matches a notification by its kind and body when Claude Code rewrites
   it on the way out, and clears a message once the transcript shows it delivered, so a sent message
-  never stays "Waiting to send". Claude Code's own plain-text notices no longer show as yours.
+  never stays "Waiting to send". Claude Code's own plain-text notices no longer show as yours. ([3281c35b](https://github.com/AltanS/collie/commit/3281c35b))
 - **The connection strip no longer hides the first line under it.** The strip is drawn over the top of
   the screen, and on a pane with one tab it covered the "Saved copy from" line, which sits at the top
   of the thread, until you tapped the X. The strip now tells the scrolling list how far it reaches
   into it, and the list starts below it. Settings, Crew, Machines, Updates and History keep their
-  first row clear the same way.
+  first row clear the same way. ([25e7988b](https://github.com/AltanS/collie/commit/25e7988b))
 - **A photo send no longer flashes the draft card while it is checked.** Sending a photo types its
   path into the terminal's input line, and the "Draft in terminal" card read that as a draft of yours
   until the send was verified. The card now waits while a send is in flight, and a draft that is still
-  there afterwards shows again. Thanks @AndiWandHerd (#370).
+  there afterwards shows again. Thanks @AndiWandHerd (#370). ([ca450d62](https://github.com/AltanS/collie/commit/ca450d62))
 - **A slash command sends in omp while its command palette is open.** On omp 18.8's pi-shaped input
   box, typing a slash command opens a palette below the box and hides the status row, and Collie no
   longer found the box, so the command stayed typed and never sent. The palette now counts as the
-  box's footer, and the command is read back and then submitted. Thanks @thelinuxlich (#373).
+  box's footer, and the command is read back and then submitted. Thanks @thelinuxlich (#373). ([9acc1502](https://github.com/AltanS/collie/commit/9acc1502))
 - **A poll that got no answer is retried within a second.** After a poll timed out or never reached
   the bridge, the next one waited the full gap of four to six seconds, so a link that came back at
   once still looked down. Such a poll is now retried after 0.5, 1, 2 and 4 seconds, never slower than
   the normal gap, and the first answer ends the run. An error from the bridge or a refusal keeps the
-  normal gap. Thanks @kekefigure (#375).
+  normal gap. Thanks @kekefigure (#375). ([2ca2d776](https://github.com/AltanS/collie/commit/2ca2d776))
 - **Coming back to the app no longer flashes the connection bar red.** Over a Tailscale relay, the
   first poll after you return often gets no answer while the link wakes up, and the phone took that
   one poll as a lost bridge. Right after a return, one poll with no answer now counts as a first
   strike: the phone asks again half a second later, and shows the red bar and the saved copy only if
   that poll gets no answer too. At any other time the first poll with no answer still shows them at
-  once.
+  once. ([e53186c0](https://github.com/AltanS/collie/commit/e53186c0))
 - **An Antigravity pane with a tall status line is no longer read as an unread dialog.** A custom
   `statusLine` that prints four or more rows pushed the input box's bottom rule out of the part of
   the screen Collie searched, so an idle pane read as not ready and the phone drew the unread-dialog
   card over it. Collie now looks up to eight status rows under the box, as it does for Claude Code.
-  Thanks @alvinycheung (#374).
+  Thanks @alvinycheung (#374). ([5ff8a920](https://github.com/AltanS/collie/commit/5ff8a920))
 - **A one-option question dialog in Antigravity is no longer read as an idle input box.** With the wider
   status search, the rule under the "Question" label of a dialog with one option and a write-in fell
   inside it, so the phone could show the composer as ready and type into the open dialog. A footer
   hint, "esc to cancel" or a numbered menu under a rule now means the rule belongs to a dialog, and
-  no input box is found there.
+  no input box is found there. ([ec3e5efc](https://github.com/AltanS/collie/commit/ec3e5efc))
 
 ## [1.17.2] - 2026-10-06
 
