@@ -64,6 +64,8 @@ import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { StripsSummary } from "@/components/strips-summary";
 import { PaneMeta } from "@/components/pane-meta";
+import { BranchLabel } from "@/components/ui/branch-label";
+import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
@@ -321,6 +323,8 @@ export function AgentChat({
   // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
   const name = agent === undefined ? "" : paneName(agent);
   const workspace = agent === undefined ? "" : panePlaceParts(agent, tabs).space;
+  // The branch the pane's folder is on, beside the workspace on line 2 (lib/git-head.ts).
+  const gitHead = agent === undefined ? null : paneGitHead(agent);
   // The panes that share this tab (agents + shells), in the strip's stable order (lib/pane-ordinal.ts
   // § panesOfTab: position in the tab, never status). Computed here, once: the row is far from the
   // header in this file and the two must not disagree about which panes there are.
@@ -1908,10 +1912,14 @@ export function AgentChat({
                 <div className="flex h-3 min-w-0 items-baseline gap-2">
                   <span
                     data-slot="pane-place"
-                    className="min-w-0 truncate text-[11px] leading-3 text-muted-foreground"
+                    className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
                     {workspace}
                   </span>
+                  {/* The branch the pane's folder is on, after the workspace and in the same 12px
+                      line box, so the 36px block above holds with or without it. The workspace gives
+                      way first, then the branch, keeping its tail; the meta never does. */}
+                  {gitHead !== null && <BranchLabel head={gitHead} className="shrink leading-3 text-muted-foreground" />}
                   <PaneMeta
                     host={agent.host}
                     cache={agent.cache}

@@ -11,7 +11,7 @@ import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { NavState } from "@/lib/nav";
-import type { PaneChangesResponse } from "@/lib/types";
+import type { AgentView, PaneChangesResponse } from "@/lib/types";
 import { summarizeChanges } from "@/lib/workspace-changes";
 import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
@@ -19,9 +19,13 @@ import { server } from "@/test/setup";
 
 import { ChangesRoute } from "./changes";
 
+// The panes the loader answers with. A case that needs a pane to carry more (a branch) swaps them;
+// `afterEach` puts the fixture back.
+let loaderAgents: AgentView[] = fixtureAgents;
+
 const connected = (): HomeData => ({
   bridge: "connected",
-  agents: fixtureAgents,
+  agents: loaderAgents,
   shellPanes: [],
   workspaces: [],
   tabs: [],
@@ -81,6 +85,24 @@ afterEach(() => {
   localStorage.clear();
   resetChangesListCache();
   resetChangeCountCache();
+  loaderAgents = fixtureAgents;
+});
+
+describe("ChangesRoute — the branch in the header", () => {
+  it("names the branch the root's panes are on, after the workspace", async () => {
+    loaderAgents = [{ ...fixtureAgents[0]!, gitHead: { kind: "branch", name: "fix-login" } }, ...fixtureAgents.slice(1)];
+    renderAt("/pane/w1%3Ap1/changes");
+    await screen.findByText("webapp · 3 files");
+    const header = document.querySelector("header")!;
+    expect(within(header).getByText("Branch fix-login")).toBeInTheDocument();
+    expect(within(header).getByText("fix-login")).toBeInTheDocument();
+  });
+
+  it("names none when no pane in the root knows its branch", async () => {
+    renderAt("/pane/w1%3Ap1/changes");
+    await screen.findByText("webapp · 3 files");
+    expect(document.querySelector('header [data-slot="branch-label"]')).toBeNull();
+  });
 });
 
 describe("ChangesRoute — the list", () => {

@@ -1487,6 +1487,9 @@ export const ja: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "ファイル",
   "files.title": "ファイル",
+  "branch.aria": "ブランチ {name}",
+  "branch.detachedAria": "{sha} でデタッチ",
+  "branch.detached": "デタッチ @{sha}",
   "files.back": "戻る",
   "changes.backAria.dashboard": "ダッシュボードに戻る",
   "changes.backAria.workspace": "ワークスペースに戻る",

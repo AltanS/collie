@@ -1642,6 +1642,10 @@ export const en = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Files",
   "files.title": "Files",
+  // --- the branch a pane's folder is on (components/ui/branch-label.tsx) ---
+  "branch.aria": "Branch {name}",
+  "branch.detachedAria": "Detached at {sha}",
+  "branch.detached": "detached @{sha}",
   "files.back": "Back",
   "changes.backAria.dashboard": "Back to the dashboard",
   "changes.backAria.workspace": "Back to the workspace",

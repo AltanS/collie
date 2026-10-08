@@ -4,6 +4,7 @@
 import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
+import type { GitHead } from "./git-head.ts";
 import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
@@ -16,6 +17,7 @@ export type { TranscriptEntry, TranscriptPart } from "./journal/types.ts";
 export type { ChatBody, ChatEntry, ChatOlderBody, ChatWindowBody } from "./journal/live.ts";
 export type { CacheStateName, PaneCache } from "./cache/engine.ts";
 export type { Confidence } from "./cache/claims.ts";
+export type { GitHead } from "./git-head.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -143,6 +145,16 @@ export interface AgentView {
    * solo body byte-identical to 1.8.2's for every non-agent pane (`solo-baseline.test.ts`).
    */
   cache?: PaneCache;
+  /**
+   * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
+   * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and
+   * attached at serialise time exactly as {@link cache} is.
+   *
+   * ABSENT, NEVER A PLACEHOLDER. A folder in no checkout, one that is gone or unreadable, a reading
+   * not taken yet (the first snapshot after a folder appears) and every older bridge carry no key at
+   * all, and the phone then draws exactly what it drew before the field existed.
+   */
+  gitHead?: GitHead;
 }
 
 /**

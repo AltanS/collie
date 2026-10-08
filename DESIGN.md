@@ -29,6 +29,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | Primitive | What it is FOR |
 | --- | --- |
 | `ui/add-button.tsx` | The dashed "+" at the end of a row that makes one more of what the row holds: a space, a tab. Two faces, 28px and 32px, a circle each; the busy spinner swaps in place. The caller passes the tap reach, because only the call site can measure what sits around it. |
+| `ui/branch-label.tsx` | The branch a pane's folder is on, on one line: a branch glyph and the name in 11px mono, or a commit glyph and `detached @abc1234`. A long name gives way in the middle and keeps its last eight characters. The screen reader hears the whole name in words. Owns no tap and no height of its own; the caller's line box holds it. The dashboard row's line 2, the pane header's workspace line, and the Files header. |
 | `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes. |
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |

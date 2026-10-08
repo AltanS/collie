@@ -33,6 +33,7 @@ import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabili
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
+import type { GitHeadSurface } from "./git-head.ts";
 import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
 import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
@@ -930,6 +931,12 @@ export function startServer(opts: {
    */
   cache?: { get(sessionKey: string): PaneCache | undefined };
   /**
+   * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
+   * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
+   * carries a `gitHead` key, which is every test that builds this server by hand.
+   */
+  gitHeads?: GitHeadSurface;
+  /**
    * The prompt-cache watch list — which panes the operator asked to be warned about (ADR 0042).
    *
    * Absent means the three `cache-watch` routes answer 404, which is every caller that builds this
@@ -970,6 +977,7 @@ export function startServer(opts: {
   // because the state engine's poll is what drives it and that poll is wired there. Undefined when
   // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
   const cache = opts.cache;
+  const gitHeads = opts.gitHeads;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
   /**
@@ -1081,7 +1089,10 @@ export function startServer(opts: {
       const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);
-      return reading === undefined ? withTimes : { ...withTimes, cache: reading };
+      const withCache = reading === undefined ? withTimes : { ...withTimes, cache: reading };
+      // The branch rides the same way: from memory, never a wait, and no key when there is none.
+      const gitHead = gitHeads?.get(p.cwd);
+      return gitHead === undefined ? withCache : { ...withCache, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is

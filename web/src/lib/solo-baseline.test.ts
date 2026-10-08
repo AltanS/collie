@@ -113,6 +113,9 @@ const AGENT_VIEW_KEYS = {
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
   tabPosition: true,
+  // Not a crew dimension: what the checkout holding the pane's folder is on, read off the disk of
+  // the machine the pane lives on. An older bridge or peer omits it.
+  gitHead: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -205,6 +208,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "cache",
       "cwd",
       "focused",
+      "gitHead",
       "hasSession",
       "hint",
       "host",

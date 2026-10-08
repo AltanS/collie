@@ -7,6 +7,8 @@ import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
+import { BranchLabel } from "@/components/ui/branch-label";
+import { paneGitHead } from "@/lib/git-head";
 import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
 import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -190,10 +192,17 @@ export function AgentCard({
           tailPositional: place.tab?.positional ?? false,
         };
   const { primary, detailLead, detailTail } = lines;
+  // THE BRANCH LEADS LINE 2, in every scope: the one fact that tells two checkouts of one repo apart,
+  // which neither the workspace nor the tab says. It sits in the 16px slot the line already has, so
+  // the row keeps its stated 44px, and it is mono at 11px (ui/branch-label.tsx). It gives way less
+  // than the tab beside it but never takes the whole line. No branch (no checkout, an older bridge or
+  // crew member, or a reading not taken yet) draws exactly the line drawn before it existed.
+  const head = paneGitHead(agent);
+  const hasRest = detailLead !== null || detailTail !== null;
   // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
   // via `tabTitle` (`lib/pane-name.ts`) — or, when the raw label carries no digit at all, nothing:
-  // the slot is then skipped outright.
-  const skipBlankSlot = inPlace && detailTail === null;
+  // the slot is then skipped outright, unless the branch fills it.
+  const skipBlankSlot = inPlace && detailTail === null && head === null;
   // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
   // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
   // artwork, and shrinking it to fit kills the one glance cue the row has — the resting states are
@@ -320,7 +329,7 @@ export function AgentCard({
               its own is a one-line row. A workspace-grouped row is the exception: its slot is
               always there, holding the tab's name or its position — UNLESS neither is available,
               which skips the slot outright and centres the name in the 44px row instead. */}
-          {!skipBlankSlot && (inPlace || detailLead !== null || detailTail !== null) && (
+          {!skipBlankSlot && (inPlace || hasRest || head !== null) && (
             <div
               data-slot="agent-row-detail"
               className={cn(
@@ -330,6 +339,18 @@ export function AgentCard({
                 flat && "h-4 items-center",
               )}
             >
+              {head !== null && (
+                <>
+                  <BranchLabel head={head} className={cn("shrink", hasRest && "max-w-[78%]")} />
+                  {hasRest && (
+                    // Two facts side by side rather than one containing the other, so a middot, not
+                    // the place's own crumb.
+                    <span className="shrink-0 text-muted-foreground/60" aria-hidden>
+                      ·
+                    </span>
+                  )}
+                </>
+              )}
               {inPlace && lines.tailPositional && detailTail !== null ? (
                 // The unnamed tab's position, a shade lighter than an ordinary tab name so it never
                 // reads as one.

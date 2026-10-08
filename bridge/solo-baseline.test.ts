@@ -317,6 +317,10 @@ const PANE_WIRE_KEYS = {
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
   tabPosition: true,
+  // Not a crew dimension: what the checkout holding the pane's folder is on, read off that machine's
+  // own disk. Attached at serialise time like `cache`, and absent here: this baseline builds its body
+  // with no reader, so no golden byte moved.
+  gitHead: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -432,6 +436,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "cache",
       "cwd",
       "focused",
+      "gitHead",
       "hasSession",
       "hint",
       "host",

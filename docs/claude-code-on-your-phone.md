@@ -159,6 +159,8 @@ the same tailnet.
 ## 5. Answer Claude Code
 
 - Panes that need input carry a red mark. Tap the count at the top of the dashboard to jump to the first one, then tap a row to open it.
+- Each dashboard row and the pane header show the git branch the pane's folder is on, or
+  `detached @abc1234` on a detached head. A pane outside a git repo shows none.
 - The composer uses a standard text field, so phone dictation works in it.
 - Tap **Keys** on the actions row above the keyboard. The tray includes Esc, arrow keys, Enter, Tab,
   Space, modifiers, digits, and F1 to F12. Esc and Ctrl chords do not depend on the phone keyboard.

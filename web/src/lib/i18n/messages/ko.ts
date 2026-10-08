@@ -1480,6 +1480,9 @@ export const ko: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "파일",
   "files.title": "파일",
+  "branch.aria": "브랜치 {name}",
+  "branch.detachedAria": "{sha}에서 분리됨",
+  "branch.detached": "분리됨 @{sha}",
   "files.back": "뒤로",
   "changes.backAria.dashboard": "대시보드로 돌아가기",
   "changes.backAria.workspace": "워크스페이스로 돌아가기",

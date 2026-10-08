@@ -31,6 +31,7 @@ import {
   type ChangeRef,
 } from "@/components/changes-view";
 import { BottomBar } from "@/components/ui/bottom-bar";
+import { BranchLabel } from "@/components/ui/branch-label";
 import { Button } from "@/components/ui/button";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { Notice } from "@/components/ui/notice";
@@ -71,6 +72,7 @@ import { unavailableKey } from "@/lib/changes-reason";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import { changeAt, EMPTY_CHANGE_INDEX, indexChanges, markFolder, type MarkedFolder, type RootChange } from "@/lib/files-marks";
 import { baseName, formatBytes, headerFolder, previewKindFor, rootPathOf } from "@/lib/files-view";
+import { scopeGitHead } from "@/lib/git-head";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { isAbortError } from "@/lib/loaders";
 import { t, tn, type MessageKey } from "@/lib/i18n";
@@ -925,6 +927,14 @@ function ChangesScreen() {
   const listRoot = ready?.available ? ready.root : null;
   const rootFolder = treeFile !== null || (treeDir !== null && treeDir !== "") ? (filesRoot.current ?? listRoot) : (listRoot ?? filesRoot.current);
   const rootName = rootFolder === null ? null : baseName(rootFolder.replace(/[\\/]+$/, ""));
+  // The branch the root is on, read off the panes that sit in it (lib/git-head.ts § scopeGitHead):
+  // the pane's own workspace on a pane's screen, the workspace's on a space's. Panes that disagree,
+  // or none that know, leave the header as it was.
+  const headWorkspace = target.kind === "space" ? spaceId : pane?.workspaceId;
+  const headPanes = [...root.agents, ...root.shellPanes].filter(
+    (p) => p.workspaceId === headWorkspace && p.host === (space?.host ?? pane?.host),
+  );
+  const rootHead = scopeGitHead(headPanes, rootFolder);
 
   // The header's count line: the tab's kept answer until this visit's first read, then what the
   // list sums to, which the tab keeps in turn so the way back shows it at once.
@@ -1022,6 +1032,11 @@ function ChangesScreen() {
                     </span>
                     {folderLine}
                   </div>
+                  {/* The root's branch, after the label and its folder. It may take half the line
+                      and gives way in the middle; the label keeps the rest. */}
+                  {rootHead !== null && (
+                    <BranchLabel head={rootHead} className="max-w-1/2 shrink self-center overflow-hidden leading-tight" />
+                  )}
                   {staleNote}
                 </div>
               </div>

@@ -616,6 +616,15 @@ updated machines, so build skew is the steady state (§7), and this section is t
   field out of range. Past four entries the lead keeps the first four rather than refuse a later build
   that sends more. Unknown keys inside an entry are ignored.
 
+- **A pane gained an optional `gitHead`** (added 2026-10-08). It names what the checkout holding
+  the pane's folder is on: `{ kind: "branch", name }` or `{ kind: "detached", sha }`, the full object
+  name. Additive-optional with the closed reading this section requires: **absent means no branch is
+  known**, which the phone renders as nothing at all, exactly as before the field. It is read on the
+  machine the pane lives on, off that machine's own disk, so a member's panes carry the member's own
+  branch. An older peer omits it, and an older lead passes it through untouched. A kind the phone does
+  not know reads as absent. Nothing in `bridge/crew/merge.ts` changes, for the reason the `cache`
+  bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

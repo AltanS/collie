@@ -88,7 +88,8 @@ filter and your folded folders stay as they are.
 ## Which folder, and which repos
 
 The list covers the pane's **workspace**, not only the pane's own folder, so every pane in one
-workspace shows the same list. The header names the workspace and its folder. Collie picks that folder
+workspace shows the same list. The header names the workspace, its folder and the branch the folder is
+on, when every pane in it agrees on one. Collie picks that folder
 in this order:
 
 | Order | Folder |
@@ -290,7 +291,7 @@ Files hides nothing for it.
 ## Limits
 
 - **zellij panes have no Files button.** zellij does not report a pane's folder. The dashboard row
-  for a zellij workspace reads "No folder".
+  for a zellij workspace reads "No folder", and zellij panes show no branch.
 - **Git must be installed** on the machine that owns the pane.
 - **Git LFS files may show as modified.** With filters off, Collie compares an LFS file with its
   pointer. It can only show too much, never hide a change.

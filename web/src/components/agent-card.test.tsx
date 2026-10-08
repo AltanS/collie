@@ -327,3 +327,69 @@ describe("AgentCard — the saved copy", () => {
     expect(container.querySelector(".opacity-50")).toBeNull();
   });
 });
+
+// The branch the pane's folder is on leads line 2, in the 16px slot the line already has, and a row
+// without one is the row drawn before the field existed.
+describe("AgentCard — the branch on line 2", () => {
+  const branchLabel = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="branch-label"]');
+
+  it("leads line 2 with the branch, then the tab, in a workspace-grouped row", () => {
+    const { container } = render(
+      <AgentCard
+        agent={agent({ tabLabel: "review", gitHead: { kind: "branch", name: "fix-login" } })}
+        onClick={() => {}}
+        scope="place"
+        density="row"
+        statusStyle="dot"
+      />,
+    );
+    const detail = line2(container)!;
+    expect(within(detail).getByText("Branch fix-login")).toBeInTheDocument();
+    expect(detail.firstElementChild).toBe(branchLabel(container));
+    expect(detail).toHaveTextContent("review");
+  });
+
+  it("fills a slot an unnamed tab would leave empty, at the same stated row height", () => {
+    const plain = render(
+      <AgentCard agent={agent({ tabLabel: undefined })} onClick={() => {}} scope="place" density="row" statusStyle="dot" />,
+    );
+    const branched = render(
+      <AgentCard
+        agent={agent({ tabLabel: undefined, gitHead: { kind: "branch", name: "main" } })}
+        onClick={() => {}}
+        scope="place"
+        density="row"
+        statusStyle="dot"
+      />,
+    );
+    const row = (c: HTMLElement) => c.querySelector<HTMLElement>(".h-11");
+    expect(row(plain.container)).not.toBeNull();
+    expect(row(branched.container)).not.toBeNull();
+    expect(line2(branched.container)).toHaveClass("h-4");
+    expect(within(line2(branched.container)!).getByText("Branch main")).toBeInTheDocument();
+  });
+
+  it("reads a detached head as its short object name", () => {
+    const { container } = render(
+      <AgentCard
+        agent={agent({ tabLabel: "review", gitHead: { kind: "detached", sha: "abc1234def5678abc1234def5678abc1234def56" } })}
+        onClick={() => {}}
+      />,
+    );
+    expect(within(line2(container)!).getByText("detached @abc1234")).toBeInTheDocument();
+    expect(within(line2(container)!).getByText("Detached at abc1234")).toBeInTheDocument();
+  });
+
+  it("draws exactly today's line when the bridge sends no branch", () => {
+    const { container } = render(<AgentCard agent={agent({ tabLabel: "review" })} onClick={() => {}} />);
+    expect(branchLabel(container)).toBeNull();
+    expect(line2(container)).toHaveTextContent(/^webapp\s*›\s*review$/);
+  });
+
+  it("ignores a head this build does not know, from a newer member", () => {
+    // A foreign shape, the one a newer crew member could send, arriving the way the wire delivers it.
+    const odd: AgentView["gitHead"] = JSON.parse('{"kind":"tag","name":"v1"}');
+    const { container } = render(<AgentCard agent={agent({ tabLabel: "review", gitHead: odd })} onClick={() => {}} />);
+    expect(branchLabel(container)).toBeNull();
+  });
+});

@@ -4003,3 +4003,24 @@ describe("AgentChat — a failed poll keeps the Chat on screen", () => {
     expect(screen.getByText("Start of the conversation")).toBeInTheDocument();
   });
 });
+
+// The branch the pane's folder is on rides line 2, after the workspace, in the line's own 12px box.
+describe("AgentChat header — the branch on the path line", () => {
+  const pathLine = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-place"]')!.parentElement!;
+
+  it("follows the workspace with the branch, before the meta, without changing the line's height", () => {
+    const agent: AgentView = { ...fixtureAgents[0]!, gitHead: { kind: "branch", name: "fix-login" } };
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    const line = pathLine(container);
+    expect(line).toHaveClass("h-3");
+    const label = within(line).getByText("Branch fix-login").closest<HTMLElement>('[data-slot="branch-label"]')!;
+    expect(label.previousElementSibling).toHaveAttribute("data-slot", "pane-place");
+    expect(label.nextElementSibling).toHaveAttribute("data-slot", "pane-meta");
+    expect(label).toHaveClass("leading-3");
+  });
+
+  it("draws no branch when the pane has none", () => {
+    const { container } = renderChat();
+    expect(pathLine(container).querySelector('[data-slot="branch-label"]')).toBeNull();
+  });
+});
