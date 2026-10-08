@@ -231,6 +231,37 @@ describe("locateReply — a reply that ends in a wrapped table", () => {
     expect(sourceOrderRows([...prose, ...inputBox])).toEqual([...prose, ...inputBox]);
   });
 
+  // Grok 1.0.46 paints a scrollbar cell at the right edge of every row once a reply outgrows the
+  // pane, frame rows included (live capture, 2026-10-08). A frame row ending in that cell must still
+  // read as a frame, or the table's last row stays interleaved and the reply reads as off-screen.
+  it("still finds a Grok reply whose table rows end in the scrollbar cell", () => {
+    const grokSource = [
+      "家庭用水先分清楚喝、洗、沖三種用途，再依水壓與水質決定要不要過濾或軟水。",
+      "",
+      "一、建議怎麼配置",
+      "",
+      "| 用水位置 | 建議設備 |",
+      "|---|---|",
+      "| 全家人每天喝水與煮開水都集中在飲用水這一處，濾心週期也必須跟得上實際用量。 | 飲用水建議採用逆滲透或中空絲膜系統，並設定半年更換濾心的提醒以免過濾效果衰退。 |",
+    ].join("\n");
+    const rail = "      █";
+    const grokPainted = [
+      "     一、建議怎麼配置",
+      "",
+      "     ┌──────────────────────┬────────────────────────┐",
+      "     │ 用水位置             │ 建議設備               │",
+      "     ├──────────────────────┼────────────────────────┤" + rail,
+      "     │ 全家人每天喝水與煮開 │ 飲用水建議採用逆滲透或 │" + rail,
+      "     │ 水都集中在飲用水這一 │ 中空絲膜系統，並設定半 │" + rail,
+      "     │ 處，濾心週期也必須跟 │ 年更換濾心的提醒以免過 │" + rail,
+      "     │ 得上實際用量。       │ 濾效果衰退。           │" + rail,
+      "     └──────────────────────┴────────────────────────┘" + rail,
+    ];
+    const { fit, endLine } = locateReply(grokPainted.join("\n"), turn("assistant", grokSource));
+    expect(fit).toBe("clipped");
+    expect(endLine).toBe(8);
+  });
+
   it("finds a tail that lies wholly inside the table's last row", () => {
     const tableEnd = source.slice(0, source.lastIndexOf("\n\n"));
     const { fit, endLine } = locateReply(painted.slice(0, 9).join("\n"), turn("assistant", tableEnd));

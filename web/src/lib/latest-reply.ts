@@ -66,6 +66,10 @@ const BOX_VERTICALS = new RegExp(`[${BOX_VERTICAL_GLYPH_CLASS}]`, "g");
 const BOX_CROSSES = new RegExp(`[${BOX_CROSS_GLYPH_CLASS}]`, "g");
 // A frame row: box-drawing glyphs and spaces only.
 const BOX_FRAME = /^[─-╿\s]+$/;
+// Grok's scrollbar: one block-element cell at the right edge of every row, frame rows included, once a
+// reply outgrows the pane (harness/grok/chrome.ts). Left on a frame row, it hides the row's frame and
+// the table's last row stays interleaved, which is the reply's tail.
+const TRAILING_RAIL = /[▁-█]\s*$/;
 
 /**
  * The mirror's rows with every wrapped box-table row put back in SOURCE order.
@@ -86,7 +90,10 @@ const BOX_FRAME = /^[─-╿\s]+$/;
 export function sourceOrderRows(rows: readonly string[]): string[] {
   const out = [...rows];
   const verticals = (row: string) => row.match(BOX_VERTICALS)?.length ?? 0;
-  const isFrame = (row: string) => row.trim() !== "" && BOX_FRAME.test(row);
+  const isFrame = (row: string) => {
+    const bare = row.replace(TRAILING_RAIL, "");
+    return bare.trim() !== "" && BOX_FRAME.test(bare);
+  };
   let floor = 0;
   for (let anchor = 0; anchor < rows.length; anchor++) {
     if (anchor < floor || !isFrame(rows[anchor]!)) continue;
