@@ -83,6 +83,36 @@ describe("readSinceFile", () => {
     await f.clean();
   });
 
+  test("multibyte rows are not replayed when the file has not changed", async () => {
+    const f = await lab();
+    try {
+      const text = '{"text":"繁體中文 🦮"}';
+      await f.write(`${text}\n`);
+      const first = await readSinceFile(f.path, NO_CURSOR);
+      expect(first.lines).toEqual([text]);
+      const again = await readSinceFile(f.path, first.cursor);
+      expect(again.lines).toEqual([]);
+      expect(again.cursor).toBe(first.cursor);
+    } finally {
+      await f.clean();
+    }
+  });
+
+  test("an append after multibyte text starts at the byte boundary, not the character count", async () => {
+    const f = await lab();
+    try {
+      await f.write('{"text":"繁體中文 🦮"}\n');
+      const first = await readSinceFile(f.path, NO_CURSOR);
+      await f.append('{"text":"下一則回覆"}\n');
+      const next = await readSinceFile(f.path, first.cursor);
+      expect(next.lines).toEqual(['{"text":"下一則回覆"}']);
+      expect(next.reset).toBe(false);
+      expect((await readSinceFile(f.path, next.cursor)).lines).toEqual([]);
+    } finally {
+      await f.clean();
+    }
+  });
+
   test("a first read is bounded, and drops the half row the bound landed in", async () => {
     const f = await lab();
     await f.write([row(1), row(2), row(3), row(4), ""].join("\n"));
