@@ -260,6 +260,18 @@ describe("locateReply — a reply that ends in a wrapped table", () => {
     const { fit, endLine } = locateReply(grokPainted.join("\n"), turn("assistant", grokSource));
     expect(fit).toBe("clipped");
     expect(endLine).toBe(8);
+
+    // The same reply as Grok paints it while the message is highlighted: a box round the whole
+    // message adds one vertical at each end of every table row (live capture, 2026-10-08).
+    const boxed = grokPainted.map((row, i) => {
+      const [body, tail] = row.endsWith(rail) ? [row.slice(0, -rail.length), rail] : [row, ""];
+      if (i < 2) return ` │ ${body}`;
+      return ` │ ${body}   │${tail}`;
+    });
+    boxed.push(` └${"─".repeat(60)}┘${rail}`);
+    const inBox = locateReply(boxed.join("\n"), turn("assistant", grokSource));
+    expect(inBox.fit).toBe("clipped");
+    expect(inBox.endLine).toBe(8);
   });
 
   it("finds a tail that lies wholly inside the table's last row", () => {

@@ -84,7 +84,8 @@ const TRAILING_RAIL = /[▁-█]\s*$/;
  * The table is found by COUNT, not by `table-run.ts`'s column offsets: those are string indices, so a
  * cell holding double-width text (any CJK reply) misaligns them and no run is found. The anchor is a
  * frame row carrying a cross, as there; rows join while they are frame rows or carry that many
- * verticals (with or without outer borders), and a blank row ends the table. This only reorders the
+ * verticals (with or without outer borders, and inside a box drawn round the whole message), and a
+ * blank row ends the table. This only reorders the
  * text the probes compare; what the mirror draws is untouched.
  */
 export function sourceOrderRows(rows: readonly string[]): string[] {
@@ -99,7 +100,10 @@ export function sourceOrderRows(rows: readonly string[]): string[] {
     if (anchor < floor || !isFrame(rows[anchor]!)) continue;
     const crosses = rows[anchor]!.match(BOX_CROSSES)?.length ?? 0;
     if (crosses === 0) continue;
-    const member = (row: string) => isFrame(row) || [crosses, crosses + 2].includes(verticals(row));
+    // A content row carries one vertical per crossing, plus two for the table's own outer border,
+    // plus two more when the renderer boxes the whole message (Grok highlighting a message).
+    const member = (row: string) =>
+      isFrame(row) || [crosses, crosses + 2, crosses + 4].includes(verticals(row));
     let start = anchor;
     while (start > floor && member(rows[start - 1]!)) start--;
     let end = anchor;
