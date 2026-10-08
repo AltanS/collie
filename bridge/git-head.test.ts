@@ -43,6 +43,10 @@ describe("parseHead", () => {
     expect(parseHead("ref: refs/heads/")).toBeNull();
     expect(parseHead("abc1234")).toBeNull();
     expect(parseHead("ref: refs/heads/a\u0007b")).toBeNull();
+    expect(parseHead("ref: refs/heads/a\u202eb")).toBeNull();
+    expect(parseHead("ref: refs/heads/a\u2066b")).toBeNull();
+    expect(parseHead("ref: not a ref at all")).toBeNull();
+    expect(parseHead("ref: heads/main")).toBeNull();
     expect(parseHead(`ref: refs/heads/${"x".repeat(300)}`)).toBeNull();
   });
 });

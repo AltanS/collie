@@ -88,6 +88,8 @@ function hasControl(text: string): boolean {
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
     if (code < 0x20 || code === 0x7f) return true;
+    // Bidi overrides and isolates: a name from a repo you did not write could reorder the row's text.
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true;
   }
   return false;
 }
@@ -104,6 +106,9 @@ export function parseHead(text: string): GitHead | null {
   const line = text.trim();
   if (line.startsWith("ref:")) {
     const ref = line.slice(4).trim();
+    // Only a ref git itself could write. A `.git` file can point at any folder, so a HEAD there is
+    // any file; this keeps its text from reaching the phone unless it reads like a ref.
+    if (!ref.startsWith("refs/")) return null;
     const name = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
     if (name.length === 0 || name.length > NAME_MAX || hasControl(name)) return null;
     return { kind: "branch", name };
