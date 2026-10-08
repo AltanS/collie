@@ -209,7 +209,8 @@ export function HomeRoute() {
   const { refused: notPaired } = usePairing();
   const readOnly = isReadOnly(data.device) || notPaired;
 
-  // THE FLOATING NEW BUTTON (DESIGN.md §1, card 1.3, 2026-10-08). Drawn when at least one of its three
+  // THE FLOATING NEW BUTTON (DESIGN.md §1, card 1.3, 2026-10-08), on the Dashboard tab only: Crew and
+  // Files are other lists, and a create entry over them would read as theirs. Drawn when at least one of its three
   // rows could work, and the rows ask the questions their own flows ask: the Spaces header's FolderPlus
   // asks `createSpace`, the sheet's Worktree tab asks `createWorktree` and a repo, the Launch strip
   // asks for rows. A device that may not write gets none of it. A saved copy keeps the button drawn
@@ -218,7 +219,7 @@ export function HomeRoute() {
   const { launchers } = useLaunchers(data.scope);
   const canCreateSpace = useMuxCapability("createSpace").capable;
   const canBranch = worktreeRepos.length > 0;
-  const fabOffered = !readOnly && (canCreateSpace || canBranch || launchers.length > 0);
+  const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || canBranch || launchers.length > 0);
   // Hidden while a sheet is up (it would sit dimmed under the backdrop, a second create entry next
   // to the one being used) and while the keyboard is (the dashboard's filter field raises it, and
   // the button would ride up over the list). Neither moves anything: the layer is fixed.

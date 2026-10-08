@@ -100,6 +100,7 @@ afterEach(() => {
   cleanup();
   clearStatus();
   keyboard.open = false;
+  localStorage.clear();
   __resetOperatorCommands();
 });
 
@@ -195,6 +196,18 @@ describe("the floating New button on the dashboard", () => {
     const sheet = await screen.findByRole("dialog", { name: "New" });
     expect(within(sheet).getByRole("button", { name: "Agent" })).toBeInTheDocument();
     expect(within(sheet).queryByRole("button", { name: "Space" })).toBeNull();
+  });
+
+  it("is drawn on the Dashboard tab only: not on Files, and back on return", async () => {
+    renderHome(homeData());
+    await screen.findByRole("button", { name: "New" });
+    await userEvent.click(screen.getByRole("button", { name: "Files" }));
+    await waitFor(() => expect(fab()).toBeNull());
+    // The toast lift and the stamp's air follow the button, so a hidden one leaves both as they were.
+    expect(toastDock()?.className).toContain("bottom-[calc(3.5rem+1px)]");
+    expect(document.querySelector('[class*="pb-20"]')).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^Dashboard/ }));
+    await waitFor(() => expect(fab()).not.toBeNull());
   });
 
   it("is not drawn on a device that may not write", async () => {

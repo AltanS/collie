@@ -1120,7 +1120,7 @@ export const de: Dictionary = {
   "worktree.empty": "Keine Worktrees vorhanden.",
   "worktree.detached": "losgelöst",
   "worktree.recoverOpen": "Erstellten Branch öffnen",
-  "space.new.tab.plain": "Leertaste",
+  "space.new.tab.plain": "Space",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repository",
   "space.new.host.label": "Host",
