@@ -367,6 +367,14 @@ non-blank run below the statusline), never by content.
 | `claude--draft-footer-empty.txt` | Empty `❯` box with the footer below it — box + statusline + hint + footer all strip; `extractInputDraft` → `null` (no chip) |
 | `claude--draft-footer-single.txt` | A single-line stranded draft on the `❯` line, footer below — draft recovered, box + footer stripped |
 | `claude--draft-footer-wrapped.txt` | A wrapped multi-line draft, footer below — continuations folded back into one line, whole box + footer stripped |
+| `claude--footer-pointed-agent.txt` | **Derived** from a live pane, Claude Code 2.1.293 (herdr 0.9.3, 2026-10-08): the transcript above the box was cut, and the draft plus the agents' names, tasks and timings were genericized width-preservingly; the box, statusline and footer rows keep their captured bytes. Its SECOND agent row carries the active-agent pointer (`❯ ◯ worker:fix …`) — the shape that used to take the whole box down |
+
+Claude Code 2.1.293 paints `❯` on the ACTIVE agent's footer row. That row is a frame mark the locator
+steps over (it is the lowest `❯`-led row), and `steppedMarksAreOwned` used to require every stepped
+mark to sit INSIDE the statusline run — the pointed row sits in the footer below it — so the walk was
+refused and `hasInputBox` answered false: no box, no draft chip, and a send from the phone typed its
+text and then never submitted (2026-10-08, four such sends in the operator's audit log). The ownership
+check now owns the statusline run AND the footer run `walkStatusline` peeled below it.
 
 ## Generic-menu corpus (captured 2026-08-05, sandbox pane; decision in [`.adr/0009`](../../../../.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md))
 

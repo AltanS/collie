@@ -67,6 +67,10 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--draft-footer-empty.txt",
     "claude--draft-footer-single.txt",
     "claude--draft-footer-wrapped.txt",
+    // Claude Code 2.1.293's POINTED agents-footer row (`❯ ◯ …`): step 1 of the walk steps over it,
+    // and the box is kept because `steppedMarksAreOwned` now owns a mark the peeled footer run
+    // draws. Before that it was the one capture where a live box read as no box at all.
+    "claude--footer-pointed-agent.txt",
     "claude--draft-paste-placeholder.txt",
     "claude--draft-paste-split-partial.txt",
     "claude--draft-paste-split-tail.txt",
@@ -322,8 +326,16 @@ describe("the search is bounded to the screen's final region", () => {
 describe("invariant: rows appended below a box never change the box or its draft", () => {
   const BOX_FIXTURES = CLAUDE_FIXTURES.filter((name) => hasInputBox(load(name)));
   const neutral = (n: number) => Array.from({ length: n }, (_, i) => `  compiled module ${i} in ${i * 7}ms`);
+  // The one class the invariant does not hold on, by design. A capture whose own tail carries a
+  // "❯"-led row keeps its box only while the walk can NAME the run that row belongs to — the
+  // statusline, or the background-agents footer it peeled. Rows appended below the footer push its
+  // blank separator past MAX_FOOTER_LINES, the tail turns `unknown`, and an unknown tail holding a
+  // "❯" mark refuses: the rule pinned by "a ❯-led row in an unknown tail refuses" above. The stall
+  // that follows is this module's designed failure mode (a false refusal, never a blind keystroke),
+  // and the capture's own test below pins both halves of the bound.
+  const POINTER_TAILS = { "claude--footer-pointed-agent.txt": true } satisfies Record<string, true>;
 
-  it.each(BOX_FIXTURES)("%s", (name) => {
+  it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {
     const base = textRows(load(name));
     const draft = extractInputDraft(fromTexts(base));
     for (const n of [1, 3, 8, 9, 20]) {
@@ -331,6 +343,26 @@ describe("invariant: rows appended below a box never change the box or its draft
       expect(hasInputBox(lines), `${n} rows`).toBe(true);
       expect(extractInputDraft(lines), `${n} rows`).toBe(draft);
     }
+  });
+
+  it("the pointed-footer tail holds inside the footer bound, and refuses past it", () => {
+    const name = "claude--footer-pointed-agent.txt";
+    const base = textRows(load(name));
+    const draft = extractInputDraft(fromTexts(base));
+    expect(draft).toBe("the agents footer hides the input box");
+    for (const n of [1, 3]) {
+      const lines = fromTexts([...base, ...neutral(n)]);
+      expect(hasInputBox(lines), `${n} rows`).toBe(true);
+      expect(extractInputDraft(lines), `${n} rows`).toBe(draft);
+    }
+    // Past the bound the pointer's run can no longer be named, so the walk fails closed.
+    for (const n of [8, 9, 20]) {
+      expect(hasInputBox(fromTexts([...base, ...neutral(n)])), `${n} rows`).toBe(false);
+    }
+    // Control: the very same screen without the pointer glyph keeps its box past the bound (it is an
+    // ordinary `unknown` tail then, and unknown tails without a frame mark are tolerated).
+    const noPointer = base.map((row) => (row.startsWith("❯ ◯") ? `  ${row.slice(2)}` : row));
+    expect(hasInputBox(fromTexts([...noPointer, ...neutral(8)]))).toBe(true);
   });
 });
 
