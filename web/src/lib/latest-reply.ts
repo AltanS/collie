@@ -207,8 +207,12 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
     rowEnds.push(mirror.length);
   }
 
-  // Both spellings are this same reply, so either one found is still the identity check passing.
-  for (const reply of new Set([fold(paintedSpelling(prose)), fold(prose)])) {
+  // Both spellings are this same reply. The painted one is tried first and only when it still holds
+  // two whole probes: what it drops (a link's target, a tag) can leave too little to tell one reply
+  // from another, and the short-reply rule above judged the raw text, not this.
+  const painted = fold(paintedSpelling(prose));
+  const spellings = painted.length >= PROBE_CHARS * 2 ? [painted, fold(prose)] : [fold(prose)];
+  for (const reply of new Set(spellings)) {
     const tail = reply.slice(-PROBE_CHARS);
     const at = mirror.indexOf(tail);
     if (at === -1) continue;
@@ -221,13 +225,19 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
   return elsewhere("off-screen");
 }
 
-// `[label](target)` and `![alt](target)`, with an optional `"title"`.
-const MARKDOWN_LINK = /!?\[([^\]]*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)/g;
-const HTML_TAG = /<\/?[A-Za-z][^<>\n]*>/g;
-const HTML_ENTITY = /&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/g;
-const FENCE_OPEN = /^(\s*)(`{3,}|~{3,})[^`\n]*$/;
+// `[label](target)` and `![alt](target)`, with an optional `"title"`. The label may hold code spans.
+const MARKDOWN_LINK_SOURCE = String.raw`!?\[((?:\x60+[^\x60\n]*?\x60+|[^\]\x60\n])*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)`;
 // An inline code span, kept whole: Claude paints what is inside it exactly as written.
-const CODE_SPAN = /(`+[^`\n]*`+)/;
+const CODE_SPAN_SOURCE = String.raw`(\x60+)[^\x60\n]*?\x60+`;
+// One inline token: a code span (group 1 is its opening run) or a link (group 2 is its label).
+// The leftmost wins, so a link whose label is a code span is a link, and a span holding `[a](b)` is code.
+const INLINE = new RegExp(`${CODE_SPAN_SOURCE}|${MARKDOWN_LINK_SOURCE}`, "g");
+// `<https://…>` and `<mailto:…>`: the terminal prints the address itself, so it is text, not a tag.
+const AUTOLINK = /<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*)>/g;
+// An HTML tag: a name, then whitespace, `/` or `>`. A scheme's colon is never part of a tag name.
+const HTML_TAG = /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>\n]*)?\/?>/g;
+const HTML_ENTITY = /&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/g;
+const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 
 const NAMED_ENTITIES = new Map([["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", '"'], ["apos", "'"], ["nbsp", " "]]);
 
@@ -240,34 +250,50 @@ function decodeEntity(entity: string): string {
   return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
 }
 
+/** Text outside code and links, as Claude paints it. */
+function paintedText(text: string): string {
+  return text.replace(AUTOLINK, "$1").replace(HTML_TAG, "").replace(HTML_ENTITY, decodeEntity);
+}
+
+function paintedLine(line: string): string {
+  let out = "";
+  let at = 0;
+  for (const m of line.matchAll(INLINE)) {
+    out += paintedText(line.slice(at, m.index));
+    out += m[1] === undefined ? (m[2] ?? "") : m[0];
+    at = m.index + m[0].length;
+  }
+  return out + paintedText(line.slice(at));
+}
+
 /**
  * The reply spelled the way Claude paints it, 2026-09-27 on Herdr's grid. Each rule drops or rewrites
  * source that never reaches the screen as written: a link keeps only its label (the terminal takes
- * hyperlinks, so the target is not printed), a fence loses its language tag, an HTML tag is dropped
- * and an entity decoded. Code is left alone, a fenced block's body and an inline span alike, because
- * Claude prints those verbatim. A renderer that differs is still matched by the raw spelling, which
+ * hyperlinks, so the target is not printed), an autolink keeps its URL, a fence loses its language
+ * tag, an HTML tag is dropped and an entity decoded. Code is left alone, a fenced block's body and an
+ * inline span alike, because Claude prints those verbatim. A fence closes only on a fence of its own
+ * character at least as long with nothing after it, as in CommonMark, so a fence shown inside a
+ * longer one stays code. A link whose label is a code span is still a link. A renderer that differs is still matched by the raw spelling, which
  * {@link locateReply} tries second.
  */
 function paintedSpelling(prose: string): string {
-  let inFence = false;
+  let open: { char: string; length: number } | null = null;
   return prose
     .split("\n")
     .map((line) => {
-      const fence = FENCE_OPEN.exec(line);
-      if (fence) {
-        const opening = !inFence;
-        inFence = !inFence;
-        return opening ? `${fence[1]}${fence[2]}` : line;
+      const fence = FENCE.exec(line);
+      if (open === null) {
+        // An opening fence: its info string (the language tag) is not painted.
+        if (fence && !(fence[2]!.startsWith("`") && fence[3]!.includes("`"))) {
+          open = { char: fence[2]![0]!, length: fence[2]!.length };
+          return `${fence[1]}${fence[2]}`;
+        }
+        return paintedLine(line);
       }
-      if (inFence) return line;
-      return line
-        .split(CODE_SPAN)
-        .map((part, i) =>
-          i % 2 === 1
-            ? part
-            : part.replace(MARKDOWN_LINK, "$1").replace(HTML_TAG, "").replace(HTML_ENTITY, decodeEntity),
-        )
-        .join("");
+      const closes =
+        fence !== null && fence[2]![0] === open.char && fence[2]!.length >= open.length && fence[3]!.trim() === "";
+      if (closes) open = null;
+      return line;
     })
     .join("\n");
 }
