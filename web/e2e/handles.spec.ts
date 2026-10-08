@@ -69,8 +69,11 @@ async function collectAllCardStates(page: Page, tabIds: string[]): Promise<strin
   const pooled: string[] = [];
   for (const tabId of tabIds) {
     await page.goto(`/playground.html#${tabId}`);
-    await expect(page.getByRole("main").first()).toBeVisible();
-    const states = await page
+    // Each section's code loads on demand: wait for THIS section to have mounted, so the cards read
+    // are its own and not the loading line or the section shown before it.
+    const panel = page.locator(`#pg-panel-${tabId}`);
+    await expect(panel.locator(`section#${tabId}`)).toBeVisible();
+    const states = await panel
       .locator(".pg-grid > *")
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-state") ?? ""));
     pooled.push(...states);
