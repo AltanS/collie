@@ -6,7 +6,7 @@ import type { ComponentProps, ReactElement } from "react";
 
 import { server } from "@/test/setup";
 import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
-import { __resetOperatorCommands } from "@/lib/operator-config";
+import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
@@ -305,8 +305,12 @@ describe("the header — a quiet crew member is not the phone's connection", () 
 // The block is TWO STACKED LINES, not one 18px sentence: on a phone the single line ran out of room
 // inside the multiplexer's own name. The structure cases below pin the shape that fixed it.
 describe("the header — the stacked identity", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     __resetConnectionHealth();
+    // Let a read an earlier case left in flight land FIRST. The reset forgets that promise without
+    // stopping it, so on Node 20 and 22 it answered after this case's own read and wrote its config,
+    // with no multiplexer, over this case's (CI, 2026-10-08).
+    await loadOperatorCommands();
     __resetOperatorCommands(); // the store caches one read for the life of a page; each case is a page
   });
   afterEach(() => __resetOperatorCommands());
