@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { MASK, redactAnsi, redactSegments, redactText } from "./redact.ts";
+import { MASK, MASK_VERSION, maskPatternsSource, redactAnsi, redactSegments, redactText } from "./redact.ts";
 
 // PLACEHOLDERS ONLY. No string here is a real key. The ones whose shape a repo-wide secret scan
 // would flag (`ghp_…`, `AKIA…`, a bare `sk-…`) are joined at runtime from two halves, so the scan in
@@ -193,5 +193,34 @@ describe("redact — cost", () => {
       best = Math.min(best, performance.now() - started);
     }
     expect(best).toBeLessThan(20);
+  });
+});
+
+describe("redact — the pattern list carries its version", () => {
+  test("a changed pattern bumps MASK_VERSION", () => {
+    // A crew lead salts a member's ETag with MASK_VERSION (bridge/crew/forward.ts), so a phone drops
+    // a copy masked under an older list. A pattern change without a bump fails nothing else: the phone
+    // just keeps that older copy. If this fails, bump MASK_VERSION in redact.ts and pin the new hash.
+    const hash = new Bun.CryptoHasher("sha256").update(maskPatternsSource()).digest("hex");
+    expect({ version: MASK_VERSION, hash }).toEqual({
+      version: 1,
+      hash: "30eae8d4c86947baac218f2899437c41db5f3fc72b843ab0cd9d089e7b0fb40c",
+    });
+  });
+});
+
+describe("redact — a PEM scan is linear", () => {
+  test("a megabyte of BEGIN lines with no END masks in well under a second", () => {
+    const text = "-----BEGIN RSA PRIVATE KEY-----\n".repeat(32_000);
+    const t0 = performance.now();
+    expect(redactText(text)).toBe(text);
+    expect(performance.now() - t0).toBeLessThan(1_000);
+  });
+
+  test("a megabyte of BEGIN lines with one END at the far end masks in well under a second", () => {
+    const text = `${"-----BEGIN RSA PRIVATE KEY-----\n".repeat(32_000)}-----END RSA PRIVATE KEY-----\n`;
+    const t0 = performance.now();
+    redactText(text);
+    expect(performance.now() - t0).toBeLessThan(1_000);
   });
 });

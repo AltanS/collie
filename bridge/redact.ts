@@ -136,6 +136,17 @@ const PEM_BODY = /^[A-Za-z0-9+/=:,\\\-\s]*$/;
 /** A 4096-bit RSA key is about 3.2 KB of body; past this the END line is not this block's. */
 const PEM_MAX_BODY = 16_384;
 
+/**
+ * Every pattern this module masks with, as one string, for the test that pins {@link MASK_VERSION}:
+ * a changed pattern changes this, the pinned hash in `redact.test.ts` fails, and its message says to
+ * bump the version with the hash. A forgotten bump fails nothing else, it only leaves a phone holding
+ * a copy masked under the old list, so the test is the one place that can catch it.
+ */
+export function maskPatternsSource(): string {
+  const res = [...FAMILIES.map((f) => `${f.re.source}/${f.re.flags}/${f.keep}/${f.group ?? ""}`), NOT_A_VALUE, PREFIXED, PEM_BEGIN, PEM_END, PEM_BODY_LINE, PEM_BODY];
+  return [...res.map(String), String(PEM_MAX_BODY)].join("\n");
+}
+
 /** A half-open `[start, end)` span of code units to mask. */
 type Span = readonly [number, number];
 
@@ -219,22 +230,32 @@ function widestRow(text: string): number {
 /** Append the body of every PEM private key block: every line between BEGIN and END. */
 function pemSpans(text: string, spans: Span[]): void {
   PEM_BEGIN.lastIndex = 0;
+  // LINEAR, NOT ONE SEARCH PER BEGIN. The next END line is looked for once and reused by every BEGIN
+  // before it, and "no END after here" stays true for every later BEGIN. One search per BEGIN read
+  // the rest of the text each time: a megabyte of BEGIN lines (a file in Files, a diff) held the
+  // bridge for 36 s. `undefined` is "not looked for yet".
+  let nextEnd: RegExpExecArray | null | undefined;
   for (let m = PEM_BEGIN.exec(text); m !== null; m = PEM_BEGIN.exec(text)) {
     const bodyStart = m.index + m[0].length;
-    PEM_END.lastIndex = bodyStart;
-    const end = PEM_END.exec(text);
+    if (nextEnd === undefined || (nextEnd !== null && nextEnd.index < bodyStart)) {
+      PEM_END.lastIndex = bodyStart;
+      nextEnd = PEM_END.exec(text);
+    }
+    const end = nextEnd;
     if (end !== null && end.index - bodyStart <= PEM_MAX_BODY && PEM_BODY.test(text.slice(bodyStart, end.index))) {
       spans.push([bodyStart, end.index]);
       PEM_BEGIN.lastIndex = end.index + end[0].length;
       continue;
     }
-    // No END on screen: the block runs off the bottom. Mask the lines that still look like a body.
+    // No END on screen: the block runs off the bottom. Mask the lines that still look like a body,
+    // up to a key's worth of them. A line with `-----` is a marker, never base64, so the next BEGIN
+    // ends this body rather than being read as part of it (and every BEGIN after it again).
     let cursor = text.indexOf("\n", bodyStart);
     let last = bodyStart;
-    while (cursor !== -1) {
+    while (cursor !== -1 && cursor - bodyStart <= PEM_MAX_BODY) {
       const lineEnd = text.indexOf("\n", cursor + 1);
       const line = text.slice(cursor + 1, lineEnd === -1 ? text.length : lineEnd);
-      if (line.trim() === "" || !PEM_BODY_LINE.test(line)) break;
+      if (line.trim() === "" || line.includes("-----") || !PEM_BODY_LINE.test(line)) break;
       last = lineEnd === -1 ? text.length : lineEnd;
       cursor = lineEnd;
     }
