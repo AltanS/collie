@@ -30,6 +30,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   sheet had slid in, so the sheet grew upward under your thumb on the first open after a page load.
   The dashboard and a space now read the list when they open, the sheet starts from that list, and
   opening it still reads again, so a list that changed redraws.
+- **The installed iPhone app no longer scrolls twice.** In the Home Screen app, the page itself scrolled
+  under the app's own lists, so a drag moved two things. The page is now pinned there, so only the
+  lists scroll, and the app still fills to the bottom edge. A Safari tab and other devices are
+  unchanged. (#371)
 
 ## [1.18.0] - 2026-10-08
 

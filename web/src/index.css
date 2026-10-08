@@ -857,7 +857,16 @@
  * indicator. Only `100lvh` reads the full height there. Nothing is lost by it: standalone has no
  * browser toolbar to collapse, and iOS never resizes the layout for the keyboard (the visual
  * viewport shrinks instead), so `lvh` and a correct `dvh` would be the same number. Android keeps
- * `dvh`, which is what tracks its keyboard (`interactive-widget=resizes-content`). */
+ * `dvh`, which is what tracks its keyboard (`interactive-widget=resizes-content`).
+ *
+ * THE DOCUMENT IS PINNED IN THE SAME BLOCK (issue #371). The same WebKit bug gives html and body a
+ * height ~59pt shorter than `--app-h`, so the app column (`h-(--app-h) overflow-hidden`, root.tsx) is
+ * taller than the document and the document scrolls too, on top of the app's inner scrollers: a
+ * double, nested scroll that only the installed iPhone app shows (a Safari tab reports the right
+ * heights). Giving html and body the same `100lvh` and `overflow: hidden` removes the document as a
+ * scroller, so only the app's own scrollers move, and the app still fills to the bottom edge.
+ * `overscroll-behavior: none` keeps the page from rubber-banding. Nothing outside this block
+ * changes: Android, desktop and a browser tab keep a normal document. */
 :root {
   --app-h: 100dvh;
 }
@@ -865,6 +874,12 @@
   @supports (-webkit-touch-callout: none) {
     :root {
       --app-h: 100lvh;
+    }
+    html,
+    body {
+      height: 100lvh;
+      overflow: hidden;
+      overscroll-behavior: none;
     }
   }
 }
