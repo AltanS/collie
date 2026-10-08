@@ -85,7 +85,11 @@ export function coreRegionSignature(texts: string[], from: number, footer: numbe
 }
 
 export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | null {
-  const texts = lines.map(lineText);
+  return detectPromptSelectRegionIn(lines.map(lineText));
+}
+
+/** The same read over text rows already taken, for a caller that holds no styled lines (chrome.ts). */
+export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null {
   if (isAlienBuffer(texts)) return null;
 
   // 1. Scan up from the end through any bottom status line (e.g. "esc to cancel ... Gemini ...") for the dialog footer.

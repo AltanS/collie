@@ -257,6 +257,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   the screen Collie searched, so an idle pane read as not ready and the phone drew the unread-dialog
   card over it. Collie now looks up to eight status rows under the box, as it does for Claude Code.
   Thanks @alvinycheung (#374).
+- **A one-option question dialog in Antigravity is no longer read as an idle input box.** With the wider
+  status search, the rule under the "Question" label of a dialog with one option and a write-in fell
+  inside it, so the phone could show the composer as ready and type into the open dialog. A footer
+  hint, "esc to cancel" or a numbered menu under a rule now means the rule belongs to a dialog, and
+  no input box is found there.
 
 ## [1.17.2] - 2026-10-06
 

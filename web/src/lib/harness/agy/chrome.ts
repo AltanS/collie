@@ -1,11 +1,30 @@
 import type { StyledLine } from "../../blocks";
-import { isBlank, isBoxBorder, lineText } from "./markers";
+import { classifyFooter, isBlank, isBoxBorder, lineText } from "./markers";
+import { detectPromptSelectRegionIn, parseOptionRow, trailingMenuRows } from "./prompt-select";
 
 // Rows under the bottom border. A custom `statusLine` command prints as many rows as the user wrote,
 // so this matches the Claude reader's ceiling (claude/chrome.ts MAX_STATUS_LINES).
 const MAX_STATUS_LINES = 8;
 const MAX_DRAFT_LINES = 100;
 const PROMPT_REGEX = /^[❯›>]\s*/;
+const ESC_TO_CANCEL = /\besc(?:ape)?\s+to\s+cancel\b/i;
+
+// What a dialog paints under its rule and a status line never does: a footer hint, `esc to cancel`,
+// or a numbered menu (rows 1., 2. …, as `trailingMenuRows` reads one). Idle and working composers
+// print `? for shortcuts` under the box (every capture in the corpus), so any of these under a rule
+// means that rule belongs to a modal. One numbered item alone is not enough: a custom `statusLine`
+// may print `1. build ok  2. tests ok` (claude-lab--statusline-numbered-rows--w82.txt), and that is
+// still a live box.
+function dialogUnder(texts: string[], bottomBorder: number, end: number): boolean {
+  const options: { n: number }[] = [];
+  for (let j = bottomBorder + 1; j < end; j++) {
+    const text = texts[j]!;
+    if (classifyFooter(text) !== null || ESC_TO_CANCEL.test(text)) return true;
+    const option = parseOptionRow(text);
+    if (option !== null) options.push(option);
+  }
+  return trailingMenuRows(options).length >= 2;
+}
 
 export interface LocatedBox {
   top: number;
@@ -30,6 +49,14 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
       bottomBorder = idx;
       break;
     }
+  }
+
+  // The window is wide enough (8 rows) to reach the rule under a dialog's `Question` label. A short
+  // `select-menu` dialog (one real option and a write-in) puts that rule inside it, and the echoed
+  // user message `> …` above it then reads as an idle prompt. A modal under the rule, or a prompt
+  // grammar claiming the screen, means no composer: fail closed, like step 2.
+  if (bottomBorder !== -1 && (dialogUnder(texts, bottomBorder, end) || detectPromptSelectRegionIn(texts) !== null)) {
+    return null;
   }
 
   if (bottomBorder !== -1) {

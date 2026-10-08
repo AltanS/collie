@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
-import { splitLines } from "../../blocks";
+import { lineText, splitLines } from "../../blocks";
 import { agyAdapter, antigravityAdapter } from "./index";
 import { detectPromptSelect } from "./prompt-select";
 import { describeAdapterConformance } from "../conformance";
@@ -279,3 +279,62 @@ describe("agyAdapter unit & footer safety", () => {
   });
 });
 
+
+describe("agy: the input-box search window never reads a dialog's rule as a composer", () => {
+  const rowsOf = (name: string): string[] =>
+    splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8"))).map(lineText);
+  const linesOf = (rows: string[]) => splitLines(parseAnsi(rows.join("\n")));
+
+  // `agy--select-menu.txt` with the Red / Green / Blue rows cut to Red alone and the write-in
+  // renumbered to 2. The rule under the `Question` label then sits 8 rows from the tail, inside the
+  // widened status window, and the echoed `> Use the ask_user_question …` row above it looks like
+  // a prompt. The real corpus cannot show this: every captured dialog has at least four option rows.
+  const oneOptionDialog = (): string[] =>
+    rowsOf("agy--select-menu.txt")
+      .filter((r) => !/^\s*3\.\s+Blue\s*$/.test(r) && !/^\s*2\.\s+Green\s*$/.test(r))
+      .map((r) => r.replace(/^(\s*)4\.(\s+Write-in)/, "$12.$2"));
+
+  it("the one-option question dialog is not an input box", () => {
+    const rows = oneOptionDialog();
+    expect(rows.some((r) => /^\s*2\.\s+Write-in/.test(r))).toBe(true);
+    expect(rows.filter((r) => /^\s*(?:>\s*)?\d\.\s/.test(r))).toHaveLength(2);
+    const lines = linesOf(rows);
+
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+    expect(antigravityAdapter.composerReady!(lines)).toBe(false);
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+    expect(agyAdapter.extractStatusLines!(lines)).toEqual([]);
+  });
+
+  it("the real four-option dialog stays not-ready", () => {
+    expect(agyAdapter.composerReady!(linesOf(rowsOf("agy--select-menu.txt")))).toBe(false);
+  });
+
+  const boxWithStatusRows = (n: number): string[] => [
+    "Done.",
+    RULE,
+    ">",
+    RULE,
+    ...Array.from({ length: n }, (_, i) => `status row ${i + 1}`),
+  ];
+
+  it("eight status rows under a real input box still find it", () => {
+    const lines = linesOf(boxWithStatusRows(8));
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractStatusLines!(lines)).toHaveLength(8);
+  });
+
+  it("nine status rows push the bottom border out of the window", () => {
+    expect(agyAdapter.composerReady!(linesOf(boxWithStatusRows(9)))).toBe(false);
+  });
+
+  it.each([["esc to cancel"], ["enter to select"], ["1. Red", "2. Write-in..."]])("a dialog under the rule (%s) is no composer", (...dialogRows) => {
+    const rows = [...boxWithStatusRows(1), ...dialogRows];
+    expect(agyAdapter.composerReady!(linesOf(rows))).toBe(false);
+  });
+
+  it("one numbered item in a custom statusLine is still a live box", () => {
+    const rows = [...boxWithStatusRows(1), "1. build ok  2. tests ok"];
+    expect(agyAdapter.composerReady!(linesOf(rows))).toBe(true);
+  });
+});
