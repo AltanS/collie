@@ -21,6 +21,11 @@ const SPLIT_FROM = TAIL + 6;
  * 16px line box, the size it takes on every surface. The caller sets the line box on a surface whose
  * line is shorter (`leading-3` in the pane header) and the width it may take.
  *
+ * The glyph is centred on its own (`self-center`) and stays out of the baseline, so the label's
+ * baseline is its TEXT's: a line that sets its items on the baseline (the pane header) puts the name
+ * on the same baseline as the workspace beside it. With the glyph in the baseline, the label reported
+ * the glyph's bottom edge and the name sat about 2px high.
+ *
  * The drawn text is hidden from a screen reader, which reads the whole name in words instead
  * ("Branch fix-login"), since the eye's version may be cut. Owns no tap: a caller that wants one
  * wraps it.
@@ -34,12 +39,12 @@ export function BranchLabel({ head, className }: { head: GitHead; className?: st
     <span
       data-slot="branch-label"
       title={branch ? head.name : head.sha}
-      className={cn("flex min-w-0 items-center gap-1 font-mono text-[11px] leading-4", className)}
+      className={cn("flex min-w-0 items-baseline gap-1 font-mono text-[11px] leading-4", className)}
     >
       {branch ? (
-        <GitBranch aria-hidden className="size-3 shrink-0" />
+        <GitBranch aria-hidden className="size-3 shrink-0 self-center" />
       ) : (
-        <GitCommitHorizontal aria-hidden className="size-3 shrink-0" />
+        <GitCommitHorizontal aria-hidden className="size-3 shrink-0 self-center" />
       )}
       <span aria-hidden className="flex min-w-0">
         {branch ? (
