@@ -173,6 +173,9 @@ export const es: Dictionary = {
   "settings.connection.row.bridge": "Bridge",
   "settings.connection.row.deviceAccess": "Acceso del dispositivo",
   "settings.connection.row.serverBuild": "Build del servidor",
+  "settings.connection.row.secretMasking": "Ocultación de secretos",
+  "settings.connection.masking.on": "Activada, se ajusta en el bridge",
+  "settings.connection.masking.off": "Desactivada, se ajusta en el bridge",
   "settings.connection.secure.yes": "Sí",
   "settings.connection.secure.no": "No (HTTP sin cifrar)",
   "settings.connection.bridge.connected": "Conectado",
@@ -289,6 +292,7 @@ export const es: Dictionary = {
   "composer.send.reconnect": "Vuelve a conectarte para enviar",
   "composer.draft.tooLong":
     "Texto demasiado largo para persistir como borrador. Se conserva al cambiar de panel, pero no al cerrar la app.",
+  "composer.draft.holdsMask": "Esta respuesta contiene texto oculto (••••). El panel recibe los puntos, no el secreto.",
   "composer.status.dialogWaiting": "Hay un diálogo pendiente. Respóndelo antes de enviar.",
   "composer.status.unreadDialog":
     "Collie no puede leer este diálogo. {key} está en la tarjeta. Pulsa Enviar de nuevo para escribir igualmente.", // wordsmith
@@ -556,6 +560,8 @@ export const es: Dictionary = {
   "home.pinHint.hold": "Mantenga presionado un panel para fijarlo aquí.",
   "home.pinHint.rightClick": "Haga clic derecho en un panel para fijarlo aquí.",
   "home.pinHint.dismiss": "Descartar sugerencia",
+  "pane.maskedHint.body": "Algunos secretos de esta pantalla están ocultos. Léelos en la máquina.",
+  "pane.maskedHint.dismiss": "Descartar sugerencia",
   "home.group.newTab": "Nueva pestaña en {name}",
   "home.sidebar.paneActionsTitle": "Ver acciones del panel",
   "home.row.tabPosition": "pestaña {n}",

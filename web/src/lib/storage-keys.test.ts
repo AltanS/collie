@@ -62,6 +62,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:auto-zen-enabled:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:pins:v1", { area: "local", prefix: false, fate: "kept", why: "pinned pane ids, no content" }],
   ["collie:pin-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],
+  ["collie:masked-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],
   ["collie:hidden-machines:v1", { area: "local", prefix: false, fate: "kept", why: "machine names hidden here" }],
   ["collie:mirror-native:", { area: "local", prefix: true, fate: "kept", why: "a per-pane colour choice" }],
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],

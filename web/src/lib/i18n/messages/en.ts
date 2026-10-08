@@ -195,6 +195,9 @@ export const en = {
   "settings.connection.row.bridge": "Bridge",
   "settings.connection.row.deviceAccess": "Device access",
   "settings.connection.row.serverBuild": "Server build",
+  "settings.connection.row.secretMasking": "Secret masking",
+  "settings.connection.masking.on": "On, set on the bridge",
+  "settings.connection.masking.off": "Off, set on the bridge",
   "settings.connection.secure.yes": "Yes",
   "settings.connection.secure.no": "No (plain HTTP)",
   "settings.connection.bridge.connected": "Connected",
@@ -316,6 +319,7 @@ export const en = {
   "composer.send.reconnect": "Reconnect to send",
   "composer.draft.tooLong":
     "Too long to keep as a saved draft — it survives switching panes, but not closing the app.",
+  "composer.draft.holdsMask": "This reply holds masked text (••••). The pane gets the dots, not the secret.",
   "composer.status.dialogWaiting": "A dialog is waiting — answer it first, then send.",
   "composer.status.unreadDialog":
     "Collie cannot read this dialog. {key} is on the card. Tap Send again to type anyway.",
@@ -619,6 +623,8 @@ export const en = {
   "home.pinHint.hold": "Hold a pane to pin it here.",
   "home.pinHint.rightClick": "Right-click a pane to pin it here.",
   "home.pinHint.dismiss": "Dismiss hint",
+  "pane.maskedHint.body": "Some secrets on this screen are masked. Read them on the machine.",
+  "pane.maskedHint.dismiss": "Dismiss hint",
   "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
   "home.row.tabPosition": "tab {n}",

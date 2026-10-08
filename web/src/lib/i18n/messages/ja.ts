@@ -170,6 +170,9 @@ export const ja: Dictionary = {
   "settings.connection.row.bridge": "ブリッジ",
   "settings.connection.row.deviceAccess": "デバイスアクセス",
   "settings.connection.row.serverBuild": "サーバービルド",
+  "settings.connection.row.secretMasking": "シークレットのマスク",
+  "settings.connection.masking.on": "オン、ブリッジで設定",
+  "settings.connection.masking.off": "オフ、ブリッジで設定",
   "settings.connection.secure.yes": "有効",
   "settings.connection.secure.no": "無効 (HTTP)",
   "settings.connection.bridge.connected": "接続中",
@@ -286,6 +289,7 @@ export const ja: Dictionary = {
   "composer.send.reconnect": "再接続してから送信してください",
   "composer.draft.tooLong":
     "下書き保存の上限を超えています。ペイン切り替え時は保持されますが、アプリ終了時に破棄されます。",
+  "composer.draft.holdsMask": "この返信にはマスクされたテキスト(••••)が含まれています。ペインに届くのは点であり、シークレットではありません。",
   "composer.status.dialogWaiting": "対話プロンプトの応答待ちです。先に応答してから送信してください。",
   "composer.status.unreadDialog":
     "Collie はこの対話を読み取れません。カードに {key} があります。それでも入力するには、もう一度送信をタップしてください。", // wordsmith
@@ -551,6 +555,8 @@ export const ja: Dictionary = {
   "home.pinHint.hold": "ペインを長押しするとここに固定できます。",
   "home.pinHint.rightClick": "ペインを右クリックするとここに固定できます。",
   "home.pinHint.dismiss": "ヒントを閉じる",
+  "pane.maskedHint.body": "この画面の一部のシークレットはマスクされています。実機で確認してください。",
+  "pane.maskedHint.dismiss": "ヒントを閉じる",
   "home.group.newTab": "{name}で新しいタブを開く",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
   "home.row.tabPosition": "タブ {n}",

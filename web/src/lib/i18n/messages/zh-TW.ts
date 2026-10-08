@@ -161,6 +161,9 @@ export const zhTW: Dictionary = {
   "settings.connection.row.bridge": "Bridge",
   "settings.connection.row.deviceAccess": "裝置權限",
   "settings.connection.row.serverBuild": "伺服器端版本",
+  "settings.connection.row.secretMasking": "機密資訊遮蔽",
+  "settings.connection.masking.on": "已開啟，於 Bridge 設定",
+  "settings.connection.masking.off": "已關閉，於 Bridge 設定",
   "settings.connection.secure.yes": "是",
   "settings.connection.secure.no": "否（明文 HTTP）",
   "settings.connection.bridge.connected": "已連線",
@@ -276,6 +279,7 @@ export const zhTW: Dictionary = {
   "composer.send.sendAria": "傳送",
   "composer.send.reconnect": "請重新連線後再傳送",
   "composer.draft.tooLong": "內容過長，無法持久儲存為草稿。切換窗格時會保留，但離開應用程式後將遺失。",
+  "composer.draft.holdsMask": "此回覆包含被遮蔽的文字（••••）。窗格收到的是圓點，而不是機密資訊。",
   "composer.status.dialogWaiting": "有等待回應的對話框，請先處理後再傳送。",
   "composer.status.unreadDialog":
     "Collie 無法讀取此對話框。卡片上是 {key}。要繼續輸入，請再次點擊「傳送」。", // wordsmith
@@ -536,6 +540,8 @@ export const zhTW: Dictionary = {
   "home.pinHint.hold": "按住窗格以釘選至此處。",
   "home.pinHint.rightClick": "以滑鼠右鍵點擊窗格以釘選至此處。",
   "home.pinHint.dismiss": "關閉提示",
+  "pane.maskedHint.body": "此畫面上的部分機密資訊已被遮蔽。請在機器上查看。",
+  "pane.maskedHint.dismiss": "關閉提示",
   "home.group.newTab": "在 {name} 中開啟新分頁",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
   "home.row.tabPosition": "分頁 {n}",

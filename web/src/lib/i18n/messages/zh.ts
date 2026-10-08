@@ -162,6 +162,9 @@ export const zh: Dictionary = {
   "settings.connection.row.bridge": "网桥",
   "settings.connection.row.deviceAccess": "设备权限",
   "settings.connection.row.serverBuild": "服务端版本",
+  "settings.connection.row.secretMasking": "敏感信息遮蔽",
+  "settings.connection.masking.on": "已开启，在网桥上设置",
+  "settings.connection.masking.off": "已关闭，在网桥上设置",
   "settings.connection.secure.yes": "是",
   "settings.connection.secure.no": "否（明文 HTTP）",
   "settings.connection.bridge.connected": "已连接",
@@ -277,6 +280,7 @@ export const zh: Dictionary = {
   "composer.send.sendAria": "发送",
   "composer.send.reconnect": "请重新连接后再发送",
   "composer.draft.tooLong": "内容过长无法持久化保存为草稿。切换窗格会保留，但退出应用后将丢失。",
+  "composer.draft.holdsMask": "此回复包含被遮蔽的文本（••••）。窗格收到的是圆点，而不是敏感信息。",
   "composer.status.dialogWaiting": "有等待响应的对话框，请先处理后再发送。",
   "composer.status.unreadDialog":
     "Collie 无法读取此对话框。卡片上是 {key}。要继续键入，请再次点击“发送”。", // wordsmith
@@ -540,6 +544,8 @@ export const zh: Dictionary = {
   "home.pinHint.hold": "按住窗格可将其固定在此处。",
   "home.pinHint.rightClick": "右键点击窗格可将其固定在此处。",
   "home.pinHint.dismiss": "关闭提示",
+  "pane.maskedHint.body": "此屏幕上的部分敏感信息已被遮蔽。请在机器上查看。",
+  "pane.maskedHint.dismiss": "关闭提示",
   "home.group.newTab": "在 {name} 中打开新标签页",
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
   "home.row.tabPosition": "标签页 {n}",

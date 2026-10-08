@@ -735,6 +735,12 @@ export function bridgeConfigBody(opts: {
    * handler, so an absent key on the wire means an older bridge and nothing else.
    */
   upload?: UploadCapability;
+  /**
+   * Whether this bridge masks secret shapes before text leaves the machine (`cfg.redact`). Optional
+   * for the reason `upload` is, plus one more: a `?host=<member>` answer leaves it out, because the
+   * member's own switch is not in the capability block the lead holds.
+   */
+  redact?: boolean;
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
@@ -765,6 +771,9 @@ export function bridgeConfigBody(opts: {
   // Same omit-when-absent rule, and the same reading on the other end: no key is an older bridge,
   // which the phone falls back to the pre-attachment contract for (images, 10 MB).
   if (opts.upload !== undefined) wire.upload = opts.upload;
+  // Appended last and omit-when-absent: no key is an older bridge, or a member's scoped answer, and
+  // the phone shows "unknown" for both rather than guessing "on".
+  if (opts.redact !== undefined) wire.redact = opts.redact;
   return wire;
 }
 
@@ -1988,6 +1997,11 @@ export function startServer(opts: {
               imageTypes: [...IMAGE_EXTS],
               textTypes: [...TEXT_EXTS, ...cfg.uploadExtraTypes],
             },
+            // The lead's own switch, for the lead's own answer only. A member-scoped read leaves the
+            // key out rather than inventing a value: the lead masks member text again whenever ITS
+            // switch is on, so the lead's value is what decides what reaches this phone, and the
+            // member's own is not something the lead has been told.
+            redact: scoped === undefined || scoped.kind === "local" ? cfg.redact : undefined,
           }),
           req.headers.get("accept-encoding"),
         );

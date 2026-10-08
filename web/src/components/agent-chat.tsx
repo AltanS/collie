@@ -74,6 +74,9 @@ import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
+import { MaskedHint } from "@/components/masked-hint";
+import { useMaskedHintRetired } from "@/lib/masked-hint";
+import { entriesHoldMask, holdsMask } from "@/lib/masked-text";
 import { useHostHealth } from "@/components/crew-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
@@ -985,6 +988,16 @@ export function AgentChat({
     !chatFetch || chatStatus.kind !== "empty" || chatFeed.tried || handover.phase !== "idle";
   const chatReadyBody = useChatReady(chatBody, chatAnswered);
   const chatShown = useHeldBody(chatReadyBody, handover.phase);
+  // Whether the text the operator is looking at holds the bridge's mask, for the one-time hint that
+  // explains the dots. One check over whichever body is on screen, from data already in scope (no new
+  // fetch): the Chat window's turns, or the mirror as `shown` last settled (`display`).
+  const chatEntries = chatFeed.window.entries;
+  const maskOnScreen = useMemo(
+    () => (chatShown ? entriesHoldMask(chatEntries) : holdsMask(display)),
+    [chatShown, chatEntries, display],
+  );
+  const maskedHintRetired = useMaskedHintRetired();
+  const maskedHintOpen = maskOnScreen && !maskedHintRetired;
   // THE SAVED COPY'S DATE, for whichever body is on screen (M46 specs 09 and 10). Chat dates its own
   // window, read back from the Chat tail the phone kept; the terminal dates the last-seen mirror the
   // loader restored. The Terminal body has no offline read beyond that mirror: the raw screen is
@@ -2041,6 +2054,11 @@ export function AgentChat({
                 RootLayout; this one is scoped to the pane because the phone's link is fine. Renders
                 nothing on a solo install, or while the host is live. */}
             <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
+
+            {/* The one-time line that explains the dots (lib/masked-hint.ts). In the same chrome band
+                as the banners, so it leaves with them in zen, and in a Collapse of its own so it
+                slides in and out rather than pushing the mirror by a jump. */}
+            <MaskedHint open={maskedHintOpen} className="mx-3 mt-1.5" />
 
             {/* THE TWO STRIPS, AND THE THIN BAR THAT STANDS IN FOR THEM — one band that morphs, not
                 two rows taking turns. `CollapseSwap` is nested inside zen's `Collapse`, so zen still

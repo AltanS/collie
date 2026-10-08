@@ -1484,6 +1484,13 @@ export interface BridgeConfig {
    * `COLLIE_MAX_UPLOAD_MB` still answers for itself when the bytes arrive. See docs/configure.md.
    */
   upload?: UploadCapability;
+  /**
+   * Whether this bridge masks secret shapes before text leaves the machine (`cfg.redact`,
+   * `COLLIE_REDACT`). Read-only on the phone: Settings shows it and never sets it. **Absent is an
+   * older bridge, or a `?host=<member>` answer**, which the phone shows as unknown. Mirrors
+   * `BridgeConfig` in web/src/lib/types.ts.
+   */
+  redact?: boolean;
 }
 
 /**

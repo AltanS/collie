@@ -3858,3 +3858,34 @@ describe("Composer — hand", () => {
     expect(belt.querySelector(".overflow-x-auto")!.className).toContain("[direction:rtl]");
   });
 });
+
+// A line copied off the mirror carries the bridge's dots, not the secret behind them. The composer
+// warns, and never blocks: reply-action.ts accepts `•` as a mask slot on purpose.
+describe("Composer — a draft that holds masked text", () => {
+  const CAUTION = /this reply holds masked text/i;
+
+  it("warns under the box while the draft holds a run of dots, and goes when they are deleted", async () => {
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(screen.queryByText(CAUTION)).toBeNull();
+    fireEvent.change(box, { target: { value: "export KEY=sk-o••••••••" } });
+    const caution = await screen.findByText(CAUTION);
+    expect(caution).toHaveTextContent("The pane gets the dots, not the secret.");
+    await waitFor(() => expect(caution.closest('[data-slot="collapse"]')!.getAttribute("data-state")).toBe("open"));
+    fireEvent.change(box, { target: { value: "export KEY=" } });
+    expectLeaving(screen.queryByText(CAUTION));
+  });
+
+  it("does not warn for three dots or an ordinary sentence", () => {
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    fireEvent.change(box, { target: { value: "wait for it ••• then run the tests" } });
+    expect(screen.queryByText(CAUTION)).toBeNull();
+  });
+
+  it("does not block Send", () => {
+    renderComposerWithStatus();
+    fireEvent.change(screen.getByPlaceholderText(/type a reply/i), { target: { value: "ghp_••••••••" } });
+    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+  });
+});

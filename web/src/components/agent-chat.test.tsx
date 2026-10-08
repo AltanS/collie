@@ -40,6 +40,7 @@ import { withHeaderHost } from "@/test/header-host";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
 import { saveChatTail } from "@/lib/chat-tail";
+import { __resetMaskedHint, maskedHintRetired } from "@/lib/masked-hint";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
 // These suites drive sends against a mocked network and never poll first, so they pin the pane live;
@@ -568,6 +569,35 @@ describe("AgentChat — read-only device", () => {
     renderChat({ device: { enforced: true, device: "my-phone", authorized: true } });
     expect(screen.queryByText(/read-only/i)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/type a reply/i)).not.toBeDisabled();
+  });
+});
+
+// The bridge masks secret shapes before text leaves the machine, so a pane can show `sk-o••••••••`.
+// The first time one is on screen the pane says the dots are on purpose, once per device.
+describe("AgentChat — the one-time masked-text hint", () => {
+  const HINT = /some secrets on this screen are masked/i;
+  beforeEach(() => __resetMaskedHint());
+
+  it("stays out of the way when nothing on screen is masked", () => {
+    renderChat();
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it("explains the dots when the mirror holds a mask, and a dismiss retires it for good", async () => {
+    const user = userEvent.setup();
+    renderChat({ text: paneTextWithDraft("key: sk-o••••••••") });
+    expect(await screen.findByText(HINT)).toBeInTheDocument();
+    expect(screen.getByText(/read them on the machine/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Dismiss hint" }));
+    expect(maskedHintRetired()).toBe(true);
+    expect(localStorage.getItem("collie:masked-hint:v1")).toBe("1");
+    // Gone, or on its way out through Collapse.
+    const left = screen.queryByText(HINT);
+    if (left !== null) expect(left.closest('[data-slot="collapse"]')!.getAttribute("data-state")).toBe("closed");
+    cleanup();
+    // A fresh mount on a new mirror that still holds dots: never again on this device.
+    renderChat({ text: paneTextWithDraft("another sk-o••••••••") });
+    expect(screen.queryByText(HINT)).toBeNull();
   });
 });
 

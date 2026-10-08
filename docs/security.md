@@ -253,11 +253,20 @@ Some ordinary text is masked too, for example a line of prose or YAML that reads
 What you type and send is never masked, and the audit trail keeps its own rules
 (`COLLIE_AUDIT_CONTENT`).
 
+The switch lives on the bridge only, as `COLLIE_REDACT`. Settings → System shows it read-only, as
+"Secret masking". The phone has no switch on purpose: a switch on the phone would let any paired
+phone, or a stolen one, turn the mask off. To read a masked value, read it on the machine. The first
+time a pane shows masked text, a short line on the phone says so, once per device. If you paste
+masked text into a reply, a caution under the box says the pane gets the dots, not the secret.
+
 In a crew, each member masks its own text, and the lead masks it again before your phone gets it.
 The lead masks a member's mirror, Chat, History, diffs, file text and pane titles with the same mask
 it uses for its own, so a member that still runs 1.17.x cannot send a key to your phone in clear.
 Masked text stays as it is when it is masked again. Text reaches the phone unmasked only when
-`COLLIE_REDACT=off` is set on both the lead and the member.
+`COLLIE_REDACT=off` is set on both the lead and the member. One edge: a member on 1.17.x masks
+nothing itself, so when a secret sits in the lines a reply is checked against, the phone may refuse
+that reply with "The screen changed before that could be sent". The reply then waits until the
+member runs 1.18.0.
 
 If the lead cannot read a member's answer to mask it, it does not pass the answer on. The phone then
 shows that read as failed, as it does for a member it cannot reach.

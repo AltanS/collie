@@ -170,6 +170,9 @@ export const ko: Dictionary = {
   "settings.connection.row.bridge": "브리지",
   "settings.connection.row.deviceAccess": "기기 접근 권한",
   "settings.connection.row.serverBuild": "서버 빌드",
+  "settings.connection.row.secretMasking": "비밀 정보 마스킹",
+  "settings.connection.masking.on": "켜짐, 브리지에서 설정",
+  "settings.connection.masking.off": "꺼짐, 브리지에서 설정",
   "settings.connection.secure.yes": "예",
   "settings.connection.secure.no": "아니요 (HTTP)",
   "settings.connection.bridge.connected": "연결됨",
@@ -285,6 +288,7 @@ export const ko: Dictionary = {
   "composer.send.sendAria": "전송",
   "composer.send.reconnect": "다시 연결한 뒤 전송하세요",
   "composer.draft.tooLong": "임시 저장 용량을 초과했습니다. 창 전환 시에는 유지되지만 앱 종료 시 삭제됩니다.",
+  "composer.draft.holdsMask": "이 답장에는 가려진 텍스트(••••)가 들어 있습니다. 창에는 비밀 정보가 아닌 점이 전달됩니다.",
   "composer.status.dialogWaiting": "대기 중인 대화상자가 있습니다. 먼저 응답해야 전송할 수 있습니다.",
   "composer.status.unreadDialog":
     "Collie가 이 대화상자를 읽을 수 없습니다. 카드에 {key}이(가) 있습니다. 그래도 입력하려면 전송을 다시 누르세요.", // wordsmith
@@ -550,6 +554,8 @@ export const ko: Dictionary = {
   "home.pinHint.hold": "창을 길게 누르면 여기에 고정됩니다.",
   "home.pinHint.rightClick": "창을 마우스 오른쪽 버튼으로 클릭하면 여기에 고정됩니다.",
   "home.pinHint.dismiss": "힌트 닫기",
+  "pane.maskedHint.body": "이 화면의 일부 비밀 정보는 가려져 있습니다. 해당 기기에서 확인하세요.",
+  "pane.maskedHint.dismiss": "힌트 닫기",
   "home.group.newTab": "{name}에서 새 탭 열기",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
   "home.row.tabPosition": "탭 {n}",

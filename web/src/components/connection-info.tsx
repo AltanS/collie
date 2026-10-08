@@ -17,11 +17,14 @@ export function ConnectionInfo({
   bridge,
   device,
   build,
+  redact,
 }: {
   bridge: BridgeStatus | undefined;
   device: DeviceAuth | undefined;
   /** Build id the bridge reports it's serving (from /api/config); omitted while loading/offline. */
   build?: string;
+  /** Whether the bridge masks secrets (from /api/config); omitted while loading, offline, or on an older bridge. */
+  redact?: boolean;
 }) {
   useLocale();
   const { token, refused } = usePairing();
@@ -31,6 +34,7 @@ export function ConnectionInfo({
   // refusal latched since the last proof, is the answer here: an unpaired phone gets no snapshot, and
   // the header gate's `device` field it would have carried is then absent, not "off".
   const d = deviceLabel(device, paired);
+  const m = maskingLabel(redact);
   const secure = hasWindow() && window.isSecureContext;
   const host = hasWindow() ? window.location.host : "—";
 
@@ -55,6 +59,12 @@ export function ConnectionInfo({
         </Row>
         <Row label={t("settings.connection.row.deviceAccess")}>
           <span className={d.tone}>{d.text}</span>
+        </Row>
+        {/* READ-ONLY on purpose. The switch is `COLLIE_REDACT` on the bridge, and the phone gets no
+            control for it: a switch here would let any paired or stolen phone unmask. Caution tone
+            when it is off, because that is the state where secrets leave the machine as typed. */}
+        <Row label={t("settings.connection.row.secretMasking")}>
+          <span className={m.tone}>{m.text}</span>
         </Row>
         {/* Always present, even before the value lands: appearing late grew this card and moved
             everything under it. An em dash is a truthful "not known yet" and the same height. */}
@@ -138,4 +148,12 @@ function deviceLabel(device: DeviceAuth | undefined, paired: boolean): StatusLin
       : t("settings.connection.device.readOnly"),
     tone: "text-status-working",
   };
+}
+
+// Unknown (still loading, offline, or a bridge older than the field) is an em dash in muted ink, the
+// same truthful "not known yet" the build row shows, so the row never changes height when it lands.
+function maskingLabel(redact: boolean | undefined): StatusLine {
+  if (redact === undefined) return { text: "—", tone: "text-muted-foreground" };
+  if (redact) return { text: t("settings.connection.masking.on"), tone: "text-status-done" };
+  return { text: t("settings.connection.masking.off"), tone: "text-status-working" };
 }

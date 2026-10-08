@@ -2222,6 +2222,31 @@ describe("bridgeConfigBody — /api/config reports the crew mode", () => {
   });
 });
 
+// The masking switch is published read-only so Settings can show it; the phone never sets it. The
+// handler passes `cfg.redact` for the lead's own answer and nothing for a member-scoped one.
+describe("bridgeConfigBody — the masking switch is reported, and omitted when unknown", () => {
+  const base = { push: true, vapidPublicKey: "BKey", build: "abc123", mode: "solo" } as const;
+
+  test("true and false both round-trip", () => {
+    expect(bridgeConfigBody({ ...base, redact: true }).redact).toBe(true);
+    expect(bridgeConfigBody({ ...base, redact: false }).redact).toBe(false);
+  });
+
+  test("absent means no key at all, so a scoped answer and an older bridge read the same", () => {
+    expect("redact" in bridgeConfigBody({ ...base })).toBe(false);
+    expect("redact" in bridgeConfigBody({ ...base, redact: undefined })).toBe(false);
+  });
+
+  test("it is appended after the keys a client already parses", () => {
+    expect(Object.keys(bridgeConfigBody({ ...base, redact: true }))).toEqual([
+      "push",
+      "vapidPublicKey",
+      "build",
+      "redact",
+    ]);
+  });
+});
+
 // The mux block (M10/06) — how the phone learns what the multiplexer underneath can do, without
 // ever learning to branch on which one it is. Same reason as above: the handler is inside Bun.serve,
 // so the shape is asserted through the pure builder it calls.

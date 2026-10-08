@@ -10,6 +10,7 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
+import { holdsMask } from "@/lib/masked-text";
 import { setStatus } from "@/lib/status";
 import { buzz } from "@/lib/haptics";
 import { stampSend } from "@/lib/poll-intent";
@@ -1760,6 +1761,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <Collapse open={!direct.active && !fitsDraftStore(input)}>
           <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
             {translate("composer.draft.tooLong")}
+          </p>
+        </Collapse>
+        {/* A draft that holds the bridge's mask. The operator copied a masked line off the mirror and
+            pasted it here, and the pane would receive the dots, not the secret. A CONDITION for as
+            long as the text stays, like the line above, so it is derived at render and clears when
+            the dots are deleted or the draft is sent. A caution and never a block: a `••••` can be
+            meant (a password placeholder in a README), and reply-action.ts accepts it as a mask slot
+            on purpose when it reads the pane back. */}
+        <Collapse open={!direct.active && holdsMask(input)}>
+          <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
+            {translate("composer.draft.holdsMask")}
           </p>
         </Collapse>
         {/* ── ONE BOX, ONE ROW: THE FIELD, ATTACH, THE PRIMARY ACTION ──────────────────────

@@ -118,6 +118,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   zellij's own pane listing, which zellij takes live from the system. A zellij pane now gets the Files
   button and the Changes mark, shows its branch, and a launcher started beside it opens in that
   folder. An older zellij still reports none, and its panes stay as they were.
+- **Settings shows whether secrets are masked.** Settings → System has a read-only Secret masking
+  row that says On or Off, as the bridge reports it. The first time a pane shows masked text, a short
+  line says the dots are on purpose and the value is to be read on the machine; the X retires it on
+  that device for good. A reply that holds masked text gets a caution under the box, and Send still
+  works. The switch stays `COLLIE_REDACT` on the bridge: the phone has none, so a paired or stolen
+  phone cannot turn the mask off. An older bridge shows a dash.
 
 ### Changed
 

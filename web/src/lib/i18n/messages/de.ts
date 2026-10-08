@@ -175,6 +175,9 @@ export const de: Dictionary = {
   "settings.connection.row.bridge": "Bridge",
   "settings.connection.row.deviceAccess": "Gerätezugriff",
   "settings.connection.row.serverBuild": "Server-Build",
+  "settings.connection.row.secretMasking": "Geheimnis-Maskierung",
+  "settings.connection.masking.on": "An, auf der Bridge eingestellt",
+  "settings.connection.masking.off": "Aus, auf der Bridge eingestellt",
   "settings.connection.secure.yes": "Ja",
   "settings.connection.secure.no": "Nein (HTTP)",
   "settings.connection.bridge.connected": "Verbunden",
@@ -291,6 +294,7 @@ export const de: Dictionary = {
   "composer.send.reconnect": "Verbinde dich neu, um zu senden",
   "composer.draft.tooLong":
     "Zu lang für einen dauerhaften Entwurf. Bleibt beim Pane-Wechsel erhalten, geht aber beim Beenden der App verloren.",
+  "composer.draft.holdsMask": "Diese Antwort enthält maskierten Text (••••). Das Pane erhält die Punkte, nicht das Geheimnis.",
   "composer.status.dialogWaiting": "Ein Dialog ist geöffnet. Erst antworten, dann senden.",
   "composer.status.unreadDialog":
     "Collie kann diesen Dialog nicht lesen. {key} steht auf der Karte. Zum Tippen erneut auf Senden tippen.", // wordsmith
@@ -557,6 +561,8 @@ export const de: Dictionary = {
   "home.pinHint.hold": "Einen Bereich gedrückt halten, um ihn hier anzuheften.",
   "home.pinHint.rightClick": "Einen Bereich mit der rechten Maustaste anklicken, um ihn hier anzuheften.",
   "home.pinHint.dismiss": "Hinweis verwerfen",
+  "pane.maskedHint.body": "Einige Geheimnisse auf diesem Bildschirm sind maskiert. Lies sie auf dem Rechner.",
+  "pane.maskedHint.dismiss": "Hinweis verwerfen",
   "home.group.newTab": "Neuer Tab in {name}",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
   "home.row.tabPosition": "Tab {n}",

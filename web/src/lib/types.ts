@@ -1602,6 +1602,12 @@ export interface BridgeConfig {
    * mid-upgrade operator sees the old picker rather than an empty one.
    */
   upload?: UploadCapability;
+  /**
+   * Whether the bridge masks secret shapes before text reaches this phone (`COLLIE_REDACT`). The
+   * phone only SHOWS this and never sets it: a switch on the phone would let any paired or stolen
+   * phone unmask. **Absent is an older bridge** (or a member-scoped read), shown as unknown.
+   */
+  redact?: boolean;
 }
 
 /**

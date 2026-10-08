@@ -79,3 +79,30 @@ describe("ConnectionInfo — device access row", () => {
     expect(screen.getByText("abc1234")).toBeInTheDocument();
   });
 });
+
+// The masking switch lives on the bridge. This row only SHOWS it, read-only, so the three states are
+// the whole contract: on, off in the caution tone, and a dash (same height) while unknown.
+describe("ConnectionInfo — secret masking row", () => {
+  beforeEach(() => setDeviceToken("tok-placeholder"));
+
+  it("says On when the bridge masks, and offers no control", () => {
+    render(<ConnectionInfo bridge="connected" device={undefined} redact={true} />);
+    expect(screen.getByText("Secret masking")).toBeInTheDocument();
+    expect(screen.getByText("On, set on the bridge")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("says Off in the caution tone when the bridge does not mask", () => {
+    render(<ConnectionInfo bridge="connected" device={undefined} redact={false} />);
+    const off = screen.getByText("Off, set on the bridge");
+    expect(off).toHaveClass("text-status-working");
+  });
+
+  it("shows a dash while unknown, or for an older bridge, so the card never changes height", () => {
+    render(<ConnectionInfo bridge="connected" device={undefined} />);
+    const row = screen.getByText("Secret masking").closest("div")!;
+    expect(row).toHaveTextContent("—");
+    expect(screen.queryByText(/set on the bridge/)).toBeNull();
+  });
+});

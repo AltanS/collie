@@ -28,7 +28,7 @@ import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { UpdatesSettingsCard } from "@/components/updates-settings-card";
 import { ZenControl } from "@/components/zen-control";
-import { useServerBuild } from "@/hooks/use-server-build";
+import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
 import { useOptionalRootData } from "@/lib/route-data";
 
@@ -184,7 +184,7 @@ export function SettingsExperimentsRoute() {
 
 export function SettingsSystemRoute() {
   const root = useOptionalRootData();
-  const serverBuild = useServerBuild();
+  const diagnostics = useServerDiagnostics();
   // This page's OWN loader: the paired-device registry (lib/loaders.ts devicesLoader).
   // Defaulted rather than asserted: a harness that mounts this route without the loader (or a
   // navigation whose loader threw) must still render the rest of the page, not crash it.
@@ -202,7 +202,12 @@ export function SettingsSystemRoute() {
       <PairedDevices data={devices} />
       {/* Renders NOTHING on a solo install — the card owns that gate itself (useCrew().multi). */}
       <CrewSettingsCard />
-      <ConnectionInfo bridge={root?.bridge} device={root?.device} build={serverBuild} />
+      <ConnectionInfo
+        bridge={root?.bridge}
+        device={root?.device}
+        build={diagnostics.build}
+        redact={diagnostics.redact}
+      />
     </SettingsPage>
   );
 }
