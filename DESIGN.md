@@ -299,6 +299,26 @@ NAME is always drawn beside the tint (WCAG 1.4.1), and health still speaks in th
 and `host-chip.tsx`'s name text and border stay the literal untinted classes on every surface, and
 only the leading Server icon carries `text-host-N`. A whole-tag wash was tried and read as too much.
 
+### Red marks harm, never emphasis
+
+Red comes from two tokens, and each has one job.
+
+- **`--destructive` marks an act that can hurt.** That is either an act that destroys or cannot be
+  taken back (Close, Kill, a danger key in the key queue, the `destructive` button), or a control
+  that is ARMED: the next tap or key goes to a live terminal with no review. The harness bar's
+  second-tap confirm is the reference for armed. An armed state wears the tint recipe
+  `border-destructive/40 bg-destructive/10 text-destructive`, never a solid fill, whatever its
+  size: a full-width strip keeps the same tint as a pill. A solid `bg-destructive` belongs only on
+  the button that carries out the act.
+- **`--status-blocked`, through `ui/notice.tsx`'s `danger` tone, marks a notice:** something went
+  wrong, or the operator must act. The tint recipe for it lives in that file's table, not here.
+
+When both meet, for example an error inside an armed strip, the control keeps `--destructive`
+and the message beside it takes the notice's `danger` tone.
+
+Red is never emphasis, a brand accent, or "new". A screen with red on it says that something can
+hurt or has gone wrong. Every other use spends that signal.
+
 ### A raised panel is `--card`, not `--background`
 
 A sheet, a drawer or any panel that floats **over** the page takes `bg-card` and edges itself with
