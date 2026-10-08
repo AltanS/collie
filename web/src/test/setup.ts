@@ -12,6 +12,7 @@ import { __resetHiddenMachines } from "@/lib/hidden-machines";
 import { __resetAuthedUrls } from "@/lib/authed-url";
 import { __resetStore } from "@/lib/store";
 import { __resetChatTail } from "@/lib/chat-tail";
+import { resetFoldersCacheForTests } from "@/lib/folders";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`. It LIVES in
 // `./msw.ts`, which touches no document, so the pure-logic project can load it without this file
@@ -70,6 +71,8 @@ Object.defineProperty(URL, "createObjectURL", {
 });
 Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: () => undefined });
 beforeEach(() => __resetAuthedUrls());
+// The new-space sheet's folder cache is module-scoped: one test's list must not open the next test's sheet.
+beforeEach(() => resetFoldersCacheForTests());
 
 // jsdom gaps that the terminal mirror / sheets touch.
 if (!Element.prototype.scrollIntoView) {

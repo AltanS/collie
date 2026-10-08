@@ -1,5 +1,5 @@
 import { ListTree, Network, Rows3 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
@@ -34,6 +34,7 @@ import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
+import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
 import { spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
@@ -113,6 +114,13 @@ export function HomeRoute() {
         .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  // The new-space sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
+  // final height (lib/folders.ts). Once per mount, for the machine this view shows.
+  const folderHost = data.scope?.host;
+  const folderSession = data.scope?.session;
+  useEffect(() => {
+    prefetchFolders({ host: folderHost, session: folderSession });
+  }, [folderHost, folderSession]);
   useLocale();
   const {
     prefs,

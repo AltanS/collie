@@ -15,6 +15,7 @@ import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
+import { prefetchFolders } from "@/lib/folders";
 import { homePath, spacePath } from "@/lib/nav";
 import { ambientHost } from "@/lib/hosts";
 import { scopeKey } from "@/lib/scope";
@@ -33,6 +34,13 @@ export function SpaceRoute() {
   const revalidator = useRevalidator();
   const { newTab, newSpace, creatingTab, creatingSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  // The new-space sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
+  // final height (lib/folders.ts). Once per mount, for the machine this view shows.
+  const folderHost = data.scope?.host;
+  const folderSession = data.scope?.session;
+  useEffect(() => {
+    prefetchFolders({ host: folderHost, session: folderSession });
+  }, [folderHost, folderSession]);
   // Either write gate refusing locks the tab strip's rename/close the same way (see ReadOnlyBanner).
   const { refused: notPaired } = usePairing();
 
