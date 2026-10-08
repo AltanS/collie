@@ -107,7 +107,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A crew lead masks its members' text too.** The lead masks a member's mirror, Chat, History,
   diffs, file text and pane titles with its own mask before your phone gets them, so a member still
   on 1.17.x cannot send a key in clear. Text a member already masked comes through unchanged. An
-  answer the lead cannot read to mask is refused, never passed on raw.
+  answer the lead cannot read to mask is refused, never passed on raw. A copy the phone got before
+  the lead masked it is fetched again, not kept on a `304`.
 - **Every pane shows the branch its folder is on.** The dashboard row leads its second line with
   the branch, the pane header shows it after the workspace, and the Files header after the folder. A
   detached head reads `detached @abc1234`, and a long name keeps its end. The bridge reads it from

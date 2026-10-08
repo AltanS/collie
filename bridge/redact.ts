@@ -46,6 +46,15 @@
 /** The one mask character. One column wide, and never matched by any pattern below. */
 export const MASK = "•";
 
+/**
+ * The version of the pattern list below. **Bump it whenever a pattern is added or widened.** A crew
+ * lead masks a member's answer and passes the member's ETag on, salted with this number
+ * (`bridge/crew/forward.ts`); a phone that holds a copy masked under an older list then sends a tag
+ * the lead no longer vouches for, and gets the body again, masked under this one. A local answer
+ * needs no salt: its tag is hashed over the masked body, so a new pattern changes the tag by itself.
+ */
+export const MASK_VERSION = 1;
+
 /** One pattern family. `group` names the capture to mask when the whole match is not the secret. */
 interface Family {
   readonly name: string;

@@ -1131,7 +1131,8 @@ the secrets in the text answers it relays (§9.1, "The lead masks a member's tex
 
 The lead forwards the request to the owning peer and returns the peer's response **unmodified**:
 status, body bytes, `content-type`, and — critically — **`etag`**. The one change it may make to a
-body is the secret mask below, and that change keeps the status and the ETag.
+body is the secret mask below, and that change keeps the status and salts the ETag with the mask's
+version.
 
 - `If-None-Match` from the phone is passed through to the peer.
 - **Compression is hop-local: the peer hop is `Accept-Encoding: identity`, and the peer's
@@ -1177,11 +1178,17 @@ peer surface, and `CREW_PROTOCOL_VERSION` does not move.
   `JSON.stringify`, the member's own serialiser, and comes back byte for byte. An answer with nothing
   to mask (`available: false`, a listing, a commit list) is passed on as the member's bytes, unparsed
   past its shape check.
-- **The member's ETag rides on unchanged.** The mask is a function of the member's bytes alone, so the
-  member's tag still names exactly one body the phone can hold, and the member keeps answering the
-  phone's `If-None-Match` with its own `304`. A tag hashed over the masked body would never match on
-  the member, and every Chat and mirror poll would cost a full body. `content-length` is never copied,
-  as above, so the new body is framed by its own length.
+- **The member's ETag rides on, salted with the mask's version.** The lead appends `~m<N>` inside the
+  quotes (`"abc"` becomes `"abc~m1"`), where `N` is `MASK_VERSION` in `bridge/redact.ts`, bumped
+  whenever a pattern is added. The mask is a function of the member's bytes and that version alone,
+  so the salted tag still names exactly one body the phone can hold. On the way in, the lead passes the
+  member only the phone's tags that carry the current salt, unsalted, and the member keeps answering
+  them with its own `304` (salted on the way out, like a `200`). Any other tag is dropped, so a copy
+  masked under an older list, or one a 1.17 lead passed on in clear, is fetched again and masked now.
+  A tag hashed over the masked body would never match on the member, and every Chat and mirror poll
+  would cost a full body. A route the lead does not mask, and every route while its mask is off,
+  passes the tag through untouched. `content-length` is never copied, as above, so the new body is
+  framed by its own length.
 - **It fails closed.** A `2xx` body that is not the answer its route makes (not JSON, or a field the
   mask walks of the wrong type) is never passed on raw: the lead answers `502 answer_unmaskable`
   naming the member (§10.3). A body the link loses mid-read is `503 host_unreachable`.

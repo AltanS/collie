@@ -9,7 +9,7 @@ import type { ChatWindowBody } from "../journal/live.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
 import type { ChangeDiff, FileReadAnswer, PaneReadResponse } from "../types.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
-import { forwardToPeer, textAnswerOf, type ForwardDeps, type ForwardTransport } from "./forward.ts";
+import { forwardToPeer, saltTag, textAnswerOf, unsaltIfNoneMatch, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import { maskForwardedAnswer } from "./mask.ts";
 import type { CrewLink, PeerOutcome } from "./peer-client.ts";
 import type { PeerState } from "./registry.ts";
@@ -19,6 +19,8 @@ const masked = `sk-t${"•".repeat(key.length - 4)}`;
 const blobUrl = `/api/blobs/${"ab".repeat(32)}`;
 const dataUrl = `data:image/png;base64,iVBORw0KGgo${"A".repeat(40)}==`;
 const ETAG = '"the-members-own-tag"';
+/** The member's tag as the phone gets it through a lead that masks: salted with the mask's version. */
+const SALTED = saltTag(ETAG);
 
 const LINK: CrewLink = { memberId: "laptop", address: "laptop.example:8787" };
 const REACHABLE: PeerState = {
@@ -33,8 +35,9 @@ const REACHABLE: PeerState = {
 
 /** The member answers `body` with `status`, its own ETag, as JSON; `pulls` counts reads of the body. */
 function member(body: string | Uint8Array | null, status = 200, contentType = "application/json; charset=utf-8") {
-  const seen = { pulls: 0 };
-  const transport: ForwardTransport = async () => {
+  const seen = { pulls: 0, headers: new Headers() };
+  const transport: ForwardTransport = async (_link, _route, _params, init) => {
+    seen.headers = new Headers(init.headers);
     const stream =
       body === null
         ? null
@@ -148,8 +151,8 @@ describe("a member's key reaches the phone masked through the lead", () => {
       const out = await res.text();
       expect(out).not.toContain(key);
       expect(out).toContain(masked);
-      // The member's tag rides on, so the member keeps answering the phone's If-None-Match.
-      expect(res.headers.get("etag")).toBe(ETAG);
+      // The member's tag rides on, salted, so the member keeps answering the phone's If-None-Match.
+      expect(res.headers.get("etag")).toBe(SALTED);
     });
   }
 
@@ -208,7 +211,7 @@ describe("an answer a 1.18 member already masked comes back byte for byte", () =
       expect(body).not.toContain(key);
       const res = await viaLead(path, member(body).transport);
       expect(await res.text()).toBe(body);
-      expect(res.headers.get("etag")).toBe(ETAG);
+      expect(res.headers.get("etag")).toBe(SALTED);
     });
   }
 
@@ -244,10 +247,10 @@ describe("a picture, a blob and every other route pass untouched and unread", ()
     expect(await res.text()).toBe(body);
   });
 
-  test("a member's 304 has no body and stays a 304 with its tag", async () => {
+  test("a member's 304 has no body and stays a 304 with its tag, salted", async () => {
     const res = await viaLead("/api/pane/w1:p1/chat", member(null, 304).transport);
     expect(res.status).toBe(304);
-    expect(res.headers.get("etag")).toBe(ETAG);
+    expect(res.headers.get("etag")).toBe(SALTED);
   });
 
   test("a member's error answer is its own: no session text, so not read", async () => {
@@ -301,5 +304,59 @@ describe("the merged snapshot's titles", () => {
     expect(out.agents[1]!.terminalTitle).toBe(masked);
     expect(out.agents[2]).toEqual(snap.agents[2]!);
     expect(out.shellPanes[0]!.terminalTitle).toBe(`curl ${masked}`);
+  });
+});
+
+describe("a masked answer's tag names the mask's version", () => {
+  test("the phone's salted tag reaches the member as the member's own", async () => {
+    const { transport, seen } = member(null, 304);
+    const res = await viaLead("/api/pane/w1:p1/chat", transport, {
+      mask: maskForwardedAnswer,
+      headers: { "if-none-match": SALTED },
+    });
+    expect(seen.headers.get("if-none-match")).toBe(ETAG);
+    expect(res.status).toBe(304);
+  });
+
+  test("a tag without the salt is dropped, so a copy a lead passed on unmasked is fetched again", async () => {
+    // A 1.17 lead passed the member's tag on bare, over a body it never masked. That tag must not buy
+    // a 304 for the copy: the member answers in full, and this lead masks it.
+    const body = JSON.stringify({ paneId: "w1:p1", text: key });
+    const { transport, seen } = member(body);
+    const res = await viaLead("/api/pane/w1:p1", transport, {
+      mask: maskForwardedAnswer,
+      headers: { "if-none-match": ETAG },
+    });
+    expect(seen.headers.get("if-none-match")).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await res.text()).not.toContain(key);
+  });
+
+  test("a tag salted under another version is dropped too", () => {
+    expect(unsaltIfNoneMatch('"abc~m0"')).toBeNull();
+    expect(unsaltIfNoneMatch(`"abc~m0", ${saltTag('"def"')}`)).toBe('"def"');
+    expect(unsaltIfNoneMatch(saltTag('W/"abc"'))).toBe('W/"abc"');
+  });
+
+  test("a value that is not a quoted tag is left as it is", () => {
+    expect(saltTag("*")).toBe("*");
+    expect(saltTag("")).toBe("");
+  });
+
+  test("the lead's mask off: the phone's tag reaches the member as it was sent", async () => {
+    const { transport, seen } = member(null, 304);
+    const res = await viaLead("/api/pane/w1:p1/chat", transport, { mask: undefined, headers: { "if-none-match": ETAG } });
+    expect(seen.headers.get("if-none-match")).toBe(ETAG);
+    expect(res.headers.get("etag")).toBe(ETAG);
+  });
+
+  test("a picture's tag is never salted: the lead does not read it", async () => {
+    const { transport, seen } = member(new Uint8Array([1, 2, 3]), 200, "image/png");
+    const res = await viaLead("/api/pane/w1:p1/files/image?path=a.png", transport, {
+      mask: maskForwardedAnswer,
+      headers: { "if-none-match": ETAG },
+    });
+    expect(seen.headers.get("if-none-match")).toBe(ETAG);
+    expect(res.headers.get("etag")).toBe(ETAG);
   });
 });

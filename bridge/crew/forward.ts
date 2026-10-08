@@ -1,4 +1,5 @@
 import type { JsonObject } from "../json.ts";
+import { MASK_VERSION } from "../redact.ts";
 import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER, encodeDeviceHeader } from "./admission.ts";
 import { type CrewLink, type PeerFailure, type PeerOutcome, WRITE_BUDGET_MS } from "./peer-client.ts";
@@ -15,7 +16,7 @@ import { HOST_PARAM, type PeerState } from "./registry.ts";
 // this module is reached from the ONE place that resolves `(host, session)`.
 //
 // ── WHAT MAKES IT A PROXY AND NOT A RE-IMPLEMENTATION ────────────────────────
-// The lead does not recompute an ETag, does not touch a disk on a peer's behalf, and does not
+// The lead does not recompute an ETag (a masked answer's is only salted, {@link saltTag}), does not touch a disk on a peer's behalf, and does not
 // interpret a send/verify sequence (.adr/0010 lives client-side and on the OWNING host — §9.1).
 // Everything here is request-shaping in, response-classification out; the transport is the injected
 // peer client, so all of it is unit-testable without a socket.
@@ -331,8 +332,8 @@ function varyWithAcceptEncoding(existing: string | null): string {
  * where a local pane ships ~6 KB, which on cellular is the difference between usable and not. So the
  * lead compresses this hop itself, on the phone's own `accept-encoding`, via
  * `CompressionStream("gzip")`: the transform never buffers, so a body the lead does not mask is
- * transformed chunk by chunk rather than held whole. The peer's ETag rides through untouched — it
- * names the identity bytes, exactly as `gzipJsonResponse` intends it on a local route (.adr/0023).
+ * transformed chunk by chunk rather than held whole. The peer's ETag rides through (salted on a masked
+ * answer, {@link saltTag}) — it names the identity bytes, exactly as `gzipJsonResponse` intends it on a local route (.adr/0023).
  *
  * `content-length` is absent by construction in both branches: it is not copied, and a transform
  * cannot know it. A copied one would be the peer's pre-decompression length — the same lie as a
@@ -522,10 +523,11 @@ export interface ForwardDeps {
  * mid-read is a failed read like any other, `host_unreachable`.
  *
  * ── HEADERS ─────────────────────────────────────────────────────────────────
- * The member's ETag rides on unchanged. The mask is a function of the member's bytes alone, so the
- * member's tag still names exactly one body the phone can hold, and the member keeps answering the
- * phone's `If-None-Match` with its own `304`. A tag the lead hashed over the masked body would be one
- * the member never recognises, and every Chat and mirror poll would then cost a full body. No
+ * The member's ETag rides on, salted with the mask's version ({@link saltTag}). The mask is a function
+ * of the member's bytes and that version alone, so the salted tag still names exactly one body the
+ * phone can hold, and the member keeps answering the phone's `If-None-Match` with its own `304`. A tag
+ * the lead hashed over the masked body would be one the member never recognises, and every Chat and
+ * mirror poll would then cost a full body. No
  * `content-length` is copied ({@link proxiedResponse}), so the new body is framed by its own length.
  */
 async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask, memberId: string): Promise<Response> {
@@ -548,6 +550,45 @@ async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask,
     );
   }
   return new Response(masked, { status: res.status, headers: res.headers });
+}
+
+/**
+ * ── A MASKED ANSWER'S TAG NAMES THE MASK AS WELL AS THE BODY ─────────────────────────────────
+ * The member's ETag rides on ({@link maskedAnswer}), but the body the phone holds under it is the
+ * member's bytes AFTER this lead's mask. A tag of the member's alone would let a `304` keep a copy
+ * masked by an older pattern list, or not masked at all (a copy a 1.17 lead passed on raw), for as
+ * long as the member's text stays the same. So the lead salts the tag with {@link MASK_VERSION} on
+ * the way out, and on the way in passes the member only a tag carrying the CURRENT salt, unsalted.
+ * Any other tag is dropped, the member answers in full, and the lead masks that.
+ */
+const MASK_SALT = `~m${MASK_VERSION}`;
+
+/** `"abc"` → `"abc~m1"`, `W/"abc"` → `W/"abc~m1"`. A value that is not a quoted tag stays as it is. */
+export function saltTag(etag: string): string {
+  return etag.endsWith('"') && etag.length >= 2 ? `${etag.slice(0, -1)}${MASK_SALT}"` : etag;
+}
+
+/**
+ * The phone's `If-None-Match`, as the member may see it: only the tags this lead salted under the
+ * current {@link MASK_VERSION}, unsalted. `null` when none is left, and the header is then not sent.
+ */
+export function unsaltIfNoneMatch(value: string): string | null {
+  const suffix = `${MASK_SALT}"`;
+  const kept = value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.endsWith(suffix))
+    .map((tag) => `${tag.slice(0, -suffix.length)}"`);
+  return kept.length === 0 ? null : kept.join(", ");
+}
+
+/** The answer with its tag salted. A `304` carries the tag too, and is salted the same way. */
+function withSaltedTag(res: Response): Response {
+  const etag = res.headers.get("etag");
+  if (etag === null) return res;
+  const headers = new Headers(res.headers);
+  headers.set("etag", saltTag(etag));
+  return new Response(res.status === 304 || res.status === 204 ? null : res.body, { status: res.status, headers });
 }
 
 /**
@@ -592,10 +633,17 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
 
   // `duplex` is required by the Fetch spec for a stream body; the DOM lib's `RequestInit` predates
   // it, so the streaming half of this init is typed here rather than asserted at the assignment.
-  const init: RequestInit & { duplex?: "half" } = {
-    method: req.method,
-    headers: forwardHeaders(req, deps.device),
-  };
+  const headers = forwardHeaders(req, deps.device);
+  // Text the phone will show is masked here, whatever the member's version (§9.1). Every other answer
+  // is not read at all. A masked answer's tag carries the mask's version, both ways ({@link saltTag}).
+  const answer = deps.mask === undefined ? null : textAnswerOf(route);
+  if (answer !== null) {
+    const tags = headers.get("if-none-match");
+    const kept = tags === null ? null : unsaltIfNoneMatch(tags);
+    if (kept === null) headers.delete("if-none-match");
+    else headers.set("if-none-match", kept);
+  }
+  const init: RequestInit & { duplex?: "half" } = { method: req.method, headers };
   // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
   // stores a copy of it (§13). Assigned, never conditionally spread: a bodyless method must carry
   // NEITHER key.
@@ -651,13 +699,10 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // `receivedAt` is when the response landed on this lead, not when the phone finished reading it.
   deps.onExchange?.(outcome.receivedAt);
   record(`http ${outcome.value.status}`);
-  // Text the phone will show is masked here, whatever the member's version (§9.1). Every other answer
-  // is not read at all.
-  const answer = deps.mask === undefined ? null : textAnswerOf(route);
   const answered =
     answer === null || deps.mask === undefined
       ? outcome.value
-      : await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId);
+      : withSaltedTag(await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId));
   // The phone's own `accept-encoding` — never the peer's, which was pinned to `identity` on the way
   // out. Compression is decided once per hop (.adr/0023).
   return proxiedResponse(answered, req.headers.get("accept-encoding"));
