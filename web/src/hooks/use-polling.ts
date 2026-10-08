@@ -51,6 +51,10 @@ export const HOME_BUSY_MS = 4000;
  *  back into history, a pane whose agent is idle and whose mirror has stopped moving. SLOWER than
  *  the old resting gap on purpose — that is the half of the trade that pays for the burst. */
 export const IDLE_MS = 6000;
+/** The first retry after a failed poll. Each further failure in a row doubles it, until it reaches
+ *  the gap the rules above would have used anyway. A dead link that comes back is found within a
+ *  beat; one that stays dead costs no more than the ordinary cadence. */
+export const RETRY_MS = 500;
 
 /**
  * Everything the cadence needs that the snapshot cannot tell us, as plain values.
@@ -70,14 +74,16 @@ export interface PollIntent {
    *  `lib/poll-intent.ts` → `stampTopology`. Unlike `bursting`, this applies wherever the operator
    *  is looking, not only on the pane a send went to. */
   topologyBursting?: boolean;
+  /** How many polls in a row have failed to reach the bridge. 0 (or absent) when the last one did. */
+  failures?: number;
 }
 
 // Self-heal a wedged revalidation. Normally a tick no-ops while one is already in flight (see the
 // idle fast-path below), but a black-holed fetch can stay `loading` forever (its timeout aside — the
 // timer itself can freeze while the phone sleeps). Once a revalidation has been loading for longer
-// than this — just past GET_TIMEOUT_MS (10s) as a belt-and-braces margin — a tick kicks a fresh
-// revalidate() anyway: React Router aborts/supersedes the hung one (loaders treat that AbortError as
-// "superseded"). We compare against wall-clock (Date.now), not a timer, precisely because timers can
+// than this — well past the poll reads' own POLL_TIMEOUT_MS (lib/api.ts), as a belt-and-braces
+// margin — a tick kicks a fresh revalidate() anyway: React Router aborts/supersedes the hung one
+// (loaders treat that AbortError as "superseded"). We compare against wall-clock (Date.now), not a timer, precisely because timers can
 // stop advancing during sleep — the age we care about is real elapsed time since the load began.
 export const SUPERSEDE_MS = 12_000;
 
@@ -92,6 +98,7 @@ export const SUPERSEDE_MS = 12_000;
  *   3b. an update run on this machine, or a crew run on its peers, is still moving → HOT_MS;
  *   4. no pane is open and some agent in the herd is working/blocked → HOME_BUSY_MS;
  *   5. otherwise → IDLE_MS.
+ * A run of failed polls then shortens the gap to the retry backoff, never lengthens it.
  * Being hidden is not a rule here: the tick already refuses to fetch behind a hidden tab.
  *
  * `intent` is optional so a caller that only wants the herd-shaped answer (rules 4 and 5) can ask
@@ -101,6 +108,17 @@ export function intervalFor(
   data: HomeData | undefined,
   paneId?: string | null,
   intent?: PollIntent,
+): number {
+  const cadence = cadenceFor(data, paneId, intent);
+  const failures = intent?.failures ?? 0;
+  if (failures === 0) return cadence;
+  return Math.min(cadence, RETRY_MS * 2 ** (failures - 1));
+}
+
+function cadenceFor(
+  data: HomeData | undefined,
+  paneId: string | null | undefined,
+  intent: PollIntent | undefined,
 ): number {
   // 0. A create or a close just went through, wherever you're looking: catch the list up.
   if (intent?.topologyBursting) return BURST_MS;
@@ -210,7 +228,15 @@ export function usePolling(
   const changed = useLastPollChanged();
   const sendKick = useSendCount();
   const topoBursting = useTopologyBursting();
+  // Counted per loader result, not per render: every revalidation hands back a new `data` object. A
+  // refusal (401/403) is not counted, because retrying faster does not change the bridge's answer.
+  const failed = useRef<{ data: HomeData | undefined; count: number }>({ data: undefined, count: 0 });
+  if (data !== failed.current.data) {
+    const count = data?.error && !data.authError ? failed.current.count + 1 : 0;
+    failed.current = { data, count };
+  }
   const ms = intervalFor(data, paneId, {
+    failures: failed.current.count,
     bursting: burstAppliesTo(burstPane, paneId),
     // The caller may own the flag directly (the tests do); otherwise the pane view's own follow
     // intent, published to lib/poll-intent, answers — and it is true whenever no pane is open.

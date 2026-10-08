@@ -5,6 +5,7 @@ import {
   HOME_BUSY_MS,
   HOT_MS,
   IDLE_MS,
+  RETRY_MS,
   SUPERSEDE_MS,
   intervalFor,
   type PollIntent,
@@ -162,6 +163,54 @@ describe("intervalFor", () => {
 
   it("a pane the snapshot no longer knows about is not 'open'", () => {
     expect(intervalFor(idlePane, "w99:phantom", on({ changed: true }))).toBe(IDLE_MS);
+  });
+
+  it("failed polls in a row retry on a doubling backoff that never exceeds the cadence", () => {
+    const home = makeData([]);
+    expect(intervalFor(home, null, on({ failures: 0 }))).toBe(IDLE_MS);
+    expect(intervalFor(home, null, on({ failures: 1 }))).toBe(RETRY_MS);
+    expect(intervalFor(home, null, on({ failures: 2 }))).toBe(RETRY_MS * 2);
+    expect(intervalFor(home, null, on({ failures: 3 }))).toBe(RETRY_MS * 4);
+    expect(intervalFor(home, null, on({ failures: 50 }))).toBe(IDLE_MS);
+    expect(intervalFor(home, null, on({ failures: 3, topologyBursting: true }))).toBe(BURST_MS);
+  });
+});
+
+describe("usePolling — retrying failed polls", () => {
+  const failing = (authError = false): HomeData => ({ ...makeData([]), error: true, authError });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    rr.state = "idle";
+    rr.revalidate.mockClear();
+    resetPollIntent();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Each loader result is a new object, so each rerender below is one more poll's answer.
+  it("backs off per failed result, resets on success, and does not hurry an auth refusal", () => {
+    const { rerender } = renderHook(({ data }: { data: HomeData }) => usePolling(data), {
+      initialProps: { data: failing() },
+    });
+    const expectNextTickAt = (ms: number) => {
+      rr.revalidate.mockClear();
+      vi.advanceTimersByTime(ms - 1);
+      expect(rr.revalidate).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(rr.revalidate).toHaveBeenCalledTimes(1);
+    };
+
+    expectNextTickAt(RETRY_MS);
+    act(() => rerender({ data: failing() }));
+    expectNextTickAt(RETRY_MS * 2);
+    act(() => rerender({ data: makeData([]) }));
+    expectNextTickAt(IDLE_MS);
+    act(() => rerender({ data: failing(true) }));
+    expectNextTickAt(IDLE_MS);
+    act(() => rerender({ data: failing() }));
+    expectNextTickAt(RETRY_MS);
   });
 });
 
