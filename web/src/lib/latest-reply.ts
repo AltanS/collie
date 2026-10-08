@@ -225,8 +225,10 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
   return elsewhere("off-screen");
 }
 
-// `[label](target)` and `![alt](target)`, with an optional `"title"`. The label may hold code spans.
-const MARKDOWN_LINK_SOURCE = String.raw`!?\[((?:\x60+[^\x60\n]*?\x60+|[^\]\x60\n])*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)`;
+// `[label](target)` and `![alt](target)`, with an optional `"title"`. The label may hold single-backtick
+// code spans and no `[`: a run of backticks must not split more than one way, or a line of many spans
+// and no `](` backtracks for minutes, and a nested `[` simply is no link (the mirror decides then).
+const MARKDOWN_LINK_SOURCE = String.raw`!?\[((?:\x60[^\x60\n]*\x60|[^\][\x60\n])*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)`;
 // An inline code span, kept whole: Claude paints what is inside it exactly as written.
 const CODE_SPAN_SOURCE = String.raw`(\x60+)[^\x60\n]*?\x60+`;
 // One inline token: a code span (group 1 is its opening run) or a link (group 2 is its label).

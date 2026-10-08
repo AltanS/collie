@@ -349,6 +349,33 @@ describe("locateReply — a reply whose tail holds Markdown links", () => {
   });
 });
 
+describe("locateReply — a line the link pattern could backtrack on", () => {
+  const painted = "⏺ Pick a flag.\n\n  That is all for now, and the screen ends here.";
+  const tail = "\n\nThat is all for now, and the screen ends here.";
+  const lead = "A long lead that is not on the screen, written so that the whole reply is longer than two probes of text.\n";
+
+  it("returns quickly for a line with `[` and many double-backtick spans and no `](`", () => {
+    const spans = Array.from({ length: 40 }, (_, i) => `\`\`s${i}\`\``).join(", ");
+    const source = `${lead}Pick one of [${spans} for the flag.${tail}`;
+    const started = performance.now();
+    locateReply(painted, turn("assistant", source));
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it("returns quickly for a 15k-character line of `[`", () => {
+    const source = `${lead}${"[".repeat(15_000)}${tail}`;
+    const started = performance.now();
+    locateReply(painted, turn("assistant", source));
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it("still reads a link whose label is a double-backtick span, and a plain link, as links", () => {
+    const source = `${lead}See [\`\`x\`\`](https://example.com/a) and [the label](https://example.com/b).${tail}`;
+    const screen = "⏺ See ``x`` and the label.\n\n  That is all for now, and the screen ends here.";
+    expect(locateReply(screen, turn("assistant", source)).fit).toBe("clipped");
+  });
+});
+
 // More source that Claude does not paint as written. Each case pairs the journal's Markdown with the
 // rows Claude drew for it, and each would have missed with the raw text alone.
 describe("locateReply — source spelled differently on screen", () => {
