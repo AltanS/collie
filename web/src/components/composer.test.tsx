@@ -13,6 +13,8 @@ import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import { Composer, TUI_SETTLE_MS } from "./composer";
+import { chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
+import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { type ServerSummary } from "@/lib/types";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
@@ -2445,6 +2447,54 @@ describe("Composer — keys dock (in-flow, not an overlay)", () => {
 
     await user.click(screen.getByRole("button", { name: "Close Keys" }));
     expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+
+  it("the pencil sits beside the KEYS label on the same line, ahead of the close X, and opens the editor", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+
+    const pencil = screen.getByRole("button", { name: "Edit keys" });
+    const close = screen.getByRole("button", { name: "Close Keys" });
+    // The pencil and the label share one group, which is on the header row; the close X is the row's far end.
+    const group = pencil.parentElement;
+    expect(group).toHaveClass("items-center");
+    expect(group?.textContent).toContain("Keys");
+    expect(group?.contains(close)).toBe(false);
+    expect(group?.parentElement).toBe(close.parentElement);
+    expect(pencil.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    // 28px drawn, 44px reached, like the X beside it.
+    expect(pencil).toHaveClass("size-7");
+    expect(pencil.className).toContain("before:-inset-2");
+    // Quick has no pencil.
+    expect(screen.queryByRole("dialog", { name: "Edit keys" })).toBeNull();
+
+    await user.click(pencil);
+    expect(screen.getByRole("dialog", { name: "Edit keys" })).toBeInTheDocument();
+    // The dock stays put behind the sheet.
+    expect(screen.getAllByRole("button", { name: "Esc" }).length).toBeGreaterThan(0);
+  });
+
+  it("a custom key from this device's board goes out through the same pane.send_keys, a sequence in order", async () => {
+    const user = userEvent.setup();
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sentKeys = (await request.json()).keys;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const seq = chordKey(["ctrl+b", "c"]);
+    if (seq === null) throw new Error("bad key");
+    setKeyBoard(setCell(DEFAULT_BOARD, 9, seq));
+    try {
+      renderComposer();
+      await user.click(screen.getByRole("button", { name: "Keys" }));
+      await user.click(screen.getByRole("button", { name: "Ctrl+B, then C" }));
+      await waitFor(() => expect(sentKeys).toEqual(["ctrl+b", "c"]));
+    } finally {
+      resetKeyBoard();
+    }
   });
 
   it("routes a docked key press through pane.send_keys", async () => {

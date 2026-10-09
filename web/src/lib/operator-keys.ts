@@ -4,10 +4,10 @@ import type { OperatorKeyRow } from "@/lib/types";
 // The Keys tray's preset catalog: the labelled, canned chords under "Presets" — and, when the
 // operator has declared any for this pane, THEIR rows instead (their `keys.toml`, ADR 0018).
 //
-// The tray is two things and only one of them is configurable. The KEYBOARD — Esc, the arrows,
-// Enter/Tab/Space, the modifiers, the digits, F1–F12 — is fixed, because it is the phone's only
-// route to keys the phone does not have. The CATALOG below is a convenience list, so it is yours to
-// replace.
+// The tray is two things, and they have different owners. The PAD (Esc, the arrows, Enter/Tab/Space,
+// the modifiers) is a board of cells kept per device (`lib/key-board.ts`, ADR 0092): it starts as
+// today's pad and the person holding the phone may rearrange it. The CATALOG below is a convenience
+// list that the OPERATOR owns, so it is theirs to replace, for every phone, from `keys.toml`.
 
 /** One preset button: what it says, what it sends, and whether it needs a second tap. */
 export interface CtrlDef {

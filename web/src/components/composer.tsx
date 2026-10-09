@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
+import { KeyBoardEditor } from "@/components/key-board-editor";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
@@ -231,12 +232,15 @@ const KEY_REVALIDATE_MS = 300;
 function ComposerDock({
   title,
   host,
+  onEdit,
   onClose,
   children,
 }: {
   title: string;
   /** The machine a key sent from this dock lands on. Renders nothing on a single-host install. */
   host?: string;
+  /** Draws a pencil beside the label, centred on it. Only the Keys dock has one (ADR 0092). */
+  onEdit?: () => void;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -245,6 +249,19 @@ function ComposerDock({
       <div className="flex items-center justify-between px-3 pt-2">
         <div className="flex min-w-0 items-center gap-2">
           <SectionLabel>{title}</SectionLabel>
+          {onEdit !== undefined && (
+            // 28px drawn, 44px reached: the `::before` reaches 8px past each edge into the header's own
+            // padding and the dock's gap, the same trade the Close X beside it makes (DESIGN.md §6).
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative -ml-1 size-7 text-muted-foreground before:absolute before:-inset-2 before:content-['']"
+              onClick={onEdit}
+              aria-label={translate("composer.dock.editKeys")}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+          )}
           {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
           <HostChip host={host} variant="target" />
         </div>
@@ -941,6 +958,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // This device's key board (ADR 0092): the pad the Keys dock draws. A hook, so an edit made in the
   // editor sheet shows in the dock at once.
   const keyBoard = useKeyBoard();
+  const [keysEditorOpen, setKeysEditorOpen] = useState(false);
   // Empty on every adapter that refuses nothing, and empty for Herdr's six as far as this tray is
   // concerned — it offers none of the paging/edit keys Herdr rejects, so nothing greys out there.
   const unsupportedKeys = useMuxUnsupportedKeys();
@@ -1516,6 +1534,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ComposerDock
             title={translate("composer.controls.keys")}
             host={writeHost}
+            onEdit={() => setKeysEditorOpen(true)}
             onClose={closeDrawer}
           >
             <NavTray
@@ -1531,6 +1550,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </ComposerDock>
         )}
+        <KeyBoardEditor open={keysEditorOpen} onClose={() => setKeysEditorOpen(false)} unsupportedKeys={unsupportedKeys} />
         {drawer === "quick" && (
           <ComposerDock title={translate("composer.controls.quick")} onClose={closeDrawer}>
             <QuickActionsContent

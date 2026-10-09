@@ -6,10 +6,16 @@ import type { OperatorKeyRow } from "./types.ts";
 // sibling of `commands.toml`, down to the discovery rule and the mtime-checked live reload
 // (operator-file.ts owns both).
 //
-// SCOPE. The Keys tray is two things: a KEYBOARD (Esc/arrows/Enter/Tab/Space, the modifiers, the
-// digits, F1–F12) and a CATALOG of labelled canned chords (the "Presets" collapsible). Only the
-// catalog is configurable — the keyboard is fixed, because a phone with no Escape key has no other
-// route to one.
+// SCOPE. The Keys tray is two things: a PAD (Esc/arrows/Enter/Tab/Space, the modifiers, the quick ^C)
+// and a CATALOG of labelled canned chords (the "Presets" collapsible). Only the catalog is the
+// OPERATOR's: it comes from this file, from the server, and reaches every phone.
+//
+// The pad is no longer fixed (ADR 0092). It is a board of cells that starts as today's pad and that
+// each DEVICE may rearrange in its own browser storage, so it never reaches this file or the server.
+// The old reason for a fixed pad, that a phone with no Escape key has no other route to one, is kept
+// as a quiet line in the editor ("Esc is not on your pad. Put back") instead of a locked grid. The two
+// are separate on purpose: these rows are the operator's chips for a pane, the board is a person's
+// own keys on one phone, and neither replaces the other.
 //
 // Replacement (not merge) is the resolution rule, for the reason ADR 0018 gives; resolution itself
 // lives client-side in `web/src/lib/operator-keys.ts`. This module only decides what a row IS.
