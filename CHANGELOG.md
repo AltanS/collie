@@ -23,18 +23,20 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-10-09
+
 ### Fixed
 
-- **Chat shows /subtask, /rename and other slash commands again.** Claude Code records some commands (`/subtask`, `/rename`, `/model`, `/color`, `/resume`, `/cd`, `/memory`, `/context`) as a system row in its session log, and Chat skipped those rows. Chat now shows the command you ran, with its arguments, and the output it printed.
-- **A long Grok draft no longer stalls a reply, and the phone view drops Grok's scrollbar track.** The scrollbar Grok draws beside a long draft is ignored when the send is verified, and the dark track on the right of Grok's output no longer shows in the phone mirror. Grok's `/model` picker now has buttons for the model, the context window and the effort. Thanks @GGGODLIN (#378).
+- **Chat now shows /subtask, /rename and other slash commands.** Claude Code records some commands (`/subtask`, `/rename`, `/model`, `/color`, `/resume`, `/cd`, `/memory`, `/context`) as a system row in its session log, and Chat skipped those rows. Chat now shows the command you ran, with its arguments, and the output it printed. ([6239cc05](https://github.com/AltanS/collie/commit/6239cc05))
+- **A long Grok draft no longer stalls a reply, and the phone view drops Grok's scrollbar track.** The scrollbar Grok draws beside a long draft is ignored when the send is verified, and the dark track on the right of Grok's output no longer shows in the phone mirror. Grok's `/model` picker now has buttons for the model, the context window and the effort. Thanks @GGGODLIN (#378). ([1a6bf2f2](https://github.com/AltanS/collie/commit/1a6bf2f2))
 - **The New space sheet opens at its final height.** Favourites and Recent used to appear after the
   sheet had slid in, so the sheet grew upward under your thumb on the first open after a page load.
   The dashboard and a space now read the list when they open, the sheet starts from that list, and
-  opening it still reads again, so a list that changed redraws.
-- **Chat no longer repeats a message after CJK or emoji text.** A journal read found its row boundary by string index instead of by byte, so the next read started short of it and sent again rows the phone already had. Thanks @GGGODLIN (#377).
-- **A send no longer stalls when a Claude Code background agent is active.** Claude Code 2.1.293 marks the active agent's row in the footer with `❯`, and Collie took that row as foreign and lost the input box, so a send from the phone typed its text and never pressed Enter. The footer's own rows are now accepted. Thanks @thelinuxlich (#382).
-- **The full-reply card finds a reply that ends in a wrapped table, links, a tagged code block, HTML or a Grok table.** The probe reads each wrapped box-table row back in source order, and it also tries the reply as Claude paints it: link labels only, no fence tag or HTML tag, entities decoded, code left as written. Grok's scrollbar cell and the box round a highlighted message no longer hide a table from the probe. Thanks @GGGODLIN (#380).
-- **Type mode switches off when the agent under it exits, and after a minute without a key.** Type mode sends each key straight to the pane, so when the agent quit and the pane fell back to a shell, a chat message ran as a shell command. It now switches off with a notice when the pane's agent changes, and after 60 seconds without a keystroke. The armed strip uses the red tint for an armed control. Thanks @AndiWandHerd (#379).
+  opening it still reads again, so a list that changed redraws. ([559dcc81](https://github.com/AltanS/collie/commit/559dcc81))
+- **Chat no longer repeats a message after CJK or emoji text.** A journal read found its row boundary by string index instead of by byte, so the next read started short of it and sent again rows the phone already had. Thanks @GGGODLIN (#377). ([25c9b60c](https://github.com/AltanS/collie/commit/25c9b60c))
+- **A send no longer stalls when a Claude Code background agent is active.** Claude Code 2.1.293 marks the active agent's row in the footer with `❯`, and Collie took that row as foreign and lost the input box, so a send from the phone typed its text and never pressed Enter. The footer's own rows are now accepted. Thanks @thelinuxlich (#382). ([e5556721](https://github.com/AltanS/collie/commit/e5556721))
+- **The full-reply card finds a reply that ends in a wrapped table, links, a tagged code block, HTML or a Grok table.** The probe reads each wrapped box-table row back in source order, and it also tries the reply as Claude paints it: link labels only, no fence tag or HTML tag, entities decoded, code left as written. Grok's scrollbar cell and the box round a highlighted message no longer hide a table from the probe. Thanks @GGGODLIN (#380). ([c34dc532](https://github.com/AltanS/collie/commit/c34dc532))
+- **Type mode switches off when the agent under it exits, and after a minute without a key.** Type mode sends each key straight to the pane, so when the agent quit and the pane fell back to a shell, a chat message ran as a shell command. It now switches off with a notice when the pane's agent changes, and after 60 seconds without a keystroke. The armed strip uses the red tint for an armed control. Thanks @AndiWandHerd (#379). ([b444f115](https://github.com/AltanS/collie/commit/b444f115))
 
 ## [1.18.0] - 2026-10-08
 
