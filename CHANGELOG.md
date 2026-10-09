@@ -31,10 +31,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
   sheet had slid in, so the sheet grew upward under your thumb on the first open after a page load.
   The dashboard and a space now read the list when they open, the sheet starts from that list, and
   opening it still reads again, so a list that changed redraws.
-- **The installed iPhone app no longer scrolls twice.** In the Home Screen app, the page itself scrolled
-  under the app's own lists, so a drag moved two things. The page is now pinned there, so only the
-  lists scroll, and the app still fills to the bottom edge. A Safari tab and other devices are
-  unchanged. (#371)
 - **Chat no longer repeats a message after CJK or emoji text.** A journal read found its row boundary by string index instead of by byte, so the next read started short of it and sent again rows the phone already had. Thanks @GGGODLIN (#377).
 - **A send no longer stalls when a Claude Code background agent is active.** Claude Code 2.1.293 marks the active agent's row in the footer with `❯`, and Collie took that row as foreign and lost the input box, so a send from the phone typed its text and never pressed Enter. The footer's own rows are now accepted. Thanks @thelinuxlich (#382).
 - **The full-reply card finds a reply that ends in a wrapped table, links, a tagged code block, HTML or a Grok table.** The probe reads each wrapped box-table row back in source order, and it also tries the reply as Claude paints it: link labels only, no fence tag or HTML tag, entities decoded, code left as written. Grok's scrollbar cell and the box round a highlighted message no longer hide a table from the probe. Thanks @GGGODLIN (#380).
