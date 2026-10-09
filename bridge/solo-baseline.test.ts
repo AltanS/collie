@@ -724,6 +724,11 @@ describe("solo zero-tax — routes", () => {
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",
       "/api/workspace",
+      // The New sheet's branch from a FOLDER (M48, ADR 0093): the plan it shows before Start, and the
+      // create. Two SOLO routes, named here rather than exempted. Session-scoped through the gate and
+      // lead-local like the space-scoped worktree routes: neither is forwardable.
+      "/api/worktree",
+      "/api/worktree/plan",
       "/auth",
       "/auth/*",
     ]);
@@ -957,6 +962,10 @@ const STATE_DIR_ENTRIES = [
   // bridge that is only started, only read, or only ever asked for spaces in home writes none of it,
   // so the four entries asserted below hold. Driven in "the folder list appears only on use".
   "folders.json",
+  // One receipt per launch the phone tagged with a request id (ADR 0091), so a retried Start never
+  // opens a second pane. Written by use and by nothing else: absent until the first launch that
+  // carries an id succeeds.
+  "launch-receipts.json",
   // The host's own read credential (bridge/local-secret.ts), a §11 row RENEGOTIATED ON PURPOSE: reads
   // need the pairing token (ADR 0086), so the CLI's own reads of its bridge need a credential too. A
   // started bridge writes it (one 0600 file, rotated per start) and a clean stop deletes it, so a
@@ -993,6 +1002,9 @@ const STATE_DIR_ENTRIES = [
   // absent until the first create that named a starting point succeeds. Driven in "the worktree
   // bases appear only on use".
   "worktree-bases.json",
+  // The New sheet's last branch choices per repo (M48). Written by use and by nothing else: absent
+  // until the first branch create from a folder succeeds.
+  "worktree-choices.json",
   // One receipt per worktree create the phone tagged with a request id (ADR 0089), so a retried
   // create replays instead of making a second worktree. Written by use and by nothing else: absent
   // until the first create that carries an id succeeds. Driven in "the worktree receipts appear only

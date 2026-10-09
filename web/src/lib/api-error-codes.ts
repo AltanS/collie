@@ -57,6 +57,8 @@ export const API_ERROR_CODES = [
   // Launchers — /api/launch
   "launch.not_allowlisted",
   "launch.pane_unknown",
+  "launch.unknown_harness",
+  "launch.bad_folder",
 
   // The new-space folder list — POST /api/folders/star (#289)
   "folders.unknown",
@@ -73,6 +75,13 @@ export const API_ERROR_CODES = [
   "worktree.not_a_repo",
   "worktree.invalid_branch",
   "worktree.invalid_base",
+  "worktree.folder_invalid",
+  "worktree.folder_missing",
+  "worktree.folder_link",
+  "worktree.folder_outside_home",
+  "worktree.folder_hidden",
+  "worktree.folder_in_repo",
+  "worktree.target_exists",
 
   // Attachment upload — POST /api/pane/:id/upload
   "upload.too_large",

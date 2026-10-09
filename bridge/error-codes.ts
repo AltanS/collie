@@ -89,6 +89,13 @@ export const ERROR_CODES = {
    * snapshot — closed, or never existed. Nothing was created.
    */
   "launch.pane_unknown": "pane not found",
+  /**
+   * A launch named a `harness` id this host does not start (`bridge/harness-launch.ts`). The ids are
+   * the list `GET /api/launchers` answered, so nothing a phone was shown is refused (ADR 0091).
+   */
+  "launch.unknown_harness": "unknown agent: {harness}",
+  /** A launch's `cwd` is not an absolute folder (after a leading `~`), or carries a control character. */
+  "launch.bad_folder": "the folder must be an absolute path",
 
   // ── The new-space folder list: POST /api/folders/star (#289, M40/02) ───────────────
   /**
@@ -131,6 +138,24 @@ export const ERROR_CODES = {
    * nothing was created (ADR 0089, amended).
    */
   "worktree.invalid_base": "invalid base",
+
+  // ── A branch's own folder: POST /api/worktree with a parent (ADR 0093) ────────────────
+  // Each is a refusal of the parent folder the phone named, checked on every use by
+  // `bridge/worktree-folder.ts` before the multiplexer is touched. Nothing was created.
+  /** Empty, too long, a control character, relative, or a `..` segment. */
+  "worktree.folder_invalid": "the folder must be an absolute path with no ..",
+  /** Nothing is there, or it is not a directory. */
+  "worktree.folder_missing": "the folder does not exist",
+  /** A link sits somewhere in the path below the home folder. */
+  "worktree.folder_link": "the folder goes through a link",
+  /** The folder is not inside the home folder. */
+  "worktree.folder_outside_home": "the folder must be inside the home folder",
+  /** A folder whose name starts with a dot, `.git` included, is on the path. */
+  "worktree.folder_hidden": "the folder may not be or sit inside a hidden folder",
+  /** The folder is inside the repository the branch is cut from. */
+  "worktree.folder_in_repo": "the folder may not be inside the repository",
+  /** The branch's folder already exists there. */
+  "worktree.target_exists": "{path} already exists",
 
   // ── Attachment upload: POST /api/pane/:id/upload → UploadResponse ──────────────────
   /**

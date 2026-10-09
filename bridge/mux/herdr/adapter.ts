@@ -65,6 +65,7 @@ import {
   paneAgentSession,
   type CreatedShell,
   type HerdrRpc,
+  type HerdrWorktreeCreate,
   type WirePane,
   type WireTab,
   type WireWorkspace,
@@ -535,8 +536,13 @@ export class HerdrMux implements MuxAdapter {
 
   async createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     try {
-      const { repoRoot: cwd, branch, base } = request;
-      const created = await this.client.createWorktree(base === undefined ? { cwd, branch } : { cwd, branch, base });
+      const { repoRoot: cwd, branch, base, path } = request;
+      // Assigned, never spread from `undefined`: an absent field must stay off the wire, so a call
+      // without it is byte for byte the call Herdr has always had.
+      const opts: HerdrWorktreeCreate = { cwd, branch };
+      if (base !== undefined) opts.base = base;
+      if (path !== undefined) opts.path = path;
+      const created = await this.client.createWorktree(opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
       return worktreeRefusal(err);

@@ -1070,7 +1070,7 @@ export interface CreatedPane {
  * is that shell, so the client can navigate straight into it before the next poll lands.
  */
 export type CreateResponse =
-  | { ok: true; pane: CreatedPane }
+  | { ok: true; pane: CreatedPane; replayed?: true }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /** One Git worktree of the repo a space sits in (ADR 0032). */
@@ -1133,6 +1133,31 @@ export type WorktreeCreateResponse =
     }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
+
+/**
+ * GET /api/worktree/plan — what a branch from a folder would be, before Start (M48, ADR 0093).
+ *
+ * `repoRoot` is the repo's main checkout, as a real path. `defaultBranch` is what a create with
+ * `base: { kind: "default" }` starts from, `currentBranch` the branch the folder itself is on, each
+ * `null` when there is none to name. `remembered` is this repo's last choices on this machine.
+ * `branchValid`, `defaultTarget` and `parentTarget` answer only when the query named a branch (and a
+ * parent): `defaultTarget` is where Herdr will put the folder when no path is sent, a prediction from
+ * Herdr's own rule; `parentTarget` is the folder rule's verdict on the parent the phone named.
+ */
+export type WorktreePlanResponse =
+  | {
+      ok: true;
+      repoRoot: string;
+      defaultBranch: string | null;
+      currentBranch: string | null;
+      remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
+      branchValid?: boolean;
+      defaultTarget?: { path: string; exists: boolean };
+      parentTarget?:
+        | { ok: true; path: string }
+        | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+    }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
  * Which role this collie plays in a crew (CREW_PROTOCOL.md §3). `solo` is a lead with zero peers —
@@ -1352,6 +1377,21 @@ export interface Launcher {
 export interface LaunchersResponse {
   launchers: Launcher[];
   home: string;
+  /**
+   * The agents this host can start by id, and whether each binary is there (ADR 0091). Absent from a
+   * bridge that predates the New sheet, which is how the phone tells an older crew member apart.
+   */
+  harnesses?: HarnessInfo[];
+}
+
+/** One agent a host can start by id (`bridge/harness-launch.ts`). */
+export interface HarnessInfo {
+  /** The id `POST /api/launch` takes as `harness`. */
+  id: string;
+  /** The harness's own name for itself. */
+  label: string;
+  /** Whether the binary is on this host's login PATH. A launch of one that is not still runs. */
+  found: boolean;
 }
 
 /**

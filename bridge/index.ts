@@ -69,6 +69,8 @@ import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
+import { LaunchReceiptStore } from "./launch-receipts.ts";
+import { WorktreeChoiceStore } from "./worktree-choices.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
   LOCAL_SECRET_FILENAME,
@@ -700,6 +702,16 @@ await worktreeReceipts.load();
 // reads it yet. Loading writes nothing: the file appears on the first create that named a start.
 const worktreeBases = new WorktreeBaseStore(cfg.stateDir);
 await worktreeBases.load();
+
+// One receipt per launch the phone tagged with a request id, so a retried Start never opens a second
+// pane (ADR 0091, bridge/launch-receipts.ts). Loading writes nothing.
+const launchReceipts = new LaunchReceiptStore(cfg.stateDir);
+await launchReceipts.load();
+
+// The New sheet's last branch choices per repo on this machine (M48, bridge/worktree-choices.ts).
+// Loading writes nothing: the file appears on the first branch create that works.
+const worktreeChoices = new WorktreeChoiceStore(cfg.stateDir);
+await worktreeChoices.load();
 
 // The warden that judges them. A DEPS LITERAL WITH NO LOGIC IN IT, for the reason
 // `bridge/update.ts`'s monitor is built the same way: there is no `bridge/index.test.ts`, so every gate
@@ -1981,6 +1993,8 @@ const server = startServer({
   folders,
   worktreeReceipts,
   worktreeBases,
+  launchReceipts,
+  worktreeChoices,
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
   crew,

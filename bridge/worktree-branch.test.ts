@@ -43,6 +43,13 @@ describe("isValidWorktreeBranch", () => {
     ["feature/", "trailing slash"],
     ["branch.lock", "trailing .lock"],
     ["a//b", "double slash"],
+    // M48: the rest of what `git check-ref-format --branch` refuses, checked against git 2.x by hand.
+    ["@", "the lone at sign, which git reads as HEAD"],
+    ["/lead", "leading slash"],
+    ["trail.", "trailing dot"],
+    [".dot", "a leading dot"],
+    ["a/.hidden", "a component with a leading dot"],
+    ["a.lock/b", "a component ending in .lock"],
   ];
   for (const [name, why] of refused) {
     test(`refuses ${why}: ${JSON.stringify(name)}`, () => {

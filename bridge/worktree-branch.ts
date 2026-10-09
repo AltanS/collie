@@ -31,16 +31,18 @@ function hasSpaceOrControl(name: string): boolean {
 /**
  * Whether `name` may be sent as a new worktree's branch.
  *
- * Refuses: empty, a leading `-`, any whitespace or control character, `..`, `@{`, `\`, `~`, `^`,
- * `:`, `?`, `*`, `[`, a trailing `/` or `.lock`, and `//`. The caller trims first, so surrounding
- * whitespace is not a refusal; whitespace INSIDE the name is.
+ * Refuses: empty, a leading `-` or `/`, any whitespace or control character, `..`, `@{`, `\`, `~`,
+ * `^`, `:`, `?`, `*`, `[`, a trailing `/`, `.` or `.lock`, `//`, the lone `@`, and a path component
+ * that starts with `.` or ends in `.lock` (M48: `git check-ref-format --branch` refuses all of
+ * these). The caller trims first, so surrounding whitespace is not a refusal; whitespace INSIDE the
+ * name is.
  */
 export function isValidWorktreeBranch(name: string): boolean {
-  if (name === "") return false;
-  if (name.startsWith("-")) return false;
+  if (name === "" || name === "@") return false;
+  if (name.startsWith("-") || name.startsWith("/")) return false;
   if (hasSpaceOrControl(name)) return false;
   if (FORBIDDEN_CHARS.some((ch) => name.includes(ch))) return false;
   if (FORBIDDEN_SEQUENCES.some((seq) => name.includes(seq))) return false;
-  if (name.endsWith("/") || name.endsWith(".lock")) return false;
-  return true;
+  if (name.endsWith("/") || name.endsWith(".") || name.endsWith(".lock")) return false;
+  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
 }

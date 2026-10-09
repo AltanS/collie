@@ -61,17 +61,24 @@ export interface WorktreeReceipt {
   launcherStarted: boolean;
 }
 
-/** What the route needs of the store. `bridge/server.ts` holds this, never the class. */
-export interface WorktreeReceiptSurface {
+/**
+ * What a route needs of a receipt store: one stored receipt per request id, and the answer still
+ * being worked out for an id. Generic so a launch (ADR 0091) keeps its receipts on the same pattern
+ * a worktree create does, in a file of its own.
+ */
+export interface ReceiptSurface<R extends { requestId: string }, A> {
   /** The receipt stored under `requestId`, if any. */
-  get(requestId: string): WorktreeReceipt | undefined;
+  get(requestId: string): R | undefined;
   /** Store one receipt. Never throws: a failed write costs the replay, never the create. */
-  record(receipt: WorktreeReceipt): Promise<void>;
-  /** The answer a create with this id is still working on, if one is. */
-  inflight(requestId: string): Promise<WorktreeCreateResponse> | undefined;
-  /** Mark `answer` as the create in flight for `requestId` until it settles. */
-  track(requestId: string, answer: Promise<WorktreeCreateResponse>): void;
+  record(receipt: R): Promise<void>;
+  /** The answer a request with this id is still working on, if one is. */
+  inflight(requestId: string): Promise<A> | undefined;
+  /** Mark `answer` as the request in flight for `requestId` until it settles. */
+  track(requestId: string, answer: Promise<A>): void;
 }
+
+/** What the worktree route needs of the store. `bridge/server.ts` holds this, never the class. */
+export type WorktreeReceiptSurface = ReceiptSurface<WorktreeReceipt, WorktreeCreateResponse>;
 
 /** One receipt read off disk, or `null` when the entry is not one. */
 function coerceReceipt(raw: JsonValue): WorktreeReceipt | null {
@@ -86,34 +93,39 @@ function coerceReceipt(raw: JsonValue): WorktreeReceipt | null {
   return { requestId, at, workspaceId, paneId, path, branch, launcherStarted };
 }
 
-/** The receipts a file holds, oldest first, capped. Anything that is not a receipt is dropped. */
-export function coerceReceipts(raw: JsonValue): WorktreeReceipt[] {
+/** The receipts a parsed file holds, oldest first, capped, each read by `coerce`. */
+export function coerceReceiptList<R>(raw: JsonValue, coerce: (entry: JsonValue) => R | null): R[] {
   const list = asJsonRecord(raw)?.receipts;
   if (!Array.isArray(list)) return [];
-  const out: WorktreeReceipt[] = [];
+  const out: R[] = [];
   for (const entry of list) {
-    const receipt = coerceReceipt(entry);
+    const receipt = coerce(entry);
     if (receipt !== null) out.push(receipt);
   }
   return out.slice(-MAX_RECEIPTS);
 }
 
+/** The receipts a file holds, oldest first, capped. Anything that is not a receipt is dropped. */
+export function coerceReceipts(raw: JsonValue): WorktreeReceipt[] {
+  return coerceReceiptList(raw, coerceReceipt);
+}
+
 /** `receipts` with `receipt` appended (replacing an entry under the same id), capped oldest-first. */
-export function withReceipt(receipts: readonly WorktreeReceipt[], receipt: WorktreeReceipt): WorktreeReceipt[] {
+export function withReceipt<R extends { requestId: string }>(receipts: readonly R[], receipt: R): R[] {
   const next = receipts.filter((r) => r.requestId !== receipt.requestId);
   next.push(receipt);
   return next.slice(-MAX_RECEIPTS);
 }
 
-/** The in-flight half, shared by both stores: it never touches a file. */
-class Inflight {
-  private readonly running = new Map<string, Promise<WorktreeCreateResponse>>();
+/** The in-flight half, shared by every store: it never touches a file. */
+class Inflight<A> {
+  private readonly running = new Map<string, Promise<A>>();
 
-  get(requestId: string): Promise<WorktreeCreateResponse> | undefined {
+  get(requestId: string): Promise<A> | undefined {
     return this.running.get(requestId);
   }
 
-  track(requestId: string, answer: Promise<WorktreeCreateResponse>): void {
+  track(requestId: string, answer: Promise<A>): void {
     this.running.set(requestId, answer);
     const clear = () => {
       if (this.running.get(requestId) === answer) this.running.delete(requestId);
@@ -123,54 +135,56 @@ class Inflight {
 }
 
 /**
- * The file-backed store `bridge/index.ts` builds once per bridge.
- *
- * Writes are atomic and owner-only (a fresh 0600 temp file renamed over the target) and queued, so
- * two creates finishing together cannot interleave their writes.
+ * A file-backed receipt store. Writes are atomic and owner-only (a fresh 0600 temp file renamed over
+ * the target) and queued, so two requests finishing together cannot interleave their writes.
  */
-export class WorktreeReceiptStore implements WorktreeReceiptSurface {
-  private receipts: WorktreeReceipt[] = [];
+export class ReceiptFileStore<R extends { requestId: string }, A> implements ReceiptSurface<R, A> {
+  private receipts: R[] = [];
   private queue: Promise<void> = Promise.resolve();
-  private readonly running = new Inflight();
+  private readonly running = new Inflight<A>();
   private readonly file: string;
 
+  /** `file` is the full path, built by the subclass so each names its own `<stateDir>` entry. */
   constructor(
     private readonly stateDir: string,
+    file: string,
+    private readonly coerce: (entry: JsonValue) => R | null,
     private readonly warn: (line: string) => void = (line) => console.warn(line),
+    private readonly tag = "receipts",
   ) {
-    this.file = join(stateDir, RECEIPTS_FILE);
+    this.file = file;
   }
 
   /** Read the file once at start. A missing or broken file is an empty list, and nothing is written. */
   async load(): Promise<void> {
     try {
-      // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; coerceReceipts checks every field.
-      this.receipts = coerceReceipts((await Bun.file(this.file).json()) as JsonValue);
+      // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; `coerce` checks every field.
+      this.receipts = coerceReceiptList((await Bun.file(this.file).json()) as JsonValue, this.coerce);
     } catch {
       /* nothing recorded yet, or a file that is not JSON; asking must not create the file */
     }
   }
 
-  get(requestId: string): WorktreeReceipt | undefined {
+  get(requestId: string): R | undefined {
     return this.receipts.find((r) => r.requestId === requestId);
   }
 
-  async record(receipt: WorktreeReceipt): Promise<void> {
+  async record(receipt: R): Promise<void> {
     this.receipts = withReceipt(this.receipts, receipt);
     try {
       await this.save();
     } catch (err) {
-      // The worktree exists; the receipt is a convenience for a retry. It stays in memory, so a
-      // retry against this process still replays, and reaches disk with the next write that works.
-      this.warn(`[worktree] could not save ${this.file}: ${err instanceof Error ? err.message : String(err)}`);
+      // The thing exists; the receipt is a convenience for a retry. It stays in memory, so a retry
+      // against this process still replays, and reaches disk with the next write that works.
+      this.warn(`[${this.tag}] could not save ${this.file}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  inflight(requestId: string): Promise<WorktreeCreateResponse> | undefined {
+  inflight(requestId: string): Promise<A> | undefined {
     return this.running.get(requestId);
   }
 
-  track(requestId: string, answer: Promise<WorktreeCreateResponse>): void {
+  track(requestId: string, answer: Promise<A>): void {
     this.running.track(requestId, answer);
   }
 
@@ -189,13 +203,20 @@ export class WorktreeReceiptStore implements WorktreeReceiptSurface {
   }
 }
 
+/** The worktree store `bridge/index.ts` builds once per bridge. */
+export class WorktreeReceiptStore extends ReceiptFileStore<WorktreeReceipt, WorktreeCreateResponse> {
+  constructor(stateDir: string, warn: (line: string) => void = (line) => console.warn(line)) {
+    super(stateDir, join(stateDir, RECEIPTS_FILE), coerceReceipt, warn, "worktree");
+  }
+}
+
 /**
  * A store with no file: the default when the server is built without one, which is every test that
  * builds a server by hand. Replays work for the life of the process and are lost on restart.
  */
-export function memoryWorktreeReceipts(): WorktreeReceiptSurface {
-  let receipts: WorktreeReceipt[] = [];
-  const running = new Inflight();
+export function memoryReceipts<R extends { requestId: string }, A>(): ReceiptSurface<R, A> {
+  let receipts: R[] = [];
+  const running = new Inflight<A>();
   return {
     get: (requestId) => receipts.find((r) => r.requestId === requestId),
     record: (receipt) => {
@@ -205,4 +226,9 @@ export function memoryWorktreeReceipts(): WorktreeReceiptSurface {
     inflight: (requestId) => running.get(requestId),
     track: (requestId, answer) => running.track(requestId, answer),
   };
+}
+
+/** {@link memoryReceipts} for the worktree route. */
+export function memoryWorktreeReceipts(): WorktreeReceiptSurface {
+  return memoryReceipts<WorktreeReceipt, WorktreeCreateResponse>();
 }

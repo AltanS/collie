@@ -25,6 +25,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **Each machine says which agents it can start.** The bridge checks for Claude Code, Codex, opencode, pi, omp, Grok, Hermes, Muse and Antigravity on the PATH your login shell uses, so an agent installed through nvm or in your home folder counts. In a crew, each member answers for itself.
+- **A tapped Start never opens two panes.** Each start carries an id. If the reply is lost and you try again, Collie shows the pane the first tap made instead of starting a second one.
+- **A new branch can go in a folder you choose.** Next to Herdr's own worktree folder, you can pick a parent folder in your home, and Collie names the new folder after the branch. Collie shows the full path before you start and refuses a folder that is hidden, inside the repo, behind a link, outside your home, or already there. Each repo remembers your last choice on that machine.
 - **One floating New button on the dashboard.** A round "+" sits at the bottom right of the Dashboard tab, above the footer, and opens one sheet with Agent (your launchers), Space and Agent on a branch. A row is hidden when it cannot work on your machine, and the Spaces header's folder button stays.
 - **A new worktree starts from main or from this branch.** "New agent on a branch" now asks where the
   branch begins: the repo's default branch, or the branch the pane is on. The choice shows only when the

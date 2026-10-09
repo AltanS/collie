@@ -55,6 +55,8 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "bridge/operator-commands.ts", pattern: "startsWithSlash", count: 1, why: "a slash command such as /model, not a path" },
   { file: "bridge/worktree-base.ts", pattern: "startsWithSlash", count: 1, why: "a git ref name, `/`-separated on every host, never a path" },
   { file: "bridge/worktree-base.ts", pattern: "splitOnSlash", count: 1, why: "the same git ref name, cut into its components" },
+  { file: "bridge/worktree-branch.ts", pattern: "startsWithSlash", count: 1, why: "a new branch name, `/`-separated on every host, never a path" },
+  { file: "bridge/worktree-branch.ts", pattern: "splitOnSlash", count: 1, why: "the same branch name, cut into its components" },
   { file: "bridge/config.ts", pattern: "splitOnSlash", count: 1, why: "COLLIE_BASE_PATH is a URL mount, always slashes" },
   { file: "bridge/crew/forward.ts", pattern: "splitOnSlash", count: 3, why: "crew route names, URL paths" },
   { file: "bridge/files-view.ts", pattern: "startsWithSlash", count: 1, why: "the wire's relative path, `/`-separated on every host; joined with host.path" },

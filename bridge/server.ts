@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { isIP } from "node:net";
 import { homedir, networkInterfaces } from "node:os";
-import { dirname, extname, join, normalize, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
@@ -30,7 +30,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
-import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
+import type { MuxAdapter, MuxAck, MuxGrid, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
@@ -42,6 +42,23 @@ import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
+import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
+import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import {
+  memoryWorktreeChoices,
+  type BaseKind,
+  type WorktreeChoice,
+  type WorktreeChoiceSurface,
+} from "./worktree-choices.ts";
+import {
+  diskFolderFs,
+  expandHome,
+  herdrDefaultTarget,
+  nearestWorkTree,
+  resolveParentTarget,
+  type FolderFs,
+  type HerdrConfigRead,
+} from "./worktree-folder.ts";
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import {
@@ -125,6 +142,7 @@ import type {
   WorktreeListResponse,
   WorktreeOpenResponse,
   WorktreeCreateResponse,
+  WorktreePlanResponse,
   DeviceAuth,
   OperatorCommand,
   MuxConfig,
@@ -982,6 +1000,21 @@ export function startServer(opts: {
    */
   worktreeBases?: WorktreeBaseSurface;
   /**
+   * One receipt per launch the phone tagged with a `requestId` (ADR 0091, `bridge/launch-receipts.ts`).
+   * Absent means an in-memory store; `bridge/index.ts` passes the file-backed one.
+   */
+  launchReceipts?: LaunchReceiptSurface;
+  /**
+   * The agents this host can start by id, with their found flags (ADR 0091). Absent builds the real
+   * probe, which asks nothing until the first `GET /api/launchers`.
+   */
+  harnesses?: HarnessProbe;
+  /**
+   * The New sheet's last branch choices per repo (M48, `bridge/worktree-choices.ts`). Absent means an
+   * in-memory store; `bridge/index.ts` passes the file-backed one.
+   */
+  worktreeChoices?: WorktreeChoiceSurface;
+  /**
    * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
    *
    * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
@@ -1012,6 +1045,9 @@ export function startServer(opts: {
   const folders = opts.folders;
   const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
   const worktreeBases = opts.worktreeBases ?? memoryWorktreeBases();
+  const launchReceipts = opts.launchReceipts ?? memoryLaunchReceipts();
+  const harnesses = opts.harnesses ?? createHarnessProbe();
+  const worktreeChoices = opts.worktreeChoices ?? memoryWorktreeChoices();
   const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -1277,7 +1313,11 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers);
+      return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers, {}, {
+        harnesses,
+        receipts: launchReceipts,
+        folders,
+      });
     }
     // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
     // the LEAD's rows down even for a launch addressed at a peer via `?host=`. Session-scoped like
@@ -1289,7 +1329,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"));
+      return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"), harnesses);
     }
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
@@ -1409,6 +1449,30 @@ export function startServer(opts: {
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
       return listWorktrees(rt.herdr, rt.engine, decodeURIComponent(worktreeListMatch[1]!), req);
+    }
+    // A branch made from a FOLDER rather than a space (M48, ADR 0093): the New sheet's Where field
+    // names the repo by its folder. Lead-local like the space-scoped routes above and below: neither is
+    // in the crew's FORWARDABLE list, so a `?host=` call answers 501 before it reaches this.
+    if (pathname === "/api/worktree/plan" && req.method === "GET") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return planWorktree(req, worktreeChoices);
+    }
+    if (pathname === "/api/worktree" && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      server.timeout(req, WORKTREE_ROUTE_BUDGET_S);
+      return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers, {
+        receipts: worktreeReceipts,
+        bases: worktreeBases,
+        choices: worktreeChoices,
+        harnesses,
+        folders,
+      });
     }
     const worktreeMatch = pathname.match(WORKTREE_ACTION_ROUTE);
     if (worktreeMatch && req.method === "POST") {
@@ -4408,10 +4472,17 @@ async function runWorktreeCreate(
   receipts: WorktreeReceiptSurface,
   bases: WorktreeBaseSurface,
   wait: PaneReadyOptions,
+  // The folder the checkout is made in (ADR 0093), already checked; absent is the multiplexer's own.
+  path?: string,
+  // Run once the multiplexer said yes, before the answer: the New sheet's memory of this repo's choices.
+  afterCreate?: () => Promise<void>,
 ): Promise<WorktreeCreateResponse> {
-  // `base` joins the request only when there is one, so a call without it is the call this route
-  // always made.
-  const outcome = await herdr.createWorktree(base === undefined ? { repoRoot, branch } : { repoRoot, branch, base });
+  // `base` and `path` join the request only when there is one, so a call without them is the call
+  // this route always made.
+  let request: MuxWorktreeCreateRequest = { repoRoot, branch };
+  if (base !== undefined) request = { ...request, base };
+  if (path !== undefined) request = { ...request, path };
+  const outcome = await herdr.createWorktree(request);
   if (!outcome.ok) {
     // The half-done case gets its OWN code, because the recovery is the opposite one: the branch is
     // on disk and only the opening failed, so the phone must offer "open it", never "create it
@@ -4428,6 +4499,7 @@ async function runWorktreeCreate(
   const created = outcome.value;
   // Written only now, once the multiplexer said yes: a refusal leaves no checkout to describe.
   if (base !== undefined) await bases.record(created.cwd, { base, createdAt: Date.now() });
+  if (afterCreate !== undefined) await afterCreate();
   let launcherStarted = false;
   let launcherError: string | undefined;
   if (row !== undefined) {
@@ -4449,6 +4521,7 @@ async function runWorktreeCreate(
       requestId,
       launcher: row?.command,
       launcherStarted: row === undefined ? undefined : String(launcherStarted),
+      path,
     },
   });
   if (requestId !== undefined) {
@@ -4477,6 +4550,255 @@ async function runWorktreeCreate(
   };
   if (launcherError !== undefined) answer.launcherError = launcherError;
   return answer;
+}
+
+// ── A branch from a FOLDER: the New sheet's Where field (M48, ADR 0093) ──────────────────────────
+//
+// The space-scoped routes above learn the repo from the snapshot. The New sheet names a FOLDER (typed,
+// or from Recent and Favourites), which may be open in no space at all, so these two find the repo
+// from the folder: the nearest `.git` at or above it, then git's own `--git-common-dir` to reach the
+// MAIN checkout of a linked worktree, the folder Herdr calls the repo root. Git runs hardened and
+// argv only (`askGit`, bridge/worktree-base.ts). Lead-local, like every worktree route.
+
+/** The repo a folder belongs to, as real paths. */
+interface FolderRepo {
+  /** The real path of the folder's own work tree (the folder `.git` was found in). */
+  workTree: string;
+  /** The real path of the repo's main checkout. */
+  repoRoot: string;
+}
+
+/** What the folder routes reach beyond the route's arguments. Every field defaults for a test. */
+export interface FolderWorktreeDeps {
+  ask?: GitAsk;
+  fs?: FolderFs;
+  home?: string;
+  readHerdrConfig?: HerdrConfigRead;
+}
+
+/** The repo `folder` sits in, or `null` when it is in none (or is not there). */
+async function repoForBranch(folder: string, deps: FolderWorktreeDeps): Promise<FolderRepo | null> {
+  const fs = deps.fs ?? diskFolderFs;
+  let real: string;
+  try {
+    real = await fs.realpath(folder);
+    if (!(await fs.isDirectory(real))) return null;
+  } catch {
+    return null;
+  }
+  const workTree = await nearestWorkTree(real, fs);
+  if (workTree === null) return null;
+  const common = await (deps.ask ?? askGit)(workTree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (common === null || common === "") return null;
+  const main = common.endsWith(`${sep}.git`) ? dirname(common) : workTree;
+  try {
+    return { workTree, repoRoot: await fs.realpath(main) };
+  } catch {
+    return null;
+  }
+}
+
+/** The branch the folder's own checkout is on, when it is a NAMED one. */
+async function currentBranchOf(workTree: string, ask: GitAsk): Promise<string | null> {
+  const name = await ask(workTree, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  return name !== null && isValidWorktreeBranch(name) ? name : null;
+}
+
+/** Whether git itself accepts `branch` as a new branch name. Checked after the static rule. */
+async function gitAcceptsBranch(repoRoot: string, branch: string, ask: GitAsk): Promise<boolean> {
+  if (!isValidWorktreeBranch(branch)) return false;
+  return (await ask(repoRoot, ["check-ref-format", "--branch", branch])) !== null;
+}
+
+/**
+ * `GET /api/worktree/plan?cwd=<folder>[&branch=<name>][&parent=<folder>]` — what a branch from this
+ * folder would be, before Start: the repo, its default branch and the folder's own branch, this
+ * repo's remembered choices, Herdr's default folder for the branch, and the "Other folder" target or
+ * the rule it breaks. A read: it creates nothing, and the create runs every check again.
+ */
+export async function planWorktree(
+  req: Request,
+  choices: WorktreeChoiceSurface,
+  deps: FolderWorktreeDeps = {},
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  const url = new URL(req.url);
+  const home = deps.home ?? homedir();
+  const ask = deps.ask ?? askGit;
+  const cwd = askedFolder(url.searchParams.get("cwd") ?? undefined, home);
+  if (cwd === undefined || cwd === false) {
+    return json({ ok: false, ...apiError("worktree.folder_invalid") } satisfies WorktreePlanResponse, ae, 400);
+  }
+  const repo = await repoForBranch(cwd, deps);
+  if (repo === null) {
+    return json(
+      { ok: false, ...apiError("worktree.not_a_repo", { reason: "this folder is not in a Git work tree" }) } satisfies WorktreePlanResponse,
+      ae,
+    );
+  }
+  const [defaultBranch, currentBranch] = await Promise.all([
+    resolveDefaultBranch(repo.repoRoot, ask),
+    currentBranchOf(repo.workTree, ask),
+  ]);
+  const answer: WorktreePlanResponse = {
+    ok: true,
+    repoRoot: repo.repoRoot,
+    defaultBranch,
+    currentBranch,
+  };
+  const remembered = choices.get(repo.repoRoot);
+  if (remembered !== undefined) {
+    answer.remembered = { base: remembered.base, folder: remembered.folder };
+    if (remembered.parent !== undefined) answer.remembered.parent = remembered.parent;
+  }
+  const branch = (url.searchParams.get("branch") ?? "").trim();
+  if (branch !== "") {
+    answer.branchValid = await gitAcceptsBranch(repo.repoRoot, branch, ask);
+    if (answer.branchValid) {
+      const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
+      answer.defaultTarget = { path, exists: await (deps.fs ?? diskFolderFs).exists(path) };
+      const parent = (url.searchParams.get("parent") ?? "").trim();
+      if (parent !== "") {
+        const outcome = await resolveParentTarget({ parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
+        answer.parentTarget = outcome.ok
+          ? { ok: true, path: outcome.path }
+          : { ok: false, ...apiError(outcome.code, { path: outcome.path ?? parent }) };
+      }
+    }
+  }
+  return json(answer, ae);
+}
+
+/**
+ * `POST /api/worktree` — a new branch in a new folder, opened as its own space, from the folder the
+ * New sheet names, and optionally an agent or a row started in it.
+ *
+ * The body is `{ cwd, branch, base?, folder?, requestId?, harness? | command? | shell? }`. `base` is
+ * `parseBase`'s shape (ADR 0089). `folder` is `{ kind: "default" }` (absent means the same: no `path`
+ * is sent and Herdr decides) or `{ kind: "parent", parent }`, which runs the whole folder rule
+ * (bridge/worktree-folder.ts) right here, every time. The launch kinds are `POST /api/launch`'s; none
+ * at all is a plain shell. `requestId` replays through the worktree receipts, as the space route does.
+ */
+export async function createWorktreeAt(
+  herdr: MuxAdapter,
+  engine: StateEngine,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+  getLaunchers: () => Promise<Launcher[]>,
+  deps: FolderWorktreeDeps & {
+    receipts: WorktreeReceiptSurface;
+    bases?: WorktreeBaseSurface;
+    choices?: WorktreeChoiceSurface;
+    harnesses?: Pick<HarnessProbe, "launch">;
+    folders?: Pick<FolderSurface, "recordRecent">;
+    wait?: PaneReadyOptions;
+  },
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; every field is checked below.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const fields = asJsonRecord(body) ?? {};
+  const home = deps.home ?? homedir();
+  const ask = deps.ask ?? askGit;
+  const receipts = deps.receipts;
+  const refuse = (code: ErrorCode, detail: ApiErrorDetail = {}, status = 400): Response =>
+    json({ ok: false, ...apiError(code, detail) } satisfies WorktreeCreateResponse, ae, status);
+
+  const rawId = fields.requestId;
+  if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
+  const requestId = rawId;
+  if (requestId !== undefined) {
+    const stored = receipts.get(requestId);
+    if (stored) return json(replayOf(stored, engine), ae);
+    const running = receipts.inflight(requestId);
+    if (running) return json(await joined(running), ae);
+  }
+
+  // Everything that can be refused without a disk or a git process, first.
+  const branch = typeof fields.branch === "string" ? fields.branch.trim() : "";
+  if (branch === "") return refuse("worktree.branch_required", {}, 200);
+  if (!isValidWorktreeBranch(branch)) return refuse("worktree.invalid_branch");
+  const parsedBase = parseBase(fields.base);
+  if (!parsedBase.ok) return refuse("worktree.invalid_base");
+  const folder = parseFolderChoice(fields.folder);
+  if (folder === null) return refuse("worktree.folder_invalid");
+  const named = ["command", "harness", "shell"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
+  const picked = named ? await pickLaunch(fields, getLaunchers, deps.harnesses) : ({ kind: "shell", row: undefined } as const);
+  if (picked instanceof Response) return picked;
+  const cwd = askedFolder(fields.cwd, home);
+  if (cwd === undefined || cwd === false) return refuse("worktree.folder_invalid");
+
+  // The repo, the branch as git reads it, and the starting point.
+  const repo = await repoForBranch(cwd, deps);
+  if (repo === null) return refuse("worktree.not_a_repo", { reason: "this folder is not in a Git work tree" }, 200);
+  if (!(await gitAcceptsBranch(repo.repoRoot, branch, ask))) return refuse("worktree.invalid_branch");
+  const resolved = await resolveBase(parsedBase.base, repo.repoRoot, ask);
+  if (!resolved.ok) return refuse("worktree.invalid_base");
+
+  // The folder rule, at use time, every time (ADR 0093).
+  let path: string | undefined;
+  if (folder.kind === "parent") {
+    const outcome = await resolveParentTarget({ parent: folder.parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
+    if (!outcome.ok) return refuse(outcome.code, { path: outcome.path ?? folder.parent });
+    path = outcome.path;
+  }
+
+  // Checked again with no await between it and `track` (see createWorktree).
+  if (requestId !== undefined) {
+    const stored = receipts.get(requestId);
+    if (stored) return json(replayOf(stored, engine), ae);
+    const running = receipts.inflight(requestId);
+    if (running) return json(await joined(running), ae);
+  }
+  const baseKind: BaseKind = parsedBase.base?.kind === "ref" ? "current" : "default";
+  const choices = deps.choices;
+  const remember =
+    choices === undefined
+      ? undefined
+      : () => {
+          const choice: WorktreeChoice = { base: baseKind, folder: folder.kind, at: Date.now() };
+          if (path !== undefined) choice.parent = dirname(path);
+          return choices.record(repo.repoRoot, choice);
+        };
+  const work = runWorktreeCreate(
+    herdr,
+    engine,
+    repo.repoRoot,
+    branch,
+    resolved.ref,
+    picked.row,
+    requestId,
+    audit,
+    device,
+    session,
+    receipts,
+    deps.bases ?? memoryWorktreeBases(),
+    deps.wait ?? {},
+    path,
+    remember,
+  );
+  if (requestId !== undefined) receipts.track(requestId, work);
+  return json(await work, ae);
+}
+
+/** A create body's `folder`: absent or `{ kind: "default" }`, or a parent string; `null` for anything else. */
+function parseFolderChoice(
+  raw: JsonValue | undefined,
+): { kind: "default" } | { kind: "parent"; parent: string } | null {
+  if (raw === undefined || raw === null) return { kind: "default" };
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (raw.kind === "default") return { kind: "default" };
+  if (raw.kind === "parent" && typeof raw.parent === "string" && raw.parent.trim() !== "") {
+    return { kind: "parent", parent: raw.parent };
+  }
+  return null;
 }
 
 async function openWorktree(
@@ -4551,12 +4873,19 @@ async function openWorktree(
 // `launch` below: the route registration (gate, `?host=` forward) stays pinned by
 // server.test.ts's "every session-scoped route resolves through the gate" source read, and this
 // function is what answers once that has already happened.
+//
+// `harnesses` rides along when the route is built with a probe (ADR 0091): the agents this host can
+// start by id and whether each binary is on its login PATH. A bridge that predates the New sheet
+// sends no such field, and that absence is how the phone recognises an older crew member.
 export async function launchersRoute(
   getLaunchers: () => Promise<Launcher[]>,
   acceptEncoding: string | null,
+  harnesses?: Pick<HarnessProbe, "list">,
 ): Promise<Response> {
   const rows = await getLaunchers();
-  return json({ launchers: rows, home: homedir() } satisfies LaunchersResponse, acceptEncoding);
+  const body: LaunchersResponse = { launchers: rows, home: homedir() };
+  if (harnesses !== undefined) body.harnesses = await harnesses.list();
+  return json(body, acceptEncoding);
 }
 
 // ── The new-space folder list (#289, bridge/folders.ts) ──────────────────────────
@@ -4794,12 +5123,19 @@ export async function cacheRulesRoute(
 // context) or as a new tab beside a pane the client names (from a pane, the swipe-up switcher). The
 // configured list doubles as the allowlist `POST /api/launch` matches: the client names a row by its
 // `command` string and the bridge checks for exact equality against the current rows before the
-// multiplexer is touched at all — the client never supplies a command line, and it never supplies a
-// path either: `cwd` is always the row's own (if pinned) or resolved from where the launch was
-// addressed (the operator's home from the dashboard, the beside pane's own cwd from a pane). That is
-// the whole security story of the route, and why `command` is an identity and not a free-text
-// argument. `createSpace`/`createTab` allocates the pane (a multiplexer deletes a tab whose last
-// pane closes and a space whose last tab closes, so a self-closing pane leaves nothing behind);
+// multiplexer is touched at all — the client never supplies a command line. That is the whole
+// security story of the route, and why `command` is an identity and not a free-text argument.
+//
+// THE NEW SHEET'S THREE KINDS (ADR 0091). The body names exactly one of:
+//   `command`      a `launchers.toml` row, matched exactly, as it always was;
+//   `harness`      an agent id from this host's own list (`bridge/harness-launch.ts`), which the bridge
+//                  turns into the line it types; an id it does not start is a 400;
+//   `shell: true`  a plain shell, nothing typed.
+// `cwd` is the folder the sheet's Where field names. It is a place to open a shell, the thing
+// `POST /api/workspace` has always taken from the client, never a path anything here reads; a row's
+// pinned `cwd` still wins over it. `requestId` is a UUID the phone mints per intent: a known one
+// answers the pane the first request made (`replayed: true`) and runs nothing, one still in flight is
+// joined (`bridge/launch-receipts.ts`). `createSpace`/`createTab` allocates the pane;
 // `typeIntoFreshShell` then waits for that pane's shell to finish drawing and types the line and
 // Enter into it, the same step a worktree create with a launcher takes (ADR 0089).
 export async function launch(
@@ -4813,6 +5149,7 @@ export async function launch(
   // The clock this route waits on, injected so the tests drive the wait on a fake one. Production
   // passes nothing and gets the real timers.
   wait: PaneReadyOptions = {},
+  deps: LaunchDeps = {},
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -4822,24 +5159,24 @@ export async function launch(
     return text("bad body", 400);
   }
   const fields = asJsonRecord(body) ?? {};
-  const command = (typeof fields.command === "string" ? fields.command.trim() : "");
-  if (command === "") return text("bad body", 400);
-  // The client never sends a path — only, optionally, the pane it wants the launch to open BESIDE.
-  // Absent means "from the dashboard": a new Space, cwd resolved against the operator's home.
-  const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
   const ae = req.headers.get("accept-encoding");
-  // Live read, behind the same mtime cache the other operator files use — a new row in
-  // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
-  // re-fetch its rows, the same property `commands.toml` has).
-  const rows = await getLaunchers();
-  const row = rows.find((r) => r.command === command);
-  if (!row) {
-    return json(
-      { ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse,
-      ae,
-      400,
-    );
-  }
+  const receipts = deps.receipts ?? memoryLaunchReceipts();
+
+  // The id first: a known one answers without any other field being looked at again.
+  const rawId = fields.requestId;
+  if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
+  const requestId = rawId;
+  const replay = requestId === undefined ? null : earlierLaunch(receipts, requestId);
+  if (replay !== null) return json(await replay, ae);
+
+  const picked = await pickLaunch(fields, getLaunchers, deps.harnesses);
+  if (picked instanceof Response) return picked;
+
+  // The client never sends a command line. It may send the pane it wants the launch to open BESIDE,
+  // and the folder the sheet's Where field names.
+  const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
+  const asked = askedFolder(fields.cwd, deps.home ?? homedir());
+  if (asked === false) return json({ ok: false, ...apiError("launch.bad_folder") } satisfies CreateResponse, ae, 400);
 
   // Resolved here, once, so both the create call and the audit line agree on what actually ran —
   // and so a tab beside an unknown pane 404s before the multiplexer is touched at all, exactly like
@@ -4856,74 +5193,197 @@ export async function launch(
       );
     }
   }
-  const resolvedCwd = besidePane ? (row.cwd ?? besidePane.cwd) : (row.cwd ?? homedir());
+  const row = picked.row;
+  const resolvedCwd = row?.cwd ?? asked ?? besidePane?.cwd ?? homedir();
 
+  // Checked again with no await between it and `track`, so two requests with one id that both got
+  // past the check above cannot both start a launch.
+  if (requestId !== undefined) {
+    const again = earlierLaunch(receipts, requestId);
+    if (again !== null) return json(await again, ae);
+  }
+  const work = runLaunch(herdr, engine, {
+    row,
+    kind: picked.kind,
+    cwd: resolvedCwd,
+    besidePane,
+    requestId,
+    audit,
+    device,
+    session,
+    receipts,
+    wait,
+  });
+  if (requestId !== undefined) receipts.track(requestId, work);
+  const answer = await work;
+  // A folder the sheet named that worked joins Recent, as a space created there does. Never a row's
+  // pinned folder, which the operator already wrote down, and never on a failure.
+  if (answer.ok && asked !== undefined && row?.cwd === undefined && deps.folders !== undefined) {
+    await deps.folders.recordRecent(answer.pane.cwd);
+  }
+  return json(answer, ae);
+}
+
+/** What `launch` needs beyond the route's own arguments. Every field defaults for a test. */
+export interface LaunchDeps {
+  /** The agents this host starts by id. Absent: no `harness` body is accepted. */
+  harnesses?: Pick<HarnessProbe, "launch">;
+  /** Absent: an in-memory store. */
+  receipts?: LaunchReceiptSurface;
+  /** Where a launch into a named folder is recorded as Recent. Absent: nothing is recorded. */
+  folders?: Pick<FolderSurface, "recordRecent">;
+  /** This machine's home, for a leading `~` in `cwd`. */
+  home?: string;
+}
+
+/**
+ * The answer an earlier request with this id gave, or the one it is still working on; `null` for a
+ * new id. SYNCHRONOUS up to that `null` on purpose: the caller's second check must not yield between
+ * the look and its `track`, or two requests with one id could both start a launch.
+ */
+function earlierLaunch(receipts: LaunchReceiptSurface, requestId: string): Promise<CreateResponse> | null {
+  const stored = receipts.get(requestId);
+  if (stored) return Promise.resolve(launchReplay(stored));
+  const running = receipts.inflight(requestId);
+  if (running === undefined) return null;
+  return running.then((answer) => (answer.ok ? { ...answer, replayed: true } : answer));
+}
+
+/** Which of the three kinds a launch body names, and the line it types. */
+type PickedLaunch = { kind: "row" | "harness" | "shell"; row: Launcher | undefined };
+
+/**
+ * The launch a body names: exactly one of `command`, `harness` and `shell: true`. None or two is a
+ * plain 400; a row or an id the host does not have is the catalogued refusal, before anything runs.
+ */
+async function pickLaunch(
+  fields: JsonObject,
+  getLaunchers: () => Promise<Launcher[]>,
+  harnesses: Pick<HarnessProbe, "launch"> | undefined,
+): Promise<PickedLaunch | Response> {
+  const command = typeof fields.command === "string" ? fields.command.trim() : "";
+  const harness = typeof fields.harness === "string" ? fields.harness.trim() : "";
+  const shell = fields.shell === true;
+  const named = [command !== "", harness !== "", shell].filter(Boolean).length;
+  if (named !== 1) return text("bad body", 400);
+  if (shell) return { kind: "shell", row: undefined };
+  if (harness !== "") {
+    const known = harnesses?.launch(harness);
+    if (known === undefined) {
+      return json({ ok: false, ...apiError("launch.unknown_harness", { harness }) } satisfies CreateResponse, null, 400);
+    }
+    return { kind: "harness", row: { command: known.binary, label: known.label } };
+  }
+  // Live read, behind the same mtime cache the other operator files use — a new row in
+  // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
+  // re-fetch its rows, the same property `commands.toml` has).
+  const row = (await getLaunchers()).find((r) => r.command === command);
+  if (!row) return json({ ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse, null, 400);
+  return { kind: "row", row };
+}
+
+/**
+ * The folder a body's `cwd` names: `undefined` when it names none, `false` when what it names cannot
+ * be a folder (not absolute after a leading `~`, or a control character in it).
+ */
+function askedFolder(raw: JsonValue | undefined, home: string): string | undefined | false {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string") return false;
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  for (const ch of trimmed) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  const expanded = expandHome(trimmed, home);
+  return isAbsolute(expanded) ? expanded : false;
+}
+
+/** The half of a launch that touches the multiplexer, run at most once per `requestId`. */
+async function runLaunch(
+  herdr: MuxAdapter,
+  engine: StateEngine,
+  job: {
+    row: Launcher | undefined;
+    kind: PickedLaunch["kind"];
+    cwd: string;
+    besidePane: AgentView | undefined;
+    requestId: string | undefined;
+    audit: AuditLog;
+    device: string | null;
+    session: string;
+    receipts: LaunchReceiptSurface;
+    wait: PaneReadyOptions;
+  },
+): Promise<CreateResponse> {
+  const { row, besidePane, cwd } = job;
+  const label = row?.label;
   const outcome = besidePane
-    ? await herdr.createTab({ spaceId: besidePane.workspaceId, label: row.label, cwd: resolvedCwd })
-    : await herdr.createSpace({ cwd: resolvedCwd, label: row.label });
+    ? await herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd })
+    : await herdr.createSpace({ cwd, label });
   if (!outcome.ok) {
-    return json(
-      { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
-      ae,
-    );
+    return { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) };
   }
   const created = outcome.value;
-  const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "launch");
-  if (!sent.ok) {
-    // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
-    // an empty shell nobody asked for. The rollback's own failure is swallowed because the original
-    // send error is the useful result and there is no safe second recovery action to take here.
-    try {
-      await herdr.closePane(created.paneId);
-    } catch {
-      // Swallowed: the failed send is the result the client needs; a second failure only obscures it.
+  if (row !== undefined) {
+    const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, "launch");
+    if (!sent.ok) {
+      // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
+      // an empty shell nobody asked for. The rollback's own failure is swallowed because the original
+      // send error is the useful result and there is no safe second recovery action to take here.
+      try {
+        await herdr.closePane(created.paneId);
+      } catch {
+        // Swallowed: the failed send is the result the client needs; a second failure only obscures it.
+      }
+      return { ok: false, error: sent.error, code: sent.code, detail: sent.detail };
     }
-    return json(
-      { ok: false, error: sent.error, code: sent.code, detail: sent.detail } satisfies CreateResponse,
-      ae,
-    );
   }
   // `command` is deliberately NOT added to `METADATA_KEYS` in audit.ts. Under
   // `COLLIE_AUDIT_CONTENT=none` it therefore redacts like every other content-bearing detail, and
   // the line still answers the question a launch raises: who started something, in which pane and
   // Space, when. Which shell line ran is recoverable from `launchers.toml` in a way a reply's text
-  // never is.
-  if (besidePane) {
-    audit.record({
-      action: "tab.launch",
-      paneId: created.paneId,
-      session,
-      device,
-      detail: { command: row.command, label: row.label, cwd: resolvedCwd, besidePaneId: besidePane.paneId },
-    });
-  } else {
-    audit.record({
-      action: "workspace.launch",
-      paneId: created.paneId,
-      session,
-      device,
-      detail: { command: row.command, label: row.label, cwd: resolvedCwd },
-    });
-  }
+  // never is. A shell types nothing, so it is recorded as the create it is.
+  const where = besidePane ? "tab" : "workspace";
+  const detail: AuditDetail =
+    row === undefined
+      ? { cwd, requestId: job.requestId }
+      : { command: row.command, label: row.label, cwd, requestId: job.requestId, harness: job.kind === "harness" ? row.command : undefined };
+  if (besidePane) detail.besidePaneId = besidePane.paneId;
+  job.audit.record({
+    action: row === undefined ? `${where}.create` : `${where}.launch`,
+    paneId: created.paneId,
+    session: job.session,
+    device: job.device,
+    detail,
+  });
   await settleTopology(herdr, engine);
   // The tab path's create call doesn't answer with the space's own label (mirrors createTab above):
   // the snapshot already knows it, and that lookup is cheaper than a round trip.
   const workspaceLabel = besidePane
     ? (engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ?? created.spaceLabel)
     : created.spaceLabel;
-  return json(
-    {
-      ok: true,
-      pane: {
-        paneId: created.paneId,
-        workspaceId: created.spaceId,
-        workspaceLabel,
-        tabId: created.tabId,
-        cwd: created.cwd,
-      },
-    } satisfies CreateResponse,
-    ae,
-  );
+  if (job.requestId !== undefined) {
+    await job.receipts.record({
+      requestId: job.requestId,
+      at: Date.now(),
+      workspaceId: created.spaceId,
+      workspaceLabel,
+      paneId: created.paneId,
+      tabId: created.tabId,
+      cwd: created.cwd,
+    });
+  }
+  return {
+    ok: true,
+    pane: {
+      paneId: created.paneId,
+      workspaceId: created.spaceId,
+      workspaceLabel,
+      tabId: created.tabId,
+      cwd: created.cwd,
+    },
+  };
 }
 
 /**
