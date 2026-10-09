@@ -6,11 +6,12 @@ import { homedir } from "node:os";
 
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { sweepAsides } from "./build.ts";
-import { instanceSuffix } from "./context.ts";
+import { instanceSuffix, loadContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
 import { type Exec, type Files, POWERSHELL_UTF8, type ProcessLookup, PROCESS_QUERY_TIMEOUT_MS, realExec } from "./sys.ts";
 import { logFileName } from "./unit.ts";
+import { probeConfigOf, type ProbeConfig, probeTarget } from "./update-run.ts";
 
 // WINDOWS: THE TASK SCHEDULER SUPERVISOR'S OWN PIECES (M43 spec 05).
 //
@@ -267,11 +268,38 @@ export const HEALTHY_RUN_MS = 60_000;
 /** The step the real launcher sleeps its pause in, so a restart marker is seen within half a second. */
 export const PAUSE_STEP_MS = 500;
 
+// ── Liveness (#386) ──────────────────────────────────────────────────────────
+//
+// A bridge can stay ALIVE and stop answering: on Windows it has been seen at 0% CPU with its port
+// open, every request hanging, `/api/health` included, and sockets piling up in CLOSE_WAIT. The loop
+// below relaunches only a bridge that EXITS, so that one was never relaunched, and the phone said "No
+// connection to the bridge" until somebody ran `collie stop` and `collie start` by hand. The launcher
+// therefore asks the bridge's own health route while it runs, and ends a bridge that has not answered
+// {@link LIVENESS_MISSES} times in a row; the loop then relaunches it like any other failure.
+//
+// ANY answer is alive. A deposed crew member fails `/api/health` on purpose and a cold standby door
+// answers 503, and both are working bridges, so the status is never read: only a request that times
+// out or is refused counts as a miss.
+
+/** How long a new bridge has before its first check: a cold start on a slow host is not a hang. */
+export const LIVENESS_GRACE_MS = 120_000;
+/** The pause between two checks. */
+export const LIVENESS_INTERVAL_MS = 30_000;
+/** One check's budget. `/api/health` answers in milliseconds from a bridge that is running at all. */
+export const LIVENESS_TIMEOUT_MS = 10_000;
+/** Misses in a row that end the bridge: about 90 s of silence, so one slow moment never kills it. */
+export const LIVENESS_MISSES = 3;
+
+/** One check of a running bridge: did it answer at all? */
+export type LivenessProbe = () => Promise<boolean>;
+
 /** One bridge the launcher started. */
 export interface LaunchedBridge {
   readonly pid: number;
   /** Its exit code once it has exited. A bridge killed by a signal reads as a failure. */
   readonly exited: Promise<number>;
+  /** End it now. Its exit then settles {@link exited} as a failure, and the loop relaunches it. */
+  kill?(): void;
 }
 
 export interface SuperviseDeps {
@@ -303,6 +331,12 @@ export interface SuperviseDeps {
   holdGuard(pipe: string): Promise<GuardAnswer>;
   /** The process table's answer for one pid: who holds a taken guard ({@link guardHolder}). */
   lookup(pid: number): ProcessLookup;
+  /**
+   * The check for a bridge launched with `env`, or `null` when this bridge cannot be asked over plain
+   * HTTP from here (see {@link realLiveness}). Called once per launch, right after the launch, so it
+   * reads the configuration the bridge is reading. Absent: no checks at all.
+   */
+  liveness?(env: Readonly<Record<string, string>>): LivenessProbe | null;
 }
 
 export type GuardAnswer = { readonly kind: "held" } | { readonly kind: "taken" } | { readonly kind: "unguarded"; readonly why: string };
@@ -542,7 +576,7 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
       continue;
     }
     await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, bridge.pid));
-    const code = await bridge.exited;
+    const code = await watchBridge(deps, bridge, env, logPath);
     if (code === 0) {
       // Nothing left to own: a record naming two dead pids would only be re-examined by every verb.
       deps.files.remove(record);
@@ -561,6 +595,75 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
     deps.note(logPath, `the bridge (pid ${bridge.pid}) exited ${code}; relaunching in ${delay / 1000}s`);
     await pause();
   }
+}
+
+/**
+ * Wait for the bridge to exit, checking meanwhile that it still answers (see {@link LIVENESS_GRACE_MS}).
+ * A bridge that misses {@link LIVENESS_MISSES} checks in a row is killed, and its exit is returned like
+ * any other, so the loop's relaunch and backoff apply unchanged. With no `liveness` seam, no `kill`, or
+ * a bridge that cannot be asked, this is only the wait. The check is built once per launch, so every
+ * bridge starts with its own grace and its own count.
+ *
+ * The checks sleep in the pause's steps and stop at the first step after the exit, so a bridge that
+ * exits 0 does not keep the launcher alive for the rest of a sleep.
+ */
+async function watchBridge(
+  deps: SuperviseDeps,
+  bridge: LaunchedBridge,
+  env: Readonly<Record<string, string>>,
+  logPath: string,
+): Promise<number> {
+  const kill = bridge.kill;
+  if (deps.liveness === undefined || kill === undefined) return bridge.exited;
+  let done = false;
+  const exited = bridge.exited.then((code) => {
+    done = true;
+    return code;
+  });
+  // Sleep `ms`, in steps, returning early once the bridge has exited. True: still running.
+  const wait = async (ms: number): Promise<boolean> => {
+    for (let left = ms; left > 0; ) {
+      if (done) return false;
+      const step = Math.min(deps.pauseStepMs ?? left, left);
+      await deps.sleep(step);
+      left -= step;
+    }
+    return !done;
+  };
+  // Resolved NOW, the moment the bridge reads the same configuration, so an edit made during the grace
+  // cannot point the checks at a door the running bridge never bound.
+  let probe: LivenessProbe | null;
+  try {
+    probe = deps.liveness(env);
+  } catch (err) {
+    // A configuration that cannot be read must not stop the loop that keeps the bridge up.
+    deps.note(logPath, `no health checks for this bridge: ${String(err)}`);
+    return exited;
+  }
+  if (probe === null) return exited;
+  const check = probe;
+  const watch = async (): Promise<void> => {
+    if (!(await wait(LIVENESS_GRACE_MS))) return;
+    let misses = 0;
+    for (;;) {
+      // A probe that throws is a check that got no answer.
+      const answered = await check().catch(() => false);
+      if (done) return;
+      misses = answered ? 0 : misses + 1;
+      if (misses >= LIVENESS_MISSES) {
+        // The checks go on after a kill: a bridge the kill did not end is still silent at the next
+        // one and is ended again, rather than leaving the launcher waiting on an exit that never comes.
+        deps.note(
+          logPath,
+          `the bridge (pid ${bridge.pid}) did not answer its health check ${misses} times in a row; ending it so it relaunches`,
+        );
+        kill();
+      }
+      if (!(await wait(LIVENESS_INTERVAL_MS))) return;
+    }
+  };
+  void watch();
+  return exited;
 }
 
 /** Who holds a taken guard: the live launcher the record names, nobody we can name, or no answer. */
@@ -609,6 +712,42 @@ export function holdGuardPipe(pipe: string): Promise<GuardAnswer> {
   });
 }
 
+/**
+ * Where the launcher asks, or `null` when it cannot. The address is the one the update's health gate
+ * asks ({@link probeTarget}): the bridge's own front door on the address it bound, or a peer's standby
+ * door. The one rule of its own: a peer with no standby door serves only mutual TLS, where the gate
+ * WANTS the honest connection error, but a plain-HTTP check would fail against a bridge that is fine
+ * and end it every few minutes. Such a bridge gets no checks.
+ */
+export function livenessUrl(c: ProbeConfig): string | null {
+  if (c.pinsALead && c.standbyPort === null) return null;
+  return probeTarget(c).url;
+}
+
+/**
+ * The real check: the bridge's configuration resolved from the environment it was launched with, the
+ * way the bridge resolves it, and one GET with a `timeoutMs` budget. Any response is an answer; the
+ * body is not read.
+ */
+export function realLiveness(
+  env: Readonly<Record<string, string>>,
+  files: Pick<Files, "read">,
+  timeoutMs = LIVENESS_TIMEOUT_MS,
+): LivenessProbe | null {
+  const ctx = loadContext(() => {}, { ambient: { ...env } });
+  const url = livenessUrl(probeConfigOf(ctx.env, files, ctx.stateDir, ctx.port));
+  if (url === null) return null;
+  return async () => {
+    try {
+      const answer = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+      await answer.body?.cancel();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
 /** The launcher's real seams: Node's spawn, the real filesystem, the real clock. */
 export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename" | "list" | "read">): SuperviseDeps {
   const env: Record<string, string> = {};
@@ -625,6 +764,7 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" 
     now: () => Date.now(),
     holdGuard: holdGuardPipe,
     lookup: (pid) => realExec(env, homedir()).processLookup(pid, PROCESS_QUERY_TIMEOUT_MS),
+    liveness: (bridgeEnv) => realLiveness(bridgeEnv, files),
     launch(command, opts) {
       const [program, ...rest] = command;
       if (program === undefined) return null;
@@ -639,7 +779,7 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" 
           // A bridge ended by a signal (`TerminateProcess` on Windows) has no code: it failed.
           child.once("exit", (code) => resolve(code ?? 1));
         });
-        return child.pid === undefined ? null : { pid: child.pid, exited };
+        return child.pid === undefined ? null : { pid: child.pid, exited, kill: () => void child.kill() };
       } catch {
         return null;
       } finally {

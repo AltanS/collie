@@ -12,6 +12,7 @@ import {
   type UpdateRun,
   type UpdateRunState,
 } from "../bridge/update-run.ts";
+import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { STANDBY_HEALTH_PATH, STANDBY_VERSION_HEADER, standbyPortOf } from "../bridge/crew/standby.ts";
 import { parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import type { Environment } from "./context.ts";
@@ -411,12 +412,15 @@ export function probeTarget(c: ProbeConfig): ProbeTarget {
     // machine, and a door bound wide is reachable on loopback too.
     return { kind: "standby", url: `http://127.0.0.1:${c.standbyPort}${STANDBY_HEALTH_PATH}` };
   }
-  const host = c.host.trim() === "" ? "127.0.0.1" : c.host.trim();
-  return { kind: "front-door", url: `http://${host}:${c.port}/api/health` };
+  // A wildcard bind is not an address one can dial, and it answers on loopback. An IPv6 literal goes
+  // in brackets, or `http://fd7a::1:8787` is not a URL and every probe of a healthy bridge fails.
+  const host = bindIsWildcard(c.host) ? "127.0.0.1" : c.host.trim();
+  const authority = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return { kind: "front-door", url: `http://${authority}:${c.port}/api/health` };
 }
 
 /** {@link ProbeConfig} read off this instance's environment and its trust store. */
-export function probeConfigOf(env: Environment, files: Files, stateDir: string, port: number): ProbeConfig {
+export function probeConfigOf(env: Environment, files: Pick<Files, "read">, stateDir: string, port: number): ProbeConfig {
   const raw = files.read(trustStorePath(stateDir));
   const trust = raw === null ? null : parseTrustStore(raw);
   return {

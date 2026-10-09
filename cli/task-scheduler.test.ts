@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { collieBinary, hostFor } from "../bridge/host.ts";
 import { capture, fakeFiles, fakeLinkFs } from "./fakes.ts";
@@ -16,9 +19,14 @@ import {
   isTaskBridge,
   isTaskLauncher,
   type LaunchedBridge,
+  LIVENESS_GRACE_MS,
+  LIVENESS_INTERVAL_MS,
+  LIVENESS_MISSES,
+  livenessUrl,
   parseSuperviseArgs,
   parseTaskQuery,
   parseTaskRecord,
+  realLiveness,
   HEALTHY_RUN_MS,
   RELAUNCH_DELAY_MAX_MS,
   RELAUNCH_DELAY_MIN_MS,
@@ -327,6 +335,250 @@ describe("_supervise, the loop", () => {
     expect(steps.at(-1)).toBe(37_000 + 5_000);
     expect(l.notes.join("\n")).toContain("asked for a relaunch during the pause; relaunching now");
     expect(l.files.exists(marker)).toBe(false);
+  });
+
+  describe("liveness (#386)", () => {
+    /** One scripted health check: answered, silent, or a probe that throws. */
+    type Answer = boolean | "throws";
+
+    /**
+     * The first launch is a bridge that runs until a kill takes, or until the test calls `exitFirst`;
+     * every later launch follows `codes` as usual. The checks answer `answers` in turn, and the test
+     * fails loudly if the launcher checks more often than that. `onProbe` runs before each answer with
+     * how many checks came before it. `killsToEnd` is how many kills it takes to end the bridge.
+     */
+    function watched(
+      codes: (number | [number, number])[],
+      answers: Answer[],
+      opts: { onProbe?: (n: number) => void; killsToEnd?: number } = {},
+    ) {
+      const l = launcher(codes);
+      const launch = l.deps.launch;
+      const killed: number[] = [];
+      const envs: Readonly<Record<string, string>>[] = [];
+      let probes = 0;
+      let exit: (code: number) => void = () => {};
+      let first = true;
+      l.deps.launch = (command, launchOpts) => {
+        if (!first) return launch(command, launchOpts);
+        first = false;
+        l.launched.push({ command, ...launchOpts });
+        const exited = new Promise<number>((resolve) => (exit = resolve));
+        return {
+          pid: 8001,
+          exited,
+          kill: () => {
+            killed.push(8001);
+            if (killed.length >= (opts.killsToEnd ?? 1)) exit(1);
+          },
+        };
+      };
+      l.deps.liveness = (env) => {
+        envs.push(env);
+        return () => {
+          opts.onProbe?.(probes);
+          probes++;
+          const answer = answers.shift();
+          if (answer === undefined) throw new Error(`the launcher checked more than the ${probes - 1} times the test scripted`);
+          return answer === "throws" ? Promise.reject(new Error("socket hang up")) : Promise.resolve(answer);
+        };
+      };
+      return { ...l, killed, envs, probes: () => probes, exitFirst: (code: number) => exit(code) };
+    }
+
+    test("a bridge that stops answering is ended after three misses in a row, and relaunched", async () => {
+      const l = watched([0], [false, false, false]);
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([8001]);
+      expect(l.probes()).toBe(LIVENESS_MISSES);
+      expect(l.launched).toHaveLength(2);
+      // The grace and a pause between each check come before the kill, and the relaunch then takes
+      // the ordinary pause of a bridge that lived, not a crash loop's longer one.
+      expect(l.slept.slice(0, 3)).toEqual([LIVENESS_GRACE_MS, LIVENESS_INTERVAL_MS, LIVENESS_INTERVAL_MS]);
+      expect(l.slept).toContain(RELAUNCH_DELAY_MIN_MS);
+      expect(l.slept.filter((ms) => ms > RELAUNCH_DELAY_MIN_MS && ms < LIVENESS_INTERVAL_MS)).toEqual([]);
+      expect(l.notes.join("\n")).toContain("the bridge (pid 8001) did not answer its health check 3 times in a row; ending it so it relaunches");
+      // The check is built from the BRIDGE's environment: its command line wins over the launcher's own.
+      expect(l.envs).toHaveLength(1);
+      expect(l.envs[0]!.COLLIE_PORT).toBe("8787");
+    });
+
+    test("an answer resets the count: only misses in a row end the bridge", async () => {
+      const l = watched([0], [false, false, true, false, false, false]);
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([8001]);
+      expect(l.probes()).toBe(6);
+    });
+
+    test("a probe that throws counts as a check that got no answer", async () => {
+      const l = watched([0], ["throws", "throws", "throws"]);
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([8001]);
+    });
+
+    test("a bridge the kill did not end is ended again at the next silent check", async () => {
+      const l = watched([0], [false, false, false, false], { killsToEnd: 2 });
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([8001, 8001]);
+      expect(l.launched).toHaveLength(2);
+      expect(l.notes.filter((n) => n.includes("did not answer"))).toHaveLength(2);
+    });
+
+    test("a bridge that exits while its third check is in flight is not killed", async () => {
+      const l = watched([0], [false, false, false], {
+        onProbe: (n) => {
+          if (n === 2) l.exitFirst(1);
+        },
+      });
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([]);
+      expect(l.notes.join("\n")).not.toContain("did not answer");
+      expect(l.notes.join("\n")).toContain("the bridge (pid 8001) exited 1");
+    });
+
+    test("a `collie restart` during the checks relaunches at once, and the old checks stop", async () => {
+      const marker = taskRestartPath(CONFIG, null, WIN);
+      const l = watched([0], [false, false], {
+        onProbe: (n) => {
+          // `collie restart` writes its marker, then kills the bridge.
+          if (n === 1) {
+            l.files.write(marker, formatRestartMarker(l.deps.now()));
+            l.exitFirst(1);
+          }
+        },
+      });
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([]);
+      expect(l.launched).toHaveLength(2);
+      expect(l.notes.join("\n")).toContain("was stopped by `collie restart`; relaunching now");
+      expect(l.notes.join("\n")).not.toContain("did not answer");
+    });
+
+    test("a bridge that exits mid-grace stops the wait at the next step, not at the end of it", async () => {
+      const l = watched([], []);
+      l.deps = { ...l.deps, pauseStepMs: 500 };
+      const sleep = l.deps.sleep;
+      let waited = 0;
+      l.deps.sleep = (ms) => {
+        waited += ms;
+        if (waited === 1_500) l.exitFirst(0);
+        return sleep(ms);
+      };
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      // Wait for the watcher's last step to settle: it stops on its own, never reaching the grace.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(waited).toBeLessThanOrEqual(2_000);
+      expect(l.probes()).toBe(0);
+    });
+
+    test("a bridge that keeps answering is never ended", async () => {
+      const l = watched([], [true, true, true, true, true], {
+        onProbe: (n) => {
+          if (n === 4) l.exitFirst(0);
+        },
+      });
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([]);
+      expect(l.launched).toHaveLength(1);
+      expect(l.notes.join("\n")).not.toContain("did not answer");
+    });
+
+    test("a bridge that cannot be asked gets no checks and is left to run", async () => {
+      const l = watched([], []);
+      l.deps.liveness = () => {
+        // The bridge stops on its own a moment later; nothing may have ended it before that.
+        setTimeout(() => l.exitFirst(0), 0);
+        return null;
+      };
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([]);
+      expect(l.notes.join("\n")).not.toContain("did not answer");
+    });
+
+    test("a configuration that cannot be read is noted, and the bridge is left to run", async () => {
+      const l = watched([], []);
+      l.deps.liveness = () => {
+        setTimeout(() => l.exitFirst(0), 0);
+        throw new Error("config.toml: bad TOML");
+      };
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.killed).toEqual([]);
+      expect(l.notes.join("\n")).toContain("no health checks for this bridge: Error: config.toml: bad TOML");
+    });
+
+  });
+
+  describe("livenessUrl", () => {
+    const base = { host: "", port: 8787, standbyPort: null, pinsALead: false };
+
+    test("asks the front door on loopback by default, and on the address the bridge bound", () => {
+      expect(livenessUrl(base)).toBe("http://127.0.0.1:8787/api/health");
+      expect(livenessUrl({ ...base, host: "100.64.0.8" })).toBe("http://100.64.0.8:8787/api/health");
+    });
+
+    test("dials loopback for a wildcard bind, which is not an address", () => {
+      expect(livenessUrl({ ...base, host: "0.0.0.0" })).toBe("http://127.0.0.1:8787/api/health");
+    });
+
+    test("asks a peer at its standby door, and does not ask a peer that has none", () => {
+      expect(livenessUrl({ ...base, pinsALead: true, standbyPort: 8790 })).toBe("http://127.0.0.1:8790/standby/health");
+      expect(livenessUrl({ ...base, pinsALead: true })).toBeNull();
+    });
+
+    test("puts an IPv6 bind in brackets, so a healthy bridge on one is not read as silent", () => {
+      expect(livenessUrl({ ...base, host: "fd7a:115c:a1e0::1" })).toBe("http://[fd7a:115c:a1e0::1]:8787/api/health");
+    });
+  });
+
+  describe("realLiveness, over real HTTP", () => {
+    /** A bridge's environment: a home and a config dir of its own, so no real config is read. */
+    function bridgeEnv(port: number, configToml?: string) {
+      const home = mkdtempSync(join(tmpdir(), "collie-liveness-home-"));
+      const configDir = mkdtempSync(join(tmpdir(), "collie-liveness-config-"));
+      if (configToml !== undefined) writeFileSync(join(configDir, "config.toml"), configToml);
+      return { HOME: home, USERPROFILE: home, HERDR_PLUGIN_CONFIG_DIR: configDir, COLLIE_PORT: String(port) };
+    }
+    const files = { read: (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : null) };
+
+    test("any answer is alive, a 503 included: a cold standby door and a deposed member both answer so", async () => {
+      using server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("deposed", { status: 503 }) });
+      const probe = realLiveness(bridgeEnv(server.port!), files);
+      expect(await probe!()).toBe(true);
+    });
+
+    test("a listener that accepts and never answers is a miss, at the end of the budget", async () => {
+      // Accepts every connection, reads what it is sent, and never writes a byte back.
+      const hung = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+      try {
+        const started = Date.now();
+        expect(await realLiveness(bridgeEnv(hung.port), files, 300)!()).toBe(false);
+        expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+      } finally {
+        hung.stop(true);
+      }
+    });
+
+    test("a closed port is a miss", async () => {
+      using server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("ok") });
+      const port = server.port!;
+      server.stop(true);
+      expect(await realLiveness(bridgeEnv(port), files, 1_000)!()).toBe(false);
+    });
+
+    test("asks the port the BRIDGE's configuration names, read from its own config dir", async () => {
+      using server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("ok") });
+      // No COLLIE_PORT word on the command line: the port comes from the bridge's config.toml. The
+      // launcher's own environment names a dead port, and must not be the one that is read.
+      const { COLLIE_PORT: _drop, ...env } = bridgeEnv(0, `[network]\nport = ${server.port!}\n`);
+      const before = process.env.COLLIE_PORT;
+      process.env.COLLIE_PORT = "1";
+      try {
+        expect(await realLiveness(env, files, 1_000)!()).toBe(true);
+      } finally {
+        if (before === undefined) delete process.env.COLLIE_PORT;
+        else process.env.COLLIE_PORT = before;
+      }
+    });
   });
 
   describe("one launcher per instance", () => {

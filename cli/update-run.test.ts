@@ -42,6 +42,18 @@ describe("probe target", () => {
     });
   });
 
+  test("a wildcard bind is asked on loopback, because a wildcard is not an address one can dial", () => {
+    for (const host of ["0.0.0.0", "::", " 0.0.0.0 "]) {
+      expect(probeTarget(config({ host })).url).toBe("http://127.0.0.1:8787/api/health");
+    }
+  });
+
+  test("an IPv6 bind is put in brackets, so the URL parses and reaches it", () => {
+    expect(probeTarget(config({ host: "fd7a:115c:a1e0::1" })).url).toBe("http://[fd7a:115c:a1e0::1]:8787/api/health");
+    expect(probeTarget(config({ host: "[::1]" })).url).toBe("http://[::1]:8787/api/health");
+    expect(() => new URL(probeTarget(config({ host: "::1" })).url)).not.toThrow();
+  });
+
   test("a peer with a standby door is asked THERE — its front door is mutual TLS", () => {
     expect(probeTarget(config({ pinsALead: true, standbyPort: 8799 }))).toEqual({
       kind: "standby",

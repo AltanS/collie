@@ -197,6 +197,11 @@ token, which means without administrator rights.
 The task runs a launcher, a small program that starts the bridge again if the bridge exits with an
 error. The bridge is the Collie program that runs on your PC and serves the web page to your phone.
 
+The launcher also restarts a bridge that is still running but has stopped answering. Two minutes
+after a start it asks the bridge's health check every 30 seconds, and three misses in a row, about
+90 seconds of silence, end the bridge so the launcher starts it again. A crew peer with no standby
+door is not asked: its only door is mutual TLS.
+
 ## Reaching it from your phone
 
 Step 6 of Zero to phone, in full. These are the same steps as on Linux and macOS, done by hand.
