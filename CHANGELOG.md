@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The model label stays away when the screen already names the model.** A statusline or footer that
   prints "Opus 5.5" no longer gets a second "Opus 5.5" above the belt. It holds steady while the
   screen redraws, and comes back if the footer stops naming the model.
+- **A message sent while Claude Code is working no longer vanishes from Chat.** Claude Code 2.1.291 takes a message into a running turn without writing a user turn for it, so Chat showed it as waiting and then dropped it, always after Send now and for every later message in that turn. Chat now draws it as your message, at the time you sent it.
 
 ## [1.18.1] - 2026-10-09
 
