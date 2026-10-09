@@ -271,7 +271,8 @@ describe("WorktreeChoiceStore — the file", () => {
     await again.load();
     // The default kind keeps the last parent, so switching back to Other folder still offers it.
     expect(again.get(repo)).toEqual({ base: "current", folder: "default", parent: "/p", at: 2 });
-    expect((await Bun.file(join(dir, CHOICES_FILE)).stat()).mode & 0o777).toBe(0o600);
+    // NTFS has no 0600 mode bits; on Windows the state folder's access list keeps the file private.
+    if (process.platform !== "win32") expect((await Bun.file(join(dir, CHOICES_FILE)).stat()).mode & 0o777).toBe(0o600);
   });
 
   test("an entry that is not a choice is dropped", () => {

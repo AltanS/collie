@@ -38,7 +38,8 @@ describe("WorktreeBaseStore", () => {
     await store.load();
     await store.record("/r/.worktrees/x", { base: "main", createdAt: 1234 });
     expect(await readdir(stateDir)).toEqual([BASES_FILE]);
-    expect((await stat(join(stateDir, BASES_FILE))).mode & 0o777).toBe(0o600);
+    // NTFS has no 0600 mode bits; on Windows the state folder's access list keeps the file private.
+    if (process.platform !== "win32") expect((await stat(join(stateDir, BASES_FILE))).mode & 0o777).toBe(0o600);
     expect(JSON.parse(await readFile(join(stateDir, BASES_FILE), "utf8"))).toEqual({
       version: BASES_VERSION,
       bases: { "/r/.worktrees/x": { base: "main", createdAt: 1234 } },

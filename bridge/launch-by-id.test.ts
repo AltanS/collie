@@ -148,7 +148,7 @@ describe("POST /api/launch — by id", () => {
     const mux = new FakeMux();
     const { body } = await run(mux, { shell: true, cwd: "~/src" });
     expect(body?.ok).toBe(true);
-    expect(mux.spaces).toEqual([{ cwd: "/home/op/src", label: undefined }]);
+    expect(mux.spaces).toEqual([{ cwd: join("/home/op", "src"), label: undefined }]);
     expect(mux.texts).toEqual([]);
   });
 
@@ -179,7 +179,7 @@ describe("POST /api/launch — by id", () => {
     const mux = new FakeMux();
     const { body } = await run(mux, { shell: true, cwd: "projects/app" });
     expect(body?.ok).toBe(true);
-    expect(mux.spaces).toEqual([{ cwd: "/home/op/projects/app", label: undefined }]);
+    expect(mux.spaces).toEqual([{ cwd: join("/home/op", "projects", "app"), label: undefined }]);
     await run(mux, { shell: true, cwd: "~" });
     expect(mux.spaces[1]?.cwd).toBe("/home/op");
   });
@@ -191,8 +191,8 @@ describe("POST /api/launch — by id", () => {
     expect(answer.body).toMatchObject({
       ok: false,
       code: "launch.folder_missing",
-      detail: { folder: "/home/op/projects" },
-      error: "there is no folder /home/op/projects on this machine",
+      detail: { folder: join("/home/op", "projects") },
+      error: `there is no folder ${join("/home/op", "projects")} on this machine`,
     });
     expect(mux.spaces).toEqual([]);
     expect(mux.texts).toEqual([]);
@@ -209,7 +209,7 @@ describe("POST /api/launch — by id", () => {
     const mux = new FakeMux();
     const receipts = memoryLaunchReceipts();
     await run(mux, { shell: true, cwd: "later", requestId: ID }, { receipts, fs: dirs([]) });
-    const second = await run(mux, { shell: true, cwd: "later", requestId: ID }, { receipts, fs: dirs(["/home/op/later"]) });
+    const second = await run(mux, { shell: true, cwd: "later", requestId: ID }, { receipts, fs: dirs([join("/home/op", "later")]) });
     expect(second.body?.ok).toBe(true);
     expect(mux.spaces).toHaveLength(1);
   });
@@ -288,7 +288,8 @@ describe("LaunchReceiptStore — the file", () => {
     await again.load();
     expect(again.get(ID)?.paneId).toBe("w1:p1");
     const mode = (await Bun.file(join(dir, LAUNCH_RECEIPTS_FILE)).stat()).mode & 0o777;
-    expect(mode).toBe(0o600);
+    // NTFS has no 0600 mode bits; on Windows the state folder's access list keeps the file private.
+    if (process.platform !== "win32") expect(mode).toBe(0o600);
   });
 
   test("an entry that is not a receipt is dropped", () => {

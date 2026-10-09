@@ -140,7 +140,8 @@ describe("AddedLauncherStore on a real state dir", () => {
     const row = textRow();
     expect(await store.add(row)).toEqual({ ok: true, row, replayed: false });
     expect(await readdir(dir)).toEqual([ADDED_FILE]); // no temp file left behind
-    expect((await stat(join(dir, ADDED_FILE))).mode & 0o777).toBe(0o600);
+    // NTFS has no 0600 mode bits; on Windows the state folder's access list keeps the file private.
+    if (process.platform !== "win32") expect((await stat(join(dir, ADDED_FILE))).mode & 0o777).toBe(0o600);
     expect(JSON.parse(await readFile(join(dir, ADDED_FILE), "utf8"))).toEqual({ version: ADDED_VERSION, rows: [row] });
   });
 

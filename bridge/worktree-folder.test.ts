@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import {
   branchSlug,
@@ -143,34 +143,36 @@ describe("Herdr's default folder (probed on Herdr 0.9.3)", () => {
 
   test("no config: ~/.herdr/worktrees/<repo folder>/<slug>", async () => {
     expect(await herdrDefaultTarget("/home/op/src/Repo.Name", "feat/x", "/home/op", () => Promise.resolve(null))).toBe(
-      "/home/op/.herdr/worktrees/Repo.Name/feat-x",
+      join("/home/op", ".herdr", "worktrees", "Repo.Name", "feat-x"),
     );
   });
 
   test("[worktrees] directory moves it, with ~ expanded", () => {
-    expect(herdrWorktreeDir('[worktrees]\ndirectory = "~/wt"\n', "/home/op")).toBe("/home/op/wt");
+    expect(herdrWorktreeDir('[worktrees]\ndirectory = "~/wt"\n', "/home/op")).toBe(join("/home/op", "wt"));
     expect(herdrWorktreeDir('[worktrees]\ndirectory = "/srv/wt"\n', "/home/op")).toBe("/srv/wt");
   });
 
   test("a relative value, another key, or a file that does not parse is no setting", () => {
-    const fallback = "/home/op/.herdr/worktrees";
+    const fallback = join("/home/op", ".herdr", "worktrees");
     expect(herdrWorktreeDir('[worktrees]\ndirectory = "rel/wt"\n', "/home/op")).toBe(fallback);
     expect(herdrWorktreeDir('worktree_directory = "/srv/wt"\n', "/home/op")).toBe(fallback);
     expect(herdrWorktreeDir("[[[ not toml", "/home/op")).toBe(fallback);
   });
 
   test("the config file is Herdr's own: XDG_CONFIG_HOME first, then ~/.config", () => {
-    expect(herdrConfigPath({ XDG_CONFIG_HOME: "/x/cfg" }, "/home/op")).toBe("/x/cfg/herdr/config.toml");
-    expect(herdrConfigPath({}, "/home/op")).toBe("/home/op/.config/herdr/config.toml");
-    expect(herdrConfigPath({ XDG_CONFIG_HOME: "relative" }, "/home/op")).toBe("/home/op/.config/herdr/config.toml");
+    expect(herdrConfigPath({ XDG_CONFIG_HOME: "/x/cfg" }, "/home/op")).toBe(join("/x/cfg", "herdr", "config.toml"));
+    expect(herdrConfigPath({}, "/home/op")).toBe(join("/home/op", ".config", "herdr", "config.toml"));
+    expect(herdrConfigPath({ XDG_CONFIG_HOME: "relative" }, "/home/op")).toBe(join("/home/op", ".config", "herdr", "config.toml"));
   });
 });
 
 describe("the small helpers", () => {
   test("expandHome touches only a leading ~", () => {
     expect(expandHome("~", "/h")).toBe("/h");
-    expect(expandHome("~/a", "/h")).toBe("/h/a");
+    expect(expandHome("~/a", "/h")).toBe(join("/h", "a"));
     expect(expandHome("~a", "/h")).toBe("~a");
+    // Windows spells it with a backslash too; elsewhere `~\a` is a file name, not home.
+    expect(expandHome("~\\a", "/h")).toBe(sep === "\\" ? join("/h", "a") : "~\\a");
     expect(expandHome("/a/~", "/h")).toBe("/a/~");
   });
 

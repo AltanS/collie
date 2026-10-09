@@ -4762,7 +4762,10 @@ async function repoForBranch(folder: string, deps: FolderWorktreeDeps): Promise<
   if (workTree === null) return null;
   const common = await (deps.ask ?? askGit)(workTree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
   if (common === null || common === "") return null;
-  const main = common.endsWith(`${sep}.git`) ? dirname(common) : workTree;
+  // Git for Windows answers `C:/Users/…/.git`, with forward slashes: normalised first, or no path
+  // ends in `\.git` and a linked worktree would pass for its own main checkout.
+  const commonDir = normalize(common);
+  const main = commonDir.endsWith(`${sep}.git`) ? dirname(commonDir) : workTree;
   try {
     return { workTree, repoRoot: await fs.realpath(main) };
   } catch {
@@ -5656,7 +5659,7 @@ function askedFolder(raw: JsonValue | undefined, home: string): string | undefin
   }
   // On the string as sent: `join` below would quietly resolve a `..` away.
   if (trimmed.split(/[\\/]+/u).includes("..")) return false;
-  if (trimmed.startsWith("~") && trimmed !== "~" && !trimmed.startsWith("~/")) return false;
+  if (trimmed.startsWith("~") && trimmed !== "~" && expandHome(trimmed, home) === trimmed) return false;
   const expanded = expandHome(trimmed, home);
   return isAbsolute(expanded) ? expanded : join(home, expanded);
 }

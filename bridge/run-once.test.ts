@@ -170,8 +170,8 @@ describe("POST /api/launch `{ run }`: the shape", () => {
     const f = fixture();
     const out = await f.run({ run: "make test", cwd: "~/src/app", requestId: ID });
     expect(out.status).toBe(200);
-    expect(out.body).toMatchObject({ ok: true, noPrompts: false, pane: { paneId: "w1:p1", cwd: "/home/op/src/app" } });
-    expect(f.mux.spaces).toEqual([{ cwd: "/home/op/src/app", label: "make" }]);
+    expect(out.body).toMatchObject({ ok: true, noPrompts: false, pane: { paneId: "w1:p1", cwd: join("/home/op", "src", "app") } });
+    expect(f.mux.spaces).toEqual([{ cwd: join("/home/op", "src", "app"), label: "make" }]);
     expect(f.mux.texts).toEqual([["w1:p1", "make test"]]);
     expect(f.mux.keys).toEqual([["Enter"]]);
   });
@@ -247,8 +247,8 @@ describe("POST /api/launch `{ run }`: the shape", () => {
     const missing = await f.run({ run: "ls", cwd: "/nope" }, { fs: dirs(["/home/op/projects"]) });
     expect(missing.body).toMatchObject({ code: "launch.folder_missing", detail: { folder: "/nope" } });
     expect(f.mux.spaces).toEqual([]);
-    expect((await f.run({ run: "ls", cwd: "projects" }, { fs: dirs(["/home/op/projects"]) })).status).toBe(200);
-    expect(f.mux.spaces).toEqual([{ cwd: "/home/op/projects", label: "ls" }]);
+    expect((await f.run({ run: "ls", cwd: "projects" }, { fs: dirs([join("/home/op", "projects")]) })).status).toBe(200);
+    expect(f.mux.spaces).toEqual([{ cwd: join("/home/op", "projects"), label: "ls" }]);
   });
 
   test("the answer says whether the line scans as no-prompts; the bridge does not ask for a confirm", async () => {
@@ -447,7 +447,7 @@ describe("the history file: checked again at read, and guarded by its version", 
       expect(await readdir(dir)).toEqual([]);
       await recent.record(good);
       expect(await readdir(dir)).toEqual([RECENT_FILE]);
-      expect((await stat(join(dir, RECENT_FILE))).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") expect((await stat(join(dir, RECENT_FILE))).mode & 0o777).toBe(0o600);
       expect(await readFile(join(dir, RECENT_FILE), "utf8")).toBe(formatRecentFile([good]));
       expect(JSON.parse(await readFile(join(dir, RECENT_FILE), "utf8"))).toMatchObject({ version: 1 });
     });

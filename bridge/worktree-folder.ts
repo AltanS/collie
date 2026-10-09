@@ -79,7 +79,7 @@ function hasControlChar(text: string): boolean {
 /** `~` and `~/x` against `home`; anything else unchanged. */
 export function expandHome(path: string, home: string): string {
   if (path === "~") return home;
-  if (path.startsWith("~/")) return join(home, path.slice(2));
+  if (path.startsWith("~/") || (sep === "\\" && path.startsWith("~\\"))) return join(home, path.slice(2));
   return path;
 }
 
