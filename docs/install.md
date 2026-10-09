@@ -142,10 +142,9 @@ curl -fsSL https://colliepwa.dev/install.sh | sh
 collie start
 ```
 
-The published Mac binary requires Apple Silicon and **macOS 13 or newer**, the minimum its Bun
-build links against. An Intel Mac builds from source
-([The same result, from source](#the-same-result-from-source)). `collie update` states this
-rather than downloading an unusable binary.
+The published Mac binaries cover Apple Silicon (`macos-arm64`) and Intel (`macos-x64`) and require
+**macOS 13 or newer**, the minimum their Bun build links against. The Intel binary uses Bun's
+baseline target, so it also runs on Macs without AVX2.
 
 `collie start` registers a launchd agent in `~/Library/LaunchAgents`. It starts Collie at login and
 restarts it on failure. It also runs `tailscale serve`, so the `tailscale` command must be on your

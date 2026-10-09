@@ -47,7 +47,7 @@ const job = (name: string): Job => {
 const scripts = (j: Job): string => (j.steps ?? []).map((s) => s.run ?? "").join("\n");
 
 describe("release.yml: the Linux and macOS rows", () => {
-  test("stay in `payload`, behind the gate, with fail-fast true and the same three rows", () => {
+  test("stay in `payload`, behind the gate, with fail-fast true and the same four rows", () => {
     const payload = job("payload");
     expect(payload.needs).toBe("gate");
     expect(payload.strategy?.["fail-fast"]).toBe(true);
@@ -55,6 +55,7 @@ describe("release.yml: the Linux and macOS rows", () => {
       { platform: "linux-x64", "runs-on": "ubuntu-latest", "bun-target": "bun-linux-x64-baseline" },
       { platform: "macos-arm64", "runs-on": "macos-14", "bun-target": "bun-darwin-arm64" },
       { platform: "linux-arm64", "runs-on": "ubuntu-24.04-arm", "bun-target": "bun-linux-arm64" },
+      { platform: "macos-x64", "runs-on": "macos-15-intel", "bun-target": "bun-darwin-x64-baseline" },
     ]);
   });
 });
