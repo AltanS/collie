@@ -69,6 +69,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   screen redraws, and comes back if the footer stops naming the model.
 - **A message sent while Claude Code is working no longer vanishes from Chat.** Claude Code 2.1.291 takes a message into a running turn without writing a user turn for it, so Chat showed it as waiting and then dropped it, always after Send now and for every later message in that turn. Chat now draws it as your message, at the time you sent it.
 - **On Windows, a bridge that stops answering is restarted.** The launcher asks the bridge's health check every 30 seconds after a two-minute grace, and three misses in a row end the bridge so the launcher starts it again. Any answer counts, so a deposed member or a cold standby door is never ended, and a crew peer with no standby door is not asked. The check ignores `HTTP_PROXY`, so a proxy cannot make a healthy bridge look silent. This recovers from the freeze in #386; what freezes the bridge is still being looked for. Thanks @mqmalagris (#387).
+- **A crew member told it lost the lead no longer freezes on a `tailscale` that does not answer.** Taking the member's own `tailscale serve` mapping down runs on the bridge's one thread, and a `tailscale` call that never returned stopped every route, `/api/health` included. Each call is now killed after 30 seconds and reported as a failed teardown. Found while looking into #386.
 
 ## [1.18.1] - 2026-10-09
 

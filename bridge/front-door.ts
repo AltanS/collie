@@ -404,10 +404,24 @@ export function shouldReleaseFrontDoor(input: {
 // drag a service manager, a launchd plist writer and a socket dialler into a process that wants two
 // `tailscale` calls — so these are the two implementations, and nothing else in the bridge uses them.
 
-/** `spawnSync`, with the tool resolved absolute-first under systemd's minimal PATH. */
+/**
+ * How long one `tailscale` call may take before it is killed. A `tailscale serve` that answers takes
+ * a second or two; this bound is for a `tailscaled` that never answers.
+ */
+export const FRONT_DOOR_EXEC_TIMEOUT_MS = 30_000;
+
+/**
+ * `spawnSync`, with the tool resolved absolute-first under systemd's minimal PATH.
+ *
+ * BOUNDED, because it blocks the bridge's one thread: a deposition that arrives on the wire runs it
+ * while the bridge is serving, and with no bound a `tailscale` that never returned froze every route,
+ * `/api/health` included, for good. A call past the bound is killed and reads as a failure, which the
+ * teardown already reports as one warning.
+ */
 export function realFrontDoorExec(
   env: Record<string, string | undefined>,
   home: string,
+  timeoutMs = FRONT_DOOR_EXEC_TIMEOUT_MS,
 ): FrontDoorExec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {
@@ -415,7 +429,7 @@ export function realFrontDoorExec(
     capture(tool, args) {
       const bin = resolve(tool);
       if (bin === null) return { code: 127, stdout: "", stderr: "", found: false };
-      const r = spawnSync(bin, [...args], { encoding: "utf8" });
+      const r = spawnSync(bin, [...args], { encoding: "utf8", timeout: timeoutMs, killSignal: "SIGKILL" });
       return {
         code: r.status ?? 1,
         stdout: r.stdout ?? "",
