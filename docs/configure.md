@@ -240,8 +240,9 @@ keys = ["Down", "Enter"]     # several chords go out as one batch
 ```
 
 When a pane matches your defined rows, it displays only your presets instead of the default Ctrl
-C/D/U/R/L/Z buttons ([ADR 0018](../.adr/0018-operator-command-rows-replace-the-catalog.md)). The
-rest of the tray (Esc, arrow keys, Enter/Tab/Space, modifiers, digits, F1–F12) is fixed.
+C/D/U/R/L/Z buttons ([ADR 0018](../.adr/0018-operator-command-rows-replace-the-catalog.md)). These
+rows are yours as the operator and reach every phone. The pad above them (Esc, the arrows,
+Enter/Tab/Space, the modifiers) is not set here: each phone arranges its own, see the next section.
 
 Chords use herdr's syntax, not tmux's:
 
@@ -257,6 +258,36 @@ Chords use herdr's syntax, not tmux's:
 
 To verify, open a pane and tap **Keys → Presets** to view the new buttons. If Collie rejects a row,
 check `journalctl --user -u collie -n 20` for the error details.
+
+## Your own key pad
+
+Each phone can rearrange the Keys pad. Open **Keys** and tap the pencil beside the label:
+
+1. Tap the pencil next to **Keys**. A tall sheet opens over the pane.
+2. Drag a key to another cell, or tap it and use the four arrow buttons. A full cell swaps.
+3. Tap a dashed **+** to add a key in an empty cell, or select a key and tap **Change** or **Remove**.
+
+The pad is a grid of 7 columns, one key per cell, and empty cells are fine. **Add row** puts a row
+at the bottom, up to eight. Changes show in the dock at once and are saved in this phone's browser
+only, so another phone keeps its own pad. The default is the pad you had before.
+
+A key sends a chord of up to three modifiers plus one key, for example Ctrl+Alt+Shift+T. It can also
+send a short sequence of up to four steps, for example Ctrl+B and then C. A sequence goes out in
+order as one call. Every key takes the same path as the built-in ones: it waits while the pane is
+locked or offline, a key that can stop a program (Ctrl+D, Ctrl+Z, or a sequence with Ctrl+C) asks for
+a second tap, and a key your multiplexer cannot send is grey.
+
+| Control | What it does |
+| --- | --- |
+| Presets | Default, Claude Code, tmux, Vim, Navigation. Each shows a preview and asks before it replaces your pad. |
+| Copy layout | Puts a short code on the clipboard. On plain http, select the code and copy it by hand. |
+| Import layout | Paste a code from another phone. Collie checks it, shows a preview and asks before it applies. |
+| Restore default | Brings back the original pad, after a preview. |
+
+If Esc, Enter or an arrow is not on your pad, a quiet line says so, with **Put back**. The tmux
+preset sends the `Ctrl+B` prefix, so it fits a tmux running inside the pane. The Navigation preset
+has Home, End, PgUp and PgDn, which Herdr cannot send, so they are grey on a Herdr pane
+([ADR 0092](../.adr/0092-the-keys-pad-is-a-board-each-device-arranges.md)).
 
 ## Your own quick replies
 
