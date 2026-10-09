@@ -10,6 +10,7 @@ import { t } from "@/lib/i18n";
 import {
   chordKey,
   defaultLabel,
+  modKey,
   F_KEYS,
   formatStep,
   isLoneInterrupt,
@@ -21,6 +22,7 @@ import {
   stepFace,
   stepsWords,
   stepWords,
+  type BoardKey,
   type ChordKey,
 } from "@/lib/key-board";
 import { MODIFIER_ORDER, type Modifier } from "@/lib/key-queue";
@@ -37,7 +39,7 @@ import { cn } from "@/lib/utils";
 // area is a fixed 116px whatever kind of key is showing, and the status line reserves two lines so a
 // danger or refusal sentence replaces words and never adds a row.
 
-type Kind = "char" | "named" | "fkeys";
+type Kind = "char" | "named" | "fkeys" | "mod";
 
 interface StepDraft {
   readonly mods: readonly Modifier[];
@@ -46,15 +48,24 @@ interface StepDraft {
   readonly char: string;
   readonly named: string;
   readonly fkey: string;
+  /** The sticky modifier, when `kind` is `mod`. */
+  readonly mod: Modifier;
 }
 
-const BLANK: StepDraft = { mods: [], kind: "char", char: "", named: "Enter", fkey: "F1" };
+const BLANK: StepDraft = { mods: [], kind: "char", char: "", named: "Enter", fkey: "F1", mod: "ctrl" };
+
+const MOD_WORD = { ctrl: "Ctrl", alt: "Alt", shift: "Shift" } as const satisfies Readonly<Record<Modifier, string>>;
+
+function draftOfMod(m: Modifier): StepDraft {
+  return { ...BLANK, kind: "mod", mod: m };
+}
 
 function draftOf(step: string): StepDraft {
   const parsed = parseStep(step);
   if (parsed === null) return BLANK;
   const kind: Kind = parsed.base.length === 1 ? "char" : /^F\d+$/.test(parsed.base) ? "fkeys" : "named";
   return {
+    ...BLANK,
     mods: parsed.mods,
     kind,
     char: kind === "char" ? parsed.base : "",
@@ -71,7 +82,7 @@ function chordOf(draft: StepDraft): string | null {
   return step === null ? null : formatStep(step);
 }
 
-const KINDS: readonly Kind[] = ["char", "named", "fkeys"];
+const KINDS: readonly Kind[] = ["char", "named", "fkeys", "mod"];
 
 export function ChordBuilder({
   initial,
@@ -79,15 +90,17 @@ export function ChordBuilder({
   onSave,
 }: {
   /** The key being changed, or null when a new one is being added. */
-  initial: ChordKey | null;
+  initial: BoardKey | null;
   /** The chords this multiplexer refuses (`/api/config`). A refused key shows grey, as on the pad. */
   unsupportedKeys: readonly string[];
-  onSave: (key: ChordKey) => void;
+  onSave: (key: BoardKey) => void;
 }) {
   useLocale();
-  const [drafts, setDrafts] = useState<readonly StepDraft[]>(() => (initial === null ? [BLANK] : initial.steps.map(draftOf)));
+  const [drafts, setDrafts] = useState<readonly StepDraft[]>(() =>
+    initial === null ? [BLANK] : initial.kind === "mod" ? [draftOfMod(initial.mod)] : initial.steps.map(draftOf),
+  );
   const [current, setCurrent] = useState(0);
-  const [name, setName] = useState(initial?.label ?? "");
+  const [name, setName] = useState(initial?.kind === "chord" ? (initial.label ?? "") : "");
 
   const draft = drafts[current] ?? BLANK;
   const edit = (patch: Partial<StepDraft>) =>
@@ -95,19 +108,31 @@ export function ChordBuilder({
   const toggle = (m: Modifier) =>
     edit({ mods: draft.mods.includes(m) ? draft.mods.filter((x) => x !== m) : MODIFIER_ORDER.filter((x) => x === m || draft.mods.includes(x)) });
 
-  const chords = drafts.map(chordOf);
-  const complete = chords.every((c): c is string => c !== null);
+  // A sticky modifier stands alone: it is the whole key, never a step of a sequence. Picked beside
+  // other steps it makes the key incomplete (and the status line says why) instead of quietly
+  // dropping the other steps.
+  const modAlone = drafts.length === 1 && draft.kind === "mod";
+  const modTangled = drafts.some((d) => d.kind === "mod") && drafts.length > 1;
+  const chords = drafts.map((d) => (d.kind === "mod" ? null : chordOf(d)));
+  const complete = !modAlone && !modTangled && chords.every((c): c is string => c !== null);
   const steps = complete ? chords : [];
-  const built = complete ? chordKey(steps, name.trim() === "" ? undefined : name) : null;
+  const built: BoardKey | null = modAlone ? modKey(draft.mod) : complete ? chordKey(steps, name.trim() === "" ? undefined : name) : null;
 
   const then = t("keys.pad.then");
-  const preview = chords.map((c) => (c === null ? "…" : stepWords(c))).join(`, ${then} `);
+  const preview = drafts
+    .map((d, i) => (d.kind === "mod" ? MOD_WORD[d.mod] : chords[i] === null || chords[i] === undefined ? "…" : stepWords(chords[i])))
+    .join(`, ${then} `);
 
   // One sentence, in a box that always holds two lines. The most serious true thing wins.
   const refusedStep = steps.find((s) => !keysSendable([s], unsupportedKeys));
   let status = t("keys.builder.status.empty");
   let alert = false;
-  if (refusedStep !== undefined) {
+  if (modAlone) {
+    status = t("keys.builder.status.mod", { mod: MOD_WORD[draft.mod] });
+  } else if (modTangled) {
+    status = t("keys.builder.status.modAlone");
+    alert = true;
+  } else if (refusedStep !== undefined) {
     status = t("keys.builder.status.refused", { key: stepWords(refusedStep) });
     alert = true;
   } else if (complete) {
@@ -122,7 +147,7 @@ export function ChordBuilder({
     }
   }
 
-  const canAdd = complete && drafts.length < MAX_STEPS;
+  const canAdd = !modAlone && complete && drafts.length < MAX_STEPS;
   const addStep = () => {
     setDrafts((all) => [...all, BLANK]);
     setCurrent(drafts.length);
@@ -139,6 +164,7 @@ export function ChordBuilder({
         <div role="group" aria-label={t("keys.builder.stepsAria")} className="flex h-11 items-center gap-1 overflow-x-auto">
           {drafts.map((_, i) => {
             const chord = chords[i] ?? null;
+            const face = drafts[i]?.kind === "mod" ? MOD_WORD[drafts[i].mod] : null;
             return (
               <Button
                 key={i}
@@ -146,11 +172,11 @@ export function ChordBuilder({
                 variant={i === current ? "default" : "outline"}
                 size="sm"
                 aria-pressed={i === current}
-                aria-label={t("keys.builder.stepAria", { n: i + 1, chord: chord === null ? "…" : stepWords(chord) })}
+                aria-label={t("keys.builder.stepAria", { n: i + 1, chord: face ?? (chord === null ? "…" : stepWords(chord)) })}
                 onClick={() => setCurrent(i)}
                 className="h-9 shrink-0 px-3 font-mono"
               >
-                {chord === null ? "…" : stepFace(chord)}
+                {face ?? (chord === null ? "…" : stepFace(chord))}
               </Button>
             );
           })}
@@ -196,11 +222,12 @@ export function ChordBuilder({
 
       <div>
         <SectionLabel placement="above">{t("keys.builder.hold")}</SectionLabel>
-        <div className="flex gap-2">
+        {/* A sticky modifier is the whole key, so nothing is held with it: the row stays, and goes inert. */}
+        <div className={cn("flex gap-2", draft.kind === "mod" && "pointer-events-none opacity-50")} inert={draft.kind === "mod"}>
           {MODIFIER_ORDER.map((m) => (
             <ToggleButton
               key={m}
-              pressed={draft.mods.includes(m)}
+              pressed={draft.kind !== "mod" && draft.mods.includes(m)}
               onPressedChange={() => toggle(m)}
               label={m === "ctrl" ? "Ctrl" : m === "alt" ? "Alt" : "Shift"}
               icon={null}
@@ -258,6 +285,24 @@ export function ChordBuilder({
               ))}
             </div>
           )}
+          {draft.kind === "mod" && (
+            <div role="group" aria-label={t("keys.builder.modAria")} className="grid grid-cols-3 gap-1">
+              {MODIFIER_ORDER.map((m) => (
+                <Button
+                  key={m}
+                  type="button"
+                  variant={draft.mod === m ? "default" : "outline"}
+                  size="sm"
+                  className="h-9 px-0"
+                  aria-label={MOD_WORD[m]}
+                  aria-pressed={draft.mod === m}
+                  onClick={() => edit({ mod: m })}
+                >
+                  {MOD_WORD[m]}
+                </Button>
+              ))}
+            </div>
+          )}
           {draft.kind === "fkeys" && (
             <div className="grid grid-cols-6 gap-1">
               {F_KEYS.map((key) => (
@@ -287,11 +332,12 @@ export function ChordBuilder({
           value={name}
           maxLength={MAX_LABEL}
           onChange={(e) => setName(e.target.value.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, ""))}
-          placeholder={complete ? defaultLabel(steps) : ""}
+          disabled={modAlone}
+          placeholder={modAlone ? MOD_WORD[draft.mod] : complete ? defaultLabel(steps) : ""}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className="h-11 w-full rounded-sm border border-border bg-background px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="h-11 w-full rounded-sm border border-border bg-background px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
         />
       </div>
 

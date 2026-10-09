@@ -13,7 +13,7 @@ import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import { Composer, TUI_SETTLE_MS } from "./composer";
-import { chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
+import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { type ServerSummary } from "@/lib/types";
 
@@ -2501,7 +2501,7 @@ describe("Composer — keys dock (in-flow, not an overlay)", () => {
     );
     const seq = chordKey(["ctrl+b", "c"]);
     if (seq === null) throw new Error("bad key");
-    setKeyBoard(setCell(DEFAULT_BOARD, 9, seq));
+    setKeyBoard(setCell(addRow(DEFAULT_BOARD), 14, seq));
     try {
       renderComposer();
       await user.click(screen.getByRole("button", { name: "Keys" }));

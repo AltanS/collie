@@ -91,6 +91,20 @@ export function useKeyQueue() {
     setMods(ALL_OFF);
   }, []);
 
+  // A modifier whose key left the pad is released, `locked` or not: the board can lose its Shift key
+  // while Shift is armed, and an armed modifier with no key to turn it off would colour the next
+  // press with nothing on screen to explain it. The queue is left alone.
+  const releaseAbsent = useCallback((present: readonly Modifier[]) => {
+    setMods((cur) => {
+      const next: ModState = {
+        ctrl: present.includes("ctrl") ? cur.ctrl : "off",
+        alt: present.includes("alt") ? cur.alt : "off",
+        shift: present.includes("shift") ? cur.shift : "off",
+      };
+      return next.ctrl === cur.ctrl && next.alt === cur.alt && next.shift === cur.shift ? cur : next;
+    });
+  }, []);
+
   // Hand back the queued keys (for Send) and settle the modifiers — `locked` survives the Send so
   // you can immediately stage the same chord again without re-arming; `once` is spent. Reads the
   // currently-rendered queue — Send is only reachable with a non-empty queue.
@@ -101,5 +115,5 @@ export function useKeyQueue() {
     return taken;
   }, [queue]);
 
-  return { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take };
+  return { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take, releaseAbsent };
 }

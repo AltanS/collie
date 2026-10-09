@@ -71,24 +71,26 @@ describe("NavTray", () => {
     expect(isBefore(alt, up)).toBe(true);
     expect(isBefore(up, ctrlC)).toBe(true);
 
-    // Row 2: Space, Enter, then the inverted-T's Left, Down, Right.
-    expect(isBefore(ctrlC, space)).toBe(true);
-    expect(isBefore(space, enter)).toBe(true);
-    expect(isBefore(enter, left)).toBe(true);
+    // Row 2: Enter, a Space three cells wide, then the inverted-T's Left, Down, Right.
+    expect(isBefore(ctrlC, enter)).toBe(true);
+    expect(isBefore(enter, space)).toBe(true);
+    expect(isBefore(space, left)).toBe(true);
     expect(isBefore(left, down)).toBe(true);
     expect(isBefore(down, right)).toBe(true);
 
-    // Every key is one cell of a 7-column grid, and Enter stays away from the arrows (issue #263):
-    // two empty cells sit between it and Left.
+    // Every key is placed on a 7-column grid by CSS: its corner, and how far it spans. Enter stays
+    // away from the arrows (issue #263): the wide Space stands between it and Left.
     const grid = esc.parentElement!;
     expect(grid).toHaveClass("grid-cols-7");
-    const cells = [...grid.children];
-    expect(cells).toHaveLength(14);
-    expect(cells.indexOf(enter)).toBe(8);
-    expect(cells.indexOf(left)).toBe(11);
-    expect(cells.indexOf(up) % 7).toBe(cells.indexOf(down) % 7);
-    expect(cells[9]).toHaveAttribute("aria-hidden", "true");
-    expect(cells[10]).toHaveAttribute("aria-hidden", "true");
+    const place = (el: HTMLElement) => [el.style.gridColumn, el.style.gridRow];
+    expect(place(esc)).toEqual(["1 / span 1", "1 / span 1"]);
+    expect(place(ctrlC)).toEqual(["7 / span 1", "1 / span 1"]);
+    expect(place(enter)).toEqual(["1 / span 1", "2 / span 1"]);
+    expect(place(space)).toEqual(["2 / span 3", "2 / span 1"]);
+    expect(place(left)).toEqual(["5 / span 1", "2 / span 1"]);
+    expect(place(down)[0]).toBe(place(up)[0]);
+    // Nothing else is in the grid: no spacer cells to shift anything.
+    expect(grid.children).toHaveLength(12);
 
     // Enter carries a low-opacity tint of the primary colour at rest — the commit-key read.
     expect(enter).toHaveClass("bg-primary/15");
@@ -105,7 +107,23 @@ describe("NavTray", () => {
     const spare = addRow(DEFAULT_BOARD);
     rerender(<NavTray onSend={vi.fn()} board={spare} />);
     expect(grid().style.gridTemplateRows).toBe("repeat(2, 36px)");
-    expect(grid().children).toHaveLength(14);
+    expect(grid().children).toHaveLength(12);
+  });
+
+  it("a key two rows tall stretches over both, and a key it covers draws nothing", () => {
+    const tallEnter = boardOf(2, [
+      [0, { kind: "chord", steps: ["Escape"] }],
+      [1, { kind: "chord", steps: ["Enter"], h: 2 }],
+      [2, { kind: "mod", mod: "ctrl", w: 2 }],
+    ]);
+    render(<NavTray onSend={vi.fn()} board={tallEnter} />);
+    const enter = screen.getByRole("button", { name: "Enter" });
+    expect(enter.style.gridRow).toBe("1 / span 2");
+    expect(enter).toHaveClass("h-auto", "self-stretch");
+    expect(enter.parentElement).toHaveClass("grid-cols-7");
+    const ctrl = screen.getByRole("button", { name: "Ctrl" });
+    expect(ctrl.style.gridColumn).toBe("3 / span 2");
+    expect(screen.getByRole("button", { name: "Esc" })).not.toHaveClass("self-stretch");
   });
 
   it("the quick Ctrl+C key shows ^C (fits its 1/7 column) but keeps its chord and accessible name", async () => {
@@ -834,6 +852,69 @@ describe("NavTray — operator preset rows", () => {
     onSend.mockClear();
     await user.click(screen.getByRole("button", { name: "Ctrl+C, then Enter" }));
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  describe("a modifier key made in the editor", () => {
+    // What the builder saves: a plain `{kind:"mod"}`, here two cells wide in a free spot of row 2.
+    const withMod = boardOf(2, [
+      [0, { kind: "mod", mod: "shift", w: 2 }],
+      [2, { kind: "chord", steps: ["x"] }],
+      [7, { kind: "mod", mod: "alt" }],
+    ]);
+
+    it("cycles off, once, locked like the stock ones, and opens the queue strip", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<NavTray onSend={onSend} board={withMod} />);
+      const alt = screen.getByRole("button", { name: "Alt" });
+      expect(alt).toHaveAttribute("aria-pressed", "false");
+      await user.click(alt);
+      expect(alt).toHaveAttribute("aria-pressed", "true");
+      expect(alt.querySelector("svg")).toBeNull(); // once: no lock glyph
+      await user.click(alt);
+      expect(alt.querySelector("svg")).not.toBeNull(); // locked
+      await user.click(alt);
+      expect(alt).toHaveAttribute("aria-pressed", "false");
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("arms the next key: it is staged as a chord and goes out only on Send", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<NavTray onSend={onSend} board={withMod} />);
+      await user.click(screen.getByRole("button", { name: "Shift" }));
+      await user.click(screen.getByRole("button", { name: "Alt" }));
+      await user.click(screen.getByRole("button", { name: "X" }));
+      expect(onSend).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: /^Send/ }));
+      expect(onSend).toHaveBeenCalledExactlyOnceWith(["alt+shift+x"]);
+    });
+
+    it("is spent after one key when set once, and kept when locked", async () => {
+      const user = userEvent.setup();
+      render(<NavTray onSend={vi.fn()} board={withMod} />);
+      const shift = screen.getByRole("button", { name: "Shift" });
+      await user.click(shift);
+      await user.click(screen.getByRole("button", { name: "X" }));
+      expect(shift).toHaveAttribute("aria-pressed", "false");
+      await user.click(shift);
+      await user.click(shift);
+      await user.click(screen.getByRole("button", { name: "X" }));
+      expect(shift).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("lets go of an armed modifier when its key leaves the board", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      const { rerender } = render(<NavTray onSend={onSend} board={withMod} />);
+      await user.click(screen.getByRole("button", { name: "Alt" }));
+      expect(screen.getByRole("button", { name: "Alt" })).toHaveAttribute("aria-pressed", "true");
+      // Alt is removed in the editor: the armed state goes with it, so the next press fires plain.
+      rerender(<NavTray onSend={onSend} board={setCell(withMod, 7, null)} />);
+      expect(screen.queryByRole("button", { name: "Alt" })).toBeNull();
+      await user.click(screen.getByRole("button", { name: "X" }));
+      expect(onSend).toHaveBeenCalledExactlyOnceWith(["x"]);
+    });
   });
 
   it("the stock ^C keeps its single tap", async () => {

@@ -8,7 +8,7 @@ beforeEach(() => {
   __reloadKeyBoard();
 });
 
-describe("this device's key board", () => {
+describe("the stored key board", () => {
   it("is the default board when nothing is stored", () => {
     expect(getKeyBoard()).toBe(DEFAULT_BOARD);
   });
@@ -17,10 +17,27 @@ describe("this device's key board", () => {
     setKeyBoard(claude);
     const raw = localStorage.getItem(KEY_BOARD_STORAGE_KEY);
     expect(raw).toBe(serializeBoard(claude));
-    expect(JSON.parse(raw ?? "{}").v).toBe(1);
+    expect(JSON.parse(raw ?? "{}").v).toBe(2);
     __reloadKeyBoard();
     expect(keyCount(getKeyBoard())).toBe(keyCount(claude));
     expect(getKeyBoard().rows).toBe(claude.rows);
+  });
+
+  it("reads a version 1 board stored by an earlier build, every key one cell, and writes version 2 after the next edit", () => {
+    localStorage.setItem(KEY_BOARD_STORAGE_KEY, JSON.stringify({ v: 1, rows: 1, keys: [[0, "Escape"], [1, "ctrl+b c", "Win"]] }));
+    __reloadKeyBoard();
+    expect(getKeyBoard().cells[0]).toEqual({ kind: "chord", steps: ["Escape"] });
+    expect(getKeyBoard().cells[1]).toEqual({ kind: "chord", steps: ["ctrl+b", "c"], label: "Win" });
+    setKeyBoard(setCell(getKeyBoard(), 2, { kind: "chord", steps: ["x"] }));
+    expect(JSON.parse(localStorage.getItem(KEY_BOARD_STORAGE_KEY) ?? "{}").v).toBe(2);
+  });
+
+  it("keeps a wide key through a reload", () => {
+    const wide = setCell(DEFAULT_BOARD, 8, null);
+    const board = setCell(wide, 8, { kind: "chord", steps: ["Space"], w: 2 });
+    setKeyBoard(board);
+    __reloadKeyBoard();
+    expect(getKeyBoard().cells[8]).toEqual({ kind: "chord", steps: ["Space"], w: 2 });
   });
 
   it("stores nothing for the default, and Restore removes the key", () => {
@@ -35,7 +52,9 @@ describe("this device's key board", () => {
   it.each([
     ["junk", "not json"],
     ["a cut-off write", serializeBoard(claude).slice(0, 40)],
-    ["a future schema", JSON.stringify({ v: 2, rows: 1, keys: [[0, "a"]] })],
+    ["a future schema", JSON.stringify({ v: 3, rows: 1, keys: [[0, "a"]] })],
+    ["an area off the board", JSON.stringify({ v: 2, rows: 1, keys: [[5, "a", null, 3, 1]] })],
+    ["two keys on one area", JSON.stringify({ v: 2, rows: 1, keys: [[0, "a", null, 3, 1], [1, "b"]] })],
     ["an array", "[1,2,3]"],
     ["a bad chord", JSON.stringify({ v: 1, rows: 1, keys: [[0, "ctrl+nope"]] })],
     ["an empty board", JSON.stringify({ v: 1, rows: 1, keys: [] })],
@@ -52,8 +71,8 @@ describe("this device's key board", () => {
       throw new Error("quota");
     });
     try {
-      expect(() => setKeyBoard(setCell(DEFAULT_BOARD, 9, null))).not.toThrow();
-      expect(keyCount(getKeyBoard())).toBe(12);
+      expect(() => setKeyBoard(setCell(DEFAULT_BOARD, 8, null))).not.toThrow();
+      expect(keyCount(getKeyBoard())).toBe(11);
       setKeyBoard(claude);
       expect(getKeyBoard()).toBe(claude);
     } finally {

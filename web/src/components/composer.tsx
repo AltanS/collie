@@ -946,7 +946,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   // The Keys tray's preset row, resolved the same way from the same one-shot read of /api/config.
   const keyPresets = ctrlPresetsFor(agent, useOperatorKeys());
-  // This device's key board (ADR 0092): the pad the Keys dock draws. A hook, so an edit made in the
+  // The key board (ADR 0092): the pad the Keys dock draws. A hook, so an edit made in the
   // editor sheet shows in the dock at once.
   const keyBoard = useKeyBoard();
   const [keysEditorOpen, setKeysEditorOpen] = useState(false);

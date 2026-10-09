@@ -2,15 +2,15 @@ import { useSyncExternalStore } from "react";
 
 import { DEFAULT_BOARD, parseBoard, serializeBoard, sameBoard, type KeyBoard } from "@/lib/key-board";
 
-// This device's key board (M48 spec 03, ADR 0092). One localStorage key, one module-scope value, a
+// The stored key board (M48 spec 03, ADR 0092). One localStorage key, one module-scope value, a
 // listener set and a useSyncExternalStore hook, the shape of lib/design.ts and lib/zen.ts: the dock
 // and the editor sheet read the same value without a provider, and an edit shows in the dock at once.
 //
-// THE VALUE IS VERSIONED AND NEVER TRUSTED. The stored text is `serializeBoard` (it carries `v: 1`);
+// THE VALUE IS VERSIONED AND NEVER TRUSTED. The stored text is `serializeBoard` (it carries `v: 2`);
 // reading it goes through the same validator an imported code does. A value that is missing, cut
 // off, hand-edited, written by a newer build with another schema number, or merely wrong in one chord
 // is the DEFAULT board, never an exception and never half a board. The default is not stored: a
-// device that never edits keeps no key, so it follows the app if the Default ever changes.
+// browser that never edits keeps no key, so it follows the app if the Default ever changes.
 //
 // The key is a PREFERENCE, kept at unpair (lib/storage-keys.test.ts): it names chords, not content.
 
@@ -44,7 +44,7 @@ export function getKeyBoard(): KeyBoard {
   return board;
 }
 
-/** Replace this device's board. Saves at once; every reader re-renders. */
+/** Replace the board. Saves at once; every reader re-renders. */
 export function setKeyBoard(next: KeyBoard): void {
   board = next;
   persist();
@@ -61,7 +61,7 @@ function subscribe(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** This device's board, live. */
+/** The board, live. */
 export function useKeyBoard(): KeyBoard {
   return useSyncExternalStore(subscribe, getKeyBoard, getKeyBoard);
 }

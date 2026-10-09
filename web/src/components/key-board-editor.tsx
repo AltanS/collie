@@ -25,26 +25,33 @@ import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
 import {
   addRow,
+  areaCss,
   BOARD_COLS,
   canRemoveRow,
+  clampAnchor,
   decodeBoard,
   DEFAULT_BOARD,
+  dropKey,
   encodeBoard,
   keyCount,
   keyLabel,
+  MAX_H,
   MAX_ROWS,
+  MAX_W,
   missingCore,
-  neighbour,
+  owners,
   PRESETS,
   putBackCore,
   removeRow,
+  resizeKey,
   sameBoard,
   setCell,
+  spanOf,
+  stepKey,
   stepsWords,
-  swapCells,
+  withSize,
   type BoardKey,
   type BoardPreset,
-  type ChordKey,
   type DecodeRefusal,
   type KeyBoard,
 } from "@/lib/key-board";
@@ -74,7 +81,7 @@ interface Pending {
   readonly board: KeyBoard;
 }
 
-type Builder = { readonly cell: number; readonly key: ChordKey | null };
+type Builder = { readonly cell: number; readonly key: BoardKey | null };
 
 export function KeyBoardEditor({
   open,
@@ -94,24 +101,70 @@ export function KeyBoardEditor({
 
   const selectedKey = selected === null ? null : (board.cells[selected] ?? null);
 
-  const drag = useBoardDrag((from, to) => {
-    setKeyBoard(swapCells(board, from, to));
-    // The selection follows the key that was picked up, and the key it displaced if it was selected.
-    setSelected((s) => (s === from ? to : s === to ? from : s));
+  /** One quiet sentence under the board: why a size or a drop was refused. Cleared by the next action. */
+  const [note, setNote] = useState<string | null>(null);
+  const choose = (cell: number | null) => {
+    setSelected(cell);
+    setNote(null);
+  };
+
+  const inTheWay = (r: { readonly reason: "edge" } | { readonly reason: "blocked"; readonly by: number }): string => {
+    const blocker = r.reason === "blocked" ? (board.cells[r.by] ?? null) : null;
+    return blocker === null ? t("keys.editor.noRoom") : t("keys.editor.inTheWay", { key: keyLabel(blocker) });
+  };
+
+  const drag = useBoardDrag({
+    onDrop: (from, to) => {
+      const res = dropKey(board, from, to);
+      if (res.kind === "move" || res.kind === "swap") {
+        setKeyBoard(res.board);
+        // The selection follows the key that was picked up, and the key it displaced if it was selected.
+        setSelected((s) => (s === from ? res.at : res.kind === "swap" && s === res.at ? from : s));
+        setNote(null);
+      } else if (res.kind === "refused") {
+        setNote(inTheWay(res));
+      }
+    },
+    anchorFor: (from, col, row) => {
+      const key = board.cells[from] ?? null;
+      const { w, h } = key === null ? { w: 1, h: 1 } : spanOf(key);
+      return clampAnchor(board, col, row, w, h);
+    },
   });
 
   const step = (dc: number, dr: number) => {
     if (selected === null) return;
-    const to = neighbour(board, selected, dc, dr);
-    if (to < 0) return;
-    setKeyBoard(swapCells(board, selected, to));
-    setSelected(to);
+    const res = stepKey(board, selected, dc, dr);
+    if (res.kind !== "move" && res.kind !== "swap") return;
+    setKeyBoard(res.board);
+    setSelected(res.at);
+    setNote(null);
   };
-  const canStep = (dc: number, dr: number) => selected !== null && selectedKey !== null && neighbour(board, selected, dc, dr) >= 0;
+  const canStep = (dc: number, dr: number) => {
+    if (selected === null || selectedKey === null) return false;
+    const res = stepKey(board, selected, dc, dr);
+    return res.kind === "move" || res.kind === "swap";
+  };
+
+  const size = selectedKey === null ? null : spanOf(selectedKey);
+  const resize = (w: number, h: number) => {
+    if (selected === null) return;
+    const res = resizeKey(board, selected, w, h);
+    if (res.ok) {
+      setKeyBoard(res.board);
+      setNote(null);
+    } else {
+      setNote(inTheWay(res));
+    }
+  };
 
   const missing = missingCore(board);
   const lift = drag.lift;
   const held = lift === null ? null : (board.cells[lift.from] ?? null);
+  // While a key is lifted: what letting go here would do. A refused drop says so on the outline and
+  // on the status line, and the key goes back.
+  const dropping = lift === null || lift.over === null ? null : dropKey(board, lift.from, lift.over);
+  const own = owners(board);
 
   // Escape closes the TOP sheet only. Every open sheet listens on window, so the editor must not
   // close along with the builder or the confirm screen stacked over it.
@@ -120,10 +173,13 @@ export function KeyBoardEditor({
     onClose();
   };
 
-  const saveKey = (key: ChordKey) => {
+  const saveKey = (key: BoardKey) => {
     if (builder === null) return;
-    setKeyBoard(setCell(board, builder.cell, key));
-    setSelected(builder.cell);
+    // A key that is changed keeps its size; a new one is one cell.
+    const old = board.cells[builder.cell] ?? null;
+    const sized = old === null ? key : withSize(key, spanOf(old).w, spanOf(old).h);
+    setKeyBoard(setCell(board, builder.cell, sized));
+    choose(builder.cell);
     setBuilder(null);
   };
 
@@ -148,6 +204,34 @@ export function KeyBoardEditor({
     </Button>
   );
 
+  // One size choice. Not `disabled` when it is only blocked: it stays tappable so the status line can
+  // say what is in the way. Without a selected key there is nothing to size and it is inert.
+  const sizeButton = (axis: "w" | "h", n: number) => {
+    const current = size === null ? null : size[axis];
+    const target = size === null ? null : axis === "w" ? { w: n, h: size.h } : { w: size.w, h: n };
+    const fits = selected === null || target === null ? false : resizeKey(board, selected, target.w, target.h).ok;
+    return (
+      <Button
+        key={`${axis}${n}`}
+        type="button"
+        variant="outline"
+        size="icon"
+        className={cn(
+          "relative size-10 shrink-0 before:absolute before:-inset-0.5 before:content-['']",
+          current === n && "border-primary bg-primary/10 ring-1 ring-inset ring-primary",
+          selected !== null && !fits && current !== n && "opacity-50",
+        )}
+        aria-label={t(axis === "w" ? "keys.editor.widthAria" : "keys.editor.heightAria", { n })}
+        aria-pressed={current === n}
+        aria-disabled={selected !== null && !fits && current !== n ? true : undefined}
+        disabled={selected === null}
+        onClick={() => target !== null && current !== n && resize(target.w, target.h)}
+      >
+        {n}
+      </Button>
+    );
+  };
+
   return (
     <>
       <BottomSheet open={open} onClose={guardedClose} title={t("keys.editor.title")} className={cn("h-[85dvh] max-h-[85dvh]", TALL_SHEET_CLEARANCE)}>
@@ -156,17 +240,15 @@ export function KeyBoardEditor({
 
           <div className="rounded-sm border border-border bg-muted/30 p-2">
             <div ref={drag.boxRef} className="relative" role="group" aria-label={t("keys.editor.boardAria")}>
-              <div className="grid auto-rows-[44px] grid-cols-7 gap-1">
-                {board.cells.map((key, i) => {
+              <div className="relative grid auto-rows-[44px] grid-cols-7 gap-1">
+                {/* One slot per cell. They are what the pointer is tested against, and a free one is a
+                    "+". A cell another key covers is a slot with nothing in it. */}
+                {board.cells.map((_, i) => {
                   const row = Math.floor(i / BOARD_COLS) + 1;
                   const col = (i % BOARD_COLS) + 1;
                   return (
-                    <div
-                      key={i}
-                      data-cell={i}
-                      className={cn("relative rounded-sm", lift?.over === i && "ring-2 ring-inset ring-primary")}
-                    >
-                      {key === null ? (
+                    <div key={i} data-cell={i} style={{ gridColumn: col, gridRow: row }} className="relative rounded-sm">
+                      {own[i] === -1 && (
                         <button
                           type="button"
                           aria-label={t("keys.editor.emptyAria", { row, col })}
@@ -175,32 +257,55 @@ export function KeyBoardEditor({
                         >
                           <Plus className="size-3.5" aria-hidden="true" />
                         </button>
-                      ) : (
-                        <Button
-                          ref={shieldFromSheetPull}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          aria-pressed={selected === i}
-                          aria-label={t("keys.editor.keyAria", { key: wordsOf(key), row, col })}
-                          onPointerDown={(e) => drag.begin(e, i)}
-                          onContextMenu={(e) => e.preventDefault()}
-                          onClick={() => {
-                            if (drag.justDragged()) return;
-                            setSelected(selected === i ? null : i);
-                          }}
-                          className={cn(
-                            keyOnBoard,
-                            selected === i && "border-primary bg-primary/10 ring-1 ring-inset ring-primary",
-                            lift?.from === i && "border-dashed border-primary/60 bg-primary/5 text-transparent shadow-none hover:bg-primary/5",
-                          )}
-                        >
-                          <span className="truncate">{keyLabel(key)}</span>
-                        </Button>
                       )}
                     </div>
                   );
                 })}
+                {/* The keys, each placed by its anchor and spanning its width and height. Lifting one
+                    leaves a dashed placeholder over the same area, so nothing around it shifts. */}
+                {board.cells.map((key, i) => {
+                  if (key === null) return null;
+                  const row = Math.floor(i / BOARD_COLS) + 1;
+                  const col = (i % BOARD_COLS) + 1;
+                  return (
+                    <div key={`key-${i}`} style={areaCss(i, key)} className="relative rounded-sm">
+                      <Button
+                        ref={shieldFromSheetPull}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-pressed={selected === i}
+                        aria-label={t("keys.editor.keyAria", { key: wordsOf(key), row, col })}
+                        onPointerDown={(e) => drag.begin(e, i)}
+                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={() => {
+                          if (drag.justDragged()) return;
+                          choose(selected === i ? null : i);
+                        }}
+                        className={cn(
+                          keyOnBoard,
+                          selected === i && "border-primary bg-primary/10 ring-1 ring-inset ring-primary",
+                          lift?.from === i && "border-dashed border-primary/60 bg-primary/5 text-transparent shadow-none hover:bg-primary/5",
+                        )}
+                      >
+                        <span className="truncate">{keyLabel(key)}</span>
+                      </Button>
+                    </div>
+                  );
+                })}
+                {/* Where the key would land. Solid when the drop works, dashed and grey when it is refused. */}
+                {lift !== null && lift.over !== null && held !== null && dropping !== null && (
+                  <div
+                    aria-hidden="true"
+                    data-slot="drop-outline"
+                    data-drop={dropping.kind === "refused" ? "refused" : "ok"}
+                    style={areaCss(dropping.kind === "swap" || dropping.kind === "move" ? dropping.at : lift.over, held)}
+                    className={cn(
+                      "pointer-events-none z-10 rounded-sm border-2",
+                      dropping.kind === "refused" ? "border-dashed border-muted-foreground bg-muted/40" : "border-primary bg-primary/10",
+                    )}
+                  />
+                )}
               </div>
               {lift !== null && (
                 <div
@@ -216,13 +321,21 @@ export function KeyBoardEditor({
 
           {/* The selected key's toolbar. Its height is fixed and always reserved: selecting a key, or
               none, moves nothing, and the controls go inert instead of leaving. */}
-          <div data-slot="key-toolbar" className="flex h-[150px] flex-col gap-2 rounded-sm border border-border bg-card p-3">
-            <p className={cn("h-5 truncate text-sm", selectedKey === null && "text-muted-foreground")}>
-              {selectedKey === null
-                ? t("keys.editor.hint")
-                : selectedKey.kind === "mod"
-                  ? t("keys.editor.selectedMod", { label: keyLabel(selectedKey) })
-                  : t("keys.editor.selected", { label: keyLabel(selectedKey), keys: wordsOf(selectedKey) })}
+          <div data-slot="key-toolbar" className="flex h-[202px] flex-col gap-2 rounded-sm border border-border bg-card p-3">
+            <p
+              data-slot="key-status"
+              aria-live="polite"
+              className={cn("h-5 truncate text-sm", dropping?.kind === "refused" || note !== null ? "text-foreground" : selectedKey === null && "text-muted-foreground")}
+            >
+              {dropping?.kind === "refused"
+                ? inTheWay(dropping)
+                : note !== null
+                  ? note
+                  : selectedKey === null
+                    ? t("keys.editor.hint")
+                    : selectedKey.kind === "mod"
+                      ? t("keys.editor.selectedMod", { label: keyLabel(selectedKey) })
+                      : t("keys.editor.selected", { label: keyLabel(selectedKey), keys: wordsOf(selectedKey) })}
             </p>
             <div className="flex h-11 items-center gap-2">
               {arrow(t("keys.editor.moveLeft"), -1, 0, <ArrowLeft className="size-5" aria-hidden="true" />)}
@@ -231,15 +344,19 @@ export function KeyBoardEditor({
               {arrow(t("keys.editor.moveDown"), 0, 1, <ArrowDown className="size-5" aria-hidden="true" />)}
               <span className="min-w-0 truncate text-xs text-muted-foreground">{t("keys.editor.swapsIfFull")}</span>
             </div>
+            <div className="flex h-11 items-center gap-1" role="group" aria-label={t("keys.editor.sizeAria")}>
+              <span className="min-w-0 shrink truncate text-xs text-muted-foreground">{t("keys.editor.width")}</span>
+              {Array.from({ length: MAX_W }, (_, n) => sizeButton("w", n + 1))}
+              <span className="ml-2 min-w-0 shrink truncate text-xs text-muted-foreground">{t("keys.editor.height")}</span>
+              {Array.from({ length: MAX_H }, (_, n) => sizeButton("h", n + 1))}
+            </div>
             <div className="flex h-11 gap-2">
               <Button
                 type="button"
                 variant="outline"
                 className="h-11 flex-1 gap-2"
-                disabled={selectedKey === null || selectedKey.kind !== "chord"}
-                onClick={() =>
-                  selected !== null && selectedKey?.kind === "chord" && setBuilder({ cell: selected, key: selectedKey })
-                }
+                disabled={selectedKey === null}
+                onClick={() => selected !== null && selectedKey !== null && setBuilder({ cell: selected, key: selectedKey })}
               >
                 <Pencil className="size-4" aria-hidden="true" />
                 {t("keys.editor.change")}
@@ -252,7 +369,7 @@ export function KeyBoardEditor({
                 onClick={() => {
                   if (selected === null) return;
                   setKeyBoard(setCell(board, selected, null));
-                  setSelected(null);
+                  choose(null);
                 }}
               >
                 <X className="size-4" aria-hidden="true" />
@@ -382,12 +499,21 @@ export function BoardPreview({ board }: { board: KeyBoard }) {
   return (
     <div role="group" aria-label={t("keys.layout.previewAria")} className="rounded-sm border border-border bg-muted/30 p-2">
       <div className="grid auto-rows-[28px] grid-cols-7 gap-1">
-        {board.cells.map((key, i) =>
-          key === null ? (
-            <div key={i} aria-hidden="true" className="rounded-sm border border-dashed border-border/50" />
-          ) : (
+        {owners(board).map((o, i) =>
+          o === -1 ? (
             <div
               key={i}
+              aria-hidden="true"
+              style={{ gridColumn: (i % BOARD_COLS) + 1, gridRow: Math.floor(i / BOARD_COLS) + 1 }}
+              className="rounded-sm border border-dashed border-border/50"
+            />
+          ) : null,
+        )}
+        {board.cells.map((key, i) =>
+          key === null ? null : (
+            <div
+              key={`key-${i}`}
+              style={areaCss(i, key)}
               className="grid min-w-0 place-items-center overflow-hidden rounded-sm border border-border bg-background px-0.5 text-[10px] font-medium"
             >
               <span className="truncate">{keyLabel(key)}</span>
@@ -434,10 +560,11 @@ const REFUSAL_LINE = {
   cell: "keys.import.invalid",
   key: "keys.import.invalid",
   label: "keys.import.invalid",
+  area: "keys.import.area",
 } as const satisfies Record<DecodeRefusal, string>;
 
 /**
- * Copy this layout as a code, or paste one from another device. The code is a plain line of text, so
+ * Copy this layout as a code, or paste one someone shared. The code is a plain line of text, so
  * a page on plain http, where the clipboard API does not exist, still works: the field is selectable
  * and the line under it says to copy by hand.
  */

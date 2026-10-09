@@ -2,9 +2,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ChordBuilder } from "./chord-builder";
-import { chordKey, type ChordKey } from "@/lib/key-board";
+import { chordKey, type BoardKey } from "@/lib/key-board";
 
-function start(props: { initial?: ChordKey | null; unsupportedKeys?: readonly string[] } = {}) {
+function start(props: { initial?: BoardKey | null; unsupportedKeys?: readonly string[] } = {}) {
   const onSave = vi.fn();
   const user = userEvent.setup();
   render(<ChordBuilder initial={props.initial ?? null} unsupportedKeys={props.unsupportedKeys ?? []} onSave={onSave} />);
@@ -164,5 +164,64 @@ describe("ChordBuilder", () => {
     await user.click(screen.getByRole("button", { name: "Ctrl" }));
     await typeKey(user, "d"); // the danger sentence
     expect(snapshot()).toEqual(before);
+  });
+});
+
+describe("ChordBuilder: a sticky modifier key", () => {
+  const picker = () => within(screen.getByRole("group", { name: "Sticky modifier" }));
+  const pickKind = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("radio", { name: "Modifier" }));
+
+  it("offers Modifier beside Character, Named and F keys, and saves the one picked", async () => {
+    const { user, onSave } = start();
+    for (const kind of ["Character", "Named", "F keys", "Modifier"]) expect(screen.getByRole("radio", { name: kind })).toBeInTheDocument();
+    await pickKind(user);
+    expect(picker().getByRole("button", { name: "Ctrl" })).toHaveAttribute("aria-pressed", "true");
+    expect(preview()).toHaveTextContent("Ctrl");
+    expect(status()).toHaveTextContent("Arms Ctrl for the next key");
+    await user.click(picker().getByRole("button", { name: "Shift" }));
+    expect(preview()).toHaveTextContent("Shift");
+    await user.click(screen.getByRole("button", { name: "Save key" }));
+    expect(onSave).toHaveBeenCalledExactlyOnceWith({ kind: "mod", mod: "shift" });
+  });
+
+  it("holds nothing with it, and cannot be named or stretched into a sequence", async () => {
+    const { user } = start();
+    await pickKind(user);
+    const hold = document.querySelector("[inert]");
+    if (!(hold instanceof HTMLElement)) throw new Error("the Hold row is not inert");
+    expect(within(hold).getAllByRole("button", { hidden: true })).toHaveLength(3);
+    expect(screen.getByRole("textbox", { name: "Key name" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add step" })).toBeDisabled();
+  });
+
+  it("opens on a modifier key being changed, and can turn it into a chord", async () => {
+    const { user, onSave } = start({ initial: { kind: "mod", mod: "alt" } });
+    expect(screen.getByRole("radio", { name: "Modifier" })).toBeChecked();
+    expect(picker().getByRole("button", { name: "Alt" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("radio", { name: "Character" }));
+    await typeKey(user, "q");
+    await user.click(screen.getByRole("button", { name: "Save key" }));
+    expect(onSave).toHaveBeenCalledWith({ kind: "chord", steps: ["q"] });
+  });
+
+  it("stands alone: beside other steps it cannot be saved, and the line says why", async () => {
+    const { user } = start();
+    await typeKey(user, "b");
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    await pickKind(user);
+    expect(status()).toHaveTextContent("A modifier key stands alone");
+    expect(screen.getByRole("button", { name: "Save key" })).toBeDisabled();
+    // Taking the modifier step away makes the key whole again.
+    await user.click(screen.getByRole("button", { name: "Remove step" }));
+    expect(screen.getByRole("button", { name: "Save key" })).toBeEnabled();
+  });
+
+  it("keeps every box at its stated height in this kind too", async () => {
+    const { user } = start();
+    const heights = () => [preview()?.className, status()?.className];
+    const before = heights();
+    await pickKind(user);
+    expect(heights()).toEqual(before);
+    expect(screen.getByRole("group", { name: "Sticky modifier" }).parentElement).toHaveClass("h-[116px]");
   });
 });

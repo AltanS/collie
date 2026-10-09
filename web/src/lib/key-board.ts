@@ -1,10 +1,16 @@
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "@/lib/json";
 import { isDangerKey, MODIFIER_ORDER, type Modifier } from "@/lib/key-queue";
 
-// THE KEY BOARD (M48 spec 03, ADR 0092). The Keys dock's pad as DATA: a grid of 7 columns where each
-// cell holds one key or nothing, saved per device. This module is pure (no React, no storage, no
-// clock): the shape, the chord grammar, the moves, the five presets, and the code that carries a
-// layout from one device to another. `lib/key-board-store.ts` keeps the device's copy.
+// THE KEY BOARD (M48 spec 03, ADR 0092). The Keys dock's pad as DATA: a grid of 7 columns where a key
+// is anchored at one cell and spans 1 to 3 columns and 1 or 2 rows, kept in this browser. This module
+// is pure (no React, no storage, no clock): the shape, the chord grammar, the moves, the five presets,
+// and the code that carries a layout to someone else. `lib/key-board-store.ts` keeps the stored copy.
+//
+// AREAS. A key is stored on the cell where its top-left corner sits (the ANCHOR); the cells it covers
+// to the right and below hold `null` in `cells`, and `owners()` says who covers what. An area must lie
+// inside the board and must not overlap another key. Every function here that moves or resizes a key
+// checks both, and none of them moves a second key to make room: a move that does not fit is refused,
+// and the one exception is a drop onto a key of the SAME size, which swaps the two.
 //
 // WHAT A KEY IS. Two kinds, and only two:
 //
@@ -18,7 +24,7 @@ import { isDangerKey, MODIFIER_ORDER, type Modifier } from "@/lib/key-queue";
 // fixed keys always used, which is `pressKeys` in composer.tsx: the lock, the offline check, the
 // echo, then `api.sendKeys`. This file only decides what the strings ARE.
 
-/** The board is always this many columns wide. A key sits in exactly one cell. */
+/** The board is always this many columns wide. */
 export const BOARD_COLS = 7;
 export const MIN_ROWS = 1;
 export const MAX_ROWS = 8;
@@ -30,14 +36,25 @@ export const MAX_STEPS = 4;
 export const MAX_LABEL = 12;
 /** The longest layout code the importer reads, in characters. The biggest real board is under 2,000. */
 export const MAX_CODE_LENGTH = 4096;
-/** What a layout code starts with. The `1` is the format version of the code, read before anything else. */
-export const CODE_PREFIX = "collie-keys:1:";
-/** The schema number written into storage and into the code's JSON. Unknown numbers are not read. */
-export const SCHEMA = 1;
+/** What a layout code starts with. The `2` is the format version of the code, read before anything else. */
+export const CODE_PREFIX = "collie-keys:2:";
+/** The prefix of version 1 codes (every key one cell). They are still read. */
+const CODE_PREFIX_V1 = "collie-keys:1:";
+/** The schema number written into storage and into the code's JSON. Schema 1 (single-cell keys) is still read. */
+export const SCHEMA = 2;
+/** A key spans at most this many columns and this many rows. */
+export const MAX_W = 3;
+export const MAX_H = 2;
+
+/** A key's size in cells. Absent means 1. */
+export type KeyWidth = 1 | 2 | 3;
+export type KeyHeight = 1 | 2;
 
 export interface ModKey {
   readonly kind: "mod";
   readonly mod: Modifier;
+  readonly w?: KeyWidth;
+  readonly h?: KeyHeight;
 }
 
 export interface ChordKey {
@@ -46,13 +63,18 @@ export interface ChordKey {
   readonly steps: readonly string[];
   /** The name on the cell. Absent means the chord's own face (`^B C`), which follows the steps. */
   readonly label?: string;
+  readonly w?: KeyWidth;
+  readonly h?: KeyHeight;
 }
 
 export type BoardKey = ModKey | ChordKey;
 
 export interface KeyBoard {
   readonly rows: number;
-  /** `rows * BOARD_COLS` cells, row by row. `null` is an empty cell. */
+  /**
+   * `rows * BOARD_COLS` cells, row by row. A key sits on its anchor cell; `null` is an empty cell or a
+   * cell that a wider or taller key covers (ask {@link owners}).
+   */
   readonly cells: readonly (BoardKey | null)[];
 }
 
@@ -227,9 +249,62 @@ export function cleanLabel(raw: string): string | null {
 
 // ── Boards ───────────────────────────────────────────────────────────────────────────────────────
 
-const mod = (m: Modifier): ModKey => ({ kind: "mod", mod: m });
+/** A sticky modifier key: off, once, locked, as the fixed pad always had. */
+export const modKey = (m: Modifier): ModKey => ({ kind: "mod", mod: m });
+const mod = modKey;
 const chord = (...steps: string[]): ChordKey => ({ kind: "chord", steps });
 const named = (label: string, ...steps: string[]): ChordKey => ({ kind: "chord", steps, label });
+
+/** Keys while one is being built, before it is handed out read-only. */
+type ModDraft = { -readonly [K in keyof ModKey]: ModKey[K] };
+type ChordDraft = { -readonly [K in keyof ChordKey]: ChordKey[K] };
+
+/** The stored width for a number of columns: absent for 1, so a one-cell key stays plain. */
+const widthOf = (w: number): KeyWidth | undefined => (w === 2 ? 2 : w >= 3 ? 3 : undefined);
+const heightOf = (h: number): KeyHeight | undefined => (h >= 2 ? 2 : undefined);
+
+/** The same key at another size. A size outside 1 to 3 by 1 to 2 is clamped into it. */
+export function withSize(key: BoardKey, w: number, h: number): BoardKey {
+  const width = widthOf(w);
+  const height = heightOf(h);
+  if (key.kind === "mod") {
+    const next: ModDraft = { kind: "mod", mod: key.mod };
+    if (width !== undefined) next.w = width;
+    if (height !== undefined) next.h = height;
+    return next;
+  }
+  const next: ChordDraft = { kind: "chord", steps: key.steps };
+  if (key.label !== undefined) next.label = key.label;
+  if (width !== undefined) next.w = width;
+  if (height !== undefined) next.h = height;
+  return next;
+}
+
+/** A size in cells. */
+export interface Span {
+  readonly w: number;
+  readonly h: number;
+}
+
+/** A key as wide and tall as it is, in cells. */
+export function spanOf(key: BoardKey): Span {
+  return { w: key.w ?? 1, h: key.h ?? 1 };
+}
+
+/** Where a key sits on a CSS grid. */
+export interface GridArea {
+  readonly gridColumn: string;
+  readonly gridRow: string;
+}
+
+/** The CSS grid placement of a key anchored at `anchor`: its corner's column and row, and its span. */
+export function areaCss(anchor: number, key: BoardKey): GridArea {
+  const { w, h } = spanOf(key);
+  return { gridColumn: `${(anchor % BOARD_COLS) + 1} / span ${w}`, gridRow: `${Math.floor(anchor / BOARD_COLS) + 1} / span ${h}` };
+}
+
+/** Whether two keys are the same size, which is when a drop on one swaps with it. */
+const sameSize = (a: BoardKey, b: BoardKey): boolean => a.w === b.w && a.h === b.h;
 
 /** A board from `[cell, key]` pairs. Cells not named stay empty. */
 export function boardOf(rows: number, entries: readonly (readonly [number, BoardKey])[]): KeyBoard {
@@ -239,12 +314,132 @@ export function boardOf(rows: number, entries: readonly (readonly [number, Board
 }
 
 /**
+ * For every cell, the anchor of the key that covers it, or -1 when it is free. A key that does not
+ * lie inside the board (a hand-built value; a read board never has one) covers what is inside.
+ */
+export function owners(board: KeyBoard): readonly number[] {
+  const own: number[] = Array.from({ length: board.cells.length }, () => -1);
+  board.cells.forEach((key, anchor) => {
+    if (key === null) return;
+    const { w, h } = spanOf(key);
+    const col = anchor % BOARD_COLS;
+    const row = Math.floor(anchor / BOARD_COLS);
+    for (let r = 0; r < h && row + r < board.rows; r++) {
+      for (let c = 0; c < w && col + c < BOARD_COLS; c++) own[anchor + r * BOARD_COLS + c] = anchor;
+    }
+  });
+  return own;
+}
+
+/** Whether an area of `w` by `h` anchored at `anchor` lies wholly inside the board. */
+export function inBoard(board: KeyBoard, anchor: number, w: number, h: number): boolean {
+  if (anchor < 0 || anchor >= board.cells.length) return false;
+  return (anchor % BOARD_COLS) + w <= BOARD_COLS && Math.floor(anchor / BOARD_COLS) + h <= board.rows;
+}
+
+/** The anchor for an area of `w` by `h` whose corner is at `col`, `row`, pulled back inside the board. Used while dragging. */
+export function clampAnchor(board: KeyBoard, col: number, row: number, w: number, h: number): number {
+  const c = Math.max(0, Math.min(col, BOARD_COLS - w));
+  const r = Math.max(0, Math.min(row, board.rows - h));
+  return r * BOARD_COLS + c;
+}
+
+/** The anchor of the first key (row by row) that an area would overlap, ignoring `ignore`'s own area. */
+function firstBlocker(board: KeyBoard, anchor: number, w: number, h: number, ignore: number): number | null {
+  const own = owners(board);
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const owner = own[anchor + r * BOARD_COLS + c] ?? -1;
+      if (owner >= 0 && owner !== ignore) return owner;
+    }
+  }
+  return null;
+}
+
+/** Whether the area is inside the board and free, apart from the key anchored at `ignore`. */
+export function areaFits(board: KeyBoard, anchor: number, w: number, h: number, ignore = -1): boolean {
+  return inBoard(board, anchor, w, h) && firstBlocker(board, anchor, w, h, ignore) === null;
+}
+
+function placed(board: KeyBoard, moves: readonly (readonly [number, number])[]): KeyBoard {
+  // `[from, to]` pairs, all lifted first and then put down, so a swap does not trample itself.
+  const cells = [...board.cells];
+  const lifted = moves.map(([from, to]) => [to, cells[from] ?? null] as const);
+  for (const [from] of moves) cells[from] = null;
+  for (const [to, key] of lifted) cells[to] = key;
+  return { rows: board.rows, cells };
+}
+
+/** What a drop (or an arrow step) did: the board after it, where the key now is, and how. */
+export type MoveResult =
+  | { readonly kind: "move" | "swap"; readonly board: KeyBoard; readonly at: number }
+  | { readonly kind: "none" }
+  | { readonly kind: "refused"; readonly reason: "edge" }
+  | { readonly kind: "refused"; readonly reason: "blocked"; readonly by: number };
+
+/**
+ * Drop the key anchored at `from` so that its top-left corner is on `to`. The area at `to` must be
+ * inside the board. Then: free (apart from the key itself) moves it; a key of the SAME size under the
+ * corner swaps places with it; anything else is refused, and nothing else moves.
+ */
+export function dropKey(board: KeyBoard, from: number, to: number): MoveResult {
+  const key = board.cells[from] ?? null;
+  if (key === null || from === to) return { kind: "none" };
+  const { w, h } = spanOf(key);
+  if (!inBoard(board, to, w, h)) return { kind: "refused", reason: "edge" };
+  const hit = owners(board)[to] ?? -1;
+  const other = hit >= 0 && hit !== from ? (board.cells[hit] ?? null) : null;
+  if (other !== null && sameSize(key, other)) return { kind: "swap", board: placed(board, [[from, hit], [hit, from]]), at: hit };
+  const by = firstBlocker(board, to, w, h, from);
+  if (by !== null) return { kind: "refused", reason: "blocked", by };
+  return { kind: "move", board: placed(board, [[from, to]]), at: to };
+}
+
+/**
+ * One arrow tap: the key goes to the next position in that direction where it fits (or swaps with a
+ * key of its own size), skipping over keys that are in the way. `none` when there is no such position.
+ */
+export function stepKey(board: KeyBoard, from: number, dc: number, dr: number): MoveResult {
+  const key = board.cells[from] ?? null;
+  if (key === null || (dc === 0 && dr === 0)) return { kind: "none" };
+  const { w, h } = spanOf(key);
+  const col = from % BOARD_COLS;
+  const row = Math.floor(from / BOARD_COLS);
+  for (let k = 1; ; k++) {
+    const c = col + dc * k;
+    const r = row + dr * k;
+    if (c < 0 || r < 0 || c + w > BOARD_COLS || r + h > board.rows) return { kind: "none" };
+    const result = dropKey(board, from, r * BOARD_COLS + c);
+    if (result.kind === "move" || result.kind === "swap") return result;
+  }
+}
+
+export type ResizeResult =
+  | { readonly ok: true; readonly board: KeyBoard }
+  | { readonly ok: false; readonly reason: "edge" }
+  | { readonly ok: false; readonly reason: "blocked"; readonly by: number };
+
+/** Change the size of the key anchored at `anchor`. It grows right and down, and nothing else moves. */
+export function resizeKey(board: KeyBoard, anchor: number, w: number, h: number): ResizeResult {
+  const key = board.cells[anchor] ?? null;
+  if (key === null || w < 1 || w > MAX_W || h < 1 || h > MAX_H) return { ok: false, reason: "edge" };
+  if (!inBoard(board, anchor, w, h)) return { ok: false, reason: "edge" };
+  const by = firstBlocker(board, anchor, w, h, anchor);
+  if (by !== null) return { ok: false, reason: "blocked", by };
+  return { ok: true, board: { rows: board.rows, cells: board.cells.map((k, i) => (i === anchor ? withSize(key, w, h) : k)) } };
+}
+
+/**
  * Today's pad as a board: the Default, and what "Restore default" restores.
  *
- * Row 1 is Esc, Tab, the three modifiers, Up and the quick Ctrl+C. Row 2 is Space, Enter, two empty
- * cells, then the arrows' Left, Down and Right under Up. Each key is one cell now (a tall Enter and a
- * four-wide Space belonged to a fixed grid), and Enter keeps its distance from the arrows: a miss on
- * an arrow is reversible, a miss on Enter confirms a prompt (issue 263).
+ * Row 1 is Esc, Tab, the three modifiers, Up and the quick Ctrl+C, as before. Row 2 is Enter, a Space
+ * three cells wide, then Left, Down and Right under Up. The old pad set a tall Enter apart on an
+ * eighth column; seven columns have no room for that without moving a key of row 1, so Enter takes
+ * the far left of row 2, with the wide Space between it and the arrows: a miss on an arrow is
+ * reversible, a miss on Enter confirms a prompt (issue 263).
+ *
+ *     Esc  Tab  Shift Ctrl Alt  Up   ^C
+ *     Enter  Space (3 wide)    Left Down Right
  */
 export const DEFAULT_BOARD: KeyBoard = boardOf(2, [
   [0, chord("Escape")],
@@ -254,8 +449,8 @@ export const DEFAULT_BOARD: KeyBoard = boardOf(2, [
   [4, mod("alt")],
   [5, chord("Up")],
   [6, chord("ctrl+c")],
-  [7, chord("Space")],
-  [8, chord("Enter")],
+  [7, chord("Enter")],
+  [8, { ...chord("Space"), w: 3 }],
   [11, chord("Left")],
   [12, chord("Down")],
   [13, chord("Right")],
@@ -264,7 +459,7 @@ export const DEFAULT_BOARD: KeyBoard = boardOf(2, [
 /** The keys whose loss is worth a word: a phone has no other Esc, Enter or arrows. */
 export const CORE_KEYS: readonly { readonly name: string; readonly step: string; readonly home: number }[] = [
   { name: "Esc", step: "Escape", home: 0 },
-  { name: "Enter", step: "Enter", home: 8 },
+  { name: "Enter", step: "Enter", home: 7 },
   { name: "Up", step: "Up", home: 5 },
   { name: "Left", step: "Left", home: 11 },
   { name: "Down", step: "Down", home: 12 },
@@ -284,38 +479,32 @@ export function putBackCore(board: KeyBoard): KeyBoard {
   let next = board;
   for (const core of CORE_KEYS) {
     if (holdsStep(next, core.step)) continue;
-    let cell = core.home < next.cells.length && next.cells[core.home] === null ? core.home : next.cells.indexOf(null);
+    let own = owners(next);
+    let cell = core.home < own.length && own[core.home] === -1 ? core.home : own.indexOf(-1);
     if (cell < 0) {
       if (next.rows >= MAX_ROWS) continue;
       next = addRow(next);
-      cell = next.cells.indexOf(null);
+      own = owners(next);
+      cell = own.indexOf(-1);
     }
     next = setCell(next, cell, chord(core.step));
   }
   return next;
 }
 
+/**
+ * Put a key on a cell, or take it away with `null`. A key goes where its whole area fits (apart from
+ * the key already anchored there, which it replaces); a cell another key covers is left alone.
+ */
 export function setCell(board: KeyBoard, cell: number, key: BoardKey | null): KeyBoard {
   if (cell < 0 || cell >= board.cells.length) return board;
+  if (key !== null) {
+    const { w, h } = spanOf(key);
+    if (!areaFits(board, cell, w, h, cell)) return board;
+  } else if (board.cells[cell] === null) {
+    return board;
+  }
   return { rows: board.rows, cells: board.cells.map((k, i) => (i === cell ? key : k)) };
-}
-
-/** Swap two cells. Dropping a key on a full cell swaps the two; on an empty cell it moves. */
-export function swapCells(board: KeyBoard, a: number, b: number): KeyBoard {
-  const n = board.cells.length;
-  if (a === b || a < 0 || b < 0 || a >= n || b >= n) return board;
-  const cells = [...board.cells];
-  [cells[a], cells[b]] = [cells[b] ?? null, cells[a] ?? null];
-  return { rows: board.rows, cells };
-}
-
-/** The cell one step away in a direction, or -1 at the edge of the board. */
-export function neighbour(board: KeyBoard, from: number, dc: number, dr: number): number {
-  if (from < 0 || from >= board.cells.length) return -1;
-  const col = (from % BOARD_COLS) + dc;
-  const row = Math.floor(from / BOARD_COLS) + dr;
-  if (col < 0 || col >= BOARD_COLS || row < 0 || row >= board.rows) return -1;
-  return row * BOARD_COLS + col;
 }
 
 export function addRow(board: KeyBoard): KeyBoard {
@@ -323,9 +512,9 @@ export function addRow(board: KeyBoard): KeyBoard {
   return { rows: board.rows + 1, cells: [...board.cells, ...Array.from({ length: BOARD_COLS }, () => null)] };
 }
 
-/** Whether the last row is empty and there is more than one row: the only row that can go. */
+/** Whether the last row is free (no key sits in it or reaches into it) and there is more than one row. */
 export function canRemoveRow(board: KeyBoard): boolean {
-  return board.rows > MIN_ROWS && board.cells.slice(-BOARD_COLS).every((k) => k === null);
+  return board.rows > MIN_ROWS && owners(board).slice(-BOARD_COLS).every((o) => o === -1);
 }
 
 export function removeRow(board: KeyBoard): KeyBoard {
@@ -337,9 +526,9 @@ export function keyCount(board: KeyBoard): number {
   return board.cells.filter((k) => k !== null).length;
 }
 
-/** How many rows the pad in use draws: trailing empty rows are not drawn. At least one. */
+/** How many rows the pad in use draws: trailing free rows are not drawn. At least one. */
 export function usedRows(board: KeyBoard): number {
-  const last = board.cells.findLastIndex((k) => k !== null);
+  const last = owners(board).findLastIndex((o) => o >= 0);
   return Math.max(MIN_ROWS, Math.floor(last / BOARD_COLS) + 1);
 }
 
@@ -350,8 +539,11 @@ export function wireKeys(key: BoardKey): readonly string[] {
 
 // ── The code: one layout as a short piece of text ────────────────────────────────────────────────
 
-/** `[cell, spec]` or `[cell, spec, label]`. A spec is `@ctrl` for a modifier key, else steps joined by a space. */
-type WireKey = [number, string] | [number, string, string];
+/**
+ * `[cell, spec]`, `[cell, spec, label]` or `[cell, spec, label | null, w, h]`. A spec is `@ctrl` for a
+ * modifier key, else steps joined by a space. Schema 1 had no size: its keys are one cell each.
+ */
+type WireKey = [number, string] | [number, string, string] | [number, string, string | null, number, number];
 
 function specOf(key: BoardKey): string {
   return key.kind === "mod" ? `@${key.mod}` : key.steps.join(" ");
@@ -361,7 +553,10 @@ function toWire(board: KeyBoard): JsonValue {
   const keys: JsonValue[] = [];
   board.cells.forEach((key, cell) => {
     if (key === null) return;
-    const row: WireKey = key.kind === "chord" && key.label !== undefined ? [cell, specOf(key), key.label] : [cell, specOf(key)];
+    const label = key.kind === "chord" ? (key.label ?? null) : null;
+    const { w, h } = spanOf(key);
+    const row: WireKey =
+      w !== 1 || h !== 1 ? [cell, specOf(key), label, w, h] : label === null ? [cell, specOf(key)] : [cell, specOf(key), label];
     keys.push(row);
   });
   return { v: SCHEMA, rows: board.rows, keys };
@@ -372,37 +567,57 @@ export function serializeBoard(board: KeyBoard): string {
   return JSON.stringify(toWire(board));
 }
 
-export type BoardRefusal = "notJson" | "schema" | "rows" | "tooMany" | "noKeys" | "cell" | "key" | "label";
+export type BoardRefusal = "notJson" | "schema" | "rows" | "tooMany" | "noKeys" | "cell" | "key" | "label" | "area";
 
 /** A board, or the first reason it is not one. */
 export type BoardRead = { readonly ok: true; readonly board: KeyBoard } | { readonly ok: false; readonly reason: BoardRefusal };
 
 const refuse = (reason: BoardRefusal) => ({ ok: false, reason }) as const;
 
-type KeyRead = { readonly ok: true; readonly cell: number; readonly key: BoardKey } | { readonly ok: false; readonly reason: BoardRefusal };
+type KeyRead =
+  | { readonly ok: true; readonly cell: number; readonly key: BoardKey }
+  | { readonly ok: false; readonly reason: BoardRefusal };
 
-function readKey(raw: JsonValue): KeyRead {
-  if (!Array.isArray(raw) || raw.length < 2 || raw.length > 3) return refuse("key");
+/** A whole number in a range, or undefined. */
+function sizeIn(raw: JsonValue | undefined, max: number): number | undefined {
+  const n = asJsonNumber(raw);
+  return n !== undefined && Number.isInteger(n) && n >= 1 && n <= max ? n : undefined;
+}
+
+function readKey(raw: JsonValue, schema: number): KeyRead {
+  const maxLength = schema === 1 ? 3 : 5;
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > maxLength || raw.length === 4) return refuse("key");
   const cell = asJsonNumber(raw[0]);
   const spec = asJsonString(raw[1]);
   if (cell === undefined || !Number.isInteger(cell) || cell < 0 || spec === undefined) return refuse("cell");
+  let w = 1;
+  let h = 1;
+  if (raw.length === 5) {
+    const sw = sizeIn(raw[3], MAX_W);
+    const sh = sizeIn(raw[4], MAX_H);
+    if (sw === undefined || sh === undefined) return refuse("key");
+    w = sw;
+    h = sh;
+  }
+  const rawLabel = raw.length >= 3 ? raw[2] : undefined;
+  const label = rawLabel === null || rawLabel === undefined ? undefined : asJsonString(rawLabel);
+  if (rawLabel !== null && rawLabel !== undefined && label === undefined) return refuse("label");
   if (spec.startsWith("@")) {
     const name = spec.slice(1);
-    if (raw.length !== 2 || !isModifier(name)) return refuse("key");
-    return { ok: true, cell, key: mod(name) };
+    if (label !== undefined || !isModifier(name)) return refuse("key");
+    return { ok: true, cell, key: withSize(mod(name), w, h) };
   }
-  const label = raw.length === 3 ? asJsonString(raw[2]) : undefined;
-  if (raw.length === 3 && label === undefined) return refuse("label");
   const key = chordKey(spec.split(" "), label);
   if (key === null) return refuse(label === undefined ? "key" : "label");
-  return { ok: true, cell, key };
+  return { ok: true, cell, key: withSize(key, w, h) };
 }
 
 /** Read the wire form. Total: every failure is a named refusal, never a throw. */
 export function readBoard(value: JsonValue | undefined): BoardRead {
   const doc = asJsonObject(value);
   if (doc === undefined) return refuse("notJson");
-  if (asJsonNumber(doc.v) !== SCHEMA) return refuse("schema");
+  const schema = asJsonNumber(doc.v);
+  if (schema !== 1 && schema !== SCHEMA) return refuse("schema");
   const rows = asJsonNumber(doc.rows);
   if (rows === undefined || !Number.isInteger(rows) || rows < MIN_ROWS || rows > MAX_ROWS) return refuse("rows");
   const list = doc.keys;
@@ -410,10 +625,20 @@ export function readBoard(value: JsonValue | undefined): BoardRead {
   if (list.length > MAX_KEYS) return refuse("tooMany");
   if (list.length === 0) return refuse("noKeys");
   const cells: (BoardKey | null)[] = Array.from({ length: rows * BOARD_COLS }, () => null);
+  const claimed: boolean[] = Array.from({ length: rows * BOARD_COLS }, () => false);
   for (const raw of list) {
-    const read = readKey(raw);
+    const read = readKey(raw, schema);
     if (!read.ok) return read;
-    if (read.cell >= cells.length || cells[read.cell] !== null) return refuse("cell");
+    if (read.cell >= cells.length) return refuse("cell");
+    const { w, h } = spanOf(read.key);
+    if ((read.cell % BOARD_COLS) + w > BOARD_COLS || Math.floor(read.cell / BOARD_COLS) + h > rows) return refuse("area");
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        const at = read.cell + r * BOARD_COLS + c;
+        if (claimed[at] === true) return refuse(r === 0 && c === 0 ? "cell" : "area");
+        claimed[at] = true;
+      }
+    }
     cells[read.cell] = read.key;
   }
   return { ok: true, board: { rows, cells } };
@@ -452,15 +677,18 @@ export type Decoded = { readonly ok: true; readonly board: KeyBoard } | { readon
 
 /**
  * Read a pasted layout code. Nothing is believed before it is checked: the length cap comes first,
- * then the prefix, the base64url alphabet, UTF-8, JSON, the schema number, the key count, and every
- * chord and label through the same readers storage uses. A refusal names the first thing that failed.
+ * then the prefix (version 2, or version 1 from an older Collie), the base64url alphabet, UTF-8, JSON,
+ * the schema number, the key count, every chord and label through the same readers storage uses, and
+ * that every key's area lies inside the board and overlaps no other. A refusal names the first thing
+ * that failed.
  */
 export function decodeBoard(input: string): Decoded {
   const text = input.trim();
   if (text === "") return { ok: false, reason: "empty" };
   if (text.length > MAX_CODE_LENGTH) return { ok: false, reason: "tooLong" };
-  if (!text.startsWith(CODE_PREFIX)) return { ok: false, reason: "notCode" };
-  const json = fromBase64Url(text.slice(CODE_PREFIX.length));
+  const prefix = [CODE_PREFIX, CODE_PREFIX_V1].find((p) => text.startsWith(p));
+  if (prefix === undefined) return { ok: false, reason: "notCode" };
+  const json = fromBase64Url(text.slice(prefix.length));
   if (json === null) return { ok: false, reason: "damaged" };
   return parseBoard(json);
 }
@@ -473,39 +701,51 @@ export interface BoardPreset {
 }
 
 // Every preset keeps Esc, Enter and the four arrows (a person should never need Restore after
-// choosing one), with Down under Up as on the Default, and Enter away from the arrows. The rest is
-// spent on the tool the preset is named for. Each binding was checked against that tool's own
-// documentation; the notes say which keys a multiplexer may refuse. No preset uses Ctrl+D or Ctrl+Z
-// outside a sequence, because those two ask for a second tap and a scroll key must not.
+// choosing one), with Down under Up as on the Default, and Space three cells wide between Enter and
+// the arrows, as the Default has it. The rest is spent on the tool the preset is named for. Each binding
+// was checked against that tool's own documentation; the notes say which keys a multiplexer may
+// refuse. No preset uses Ctrl+D or Ctrl+Z outside a sequence, because those two ask for a second tap
+// and a scroll key must not. A wide Space costs two cells, so the presets that name more keys than fit
+// in three rows leave the sticky modifiers to the Default, or take a fourth row.
+//
+// Rows 1 and 2 are the same shape in all five, so the arrows never move when you change presets:
+//
+//     R1  Esc  k  k  k  k  Up  k           (k is a key the preset chooses)
+//     R2  Enter  Space (3 wide)  Left Down Right
+
+/** Rows 1 and 2 of every preset: the six core keys, Space, and the five cells (1 to 4 and 6) a preset chooses for row 1. */
+function frame(row1: readonly [BoardKey, BoardKey, BoardKey, BoardKey, BoardKey]): readonly (readonly [number, BoardKey])[] {
+  return [
+    [0, chord("Escape")],
+    [1, row1[0]],
+    [2, row1[1]],
+    [3, row1[2]],
+    [4, row1[3]],
+    [5, chord("Up")],
+    [6, row1[4]],
+    [7, chord("Enter")],
+    [8, { ...chord("Space"), w: 3 }],
+    [11, chord("Left")],
+    [12, chord("Down")],
+    [13, chord("Right")],
+  ];
+}
+
+/** Row 3 and below: keys placed from the first cell of row 3, in order. */
+function below(keys: readonly BoardKey[]): readonly (readonly [number, BoardKey])[] {
+  return keys.map((key, i) => [14 + i, key] as const);
+}
 
 /**
  * Claude Code (checked against its interactive-mode reference). Shift+Tab cycles the permission mode.
  * Esc stops the turn; Esc twice clears a draft, or opens the rewind menu on an empty prompt. `/` opens the slash-command menu. Ctrl+O shows the full transcript, Ctrl+T the task
  * list, Ctrl+R searches the prompt history, Ctrl+B sends a running command to the background (inside tmux, tap it twice), Ctrl+G
- * opens the draft in your editor, Alt+P switches the model.
+ * opens the draft in your editor, Alt+P switches the model. The Ctrl modifier is the one sticky key
+ * kept, for anything else.
  */
 const CLAUDE: KeyBoard = boardOf(3, [
-  [0, chord("Escape")],
-  [1, chord("Escape", "Escape")],
-  [2, chord("shift+Tab")],
-  [3, chord("Tab")],
-  [4, chord("/")],
-  [5, chord("Up")],
-  [6, chord("ctrl+c")],
-  [7, chord("Space")],
-  [8, chord("Enter")],
-  [9, chord("ctrl+o")],
-  [10, chord("ctrl+t")],
-  [11, chord("Left")],
-  [12, chord("Down")],
-  [13, chord("Right")],
-  [14, chord("ctrl+r")],
-  [15, chord("ctrl+b")],
-  [16, chord("ctrl+g")],
-  [17, chord("alt+p")],
-  [18, mod("shift")],
-  [19, mod("ctrl")],
-  [20, mod("alt")],
+  ...frame([chord("Escape", "Escape"), chord("shift+Tab"), chord("Tab"), chord("/"), chord("ctrl+c")]),
+  ...below([chord("ctrl+o"), chord("ctrl+t"), chord("ctrl+r"), chord("ctrl+b"), chord("ctrl+g"), chord("alt+p"), mod("ctrl")]),
 ]);
 
 /**
@@ -516,57 +756,38 @@ const CLAUDE: KeyBoard = boardOf(3, [
  * pane's program, so it never reads its own prefix.
  */
 const TMUX: KeyBoard = boardOf(3, [
-  [0, chord("Escape")],
-  [1, named("Prefix", "ctrl+b")],
-  [2, named("New win", "ctrl+b", "c")],
-  [3, named("Next", "ctrl+b", "n")],
-  [4, named("Prev", "ctrl+b", "p")],
-  [5, chord("Up")],
-  [6, chord("ctrl+c")],
-  [7, named("Split |", "ctrl+b", "%")],
-  [8, named("Split -", "ctrl+b", '"')],
-  [9, named("Pane", "ctrl+b", "o")],
-  [10, named("Zoom", "ctrl+b", "z")],
-  [11, chord("Left")],
-  [12, chord("Down")],
-  [13, chord("Right")],
-  [14, named("Copy", "ctrl+b", "[")],
-  [15, named("Tree", "ctrl+b", "w")],
-  [16, named("Close", "ctrl+b", "x")],
-  [17, chord("Enter")],
-  [18, mod("shift")],
-  [19, mod("ctrl")],
-  [20, mod("alt")],
+  ...frame([named("Prefix", "ctrl+b"), named("New win", "ctrl+b", "c"), named("Next", "ctrl+b", "n"), named("Prev", "ctrl+b", "p"), chord("ctrl+c")]),
+  ...below([
+    named("Split |", "ctrl+b", "%"),
+    named("Split -", "ctrl+b", '"'),
+    named("Pane", "ctrl+b", "o"),
+    named("Zoom", "ctrl+b", "z"),
+    named("Copy", "ctrl+b", "["),
+    named("Tree", "ctrl+b", "w"),
+    named("Close", "ctrl+b", "x"),
+  ]),
 ]);
 
 /**
  * Vim. Esc leaves insert mode, `i` enters it. `:` starts a command, `/` a search, `u` undoes and
  * Ctrl+R redoes. `:w` saves and `:wq` saves and quits, each ending in Enter. Ctrl+F and Ctrl+B page
  * down and up, Ctrl+V starts a block selection, `gg` and `G` jump to the top and the bottom, `dd`
- * deletes a line, `yy` copies it and `p` pastes.
+ * deletes a line, `yy` copies it and `p` pastes. Four rows.
  */
-const VIM: KeyBoard = boardOf(3, [
-  [0, chord("Escape")],
-  [1, chord("i")],
-  [2, chord(":")],
-  [3, chord("/")],
-  [4, chord("u")],
-  [5, chord("Up")],
-  [6, chord("p")],
-  [7, named(":w", ":", "w", "Enter")],
-  [8, chord("Enter")],
-  [9, named(":wq", ":", "w", "q", "Enter")],
-  [10, chord("ctrl+r")],
-  [11, chord("Left")],
-  [12, chord("Down")],
-  [13, chord("Right")],
-  [14, chord("ctrl+f")],
-  [15, chord("ctrl+b")],
-  [16, chord("ctrl+v")],
-  [17, named("gg", "g", "g")],
-  [18, chord("G")],
-  [19, named("dd", "d", "d")],
-  [20, named("yy", "y", "y")],
+const VIM: KeyBoard = boardOf(4, [
+  ...frame([chord("i"), chord(":"), chord("/"), chord("u"), chord("p")]),
+  ...below([
+    named(":w", ":", "w", "Enter"),
+    named(":wq", ":", "w", "q", "Enter"),
+    chord("ctrl+r"),
+    chord("ctrl+f"),
+    chord("ctrl+b"),
+    chord("ctrl+v"),
+    named("gg", "g", "g"),
+    chord("G"),
+    named("dd", "d", "d"),
+    named("yy", "y", "y"),
+  ]),
 ]);
 
 /**
@@ -574,30 +795,21 @@ const VIM: KeyBoard = boardOf(3, [
  * work in any shell: Ctrl+A and Ctrl+E jump to the line's start and end, Alt+B and Alt+F move by a
  * word, Ctrl+U clears the line, Ctrl+W deletes a word. Herdr refuses Home, End, PageUp, PageDown
  * and Delete (its `send_keys` has no such names), so on a Herdr pane those five stay grey and the
- * readline keys do the same work; tmux and zellij send all of them.
+ * readline keys do the same work; tmux and zellij send all of them. Four rows.
  */
-const NAVIGATION: KeyBoard = boardOf(3, [
-  [0, chord("Escape")],
-  [1, chord("Home")],
-  [2, chord("PageUp")],
-  [3, chord("Up")],
-  [4, chord("PageDown")],
-  [5, chord("End")],
-  [6, chord("Enter")],
-  [7, chord("ctrl+a")],
-  [8, chord("ctrl+e")],
-  [9, chord("Left")],
-  [10, chord("Down")],
-  [11, chord("Right")],
-  [12, chord("alt+b")],
-  [13, chord("alt+f")],
-  [14, chord("ctrl+u")],
-  [15, chord("ctrl+w")],
-  [16, chord("Backspace")],
-  [17, chord("Delete")],
-  [18, chord("Tab")],
-  [19, chord("shift+Tab")],
-  [20, chord("Space")],
+const NAVIGATION: KeyBoard = boardOf(4, [
+  ...frame([chord("Home"), chord("PageUp"), chord("PageDown"), chord("End"), chord("Delete")]),
+  ...below([
+    chord("ctrl+a"),
+    chord("ctrl+e"),
+    chord("alt+b"),
+    chord("alt+f"),
+    chord("ctrl+u"),
+    chord("ctrl+w"),
+    chord("Backspace"),
+    chord("Tab"),
+    chord("shift+Tab"),
+  ]),
 ]);
 
 export const PRESETS: readonly BoardPreset[] = [

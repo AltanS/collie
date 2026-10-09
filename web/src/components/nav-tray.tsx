@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowBigUp,
@@ -27,12 +27,14 @@ import { t } from "@/lib/i18n";
 import { keysSendable } from "@/lib/mux-capability";
 import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
 import {
+  areaCss,
   BOARD_COLS,
   DEFAULT_BOARD,
   keyLabel,
   needsSecondTap,
   stepsWords,
   usedRows,
+  type BoardKey,
   type ChordKey,
   type KeyBoard,
   type ModKey,
@@ -58,13 +60,14 @@ import {
 // dimming here (unlike the quick replies): this is a keypad you drum on, and dimming eight keys per
 // arrow press would strobe.
 //
-// The pad is THIS DEVICE'S KEY BOARD (lib/key-board.ts, ADR 0092): a grid of 7 columns where each
-// cell holds one key or nothing. The shipped board, the Default, is the old pad: row 1 is
-// Esc/Tab/the three modifiers/Up/quick Ctrl+C, row 2 is Space, Enter, two empty cells, then the
+// The pad is the KEY BOARD (lib/key-board.ts, ADR 0092): a grid of 7 columns where a key is anchored
+// at one cell and spans 1 to 3 columns and 1 or 2 rows, placed by CSS grid (`grid-column: n / span w`)
+// so the editor sheet draws the same board. The shipped board, the Default, is the old pad: row 1 is
+// Esc/Tab/the three modifiers/Up/quick Ctrl+C, row 2 is Enter, a Space three cells wide, then the
 // inverted-T's Left-Down-Right (Down under Up). Enter keeps its distance from the arrows: a miss on
 // Enter confirms a prompt, a miss on an arrow is reversible (issue #263), and it carries a
 // low-opacity tint of the primary colour at rest so it reads as the commit key before it is pressed.
-// An empty cell draws nothing but keeps its place, and trailing empty rows are not drawn. Space, Shift,
+// A free cell draws nothing but keeps its place, and trailing free rows are not drawn. Space, Shift,
 // Tab, Enter and the arrows show icons; every other key shows its face or its own name. Everything
 // past the board — the phone-dialer digits, the labelled Ctrl presets, F1–F12 — sits behind a row of
 // small chips (123 / Presets / F keys) that opens at most one panel at a time directly under the chip
@@ -87,7 +90,7 @@ interface NavTrayProps {
   /** How many keys are staged, reported up so the Composer can guard closing the dock on a composed
    *  sequence. Reports 0 on unmount. Must be referentially stable (a setState fn is ideal). */
   onQueueChange?: (staged: number) => void;
-  /** This device's key board. Defaults to the shipped one, so a test or a playground needs no store. */
+  /** The key board. Defaults to the shipped one, so a test or a playground needs no store. */
   board?: KeyBoard;
   disabled?: boolean;
   /**
@@ -136,6 +139,11 @@ function textLabel(s: string) {
   return <span className="truncate">{s}</span>;
 }
 
+// A key wider or taller than a cell sits on the grid by its anchor and spans its area, so the dock
+// and the editor draw the same board. A two-row key has no fixed 36px to stand on (`h-9` is a
+// single row's height), so it stretches to the rows it spans.
+const tall = (key: BoardKey) => (key.h === 2 ? "h-auto self-stretch" : undefined);
+
 export function NavTray({
   onSend,
   presets = CONTROL_PRESETS,
@@ -148,7 +156,7 @@ export function NavTray({
   const [open, setOpen] = useState<OpenPanel>(null);
   const togglePanel = (panel: Exclude<OpenPanel, null>) =>
     setOpen((cur) => (cur === panel ? null : panel));
-  const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take } =
+  const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take, releaseAbsent } =
     useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
   const echo = useActionEcho();
@@ -162,6 +170,12 @@ export function NavTray({
     (key, n) => onSend(Array<string>(n).fill(key)),
     !disabled && !composing,
   );
+
+  // A modifier key that leaves the board (the person removed it in the editor, or a preset replaced
+  // the pad) takes its armed state with it.
+  useEffect(() => {
+    releaseAbsent(board.cells.flatMap((k) => (k?.kind === "mod" ? [k.mod] : [])));
+  }, [board, releaseAbsent]);
 
   // Report the staged count up. The tray unmounts when the dock closes (which is what discards the
   // queue), so the Composer can't read this state itself — it has to be pushed. The second effect
@@ -224,6 +238,7 @@ export function NavTray({
     extraClassName?: string,
     restingClassName?: string,
     needsConfirm = false,
+    style?: CSSProperties,
   ) => {
     const id = keys.join(" ");
     // A key with a step that can stop a program asks a second tap, but only on the immediate path.
@@ -248,6 +263,7 @@ export function NavTray({
         variant={armed ? "destructive" : held || phase !== "idle" ? "default" : "outline"}
         size="sm"
         disabled={disabled || refused}
+        style={style}
         {...(bind ?? { onClick: tap })}
         aria-label={armed && aria !== undefined ? t("keys.pad.tapAgain", { key: aria }) : aria}
         // A hover title for the icon keys — an icon-only button gives a desktop pointer nothing to
@@ -284,7 +300,7 @@ export function NavTray({
   // A modifier button reads its own three-state mode from `mods`: outline when off, filled (default)
   // when armed — once OR locked — with a small Lock glyph beside the label to distinguish locked from
   // one-shot. Tapping cycles off → once → locked → off.
-  const modBtn = (m: Modifier, label: ReactNode, aria?: string, extraClassName?: string) => {
+  const modBtn = (m: Modifier, label: ReactNode, aria?: string, extraClassName?: string, style?: CSSProperties) => {
     const mode = mods[m];
     return (
       <Button
@@ -296,6 +312,7 @@ export function NavTray({
         aria-pressed={mode !== "off"}
         aria-label={aria}
         title={aria}
+        style={style}
         className={cn("h-9 px-0 text-sm font-medium", extraClassName)}
       >
         {mode === "locked" && <Lock className="size-3" />}
@@ -343,7 +360,8 @@ export function NavTray({
           key.mod,
           key.mod === "shift" ? <ArrowBigUp className="size-4" aria-hidden="true" /> : word,
           word,
-          cn("w-full min-w-0", KEY_TAP_TARGET),
+          cn("w-full min-w-0", KEY_TAP_TARGET, tall(key)),
+          areaCss(cell, key),
         )}
       </Fragment>
     );
@@ -365,14 +383,14 @@ export function NavTray({
           [...key.steps],
           aria,
           only !== undefined && REPEATS.has(only),
-          cn("w-full", KEY_TAP_TARGET),
+          cn("w-full", KEY_TAP_TARGET, tall(key)),
           isEnter ? "bg-primary/15 border-primary/40" : undefined,
           needsSecondTap(key),
+          areaCss(cell, key),
         )}
       </Fragment>
     );
   };
-
 
   return (
     <div className="space-y-0.5 border-t border-rule bg-muted/30 px-2 py-1.5">
@@ -387,14 +405,14 @@ export function NavTray({
         disabled={disabled}
       />
 
-      {/* The board: 7 columns, one 36px row per used row. A key sits in one cell; an empty cell is a
-          spacer, never a button, so every key keeps its place. */}
+      {/* The board: 7 columns, one 36px row per used row. Every key is placed by its anchor and spans
+          its width and height; an empty cell draws nothing, so every key keeps its place. */}
       <div
         className="grid grid-cols-7 gap-1"
         style={{ gridTemplateRows: `repeat(${rows}, 36px)` }}
       >
         {board.cells.slice(0, rows * BOARD_COLS).map((key, i) =>
-          key === null ? <div key={i} aria-hidden="true" /> : key.kind === "mod" ? modKeyBtn(key, i) : chordKeyBtn(key, i),
+          key === null ? null : key.kind === "mod" ? modKeyBtn(key, i) : chordKeyBtn(key, i),
         )}
       </div>
 
