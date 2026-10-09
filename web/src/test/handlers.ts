@@ -798,7 +798,7 @@ export const handlers = [
   // overrides this with its own `/api/launchers` handler rather than adding a field to `/api/config`.
   http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "" })),
   // Default world: no folder recorded yet (#289), which is every bridge that never created a space
-  // in a folder. The New sheet then renders exactly as it did before the list existed; a test
+  // in a folder. The New page then renders exactly as it did before the list existed; a test
   // that wants a list overrides these two with its own.
   http.get("/api/folders", () => HttpResponse.json({ recent: [], favourites: [], home: "" })),
   http.post("/api/folders/star", () => HttpResponse.json({ recent: [], favourites: [], home: "" })),

@@ -56,7 +56,7 @@ describe("useLaunchers", () => {
   });
 
   // M48: the agent list rides along on a 1.19.0 bridge; an older one sends none, and `loadedFor`
-  // tells "no list yet" from "this machine has no list" for the New sheet.
+  // tells "no list yet" from "this machine has no list" for the New page.
   it("carries the machine's agent list, and names the scope the answer is for", async () => {
     asked.mockClear();
     asked.mockResolvedValue({ launchers: [], home: "/home/op", harnesses: [{ id: "claude", label: "Claude Code", found: true }] });

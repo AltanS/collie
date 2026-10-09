@@ -44,7 +44,7 @@
 
 import { mounted } from "@/lib/base-path";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
-import { forgetAgain } from "@/lib/new-sheet";
+import { forgetAgain } from "@/lib/new-page";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import {
   clearDeviceToken,
@@ -154,7 +154,7 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     },
   ],
   [
-    "new-sheet",
+    "new-page",
     (context) => {
       if (context.reason !== "password") forgetAgain();
     },

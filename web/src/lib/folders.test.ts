@@ -12,8 +12,8 @@ import {
   visibleFolders,
 } from "./folders";
 
-// The pure half of the New sheet's folder list (#289). The read, the star and the sheet around
-// them are driven in components/new-sheet.test.tsx and routes/home-new-button.test.tsx.
+// The pure half of the New page's folder list (#289). The read, the star and the sheet around
+// them are driven in routes/new.test.tsx and routes/home-new-button.test.tsx.
 
 describe("folderName — the name a row leads with", () => {
   it("is the last segment", () => {

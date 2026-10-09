@@ -1,7 +1,7 @@
 import { branchOffOffered, paneBranchName, paneInRepo, startFromChoices } from "./branch-off";
 import type { WorkspaceView } from "./types";
 
-// "New agent on a branch" (ADR 0089, M48): the menu's gates, and the "Start from" choice.
+// "New agent in a worktree" (ADR 0089, M48): the menu's gates, and the "Start from" choice.
 
 describe("branchOffOffered", () => {
   it("needs the capability and the lead scope", () => {

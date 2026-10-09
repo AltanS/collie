@@ -340,8 +340,8 @@ export function AgentList({
             <span className="flex size-12 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Plus className="size-6" aria-hidden />
             </span>
-            <span className="text-lg font-semibold text-foreground">{t("newSheet.first.title")}</span>
-            <span className="text-sm text-muted-foreground">{t("newSheet.first.body")}</span>
+            <span className="text-lg font-semibold text-foreground">{t("newPage.first.title")}</span>
+            <span className="text-sm text-muted-foreground">{t("newPage.first.body")}</span>
           </button>
           {!agentDetection.capable && agentDetection.note !== "" && (
             <p className="text-xs leading-snug text-muted-foreground">

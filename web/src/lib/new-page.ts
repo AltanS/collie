@@ -2,50 +2,75 @@ import type { StartWhat } from "@/lib/api";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { hostHealth, writeRefusal, type HostHealth } from "@/lib/host-health";
 import { isMultiHost, leadHost } from "@/lib/hosts";
+import { t } from "@/lib/i18n";
 import type { HarnessInfo, Launcher, ServerSummary, WorktreeFolderChoice } from "@/lib/types";
 
-// THE NEW SHEET'S RULES (M48 spec 01, ADR 0091, ADR 0093), apart from the component so each is tested
+// THE NEW PAGE'S RULES (M48 spec 01, ADR 0091, ADR 0093), apart from the route so each is tested
 // without rendering it: which items are offered and which are listed as not working here, the one
-// line that says what Start will do, the "Again" memory, and when a request id may be reused.
+// line that says what Start will do, the "Again" and Agent-or-Command memories, and when a request
+// id may be reused.
+
+/** Where the two "how to add one" links under the Agent and Command selects open: one docs section. */
+export const NEW_PAGE_DOCS = {
+  /** Collie's agent list is built in; the operator's way to add another is a `launchers.toml` row. */
+  agent: "https://colliepwa.dev/docs/configure#your-own-launchers",
+  command: "https://colliepwa.dev/docs/configure#your-own-launchers",
+} as const;
+
+/** The two halves of "what to start": an agent Collie knows by name, or a command (Shell or a row). */
+export type Kind = "agent" | "command";
+
+/** Which half a choice belongs to. */
+export function kindOf(what: StartWhat): Kind {
+  return what.kind === "harness" ? "agent" : "command";
+}
 
 /** Whether a choice may start on a new branch: an agent or a shell. A `launchers.toml` row may not. */
 export function branchAllowed(what: StartWhat | null): boolean {
   return what !== null && what.kind !== "row";
 }
 
-/** One stable string per choice, for a radio value and a React key. */
+/** One stable string per choice, for an option value and a React key. */
 export function whatKey(what: StartWhat): string {
   if (what.kind === "harness") return `harness:${what.id}`;
   if (what.kind === "row") return `row:${what.command}`;
   return "shell";
 }
 
-/** Whether two choices are the same one. */
-export function sameWhat(a: StartWhat | null, b: StartWhat | null): boolean {
-  return a !== null && b !== null && whatKey(a) === whatKey(b);
-}
-
-/** Why one item is listed in the sheet's top block instead of being offered. */
-export type OffReason =
+/** Why one item is listed on the page but cannot be used here. */
+export type Unavailable =
   /** An agent the machine knows but whose binary its login PATH does not have. */
   | { kind: "notFound" }
   /** The machine's Collie is older than 1.19.0 and starts no agent by id. */
   | { kind: "olderCollie" }
   /** The machine's multiplexer has no worktrees (tmux, zellij). */
   | { kind: "needsHerdr" }
-  /** A crew member was chosen; branches are made on the lead only (ADR 0089, rule 6). */
+  /** A crew member was chosen; worktrees are made on the lead only (ADR 0089, rule 6). */
   | { kind: "onlyOnLead"; lead: string }
   /** The machine is not taking writes: its own sentence (lib/host-health.ts). */
   | { kind: "machine"; sentence: string };
 
-/** One line of the top block: what, and why not. */
-export interface OffItem {
-  key: string;
-  /** What cannot run: an agent's label, `null` for "Agents" or "On a new branch" (the caller names those). */
-  label: string | null;
-  /** Which of the two group names the caller uses when `label` is null. */
-  group: "agents" | "branch" | "machine";
-  reason: OffReason;
+/** The reason as words: short enough to follow a name in brackets. */
+export function unavailableText(reason: Unavailable): string {
+  switch (reason.kind) {
+    case "notFound":
+      return t("newPage.reason.notFound");
+    case "olderCollie":
+      return t("newPage.reason.olderCollie");
+    case "needsHerdr":
+      return t("newPage.reason.needsHerdr");
+    case "onlyOnLead":
+      return t("newPage.reason.onlyOnLead", { lead: reason.lead });
+    case "machine":
+      return reason.sentence;
+  }
+}
+
+/** One agent the machine knows: listed whether or not it can start, with the reason when it cannot. */
+export interface AgentOption {
+  id: string;
+  label: string;
+  unavailable: Unavailable | null;
 }
 
 export interface OfferInput {
@@ -56,76 +81,109 @@ export interface OfferInput {
   rows: readonly Launcher[];
   /** The chosen machine's refusal, when it takes no writes. */
   refusal?: string;
-  /** Branches: whether the lead's multiplexer can make a worktree. */
+  /** Worktrees: whether the lead's multiplexer can make one. */
   canWorktree: boolean;
-  /** Branches: the chosen machine is a crew member, and this is the lead's name. */
+  /** Worktrees: the chosen machine is a crew member, and this is the lead's name. */
   memberChosen?: { lead: string };
 }
 
-/** What the sheet offers, and the top block of what it does not. Nothing is ever simply hidden. */
+/** What the page offers. Nothing is ever simply hidden: an item that cannot run is listed with its reason. */
 export interface Offer {
-  agents: readonly HarnessInfo[];
+  /** Every agent the machine knows, the ones not installed included (disabled, with a reason). */
+  agents: readonly AgentOption[];
   rows: readonly Launcher[];
   /** Whether the machine starts a plain shell by `shell: true` (else the older `/api/workspace`). */
   shellById: boolean;
-  /** Whether the branch switch may be drawn on. */
-  branch: boolean;
-  off: OffItem[];
+  /** Why there is no agent list at all (an older Collie), said under the Agent select. */
+  agentsNote: Unavailable | null;
+  /** Why the worktree switch is off, or `null` when it may be used. */
+  branchBlocked: Unavailable | null;
 }
 
 /**
- * The sheet's offer for one machine. An agent that is not found, an older Collie, a multiplexer with
- * no worktrees and a member chosen for a branch each become one line of the top block, with its
- * reason. A machine that takes no writes is the first line, and then nothing is offered at all.
+ * The page's offer for one machine. An agent that is not found stays in the list, disabled. An older
+ * Collie, a multiplexer with no worktrees and a member chosen for a worktree each become one reason.
+ * A machine that takes no writes offers nothing, and its sentence is said beside the machine select.
  */
 export function offerFor(input: OfferInput): Offer {
-  const off: OffItem[] = [];
   if (input.refusal !== undefined) {
-    off.push({ key: "machine", label: null, group: "machine", reason: { kind: "machine", sentence: input.refusal } });
-    return { agents: [], rows: [], shellById: false, branch: false, off };
+    return {
+      agents: [],
+      rows: [],
+      shellById: false,
+      agentsNote: null,
+      branchBlocked: { kind: "machine", sentence: input.refusal },
+    };
   }
-  const harnesses = input.harnesses ?? [];
-  if (input.loaded && input.harnesses === null) {
-    off.push({ key: "agents", label: null, group: "agents", reason: { kind: "olderCollie" } });
-  }
-  for (const h of harnesses) {
-    if (!h.found) off.push({ key: `harness:${h.id}`, label: h.label, group: "agents", reason: { kind: "notFound" } });
-  }
-  let branch = input.canWorktree && input.memberChosen === undefined;
-  if (!input.canWorktree) {
-    off.push({ key: "branch", label: null, group: "branch", reason: { kind: "needsHerdr" } });
-  } else if (input.memberChosen !== undefined) {
-    off.push({ key: "branch", label: null, group: "branch", reason: { kind: "onlyOnLead", lead: input.memberChosen.lead } });
-  }
-  // An older Collie cannot be asked for a branch from a folder either: the route is 1.19.0's.
-  if (input.loaded && input.harnesses === null) branch = false;
+  const olderCollie = input.loaded && input.harnesses === null;
+  let branchBlocked: Unavailable | null = null;
+  if (!input.canWorktree) branchBlocked = { kind: "needsHerdr" };
+  else if (input.memberChosen !== undefined) branchBlocked = { kind: "onlyOnLead", lead: input.memberChosen.lead };
+  // An older Collie cannot be asked for a worktree from a folder either: the route is 1.19.0's.
+  else if (olderCollie) branchBlocked = { kind: "olderCollie" };
   return {
-    agents: harnesses.filter((h) => h.found),
+    agents: (input.harnesses ?? []).map((h) => ({
+      id: h.id,
+      label: h.label,
+      unavailable: h.found ? null : { kind: "notFound" },
+    })),
     rows: input.rows,
     shellById: input.harnesses !== null,
-    branch,
-    off,
+    agentsNote: olderCollie ? { kind: "olderCollie" } : null,
+    branchBlocked,
   };
+}
+
+/** The agents that can start now. */
+export function startableAgents(offer: Offer): AgentOption[] {
+  return offer.agents.filter((a) => a.unavailable === null);
 }
 
 /** Whether `what` is something the offer still holds (a remembered choice may not be). */
 export function offered(offer: Offer, what: StartWhat): boolean {
   if (what.kind === "shell") return true;
-  if (what.kind === "harness") return offer.agents.some((h) => h.id === what.id);
+  if (what.kind === "harness") return offer.agents.some((a) => a.id === what.id && a.unavailable === null);
   return offer.rows.some((r) => r.command === what.command);
 }
 
 /** The label a choice is shown and summarised with. */
 export function whatLabel(what: StartWhat, offer: Offer, shellLabel: string): string {
   if (what.kind === "shell") return shellLabel;
-  if (what.kind === "harness") return offer.agents.find((h) => h.id === what.id)?.label ?? what.id;
+  if (what.kind === "harness") return offer.agents.find((a) => a.id === what.id)?.label ?? what.id;
   return offer.rows.find((r) => r.command === what.command)?.label ?? what.command;
 }
 
-/** The first choice the sheet opens on, when nothing was remembered: the first agent found, else the shell. */
-export function firstWhat(offer: Offer): StartWhat {
-  const agent = offer.agents[0];
-  return agent === undefined ? { kind: "shell" } : { kind: "harness", id: agent.id };
+/**
+ * Which half the page opens on: the one remembered for this machine, else the half Again's last start
+ * was in, else Agent while the machine has an agent that starts (or its answer is not in yet), else
+ * Command.
+ */
+export function defaultKind(offer: Offer, loaded: boolean, remembered: Kind | null, again: LastStart | null): Kind {
+  if (remembered !== null) return remembered;
+  if (again !== null) return kindOf(again.what);
+  return loaded && startableAgents(offer).length === 0 ? "command" : "agent";
+}
+
+/** The agent the Agent select shows: the pick, else Again's, else the first that starts. `null` when none does. */
+export function agentChoice(offer: Offer, pick: string | null, again: LastStart | null): string | null {
+  const startable = startableAgents(offer);
+  const has = (id: string | null): id is string => id !== null && startable.some((a) => a.id === id);
+  if (has(pick)) return pick;
+  if (again !== null && again.what.kind === "harness" && has(again.what.id)) return again.what.id;
+  return startable[0]?.id ?? null;
+}
+
+/** The command the Command select shows: the pick, else Again's, else Shell. */
+export function commandChoice(offer: Offer, pick: StartWhat | null, again: LastStart | null): StartWhat {
+  if (pick !== null && pick.kind !== "harness" && offered(offer, pick)) return pick;
+  if (again !== null && again.what.kind !== "harness" && offered(offer, again.what)) return again.what;
+  return { kind: "shell" };
+}
+
+/** What Start would start: the Agent select's agent or the Command select's command. */
+export function whatFor(kind: Kind, agent: string | null, command: StartWhat): StartWhat | null {
+  if (kind === "command") return command;
+  return agent === null ? null : { kind: "harness", id: agent };
 }
 
 // ── The summary line ────────────────────────────────────────────────────────────────────────────
@@ -148,17 +206,18 @@ export function summaryKey(parts: SummaryParts): "plain" | "machine" | "branch" 
 
 // ── Again ───────────────────────────────────────────────────────────────────────────────────────
 //
-// The last start, per machine, on THIS device (localStorage): the sheet's first row repeats it. A
+// The last start, per machine, on THIS device (localStorage): the page's first row repeats it. A
 // branch start is not repeated blindly, since its name was used; tapping it fills the form with a
 // fresh name instead. At most {@link MAX_AGAIN} machines are kept, the oldest dropped.
 
+// The key keeps the name it had when this was a sheet: renaming it would drop what people stored.
 export const AGAIN_KEY = "collie:new-sheet:again:v1";
 export const MAX_AGAIN = 20;
 
 /** One remembered start. */
 export interface LastStart {
   what: StartWhat;
-  /** What the sheet called it, so a row whose label moved still reads as it did. */
+  /** What the page called it, so a row whose label moved still reads as it did. */
   label: string;
   /** The folder it ran in, as sent; `null` for home or a row's pinned folder. */
   cwd: string | null;
@@ -254,7 +313,7 @@ export function rememberAgain(
   try {
     storage?.setItem(AGAIN_KEY, JSON.stringify(Object.fromEntries(kept)));
   } catch {
-    // Private mode or a full quota: the next sheet opens without an Again row.
+    // Private mode or a full quota: the next visit opens without an Again row.
   }
 }
 
@@ -267,6 +326,52 @@ export function forgetAgain(storage: Pick<Storage, "removeItem"> | undefined = s
     storage?.removeItem(AGAIN_KEY);
   } catch {
     // Locked-down storage: there was nothing it could have kept.
+  }
+}
+
+// ── Agent or Command ────────────────────────────────────────────────────────────────────────────
+//
+// Which half of "what to start" the page opens on, per machine, on THIS device. It is written the
+// moment the segment is tapped (not only after a start), so a person who looks for a command, leaves
+// and comes back finds the half they were in. No folder or name in it, only the word, so a wipe at the
+// end of a pairing leaves it (it is a preference, as the hidden-machines list is).
+
+export const KIND_KEY = "collie:new-page:kind:v1";
+
+/** The remembered half on `machine` (`""` is the lead or a solo install), or `null`. */
+export function readKind(machine: string, storage: Pick<Storage, "getItem"> | undefined = safeStorage()): Kind | null {
+  let text: string | null = null;
+  try {
+    text = storage?.getItem(KIND_KEY) ?? null;
+  } catch {
+    return null;
+  }
+  const value = asJsonString((text === null ? undefined : parseJsonObject(text))?.[machine]);
+  return value === "agent" || value === "command" ? value : null;
+}
+
+/** Remember the half chosen on `machine`. At most {@link MAX_AGAIN} machines are kept, the oldest dropped. */
+export function rememberKind(
+  machine: string,
+  kind: Kind,
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined = safeStorage(),
+): void {
+  let text: string | null = null;
+  try {
+    text = storage?.getItem(KIND_KEY) ?? null;
+  } catch {
+    return;
+  }
+  const kept = new Map<string, Kind>();
+  for (const [key, value] of Object.entries((text === null ? undefined : parseJsonObject(text)) ?? {})) {
+    if (key !== machine && (value === "agent" || value === "command")) kept.set(key, value);
+  }
+  // Re-added last, so the oldest entries are the ones a full file drops.
+  kept.set(machine, kind);
+  try {
+    storage?.setItem(KIND_KEY, JSON.stringify(Object.fromEntries([...kept].slice(-MAX_AGAIN))));
+  } catch {
+    // Private mode or a full quota: the page opens on its default half.
   }
 }
 
@@ -297,8 +402,17 @@ export function memberHealth(health: ReadonlyMap<string, HostHealth>, s: ServerS
 }
 
 /**
- * Which machine the sheet opens on: the one the view shows (absent `?h=` is the lead), moved to the
- * first machine taking writes when that one is not. When none is, it stays put, so the sheet names
+ * Why a machine takes no writes, in one word for a list ("unreachable", "incompatible"), or
+ * `undefined` when it takes them. The full sentence is {@link writeRefusal}'s, said beside the select.
+ */
+export function machineWord(h: HostHealth): string | undefined {
+  if (writeRefusal(h) === undefined) return undefined;
+  return h.incompatible ? t("connection.host.incompatible") : t("connection.host.unreachablePlain");
+}
+
+/**
+ * Which machine the page opens on: the one the view shows (absent `?h=` is the lead), moved to the
+ * first machine taking writes when that one is not. When none is, it stays put, so the page names
  * the machine and its refusal instead of a live-looking form. `undefined` on a solo install.
  */
 export function defaultHost(

@@ -9,6 +9,7 @@ import { UPDATE_MODE_HOLD, isReloadHeldBy, subscribeReloadHeld } from "@/lib/rel
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
 import { SpaceRoute } from "@/routes/space";
+import { NewRoute } from "@/routes/new";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { ChangesRoute } from "@/routes/changes";
@@ -82,6 +83,10 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: "space/:spaceId", element: <SpaceRoute /> },
+      // The New page (M48), a page since 1.19.0 and a bottom sheet before. No loader: it reads the root
+      // snapshot (for a pane's folder and branch) and asks the chosen machine's bridge for its own lists.
+      // Where it was opened from rides in the query (`?machine=`, `?pane=`, `?s=`), so a reload keeps it.
+      { path: "new", element: <NewRoute /> },
       // Settings is an INDEX of four sections (routes/settings.tsx). Its only loader is the pairing
       // forward: the QR `collie pair` prints still names `/settings?pair=<code>`, and the form now
       // lives on System. `replace`, as for `/pack` below, so Back does not land on the index and

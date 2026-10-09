@@ -8,7 +8,6 @@ import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { CollieMark } from "@/components/collie-mark";
-import { NewSheet } from "@/components/new-sheet";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
 import { t, tn } from "@/lib/i18n";
@@ -18,7 +17,7 @@ import type { EnableResult, PushState } from "@/lib/push";
 import type { HomeData } from "@/lib/loaders";
 import { leadHost, hostName, paneScope } from "@/lib/hosts";
 import { useMuxName } from "@/lib/mux-capability";
-import { homePath, pairedDevicesPath, panePath } from "@/lib/nav";
+import { homePath, newPath, pairedDevicesPath, panePath } from "@/lib/nav";
 import { triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import { isReadOnly } from "@/lib/types";
@@ -443,7 +442,6 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
   const mux = useMuxName();
   const { state, busy, setEnabled } = usePushControl();
   const installOffer = useInstallOffer();
-  const [spaceOpen, setSpaceOpen] = React.useState(false);
 
   // The blocked panes, in the dashboard's own order (lib/triage.ts): "needs you" is the first
   // section, newest first inside it. Reading it through `triage` rather than re-filtering here is
@@ -461,7 +459,7 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
       return;
     }
     if (reason === "space") {
-      setSpaceOpen(true);
+      nav.down(newPath({ machine: home.scope.host, session: home.scope.session }));
       return;
     }
     if (reason === "pane" && blocked) {
@@ -473,27 +471,20 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
   };
 
   return (
-    <>
-      <TourSheet
-        open={!spaceOpen}
-        onClose={exit}
-        mux={mux}
-        host={host}
-        panes={home.agents.length}
-        needsYou={needs.length}
-        machines={home.servers.length}
-        readOnly={isReadOnly(home.device)}
-        pushState={state}
-        pushBusy={busy}
-        onEnablePush={() => setEnabled(true)}
-        installOffer={installOffer}
-        onInstall={() => void promptInstall()}
-      />
-      {/* The "Nothing is running yet" card's remedy, mounted HERE rather than reached for on the
-          dashboard: this gate is not always opened over the dashboard, and a button that navigated
-          first and opened a sheet second would need a signal to survive the navigation. It is the
-          one New sheet, the same the dashboard opens (M48). */}
-      <NewSheet open={spaceOpen} onClose={() => setSpaceOpen(false)} scope={home.scope} />
-    </>
+    <TourSheet
+      open
+      onClose={exit}
+      mux={mux}
+      host={host}
+      panes={home.agents.length}
+      needsYou={needs.length}
+      machines={home.servers.length}
+      readOnly={isReadOnly(home.device)}
+      pushState={state}
+      pushBusy={busy}
+      onEnablePush={() => setEnabled(true)}
+      installOffer={installOffer}
+      onInstall={() => void promptInstall()}
+    />
   );
 }

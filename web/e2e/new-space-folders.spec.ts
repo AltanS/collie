@@ -5,11 +5,12 @@ import { fixtureNewSpace } from "@/test/handlers";
 
 import { fill, installApiStub } from "./fixtures/api";
 
-// FAVOURITE AND RECENT FOLDERS IN THE NEW SHEET (M40/02, issue 289; the one New sheet since M48). The machine's bridge keeps
-// the list and records Recent itself after a create that worked; the sheet reads it when it opens,
+// FAVOURITE AND RECENT FOLDERS ON THE NEW PAGE (M40/02, issue 289; the one New sheet since M48, a page at /new
+// since 1.19.0). The machine's bridge keeps
+// the list and records Recent itself after a create that worked; the page reads it when it opens,
 // offers each folder as a row that FILLS the Directory field, and stars one into Favourites. What a
 // real engine has to show: the create request is exactly today's, the folder is under Recent the
-// next time the sheet opens, a star moves it, a tap fills the field and sends no create, and the
+// next time the page opens, a star moves it, a tap fills the field and sends no create, and the
 // rows keep the 44px floor with the star a 44px square beside the text. 390x844, the phone, in
 // Chromium and in WebKit.
 //
@@ -28,13 +29,12 @@ test.beforeEach(async ({ page }, testInfo) => {
 const FOLDER = "/home/you/src/collie";
 const SHOWN = "~/src/collie";
 
-const sheet = (page: Page) => page.getByRole("dialog");
-const recent = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.recent"] });
-const favourites = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.favourites"] });
-const dirField = (page: Page) => sheet(page).getByPlaceholder(en["space.new.dir.placeholder"]);
-const createButton = (page: Page) => sheet(page).getByRole("button", { name: en["newSheet.start"] });
+const recent = (page: Page) => page.getByRole("list", { name: en["space.new.folders.recent"] });
+const favourites = (page: Page) => page.getByRole("list", { name: en["space.new.folders.favourites"] });
+const dirField = (page: Page) => page.getByPlaceholder(en["space.new.dir.placeholder"]);
+const createButton = (page: Page) => page.getByRole("button", { name: en["newPage.start"] });
 
-async function openSheet(page: Page): Promise<void> {
+async function openPage(page: Page): Promise<void> {
   await page.getByRole("button", { name: en["space.overview.new.aria"] }).click();
   await expect(dirField(page)).toBeVisible();
 }
@@ -52,8 +52,8 @@ test("a created folder is under Recent next time, a star moves it, and a tap fil
   });
 
   await page.goto("/");
-  await openSheet(page);
-  // Nothing recorded yet: the sheet is the one that shipped before the list.
+  await openPage(page);
+  // Nothing recorded yet: the page is the one that shipped before the list.
   await expect(recent(page)).toHaveCount(0);
   await expect(favourites(page)).toHaveCount(0);
 
@@ -64,9 +64,9 @@ test("a created folder is under Recent next time, a star moves it, and a tap fil
   expect(creates).toHaveLength(1);
   expect(creates[0]!.postData()).toBe(JSON.stringify({ cwd: FOLDER }));
 
-  // Next time the sheet opens, the folder the bridge recorded is under Recent.
+  // Next time the page opens, the folder the bridge recorded is under Recent.
   await page.goto("/");
-  await openSheet(page);
+  await openPage(page);
   const row = recent(page).getByRole("button", { name: fill(en["space.new.folders.use"], { path: SHOWN }) });
   await expect(row).toBeVisible();
   await expect(recent(page).getByRole("listitem")).toHaveCount(1);
@@ -105,13 +105,13 @@ test("a created folder is under Recent next time, a star moves it, and a tap fil
 
 test("a create in home records nothing", async ({ page }) => {
   await page.goto("/");
-  await openSheet(page);
+  await openPage(page);
   await createButton(page).click();
   await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent(fixtureNewSpace.pane.paneId)}$`, "u"));
   await page.goto("/");
-  // The sheet reads its list when it opens; wait for that answer before asserting on an absence.
+  // The page reads its list when it opens; wait for that answer before asserting on an absence.
   const read = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/folders");
-  await openSheet(page);
+  await openPage(page);
   expect(await (await read).json()).toEqual({ recent: [], favourites: [], home: fixtureNewSpace.pane.cwd });
   await expect(recent(page)).toHaveCount(0);
 });

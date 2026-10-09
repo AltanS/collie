@@ -5,30 +5,29 @@ import { mutate } from "@/lib/mutate";
 import { scopeKey, type Scope } from "@/lib/scope";
 import type { FoldersResponse } from "@/lib/types";
 
-// The New sheet's folder list (#289, M40/02): the folders a space was created in on ONE
+// The New page's folder list (#289, M40/02): the folders a space was created in on ONE
 // machine, and the ones the operator starred. The list is that machine's own — its bridge keeps it
 // in `folders.json` and records Recent itself after a create that worked — so this module is the
-// bridge's mirror and nothing more. It READS: when the sheet opens, again whenever the sheet's chosen
+// bridge's mirror and nothing more. It READS: when the page opens, again whenever the page's chosen
 // machine changes, and once ahead of time through {@link prefetchFolders}. It never polls, and the
 // list is not in the snapshot.
 //
-// THE LAST GOOD READ PER SCOPE IS KEPT IN MEMORY, so the sheet opens at its final height. A sheet
-// anchored to the bottom grows upward when the sections arrive after it has slid in, and `Collapse`
-// draws a section that is open at its first render without animating. Before the cache, the first
-// open after every page load, and every separate sheet instance, started empty and then grew
-// mid-slide. Now the dashboard and a space prefetch the local list when they mount, every instance
-// starts from the cache, and an open still reads again, so a list that really changed redraws. The
+// THE LAST GOOD READ PER SCOPE IS KEPT IN MEMORY, so the page opens at its final height. `Collapse`
+// draws a section that is open at its first render without animating, and animates one that arrives
+// later. Before the cache, the first open after every page load started empty and then grew while
+// the page slid in. Now the dashboard and a space prefetch the local list when they mount, every
+// visit starts from the cache, and an open still reads again, so a list that really changed redraws. The
 // cache is memory only: folder paths are host data and are never written to storage.
 //
 // A FAILED READ IS NOT AN ERROR STATE, on `useLaunchers`' terms (lib/launchers.ts). A machine on an
 // older version answers 404, a machine that is down answers nothing, and both mean the same thing
-// here: no list for that machine, and the sheet renders exactly as it did before the list existed.
+// here: no list for that machine, and the page renders exactly as it did before the list existed.
 //
 // ONE MACHINE'S LIST IS NEVER SHOWN FOR ANOTHER. What was read is kept with the scope it was read
 // for (the cache key is the scope key), and a lookup for another scope never returns it, so switching
 // the host picker from the lead to a peer can never leave the lead's folders under the peer's name.
 
-/** One machine's list as the sheet draws it. */
+/** One machine's list as the page draws it. */
 export interface FolderList {
   recent: readonly string[];
   favourites: readonly string[];
@@ -52,7 +51,7 @@ export function folderName(path: string): string {
 }
 
 /**
- * The list the sheet may draw: home taken out of both lists. The bridge never records home, so this
+ * The list the page may draw: home taken out of both lists. The bridge never records home, so this
  * is the second check rather than the first — it holds against a file written by hand, and against a
  * home that moved after the folder was recorded. A blank field already means home.
  */
@@ -80,7 +79,7 @@ export interface FoldersState {
 
 // ── The cache ────────────────────────────────────────────────────────────────────────────────────
 // The last successful read per scope key, plus the reads on the wire. Module-level on purpose: every
-// sheet instance (the dashboard's, a space's, the pane's) shares it.
+// visit to the page shares it.
 
 type Stored = FoldersResponse | FolderList;
 
@@ -120,8 +119,8 @@ async function read(at: Scope, key: string): Promise<void> {
 }
 
 /**
- * Read one scope's list into the cache, once, ahead of the sheet. A read already on the wire for the
- * same scope is shared, not repeated. Called when a route that can open the sheet mounts: one read
+ * Read one scope's list into the cache, once, ahead of the page. A read already on the wire for the
+ * same scope is shared, not repeated. Called when a route that can open the page mounts: one read
  * per mount, never a poll and never a timer.
  */
 export function prefetchFolders(scope?: Scope): void {

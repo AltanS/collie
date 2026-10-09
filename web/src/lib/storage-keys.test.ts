@@ -68,6 +68,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],
   ["collie:new-sheet:again:v1", { area: "local", prefix: false, fate: "wiped", why: "the last start per machine names its folders" }],
   ["collie:no-prompts-confirmed:v1", { area: "local", prefix: false, fate: "wiped", why: "the per-device No prompts confirms name machines and command lines" }],
+  ["collie:new-page:kind:v1", { area: "local", prefix: false, fate: "kept", why: "Agent or Command per machine, one word, no folder" }],
   ["collie:push-disabled", { area: "local", prefix: false, fate: "kept", why: "the operator's push choice" }],
   // Written BY the wipe, so it outlives it: the cause the pair screen names once, then clears.
   ["collie:wipe-last", { area: "local", prefix: false, fate: "kept", why: "a wipe reason word, no content" }],

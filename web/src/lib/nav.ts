@@ -7,7 +7,7 @@
 // The host stays in the QUERY, never in the path: a `/host/:h/pane/:paneId` shape would fork every
 // route, break every existing deep link, and force the loaders' isPaneUrl() to grow a parser.
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
-import { scopeFromSearchParams, scopeSearch, type Scope } from "./scope";
+import { scopeFromSearchParams, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
 import type { AgentView } from "./types";
 
 // The two Machines paths live in `machine-paths.ts` so the service worker can build them: this file
@@ -152,6 +152,43 @@ export function settingsPath(scope?: Scope): string {
 }
 
 /**
+ * Where the New page was opened from, which it reads back off its own address so a reload keeps it.
+ * `machine` is the crew member it opens on (absent is the machine the view shows, else the lead);
+ * `pane` is the pane whose folder and branch a worktree starts from, a pane's ⋯ "New agent in a
+ * worktree"; `session` is that pane's named Herdr session. A pane is the lead's, so `machine` rides
+ * beside it only to name the lead's own id.
+ */
+export interface NewAt {
+  machine?: string;
+  pane?: string;
+  session?: string;
+}
+
+/** The query keys of {@link NewAt}. `session` is the scope's own `s`, so the root snapshot follows it. */
+export const NEW_MACHINE_PARAM = "machine";
+export const NEW_PANE_PARAM = "pane";
+
+/** The New page (`/new`), a child of the screen it was opened from. Absent fields emit nothing. */
+export function newPath(at: NewAt = {}): string {
+  const q = new URLSearchParams();
+  if (at.machine) q.set(NEW_MACHINE_PARAM, at.machine);
+  if (at.pane) q.set(NEW_PANE_PARAM, at.pane);
+  if (at.session) q.set(SESSION_PARAM, at.session);
+  const query = q.toString();
+  return query === "" ? "/new" : `/new?${query}`;
+}
+
+/** {@link NewAt} read back off a query string. Blank values are absent. */
+export function readNewAt(search: string): NewAt {
+  const q = new URLSearchParams(search);
+  const field = (key: string): string | undefined => {
+    const v = q.get(key)?.trim();
+    return v ? v : undefined;
+  };
+  return { machine: field(NEW_MACHINE_PARAM), pane: field(NEW_PANE_PARAM), session: field(SESSION_PARAM) };
+}
+
+/**
  * The Settings sections. Settings is an index of these, not a column of every card it has
  * (routes/settings-sections.tsx says why, and which card went where).
  *
@@ -292,12 +329,14 @@ export function pathOnly(href: string): string {
 
 /** `*` stands for any one segment: a pane's space is not in its path, so any space may be its parent. */
 const ANY_SPACE = "/space/*";
+/** Likewise for a pane: the New page is opened from any one of them. */
+const ANY_PANE = "/pane/*";
 
 /**
  * Every pathname that may legitimately sit above `pathname` in the level tree, nearest first.
  *
  *   L0 `/`
- *   L1 `/space/:id`, `/settings`, `/crew`
+ *   L1 `/space/:id`, `/settings`, `/crew`, `/new` (from the dashboard, a space or a pane)
  *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
@@ -333,6 +372,8 @@ export function ancestorsOf(pathname: string): string[] {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "settings" && seg.length === 1) return ["/"];
+  // The New page is opened from the dashboard, from a space, and from a pane's ⋯ menu.
+  if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
   // Updates and the crew census are opened from the System section, so that is their nearest
   // legitimate parent. `/settings` stays in the list behind it: both were reachable straight from
   // the index before the split, and a stored `from` pointing there is still a step UP, not a push.
@@ -370,8 +411,9 @@ export function decodedPath(pathname: string): string {
 }
 
 function matches(pattern: string, pathname: string): boolean {
-  if (pattern !== ANY_SPACE) return decodedPath(pattern) === decodedPath(pathname);
-  return /^\/space\/[^/]+$/.test(pathname);
+  if (pattern === ANY_SPACE) return /^\/space\/[^/]+$/.test(pathname);
+  if (pattern === ANY_PANE) return /^\/pane\/[^/]+$/.test(pathname);
+  return decodedPath(pattern) === decodedPath(pathname);
 }
 
 /** Whether `from` (a stored href) names a level above `here` (a pathname). */
@@ -549,6 +591,12 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
+  // The New page: behind it the screen it names (the pane whose worktree it is, else the view's machine).
+  if (head === "new" && seg.length === 1) {
+    const at = readNewAt(search);
+    const view = { host: at.machine, session: at.session };
+    return at.pane === undefined ? [homePath(view)] : [homePath(view), panePath(at.pane, view)];
+  }
   if (head === "settings" && seg.length === 2 && id === "updates") {
     return [home, `/settings${q}`, `/settings/system${q}`];
   }

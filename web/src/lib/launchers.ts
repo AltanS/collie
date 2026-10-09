@@ -48,7 +48,7 @@ export function useLaunchers(scope?: Scope, enabled = true): LaunchersState {
   const session = scope?.session;
   const [state, setState] = useState<LaunchersState>(EMPTY);
 
-  // `enabled` false reads nothing: the New sheet mounts this while closed and reads on its opening.
+  // `enabled` false reads nothing, for a caller that does not want the answer yet.
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;

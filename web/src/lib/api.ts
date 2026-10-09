@@ -1276,12 +1276,12 @@ export function launch(command: string, besidePaneId?: string, scope?: Scope): P
 }
 
 /**
- * What the New sheet starts (ADR 0091): a `launchers.toml` row by its command, an agent by its id,
+ * What the New page starts (ADR 0091): a `launchers.toml` row by its command, an agent by its id,
  * or a plain shell. Exactly one, which is what the bridge checks first.
  */
 export type StartWhat = { kind: "row"; command: string } | { kind: "harness"; id: string } | { kind: "shell" };
 
-/** POST /api/launch's body from the New sheet. A named contract so `startLaunch` infers against it. */
+/** POST /api/launch's body from the New page. A named contract so `startLaunch` infers against it. */
 interface StartLaunchBody {
   command?: string;
   harness?: string;
@@ -1291,7 +1291,7 @@ interface StartLaunchBody {
 }
 
 /**
- * POST /api/launch from the New sheet: one kind, an optional folder, and a request id the phone
+ * POST /api/launch from the New page: one kind, an optional folder, and a request id the phone
  * minted for this intent. A retry with the same id answers the first pane (`replayed: true`).
  */
 export function startLaunch(what: StartWhat, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
@@ -1419,9 +1419,9 @@ export function renameAddedLauncher(id: string, label: string, scope?: Scope): P
 }
 
 /**
- * GET /api/folders — THIS scope's own host's folder list for the New sheet (#289), off that
+ * GET /api/folders — THIS scope's own host's folder list for the New page (#289), off that
  * machine's `folders.json`. Session-scoped only so `?host=` reaches the machine whose folders they
- * are; the list itself is one per machine. Read when the sheet opens and when its chosen machine
+ * are; the list itself is one per machine. Read when the page opens and when its chosen machine
  * changes (lib/folders.ts), never polled and never part of the snapshot.
  */
 export function fetchFolders(scope?: Scope): Promise<FoldersResponse> {
@@ -1436,8 +1436,8 @@ interface StarFolderBody {
 
 /**
  * POST /api/folders/star — star (`true`) or unstar (`false`) one folder on THIS scope's host. The
- * bridge refuses a folder that is not already in its lists, so the sheet only ever sends one it read.
- * Answers the whole new list, so the sheet redraws from the bridge's word rather than guessing.
+ * bridge refuses a folder that is not already in its lists, so the page only ever sends one it read.
+ * Answers the whole new list, so the page redraws from the bridge's word rather than guessing.
  */
 export function starFolder(folder: string, starred: boolean, scope?: Scope): Promise<FoldersResponse> {
   const body: StarFolderBody = { folder, starred };

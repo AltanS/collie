@@ -11,10 +11,12 @@ import {
   machinePath,
   machinesPath,
   machineTabOf,
+  newPath,
   pairLandingPath,
   panePath,
   parentChain,
   readFrom,
+  readNewAt,
   resolveTreeUp,
   resolveUp,
   resolveUpTo,
@@ -132,6 +134,22 @@ describe("homePath", () => {
   });
 });
 
+describe("the New page's address", () => {
+  it("is /new, with the machine, the pane and the session in the query only when given", () => {
+    expect(newPath()).toBe("/new");
+    expect(newPath({})).toBe("/new");
+    expect(newPath({ machine: "mini" })).toBe("/new?machine=mini");
+    expect(newPath({ machine: "mini", pane: "w1:p1", session: "demo" })).toBe("/new?machine=mini&pane=w1%3Ap1&s=demo");
+    expect(newPath({ pane: "w1:p1" })).toBe("/new?pane=w1%3Ap1");
+  });
+
+  it("reads back what it wrote, and blank values as absent", () => {
+    expect(readNewAt("?machine=mini&pane=w1%3Ap1&s=demo")).toEqual({ machine: "mini", pane: "w1:p1", session: "demo" });
+    expect(readNewAt("")).toEqual({ machine: undefined, pane: undefined, session: undefined });
+    expect(readNewAt("?machine=%20&pane=")).toEqual({ machine: undefined, pane: undefined, session: undefined });
+  });
+});
+
 describe("updatesPath", () => {
   // A CHILD path of settings, not an anchor inside it — so "back" from the page lands on Settings
   // and the router can hold the two as separate routes.
@@ -221,6 +239,13 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings", "/machines/bluefin", true],
     ["/machines/workshop", "/machines/bluefin", false],
     ["/pane/w1%3Ap1", "/machines/bluefin", false],
+    // The New page is opened from the dashboard, a space, or a pane's menu; nothing else is above it.
+    ["/", "/new", true],
+    ["/space/w1?h=badger", "/new", true],
+    ["/pane/w1%3Ap1", "/new", true],
+    ["/pane/w1%3Ap1/history", "/new", false],
+    ["/settings", "/new", false],
+    ["/new", "/new", false],
     ["/", "/nowhere", false],
   ])("%s above %s: %s", (from, here, expected) => {
     expect(isAncestor(from, here)).toBe(expected);
@@ -323,6 +348,11 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/machines", "", ["/", "/settings"]],
     ["/machines/bluefin", "", ["/", "/settings", "/machines"]],
     ["/machines/bluefin", "?h=badger", ["/?h=badger", "/settings?h=badger", "/machines?h=badger"]],
+    // The New page: the screen it names behind it. A pane's worktree gets the pane too.
+    ["/new", "", ["/"]],
+    ["/new", "?machine=mini", ["/?h=mini"]],
+    ["/new", "?pane=w1%3Ap1", ["/", "/pane/w1%3Ap1"]],
+    ["/new", "?machine=mini&pane=w1%3Ap1&s=demo", ["/?h=mini&s=demo", "/pane/w1%3Ap1?h=mini&s=demo"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);

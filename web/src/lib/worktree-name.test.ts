@@ -1,6 +1,6 @@
 import { BRANCH_ADJECTIVES, BRANCH_NOUNS, branchOffName, mintRequestId } from "./worktree-name";
 
-// The prefilled branch of "New agent on a branch" (ADR 0089). The bridge refuses a name that would
+// The prefilled branch of "New agent in a worktree" (ADR 0089). The bridge refuses a name that would
 // read as a flag or that Git refuses (bridge/worktree-branch.ts), so every name minted here must be
 // one it accepts: lowercase words, one slash, dashes, hex.
 

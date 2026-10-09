@@ -120,7 +120,7 @@ interface PaneActionsSheetProps {
    */
   onPinChange?: (pane: AgentView, pinned: boolean) => void;
   /**
-   * Open "New agent on a branch" for this pane (ADR 0089): the New sheet with "On a new branch" on,
+   * Open "New agent in a worktree" for this pane (ADR 0089): the New page with "New worktree" on,
    * on this pane's repo.
    *
    * Absence is the first gate, as it is for the read rows: the caller passes it only for a pane whose
@@ -515,8 +515,8 @@ export function PaneActionsSheet({
               onClick={() => void showInTerminal()}
             />
           )}
-          {/* A second agent on a new branch of this pane's repo (ADR 0089). Above Close, so the
-              destructive row stays last; close-then-act, so the New sheet arrives alone. */}
+          {/* A second agent in a worktree of this pane's repo (ADR 0089). Above Close, so the
+              destructive row stays last; close-then-act, so the sheet is gone before the page opens. */}
           {showBranchOff && (
             <ActionRow
               icon={<GitBranchPlus className="size-4 shrink-0 text-muted-foreground" />}

@@ -23,7 +23,7 @@ import { fromOutsideTree, navTrail, resolveCrumb } from "@/lib/nav-trail";
  *
  *   `down(to)`   a push that records `from` (this pathname + search). Opening a level below.
  *   `side(to)`   a replace that carries this entry's `from` over. Switching within a level.
- *   `open(to)`   `down` from a dashboard or a space, `side` from a pane: opening a pane.
+ *   `open(to)`   `down` from a dashboard or a space, `side` from a pane or the New page: opening a pane.
  *   `up(parent)` a step back when the entry behind is a legitimate parent, else a replace onto
  *                `parent`, the structural one. Back arrows, the Collie mark, closed-under-you exits.
  *   `upTo(p)`    as `up`, to one NAMED parent: the pane's space breadcrumb.
@@ -108,7 +108,10 @@ export function useNav(): Nav {
     return {
       down,
       side,
-      open: (to, state) => (here.current.pathname.startsWith("/pane/") ? side(to, state) : down(to, state)),
+      // From a pane, and from the New page (it is replaced by the pane it started, so Back does not
+      // land on a form whose Start has been used).
+      open: (to, state) =>
+        here.current.pathname.startsWith("/pane/") || here.current.pathname === "/new" ? side(to, state) : down(to, state),
       up: (parent) => run(resolveUp(here.current.pathname, readFrom(here.current.state), parent, canStepBack())),
       upTo: (parent) => run(resolveUpTo(readFrom(here.current.state), parent, canStepBack())),
       upExact: (parent) => run(resolveUpToExact(readFrom(here.current.state), parent, canStepBack())),

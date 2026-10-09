@@ -31,7 +31,7 @@ function Probe() {
 }
 
 function mount(initial: string | string[] = "/") {
-  const routes = ["/", "/space/:id", "/space/:id/changes", "/pane/:id/changes", "/pane/:id/changes/files", "/pane/:id", "/pane/:id/history", "/settings", "/settings/updates"].map(
+  const routes = ["/", "/space/:id", "/space/:id/changes", "/pane/:id/changes", "/pane/:id/changes/files", "/pane/:id", "/pane/:id/history", "/settings", "/settings/updates", "/new"].map(
     (path) => ({ path, element: <Probe /> }),
   );
   const router = createMemoryRouter(routes, { initialEntries: [initial].flat() });
@@ -91,6 +91,18 @@ describe("useNav", () => {
     await act(async () => nav.open("/pane/p2"));
     expect(at()).toBe("/pane/p2");
     expect(state()).toEqual({ from: "/space/w1" });
+  });
+
+  it("open from the New page replaces it, so Back does not land on a form that was used", async () => {
+    const { router, at, state } = mount("/");
+    await act(async () => nav.down("/new"));
+    expect(state()).toEqual({ from: "/" });
+    await act(async () => nav.open("/pane/p1"));
+    expect(at()).toBe("/pane/p1");
+    expect(state()).toEqual({ from: "/" });
+    expect(router.state.historyAction).toBe("REPLACE");
+    await act(() => router.navigate(-1));
+    expect(at()).toBe("/");
   });
 
   it("upTo steps back only onto that named parent, else replaces and keeps the level above it", async () => {

@@ -96,16 +96,15 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { paneBranchName, paneInRepo } from "@/lib/branch-off";
+import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
-import { NewSheet } from "@/components/new-sheet";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, filesPath, historyPath, panePath, spacePath } from "@/lib/nav";
+import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
@@ -293,12 +292,11 @@ export function AgentChat({
   );
 
   const { launchers, home: launchersHome } = useLaunchers(scope);
-  // "New agent on a branch" (ADR 0089, M48): offered for a pane whose space sits in a Git repo, read
+  // "New agent in a worktree" (ADR 0089, M48): offered for a pane whose space sits in a Git repo, read
   // off the root snapshot's spaces. The other two gates (the capability, the lead scope) are the
-  // actions sheet's own. It opens the one New sheet on this pane's folder with the switch on.
+  // actions sheet's own. It goes to the New page on this pane's folder with the worktree switch on.
   const rootSpaces = useOptionalRootData()?.workspaces;
   const branchOffOffered = agent !== undefined && rootSpaces !== undefined && paneInRepo(rootSpaces, agent.workspaceId);
-  const [branchOffOpen, setBranchOffOpen] = useState(false);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, stepChatFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
     useDisplayPrefs();
@@ -2854,19 +2852,12 @@ export function AgentChat({
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}
-          onBranchOff={branchOffOffered ? () => setBranchOffOpen(true) : undefined}
+          onBranchOff={
+            branchOffOffered
+              ? () => nav.down(newPath({ machine: scope?.host, pane: paneId, session: scope?.session }))
+              : undefined
+          }
         />
-        {/* "New agent on a branch" (ADR 0089, M48): the one New sheet, on this pane's folder, with
-            the branch switch on and this pane's branch offered as the start. */}
-        {branchOffOffered && agent !== undefined && (
-          <NewSheet
-            open={branchOffOpen}
-            onClose={() => setBranchOffOpen(false)}
-            scope={scope}
-            from={{ cwd: agent.cwd, branch: paneBranchName(agent) }}
-            canWrite={canWriteHere}
-          />
-        )}
         {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to
             the PANE's machine, because `?host=` there names where the pane lives; the preference itself
             lands on the collie this phone is talking to, which is the only one that can push. */}

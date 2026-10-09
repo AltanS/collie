@@ -10,7 +10,6 @@ import { AgentList } from "@/components/agent-list";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
-import { NewSheet } from "@/components/new-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
@@ -41,7 +40,7 @@ import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { spaceChangesPath, spacePath } from "@/lib/nav";
+import { newPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
@@ -106,11 +105,8 @@ export function HomeRoute() {
   const data = useRootData();
   const nav = useNav();
   const { creatingSpace, newTab, creatingTab, launching } = useSpaceActions();
-  // THE ONE NEW SHEET (M48 spec 01): the floating button, the Spaces header's folder button and the
-  // empty dashboard's first-agent card all open it.
-  const [newOpen, setNewOpen] = useState(false);
-  // The New sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
-  // final height (lib/folders.ts). Once per mount, for the machine this view shows.
+  // The New page's Favourites and Recent, read once ahead of the tap so the page opens at its final
+  // height (lib/folders.ts). Once per mount, for the machine this view shows.
   const folderHost = data.scope?.host;
   const folderSession = data.scope?.session;
   useEffect(() => {
@@ -192,7 +188,7 @@ export function HomeRoute() {
 
   // THE FLOATING NEW BUTTON (DESIGN.md §1, M48 spec 01), on the Dashboard tab only: Crew and Files
   // are other lists, and a create entry over them would read as theirs. Drawn when this machine can
-  // open a space at all, which every start in the New sheet does, or has rows to run. A device that
+  // open a space at all, which every start on the New page does, or has rows to run. A device that
   // may not write gets none of it. A saved copy keeps the button drawn and refuses on the tap
   // (`workspace-new-tab.tsx` does the same): a control that comes and goes moves what is around it.
   const { launchers } = useLaunchers(data.scope);
@@ -200,7 +196,9 @@ export function HomeRoute() {
   const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0);
   const openNew = () => {
     if (data.stale === true) return setStatus(t("space.readOnly.savedCopy"), "error");
-    setNewOpen(true);
+    // THE ONE NEW PAGE (M48 spec 01): the floating button, the Spaces header's folder button and the
+    // empty dashboard's first-agent card all go to it, on the machine this view shows.
+    nav.down(newPath({ machine: data.scope.host, session: data.scope.session }));
   };
   // Hidden while a sheet is up (it would sit dimmed under the backdrop, a second create entry next
   // to the one being used) and while the keyboard is (the dashboard's filter field raises it, and
@@ -424,8 +422,6 @@ export function HomeRoute() {
           onClick={openNew}
         />
       )}
-
-      <NewSheet open={newOpen} onClose={() => setNewOpen(false)} scope={data.scope} />
     </div>
   );
 }

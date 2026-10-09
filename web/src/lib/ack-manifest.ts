@@ -130,7 +130,7 @@ export const ACK_MANIFEST = {
   },
   startLaunch: {
     channel: "status",
-    why: "The New sheet's Start creates a space and the app navigates straight into its pane, so the sheet is already gone; hooks/use-spaces.ts `start` names a refusal on the status line as `launch` does. An answer that never came is the sheet's own notice and its Try again button instead (M48, ADR 0091): the status line could only guess whether the pane exists.",
+    why: "The New page's Start creates a space and the app navigates straight into its pane, so the page is already gone; hooks/use-spaces.ts `start` names a refusal on the status line as `launch` does. An answer that never came is the page's own notice and its Try again button instead (M48, ADR 0091): the status line could only guess whether the pane exists.",
   },
   addLauncher: {
     channel: "inline",
@@ -146,11 +146,11 @@ export const ACK_MANIFEST = {
   },
   starFolder: {
     channel: "silent",
-    why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both in the sheet the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
+    why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both on the page the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
   },
   createWorktreeAt: {
     channel: "status",
-    why: "A branch arrives as a whole new space and the app navigates into its pane, so the eye has already left the New sheet; hooks/use-spaces.ts `start` names what was created on arrival, exactly as createWorkspace does. An answer that never came is the sheet's own notice instead (M48, ADR 0091), because the status line cannot say whether the start happened.",
+    why: "A branch arrives as a whole new space and the app navigates into its pane, so the eye has already left the New page; hooks/use-spaces.ts `start` names what was created on arrival, exactly as createWorkspace does. An answer that never came is the page's own notice instead (M48, ADR 0091), because the status line cannot say whether the start happened.",
   },
   setSnooze: {
     channel: "echo",

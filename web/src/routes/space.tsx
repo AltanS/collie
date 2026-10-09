@@ -6,7 +6,6 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
 import { TabStrip } from "@/components/tab-strip";
-import { NewSheet } from "@/components/new-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
@@ -16,7 +15,7 @@ import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { prefetchFolders } from "@/lib/folders";
-import { homePath, spacePath } from "@/lib/nav";
+import { homePath, newPath, spacePath } from "@/lib/nav";
 import { ambientHost } from "@/lib/hosts";
 import { scopeKey } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
@@ -33,9 +32,8 @@ export function SpaceRoute() {
   const nav = useNav();
   const revalidator = useRevalidator();
   const { newTab, creatingTab, creatingSpace } = useSpaceActions();
-  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  // The New sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
-  // final height (lib/folders.ts). Once per mount, for the machine this view shows.
+  // The New page's Favourites and Recent, read once ahead of the tap so the page opens at its final
+  // height (lib/folders.ts). Once per mount, for the machine this view shows.
   const folderHost = data.scope?.host;
   const folderSession = data.scope?.session;
   useEffect(() => {
@@ -127,7 +125,7 @@ export function SpaceRoute() {
               host={navHost}
               selected={spaceId}
               onSelect={(id) => (id === null ? toDashboard() : switchSpace(id))}
-              onNewSpace={() => setNewSpaceOpen(true)}
+              onNewSpace={() => nav.down(newPath({ machine: data.scope.host, session: data.scope.session }))}
               creatingSpace={creatingSpace}
               onBack={toDashboard}
             />
@@ -179,8 +177,6 @@ export function SpaceRoute() {
       <ToastViewport>
         <StatusArea />
       </ToastViewport>
-
-      <NewSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} scope={data.scope} />
     </div>
   );
 }

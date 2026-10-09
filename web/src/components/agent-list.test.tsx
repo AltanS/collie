@@ -423,7 +423,7 @@ describe("AgentList — the empty herd", () => {
   });
 
   // M48 spec 01: a connected, empty herd on a device that may start something is the large card, and
-  // the card is the one way in to the New sheet from there.
+  // the card is the one way in to the New page from there.
   it("offers the first-agent card in place of the placeholder when a start is possible", async () => {
     const onFirstStart = vi.fn();
     render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} onFirstStart={onFirstStart} />);

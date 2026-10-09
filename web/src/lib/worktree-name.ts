@@ -1,4 +1,4 @@
-// The branch a "New agent on a branch" sheet opens with: `worktree/<adjective>-<noun>-<4 hex>`
+// The branch a "New agent in a worktree" sheet opens with: `worktree/<adjective>-<noun>-<4 hex>`
 // (ADR 0089). Collie's own two word lists, plain English, short, and nothing that reads badly in a
 // branch list. The hex makes two taps in the same second two different names; the words make the
 // name sayable. The field stays editable, so this is a starting point and never a rule. The bridge

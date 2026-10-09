@@ -1634,7 +1634,7 @@ export interface LaunchersResponse {
   /**
    * The agents this host starts by id, and whether each binary is on its login PATH (ADR 0091).
    * Mirrors `harnesses` in bridge/types.ts. ABSENT from a bridge older than 1.19.0, which starts
-   * none by id: the New sheet then offers no agents for that machine and says why.
+   * none by id: the New page then offers no agents for that machine and says why.
    */
   harnesses?: HarnessInfo[];
   /** "Add your own" for that machine (ADR 0094). Absent from a bridge older than 1.19.0: offer no add. */
@@ -1647,7 +1647,7 @@ export interface LaunchersResponse {
 export interface HarnessInfo {
   /** The id `POST /api/launch` takes as `harness`, and the brand key `AgentIcon` draws. */
   id: string;
-  /** What the sheet calls it. */
+  /** What the page calls it. */
   label: string;
   /** Whether the binary was found on that host's login PATH. */
   found: boolean;
@@ -1655,11 +1655,11 @@ export interface HarnessInfo {
 
 /**
  * GET /api/folders, and the answer to POST /api/folders/star — ONE host's folder list for the
- * New sheet (#289), read off that machine's own `folders.json`. `recent` is newest first (at
+ * New page (#289), read off that machine's own `folders.json`. `recent` is newest first (at
  * most eight, only folders a space was created in), `favourites` in starred order (at most twelve),
  * and the two never overlap. `home` is that host's home dir, never an entry, for shortening a folder
  * to `~/…` without the client knowing which machine answered. A host on an older version answers
- * 404, which the sheet reads as "no list" and never as an error.
+ * 404, which the page reads as "no list" and never as an error.
  */
 export interface FoldersResponse {
   recent: string[];
@@ -1843,7 +1843,7 @@ export type WorktreeOpenResponse =
 
 /**
  * Where a new worktree's branch starts (ADR 0089, amended): the repo's default branch, which the
- * bridge resolves, or a named ref (the sheet sends the pane's own branch). Mirrors
+ * bridge resolves, or a named ref (the page sends the pane's own branch). Mirrors
  * `WorktreeBaseRequest` in bridge/worktree-base.ts.
  */
 export type WorktreeBaseChoice = { kind: "default" } | { kind: "ref"; ref: string };

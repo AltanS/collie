@@ -570,9 +570,9 @@ describe("PaneActionsSheet — which body the pane draws", () => {
   });
 });
 
-// "New agent on a branch" (ADR 0089). Three gates: the caller passes `onBranchOff` (only for a pane
+// "New agent in a worktree" (ADR 0089). Three gates: the caller passes `onBranchOff` (only for a pane
 // in a Git repo), the multiplexer declares `createWorktree`, and the scope is the lead.
-describe("PaneActionsSheet — New agent on a branch", () => {
+describe("PaneActionsSheet — New agent in a worktree", () => {
   afterEach(() => __resetOperatorCommands());
 
   /** Serve an `/api/config` whose mux block says `createWorktree` is `capable`. */
@@ -580,12 +580,12 @@ describe("PaneActionsSheet — New agent on a branch", () => {
     const mux: MuxConfig = { name: "reference", capabilities: { createWorktree: capable }, unsupportedKeys: [], notes: {} };
     server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
   }
-  const row = () => screen.queryByRole("button", { name: "New agent on a branch" });
+  const row = () => screen.queryByRole("button", { name: "New agent in a worktree" });
 
   it("is offered on the lead when the multiplexer can create a worktree", async () => {
     worktreeCapable(true);
     renderSheet({ onBranchOff: vi.fn() });
-    expect(await screen.findByRole("button", { name: "New agent on a branch" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "New agent in a worktree" })).toBeInTheDocument();
   });
 
   it("is withdrawn when the multiplexer declares no worktrees (tmux, zellij)", async () => {
@@ -616,19 +616,19 @@ describe("PaneActionsSheet — New agent on a branch", () => {
     expect(row()).toBeNull();
   });
 
-  it("closes the sheet first, then opens the branch-off sheet", async () => {
+  it("closes the sheet first, then goes to the New page", async () => {
     worktreeCapable(true);
     const user = userEvent.setup();
     const order: string[] = [];
     renderSheet({ onClose: () => order.push("close"), onBranchOff: () => order.push("branchOff") });
-    await user.click(await screen.findByRole("button", { name: "New agent on a branch" }));
+    await user.click(await screen.findByRole("button", { name: "New agent in a worktree" }));
     expect(order).toEqual(["close", "branchOff"]);
   });
 
   it("sits above Close pane, so the destructive row stays last", async () => {
     worktreeCapable(true);
     renderSheet({ onBranchOff: vi.fn() });
-    const branch = await screen.findByRole("button", { name: "New agent on a branch" });
+    const branch = await screen.findByRole("button", { name: "New agent in a worktree" });
     const close = screen.getByRole("button", { name: "Close pane" });
     expect(branch.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -639,7 +639,7 @@ describe("PaneActionsSheet — a saved copy", () => {
     renderSheet({ savedCopy: true, onBranchOff: vi.fn() });
     expect(screen.getByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
     for (const name of ["Rename", "Close pane"]) expect(screen.queryByRole("button", { name })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Focus|Show in|New agent on a branch/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Focus|Show in|New agent in a worktree/ })).toBeNull();
     expect(screen.getByRole("button", { name: /Pin to top/ })).toBeInTheDocument();
   });
 

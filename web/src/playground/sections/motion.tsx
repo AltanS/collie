@@ -327,7 +327,7 @@ function BottomSheetMotionCard() {
     <Card
       state="bottom-sheet-motion"
       label="BottomSheet, entrance, exit and drag-to-dismiss"
-      reach="any sheet in the app: pane actions, the New sheet, a device's paperwork. Pull down
+      reach="any sheet in the app: pane actions, the New page, a device's paperwork. Pull down
         from the handle to dismiss by drag; tap the backdrop or Escape for the ordinary dismiss."
       note="Mounted inside a PhoneFrame, whose `transform` is the containing block for the sheet's
         `position: fixed` root (harness.tsx's own PhoneFrame doc, the same composition the Settings

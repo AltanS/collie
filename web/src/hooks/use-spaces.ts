@@ -19,12 +19,12 @@ import { usePairing } from "@/lib/pairing";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { useOptionalRootData } from "@/lib/route-data";
 
-/** What the New sheet asks `start` to do. Exactly one `what`; `branch` makes it a new branch first. */
+/** What the New page asks `start` to do. Exactly one `what`; `branch` makes it a new branch first. */
 export interface StartAsk {
   what: api.StartWhat;
   /** The folder, as typed or picked; absent is home (or a row's pinned folder). */
   cwd?: string;
-  /** One id per intent, minted by the sheet and kept by a retry of the same ask. */
+  /** One id per intent, minted by the page and kept by a retry of the same ask. */
   requestId: string;
   /** The chosen machine is older than 1.19.0: a shell goes through its plain space create. */
   legacyShell?: boolean;
@@ -104,7 +104,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
 
   const open = useCallback(
     // `at` is the scope the create was ADDRESSED to, which is not always the ambient one: the
-    // New sheet can aim a create at another machine in the crew. The navigation has to use
+    // New page can aim a create at another machine in the crew. The navigation has to use
     // the SAME scope, or the phone would open the new pane's id on the machine it was looking at —
     // where that id is a different terminal, which is the one mistake the host dimension exists to
     // prevent. Absent means the ambient scope, which is every caller that cannot re-address.
@@ -173,13 +173,13 @@ export function useSpaceActions(canWrite?: () => boolean) {
     [open, blockedText, refusedAsSavedCopy],
   );
 
-  // ONE Space create in flight at a time, globally — there is only ever one New sheet on screen,
+  // ONE Space create in flight at a time, globally — there is only ever one New page on screen,
   // unlike tabs where each Space has its own. Also guards `start`: both create a space, and sharing
   // the flag means either control's trigger shows busy the same way.
   const [creatingSpace, setCreatingSpace] = useState(false);
   const creatingSpaceRef = useRef(false);
 
-  // `at` overrides the ambient scope for this one create — the New sheet's host picker. It is
+  // `at` overrides the ambient scope for this one create — the New page's host picker. It is
   // optional and defaults to the ambient scope, so every existing caller is unchanged and a solo
   // install never has one to pass.
   const newSpace = useCallback(
@@ -202,11 +202,11 @@ export function useSpaceActions(canWrite?: () => boolean) {
     [open, blockedText, refusedAsSavedCopy],
   );
 
-  // THE NEW SHEET'S ONE START (M48, ADR 0091, ADR 0093): an agent, a row or a shell, in a folder, and
+  // THE NEW PAGE'S ONE START (M48, ADR 0091, ADR 0093): an agent, a row or a shell, in a folder, and
   // optionally on a new branch. Same write gates and the same in-flight flag as a space create, and
-  // the same `open` on success. It answers what became of it, because the sheet, not the status line,
+  // the same `open` on success. It answers what became of it, because the page, not the status line,
   // owns the one case a toast cannot carry: an outcome nobody can confirm. Then nothing is said here
-  // and nothing is re-sent; the sheet says so and offers the operator a retry with the SAME request
+  // and nothing is re-sent; the page says so and offers the operator a retry with the SAME request
   // id, which lands on the first start's receipt if it did run.
   const start = useCallback(
     async (ask: StartAsk, at?: Scope): Promise<StartOutcome> => {

@@ -1,20 +1,17 @@
 // Settings section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
-import { CrewProvider } from "@/components/crew-provider";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
-import { NewSheet } from "@/components/new-sheet";
 import { SpaceOverview } from "@/components/space-overview";
 import {
   devicesPaired,
   devicesUnpaired,
   homeCrew,
   homeSolo,
-  rosterFive,
   spacesWithWorktrees,
   watchedPanes,
 } from "../fixtures";
-import { RootRouter, SettingsRouter } from "../harness";
+import { NewRouter, SettingsRouter } from "../harness";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
@@ -116,32 +113,26 @@ export function SettingsSection() {
         </Card>
 
         <Card
-          state="new-sheet"
-          label="the one New sheet"
-          reach="tap + New on the dashboard, the folder button on the Spaces list, or the empty dashboard's first-agent card. A pane's ⋯ New agent on a branch opens it with the branch switch on."
-          note="The agents and the commands are the chosen machine's own answer (GET /api/launchers), so this card shows what the bridge behind the playground reports. What cannot run there is listed at the top with its reason, never hidden."
+          state="new-page"
+          label="the New page"
+          reach="tap + New on the dashboard, the folder button on the Spaces list, or the empty dashboard's first-agent card. A pane's ⋯ New agent in a worktree opens it with the worktree switch on."
+          note="The agents and the commands are the chosen machine's own answer (GET /api/launchers), so this card shows what the bridge behind the playground reports. What cannot run there stays in its list, disabled, with its reason in brackets. Start is pinned to the foot."
           span={2}
         >
           <PhoneFrameCard height={640}>
-            <RootRouter data={homeSolo}>
-              <NewSheet open onClose={() => {}} />
-            </RootRouter>
+            <NewRouter home={homeSolo} />
           </PhoneFrameCard>
         </Card>
 
         <Card
-          state="new-sheet-pick-host"
-          label="New sheet, crew, pick a machine"
-          reach="open the New sheet on a lead with peers. On a solo collie this row is not rendered at all."
-          note="The chip that is marked is where the start lands: the machine the list was already showing, or the lead. A machine that cannot take writes is dimmed and says why, never dropped."
+          state="new-page-pick-host"
+          label="New page, crew, pick a machine"
+          reach="open the New page on a lead with peers. On a solo collie the machine select is not rendered at all."
+          note="The select is on the machine the start lands on: the one the list was already showing (?machine=workshop here), or the lead. A machine that cannot take writes stays in the list, disabled, with a word for why in brackets."
           span={2}
         >
           <PhoneFrameCard height={640}>
-            <RootRouter data={homeCrew}>
-              <CrewProvider servers={rosterFive} ts={homeCrew.ts} pollMs={3_000}>
-                <NewSheet open onClose={() => {}} scope={{ host: "workshop" }} />
-              </CrewProvider>
-            </RootRouter>
+            <NewRouter home={homeCrew} start="/new?machine=workshop" />
           </PhoneFrameCard>
         </Card>
       </Group>

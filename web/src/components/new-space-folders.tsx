@@ -10,7 +10,7 @@ import { shortenHome } from "@/lib/shorten-home";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 
-// The New sheet's Favourites and Recent sections (#289, M40/02), directly under its Folder
+// The New page's Favourites and Recent sections (#289, M40/02), directly under its Folder
 // field, for the machine the host picker chose. A row FILLS the field and creates nothing, so the
 // operator can still set a label, and a folder that has since gone is one more tap from being
 // noticed rather than a surprise create. The star beside it moves the folder between the two lists.
@@ -20,9 +20,9 @@ import { useLocale } from "@/hooks/use-locale";
 // apart.
 //
 // EVERY APPEARANCE IS A COLLAPSE (DESIGN.md §11 rule 1). The whole block arrives from a read the
-// operator caused by opening the sheet or picking a machine, and one section can appear or leave on a
+// operator caused by opening the page or picking a machine, and one section can appear or leave on a
 // star, so the block and each section open and close through `Collapse`. With nothing stored for the
-// chosen machine the block renders nothing, and the sheet is the one that shipped before.
+// chosen machine the block renders nothing, and the page is the one that shipped before.
 
 interface FolderSectionsProps {
   folders: FolderList;

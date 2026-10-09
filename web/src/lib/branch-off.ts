@@ -2,12 +2,12 @@ import { normalizeHost, type Scope } from "@/lib/scope";
 import { paneGitHead } from "@/lib/git-head";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
-// "New agent on a branch" (ADR 0089, M48): a pane's ⋯ menu opens the one New sheet on the pane's
+// "New agent in a worktree" (ADR 0089, M48): a pane's ⋯ menu opens the one New page on the pane's
 // folder with the branch switch on. The menu's gates and the "Start from" rule live here so the
 // sheet and the menu can be tested apart from each other.
 
 /**
- * Whether a pane's menu may offer "New agent on a branch", as far as the menu can tell.
+ * Whether a pane's menu may offer "New agent in a worktree", as far as the menu can tell.
  *
  * Two conditions, both required:
  *  - the multiplexer can create a worktree (`createWorktree`, asked of the lead; tmux and zellij
@@ -22,7 +22,7 @@ export function branchOffOffered(capable: boolean, scope: Scope | undefined): bo
   return capable && normalizeHost(scope?.host) === undefined;
 }
 
-/** Whether the pane's space sits in a Git repo: the third gate on "New agent on a branch". */
+/** Whether the pane's space sits in a Git repo: the third gate on "New agent in a worktree". */
 export function paneInRepo(workspaces: readonly WorkspaceView[], paneWorkspaceId: string): boolean {
   const repoRoot = workspaces.find((w) => w.workspaceId === paneWorkspaceId)?.repoRoot;
   return repoRoot !== undefined && repoRoot !== "";
