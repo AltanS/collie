@@ -183,6 +183,18 @@ function NewPage({ search }: { search: string }) {
     cwdTouched.current = true;
     setCwd(next);
   }
+  // A tap on a Favourite or Recent folder fills the field and moves on to Start, as the sheet did:
+  // the field is done, and on a phone the keyboard goes away. After the render, so Start is enabled.
+  const startButton = useRef<HTMLButtonElement>(null);
+  // Counted, not keyed on the folder: a tap on the folder already in the field changes no value.
+  const [folderTaps, setFolderTaps] = useState(0);
+  function pickFolder(next: string) {
+    editCwd(next);
+    setFolderTaps((n) => n + 1);
+  }
+  useEffect(() => {
+    if (folderTaps > 0) startButton.current?.focus({ preventScroll: true });
+  }, [folderTaps]);
   const pinned = chosenItem?.cwd;
   // A machine older than 1.19.0 ignores a folder on a row, so it is not offered there.
   const legacy = loaded && !offer.shellById;
@@ -624,7 +636,7 @@ function NewPage({ search }: { search: string }) {
                 className="h-11 rounded-md border border-border bg-background px-3 font-mono text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
             </label>
-            <FolderSections folders={folders} onUse={editCwd} onStar={(f, s) => void star(f, s)} />
+            <FolderSections folders={folders} onUse={pickFolder} onStar={(f, s) => void star(f, s)} />
           </div>
         ) : pinned !== undefined ? (
           <p className="text-xs text-muted-foreground">{t("newPage.where.pinned", { folder: shortenHome(pinned, home) })}</p>
@@ -691,7 +703,7 @@ function NewPage({ search }: { search: string }) {
             </p>
           ) : null}
         </Collapse>
-        <Button onClick={startNow} disabled={blocked || busy} aria-busy={busy || undefined} className="h-11">
+        <Button ref={startButton} onClick={startNow} disabled={blocked || busy} aria-busy={busy || undefined} className="h-11">
           {/* All three words share one reserved box, so the button keeps its width (DESIGN.md §2). */}
           <OneOf
             active={busy ? "starting" : retrying ? "retry" : "start"}

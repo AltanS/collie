@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installApiStub(page);
 });
 
-test("Enter spans both rows and no key's label overflows its column", async ({ page }) => {
+test("Space spans three columns and no key's label overflows its column", async ({ page }) => {
   // w1:p1 is the default fixture agent pane (`src/test/handlers.ts`), writable with no capability
   // declared false, so the Keys toggle in its composer is enabled with no further setup.
   await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
@@ -38,16 +38,18 @@ test("Enter spans both rows and no key's label overflows its column", async ({ p
   // of unrelated chrome elsewhere on the page (the tab strip's "needs you tab", "New tab"…), and
   // Playwright's default role-name match is a case-insensitive CONTAINS, not an equals.
   const up = page.getByRole("button", { name: "Up", exact: true });
-  const enter = page.getByRole("button", { name: "Enter", exact: true });
+  const space = page.getByRole("button", { name: "Space", exact: true });
   await expect(up).toBeVisible();
-  await expect(enter).toBeVisible();
+  await expect(space).toBeVisible();
 
-  const [upBox, enterBox] = await Promise.all([up.boundingBox(), enter.boundingBox()]);
+  const [upBox, spaceBox] = await Promise.all([up.boundingBox(), space.boundingBox()]);
   expect(upBox).not.toBeNull();
-  expect(enterBox).not.toBeNull();
-  // Two 36px rows plus the 4px gap is ~2.1x a single row — 1.8x is the floor a regression back to
-  // one row (36/36 = 1x) or a partial fix (e.g. 36+2px leak) would both still fail.
-  expect(enterBox!.height).toBeGreaterThanOrEqual(upBox!.height * 1.8);
+  expect(spaceBox).not.toBeNull();
+  // Since the 1.19.0 board (ADR 0092) the default pad's Space is three cells wide, one row tall, and
+  // Enter is an ordinary cell. Three columns plus two gaps is ~3.1x one key; 2.7x is the floor a
+  // regression back to one cell (1x) or a lost span class would both still fail.
+  expect(spaceBox!.width).toBeGreaterThanOrEqual(upBox!.width * 2.7);
+  expect(spaceBox!.height).toBeLessThanOrEqual(upBox!.height * 1.2);
 
   // Every key on the fixed pad, including the quick "^C": none may scroll its own content.
   const keyNames = ["Esc", "Tab", "Shift", "Ctrl", "Alt", "Up", "Ctrl+C", "Space", "Left", "Down", "Right", "Enter"];
