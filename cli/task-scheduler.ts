@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { type ClientRequest, get as httpGet } from "node:http";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 
@@ -737,15 +739,45 @@ export function realLiveness(
   const ctx = loadContext(() => {}, { ambient: { ...env } });
   const url = livenessUrl(probeConfigOf(ctx.env, files, ctx.stateDir, ctx.port));
   if (url === null) return null;
-  return async () => {
-    try {
-      const answer = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-      await answer.body?.cancel();
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  return () => answersAtAll(url, timeoutMs);
+}
+
+/**
+ * One GET to `url`: true at the first response of any status, false on an error or once `timeoutMs`
+ * has passed.
+ *
+ * `node:http`, not `fetch`. Bun's `fetch` sends even a loopback request through `HTTP_PROXY`, so on a
+ * machine with a proxy in its environment every check of a healthy bridge went to the proxy: a dead
+ * proxy read as a silent bridge and ended it every few minutes, and a live one answered for a bridge
+ * that had stopped. `node:http` reads no proxy variable. No agent, so no kept-alive socket outlives
+ * the check.
+ */
+export async function answersAtAll(url: string, timeoutMs: number): Promise<boolean> {
+  let request: ClientRequest;
+  try {
+    request = httpGet(url, { agent: false });
+  } catch {
+    // An address `node:http` cannot parse is a check that got no answer.
+    return false;
+  }
+  // Whatever the request or its answer raises once the check is decided is of no interest, and an
+  // `error` with no listener would end the launcher.
+  request.on("error", () => {});
+  request.once("response", (response) => {
+    response.on("error", () => {});
+    response.resume();
+  });
+  const timer = setTimeout(() => request.destroy(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+  try {
+    // `once` rejects on the request's `error`, which a refused connection and the timer both raise.
+    await once(request, "response");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    request.destroy();
+  }
 }
 
 /** The launcher's real seams: Node's spawn, the real filesystem, the real clock. */

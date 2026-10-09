@@ -27,6 +27,7 @@ import {
   parseTaskQuery,
   parseTaskRecord,
   realLiveness,
+  answersAtAll,
   HEALTHY_RUN_MS,
   RELAUNCH_DELAY_MAX_MS,
   RELAUNCH_DELAY_MIN_MS,
@@ -578,6 +579,31 @@ describe("_supervise, the loop", () => {
         if (before === undefined) delete process.env.COLLIE_PORT;
         else process.env.COLLIE_PORT = before;
       }
+    });
+
+    test("a proxy in the launcher's environment is not asked: a healthy bridge still answers", async () => {
+      // Bun's `fetch` sent this loopback check to HTTP_PROXY, so a dead proxy made a healthy bridge
+      // read as silent, and the launcher ended it every few minutes.
+      using dead = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("gone") });
+      const proxy = `http://127.0.0.1:${dead.port!}`;
+      dead.stop(true);
+      using server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("ok") });
+      const names = ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] as const;
+      const before = names.map((n) => process.env[n]);
+      for (const n of names) process.env[n] = proxy;
+      try {
+        expect(await realLiveness(bridgeEnv(server.port!), files, 3_000)!()).toBe(true);
+      } finally {
+        names.forEach((n, i) => {
+          const was = before[i];
+          if (was === undefined) delete process.env[n];
+          else process.env[n] = was;
+        });
+      }
+    });
+
+    test("an address that is not a URL is a miss, not a throw", async () => {
+      expect(await answersAtAll("http://fd7a::1:8787/api/health", 1_000)).toBe(false);
     });
   });
 

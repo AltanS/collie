@@ -68,6 +68,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   prints "Opus 5.5" no longer gets a second "Opus 5.5" above the belt. It holds steady while the
   screen redraws, and comes back if the footer stops naming the model.
 - **A message sent while Claude Code is working no longer vanishes from Chat.** Claude Code 2.1.291 takes a message into a running turn without writing a user turn for it, so Chat showed it as waiting and then dropped it, always after Send now and for every later message in that turn. Chat now draws it as your message, at the time you sent it.
+- **On Windows, a bridge that stops answering is restarted.** The launcher asks the bridge's health check every 30 seconds after a two-minute grace, and three misses in a row end the bridge so the launcher starts it again. Any answer counts, so a deposed member or a cold standby door is never ended, and a crew peer with no standby door is not asked. The check ignores `HTTP_PROXY`, so a proxy cannot make a healthy bridge look silent. This recovers from the freeze in #386; what freezes the bridge is still being looked for. Thanks @mqmalagris (#387).
 
 ## [1.18.1] - 2026-10-09
 
