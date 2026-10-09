@@ -59,6 +59,15 @@ export function useAnySheetOpen(): boolean {
   );
 }
 
+/**
+ * The bottom clearance of a TALL sheet whose last control must be reachable when scrolled to the end:
+ * 24px plus the safe area, so the home indicator never sits on it. The panel's own default is 16px plus
+ * the safe area, which is right for a short sheet that ends in a row of text; a tall editor ends in a
+ * button, and a thumb needs air under it. Passed as the sheet's `className`, so it replaces the default
+ * rather than stacking on it.
+ */
+export const TALL_SHEET_CLEARANCE = "pb-[calc(env(safe-area-inset-bottom)_+_1.5rem)]";
+
 // A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
 // Dismisses on backdrop tap or Escape. Animations come from tw-animate-css (already imported).
 interface BottomSheetProps {

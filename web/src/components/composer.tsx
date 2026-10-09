@@ -49,8 +49,7 @@ import {
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
-import { HostChip } from "@/components/host-chip";
-import { useAmbientHost, useHostLabel } from "@/components/crew-provider";
+import { useHostLabel } from "@/components/crew-provider";
 import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { wipeDevice } from "@/lib/wipe";
 import { AttachmentChip, type ComposerAttachment } from "@/components/attachment-chip";
@@ -231,14 +230,11 @@ const KEY_REVALIDATE_MS = 300;
 // viewport with a tall tray. One wrapper so Keys and Quick can't drift apart.
 function ComposerDock({
   title,
-  host,
   onEdit,
   onClose,
   children,
 }: {
   title: string;
-  /** The machine a key sent from this dock lands on. Renders nothing on a single-host install. */
-  host?: string;
   /** Draws a pencil beside the label, centred on it. Only the Keys dock has one (ADR 0092). */
   onEdit?: () => void;
   onClose: () => void;
@@ -262,8 +258,6 @@ function ComposerDock({
               <Pencil className="size-3.5" />
             </Button>
           )}
-          {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
-          <HostChip host={host} variant="target" />
         </div>
         <Button
           variant="ghost"
@@ -372,12 +366,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const canSendKeys = useMuxCapability("sendKeys", scope);
   const missingSend = !canType.capable ? canType : !canSendKeys.capable ? canSendKeys : null;
   const locked = gone || readOnly || hostBlock !== undefined || missingSend !== null;
-  // The machine every write on this row lands on. The pane view addresses one host (the pane's own,
-  // carried in `?h=` since the row was opened), so the ambient scope IS the target here. Undefined on
-  // a solo install, which renders no chip and leaves every confirm string unchanged.
-  // It names the Keys dock's own header; the belt below it carried the tag for a day and the pane
-  // header carries it now (agent-chat.tsx).
-  const writeHost = useAmbientHost(scope?.host);
+  // The machine every write on this row lands on, as words for a confirm. The Keys dock header used
+  // to carry a chip for it; that header now holds the KEYS label and the pencil and nothing else
+  // (M48 spec 03), because the pane header already names the machine.
   // Its display name, or undefined when there is no crew — the copy-level half of the hide rule.
   const writeHostLabel = useHostLabel(scope?.host);
   // …and a ref alongside it, for the ONE caller that reads it after an await. `send()` checks
@@ -1533,7 +1524,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {drawer === "keys" && (
           <ComposerDock
             title={translate("composer.controls.keys")}
-            host={writeHost}
             onEdit={() => setKeysEditorOpen(true)}
             onClose={closeDrawer}
           >

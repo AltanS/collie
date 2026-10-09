@@ -2475,7 +2475,22 @@ describe("Composer — keys dock (in-flow, not an overlay)", () => {
     expect(screen.getAllByRole("button", { name: "Esc" }).length).toBeGreaterThan(0);
   });
 
-  it("a custom key from this device's board goes out through the same pane.send_keys, a sequence in order", async () => {
+  it("the Keys dock header holds the KEYS label and the pencil and no machine name, on a crew too", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+
+    const pencil = screen.getByRole("button", { name: "Edit keys" });
+    const group = pencil.parentElement!;
+    // The group is the label and the pencil, nothing else: two children, no chip, no machine word.
+    expect(group.children).toHaveLength(2);
+    expect(group.textContent).toBe("Keys");
+    const header = group.parentElement!;
+    expect(header.textContent).not.toMatch(/workshop/i);
+    expect(header.querySelector("[data-slot='host-chip']")).toBeNull();
+  });
+
+  it("a custom key from the board goes out through the same pane.send_keys, a sequence in order", async () => {
     const user = userEvent.setup();
     let sentKeys: string[] | null = null;
     server.use(

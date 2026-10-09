@@ -19,7 +19,7 @@ import { ChordBuilder } from "@/components/chord-builder";
 import { Button } from "@/components/ui/button";
 import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
-import { BottomSheet } from "@/components/ui/sheet";
+import { BottomSheet, TALL_SHEET_CLEARANCE } from "@/components/ui/sheet";
 import { shieldFromSheetPull, useBoardDrag } from "@/hooks/use-board-drag";
 import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
@@ -150,7 +150,7 @@ export function KeyBoardEditor({
 
   return (
     <>
-      <BottomSheet open={open} onClose={guardedClose} title={t("keys.editor.title")} className="h-[85dvh] max-h-[85dvh]">
+      <BottomSheet open={open} onClose={guardedClose} title={t("keys.editor.title")} className={cn("h-[85dvh] max-h-[85dvh]", TALL_SHEET_CLEARANCE)}>
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">{t("keys.editor.intro")}</p>
 
@@ -323,8 +323,8 @@ export function KeyBoardEditor({
 
           <Button
             type="button"
-            variant="ghost"
-            className="h-11 gap-2 self-start text-muted-foreground"
+            variant="outline"
+            className="h-11 gap-2 self-start"
             onClick={() => setPending({ title: t("keys.editor.restore"), board: DEFAULT_BOARD })}
           >
             <RotateCcw className="size-4" aria-hidden="true" />
@@ -471,10 +471,10 @@ function CopyImport({ board, onReview }: { board: KeyBoard; onReview: (board: Ke
   const line = decoded === null ? t("keys.import.empty") : decoded.ok ? tn("keys.import.ok", keyCount(decoded.board)) : t(REFUSAL_LINE[decoded.reason]);
 
   return (
-    <section aria-label={t("keys.editor.copyTitle")} className="space-y-2">
+    <section aria-label={t("keys.editor.shareTitle")} className="space-y-2">
       <div>
-        <SectionLabel placement="above">{t("keys.editor.copyTitle")}</SectionLabel>
-        <p className="text-sm text-muted-foreground">{t("keys.editor.copyLine")}</p>
+        <SectionLabel placement="above">{t("keys.editor.shareTitle")}</SectionLabel>
+        <p className="text-sm text-muted-foreground">{t("keys.editor.shareLine")}</p>
       </div>
       <input
         ref={field}

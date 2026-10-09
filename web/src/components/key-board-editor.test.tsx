@@ -39,6 +39,13 @@ describe("KeyBoardEditor: the sheet", () => {
     expect(board.getByRole("button", { name: "Add a key, row 2, column 3" })).toBeInTheDocument();
   });
 
+  it("clears the home indicator at the end of the scroll: 1.5rem plus the safe area, replacing the default 1rem", () => {
+    open();
+    const panel = screen.getByRole("dialog", { name: "Edit keys" }).querySelector("div[tabindex='-1']");
+    expect(panel).toHaveClass("pb-[calc(env(safe-area-inset-bottom)_+_1.5rem)]");
+    expect(panel).not.toHaveClass("pb-[calc(env(safe-area-inset-bottom)_+_1rem)]");
+  });
+
   it("reserves the toolbar's height whether or not a key is selected", async () => {
     const { user } = open();
     const before = toolbar().className;
@@ -76,7 +83,7 @@ describe("KeyBoardEditor: moving keys", () => {
     expect(getKeyBoard().cells[9]).toEqual(step("Enter"));
   });
 
-  it("saves at once, on this device", async () => {
+  it("saves at once", async () => {
     const { user } = open();
     await user.click(keyAt("Esc, row 1, column 1"));
     await user.click(screen.getByRole("button", { name: "Move right" }));
@@ -317,7 +324,7 @@ describe("KeyBoardEditor: copy and import", () => {
     const input = screen.getByRole("textbox", { name: "Paste a layout code" });
     const importBtn = screen.getByRole("button", { name: "Import layout" });
     expect(importBtn).toBeDisabled();
-    expect(screen.getByText("Paste a code from your other device.")).toBeInTheDocument();
+    expect(screen.getByText("Paste a layout code.")).toBeInTheDocument();
 
     await user.click(input);
     await user.paste("hello");
