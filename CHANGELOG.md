@@ -64,6 +64,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A refused Start now shows why, and a bare folder name means a folder under home.** A Start the bridge refused (a folder that is not there, an agent the machine does not start) used to say nothing on the New page; a notice above Start now gives the reason in your language. Typing `projects` in the Folder field now means `~/projects`, as `cd projects` does in a fresh shell, and the line above Start shows the full path. A folder that does not exist on the machine that runs the start is refused before anything runs.
 - **Opening a sheet no longer scrolls the page behind it.** A sheet took focus while it was still sliding in below the screen, so the browser scrolled the content under the scrim to reach it; focus now moves with `preventScroll`, on open and when the sheet closes.
 - **The Keys header shows only the label and the pencil, and the editor's last button clears the home indicator.** The machine name beside KEYS is gone (the pane header already names it), and the Keys sheet now ends with 1.5rem plus the safe area below its content, so Restore default is fully in view and easy to tap at the end of the scroll.
+- **The model label stays away when the screen already names the model.** A statusline or footer that
+  prints "Opus 5.5" no longer gets a second "Opus 5.5" above the belt. It holds steady while the
+  screen redraws, and comes back if the footer stops naming the model.
 
 ## [1.18.1] - 2026-10-09
 

@@ -38,3 +38,39 @@ export function modelLabel(raw: string | undefined): string | null {
   }
   return name.length > MAX ? `${name.slice(0, MAX - 1)}…` : name;
 }
+
+// DOES THE SCREEN ALREADY SAY IT? Claude Code's statusline, Codex's footer and pi's footer print the
+// model themselves, and the label above the belt would then say it twice. The rule is "the rows the
+// phone shows near the bottom name the same model": compared as WORDS, not as a substring, so "Opus 5"
+// is not found inside "Opus 5.5", and across spellings, so the label "Opus 5.5" is found in a
+// statusline's "[Opus 5.5]", in a Claude id ("claude-opus-5-5") and in a gateway path
+// ("openrouter/openai/gpt-5.6-sol" for the label "gpt-5.6-sol").
+
+/** Words of one row of text: lower case, a digit-dash-digit run joined as a version ("5-5" is "5.5"). */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/(\d)[-_](?=\d)/g, "$1.")
+    .split(/[^a-z0-9.]+/)
+    .map((word) => word.replace(/^\.+|\.+$/g, ""))
+    .filter((word) => word !== "");
+}
+
+function hasRun(haystack: readonly string[], needle: readonly string[]): boolean {
+  if (needle.length === 0) return false;
+  for (let at = 0; at + needle.length <= haystack.length; at++) {
+    if (needle.every((word, i) => haystack[at + i] === word)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether any of `rows` names the model `label` stands for. `null` when there is nothing to judge:
+ * no rows (a dialog owns the screen, or the pane has none) or no label. A row that is there and does
+ * not name it is `false`, which is the only answer that may bring the label back.
+ */
+export function rowsNameModel(rows: readonly string[], label: string | null): boolean | null {
+  if (label === null || rows.length === 0) return null;
+  const wanted = wordsOf(label);
+  return rows.some((row) => hasRun(wordsOf(row), wanted));
+}

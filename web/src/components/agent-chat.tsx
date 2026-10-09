@@ -78,6 +78,8 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { MaskedHint } from "@/components/masked-hint";
 import { ModelTag } from "@/components/model-tag";
+import { useModelOnScreen } from "@/hooks/use-model-on-screen";
+import { modelLabel } from "@/lib/model-label";
 import { useMaskedHintRetired } from "@/lib/masked-hint";
 import { entriesHoldMask, holdsMask } from "@/lib/masked-text";
 import { useHostHealth } from "@/components/crew-provider";
@@ -174,6 +176,14 @@ interface AgentChatProps {
   onBackArrow?: () => void;
   onSelect: (paneId: string) => void;
 }
+
+/** How many rows at the raw screen's tail count as its footer when the model label asks if it is named. */
+const RAW_FOOTER_ROWS = 8;
+const NO_ROWS: readonly string[] = [];
+
+/** The plain text of one parsed terminal row. */
+const rowText = (line: { segments: readonly { text: string }[] }): string =>
+  line.segments.map((segment) => segment.text).join("");
 
 /**
  * The fold chevron's accessible name, chosen for what is actually on screen. The glyph names
@@ -996,6 +1006,27 @@ export function AgentChat({
     [chatShown, chatEntries, display],
   );
   const maskedHintRetired = useMaskedHintRetired();
+  // THE MODEL LABEL STANDS DOWN WHILE THE SCREEN NAMES THE MODEL. The label above the belt would say it
+  // twice beside a statusline or footer that already prints it (Claude's configured statusline, Codex's
+  // footer, pi's footer). The rows judged are the ones this phone DRAWS near the bottom: the lifted
+  // statusline strip for a harness with an adapter, in either body (the strip stands below Chat too),
+  // and the last rows of the raw screen for one without (pi) or in raw-terminal mode, which only the
+  // Terminal body draws. Zen hides the strip, so it hides the footer for the adapter case. The bridge
+  // parses no screen, so the already-computed `statusLines` is the signal; hooks/use-model-on-screen.ts
+  // holds the answer across frames so a dialog or a redraw cannot blink the label.
+  const modelWords = modelLabel(agent?.model);
+  const footerLifted = grammarsOn && adapterFor(agent?.agent) !== undefined;
+  const footerRows = useMemo(() => {
+    if (footerLifted) return statusLines.map(rowText);
+    if (chatShown) return NO_ROWS; // Chat draws no raw footer, so there is nothing to parse
+    return splitLines(parseAnsi(display)).slice(-RAW_FOOTER_ROWS).map(rowText);
+  }, [footerLifted, statusLines, display, chatShown]);
+  const modelOnScreen = useModelOnScreen(
+    `${paneId}|${modelWords ?? ""}`,
+    footerLifted ? !zen : !chatShown,
+    footerRows,
+    modelWords,
+  );
   const maskedHintOpen = maskOnScreen && !maskedHintRetired;
   // THE SAVED COPY'S DATE, for whichever body is on screen (M46 specs 09 and 10). Chat dates its own
   // window, read back from the Chat tail the phone kept; the terminal dates the last-seen mirror the
@@ -2446,7 +2477,7 @@ export function AgentChat({
             />
             {/* The pane's model, small on the mirror's bottom-right corner, over both bodies alike
                 and under the notice slot above (model-tag.tsx says why there). */}
-            <ModelTag model={agent?.model} />
+            <ModelTag model={modelOnScreen ? undefined : agent?.model} />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,

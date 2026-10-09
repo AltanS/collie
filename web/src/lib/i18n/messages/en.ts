@@ -1857,8 +1857,8 @@ export const en = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Files",
-  // Read before the model's name on the small label above the belt; the name itself is the harness's.
-  "chat.model.label": "Model",
+  // What a screen reader says for the small model label above the belt; {name} is the harness's own.
+  "chat.model.aria": "Model {name}",
   "files.title": "Files",
   // --- the branch a pane's folder is on (components/ui/branch-label.tsx) ---
   "branch.aria": "Branch {name}",

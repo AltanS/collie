@@ -1509,7 +1509,7 @@ export const pt: Dictionary = {
   "updateScreen.row.reading": "lendo o estado",
   "updateScreen.reading.subtitle": "Lendo o status da atualização. Isso leva um segundo.",
   "chat.changes.label": "Arquivos",
-  "chat.model.label": "Modelo",
+  "chat.model.aria": "Modelo {name}",
   "files.title": "Arquivos",
   "branch.aria": "Branch {name}",
   "branch.detachedAria": "Desanexado em {sha}",

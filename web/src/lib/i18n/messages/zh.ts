@@ -1680,7 +1680,7 @@ export const zh: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "文件",
-  "chat.model.label": "模型",
+  "chat.model.aria": "模型 {name}",
   "files.title": "文件",
   "branch.aria": "分支 {name}",
   "branch.detachedAria": "分离于 {sha}",
