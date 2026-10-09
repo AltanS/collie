@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { collieBinary, hostFor } from "../bridge/host.ts";
 import { capture, fakeFiles, fakeLinkFs } from "./fakes.ts";
@@ -583,23 +584,20 @@ describe("_supervise, the loop", () => {
 
     test("a proxy in the launcher's environment is not asked: a healthy bridge still answers", async () => {
       // Bun's `fetch` sent this loopback check to HTTP_PROXY, so a dead proxy made a healthy bridge
-      // read as silent, and the launcher ended it every few minutes.
+      // read as silent, and the launcher ended it every few minutes. Bun keeps a proxy it has read for
+      // the life of the process, so the check runs in a child that has one, and this process never does.
       using dead = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("gone") });
       const proxy = `http://127.0.0.1:${dead.port!}`;
       dead.stop(true);
       using server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("ok") });
-      const names = ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] as const;
-      const before = names.map((n) => process.env[n]);
-      for (const n of names) process.env[n] = proxy;
-      try {
-        expect(await realLiveness(bridgeEnv(server.port!), files, 3_000)!()).toBe(true);
-      } finally {
-        names.forEach((n, i) => {
-          const was = before[i];
-          if (was === undefined) delete process.env[n];
-          else process.env[n] = was;
-        });
-      }
+      const module = pathToFileURL(join(import.meta.dir, "task-scheduler.ts")).href;
+      const url = `http://127.0.0.1:${server.port!}/api/health`;
+      const script = `const m = await import(${JSON.stringify(module)}); console.log(await m.answersAtAll(${JSON.stringify(url)}, 3000));`;
+      const env = { ...process.env, HTTP_PROXY: proxy, http_proxy: proxy, ALL_PROXY: proxy, all_proxy: proxy };
+      const child = Bun.spawn([process.execPath, "-e", script], { env, stdout: "pipe", stderr: "pipe" });
+      const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      expect(code).toBe(0);
+      expect(out.trim()).toBe("true");
     });
 
     test("an address that is not a URL is a miss, not a throw", async () => {
