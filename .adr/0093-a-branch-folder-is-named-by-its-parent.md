@@ -14,6 +14,10 @@
 
 ## Context
 
+> **Addendum 2026-10-09 (1.19.0).** The sheet is now the New page, `/new`, and the switch reads "New
+> worktree". On a member or a multiplexer with no worktrees the switch stays on the page, off and
+> disabled, with the reason beside it. The decision is unchanged.
+
 The New sheet's "On a new branch" switch makes a Herdr worktree from the folder in its Where field.
 Herdr 0.9.3 puts the checkout in `<dir>/<repo folder name>/<slug>`, where `<dir>` is `[worktrees]
 directory` in Herdr's `config.toml` (a leading `~` expanded) or `~/.herdr/worktrees`, and the slug is

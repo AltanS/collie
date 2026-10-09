@@ -324,22 +324,27 @@ Two optional keys tell the phone more about a row:
 [[launchers]]
 command = "claude-danger"
 label = "Claude Code, no prompts"
-# The agent that reads the row: it is listed under Agents with that agent's mark.
+# The agent that reads the row: it is listed under Agent with that agent's mark.
 harness = "claude"
 # The line skips permission prompts, but an alias hides its flags.
 no_prompts = true
 ```
 
-Your rows appear in three places: under **Commands** in the New sheet (tap **+ New** on the
-dashboard), a **Launch** section on the dashboard, which folds like Spaces, and a **Launch** section
-in the switcher sheet (swipe up from a pane). In the New sheet a cwd-less row runs in the folder you
+Your rows appear in three places: under **Command** on the New page, or under **Agent** with
+`harness` (tap **+ New** on the dashboard), a **Launch** section on the dashboard, which folds like Spaces, and a **Launch** section
+in the switcher sheet (swipe up from a pane). On the New page a cwd-less row runs in the folder you
 name there, and a row with a fixed folder shows that folder in place of the field. A row never
-starts on a new branch; pick an agent or Shell for that. A row with a fixed folder
+starts in a worktree; pick an agent or Shell for that. A row with a fixed folder
 shows it, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
 implies home, so it says nothing there). Declare no rows and neither section appears.
 
 On a crew (several machines, one phone-facing lead), each machine reads its own copy of this file —
 a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
+
+The **Agent** select on the New page is Collie's own list: Claude Code, Codex, opencode, pi, omp,
+Grok, Hermes, Muse and Antigravity. One that is not on the machine's login `PATH` stays in the list,
+disabled, marked "not installed". For another terminal agent, declare a row for it as above: it shows
+under **Command**, starts in a pane like any command, and Collie shows no status for it.
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
@@ -573,7 +578,7 @@ what its lead let through.
 
 ## Favourite and recent folders
 
-The New sheet lists the folders you started something in before, so you tap one instead of typing
+The New page lists the folders you started something in before, so you tap one instead of typing
 a path.
 
 Under the Folder field sit two lists for the machine the start goes to. **Recent** holds the last
@@ -588,11 +593,11 @@ star moves it back to the top of Recent.
 The list belongs to the machine, not to the phone. Each machine keeps its own in `folders.json` in
 its state directory, `~/.local/state/collie/folders.json` unless `COLLIE_STATE_DIR` moves it. Every
 device you use sees the same list, and the file appears only after the first start in a folder or
-the first star. The same lists fill **Other folder** under **On a new branch**, where they pick the
+the first star. The same lists fill **Other folder** under **New worktree**, where they pick the
 folder the branch's own folder goes in.
 
-In a [crew](crew.md), each machine keeps the folders that exist on it, and the sheet shows the list
-of the machine you picked. A machine that runs an older Collie has no list, and the sheet then shows
+In a [crew](crew.md), each machine keeps the folders that exist on it, and the page shows the list
+of the machine you picked. A machine that runs an older Collie has no list, and the page then shows
 none for it.
 
 ## Secret masking

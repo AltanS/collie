@@ -8,9 +8,13 @@
   not interpret).
 - **Trail:** `bridge/harness-launch.ts` · `bridge/launch-receipts.ts` · `bridge/worktree-receipts.ts`
   (`ReceiptFileStore`, `memoryReceipts`) · `bridge/server.ts` (`launch`, `pickLaunch`, `runLaunch`,
-  `launchersRoute`) · `web/src/components/new-sheet.tsx` · spec M48/01
+  `launchersRoute`) · `web/src/routes/new.tsx` · `web/src/lib/new-page.ts` · spec M48/01
 
 ## Context
+
+> **Addendum 2026-10-09 (1.19.0).** The New sheet became the New page, `/new`: a full page with a
+> select for the agent and one for the command, and what cannot run stays in its select, disabled,
+> with the reason in brackets (it was listed in a block at the top). The decision is unchanged.
 
 The New sheet (M48) starts an agent, a `launchers.toml` row or a plain shell from one place. Until
 now the phone knew which agents exist from a list compiled into the web app, and the only way to
@@ -62,7 +66,7 @@ launch carries a phone-minted request id, and a retry with that id never starts 
 
 - An agent installed under the login shell's PATH only (nvm, `~/.opencode/bin`) now shows as found,
   and starts.
-- The web app keeps no list of harness names for this sheet. A new harness is a row in
+- The web app keeps no list of harness names for this page. A new harness is a row in
   `bridge/harness-launch.ts`, and every phone sees it on the next launchers read.
 - The state dir gains one file, written only by a launch that carries an id.
 - A launch on a member reaches the member through the existing forward; the request id travels in

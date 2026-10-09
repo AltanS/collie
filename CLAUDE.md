@@ -540,7 +540,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   rows are the allowlist `POST /api/launch` matches exactly, so the client names a row and never
   supplies a command line. Same reader, same mtime liveness; no scope ladder, because a row that
   makes its own pane has nothing to address. Do not add a second allowlist and do not let the client
-  supply a command line. The New sheet may also name an agent by id (`harness`), which the bridge
+  supply a command line. The New page may also name an agent by id (`harness`), which the bridge
   maps to ONE binary word in `bridge/harness-launch.ts` and reports per machine on `/api/launchers`;
   a launch with a `requestId` replays from `launch-receipts.json` instead of opening a second pane
   ([ADR 0091](./.adr/0091-launch-by-id-with-a-request-id.md)).

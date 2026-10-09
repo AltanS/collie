@@ -33,7 +33,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes. |
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |
-| `ui/bottom-bar.tsx` | The band at the foot of a screen that holds its own controls: a rule above, the page colour, the safe area under the buttons. It owns the band and nothing in it. The Changes screen's Previous / Next pair, and the Back it repeats on a phone (§12). |
+| `ui/bottom-bar.tsx` | The band at the foot of a screen that holds its own controls: a rule above, the page colour, the safe area under the buttons. It owns the band and nothing in it. The Changes screen's Previous / Next pair, the Back it repeats on a phone (§12), and the New page's summary line and Start. |
 | `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). Space and tab strips. |
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
@@ -46,7 +46,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/notice.tsx` | The app's ONE notice look: five tones × two placements (`strip`, `box`), each on its own height floor, and the single table the tint recipe may appear in. Owns shape, tone and live-region semantics; owns no words and no visibility. |
 | `ui/segmented.tsx` | Two or three labelled segments in one row, exactly one selected: Diff \| Source \| Preview, the Files screen's All files \| Changes, the 1 h / 24 h chart switch, the alert threshold and duration choices. Values are strings or numbers. Every segment reserves its 1px border and the selected one only recolours it, so a switch moves nothing (§2), and a tap on the selected segment does nothing. `semantics` picks a tab list (a switch between screens) or a radio group (one setting); `disabled` makes the row inert. A segment may carry a count (`badge`, with `badgeLabel` for the screen reader), floated on its top-right corner like the toggle button's, as the Files screen's Changes segment does. Theme and Belt size predate it and still carry their own copy. |
 | `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
-| `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The "New agent on a branch" sheet's Repository and Agent fields, and the dashboard's workspace and order selects (`dash-selects.tsx`). The three Settings selects (language, typeface, terminal font) carry the same construction by hand and have not been moved onto it. |
+| `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The New page's machine, agent and command selects (`routes/new.tsx`), and the dashboard's workspace and order selects (`dash-selects.tsx`). The three Settings selects (language, typeface, terminal font) carry the same construction by hand and have not been moved onto it. |
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer, with one exception: the dashboard's floating New button (`ui/fab.tsx`, below). There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on. |
 | `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
@@ -64,9 +64,10 @@ If the thing you need is not in that table, say so in the diff and put it in tha
 floating New button** (`ui/fab.tsx`, mounted by `routes/home.tsx` on the Dashboard tab only, never on Crew or Files). Why: the
 only create control on the dashboard was a FolderPlus in the Spaces section header, low on a long
 scrolling page and out of reach of the thumb, and a worktree was two taps behind it. One create entry
-under the thumb, opening one sheet, was the pick (card 1.3, 2026-10-08). Since M48 (1.19.0) that sheet
-is the one New sheet (`components/new-sheet.tsx`): Again, Agents, Commands, Folder, "On a new branch",
-the summary line and Start, with what cannot run listed at the top. The exception is bounded by these rules, and a second floating control must change this
+under the thumb was the pick (card 1.3, 2026-10-08; it opened a sheet then). Since M48 (1.19.0) it opens
+the one New page (`routes/new.tsx`, `/new`; a sheet could not hold a form that long): the machine on a
+crew, Again, an Agent or Command select, Folder, "New worktree", then the summary line and Start pinned
+in a bottom bar. What cannot run stays in its select, disabled, with the reason in brackets. The exception is bounded by these rules, and a second floating control must change this
 section first:
 
 - **It reserves nothing in flow.** It is `fixed`, so showing, hiding or going busy moves no content
@@ -86,7 +87,7 @@ section first:
   reader needs; once the list moves, the round "+" covers less of it. The pill takes the 2px corner,
   because it is wider than it is tall; only the folded circle is full-round. The accessible name is
   "New" in both shapes, and the word is `aria-hidden`.
-- **The Spaces header's FolderPlus stays,** and opens the same sheet. So does the empty dashboard's
+- **The Spaces header's FolderPlus stays,** and opens the same page. So does the empty dashboard's
   "Start your first agent" card. The button adds an entry; it removes none.
 
 ### The alert family: the primitive landed, the conversion did not finish
@@ -791,7 +792,7 @@ On a phone the edge swipe is history back, so the history stack must be the leve
 (`web/src/hooks/use-nav.ts`), never a bare `navigate(path)`:
 
 - **Down** (`nav.down`) pushes and records `from`. Opening a space, a pane, History, Changes,
-  Settings, Crew, Updates.
+  Settings, Crew, Updates, New.
 - **Sideways** (`nav.side`) replaces and carries `from`. Pane to pane, tab to tab, space chip to
   space chip, the machine and session switchers. `nav.open` picks down or sideways for a new pane.
 - **Up** (`nav.up(parent)`, `nav.upTo(parent)`) steps back when the entry behind is a legitimate

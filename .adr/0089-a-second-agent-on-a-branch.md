@@ -10,7 +10,7 @@
 - **Trail:** `bridge/worktree-receipts.ts` · `bridge/worktree-branch.ts` · `bridge/server.ts`
   (`createWorktree`, `typeIntoFreshShell`, `WORKTREE_ROUTE_BUDGET_S`) ·
   `bridge/mux/herdr/client.ts` (`WORKTREE_TIMEOUT_MS`) · `web/src/lib/branch-off.ts` ·
-  `web/src/lib/worktree-name.ts` · `web/src/components/new-space-sheet.tsx` · `herdr api schema
+  `web/src/lib/worktree-name.ts` · `web/src/routes/new.tsx` (was `components/new-space-sheet.tsx`, then `components/new-sheet.tsx`) · `herdr api schema
   --json` on Herdr 0.9.3, protocol 22
 
 ## Context
@@ -38,6 +38,11 @@ command". The schema lists no refusal code for an untrusted repo; Git's own sent
 `worktree_create_failed` or `not_git_worktree`, which Collie already passes through.
 
 ## Decision
+
+> **Amended 2026-10-09 (1.19.0).** The entry reads "New agent in a worktree" and goes to the New page,
+> `/new?pane=<paneId>` (a full page, no longer a sheet), with the "New worktree" switch on. The page
+> reads the pane's folder and branch off the snapshot, so a reload keeps them. The mint of the
+> request id is per visit to the page; every rule below is unchanged.
 
 **A pane's ⋯ menu offers "New agent on a branch". It opens the new-space sheet in worktree mode, on
 the pane's repo, with a fresh branch name and an agent picker. The create carries a request id and,
