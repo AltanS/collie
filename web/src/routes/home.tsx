@@ -388,9 +388,9 @@ export function HomeRoute() {
           what stopped it being three hand-rolled copies of the same four utilities. DESIGN.md §1. */}
       {/* Lifted by the footer's 56px row and its 1px rule, so a toast floats above the tabs. */}
       {/* With the New button drawn, the lift also clears it: the footer's 56px and 1px rule, the
-          button's 16px gap and 56px face (the `bottom-` of the Fab below), so a toast floats above
+          button's 16px gap and 48px face (the `bottom-` of the Fab below), so a toast floats above
           the button's top edge, never over it. Capability, not the button's transient hides. */}
-      <ToastViewport className={fabOffered ? "bottom-[calc(3.5rem+1px+1rem+3.5rem)]" : "bottom-[calc(3.5rem+1px)]"}>
+      <ToastViewport className={fabOffered ? "bottom-[calc(3.5rem+1px+1rem+3rem)]" : "bottom-[calc(3.5rem+1px)]"}>
         <StatusArea />
       </ToastViewport>
 

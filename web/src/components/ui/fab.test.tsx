@@ -6,24 +6,29 @@ import { Fab } from "./fab";
 const BOTTOM = "bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]";
 
 describe("Fab, the dashboard's one floating New button", () => {
-  it("reads \"+ New\" at rest, a 56px-tall pill in the house 2px corner, named by the caller", () => {
+  it("reads \"+ New\" at rest, a 48px-tall outline pill in the house 2px corner, named by the caller", () => {
     render(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} />);
     const button = screen.getByRole("button", { name: "New" });
-    expect(button).toHaveClass("h-14", "w-28", "rounded-md", "bg-primary", "text-primary-foreground");
-    expect(button).not.toHaveClass("rounded-[28px]");
+    expect(button).toHaveClass("h-12", "w-24", "rounded-md", "bg-background", "text-foreground", "border-border", "shadow-md");
+    // Quiet: no filled primary, no heavy shadow.
+    expect(button.className).not.toMatch(/(^|\s)(bg-primary|text-primary-foreground|shadow-lg)(\s|$)/);
+    // Hover and press take the accent the outline buttons use, in both themes.
+    expect(button).toHaveClass("hover:bg-accent", "active:bg-accent", "dark:bg-card", "dark:hover:bg-accent");
+    expect(button).not.toHaveClass("rounded-[24px]");
     expect(button).toHaveTextContent("New");
-    // The reserved transparent edge (DESIGN.md §2): a state recolours, never re-lays-out.
-    expect(button).toHaveClass("border", "border-transparent");
+    // One uniform 1px edge, reserved at rest (DESIGN.md §2): a state recolours, never re-lays-out.
+    expect(button).toHaveClass("border");
+    expect(button.className).not.toMatch(/border-(l|r|t|b)-/);
   });
 
-  it("collapses to the 56px round \"+\", keeping its name, and moves without motion when asked", () => {
+  it("collapses to the 48px round \"+\", keeping its name, and moves without motion when asked", () => {
     const { rerender } = render(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} />);
     const pill = screen.getByRole("button", { name: "New" });
     rerender(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} collapsed />);
     const round = screen.getByRole("button", { name: "New" });
     // One button through both shapes: the same element, so focus and a tap in flight survive.
     expect(round).toBe(pill);
-    expect(round).toHaveClass("h-14", "w-14", "rounded-[28px]");
+    expect(round).toHaveClass("h-12", "w-12", "rounded-[24px]");
     expect(round).toHaveAttribute("data-collapsed", "true");
     // The word folds away and is never read twice: the label is the name in both shapes.
     const word = round.querySelector("span[aria-hidden]");

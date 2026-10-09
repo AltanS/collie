@@ -44,6 +44,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The new-space sheet is gone, folded into the New page.** A space label and the list of worktrees that already exist are no longer offered there; open an existing worktree with `herdr worktree open` on the machine. The agent you picked for a branch is now remembered per machine with the folder, as the Again row, and forgotten when the phone is unpaired.
+- **The floating New button is quieter.** It drops the filled primary colour for the outline look the app's secondary buttons use: the page background, a 1px border, normal text, and a soft shadow. It is also 48px tall instead of 56px, still above the 44px tap floor. It still folds to a round "+" on scroll.
 
 ### Fixed
 

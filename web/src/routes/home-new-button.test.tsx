@@ -92,7 +92,7 @@ describe("the floating New button on the dashboard", () => {
     renderHome(homeData());
     const button = await screen.findByRole("button", { name: "New" });
     expect(button).toBe(fab());
-    expect(button).toHaveClass("w-28", "rounded-md", "bg-primary");
+    expect(button).toHaveClass("w-24", "rounded-md", "bg-background");
     expect(button).not.toHaveAttribute("data-collapsed");
   });
 
@@ -104,7 +104,7 @@ describe("the floating New button on the dashboard", () => {
     scroller!.scrollTop = 200;
     fireEvent.scroll(scroller!);
     await waitFor(() => expect(button).toHaveAttribute("data-collapsed", "true"));
-    expect(button).toHaveClass("w-14", "rounded-[28px]");
+    expect(button).toHaveClass("w-12", "rounded-[24px]");
     scroller!.scrollTop = 0;
     fireEvent.scroll(scroller!);
     await waitFor(() => expect(button).not.toHaveAttribute("data-collapsed"));
@@ -201,8 +201,8 @@ describe("the toast dock beside the New button", () => {
   it("lifts above the button's top edge when it is drawn", async () => {
     renderHome(homeData());
     await screen.findByRole("button", { name: "New" });
-    // Footer 56px + 1px rule + the button's 16px gap and 56px face.
-    expect(toastDock()?.className).toContain("bottom-[calc(3.5rem+1px+1rem+3.5rem)]");
+    // Footer 56px + 1px rule + the button's 16px gap and 48px face.
+    expect(toastDock()?.className).toContain("bottom-[calc(3.5rem+1px+1rem+3rem)]");
     // The button's own bottom edge is the footer plus the same 16px gap, so its top edge is the
     // lift minus nothing: the two numbers must stay one sum.
     expect(fab()?.parentElement?.className).toContain("bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]");
