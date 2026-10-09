@@ -86,13 +86,13 @@ must not be hidden, a link, or inside the repo. The page shows the full path of 
 before you tap Start, and Collie checks the rule again at the moment it creates it. Collie remembers
 your choice for each repo.
 
-The **Agent** select lists the agents Collie knows; one that is not installed on that machine stays
-in the list, disabled. **Command** lists a plain shell and your
-[launchers](configure.md#your-own-launchers). A create can take up to a minute on a large repo. If
-the phone loses the reply, the page says so and does not send it again. Look at the dashboard
-first. **Try again** sends the same request, so Collie answers with the worktree it already made and
-does not make a second one. The switch works only on Herdr, and only for the lead machine; elsewhere
-it stays on the page, off, and says why.
+The page is described in
+[Start an agent or a shell from the phone](#start-an-agent-or-a-shell-from-the-phone). A create can
+take up to a minute on a large repo. If the phone loses the reply, the page says so and does not send
+it again. Look at the dashboard first. **Try again** sends the same request, so Collie answers with
+the worktree it already made and does not make a second one. The switch works only on Herdr, and only
+for the lead machine; elsewhere it stays on the page, off, and says why ("needs Herdr", or "only on"
+the lead's name).
 
 Running multiple sessions creates multiple waiting prompts. Collie groups panes by workspace and
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count
@@ -182,6 +182,9 @@ the same tailnet.
 - The composer uses a standard text field, so phone dictation works in it.
 - Tap **Keys** on the actions row above the keyboard. The tray includes Esc, arrow keys, Enter, Tab,
   Space, modifiers, digits, and F1 to F12. Esc and Ctrl chords do not depend on the phone keyboard.
+  The pad is yours to arrange: tap the pencil beside **Keys** to move keys, resize them, add your own
+  chords and sticky modifiers, load a preset, or share a layout as a code
+  ([Your own key pad](configure.md#your-own-key-pad)).
 - Claude Code buttons sit on the same row: Model, Effort, Compact, and Resume. See
   [Configure](configure.md#configure).
 
@@ -195,6 +198,49 @@ collie restart
 Turn notifications on in Collie's Settings on the phone. **Needs input** is enabled by default. On
 an iPhone, install Collie to your home screen first. Safari restricts Web Push to home-screen web
 apps. See [Web Push](voice-and-push.md#web-push-optional).
+
+## Start an agent or a shell from the phone
+
+You do not need the host to start work. The **+ New** button sits at the bottom right of the
+Dashboard tab and folds to a round **+** while you scroll. It opens the New page, at `/new`. A card
+that says **Start your first agent** opens the same page when no pane is running. The folder button
+in the Spaces header, and **New agent in a worktree** in a pane's menu, open it too. The machine and
+the pane ride in the address, so a reload keeps them.
+
+The page has these parts, from the top:
+
+- **Machine.** Shown on a [crew](crew.md) only. The start runs on the machine you pick, and each
+  machine answers for itself.
+- **Again.** One row that repeats your last start on that machine: the same agent or command, in the
+  same folder. If the last start was in a new worktree, the row says so. Collie forgets it when the
+  phone is unpaired.
+- **Agent** or **Command.** One switch, and one select for each half. Collie remembers which half you
+  used on each machine. Under each select a link says how to add one.
+- **Folder.** Where it runs. A blank field means your home folder, and a bare name such as
+  `projects` means `~/projects`. See
+  [Favourite and recent folders](configure.md#favourite-and-recent-folders).
+- **New worktree.** A switch, described [above](#run-several-claude-code-sessions-at-once).
+- **A line** that says what will start where, and **Start**, pinned at the foot above the keyboard.
+
+**Agent** lists Claude Code, Codex, opencode, pi, omp, Grok, Hermes, Muse and Antigravity. Each
+machine checks which of them are installed, on the `PATH` your login shell uses. An agent installed
+through nvm, or in your home folder, counts. An agent that is not found stays in the list. It is
+disabled, and the reason follows its name in brackets, for example "not installed". Nothing
+disappears from the list without a word.
+
+**Command** lists a plain **Shell** and your [launchers](configure.md#your-own-launchers). You can
+also add a launcher from the phone, with a few option chips such as "Skip permission prompts"
+([Launchers added from a phone](configure.md#launchers-added-from-a-phone)). A launcher that skips
+permission prompts carries a **No prompts** badge, and the phone asks you once before it first starts
+it.
+
+A refused Start shows its reason in a notice above Start, in your language. A folder that does not
+exist on the machine that runs the start, for example, starts nothing and says so.
+
+**A tap on Start never opens two panes.** Each start carries its own id. If the phone loses the
+reply, the page says it could not confirm the start, and it sends nothing again. Look at the dashboard
+first. **Try again** sends the same id, and Collie shows the pane the first tap made instead of
+starting a second one.
 
 ## Other ways to reach Claude Code from a phone
 

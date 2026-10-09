@@ -188,7 +188,7 @@ Some things work differently on tuios:
 - Show in terminal moves every terminal that shows the pane's session, a tuios-web tab included.
   tuios cannot move a terminal to another session. If no terminal shows the pane's session, Collie
   refuses and names the session the terminal shows.
-- The worktree section is not shown.
+- The **New worktree** switch on the New page stays, off, and says it needs Herdr.
 
 ### Did it work?
 

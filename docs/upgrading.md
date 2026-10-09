@@ -630,6 +630,27 @@ herdr plugin install AltanS/collie --yes
 herdr plugin action invoke restart --plugin herdr.collie
 ```
 
+## Upgrading to 1.19.0
+
+Version 1.19.0 moves starting things to one page and lets each phone shape its own Keys and
+launchers. Nothing needs doing on upgrade day. What you will notice:
+
+- **The New sheet is a page.** **+ New** on the dashboard opens `/new`, with the machine, an Agent or
+  Command select, the folder and a **New worktree** switch. The new-space sheet, its space label and
+  its list of existing worktrees are gone. Open an existing worktree with `herdr worktree open` on the
+  machine ([Start an agent or a shell from the phone](claude-code-on-your-phone.md#start-an-agent-or-a-shell-from-the-phone)).
+- **A crew member must update to start agents by name.** The page lists a member that runs an older
+  Collie, with its choices disabled. Update the lead first, and the members follow
+  ([Starting something on a machine](crew.md#starting-something-on-a-machine)).
+- **Phones may add launchers.** With the default `[phone] adds = true`, a paired phone can add up to
+  20 rows to a machine, kept in `launchers-added.json`. Set `adds = false` in `launchers.toml` to turn
+  that off ([Launchers added from a phone](configure.md#launchers-added-from-a-phone)).
+- **The Keys pad is a board.** It starts as the pad you had, and each browser keeps its own
+  arrangement ([Your own key pad](configure.md#your-own-key-pad)). Presets in `keys.toml` are
+  unchanged.
+- **A bare folder name is a folder under home.** `projects` in the Folder field now means
+  `~/projects`, and a folder that is not there is refused with a notice.
+
 ## Upgrading to 1.18.0
 
 Version 1.18.0 makes pairing mandatory for reads as well as writes
