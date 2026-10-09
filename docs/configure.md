@@ -261,33 +261,51 @@ check `journalctl --user -u collie -n 20` for the error details.
 
 ## Your own key pad
 
-Each phone can rearrange the Keys pad. Open **Keys** and tap the pencil beside the label:
+You can rearrange the Keys pad. Open **Keys** and tap the pencil beside the label:
 
 1. Tap the pencil next to **Keys**. A tall sheet opens over the pane.
-2. Drag a key to another cell, or tap it and use the four arrow buttons. A full cell swaps.
-3. Tap a dashed **+** to add a key in an empty cell, or select a key and tap **Change** or **Remove**.
+2. Drag a key to another place, or tap it and use the four arrow buttons.
+3. Tap a dashed **+** to add a key in a free cell, or select a key and tap **Change** or **Remove**.
 
-The pad is a grid of 7 columns, one key per cell, and empty cells are fine. **Add row** puts a row
-at the bottom, up to eight. Changes show in the dock at once and are saved in this phone's browser
-only, so another phone keeps its own pad. The default is the pad you had before.
+The pad is a grid of 7 columns. A key sits on one cell and can be wider (1, 2 or 3 columns) and taller
+(1 or 2 rows). Select a key and tap **Width** or **Height** to resize it. It grows to the right and
+down. A size that would cover another key, or leave the pad, looks dim, and tapping it tells you which
+key is in the way. Collie never moves a second key for you. **Add row** puts a row at the bottom, up to
+eight. Changes show in the dock at once. Collie keeps your pad in this browser, so a different browser
+starts with the default pad until you share a layout into it. The default is the pad you had before,
+with the Space bar three cells wide and Enter at the left end of the second row:
+
+```
+Esc    Tab    Shift  Ctrl   Alt    Up     ^C
+Enter  Space (3 wide)        Left   Down   Right
+```
+
+Dragging a key moves its whole area. Drop it on a key of the same size and the two swap. Drop it on
+anything else that is in the way and the target outline turns grey and dashed, a line says which key is
+in the way, and the key goes back. An arrow button skips over keys in the way and stops at the next
+place where the key fits; if there is none, it stays off.
 
 A key sends a chord of up to three modifiers plus one key, for example Ctrl+Alt+Shift+T. It can also
 send a short sequence of up to four steps, for example Ctrl+B and then C. A sequence goes out in
-order as one call. Every key takes the same path as the built-in ones: it waits while the pane is
+order as one call. In the key builder, pick **Character**, **Named** or **F keys** for those. Pick
+**Modifier** to make a sticky Ctrl, Alt or Shift key like the ones on the default pad: tap it once to
+arm the next key, again to hold it, a third time to let go. A modifier key stands alone, so it has no
+steps and no name. Every key takes the same path as the built-in ones: it waits while the pane is
 locked or offline, a key that can stop a program (Ctrl+D, Ctrl+Z, or a sequence with Ctrl+C) asks for
 a second tap, and a key your multiplexer cannot send is grey.
 
 | Control | What it does |
 | --- | --- |
 | Presets | Default, Claude Code, tmux, Vim, Navigation. Each shows a preview and asks before it replaces your pad. |
-| Copy layout | Puts a short code on the clipboard. On plain http, select the code and copy it by hand. |
-| Import layout | Paste a code from another phone. Collie checks it, shows a preview and asks before it applies. |
+| Share: Copy layout | Puts a short code on the clipboard. On plain http, select the code and copy it by hand. |
+| Share: Import layout | Paste a layout code someone shared. Collie checks it, shows a preview and asks before it applies. |
 | Restore default | Brings back the original pad, after a preview. |
 
-If Esc, Enter or an arrow is not on your pad, a quiet line says so, with **Put back**. The tmux
-preset sends the `Ctrl+B` prefix, so it fits a tmux running inside the pane. The Navigation preset
-has Home, End, PgUp and PgDn, which Herdr cannot send, so they are grey on a Herdr pane
-([ADR 0092](../.adr/0092-the-keys-pad-is-a-board-each-device-arranges.md)).
+Codes from earlier versions still import, with every key one cell. If Esc, Enter or an arrow is not
+on your pad, a quiet line says so, with **Put back**. The tmux preset sends the `Ctrl+B` prefix, so it
+fits a tmux running inside the pane. The Navigation preset has Home, End, PgUp and PgDn, which Herdr
+cannot send, so they are grey on a Herdr pane
+([ADR 0092](../.adr/0092-the-keys-pad-is-a-board-you-arrange.md)).
 
 ## Your own quick replies
 
