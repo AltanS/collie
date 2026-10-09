@@ -46,6 +46,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The dashboard no longer offers a worktree on a multiplexer that cannot make one.** The check read the capability's answer object instead of its yes or no, so "Worktree" in the New space sheet showed even when the multiplexer declared it unsupported.
 
+- **A refused Start now shows why, and a bare folder name means a folder under home.** A Start the bridge refused (a folder that is not there, an agent the machine does not start) used to say nothing on the New page; a notice above Start now gives the reason in your language. Typing `projects` in the Folder field now means `~/projects`, as `cd projects` does in a fresh shell, and the line above Start shows the full path. A folder that does not exist on the machine that runs the start is refused before anything runs.
+
 ## [1.18.1] - 2026-10-09
 
 ### Fixed

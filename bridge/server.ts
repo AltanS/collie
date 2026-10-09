@@ -5367,6 +5367,13 @@ export async function launch(
   const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
   const asked = askedFolder(fields.cwd, deps.home ?? homedir());
   if (asked === false) return json({ ok: false, ...apiError("launch.bad_folder") } satisfies CreateResponse, ae, 400);
+  // A folder the person named must be a directory on THIS machine's disk (on a crew the member runs
+  // this, so it checks its own), before anything runs. A row's pinned folder wins over it and is the
+  // operator's own; a pane's folder and home are where the multiplexer already is: none is checked.
+  const named = picked.row?.cwd === undefined ? asked : undefined;
+  if (named !== undefined && !(await (deps.fs ?? diskFolderFs).isDirectory(named).catch(() => false))) {
+    return json({ ok: false, ...apiError("launch.folder_missing", { folder: named }) } satisfies CreateResponse, ae, 400);
+  }
 
   // Resolved here, once, so both the create call and the audit line agree on what actually ran —
   // and so a tab beside an unknown pane 404s before the multiplexer is touched at all, exactly like
@@ -5424,6 +5431,8 @@ export interface LaunchDeps {
   folders?: Pick<FolderSurface, "recordRecent">;
   /** This machine's home, for a leading `~` in `cwd`. */
   home?: string;
+  /** The disk, for "is that folder there". Absent: the real one. */
+  fs?: Pick<FolderFs, "isDirectory">;
 }
 
 /**
@@ -5474,7 +5483,10 @@ async function pickLaunch(
 
 /**
  * The folder a body's `cwd` names: `undefined` when it names none, `false` when what it names cannot
- * be a folder (not absolute after a leading `~`, or a control character in it).
+ * be a folder (a control character, a `..` segment, or `~name`). `~` and `~/x` are under home, an
+ * absolute path is itself, and a path with no leading `/` or `~` is a folder under home, as `cd
+ * projects` is in a fresh shell. One rule for every client (M48): the page shows the full path
+ * before Start, so nothing is rewritten silently.
  */
 function askedFolder(raw: JsonValue | undefined, home: string): string | undefined | false {
   if (raw === undefined || raw === null) return undefined;
@@ -5485,8 +5497,11 @@ function askedFolder(raw: JsonValue | undefined, home: string): string | undefin
     const code = ch.codePointAt(0) ?? 0;
     if (code < 0x20 || code === 0x7f) return false;
   }
+  // On the string as sent: `join` below would quietly resolve a `..` away.
+  if (trimmed.split(/[\\/]+/u).includes("..")) return false;
+  if (trimmed.startsWith("~") && trimmed !== "~" && !trimmed.startsWith("~/")) return false;
   const expanded = expandHome(trimmed, home);
-  return isAbsolute(expanded) ? expanded : false;
+  return isAbsolute(expanded) ? expanded : join(home, expanded);
 }
 
 /** The half of a launch that touches the multiplexer, run at most once per `requestId`. */

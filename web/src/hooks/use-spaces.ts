@@ -33,9 +33,14 @@ export interface StartAsk {
 
 /**
  * What became of a Start. `done`: the phone moved to the new pane. `refused`: the bridge or a gate
- * said no, and the status line said why. `unknown`: no answer that says whether it ran (ADR 0091).
+ * said no, and `message` says why in the operator's language; the PAGE shows it (a status line
+ * published here would land on a screen with no status surface, and linger until the next one).
+ * `unknown`: no answer that says whether it ran (ADR 0091).
  */
-export type StartOutcome = "done" | "refused" | "unknown";
+export type StartOutcome =
+  | { kind: "done" }
+  | { kind: "refused"; message: string }
+  | { kind: "unknown" };
 
 /**
  * The key a tab create in flight is held under in `creatingTab`: the space's machine, its session
@@ -83,12 +88,14 @@ export function useSpaceActions(canWrite?: () => boolean) {
   savedCopyRef.current = root?.stale === true;
   const canWriteRef = useRef(canWrite);
   canWriteRef.current = canWrite;
-  /** True while a create must be refused for want of a live read. Says why through the status line. */
+  /** True while a create must be refused for want of a live read. */
+  const notLive = useCallback((): boolean => savedCopyRef.current || !(canWriteRef.current?.() ?? true), []);
+  /** {@link notLive}, said through the status line (every caller but the New page's `start`). */
   const refusedAsSavedCopy = useCallback((): boolean => {
-    if (!savedCopyRef.current && (canWriteRef.current?.() ?? true)) return false;
+    if (!notLive()) return false;
     setStatus(t("space.readOnly.savedCopy"), "error");
     return true;
-  }, []);
+  }, [notLive]);
   // The scope (machine + named session) the new tab/space must be created in, and navigated into.
   // Read via a ref so the returned callbacks stay stable across revalidations, like readOnly above.
   const scopeRef = useRef<Scope | undefined>(undefined);
@@ -210,43 +217,42 @@ export function useSpaceActions(canWrite?: () => boolean) {
   // id, which lands on the first start's receipt if it did run.
   const start = useCallback(
     async (ask: StartAsk, at?: Scope): Promise<StartOutcome> => {
-      if (readOnlyRef.current) {
-        setStatus(blockedText(), "error");
-        return "refused";
-      }
-      if (refusedAsSavedCopy()) return "refused";
-      if (creatingSpaceRef.current) return "refused";
+      if (readOnlyRef.current) return { kind: "refused", message: blockedText() };
+      if (notLive()) return { kind: "refused", message: t("space.readOnly.savedCopy") };
+      // Another create is in flight: the page's button is already busy, so there is nothing to say.
+      if (creatingSpaceRef.current) return { kind: "refused", message: "" };
       creatingSpaceRef.current = true;
       setCreatingSpace(true);
       const scope = at ?? scopeRef.current;
       try {
         if (ask.branch !== undefined) {
-          if (ask.what.kind === "row") return "refused";
+          if (ask.what.kind === "row") return { kind: "refused", message: "" };
           const res = await api.createWorktreeAt(
             { cwd: ask.branch.cwd, branch: ask.branch.name, base: ask.branch.base, folder: ask.branch.folder, requestId: ask.requestId, what: ask.what },
             scope,
           );
+          if (!res.ok) return { kind: "refused", message: describeApiError(res) };
           open(res, "space", scope);
-          if (res.ok && ask.what.kind === "harness" && !res.launcherStarted) setStatus(t("branchOff.launcherFailed"), "error");
-          return res.ok ? "done" : "refused";
+          if (ask.what.kind === "harness" && !res.launcherStarted) setStatus(t("branchOff.launcherFailed"), "error");
+          return { kind: "done" };
         }
         // A machine older than 1.19.0 starts no plain shell by id: its own space create opens one.
         const res =
           ask.what.kind === "shell" && ask.legacyShell === true
             ? await api.createWorkspace(ask.cwd === undefined ? {} : { cwd: ask.cwd }, scope)
             : await api.startLaunch(ask.what, { cwd: ask.cwd, requestId: ask.requestId }, scope);
+        if (!res.ok) return { kind: "refused", message: describeApiError(res) };
         open(res, "space", scope);
-        return res.ok ? "done" : "refused";
+        return { kind: "done" };
       } catch (e) {
-        if (api.outcomeUnknown(e)) return "unknown";
-        setStatus(describeThrownError(e), "error");
-        return "refused";
+        if (api.outcomeUnknown(e)) return { kind: "unknown" };
+        return { kind: "refused", message: describeThrownError(e) };
       } finally {
         creatingSpaceRef.current = false;
         setCreatingSpace(false);
       }
     },
-    [open, blockedText, refusedAsSavedCopy],
+    [open, blockedText, notLive],
   );
 
   // A launcher arrives as a SPACE (from the dashboard) or a TAB beside a named pane (from the

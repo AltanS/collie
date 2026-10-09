@@ -6,14 +6,17 @@ import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
 import { useCrew } from "@/components/crew-provider";
 import { FolderSections } from "@/components/new-space-folders";
+import { StatusArea } from "@/components/status-area";
 import { Button } from "@/components/ui/button";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Collapse } from "@/components/ui/collapse";
+import { Notice } from "@/components/ui/notice";
 import { OneOf } from "@/components/ui/one-of";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { BandMain } from "@/components/ui/strip-host";
 import { Switch } from "@/components/ui/switch";
+import { ToastViewport } from "@/components/ui/toast-viewport";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useSpaceActions } from "@/hooks/use-spaces";
@@ -34,6 +37,7 @@ import {
   commandChoice,
   defaultHost,
   defaultKind,
+  folderShown,
   kindOf,
   machineWord,
   memberHealth,
@@ -229,7 +233,9 @@ function NewPage({ search }: { search: string }) {
 
   // ── The summary line ──────────────────────────────────────────────────────────────────────────
   const shownWhat = what === null ? "" : whatLabel(what, offer, t("newPage.shell"));
-  const folderText = shortenHome(pinned ?? (cwd.trim() === "" ? home || "~" : cwd.trim()), home);
+  // The FULL path the bridge will use: a name with no leading / or ~ is a folder under home, and the
+  // line says so before Start, so nothing is rewritten silently.
+  const folderText = shortenHome(pinned ?? folderShown(cwd, home), home);
   const parts: SummaryParts = { what: shownWhat, folder: folderText };
   if (machineName !== undefined) parts.machine = machineName;
   if (branchActive) parts.branch = { name: branchName.trim(), base: baseName };
@@ -250,6 +256,8 @@ function NewPage({ search }: { search: string }) {
   const requestId = useRef("");
   const lastAsk = useRef<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "starting" | "unknown">("idle");
+  // Why the last Start was refused, kept with the ask it belongs to: a different ask shows nothing.
+  const [startRefusal, setStartRefusal] = useState<{ print: string; message: string } | null>(null);
   const startingRef = useRef(false);
   const fingerprint =
     what === null
@@ -269,6 +277,7 @@ function NewPage({ search }: { search: string }) {
     startingRef.current = true;
     if (lastAsk.current !== print) requestId.current = mintRequestId();
     lastAsk.current = print;
+    setStartRefusal(null);
     setPhase("starting");
     const sendCwd = ask.cwd === "" ? undefined : ask.cwd;
     const outcome = await start(
@@ -282,7 +291,7 @@ function NewPage({ search }: { search: string }) {
       multiHost ? target : undefined,
     );
     startingRef.current = false;
-    if (outcome === "done") {
+    if (outcome.kind === "done") {
       rememberAgain(machineKey, {
         what: ask.what,
         label: whatLabel(ask.what, offer, t("newPage.shell")),
@@ -294,7 +303,8 @@ function NewPage({ search }: { search: string }) {
       setPhase("idle");
       return;
     }
-    setPhase(outcome === "unknown" ? "unknown" : "idle");
+    if (outcome.kind === "refused" && outcome.message !== "") setStartRefusal({ print, message: outcome.message });
+    setPhase(outcome.kind === "unknown" ? "unknown" : "idle");
   }
 
   function startNow() {
@@ -326,6 +336,7 @@ function NewPage({ search }: { search: string }) {
   }
 
   const busy = phase === "starting" || creatingSpace;
+  const refusedText = startRefusal !== null && startRefusal.print === fingerprint ? startRefusal.message : null;
   const commands: StartWhat[] = [{ kind: "shell" }, ...offer.rows.map((r) => ({ kind: "row" as const, command: r.command }))];
   const backLabel = t("newPage.back");
 
@@ -502,10 +513,32 @@ function NewPage({ search }: { search: string }) {
       {/* The foot: what Start will do, in one line, then Start. A sibling UNDER the scroller, so it
           stays above the keyboard (the viewport resizes with it) and clear of the home indicator. */}
       <BottomBar className="flex flex-col gap-2 px-4">
-        {/* Two lines are reserved, so a longer sentence moves nothing. */}
-        <p className="line-clamp-2 h-10 text-sm leading-5" data-testid="new-page-summary">
-          {summary}
-        </p>
+        {/* One reserved cell holds the summary and, when a Start was refused, the refusal in its
+            place, in the same box, so neither moves anything (DESIGN.md §2). Two summary lines are
+            reserved, so a longer sentence moves nothing either. */}
+        <OneOf
+          active={refusedText === null ? "summary" : "refusal"}
+          className="min-h-[42px] justify-items-stretch"
+          options={[
+            {
+              key: "summary",
+              node: (
+                <p className="line-clamp-2 h-10 text-sm leading-5" data-testid="new-page-summary">
+                  {summary}
+                </p>
+              ),
+            },
+            {
+              key: "refusal",
+              node:
+                refusedText === null ? null : (
+                  <Notice tone="danger" variant="box" announce="alert">
+                    <span data-testid="new-page-refusal">{refusedText}</span>
+                  </Notice>
+                ),
+            },
+          ]}
+        />
         <Collapse open={phase === "unknown"}>
           {phase === "unknown" ? (
             <p role="status" className="text-[11px] leading-tight text-status-blocked">
@@ -526,6 +559,14 @@ function NewPage({ search }: { search: string }) {
           />
         </Button>
       </BottomBar>
+
+      {/* The status line, for what this page publishes itself (a folder star that failed, a worktree
+          whose agent did not start). Every other route with writes mounts one; this one did not, so
+          its statuses were published to nothing and showed up on the next screen. Lifted above the
+          bottom bar. A refused Start is NOT said here but in the Notice above. */}
+      <ToastViewport className="bottom-40">
+        <StatusArea />
+      </ToastViewport>
     </div>
   );
 }

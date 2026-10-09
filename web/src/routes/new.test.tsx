@@ -6,6 +6,7 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { CrewProvider } from "@/components/crew-provider";
 import { useRootData } from "@/lib/route-data";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { t } from "@/lib/i18n";
 import { KIND_KEY } from "@/lib/new-page";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { clearStatus } from "@/lib/status";
@@ -476,6 +477,96 @@ describe("the New page: Start", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
     expect(created).toEqual([{}]);
+  });
+});
+
+// A REFUSED START ALWAYS SHOWS. The page mounted no status surface, so a refusal published with
+// `setStatus` went nowhere (and lingered for the next screen): a typed `projects` started nothing and
+// said nothing. A refusal now comes back to the page and is said in a Notice above Start.
+describe("the New page: a refused Start", () => {
+  /** Every refusal a launch can answer, with the detail its sentence needs. */
+  const LAUNCH_REFUSALS = [
+    { code: "launch.not_allowlisted", detail: undefined },
+    { code: "launch.unknown_harness", detail: { harness: "claude" } },
+    { code: "launch.bad_folder", detail: undefined },
+    { code: "launch.folder_missing", detail: { folder: "/home/op/projects" } },
+    { code: "launch.pane_unknown", detail: undefined },
+    { code: "workspace.create_failed", detail: { reason: "herdr is gone" } },
+  ] as const;
+
+  it.each(LAUNCH_REFUSALS)("$code is said above Start, and nothing is published to a status line", async ({ code, detail }) => {
+    serveLaunchers();
+    server.use(
+      http.post("/api/launch", () => HttpResponse.json({ ok: false, error: "english", code, detail }, { status: 400 })),
+    );
+    const router = mount();
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const shown = await screen.findByTestId("new-page-refusal");
+    expect(shown).toHaveTextContent(t(`apiError.${code}`, detail));
+    expect(shown.closest('[role="alert"]')).not.toBeNull();
+    // The page stays, Start is live again, and the status surface holds nothing.
+    expect(router.state.location.pathname).toBe("/new");
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+    expect(document.querySelector("output")).toBeNull();
+  });
+
+  it("a refusal that came as a value (a 200 with ok: false) shows too", async () => {
+    serveLaunchers();
+    server.use(
+      http.post("/api/launch", () =>
+        HttpResponse.json({ ok: false, error: "x", code: "launch.folder_missing", detail: { folder: "/home/op/nope" } }),
+      ),
+    );
+    mount();
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByTestId("new-page-refusal")).toHaveTextContent("There is no folder /home/op/nope on this machine.");
+  });
+
+  it("a refused worktree start shows its reason too", async () => {
+    serveLaunchers();
+    servePlan();
+    server.use(
+      http.post("/api/worktree", () =>
+        HttpResponse.json({ ok: false, error: "x", code: "worktree.not_a_repo", detail: { reason: "no repo" } }),
+      ),
+    );
+    const router = mount({ entries: [`/new?pane=${encodeURIComponent("w1:p1")}`], agents: [PANE] });
+    await screen.findByRole("textbox", { name: "Branch name" });
+    await waitFor(() => expect(screen.getByTestId("new-page-target")).toHaveTextContent("New folder"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByTestId("new-page-refusal")).toHaveTextContent(t("apiError.worktree.not_a_repo"));
+    expect(router.state.location.pathname).toBe("/new");
+  });
+
+  it("the refusal is the box the summary stood in, and a changed ask brings the summary back", async () => {
+    serveLaunchers();
+    server.use(
+      http.post("/api/launch", () => HttpResponse.json({ ok: false, error: "x", code: "launch.bad_folder" }, { status: 400 })),
+    );
+    mount();
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const shown = await screen.findByTestId("new-page-refusal");
+    // One cell holds both, so showing the refusal resizes nothing.
+    expect(shown.closest("[data-active]")?.parentElement).toBe(summary().parentElement?.parentElement);
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "x");
+    await waitFor(() => expect(screen.queryByTestId("new-page-refusal")).toBeNull());
+    expect(summary()).toBeVisible();
+  });
+
+  it("a name with no leading / or ~ is shown as the full path under home, and sent as typed", async () => {
+    serveLaunchers();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "projects");
+    expect(summary()).toHaveTextContent("Claude Code in ~/projects");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ harness: "claude", cwd: "projects" });
   });
 });
 

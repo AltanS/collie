@@ -586,6 +586,14 @@ Under the Folder field sit two lists for the machine the start goes to. **Recent
 folder, and it never lists your home dir, because a blank field already means home. A new branch's
 own folder is not added, because it is a new checkout, not a place you return to.
 
+You may also type a path. `~/projects` and `/srv/www` mean what they say. A name with no leading `/` or
+`~`, such as `projects`, is a folder under your home, like `cd projects` in a fresh shell, and the
+line above Start shows the full path (`~/projects`) before you tap. A path with `..` in it is refused.
+The folder must already exist on the machine that runs the start, and it must be a directory. If it is
+not there, nothing starts and a notice above Start says "There is no folder … on this machine." Collie
+checks only when you tap Start, never while you type. On a crew, the machine you picked checks its own
+disk.
+
 A tap on a row fills the Folder field and starts nothing, so you can still change the choice above. The star
 beside a row moves it to **Favourites**, up to 12, in the order you starred them. A second tap on the
 star moves it back to the top of Recent.

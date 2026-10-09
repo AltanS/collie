@@ -73,3 +73,14 @@ launch carries a phone-minted request id, and a retry with that id never starts 
   the body, so the receipt lives where the pane was made.
 - The login shell is asked once per bridge process. A change to the operator's shell profile needs a
   bridge restart to be seen.
+
+## Amendment, 2026-10-09: a bare folder name is under home, and the folder must exist
+
+Rule 5 said `cwd` is absolute or `~`-relative. A person typed `projects`, got `launch.bad_folder`,
+and the page said nothing. Now a path with no leading `/` or `~` is a folder under home, as `cd
+projects` is in a fresh shell, resolved in the bridge so every client gets one rule. `..` segments,
+control characters and `~name` still give `launch.bad_folder`. A named folder (the person's, or a
+row's pinned one) that is not a directory on the machine that runs the start gives
+`launch.folder_missing` with `{ folder }`, before anything runs; a crew member checks its own disk.
+The page shows the full path in its summary before Start and does not check while the person types.
+

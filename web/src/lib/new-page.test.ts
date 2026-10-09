@@ -7,6 +7,7 @@ import {
   branchAllowed,
   commandChoice,
   defaultKind,
+  folderShown,
   kindOf,
   machineWord,
   offerFor,
@@ -302,5 +303,17 @@ describe("startFingerprint", () => {
     expect(
       startFingerprint({ ...ask, branch: { name: "x", base: "main", folder: { kind: "default" } } }),
     ).not.toBe(one);
+  });
+});
+
+describe("folderShown", () => {
+  it("is home for nothing, the path itself for ~ and absolute paths, and a folder under home for a bare name", () => {
+    expect(folderShown("", "/home/op")).toBe("/home/op");
+    expect(folderShown("  ", "")).toBe("~");
+    expect(folderShown("~", "/home/op")).toBe("~");
+    expect(folderShown("~/src/app", "/home/op")).toBe("~/src/app");
+    expect(folderShown("/srv/www", "/home/op")).toBe("/srv/www");
+    expect(folderShown("projects", "/home/op")).toBe("~/projects");
+    expect(folderShown("./projects/app ", "/home/op")).toBe("~/projects/app");
   });
 });

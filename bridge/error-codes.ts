@@ -94,8 +94,10 @@ export const ERROR_CODES = {
    * the list `GET /api/launchers` answered, so nothing a phone was shown is refused (ADR 0091).
    */
   "launch.unknown_harness": "unknown agent: {harness}",
-  /** A launch's `cwd` is not an absolute folder (after a leading `~`), or carries a control character. */
-  "launch.bad_folder": "the folder must be an absolute path",
+  /** A launch's `cwd` carries a control character, a `..` segment, or `~name`. A path with no leading `/` or `~` is a folder under home. */
+  "launch.bad_folder": "the folder cannot be used: no .. and no control characters",
+  /** A launch's folder is not a directory on the machine that runs it. Nothing was created. */
+  "launch.folder_missing": "there is no folder {folder} on this machine",
 
   // ── Rows added from a phone: POST /api/launchers/added, /remove, /rename (ADR 0094) ──────────
   // Each refusal is answered before the store is written: nothing was added, removed or renamed.

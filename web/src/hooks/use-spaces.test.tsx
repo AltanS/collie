@@ -5,7 +5,7 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import type { Scope } from "@/lib/scope";
-import { clearStatus, useStatus } from "@/lib/status";
+import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { tabCreateKey, useSpaceActions } from "./use-spaces";
 
 // Stub the bridge's create endpoints at the api seam — same idiom launch-strip.test.tsx uses for
@@ -262,7 +262,9 @@ describe("useSpaceActions — start", () => {
       <button
         onClick={() => {
           void (async () => {
-            document.body.dataset.outcome = await start(ask);
+            const out = await start(ask);
+            document.body.dataset.outcome = out.kind;
+            document.body.dataset.message = out.kind === "refused" ? out.message : "";
           })();
         }}
       >
@@ -333,11 +335,12 @@ describe("useSpaceActions — start", () => {
     expect(screen.getByTestId("status-probe")).toHaveTextContent("");
   });
 
-  it("a refusal is refused, and the status line says it", async () => {
+  it("a refusal is refused, the words come back to the page, and no status line is published", async () => {
     mockStartLaunch.mockResolvedValueOnce({ ok: false, error: "unknown agent: x", code: "launch.unknown_harness", detail: { harness: "x" } });
     await press({ what: { kind: "harness", id: "x" }, requestId: REQUEST_ID });
     expect(document.body.dataset.outcome).toBe("refused");
-    expect(screen.getByTestId("status-probe")).toHaveTextContent("This machine does not start x.");
+    expect(document.body.dataset.message).toBe("This machine does not start x.");
+    expect(screen.getByTestId("status-probe")).toHaveTextContent("");
   });
 });
 
@@ -360,7 +363,12 @@ describe("useSpaceActions — a saved copy refuses every structural write", () =
     const run = {
       "new-tab": () => void actions.newTab("w1"),
       "new-space": () => void actions.newSpace({}),
-      start: () => void actions.start({ what: { kind: "shell" }, requestId: "r1" }),
+      // The page shows a refused Start itself; the harness stands in for it with the status line.
+      start: () =>
+        void (async () => {
+          const out = await actions.start({ what: { kind: "shell" }, requestId: "r1" });
+          if (out.kind === "refused") setStatus(out.message, "error");
+        })(),
       launch: () => void actions.launch("claude"),
     } satisfies Record<(typeof ALL)[number], () => void>;
     return (

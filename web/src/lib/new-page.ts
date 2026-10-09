@@ -204,6 +204,20 @@ export function summaryKey(parts: SummaryParts): "plain" | "machine" | "branch" 
   return parts.machine === undefined ? "branch" : "branchMachine";
 }
 
+/**
+ * The folder as the bridge will use it, for the summary line. Empty is home. `~` and `~/x` and an
+ * absolute path are themselves; a name with no leading `/` or `~` is a folder under home, as `cd
+ * projects` is in a fresh shell (bridge `askedFolder`, one rule for every client). `home` is the
+ * machine's own home, `""` before its answer is in: then `~` stands for it. Never rewritten
+ * silently: this is what the person reads before Start.
+ */
+export function folderShown(typed: string, home: string): string {
+  const text = typed.trim();
+  if (text === "") return home || "~";
+  if (text.startsWith("~") || text.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(text)) return text;
+  return `~/${text.replace(/^(\.\/)+/u, "")}`;
+}
+
 // ── Again ───────────────────────────────────────────────────────────────────────────────────────
 //
 // The last start, per machine, on THIS device (localStorage): the page's first row repeats it. A

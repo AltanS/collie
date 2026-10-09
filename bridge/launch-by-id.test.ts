@@ -27,7 +27,7 @@ import {
 //   1. `harness` names an id from the bridge's own list and the BRIDGE types its binary; an id it
 //      does not start is a 400 before anything runs. The phone never sends a command line.
 //   2. Exactly one of `command`, `harness` and `shell: true`; none or two is a 400.
-//   3. `cwd` opens the pane there; a row's pinned `cwd` still wins; a relative one is refused.
+//   3. `cwd` opens the pane there; a row's pinned `cwd` still wins; a relative one is under home.
 //   4. A known `requestId` replays the first pane and the multiplexer is asked once in all; a second
 //      request while the first runs is joined. A failed launch stores nothing.
 //   5. `GET /api/launchers` carries the harness list when built with a probe, and not otherwise.
@@ -97,6 +97,11 @@ function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
 const post = (body: JsonObject) =>
   new Request("http://x/api/launch", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
 
+/** A disk where every folder is a directory, or only `present` are (as absolute paths). */
+function dirs(present?: readonly string[]) {
+  return { isDirectory: (path: string) => Promise.resolve(present === undefined || present.includes(path)) };
+}
+
 async function run(fake: FakeMux, body: JsonObject, deps: LaunchDeps = {}) {
   const res = await launch(
     asMux(fake),
@@ -107,7 +112,7 @@ async function run(fake: FakeMux, body: JsonObject, deps: LaunchDeps = {}) {
     "default",
     () => Promise.resolve([HTOP]),
     clock(),
-    { harnesses: { launch: harnessLaunch }, home: "/home/op", ...deps },
+    { harnesses: { launch: harnessLaunch }, home: "/home/op", fs: dirs(), ...deps },
   );
   // SAFETY: `launch` answers a CreateResponse as JSON, or a plain-text 400 that parses to `null` here.
   const parsed = (await res.json().catch(() => null)) as CreateResponse | null;
@@ -162,11 +167,51 @@ describe("POST /api/launch — by id", () => {
     expect(mux.texts).toEqual([["w1:p1", "htop"]]);
   });
 
-  test("a folder that is not absolute, or carries a control character, is refused", async () => {
+  test("a folder with a control character, a .. segment or ~name is refused", async () => {
     const mux = new FakeMux();
-    expect((await run(mux, { shell: true, cwd: "src/app" })).body).toMatchObject({ code: "launch.bad_folder" });
-    expect((await run(mux, { shell: true, cwd: "/home/op/a\nb" })).body).toMatchObject({ code: "launch.bad_folder" });
+    for (const cwd of ["/home/op/a\nb", "src/../app", "/home/op/../etc", "~other/src", "..\\x"]) {
+      expect((await run(mux, { shell: true, cwd })).body, cwd).toMatchObject({ code: "launch.bad_folder" });
+    }
     expect(mux.spaces).toEqual([]);
+  });
+
+  test("a path with no leading / or ~ is a folder under home, as cd is in a fresh shell", async () => {
+    const mux = new FakeMux();
+    const { body } = await run(mux, { shell: true, cwd: "projects/app" });
+    expect(body?.ok).toBe(true);
+    expect(mux.spaces).toEqual([{ cwd: "/home/op/projects/app", label: undefined }]);
+    await run(mux, { shell: true, cwd: "~" });
+    expect(mux.spaces[1]?.cwd).toBe("/home/op");
+  });
+
+  test("a folder that is not there, or is not a directory, is refused before anything runs", async () => {
+    const mux = new FakeMux();
+    const answer = await run(mux, { harness: "claude", cwd: "projects" }, { fs: dirs(["/home/op"]) });
+    expect(answer.status).toBe(400);
+    expect(answer.body).toMatchObject({
+      ok: false,
+      code: "launch.folder_missing",
+      detail: { folder: "/home/op/projects" },
+      error: "there is no folder /home/op/projects on this machine",
+    });
+    expect(mux.spaces).toEqual([]);
+    expect(mux.texts).toEqual([]);
+  });
+
+  test("only the folder the person named is checked: not a pinned folder, the pane's, or home", async () => {
+    const mux = new FakeMux();
+    const none = dirs([]);
+    expect((await run(mux, { command: "htop", cwd: "/home/op/typed" }, { fs: none })).body?.ok).toBe(true);
+    expect((await run(mux, { shell: true }, { fs: none })).body?.ok).toBe(true);
+  });
+
+  test("a refused folder stores no receipt, so the same id can try again", async () => {
+    const mux = new FakeMux();
+    const receipts = memoryLaunchReceipts();
+    await run(mux, { shell: true, cwd: "later", requestId: ID }, { receipts, fs: dirs([]) });
+    const second = await run(mux, { shell: true, cwd: "later", requestId: ID }, { receipts, fs: dirs(["/home/op/later"]) });
+    expect(second.body?.ok).toBe(true);
+    expect(mux.spaces).toHaveLength(1);
   });
 
   test("a folder that worked joins Recent; a pinned one does not", async () => {

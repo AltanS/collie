@@ -59,6 +59,7 @@ export const API_ERROR_CODES = [
   "launch.pane_unknown",
   "launch.unknown_harness",
   "launch.bad_folder",
+  "launch.folder_missing",
   "launcher.adds_off",
   "launcher.free_text_off",
   "launcher.bad_text",

@@ -154,9 +154,10 @@ describe("GET /api/worktree/plan", () => {
     expect(await plan({ cwd: join(home, "trees", "side") })).toMatchObject({ ok: true, repoRoot: repo, currentBranch: "side" });
   });
 
-  test("a folder in no repo is not_a_repo, a relative one folder_invalid", async () => {
+  test("a folder in no repo is not_a_repo, a name with no leading / or ~ is under home, one with .. is folder_invalid", async () => {
     expect(await plan({ cwd: join(home, "trees") })).toMatchObject({ ok: false, code: "worktree.not_a_repo" });
-    expect(await plan({ cwd: "src/app" })).toMatchObject({ ok: false, code: "worktree.folder_invalid" });
+    expect(await plan({ cwd: "src/app" })).toMatchObject({ ok: true, repoRoot: repo });
+    expect(await plan({ cwd: "src/../app" })).toMatchObject({ ok: false, code: "worktree.folder_invalid" });
   });
 
   test("with a branch: Herdr's default folder; with a parent: the rule's verdict", async () => {
