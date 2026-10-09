@@ -129,7 +129,7 @@ hold, it takes a fourth row (Vim, Navigation), or leaves the sticky modifiers to
 - A board does not follow a person to a second browser by itself. The code is the way across. A bridge
   store would fix that, and would be the moment to revisit this decision: it would need an endpoint,
   a trust rule for what one browser may write for another, and an answer for the Presets overlap.
-- The tmux preset sends `Ctrl+B` sequences. They reach a tmux running INSIDE the pane. A tmux mirror
+- The Prefix (Ctrl+B) preset (named tmux until the 1.19.0 cut) sends `Ctrl+B` sequences. They reach a tmux running INSIDE the pane. A tmux mirror
   sends keys straight to the pane's program and never reads its own prefix, so on a tmux install the
   sequences are for a nested session, which the preset's line says.
 - The Hold row of the builder goes inert for a Modifier but keeps its place, so switching kind moves

@@ -296,13 +296,13 @@ a second tap, and a key your multiplexer cannot send is grey.
 
 | Control | What it does |
 | --- | --- |
-| Presets | Default, Claude Code, tmux, Vim, Navigation. Each shows a preview and asks before it replaces your pad. |
+| Presets | Default, Claude Code, Prefix (Ctrl+B), Vim, Navigation. Each shows a preview and asks before it replaces your pad. |
 | Share: Copy layout | Puts a short code on the clipboard. On plain http, select the code and copy it by hand. |
 | Share: Import layout | Paste a layout code someone shared. Collie checks it, shows a preview and asks before it applies. |
 | Restore default | Brings back the original pad, after a preview. |
 
 Codes from earlier versions still import, with every key one cell. If Esc, Enter or an arrow is not
-on your pad, a quiet line says so, with **Put back**. The tmux preset sends the `Ctrl+B` prefix, so it
+on your pad, a quiet line says so, with **Put back**. The Prefix (Ctrl+B) preset sends the `Ctrl+B` prefix, so it
 fits a tmux running inside the pane. The Navigation preset has Home, End, PgUp and PgDn, which Herdr
 cannot send, so they are grey on a Herdr pane
 ([ADR 0092](../.adr/0092-the-keys-pad-is-a-board-you-arrange.md)).

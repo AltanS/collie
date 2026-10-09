@@ -527,7 +527,7 @@ describe("storage text", () => {
 
 describe("the five presets", () => {
   it("are the five named ones, in order", () => {
-    expect(PRESETS.map((p) => p.id)).toEqual(["default", "claude", "tmux", "vim", "navigation"]);
+    expect(PRESETS.map((p) => p.id)).toEqual(["default", "claude", "prefix", "vim", "navigation"]);
   });
 
   it.each(PRESETS.map((p) => [p.id, p.board] as const))("%s is a whole board: valid, capped, with the core keys", (_id, board) => {
@@ -567,7 +567,7 @@ describe("the five presets", () => {
   });
 
   it("the tmux board sends the real prefix sequences", () => {
-    const tmux = PRESETS.find((p) => p.id === "tmux")?.board;
+    const tmux = PRESETS.find((p) => p.id === "prefix")?.board;
     const steps = tmux?.cells.flatMap((k) => (k?.kind === "chord" && k.steps.length === 2 ? [k.steps.join(" ")] : [])) ?? [];
     expect(steps).toEqual(
       expect.arrayContaining(["ctrl+b c", "ctrl+b n", "ctrl+b p", "ctrl+b %", 'ctrl+b "', "ctrl+b o", "ctrl+b z", "ctrl+b [", "ctrl+b w", "ctrl+b x"]),

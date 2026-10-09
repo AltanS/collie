@@ -447,8 +447,8 @@ describe("KeyBoardEditor: presets and restore go through the confirm screen", ()
   it("lists five presets, each with a line", () => {
     open();
     const list = within(screen.getByRole("region", { name: "Presets" }));
-    for (const name of ["Default", "Claude Code", "tmux", "Vim", "Navigation"]) {
-      expect(list.getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    for (const name of ["Default", "Claude Code", "Prefix (Ctrl+B)", "Vim", "Navigation"]) {
+      expect(list.getByRole("button", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) })).toBeInTheDocument();
     }
     expect(list.getAllByRole("button")).toHaveLength(5);
     expect(list.getByRole("button", { name: /^Default/ })).toHaveTextContent("In use");
@@ -456,22 +456,22 @@ describe("KeyBoardEditor: presets and restore go through the confirm screen", ()
 
   it("shows a preview, the key count and what happens, and changes nothing until Apply", async () => {
     const { user } = open();
-    await user.click(screen.getByRole("button", { name: /^tmux/ }));
-    const confirm = within(screen.getByRole("dialog", { name: "tmux" }));
+    await user.click(screen.getByRole("button", { name: /^Prefix \(Ctrl\+B\)/ }));
+    const confirm = within(screen.getByRole("dialog", { name: "Prefix (Ctrl+B)" }));
     expect(confirm.getByRole("group", { name: "Preview of the layout" })).toBeInTheDocument();
     expect(confirm.getByText(`${keyCount(PRESETS[2].board)} keys`)).toBeInTheDocument();
     expect(confirm.getByText("This replaces your layout.")).toBeInTheDocument();
     expect(getKeyBoard()).toBe(DEFAULT_BOARD);
 
     await user.click(confirm.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog", { name: "tmux" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Prefix (Ctrl+B)" })).toBeNull();
     expect(getKeyBoard()).toBe(DEFAULT_BOARD);
 
-    await user.click(screen.getByRole("button", { name: /^tmux/ }));
-    await user.click(within(screen.getByRole("dialog", { name: "tmux" })).getByRole("button", { name: "Apply" }));
+    await user.click(screen.getByRole("button", { name: /^Prefix \(Ctrl\+B\)/ }));
+    await user.click(within(screen.getByRole("dialog", { name: "Prefix (Ctrl+B)" })).getByRole("button", { name: "Apply" }));
     expect(keyCount(getKeyBoard())).toBe(keyCount(PRESETS[2].board));
     expect(getKeyBoard().rows).toBe(3);
-    expect(screen.queryByRole("dialog", { name: "tmux" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Prefix (Ctrl+B)" })).toBeNull();
   });
 
   it("Restore default asks first, then restores today's pad and removes the stored key", async () => {

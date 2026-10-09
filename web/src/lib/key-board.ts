@@ -696,7 +696,7 @@ export function decodeBoard(input: string): Decoded {
 // ── The five presets ─────────────────────────────────────────────────────────────────────────────
 
 export interface BoardPreset {
-  readonly id: "default" | "claude" | "tmux" | "vim" | "navigation";
+  readonly id: "default" | "claude" | "prefix" | "vim" | "navigation";
   readonly board: KeyBoard;
 }
 
@@ -755,7 +755,7 @@ const CLAUDE: KeyBoard = boardOf(3, [
  * for a tmux running INSIDE the pane, for example over ssh: a tmux mirror sends keys straight to the
  * pane's program, so it never reads its own prefix.
  */
-const TMUX: KeyBoard = boardOf(3, [
+const PREFIX: KeyBoard = boardOf(3, [
   ...frame([named("Prefix", "ctrl+b"), named("New win", "ctrl+b", "c"), named("Next", "ctrl+b", "n"), named("Prev", "ctrl+b", "p"), chord("ctrl+c")]),
   ...below([
     named("Split |", "ctrl+b", "%"),
@@ -815,7 +815,7 @@ const NAVIGATION: KeyBoard = boardOf(4, [
 export const PRESETS: readonly BoardPreset[] = [
   { id: "default", board: DEFAULT_BOARD },
   { id: "claude", board: CLAUDE },
-  { id: "tmux", board: TMUX },
+  { id: "prefix", board: PREFIX },
   { id: "vim", board: VIM },
   { id: "navigation", board: NAVIGATION },
 ];
