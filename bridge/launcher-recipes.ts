@@ -1,4 +1,5 @@
 import { harnessLaunch } from "./harness-launch.ts";
+import type { LaunchCheckResponse } from "./types.ts";
 
 // ── Recipes: a harness plus option chips, and the bridge builds the line (M48 spec 02, ADR 0094) ──
 //
@@ -211,4 +212,17 @@ export function cleanLauncherText(raw: string, max: number): { ok: true; text: s
     if (isForbiddenCodePoint(ch.codePointAt(0) ?? 0)) return { ok: false, problem: "forbidden_character" };
   }
   return { ok: true, text };
+}
+
+/**
+ * The answer of `POST /api/launch/check` for one typed line (ADR 0095, amendment): the character rule
+ * and {@link scanNoPrompts}, both on the cleaned line, exactly as a run would apply them. It decides
+ * nothing about the operator's switch or a paired device, and it runs nothing: the page asks it so a
+ * line that skips permission prompts can be confirmed BEFORE its first run, which the history's
+ * `noPrompts` flag cannot do. No line at all is the same `empty` a blank one is.
+ */
+export function checkRunLine(raw: string | undefined): LaunchCheckResponse {
+  const line = cleanLauncherText(raw ?? "", MAX_COMMAND_CHARS);
+  if (!line.ok) return { ok: true, noPrompts: false, problem: line.problem };
+  return { ok: true, noPrompts: scanNoPrompts(line.text) };
 }

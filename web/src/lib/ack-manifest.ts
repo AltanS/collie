@@ -136,6 +136,10 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "A one-off run creates a space and the app navigates straight into its pane, exactly as `startLaunch` does, so the page is already gone; a refusal names the switch, the device or the character the bridge refused on the status line. An answer that never came is the page's own notice and its Try again button, with the same request id (ADR 0091, ADR 0095).",
   },
+  checkRun: {
+    channel: "inline",
+    why: "A read asked on Start for a typed line: it runs and stores nothing. Its answer (a character the bridge refuses, or whether the line skips prompts) goes straight into the New page's own refusal notice and the confirm sheet, so the person reads it beside the field they are fixing (ADR 0095, amendment).",
+  },
   removeRecentRun: {
     channel: "silent",
     why: "The line leaves the history under the thumb once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the history is read again (ADR 0095).",

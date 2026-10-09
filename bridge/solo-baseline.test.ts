@@ -682,6 +682,10 @@ describe("solo zero-tax — routes", () => {
       // SOLO writes that legitimately extend this list, named here rather than exempted. Session-scoped
       // and write-gated through the same closure `/api/launch` rides, so a `?host=` call lands in that
       // member's own `commands-recent.json`.
+      // Check one typed line before it runs (ADR 0095, amendment): a SOLO read that legitimately extends
+      // this list, named here rather than exempted. Read-gated and session-scoped through the same
+      // closure `/api/launch` rides, so a `?host=` call forwards to the member whose scan it is.
+      "/api/launch/check",
       "/api/launch/recent/clear",
       "/api/launch/recent/remove",
       // This host's own launcher rows, read live off its `launchers.toml` — a SOLO route that

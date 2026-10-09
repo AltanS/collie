@@ -10,12 +10,13 @@ import { tabCreateKey, useSpaceActions } from "./use-spaces";
 
 // Stub the bridge's create endpoints at the api seam — same idiom launch-strip.test.tsx uses for
 // api.launch. Only the calls this tree can make are declared.
-const { mockCreateTab, mockCreateWorkspace, mockCreateWorktreeAt, mockStartLaunch, mockLaunch, mockOutcomeUnknown } =
+const { mockCreateTab, mockCreateWorkspace, mockCreateWorktreeAt, mockStartLaunch, mockStartRun, mockLaunch, mockOutcomeUnknown } =
   vi.hoisted(() => ({
     mockCreateTab: vi.fn(),
     mockCreateWorkspace: vi.fn(),
     mockCreateWorktreeAt: vi.fn(),
     mockStartLaunch: vi.fn(),
+    mockStartRun: vi.fn(),
     mockLaunch: vi.fn(),
     mockOutcomeUnknown: vi.fn(),
   }));
@@ -24,6 +25,7 @@ vi.mock("@/lib/api", () => ({
   createWorkspace: mockCreateWorkspace,
   createWorktreeAt: mockCreateWorktreeAt,
   startLaunch: mockStartLaunch,
+  startRun: mockStartRun,
   launch: mockLaunch,
   outcomeUnknown: mockOutcomeUnknown,
 }));
@@ -245,7 +247,7 @@ describe("useSpaceActions — start", () => {
   const REQUEST_ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
 
   beforeEach(() => {
-    for (const mock of [mockCreateWorktreeAt, mockStartLaunch, mockCreateWorkspace, mockOutcomeUnknown]) mock.mockReset();
+    for (const mock of [mockCreateWorktreeAt, mockStartLaunch, mockStartRun, mockCreateWorkspace, mockOutcomeUnknown]) mock.mockReset();
     delete document.body.dataset.outcome;
     clearStatus();
     resetPollIntent();
@@ -293,6 +295,42 @@ describe("useSpaceActions — start", () => {
     expect(mockStartLaunch).toHaveBeenCalledWith({ kind: "harness", id: "claude" }, { cwd: "~/src/app", requestId: REQUEST_ID }, {});
     expect(document.body.dataset.outcome).toBe("done");
     expect(router.state.location.pathname).toBe("/pane/w7%3Ap1");
+  });
+
+  it("a one-off line goes to startRun with its folder and the request id, and lands on the pane", async () => {
+    mockStartRun.mockResolvedValueOnce(pane("w7"));
+    const router = await press({ what: { kind: "run", line: "htop -d 5" }, cwd: "~/src", requestId: REQUEST_ID });
+    expect(mockStartRun).toHaveBeenCalledWith("htop -d 5", { cwd: "~/src", requestId: REQUEST_ID }, {});
+    expect(mockStartLaunch).not.toHaveBeenCalled();
+    expect(document.body.dataset.outcome).toBe("done");
+    expect(router.state.location.pathname).toBe("/pane/w7%3Ap1");
+  });
+
+  it("a one-off line never starts on a branch: refused with the bridge's own words, nothing sent", async () => {
+    await press({
+      what: { kind: "run", line: "htop" },
+      requestId: REQUEST_ID,
+      branch: { cwd: "~/src/app", name: "x", base: { kind: "default" }, folder: { kind: "default" } },
+    });
+    expect(document.body.dataset.outcome).toBe("refused");
+    expect(document.body.dataset.message).toBe("A one-off command cannot start on a new branch.");
+    expect(mockStartRun).not.toHaveBeenCalled();
+    expect(mockCreateWorktreeAt).not.toHaveBeenCalled();
+  });
+
+  it("a one-off line with no answer is unknown: nothing is said and nothing is re-sent", async () => {
+    mockStartRun.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    mockOutcomeUnknown.mockReturnValueOnce(true);
+    await press({ what: { kind: "run", line: "htop" }, requestId: REQUEST_ID });
+    expect(document.body.dataset.outcome).toBe("unknown");
+    expect(mockStartRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refused one-off line comes back as the bridge's words", async () => {
+    mockStartRun.mockResolvedValueOnce({ ok: false, error: "x", code: "launch.run_off" });
+    await press({ what: { kind: "run", line: "htop" }, requestId: REQUEST_ID });
+    expect(document.body.dataset.outcome).toBe("refused");
+    expect(document.body.dataset.message).toBe("Running a one-off command from a phone is turned off on this machine.");
   });
 
   it("a shell on an older machine goes through its plain space create", async () => {

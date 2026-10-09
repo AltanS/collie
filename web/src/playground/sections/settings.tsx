@@ -1,10 +1,15 @@
 // Settings section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
+import { useState } from "react";
+
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
+import { CommandPicker } from "@/components/new-command-picker";
 import { NoPromptsSheet } from "@/components/no-prompts-sheet";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { SpaceOverview } from "@/components/space-overview";
+import { commandChoice, commandKey, commandOptions, offerFor, pickOfKey } from "@/lib/new-page";
+import type { LauncherItem, RecentRun } from "@/lib/types";
 import {
   devicesPaired,
   devicesUnpaired,
@@ -23,6 +28,60 @@ export const DEF: SectionDef = {
   intent:
     "The whole settings route, mounted twice: once on a solo collie with nothing paired, once on a lead with three paired devices and a crew card to show for it. Then the Updates page it links to, which is where the check, the card, the peers and the one button now live.",
 };
+
+// ── The Shell half of the New page, with one-off commands (ADR 0095) ───────────────────────────────
+
+/** What a 1.19.0 bridge lists under Shell: the shell and one operator row. */
+const RUN_ITEMS: LauncherItem[] = [
+  { key: "shell", start: { shell: true }, group: "commands", label: "Shell", source: "builtin", noPrompts: false, branch: true, available: true },
+  {
+    key: "row:make test",
+    start: { command: "make test" },
+    group: "commands",
+    label: "make test",
+    command: "make test",
+    source: "operator",
+    noPrompts: false,
+    branch: false,
+    available: true,
+  },
+];
+
+/** The machine's history: a plain line, a line that skips prompts, and a line too long for its option. */
+const RUN_RECENT: RecentRun[] = [
+  { line: "make deploy --env staging", cwd: "/home/op/app", at: 3, noPrompts: false, available: true },
+  { line: "codex --dangerously-bypass-approvals-and-sandbox", cwd: null, at: 2, noPrompts: true, available: true },
+  { line: "journalctl --user -u collie.service --since today --no-pager", cwd: null, at: 1, noPrompts: false, available: true },
+];
+
+/** A history entry as a bridge lists it while `[phone] run` is off. */
+function runOff(entry: RecentRun): RecentRun {
+  return { line: entry.line, cwd: entry.cwd, at: entry.at, noPrompts: entry.noPrompts, available: false, reason: "run_off" };
+}
+
+/**
+ * The real Command select and what hangs off it, fed by the real rules (`offerFor`, `commandOptions`),
+ * with the choice and the typed line held here. The page's Start, the check and the history writes are
+ * not wired: a card writes nothing.
+ */
+function CommandPickerDemo({ run, pick, line = "" }: { run: boolean; pick: string; line?: string }) {
+  const [key, setKey] = useState(pick);
+  const [typed, setTyped] = useState(line);
+  const recentRuns = RUN_RECENT.map((e) => (run ? e : runOff(e)));
+  const offer = offerFor({ harnesses: [], items: RUN_ITEMS, loaded: true, rows: [], canWorktree: true, run, recentRuns });
+  const command = commandChoice(offer, pickOfKey(offer, key), null);
+  return (
+    <div className="p-4">
+      <CommandPicker
+        options={commandOptions(offer, "Just a shell")}
+        value={commandKey(command)}
+        onChoose={setKey}
+        typed={command.kind === "typed" ? { line: typed, onLine: setTyped, onGo: () => {} } : null}
+        recent={command.kind === "run" ? { busy: false, onRemove: () => {}, onClear: () => {} } : null}
+      />
+    </div>
+  );
+}
 
 export function SettingsSection() {
   return (
@@ -136,6 +195,39 @@ export function SettingsSection() {
           <PhoneFrameCard height={640}>
             <NewRouter home={homeCrew} start="/new?machine=workshop" />
           </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="new-page-run-typed"
+          label="New page, Shell, Type a command"
+          reach="on the New page, switch to Shell and pick Type a command… in the Command select. It shows when the machine's launchers.toml leaves [phone] run on, which is the default."
+          note="One monospace field right under the select, with the corrections of the keyboard turned off and Go on the return key. The row is reserved only while the option is chosen, so picking it is a choice and typing moves nothing. On the real page the summary above Start reads Runs `htop` in ~/projects on bluefin, and Start checks the line first, so a line that skips permission prompts asks before its first run."
+        >
+          <Stage height={240}>
+            <CommandPickerDemo run pick="typed" line="htop" />
+          </Stage>
+        </Card>
+
+        <Card
+          state="new-page-run-recent"
+          label="New page, Shell, a Recent entry chosen"
+          reach="on the New page, switch to Shell and pick a line from the Recent group, which lists the one-off lines run on that machine, newest first. Starting it runs that line again."
+          note="The option shows the line, cut when long, with (No prompts) where it applies. A small Remove from history and Clear history sit under the select while an entry is chosen; Clear history asks first, in a sheet. Picking an entry fills the folder with the one it last ran in, unless you changed the folder on this visit. The card writes nothing."
+        >
+          <Stage height={380}>
+            <CommandPickerDemo run pick="run:make deploy --env staging" />
+          </Stage>
+        </Card>
+
+        <Card
+          state="new-page-run-off"
+          label="New page, Shell, one-off commands turned off"
+          reach="on the New page, switch to Shell on a machine whose launchers.toml sets [phone] run = false."
+          note="The history stays in the list, each line disabled with its reason in brackets, and Type a command… is gone."
+        >
+          <Stage height={120}>
+            <CommandPickerDemo run={false} pick="shell" />
+          </Stage>
         </Card>
 
         <Card

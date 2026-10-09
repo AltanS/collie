@@ -330,13 +330,19 @@ harness = "claude"
 no_prompts = true
 ```
 
-Your rows appear in three places: on the New page, in the **Command** select under **Shell**, or under **Agent** with
-`harness` (tap **+ New** on the dashboard), a **Launch** section on the dashboard, which folds like Spaces, and a **Launch** section
-in the switcher sheet (swipe up from a pane). On the New page a cwd-less row runs in the folder you
-name there, and a row with a fixed folder shows that folder in place of the field. A row never
-starts in a worktree; pick an agent or Shell for that. A row with a fixed folder
-shows it, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
-implies home, so it says nothing there). Declare no rows and neither section appears.
+Your rows appear in three places:
+
+- **On the New page** (tap **+ New** on the dashboard). The switch at the top reads **Agent** | **Shell**.
+  A row with `harness` is in the **Agent** select. A row without `harness` is in the **Command** select,
+  which is the select under **Shell**.
+- **In a Launch section on the dashboard.** It folds like Spaces.
+- **In a Launch section in the switcher sheet** (swipe up from a pane).
+
+On the New page a cwd-less row runs in the folder you name there, and a row with a fixed folder shows
+that folder in place of the field. A row never starts in a worktree; pick an agent or Shell for that.
+A row with a fixed folder shows it, shortened under home; a cwd-less row says "here" in the switcher
+(the dashboard already implies home, so it says nothing there). Declare no rows and neither section
+appears.
 
 On a crew (several machines, one phone-facing lead), each machine reads its own copy of this file —
 a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
@@ -416,6 +422,24 @@ never starts on a new branch.
 
 This is on by default, because a paired phone can already open a shell and type into it. Set
 `run = false` in the `[phone]` table to remove the shortcut on that machine.
+
+On the New page, switch to **Shell**. The **Command** select then ends with two additions: a
+**Recent** group, which lists the lines in that machine's history, and **Type a command…**. Pick
+**Type a command…** and a text field appears right under the select. Type the line and tap **Start**
+(or the return key, which reads **Go**). The line above **Start** says what runs and where, for
+example "Runs `htop` in ~/projects on bluefin". The worktree switch stays off for a one-off line.
+
+Before the first run, Collie asks the machine to check the line. The check runs nothing and keeps
+nothing. If the line carries a flag that skips permission prompts, such as
+`--dangerously-skip-permissions`, this phone asks once before it starts, the same as for a row with
+the "No prompts" badge. If the line breaks the rule above, a notice says why and nothing runs.
+
+Pick a line from **Recent** to run it again. The **Folder** field fills with the folder that line last
+ran in, unless you changed the folder yourself. While a line from **Recent** is chosen,
+**Remove from history** and **Clear history** show under the select. **Clear history** asks first.
+The **Again** row at the top of the page repeats a one-off run too. With `run = false`, the lines in
+**Recent** stay in the list but are disabled, and **Type a command…** is gone. A machine older than
+1.19.0 shows neither.
 
 Each command that started is kept in that machine's state folder, in `commands-recent.json`. The file
 keeps at most 12 lines, newest first, with the folder each one last ran in. Running a line again moves

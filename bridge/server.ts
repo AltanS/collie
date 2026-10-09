@@ -87,7 +87,7 @@ import {
   type RouteAnswer,
 } from "./launcher-adds.ts";
 import { memoryAddedLaunchers, type AddedLauncherSurface } from "./launchers-added.ts";
-import { cleanLauncherText, MAX_COMMAND_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
+import { checkRunLine, cleanLauncherText, MAX_COMMAND_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
 import {
   clearRecentRuns,
   memoryRecentRuns,
@@ -156,7 +156,7 @@ import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeReque
 import type { SttProvider } from "./stt/provider.ts";
 import { uploadTooLarge } from "./uploads.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
-import type { MachineAlertsResponse } from "./types.ts";
+import type { LaunchCheckResponse, MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
@@ -1461,6 +1461,10 @@ export function startServer(opts: {
     // session-scoped for the same reason: `?host=` reaches that member's own history.
     const recentAnswer = await serveRecentRunRoute(req, pathname, caller, recentRuns);
     if (recentAnswer !== null) return recentAnswer;
+    // Check one typed line before it runs (ADR 0095, amendment): a READ that runs and stores nothing,
+    // forwarded with `?host=` so the peer's own scan answers for the machine that would run it.
+    const checkAnswer = await serveLaunchCheckRoute(req, pathname, caller);
+    if (checkAnswer !== null) return checkAnswer;
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
@@ -5142,6 +5146,38 @@ export async function serveRecentRunRoute(
   }
   const answer: RecentRouteAnswer = await act(body, { recent, device: caller.device(), audit: caller.audit, session: rt.name });
   return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+}
+
+// ── Check a typed line (ADR 0095, amendment) ────────────────────────────────────────────────────
+//
+// `POST /api/launch/check { run }` answers `{ ok: true, noPrompts, problem? }` and nothing else: the
+// character rule and the no-prompts scan, on the line as a run would clean it. It is a READ, so it
+// stands on the read gate and, with `?host=`, the resolver forwards it to the member whose scan it
+// is. It touches no multiplexer, no history and no audit log, and it does not look at `[phone] run`
+// or at a paired device: the run itself still does both.
+
+/** Serve the line check, or `null` when `pathname` is not its path. */
+export async function serveLaunchCheckRoute(
+  req: Request,
+  pathname: string,
+  caller: Pick<RouteCaller, "gate" | "resolve">,
+): Promise<Response | null> {
+  if (!(pathname === "/api/launch/check" && req.method === "POST")) return null;
+  const denied = caller.gate("read");
+  if (denied) return denied;
+  const rt = await caller.resolve();
+  if (rt instanceof Response) return rt;
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; the check reads one string.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const asked = asJsonRecord(body);
+  if (asked === null) return text("bad body", 400);
+  const line = typeof asked.run === "string" ? asked.run : undefined;
+  return json(checkRunLine(line) satisfies LaunchCheckResponse, req.headers.get("accept-encoding"));
 }
 
 // ── The new-space folder list (#289, bridge/folders.ts) ──────────────────────────

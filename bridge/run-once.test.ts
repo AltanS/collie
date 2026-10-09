@@ -23,10 +23,10 @@ import {
   runProgram,
   type RecentRun,
 } from "./recent-runs.ts";
-import { createWorktreeAt, launch, launchersRoute, serveRecentRunRoute, type LaunchDeps } from "./server.ts";
+import { createWorktreeAt, launch, launchersRoute, serveLaunchCheckRoute, serveRecentRunRoute, type LaunchDeps } from "./server.ts";
 import type { SessionRuntime } from "./sessions.ts";
 import type { StateEngine } from "./state-engine.ts";
-import type { CreateResponse, LaunchersResponse, RecentRunsResponse, WorktreeCreateResponse } from "./types.ts";
+import type { CreateResponse, LaunchCheckResponse, LaunchersResponse, RecentRunsResponse, WorktreeCreateResponse } from "./types.ts";
 import { memoryWorktreeReceipts } from "./worktree-receipts.ts";
 
 // A one-off run and its history (ADR 0095). The claims:
@@ -39,6 +39,8 @@ import { memoryWorktreeReceipts } from "./worktree-receipts.ts";
 //   5. Each entry is checked again at read; a file of another version reads empty and refuses writes.
 //   6. Remove and clear are writes through the caller's gate and resolver, forwarded on `?host=`.
 //   7. The audit line names the command word and the length, never the line.
+//   8. `POST /api/launch/check` tells a typed line's no-prompts answer and its character problem before
+//      the first run: a read that runs nothing, stores nothing and is forwarded on `?host=`.
 
 const ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
 const ID2 = "1c0f7b2d-4a3e-4d6f-9b8c-2e3f4a5b6c7d";
@@ -650,5 +652,109 @@ describe("GET /api/launchers carries the history and the switch", () => {
       [false, "run_off"],
       [false, "run_off"],
     ]);
+  });
+});
+
+// ── POST /api/launch/check ──────────────────────────────────────────────────────────────────────
+
+describe("POST /api/launch/check: a typed line, checked before it runs", () => {
+  async function check(body: JsonValue, over: Partial<RecentCaller> = {}, path = "/api/launch/check") {
+    const res = await serveLaunchCheckRoute(post(path, body), path, caller(over));
+    if (res === null) throw new Error("the route did not answer");
+    // SAFETY: the check answers a LaunchCheckResponse as JSON (or plain text on a bad body, read by status).
+    return { status: res.status, body: (await res.json().catch(() => null)) as LaunchCheckResponse | null };
+  }
+
+  test("not its path, or not a POST: null", async () => {
+    expect(await serveLaunchCheckRoute(post("/api/launch", {}), "/api/launch", caller())).toBeNull();
+    expect(await serveLaunchCheckRoute(new Request("http://x/api/launch/check"), "/api/launch/check", caller())).toBeNull();
+  });
+
+  test("a plain line: ok, no problem, no prompts skipped", async () => {
+    expect(await check({ run: "make test" })).toEqual({ status: 200, body: { ok: true, noPrompts: false } });
+  });
+
+  test("a line with a known flag reads as no-prompts, as the run would", async () => {
+    for (const run of ["claude --dangerously-skip-permissions", "  codex --yolo  ", "opencode --auto", "FOO=1 claude --permission-mode bypassPermissions"]) {
+      expect((await check({ run })).body).toEqual({ ok: true, noPrompts: true });
+    }
+  });
+
+  test("a line the character rule refuses names the problem, and is never no-prompts", async () => {
+    expect((await check({ run: "" })).body).toEqual({ ok: true, noPrompts: false, problem: "empty" });
+    expect((await check({ run: "   " })).body).toEqual({ ok: true, noPrompts: false, problem: "empty" });
+    expect((await check({})).body).toEqual({ ok: true, noPrompts: false, problem: "empty" });
+    expect((await check({ run: 7 })).body).toEqual({ ok: true, noPrompts: false, problem: "empty" });
+    expect((await check({ run: "ls\nrm -rf x --yolo" })).body).toEqual({ ok: true, noPrompts: false, problem: "forbidden_character" });
+    expect((await check({ run: "echo \u202e --yolo" })).body).toEqual({ ok: true, noPrompts: false, problem: "forbidden_character" });
+    expect((await check({ run: "x".repeat(201) })).body).toEqual({ ok: true, noPrompts: false, problem: "too_long" });
+    expect((await check({ run: "x".repeat(200) })).body).toEqual({ ok: true, noPrompts: false });
+  });
+
+  test("it agrees with the run: the same line gets the same noPrompts from launch", async () => {
+    const f = fixture();
+    const line = "codex --dangerously-bypass-approvals-and-sandbox";
+    const ran = await f.run({ run: line, requestId: ID });
+    expect(ran.body).toMatchObject({ ok: true, noPrompts: true });
+    expect((await check({ run: line })).body?.noPrompts).toBe(true);
+  });
+
+  test("a body that is not an object is a 400", async () => {
+    expect((await check("make test")).status).toBe(400);
+    expect((await check(null)).status).toBe(400);
+    const res = await serveLaunchCheckRoute(
+      new Request("http://x/api/launch/check", { method: "POST", body: "{nope" }),
+      "/api/launch/check",
+      caller(),
+    );
+    expect(res?.status).toBe(400);
+  });
+
+  test("it stands on the READ gate, and a refusal there answers before anything else", async () => {
+    const gates: string[] = [];
+    const refused = new Response("no", { status: 401 });
+    const res = await serveLaunchCheckRoute(
+      post("/api/launch/check", { run: "ls" }),
+      "/api/launch/check",
+      caller({
+        gate: (kind) => {
+          gates.push(kind);
+          return refused;
+        },
+        resolve: () => Promise.reject(new Error("the resolver must not run behind a refused gate")),
+      }),
+    );
+    expect(res).toBe(refused);
+    expect(gates).toEqual(["read"]);
+  });
+
+  test("a read-only device may check: no paired device and no [phone] run switch is asked", async () => {
+    const res = await check({ run: "ls" }, { device: () => null });
+    expect(res.status).toBe(200);
+  });
+
+  test("a `?host=` call is the member's: its answer comes back untouched", async () => {
+    const member = new Response(JSON.stringify({ ok: true, noPrompts: true }), { status: 200 });
+    const res = await serveLaunchCheckRoute(
+      post("/api/launch/check?host=laptop", { run: "ls" }),
+      "/api/launch/check",
+      caller({ resolve: () => Promise.resolve(member) }),
+    );
+    expect(res).toBe(member);
+  });
+
+  test("it stores nothing and writes no audit line", async () => {
+    const recent = memoryRecentRuns();
+    const log = capture();
+    await check({ run: "make deploy --yolo" }, { audit: log.audit });
+    expect(await recent.list()).toEqual([]);
+    expect(log.raw).toEqual([]);
+  });
+
+  test("the crew link carries it as a forwardable READ, audited on neither side", () => {
+    expect(crewRouteFor("/api/launch/check")).toBe("launch/check");
+    expect(apiPathFor("launch/check")).toBe("/api/launch/check");
+    expect(forwardKind("launch/check")).toBe("read");
+    expect(forwardAuditAction("launch/check")).toBeNull();
   });
 });

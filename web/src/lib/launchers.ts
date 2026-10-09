@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { fetchLaunchers } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
-import type { HarnessInfo, Launcher, LauncherItem, LaunchersAdding } from "@/lib/types";
+import type { HarnessInfo, Launcher, LauncherItem, LaunchersAdding, RecentRun } from "@/lib/types";
 
 // THIS scope's own launcher rows — deliberately NOT part of lib/operator-config.ts's one-shot
 // `/api/config` cache. Rows must come from the host that RUNS them: a crew peer keeps its own
@@ -31,6 +31,8 @@ export interface LaunchersState {
   items: readonly LauncherItem[] | null;
   /** "Add your own" for that machine; `null` from a bridge older than 1.19.0 (offer no add). */
   adding: LaunchersAdding | null;
+  /** That machine's one-off command history, newest first (ADR 0095); `null` from a bridge that keeps none. */
+  recentRuns?: readonly RecentRun[] | null;
   /**
    * The `host\u0000session` of the scope the answer above belongs to, `null` before the first one. A
    * view that switches machines keeps the last machine's rows until the new answer lands, so a
@@ -39,7 +41,7 @@ export interface LaunchersState {
   loadedFor: string | null;
 }
 
-const EMPTY: LaunchersState = { launchers: [], home: "", harnesses: null, items: null, adding: null, loadedFor: null };
+const EMPTY: LaunchersState = { launchers: [], home: "", harnesses: null, items: null, adding: null, recentRuns: null, loadedFor: null };
 
 /** The key {@link LaunchersState.loadedFor} is written with. */
 export function launchersKey(scope: Scope | undefined): string {
@@ -73,6 +75,7 @@ export function useLaunchers(scope?: Scope, enabled = true): LaunchersState & { 
             harnesses: res.harnesses ?? null,
             items: res.items ?? null,
             adding: res.adding ?? null,
+            recentRuns: res.recentRuns ?? null,
             loadedFor: launchersKey({ host, session }),
           });
         }

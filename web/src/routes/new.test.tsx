@@ -18,6 +18,7 @@ import type {
   LaunchersAdding,
   MuxCapability,
   MuxConfig,
+  RecentRun,
   ServerSummary,
   WorktreePlanResponse,
 } from "@/lib/types";
@@ -780,11 +781,12 @@ describe("the New page: the lists are the bridge's items", () => {
     mount();
     await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
     const select = await commandSelect();
-    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(4));
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Just a shell",
       "make test",
       "typed (typed lines are turned off on this machine)",
+      "Type a command…",
     ]);
     expect(within(select).getByRole("option", { name: /^typed/ })).toBeDisabled();
   });
@@ -1017,5 +1019,555 @@ describe("the New page: Start without prompts?", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
+  });
+});
+
+// ── One-off commands and their history (ADR 0095) ───────────────────────────────────────────────
+//
+// Under Shell the Command select gains a "Recent" group (the machine's history) and "Type a command…".
+// A typed line is checked (a read) on Start, so the no-prompts confirm can come before its FIRST run;
+// a Recent entry carries the answer it was stored with. Every start then goes through the same guard.
+
+const RECENT_RUNS: RecentRun[] = [
+  { line: "make deploy", cwd: "/home/op/app", at: 3, noPrompts: false, available: true },
+  { line: "codex --yolo", cwd: null, at: 2, noPrompts: true, available: true },
+];
+
+interface RunBridge {
+  /** The machine's history; remove and clear change it, as the bridge's file does. */
+  entries: RecentRun[];
+  /** The bodies of `POST /api/launch/recent/remove`. */
+  removed: unknown[];
+  clears: number;
+  /** The lines `POST /api/launch/check` was asked about, in order. */
+  checks: string[];
+}
+
+/** One history entry as the bridge lists it: unavailable with `run_off` while the switch is off. */
+function listed(entry: RecentRun, run: boolean): RecentRun {
+  if (run) return entry;
+  return { line: entry.line, cwd: entry.cwd, at: entry.at, noPrompts: entry.noPrompts, available: false, reason: "run_off" };
+}
+
+/** A 1.19.0 bridge with one-off runs: the history, its two writes, and the line check. */
+function serveRuns(over: { run?: boolean; entries?: RecentRun[]; noPrompts?: readonly string[]; problem?: "empty" | "too_long" | "forbidden_character" } = {}): RunBridge {
+  const run = over.run ?? true;
+  const bridge: RunBridge = { entries: over.entries ?? structuredClone(RECENT_RUNS), removed: [], clears: 0, checks: [] };
+  server.use(
+    http.get("/api/launchers", () =>
+      HttpResponse.json({
+        launchers: [{ command: "make test", label: "make test" }],
+        home: "/home/op",
+        harnesses: HARNESSES,
+        items: ITEMS,
+        adding: { ...ADDING, run },
+        recentRuns: bridge.entries.map((e) => listed(e, run)),
+      }),
+    ),
+    http.post("/api/launch/check", async ({ request }) => {
+      // SAFETY: the page posts `{ run }`, the only body this stub is mounted for.
+      const body = (await request.json()) as { run: string };
+      bridge.checks.push(body.run);
+      if (over.problem !== undefined) return HttpResponse.json({ ok: true, noPrompts: false, problem: over.problem });
+      return HttpResponse.json({ ok: true, noPrompts: over.noPrompts?.includes(body.run) === true });
+    }),
+    http.post("/api/launch/recent/remove", async ({ request }) => {
+      // SAFETY: the page posts `{ line }`, the only body this stub is mounted for.
+      const body = (await request.json()) as { line: string };
+      bridge.removed.push(body);
+      bridge.entries = bridge.entries.filter((e) => e.line !== body.line);
+      return HttpResponse.json({ ok: true, removed: 1 });
+    }),
+    http.post("/api/launch/recent/clear", () => {
+      bridge.clears += 1;
+      const removed = bridge.entries.length;
+      bridge.entries = [];
+      return HttpResponse.json({ ok: true, removed });
+    }),
+  );
+  return bridge;
+}
+
+/** Switch to Shell and wait for the machine's answer (the Type a command option is in the list). */
+async function openShell(typed = true): Promise<HTMLElement> {
+  await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
+  const select = await commandSelect();
+  if (typed) await waitFor(() => expect(within(select).getByRole("option", { name: "Type a command…" })).toBeInTheDocument());
+  return select;
+}
+
+const commandField = () => screen.findByRole("textbox", { name: "Command to run" });
+const noPromptsSheet = () => screen.findByRole("dialog", { name: "Start without prompts?" });
+
+describe("the New page: the Command select with one-off commands", () => {
+  it("run on: Just a shell, the rows, the Recent group newest first, and Type a command last", async () => {
+    serveRuns();
+    mount();
+    const select = await openShell();
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Just a shell",
+      "make test",
+      "typed (typed lines are turned off on this machine)",
+      "make deploy",
+      "codex --yolo (No prompts)",
+      "Type a command…",
+    ]);
+    const recent = within(select).getByRole("group", { name: "Recent" });
+    expect(within(recent).getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("a long line is cut in its option and whole when it runs", async () => {
+    const long = `${"ab".repeat(30)} --flag`;
+    const bridge = serveRuns({ entries: [{ line: long, cwd: null, at: 1, noPrompts: false, available: true }] });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    const select = await openShell();
+    const option = within(within(select).getByRole("group", { name: "Recent" })).getByRole("option");
+    expect(option.textContent).toBe(`${long.slice(0, 39)}…`);
+    await userEvent.selectOptions(select, option);
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ run: long });
+    expect(bridge.checks).toEqual([]);
+  });
+
+  it("run off: the history stays, each entry disabled with its reason, and there is no Type a command", async () => {
+    serveRuns({ run: false });
+    mount();
+    const select = await openShell(false);
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(5));
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Just a shell",
+      "make test",
+      "typed (typed lines are turned off on this machine)",
+      "make deploy (one-off commands are turned off on this machine)",
+      "codex --yolo (No prompts) (one-off commands are turned off on this machine)",
+    ]);
+    expect(within(select).getByRole("option", { name: /^make deploy/ })).toBeDisabled();
+    expect(within(select).queryByRole("option", { name: "Type a command…" })).toBeNull();
+  });
+
+  it("a bridge that reports no adding.run shows neither the group nor the option", async () => {
+    serveItems(null);
+    mount();
+    const select = await openShell(false);
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
+    expect(within(select).queryByRole("group", { name: "Recent" })).toBeNull();
+    expect(within(select).queryByRole("option", { name: "Type a command…" })).toBeNull();
+  });
+});
+
+describe("the New page: Type a command", () => {
+  it("shows one text field right under the select, only while the option is chosen", async () => {
+    serveRuns();
+    mount();
+    const select = await openShell();
+    expect(screen.queryByRole("textbox", { name: "Command to run" })).toBeNull();
+    await userEvent.selectOptions(select, "Type a command…");
+    const field = await commandField();
+    expect(field).toHaveFocus();
+    // Right under the select: the next thing after the select's box.
+    expect(select.parentElement?.nextElementSibling?.contains(field)).toBe(true);
+    expect(field.className).toContain("font-mono");
+    expect(field.className).toContain("h-11");
+    expect(field).toHaveAttribute("autocapitalize", "none");
+    expect(field).toHaveAttribute("autocorrect", "off");
+    expect(field).toHaveAttribute("spellcheck", "false");
+    expect(field).toHaveAttribute("enterkeyhint", "go");
+    await userEvent.selectOptions(select, "Just a shell");
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Command to run" })).toBeNull());
+  });
+
+  it("Start waits for a line; the summary says what runs, where, on which machine", async () => {
+    serveRuns();
+    mount({ servers: roster });
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+    await userEvent.type(await commandField(), "htop");
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "~/projects");
+    expect(summary()).toHaveTextContent("Runs `htop` in ~/projects on bluefin");
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  });
+
+  it("the worktree switch is off and disabled for a one-off line, with the command rows' reason, before the first key", async () => {
+    serveRuns();
+    declares({ createWorktree: true });
+    mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    const toggle = await screen.findByRole("switch", { name: /New worktree/ });
+    await waitFor(() => expect(toggle).toBeDisabled());
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("a command cannot start in a new worktree")).toBeInTheDocument();
+    await userEvent.type(await commandField(), "htop");
+    expect(screen.getByRole("switch", { name: /New worktree/ })).toBeDisabled();
+  });
+
+  it("Start checks the line first, then runs it by request id; Enter in the field does the same", async () => {
+    const bridge = serveRuns();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "~/projects");
+    await userEvent.type(await commandField(), "  htop -d 5  {Enter}");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bridge.checks).toEqual(["htop -d 5"]);
+    expect(bodies).toEqual([{ run: "htop -d 5", cwd: "~/projects", requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+  });
+
+  it("a line that skips prompts asks BEFORE its first run, and not the second time", async () => {
+    const line = "claude --dangerously-skip-permissions --model opus";
+    const bridge = serveRuns({ entries: [], noPrompts: [line] });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), line);
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const sheet = await noPromptsSheet();
+    expect(within(sheet).getByTestId("no-prompts-command")).toHaveTextContent(line);
+    expect(bridge.checks).toEqual([line]);
+    // Nothing ran while the question was open.
+    expect(bodies).toHaveLength(0);
+    await userEvent.click(within(sheet).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ run: line });
+    expect(noPromptsConfirmed("", line)).toBe(true);
+    // The second time the line is checked again (a read) but this device already said yes.
+    await router.navigate("/new");
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), line);
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bridge.checks).toEqual([line, line]);
+    expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
+  });
+
+  it("Cancel on that question runs nothing and remembers nothing", async () => {
+    const line = "codex --yolo";
+    serveRuns({ entries: [], noPrompts: [line] });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), line);
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await userEvent.click(within(await noPromptsSheet()).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull());
+    expect(bodies).toHaveLength(0);
+    expect(localStorage.getItem(NO_PROMPTS_KEY)).toBeNull();
+    // Start is live again.
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  });
+
+  it("a plain line starts without the question", async () => {
+    serveRuns({ entries: [] });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "make test");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
+  });
+
+  it("the check's problem is the refusal a run would get, said in the same place, and nothing runs", async () => {
+    serveRuns({ problem: "forbidden_character" });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "ls");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const shown = await screen.findByTestId("new-page-refusal");
+    expect(shown).toHaveTextContent(t("apiError.launch.bad_line", { problem: "forbidden_character", max: 200 }));
+    expect(shown.closest('[role="alert"]')).not.toBeNull();
+    expect(bodies).toHaveLength(0);
+    expect(router.state.location.pathname).toBe("/new");
+    // A changed line brings the summary back.
+    await userEvent.type(await commandField(), "x");
+    await waitFor(() => expect(screen.queryByTestId("new-page-refusal")).toBeNull());
+  });
+
+  it("a check that fails to answer is said too, and Start stays live", async () => {
+    serveRuns();
+    server.use(http.post("/api/launch/check", () => new HttpResponse("bad gateway", { status: 502 })));
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "ls");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByTestId("new-page-refusal")).toBeInTheDocument();
+    expect(bodies).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  });
+
+  it("a retry keeps the request id; a changed line or folder mints a new one", async () => {
+    serveRuns({ entries: [] });
+    const bodies: Array<{ requestId?: string; run?: string }> = [];
+    serveLaunch(bodies, [1]);
+    mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "htop");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Collie could not confirm the start.");
+    expect(bodies).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]?.requestId).toBe(bodies[0]?.requestId);
+  });
+
+  it("a changed line is a new ask: Try again turns back into Start, and the new request id differs", async () => {
+    serveRuns({ entries: [] });
+    const bodies: Array<{ requestId?: string; run?: string }> = [];
+    server.use(
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: the page posts `{ run, requestId }`, the only body this stub is mounted for.
+        bodies.push((await request.json()) as { requestId?: string; run?: string });
+        return new HttpResponse("bad gateway", { status: 502 });
+      }),
+    );
+    mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "htop");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await screen.findByRole("button", { name: "Try again" });
+    await userEvent.type(await commandField(), " -d 5");
+    expect(await screen.findByRole("button", { name: "Start" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]?.run).toBe("htop -d 5");
+    expect(bodies[1]?.requestId).not.toBe(bodies[0]?.requestId);
+    // The folder is part of the ask too.
+    await screen.findByRole("button", { name: "Try again" });
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "~/x");
+    await userEvent.click(await screen.findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(3));
+    expect(bodies[2]?.requestId).not.toBe(bodies[1]?.requestId);
+  });
+});
+
+describe("the New page: a Recent entry", () => {
+  it("starts with its own line and fills the folder with its cwd; no check is asked", async () => {
+    const bridge = serveRuns();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    const select = await openShell();
+    await userEvent.selectOptions(select, "make deploy");
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("/home/op/app");
+    expect(summary()).toHaveTextContent("Runs `make deploy` in ~/app");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bodies).toEqual([{ run: "make deploy", cwd: "/home/op/app", requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+    expect(bridge.checks).toEqual([]);
+  });
+
+  it("an entry that ran in home sends no folder, and clears the field", async () => {
+    serveRuns({ entries: [{ line: "make deploy", cwd: "/home/op/app", at: 3, noPrompts: false, available: true }, { line: "uptime", cwd: null, at: 2, noPrompts: false, available: true }] });
+    const bodies: Array<{ cwd?: string }> = [];
+    serveLaunch(bodies);
+    mount();
+    const select = await openShell();
+    await userEvent.selectOptions(select, "make deploy");
+    await userEvent.selectOptions(select, "uptime");
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty("cwd");
+  });
+
+  it("never overwrites a folder the person changed on this visit", async () => {
+    serveRuns();
+    mount();
+    const select = await openShell();
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "~/mine");
+    await userEvent.selectOptions(select, "make deploy");
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("~/mine");
+  });
+
+  it("its stored no-prompts answer goes through the guard, with no check", async () => {
+    const bridge = serveRuns();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await userEvent.selectOptions(await openShell(), "codex --yolo (No prompts)");
+    // The badge under the select, as for a row.
+    expect(liveBadges()).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const sheet = await noPromptsSheet();
+    expect(within(sheet).getByTestId("no-prompts-command")).toHaveTextContent("codex --yolo");
+    expect(bodies).toHaveLength(0);
+    expect(bridge.checks).toEqual([]);
+    await userEvent.click(within(sheet).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+  });
+
+  it("the worktree switch is off and disabled for a Recent entry too", async () => {
+    serveRuns();
+    declares({ createWorktree: true });
+    mount();
+    await userEvent.selectOptions(await openShell(), "make deploy");
+    const toggle = await screen.findByRole("switch", { name: /New worktree/ });
+    await waitFor(() => expect(toggle).toBeDisabled());
+    expect(screen.getByText("a command cannot start in a new worktree")).toBeInTheDocument();
+  });
+
+  it("Remove from history shows under the select only for an entry, removes that line, and falls back to Just a shell", async () => {
+    const bridge = serveRuns();
+    mount();
+    const select = await openShell();
+    expect(screen.queryByRole("button", { name: "Remove from history" })).toBeNull();
+    await userEvent.selectOptions(select, "make deploy");
+    const remove = await screen.findByRole("button", { name: "Remove from history" });
+    expect(remove.className).toContain("min-h-11");
+    await userEvent.click(remove);
+    await waitFor(() => expect(bridge.removed).toEqual([{ line: "make deploy" }]));
+    await waitFor(() => expect(within(select).queryByRole("option", { name: "make deploy" })).toBeNull());
+    expect(select).toHaveValue("shell");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove from history" })).toBeNull());
+    // The other line is still there.
+    expect(within(select).getByRole("option", { name: "codex --yolo (No prompts)" })).toBeInTheDocument();
+  });
+
+  it("a refused remove says why on the status line and reads the history again", async () => {
+    serveRuns();
+    server.use(
+      http.post("/api/launch/recent/remove", () =>
+        HttpResponse.json({ ok: false, error: "x", code: "launch.recent_unknown" }, { status: 404 }),
+      ),
+    );
+    mount();
+    await userEvent.selectOptions(await openShell(), "make deploy");
+    await userEvent.click(await screen.findByRole("button", { name: "Remove from history" }));
+    expect(await screen.findByText("That command is no longer in this machine's history.")).toBeInTheDocument();
+  });
+
+  it("Clear history asks first, in a sheet; Cancel clears nothing, Clear history empties the list", async () => {
+    const bridge = serveRuns();
+    mount();
+    const select = await openShell();
+    await userEvent.selectOptions(select, "make deploy");
+    await userEvent.click(await screen.findByRole("button", { name: "Clear history" }));
+    const sheet = await screen.findByRole("dialog", { name: "Clear the history?" });
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Clear the history?" })).toBeNull());
+    expect(bridge.clears).toBe(0);
+    await userEvent.click(screen.getByRole("button", { name: "Clear history" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Clear the history?" })).getByRole("button", { name: "Clear history" }));
+    await waitFor(() => expect(bridge.clears).toBe(1));
+    await waitFor(() => expect(within(select).queryByRole("group", { name: "Recent" })).toBeNull());
+    expect(select).toHaveValue("shell");
+    // Type a command stays.
+    expect(within(select).getByRole("option", { name: "Type a command…" })).toBeInTheDocument();
+  });
+
+  it("history writes go to the chosen machine", async () => {
+    serveRuns();
+    const seen: string[] = [];
+    server.use(
+      http.post("/api/launch/recent/remove", ({ request }) => {
+        seen.push(new URL(request.url).search);
+        return HttpResponse.json({ ok: true, removed: 1 });
+      }),
+    );
+    mount({ entries: ["/new?machine=mini"], servers: roster });
+    await userEvent.selectOptions(await openShell(), "make deploy");
+    await userEvent.click(await screen.findByRole("button", { name: "Remove from history" }));
+    await waitFor(() => expect(seen).toEqual(["?host=mini"]));
+  });
+});
+
+describe("the New page: Again repeats a one-off run", () => {
+  it("a line the history holds: one tap runs it again, with its folder, and no check", async () => {
+    const bridge = serveRuns();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "make deploy");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    await router.navigate("/new");
+    await userEvent.click(await screen.findByRole("button", { name: /Again: make deploy/ }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ run: "make deploy", cwd: "/home/op/app" });
+    expect(bridge.checks).toEqual([]);
+  });
+
+  it("a line the history no longer holds comes back through the check", async () => {
+    const bridge = serveRuns({ entries: [] });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "htop");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    await router.navigate("/new");
+    await userEvent.click(await screen.findByRole("button", { name: /Again: htop/ }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bridge.checks).toEqual(["htop", "htop"]);
+    expect(bodies[1]).toMatchObject({ run: "htop" });
+  });
+
+  it("goes through the no-prompts guard like Start does", async () => {
+    serveRuns();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "codex --yolo (No prompts)");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await userEvent.click(within(await noPromptsSheet()).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    // Another day, another phone: Again must ask.
+    localStorage.removeItem(NO_PROMPTS_KEY);
+    await router.navigate("/new");
+    await userEvent.click(await screen.findByRole("button", { name: /Again: codex --yolo/ }));
+    const sheet = await noPromptsSheet();
+    expect(bodies).toHaveLength(1);
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("is not offered once the machine turned one-off runs off", async () => {
+    serveRuns();
+    serveLaunch([]);
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "make deploy");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    cleanup();
+    serveRuns({ run: false });
+    mount();
+    await openShell(false);
+    expect(screen.queryByRole("button", { name: /Again:/ })).toBeNull();
+  });
+});
+
+describe("the New page: a refused one-off run", () => {
+  const RUN_REFUSALS = [
+    { code: "launch.run_off", detail: undefined },
+    { code: "launch.no_device", detail: undefined },
+    { code: "launch.bad_line", detail: { problem: "too_long", max: 200 } },
+    { code: "launch.folder_missing", detail: { folder: "/home/op/nope" } },
+    { code: "launch.run_no_branch", detail: undefined },
+    { code: "launch.recent_unknown", detail: undefined },
+  ] as const;
+
+  it.each(RUN_REFUSALS)("$code is said above Start, in the same box as any refusal", async ({ code, detail }) => {
+    serveRuns({ entries: [] });
+    server.use(http.post("/api/launch", () => HttpResponse.json({ ok: false, error: "english", code, detail }, { status: 403 })));
+    const router = mount();
+    await userEvent.selectOptions(await openShell(), "Type a command…");
+    await userEvent.type(await commandField(), "htop");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const shown = await screen.findByTestId("new-page-refusal");
+    expect(shown).toHaveTextContent(t(`apiError.${code}`, detail));
+    expect(shown.closest('[role="alert"]')).not.toBeNull();
+    expect(router.state.location.pathname).toBe("/new");
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
   });
 });

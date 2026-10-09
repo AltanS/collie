@@ -3,9 +3,12 @@ import {
   KIND_KEY,
   MAX_AGAIN,
   NEW_PAGE_DOCS,
+  RECENT_OPTION_CHARS,
+  TYPED_KEY,
   agentChoice,
   branchAllowed,
   commandChoice,
+  commandKey,
   commandOptions,
   defaultKind,
   folderShown,
@@ -17,20 +20,24 @@ import {
   offerFor,
   offered,
   optionText,
+  pickOfKey,
   readAgain,
   readKind,
   rememberAgain,
   rememberKind,
+  runLine,
   startFingerprint,
   startableAgents,
   summaryKey,
+  summaryWhat,
+  truncateLine,
   unavailableText,
   whatFor,
   whatLabel,
   type LastStart,
 } from "./new-page";
 import { hostHealth } from "./host-health";
-import type { HarnessInfo, Launcher, LauncherItem, ServerSummary } from "./types";
+import type { HarnessInfo, Launcher, LauncherItem, RecentRun, ServerSummary } from "./types";
 
 // The New page's rules (M48 spec 01): what is offered and what is listed as not working, the summary's
 // sentence, the Again and Agent-or-Shell memories, and when a retry may keep its request id.
@@ -198,9 +205,9 @@ describe("offerFor with the bridge's items", () => {
 
   it("the Command select's options come from one function: Just a shell first, then the rows", () => {
     expect(commandOptions(offer, "Just a shell")).toEqual([
-      { key: "shell", text: "Just a shell", disabled: false },
-      { key: "row:make test", text: "make test", disabled: false },
-      { key: "row:htop --typed", text: "typed (typed lines are turned off on this machine)", disabled: true },
+      { key: "shell", text: "Just a shell", disabled: false, group: "rows" },
+      { key: "row:make test", text: "make test", disabled: false, group: "rows" },
+      { key: "row:htop --typed", text: "typed (typed lines are turned off on this machine)", disabled: true, group: "rows" },
     ]);
   });
 
@@ -215,6 +222,145 @@ describe("offerFor with the bridge's items", () => {
     expect(kindOfKey(offer, "row:make test")).toBe("shell");
     expect(kindOfKey(offer, "row:gone")).toBeNull();
     expect(kindOfKey(offer, undefined)).toBeNull();
+  });
+});
+
+// ── One-off commands and their history (ADR 0095) ───────────────────────────────────────────────
+
+const RECENT: RecentRun[] = [
+  { line: "make deploy", cwd: "/srv/app", at: 3, noPrompts: false, available: true },
+  { line: "claude --dangerously-skip-permissions", cwd: null, at: 2, noPrompts: true, available: true },
+  { line: "x".repeat(RECENT_OPTION_CHARS + 20), cwd: null, at: 1, noPrompts: false, available: true },
+];
+
+describe("the Command select's list in each switch state", () => {
+  const input = { harnesses: [CLAUDE], items: ITEMS, loaded: true, rows: [], canWorktree: true } as const;
+  const again = (what: LastStart["what"]): LastStart => ({ what, label: "x", cwd: null, branch: null, at: 1 });
+  const keys = (offer: ReturnType<typeof offerFor>) => commandOptions(offer, "Just a shell").map((o) => [o.group, o.key]);
+
+  it("a bridge that reports no `adding.run` shows neither Recent nor Type a command", () => {
+    const old = offerFor({ ...input, recentRuns: RECENT });
+    expect(old.canRun).toBe(false);
+    expect(old.recent).toEqual([]);
+    expect(commandOptions(old, "Just a shell").map((o) => o.group)).toEqual(["rows", "rows", "rows"]);
+  });
+
+  it("run on: Just a shell, the rows, the Recent group newest first, and Type a command last", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT });
+    expect(keys(offer)).toEqual([
+      ["rows", "shell"],
+      ["rows", "row:make test"],
+      ["rows", "row:htop --typed"],
+      ["recent", "run:make deploy"],
+      ["recent", "run:claude --dangerously-skip-permissions"],
+      ["recent", `run:${"x".repeat(RECENT_OPTION_CHARS + 20)}`],
+      ["typed", TYPED_KEY],
+    ]);
+    const texts = commandOptions(offer, "Just a shell").map((o) => o.text);
+    expect(texts[3]).toBe("make deploy");
+    // The badge is in words, after the line.
+    expect(texts[4]).toBe("claude --dangerously-skip-permissions (No prompts)");
+    // A long line is cut in the option, whole in the entry.
+    expect(texts[5]).toBe(`${"x".repeat(RECENT_OPTION_CHARS - 1)}…`);
+    expect(offer.recent[2]?.line).toBe("x".repeat(RECENT_OPTION_CHARS + 20));
+    expect(texts[6]).toBe("Type a command…");
+    expect(commandOptions(offer, "Just a shell").every((o) => !o.disabled || o.key === "row:htop --typed")).toBe(true);
+  });
+
+  it("run on with no history: Type a command is the only addition, and there is no empty Recent group", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: [] });
+    expect(commandOptions(offer, "Just a shell").map((o) => o.group)).toEqual(["rows", "rows", "rows", "typed"]);
+    expect(offerFor({ ...input, run: true }).recent).toEqual([]);
+  });
+
+  it("run off: the history stays listed, each entry disabled with its reason, and there is no Type a command", () => {
+    const off = RECENT.map((e) => ({ ...e, available: false, reason: "run_off" as const }));
+    const offer = offerFor({ ...input, run: false, recentRuns: off });
+    const options = commandOptions(offer, "Just a shell");
+    expect(options.map((o) => o.group)).toEqual(["rows", "rows", "rows", "recent", "recent", "recent"]);
+    expect(options[3]).toEqual({
+      key: "run:make deploy",
+      text: "make deploy (one-off commands are turned off on this machine)",
+      disabled: true,
+      group: "recent",
+    });
+    expect(offer.canRun).toBe(false);
+    // Whatever the entries say, a switch that is off disables them.
+    expect(offerFor({ ...input, run: false, recentRuns: RECENT }).recent.every((r) => r.unavailable?.kind === "runOff")).toBe(true);
+  });
+
+  it("an entry the bridge marks unavailable is disabled even while the switch is on", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: [{ ...RECENT[0]!, available: false, reason: "run_off" }] });
+    expect(offer.recent[0]?.unavailable).toEqual({ kind: "runOff" });
+  });
+
+  it("a machine that takes no writes offers neither", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT, refusal: "minibuch is not reachable" });
+    expect(offer.recent).toEqual([]);
+    expect(offer.canRun).toBe(false);
+  });
+
+  it("an entry carries its line, its folder and its stored no-prompts answer", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT });
+    expect(offer.recent[0]).toMatchObject({ line: "make deploy", runCwd: "/srv/app", noPrompts: false, branch: false });
+    expect(offer.recent[1]).toMatchObject({ noPrompts: true, command: "claude --dangerously-skip-permissions", runCwd: null });
+    expect(itemOf(offer, { kind: "run", line: "make deploy" })?.key).toBe("run:make deploy");
+  });
+
+  it("truncates by characters, not bytes", () => {
+    expect(truncateLine("htop")).toBe("htop");
+    const wide = "界".repeat(RECENT_OPTION_CHARS + 1);
+    expect([...truncateLine(wide)]).toHaveLength(RECENT_OPTION_CHARS);
+  });
+
+  it("the keys round trip: a run key names its line, the typed key names the typed choice", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT });
+    expect(keyToWhat("run:make deploy")).toEqual({ kind: "run", line: "make deploy" });
+    expect(keyToWhat("run:")).toBeNull();
+    expect(pickOfKey(offer, "run:make deploy")).toEqual({ kind: "run", line: "make deploy" });
+    expect(pickOfKey(offer, TYPED_KEY)).toEqual({ kind: "typed" });
+    expect(pickOfKey(offerFor({ ...input, run: false }), TYPED_KEY)).toBeNull();
+    expect(pickOfKey(offer, "run:gone")).toBeNull();
+    expect(commandKey({ kind: "typed" })).toBe(TYPED_KEY);
+    expect(commandKey({ kind: "run", line: "htop" })).toBe("run:htop");
+    expect(kindOfKey(offer, "run:make deploy")).toBe("shell");
+    expect(kindOf({ kind: "run", line: "htop" })).toBe("shell");
+  });
+
+  it("the Command select opens on the pick, else Again's line, only while it can run", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT });
+    const line = { kind: "run", line: "make deploy" } as const;
+    expect(commandChoice(offer, line, null)).toEqual(line);
+    expect(commandChoice(offer, { kind: "typed" }, null)).toEqual({ kind: "typed" });
+    expect(commandChoice(offer, null, again(line))).toEqual(line);
+    // An Again line the history no longer holds is not selected (the page brings it back through the field).
+    expect(commandChoice(offer, null, again({ kind: "run", line: "gone" }))).toEqual({ kind: "shell" });
+    const off = offerFor({ ...input, run: false, recentRuns: RECENT });
+    expect(commandChoice(off, line, null)).toEqual({ kind: "shell" });
+    expect(commandChoice(off, { kind: "typed" }, null)).toEqual({ kind: "shell" });
+  });
+
+  it("Start takes the typed line in Shell, trimmed, and nothing while the field is empty", () => {
+    expect(whatFor("shell", null, { kind: "typed" }, "  htop  ")).toEqual({ kind: "run", line: "htop" });
+    expect(whatFor("shell", null, { kind: "typed" }, "   ")).toBeNull();
+    expect(whatFor("shell", null, { kind: "run", line: "make deploy" }, "")).toEqual({ kind: "run", line: "make deploy" });
+    // The field is only the typed choice's: in Agent it is ignored.
+    expect(whatFor("agent", null, { kind: "typed" }, "htop")).toBeNull();
+    expect(runLine("  caf\u0065\u0301 ")).toBe("caf\u00e9");
+  });
+
+  it("a one-off line never starts a worktree, and Again can repeat it while runs are on", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT });
+    expect(branchAllowed(offer, { kind: "run", line: "make deploy" })).toBe(false);
+    expect(offered(offer, { kind: "run", line: "anything not in the history" })).toBe(true);
+    expect(offered(offerFor({ ...input, run: false, recentRuns: RECENT }), { kind: "run", line: "make deploy" })).toBe(false);
+  });
+
+  it("the summary reads Runs `line` for a one-off, the label for the rest", () => {
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT });
+    expect(summaryWhat({ kind: "run", line: "htop" }, offer, "Shell")).toBe("Runs `htop`");
+    expect(summaryWhat({ kind: "shell" }, offer, "Shell")).toBe("Shell");
+    expect(whatLabel({ kind: "run", line: "htop" }, offer, "Shell")).toBe("htop");
   });
 });
 
@@ -272,9 +418,9 @@ describe("the choice", () => {
 
   it("Start takes the Agent select in Agent, the Command select in Shell, and nothing with no agent", () => {
     const claude = agentChoice(offer, null, null);
-    expect(whatFor("agent", claude, { kind: "shell" })).toEqual({ kind: "harness", id: "claude" });
-    expect(whatFor("shell", claude, { kind: "row", command: "htop" })).toEqual({ kind: "row", command: "htop" });
-    expect(whatFor("agent", null, { kind: "shell" })).toBeNull();
+    expect(whatFor("agent", claude, { kind: "shell" }, "")).toEqual({ kind: "harness", id: "claude" });
+    expect(whatFor("shell", claude, { kind: "row", command: "htop" }, "")).toEqual({ kind: "row", command: "htop" });
+    expect(whatFor("agent", null, { kind: "shell" }, "")).toBeNull();
   });
 
   it("opens on the remembered half, else the half Again was in, else Agent while one starts, else Shell", () => {
@@ -437,6 +583,20 @@ describe("Again", () => {
   });
 });
 
+describe("Again for a one-off line", () => {
+  it("keeps the line and its folder, and reads them back as a run", () => {
+    const store = memory();
+    rememberAgain("", { what: { kind: "run", line: "make deploy" }, label: "make deploy", cwd: "/srv/app", branch: null, at: 1 }, store);
+    expect(readAgain("", store)).toEqual({ what: { kind: "run", line: "make deploy" }, label: "make deploy", cwd: "/srv/app", branch: null, at: 1 });
+  });
+
+  it("an entry with a run kind and no line is not a start", () => {
+    const store = memory();
+    store.values.set(AGAIN_KEY, JSON.stringify({ "": { what: { kind: "run" }, label: "x", cwd: null, at: 1, branch: null } }));
+    expect(readAgain("", store)).toBeNull();
+  });
+});
+
 describe("startFingerprint", () => {
   const ask = { machine: "", what: { kind: "harness", id: "claude" } as const, cwd: "~/a", branch: null };
 
@@ -449,6 +609,10 @@ describe("startFingerprint", () => {
     expect(startFingerprint({ ...ask, machine: "mini" })).not.toBe(one);
     expect(startFingerprint({ ...ask, cwd: "~/b" })).not.toBe(one);
     expect(startFingerprint({ ...ask, what: { kind: "shell" } })).not.toBe(one);
+    // A one-off line is part of the ask: editing the line mints a new request id.
+    const run = { ...ask, what: { kind: "run", line: "htop" } } as const;
+    expect(startFingerprint(run)).toBe(startFingerprint({ ...run }));
+    expect(startFingerprint({ ...run, what: { kind: "run", line: "htop -d 5" } })).not.toBe(startFingerprint(run));
     expect(
       startFingerprint({ ...ask, branch: { name: "x", base: "main", folder: { kind: "default" } } }),
     ).not.toBe(one);

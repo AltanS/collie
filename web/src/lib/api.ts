@@ -38,6 +38,7 @@ import type {
   CacheWatchState,
   FoldersResponse,
   LaunchersResponse,
+  LaunchCheckResponse,
   RecentRunsResponse,
   NotifyPrefs,
   ChangeCommitDiffResponse,
@@ -1280,7 +1281,15 @@ export function launch(command: string, besidePaneId?: string, scope?: Scope): P
  * What the New page starts (ADR 0091): a `launchers.toml` row by its command, an agent by its id,
  * or a plain shell. Exactly one, which is what the bridge checks first.
  */
-export type StartWhat = { kind: "row"; command: string } | { kind: "harness"; id: string } | { kind: "shell" };
+export type StartWhat =
+  | { kind: "row"; command: string }
+  | { kind: "harness"; id: string }
+  | { kind: "shell" }
+  /** A one-off line the person typed, or took from the machine's history (ADR 0095). Never on a branch. */
+  | { kind: "run"; line: string };
+
+/** What can start on a new worktree: everything but a one-off line (`launch.run_no_branch`). */
+export type BranchableWhat = Exclude<StartWhat, { kind: "run" }>;
 
 /** POST /api/launch's body from the New page. A named contract so `startLaunch` infers against it. */
 interface StartLaunchBody {
@@ -1295,7 +1304,7 @@ interface StartLaunchBody {
  * POST /api/launch from the New page: one kind, an optional folder, and a request id the phone
  * minted for this intent. A retry with the same id answers the first pane (`replayed: true`).
  */
-export function startLaunch(what: StartWhat, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
+export function startLaunch(what: BranchableWhat, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
   const body: StartLaunchBody = { requestId: opts.requestId };
   if (what.kind === "row") body.command = what.command;
   else if (what.kind === "harness") body.harness = what.id;
@@ -1330,6 +1339,19 @@ export function startRun(line: string, opts: { cwd?: string; requestId: string }
   const body: StartRunBody = { run: line, requestId: opts.requestId };
   if (opts.cwd !== undefined) body.cwd = opts.cwd;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * POST /api/launch/check: what a typed line would be, before it runs. A read, forwarded with `?host=`:
+ * it runs nothing and stores nothing, and the answer is that machine's own scan. `problem` is the
+ * character rule's refusal; `noPrompts` says whether the line skips permission prompts, which the
+ * history can only say after a first run (ADR 0095, amendment).
+ */
+export function checkRun(line: string, scope?: Scope): Promise<LaunchCheckResponse> {
+  return req<LaunchCheckResponse>(withScope("/api/launch/check", scope), {
+    method: "POST",
+    body: JSON.stringify({ run: line }),
+  });
 }
 
 /** POST /api/launch/recent/remove: remove one line from that machine's history. */
@@ -1380,7 +1402,7 @@ export function createWorktreeAt(
     base: WorktreeBaseChoice;
     folder: WorktreeFolderChoice;
     requestId: string;
-    what: StartWhat;
+    what: BranchableWhat;
   },
   scope?: Scope,
 ): Promise<WorktreeCreateResponse> {

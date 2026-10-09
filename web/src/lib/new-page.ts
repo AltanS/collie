@@ -3,7 +3,7 @@ import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonVal
 import { hostHealth, writeRefusal, type HostHealth } from "@/lib/host-health";
 import { isMultiHost, leadHost } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
-import type { HarnessInfo, Launcher, LauncherItem, ServerSummary, WorktreeFolderChoice } from "@/lib/types";
+import type { HarnessInfo, Launcher, LauncherItem, RecentRun, ServerSummary, WorktreeFolderChoice } from "@/lib/types";
 
 // THE NEW PAGE'S RULES (M48 spec 01, ADR 0091, ADR 0093), apart from the route so each is tested
 // without rendering it: which items are offered and which are listed as not working here, the one
@@ -35,6 +35,7 @@ export function kindOf(what: StartWhat, offer?: Offer): Kind {
 export function whatKey(what: StartWhat): string {
   if (what.kind === "harness") return `harness:${what.id}`;
   if (what.kind === "row") return `row:${what.command}`;
+  if (what.kind === "run") return `run:${what.line}`;
   return "shell";
 }
 
@@ -44,6 +45,7 @@ export function keyToWhat(key: string | null | undefined): StartWhat | null {
   if (key === "shell") return { kind: "shell" };
   if (key.startsWith("harness:") && key.length > 8) return { kind: "harness", id: key.slice(8) };
   if (key.startsWith("row:") && key.length > 4) return { kind: "row", command: key.slice(4) };
+  if (key.startsWith("run:") && key.length > 4) return { kind: "run", line: key.slice(4) };
   return null;
 }
 
@@ -52,6 +54,7 @@ export function kindOfKey(offer: Offer, key: string | undefined): Kind | null {
   if (key === undefined) return null;
   if (offer.agents.some((a) => a.key === key)) return "agent";
   if (offer.commands.some((c) => c.key === key)) return "shell";
+  if (offer.recent.some((r) => r.key === key)) return "shell";
   return null;
 }
 
@@ -63,8 +66,10 @@ export type Unavailable =
   | { kind: "addsOff" }
   /** The operator has not turned typed lines on (`[phone] free_text`). */
   | { kind: "freeTextOff" }
-  /** A command row never starts in a worktree: the switch is off and says so. */
+  /** A command row or a one-off line never starts in a worktree: the switch is off and says so. */
   | { kind: "commandRow" }
+  /** The operator turned one-off runs off on that machine (`[phone] run = false`); the history is listed, not usable. */
+  | { kind: "runOff" }
   /** The machine's Collie is older than 1.19.0 and starts no agent by id. */
   | { kind: "olderCollie" }
   /** The machine's multiplexer has no worktrees (tmux, zellij). */
@@ -85,6 +90,8 @@ export function unavailableText(reason: Unavailable): string {
       return t("newPage.reason.freeTextOff");
     case "commandRow":
       return t("newPage.reason.commandRow");
+    case "runOff":
+      return t("newPage.reason.runOff");
     case "olderCollie":
       return t("newPage.reason.olderCollie");
     case "needsHerdr":
@@ -121,6 +128,17 @@ export interface OfferItem {
 /** The shell, which every machine can start. Its label is the page's own word (`newPage.shell`). */
 export const SHELL_ITEM: OfferItem = { key: "shell", what: { kind: "shell" }, label: "Shell", noPrompts: false, branch: true, unavailable: null };
 
+/**
+ * One line of a machine's one-off history as the Command select offers it (ADR 0095). Its `label`
+ * is the whole line and its `command` too, so the no-prompts confirm is kept under the line itself.
+ */
+export interface RecentItem extends OfferItem {
+  what: { kind: "run"; line: string };
+  line: string;
+  /** The folder it last ran in, absolute, or `null` for home. Fills the Folder field on a pick. */
+  runCwd: string | null;
+}
+
 export interface OfferInput {
   /** The chosen machine's answer: `null` when the answer is not in yet. */
   harnesses: readonly HarnessInfo[] | null;
@@ -129,6 +147,13 @@ export interface OfferInput {
   /** Whether that answer is in. With `harnesses` null, an older Collie. */
   loaded: boolean;
   rows: readonly Launcher[];
+  /**
+   * `adding.run` of the chosen machine: whether a one-off line may run there. `undefined` for a bridge
+   * older than 1.19.0, which has neither the typed option nor a history to offer.
+   */
+  run?: boolean;
+  /** The chosen machine's one-off history, newest first. Absent from an older bridge. */
+  recentRuns?: readonly RecentRun[] | null;
   /** The chosen machine's refusal, when it takes no writes. */
   refusal?: string;
   /** Worktrees: whether the lead's multiplexer can make one. */
@@ -143,6 +168,10 @@ export interface Offer {
   agents: readonly OfferItem[];
   /** The Command select: Shell first, then the rows. */
   commands: readonly OfferItem[];
+  /** The machine's one-off history, newest first: the select's "Recent" group. Empty for an older bridge. */
+  recent: readonly RecentItem[];
+  /** Whether "Type a command…" is offered: the machine's `[phone] run` switch is on. */
+  canRun: boolean;
   /** Whether the machine starts a plain shell by `shell: true` (else the older `/api/workspace`). */
   shellById: boolean;
   /** Why there is no agent list at all (an older Collie), said under the Agent select. */
@@ -180,6 +209,26 @@ function fromItem(item: LauncherItem): OfferItem {
   return out;
 }
 
+/**
+ * The history as the select lists it. With the switch off (or unreported) every entry is unavailable
+ * with `run_off`, whatever the entry said; with no switch reported at all (an older bridge) there is no
+ * history to show.
+ */
+function recentItems(entries: readonly RecentRun[], run: boolean | undefined): RecentItem[] {
+  if (run === undefined) return [];
+  return entries.map((e) => ({
+    key: `run:${e.line}`,
+    what: { kind: "run", line: e.line },
+    label: e.line,
+    line: e.line,
+    command: e.line,
+    runCwd: e.cwd,
+    noPrompts: e.noPrompts,
+    branch: false,
+    unavailable: run && e.available ? null : { kind: "runOff" },
+  }));
+}
+
 /** A command row of an older bridge, which sends no `items`. */
 function fromRow(row: Launcher): OfferItem {
   const out: OfferItem = {
@@ -208,6 +257,8 @@ export function offerFor(input: OfferInput): Offer {
     return {
       agents: [],
       commands: [SHELL_ITEM],
+      recent: [],
+      canRun: false,
       shellById: false,
       agentsNote: null,
       branchBlocked: { kind: "machine", sentence: input.refusal },
@@ -226,6 +277,8 @@ export function offerFor(input: OfferInput): Offer {
       agents: listed.filter((i) => i.group === "agents").map(fromItem),
       // The shell leads, whatever order a bridge sent it in.
       commands: [SHELL_ITEM, ...commands.filter((c) => c.what.kind !== "shell")],
+      recent: recentItems(input.recentRuns ?? [], input.run),
+      canRun: input.run === true,
       shellById: true,
       agentsNote: null,
       branchBlocked,
@@ -242,6 +295,9 @@ export function offerFor(input: OfferInput): Offer {
       unavailable: h.found ? null : { kind: "notFound" },
     })),
     commands: [SHELL_ITEM, ...input.rows.map(fromRow)],
+    // No `adding` block, no one-off runs: that is a bridge from before 1.19.0.
+    recent: recentItems(input.recentRuns ?? [], input.run),
+    canRun: input.run === true,
     shellById: input.harnesses !== null,
     agentsNote: olderCollie ? { kind: "olderCollie" } : null,
     branchBlocked,
@@ -256,14 +312,25 @@ export function startableAgents(offer: Offer): OfferItem[] {
 /** The listed item `what` names, if the offer holds it. */
 export function itemOf(offer: Offer, what: StartWhat): OfferItem | undefined {
   const key = whatKey(what);
-  return offer.agents.find((i) => i.key === key) ?? offer.commands.find((i) => i.key === key);
+  return offer.agents.find((i) => i.key === key) ?? offer.commands.find((i) => i.key === key) ?? offer.recent.find((i) => i.key === key);
 }
 
 /** Whether `what` is something the offer still holds and can start (a remembered choice may not be). */
 export function offered(offer: Offer, what: StartWhat): boolean {
   if (what.kind === "shell") return true;
+  // Any line may run once the machine allows it, whether or not its history still holds the line.
+  if (what.kind === "run") return offer.canRun;
   return itemOf(offer, what)?.unavailable === null;
 }
+
+/** The key of the "Type a command…" option, and of the typed choice. Never the key of a start. */
+export const TYPED_KEY = "typed";
+
+/** The longest line the bridge runs, in code points (its `MAX_COMMAND_CHARS`). Only for the refusal's detail. */
+export const MAX_RUN_CHARS = 200;
+
+/** The longest a history line is in an option's text, in characters; the rest is an ellipsis. */
+export const RECENT_OPTION_CHARS = 40;
 
 /** One row of the Command select. */
 export interface CommandOption {
@@ -271,25 +338,66 @@ export interface CommandOption {
   /** ALREADY TRANSLATED: the option's words, with "(No prompts)" and a reason in brackets. */
   text: string;
   disabled: boolean;
+  /** `rows`: Just a shell and the configured rows. `recent`: the "Recent" group. `typed`: the last option. */
+  group: "rows" | "recent" | "typed";
 }
 
 /**
- * THE COMMAND SELECT'S OPTIONS, from one function: "Just a shell" first, then the rows. Anything the
- * select gains later (a "Recent" group, a "Type a command…" option) is added here and nowhere else.
+ * THE COMMAND SELECT'S OPTIONS, from one function, in the order the select draws them: "Just a
+ * shell", the configured rows, the "Recent" group (the machine's history, disabled with its reason
+ * when the operator turned runs off), and last "Type a command…". The last two exist only on a
+ * bridge that reports `adding.run`; "Type a command…" only while that switch is on.
  */
 export function commandOptions(offer: Offer, shellLabel: string): CommandOption[] {
-  return offer.commands.map((c) => ({ key: c.key, text: optionText(c, shellLabel), disabled: c.unavailable !== null }));
+  const options: CommandOption[] = offer.commands.map((c) => ({
+    key: c.key,
+    text: optionText(c, shellLabel),
+    disabled: c.unavailable !== null,
+    group: "rows",
+  }));
+  for (const r of offer.recent) {
+    options.push({ key: r.key, text: optionText(r, shellLabel), disabled: r.unavailable !== null, group: "recent" });
+  }
+  if (offer.canRun) options.push({ key: TYPED_KEY, text: t("newPage.typed.option"), disabled: false, group: "typed" });
+  return options;
+}
+
+/** What the Command select shows: a start, or the typed choice (its line is a field of its own). */
+export type CommandPick = StartWhat | { kind: "typed" };
+
+/** The option value of a command pick. */
+export function commandKey(pick: CommandPick): string {
+  return pick.kind === "typed" ? TYPED_KEY : whatKey(pick);
+}
+
+/** The pick an option value names, or `null` for a value the offer does not hold. */
+export function pickOfKey(offer: Offer, key: string): CommandPick | null {
+  if (key === TYPED_KEY) return offer.canRun ? { kind: "typed" } : null;
+  const what = keyToWhat(key);
+  return what === null ? null : (itemOf(offer, what)?.what ?? null);
+}
+
+/** A typed line as it is sent and remembered: trimmed and in NFC, as the bridge cleans it. */
+export function runLine(typed: string): string {
+  return typed.trim().normalize("NFC");
+}
+
+/** A history line shortened for an option: at most {@link RECENT_OPTION_CHARS} characters. */
+export function truncateLine(line: string): string {
+  const chars = [...line];
+  return chars.length <= RECENT_OPTION_CHARS ? line : `${chars.slice(0, RECENT_OPTION_CHARS - 1).join("")}…`;
 }
 
 /** The label a choice is shown and summarised with. */
 export function whatLabel(what: StartWhat, offer: Offer, shellLabel: string): string {
   if (what.kind === "shell") return shellLabel;
+  if (what.kind === "run") return what.line;
   return itemOf(offer, what)?.label ?? (what.kind === "harness" ? what.id : what.command);
 }
 
-/** The words of one option: its label, then "(No prompts)", then the reason it cannot start, each in brackets. */
+/** The words of one option: its label (a history line is shortened), then "(No prompts)", then the reason it cannot start, each in brackets. */
 export function optionText(item: OfferItem, shellLabel: string): string {
-  let text = item.what.kind === "shell" ? shellLabel : item.label;
+  let text = item.what.kind === "shell" ? shellLabel : item.what.kind === "run" ? truncateLine(item.label) : item.label;
   if (item.noPrompts) text += ` (${t("newPage.noPrompts")})`;
   if (item.unavailable !== null) text += ` (${unavailableText(item.unavailable)})`;
   return text;
@@ -302,6 +410,7 @@ export function optionText(item: OfferItem, shellLabel: string): string {
 export function branchAllowed(offer: Offer, what: StartWhat | null): boolean {
   if (what === null) return false;
   if (what.kind === "shell") return true;
+  if (what.kind === "run") return false;
   return itemOf(offer, what)?.branch ?? what.kind === "harness";
 }
 
@@ -323,18 +432,39 @@ export function agentChoice(offer: Offer, pick: string | null, again: LastStart 
   return has(pick) ?? (again === null ? undefined : has(whatKey(again.what))) ?? startable[0] ?? null;
 }
 
-/** The command the Command select shows: the pick, else Again's, else Shell. */
-export function commandChoice(offer: Offer, pick: StartWhat | null, again: LastStart | null): StartWhat {
-  const inCommands = (what: StartWhat): boolean => offer.commands.some((c) => c.key === whatKey(what) && c.unavailable === null);
-  if (pick !== null && inCommands(pick)) return pick;
-  if (again !== null && inCommands(again.what)) return again.what;
+/**
+ * The command the Command select shows: the pick, else Again's, else Shell. A history line counts
+ * only while the machine lists it and can run it; "Type a command…" only while the machine allows runs.
+ */
+export function commandChoice(offer: Offer, pick: CommandPick | null, again: LastStart | null): CommandPick {
+  const holds = (c: CommandPick): boolean => {
+    if (c.kind === "typed") return offer.canRun;
+    const key = whatKey(c);
+    return (
+      offer.commands.some((o) => o.key === key && o.unavailable === null) ||
+      offer.recent.some((o) => o.key === key && o.unavailable === null)
+    );
+  };
+  if (pick !== null && holds(pick)) return pick;
+  if (again !== null && holds(again.what)) return again.what;
   return { kind: "shell" };
 }
 
-/** What Start would start: the Agent select's agent or the Command select's command. */
-export function whatFor(kind: Kind, agent: OfferItem | null, command: StartWhat): StartWhat | null {
-  if (kind === "shell") return command;
-  return agent === null ? null : agent.what;
+/**
+ * What Start would start: the Agent select's agent, or the Command select's command. The typed choice
+ * is a one-off run of the line in its field, and nothing at all while the field is empty.
+ */
+export function whatFor(kind: Kind, agent: OfferItem | null, command: CommandPick, typedLine: string): StartWhat | null {
+  if (kind === "agent") return agent === null ? null : agent.what;
+  if (command.kind !== "typed") return command;
+  const line = runLine(typedLine);
+  return line === "" ? null : { kind: "run", line };
+}
+
+/** The `what` of the summary line: a one-off line reads "Runs `line`", the rest by their label. */
+export function summaryWhat(what: StartWhat, offer: Offer, shellLabel: string): string {
+  if (what.kind === "run") return t("newPage.summary.run", { line: what.line });
+  return whatLabel(what, offer, shellLabel);
 }
 
 // ── The summary line ────────────────────────────────────────────────────────────────────────────
@@ -412,6 +542,8 @@ function parseWhat(raw: JsonValue | undefined): StartWhat | null {
   if (kind === "harness" && id !== undefined && id !== "") return { kind: "harness", id };
   const command = asJsonString(o?.command);
   if (kind === "row" && command !== undefined && command !== "") return { kind: "row", command };
+  const line = asJsonString(o?.line);
+  if (kind === "run" && line !== undefined && line !== "") return { kind: "run", line };
   return null;
 }
 

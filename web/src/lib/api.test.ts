@@ -9,6 +9,7 @@ import { resetBasePathForTests } from "./base-path";
 import { burstPaneId, resetPollIntent, sendCount } from "./poll-intent";
 import {
   checkForUpdates,
+  checkRun,
   clearRecentRuns,
   createTab,
   fetchChat,
@@ -1064,6 +1065,16 @@ describe("one-off runs and their history (ADR 0095)", () => {
     expect(calls).toEqual([
       { url: "/api/launch?host=badger", method: "POST", body: { run: "make test", requestId: "id-1", cwd: "~/src/app" } },
       { url: "/api/launch", method: "POST", body: { run: "htop", requestId: "id-2" } },
+    ]);
+  });
+
+  it("checkRun posts the line to that machine's check and returns its answer, a read that sends nothing else", async () => {
+    const calls = capture();
+    await checkRun("claude --yolo", { host: "badger" });
+    await checkRun("htop");
+    expect(calls).toEqual([
+      { url: "/api/launch/check?host=badger", method: "POST", body: { run: "claude --yolo" } },
+      { url: "/api/launch/check", method: "POST", body: { run: "htop" } },
     ]);
   });
 

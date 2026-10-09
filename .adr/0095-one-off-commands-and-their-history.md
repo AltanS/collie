@@ -10,9 +10,10 @@
   not interpret), [ADR 0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) (what
   the audit log keeps of typed input).
 - **Trail:** `bridge/server.ts` (`launch`, `pickLaunch`, `pickRun`, `runLaunch`,
-  `serveRecentRunRoute`, `launchersRoute`) · `bridge/recent-runs.ts` · `bridge/operator-launchers.ts`
-  (`[phone] run`) · `bridge/crew/forward.ts` · `web/src/lib/api.ts` (`startRun`, `removeRecentRun`,
-  `clearRecentRuns`) · `bridge/run-once.test.ts`
+  `serveRecentRunRoute`, `serveLaunchCheckRoute`, `launchersRoute`) · `bridge/recent-runs.ts` · `bridge/operator-launchers.ts`
+  (`[phone] run`) · `bridge/launcher-recipes.ts` (`checkRunLine`) · `bridge/crew/forward.ts` · `web/src/lib/api.ts` (`startRun`,
+  `checkRun`, `removeRecentRun`, `clearRecentRuns`) · `web/src/components/new-command-picker.tsx` ·
+  `web/src/routes/new.tsx` · `bridge/run-once.test.ts`
 
 ## Context
 
@@ -98,3 +99,25 @@ is the same run again.**
   clear the list from the phone.
 - An operator who wants no free lines at all from a phone sets both `free_text = false` (the default)
   and `run = false`.
+
+## Amendment (2026-10-09): a typed line is checked before its first run
+
+Rule 6 says the answer carries `noPrompts` and each history entry carries it too. That is too late
+for a typed line: the answer arrives after the run, and an entry exists only after one. The New page
+needs the answer BEFORE the first run, so the "Start without prompts?" confirm (ADR 0094, rule 10) can
+come first. So:
+
+13. **`POST /api/launch/check { run }` answers `{ ok: true, noPrompts, problem? }`.** It applies
+    `cleanLauncherText` at 200 code points and then `scanNoPrompts` to the cleaned line, exactly as a
+    run does, and nothing else. `problem` is the character rule's refusal (`empty`, `too_long`,
+    `forbidden_character`), and then `noPrompts` is false. A body that is not a JSON object is a 400.
+14. **It is a read.** It stands on the read gate, runs nothing, stores nothing, writes no audit line,
+    and looks at neither the operator's `[phone] run` switch nor a paired device: the run itself still
+    meets both. A `?host=` call is forwarded like the other launch routes, so the member's own scan
+    answers for the machine that would run the line. The crew link carries it as a forwardable read
+    (`launch/check`), audited on neither side, and a member that predates it answers 404.
+15. **The page calls it on Start for a typed line, never per keystroke.** The answer feeds the same
+    guard as every other start, with `{ noPrompts, command: line }`. A history entry uses the
+    `noPrompts` it was stored with and needs no check. The check's `problem` is shown as the refusal
+    `launch.bad_line` would be. The check is advice for the person: the bridge does not require it, and
+    a run of a line that was never checked is still allowed (rule 6).

@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowLeft, History, Server, TerminalSquare } from "lucide-react";
+import { ArrowLeft, History, Server } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
 import { useCrew } from "@/components/crew-provider";
+import { CommandPicker } from "@/components/new-command-picker";
 import { FolderSections } from "@/components/new-space-folders";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
 import { StatusArea } from "@/components/status-area";
@@ -22,22 +23,25 @@ import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { useSpaceActions } from "@/hooks/use-spaces";
-import { planWorktree, type StartWhat } from "@/lib/api";
-import { describeApiError } from "@/lib/api-error-message";
+import { checkRun, clearRecentRuns, planWorktree, removeRecentRun, type StartWhat } from "@/lib/api";
+import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { paneBranchName, startFromChoices } from "@/lib/branch-off";
 import { useFolders } from "@/lib/folders";
 import { writeRefusal } from "@/lib/host-health";
 import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { launchersKey, useLaunchers } from "@/lib/launchers";
+import { mutate } from "@/lib/mutate";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { homePath, newAddPath, readNewAt } from "@/lib/nav";
 import {
   NEW_PAGE_DOCS,
   agentChoice,
+  MAX_RUN_CHARS,
   commandOptions,
   branchAllowed,
   commandChoice,
+  commandKey,
   defaultHost,
   defaultKind,
   folderShown,
@@ -50,16 +54,19 @@ import {
   offerFor,
   offered,
   optionText,
+  pickOfKey,
   readAgain,
   readKind,
   rememberAgain,
   rememberKind,
   startFingerprint,
   summaryKey,
+  summaryWhat,
   unavailableText,
   whatFor,
   whatKey,
   whatLabel,
+  type CommandPick,
   type Kind,
   type Offer,
   type SummaryParts,
@@ -68,6 +75,7 @@ import {
 import { useHoldReload } from "@/lib/reload-guard";
 import { useRootData } from "@/lib/route-data";
 import type { Scope } from "@/lib/scope";
+import { setStatus } from "@/lib/status";
 import { shortenHome } from "@/lib/shorten-home";
 import type { WorktreeBaseChoice, WorktreeFolderChoice, WorktreePlanResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -76,7 +84,8 @@ import { branchOffName, mintRequestId } from "@/lib/worktree-name";
 // THE NEW PAGE (M48 spec 01, card 4.3; a page since 1.19.0, it was a bottom sheet before). One screen
 // at `/new`, built like a Settings page: the app header with a back arrow, one scrolling column, and
 // Start pinned to the foot. From the top: the machine (a crew only), Again, what to start (Agent or
-// Command, one select each), the folder, the "New worktree" switch, and at the foot one line that
+// Shell, one select each; the Command select also holds the machine's Recent one-off lines and
+// "Type a command…", ADR 0095), the folder, the "New worktree" switch, and at the foot one line that
 // says what Start will do, then Start.
 //
 // WHERE IT WAS OPENED FROM RIDES IN THE ADDRESS, so a reload keeps it: `?machine=` is the crew member
@@ -137,6 +146,9 @@ function NewPage({ search }: { search: string }) {
     items: loaded ? launchers.items : null,
     loaded,
     rows: loaded ? launchers.launchers : [],
+    // One-off runs (ADR 0095): only a bridge that reports `adding.run` has them to offer.
+    run: loaded ? launchers.adding?.run : undefined,
+    recentRuns: loaded ? (launchers.recentRuns ?? null) : null,
     refusal,
     canWorktree,
     memberChosen: multiHost && chosen !== lead ? { lead: leadName } : undefined,
@@ -156,12 +168,21 @@ function NewPage({ search }: { search: string }) {
   // stands in for a pick the person has not made on this page.
   const kind = kindPick ?? kindOfKey(offer, at.pick) ?? defaultKind(offer, loaded, rememberedKind, again);
   const [agentPick, setAgentPick] = useState<string | null>(null);
-  const [commandPick, setCommandPick] = useState<StartWhat | null>(null);
+  const [commandPick, setCommandPick] = useState<CommandPick | null>(null);
+  // The line in the "Type a command…" field. Kept when the select moves away and back.
+  const [typedLine, setTypedLine] = useState("");
   const agentItem = agentChoice(offer, agentPick ?? at.pick ?? null, usable);
   const command = commandChoice(offer, commandPick ?? keyToWhat(at.pick), usable);
-  const what: StartWhat | null = whatFor(kind, agentItem, command);
+  const what: StartWhat | null = whatFor(kind, agentItem, command, typedLine);
   const chosenItem = what === null ? undefined : itemOf(offer, what);
   const [cwd, setCwd] = useState(() => from?.cwd ?? readAgain(machineKey)?.cwd ?? "");
+  // Whether the person changed the Folder field on this visit. A Recent pick fills the folder with the
+  // entry's own, but never over a folder the person chose.
+  const cwdTouched = useRef(false);
+  function editCwd(next: string) {
+    cwdTouched.current = true;
+    setCwd(next);
+  }
   const pinned = chosenItem?.cwd;
   // A machine older than 1.19.0 ignores a folder on a row, so it is not offered there.
   const legacy = loaded && !offer.shellById;
@@ -172,9 +193,10 @@ function NewPage({ search }: { search: string }) {
   const [basePick, setBasePick] = useState<"default" | "branch" | null>(null);
   const [folderPick, setFolderPick] = useState<WorktreeFolderChoice["kind"] | null>(null);
   const [parentPick, setParentPick] = useState<string | null>(null);
-  // The worktree block shows for anything chosen. A command row cannot start in one: the switch is
-  // off and disabled there, and its reason line says so.
-  const branchShown = what !== null;
+  // The worktree block shows for anything chosen. A command row or a one-off line cannot start in
+  // one: the switch is off and disabled there, and its reason line says so. "Type a command…" shows it
+  // before the first character, so typing moves nothing.
+  const branchShown = what !== null || (kind === "shell" && command.kind === "typed");
   const branchBlocked: Unavailable | null =
     offer.branchBlocked ?? (branchAllowed(offer, what) ? null : { kind: "commandRow" });
   const branchActive = branchShown && branchBlocked === null && branchOn;
@@ -247,7 +269,7 @@ function NewPage({ search }: { search: string }) {
 
 
   // ── The summary line ──────────────────────────────────────────────────────────────────────────
-  const shownWhat = what === null ? "" : whatLabel(what, offer, t("newPage.shell"));
+  const shownWhat = what === null ? "" : summaryWhat(what, offer, t("newPage.shell"));
   // The FULL path the bridge will use: a name with no leading / or ~ is a folder under home, and the
   // line says so before Start, so nothing is rewritten silently.
   const folderText = shortenHome(pinned ?? folderShown(cwd, home), home);
@@ -271,6 +293,9 @@ function NewPage({ search }: { search: string }) {
   const requestId = useRef("");
   const lastAsk = useRef<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "starting" | "unknown">("idle");
+  // A typed line is checked (a read) before the first run, so the no-prompts confirm can come first.
+  const [checking, setChecking] = useState(false);
+  const checkingRef = useRef(false);
   // Why the last Start was refused, kept with the ask it belongs to: a different ask shows nothing.
   const [startRefusal, setStartRefusal] = useState<{ print: string; message: string } | null>(null);
   const startingRef = useRef(false);
@@ -325,12 +350,17 @@ function NewPage({ search }: { search: string }) {
 
   // EVERY START GOES THROUGH HERE (ADR 0094): Start, and the Again row. An item that skips permission
   // prompts is confirmed once per device, machine and line before anything is sent; the other launch
-  // paths (the dashboard's Launch strip, the switcher's) use the same guard.
+  // paths (the dashboard's Launch strip, the switcher's) use the same guard. A one-off line has no row
+  // to say whether it skips prompts: a history entry carries the bridge's answer from its first run, and
+  // a typed line gets it from `checkRun` (`known`), asked BEFORE the first run (ADR 0095, amendment).
   const { guard, sheet: noPromptsSheet } = useNoPromptsGuard();
-  function begin(ask: { what: StartWhat; cwd: string; branch: boolean }, print: string) {
+  function begin(ask: { what: StartWhat; cwd: string; branch: boolean }, print: string, known?: { noPrompts: boolean }) {
     const item = itemOf(offer, ask.what);
     guard({
-      item: item ?? {},
+      item:
+        ask.what.kind === "run"
+          ? { noPrompts: known?.noPrompts ?? item?.noPrompts ?? false, command: ask.what.line }
+          : (item ?? {}),
       // `""` for the lead or a solo install, the member's id otherwise: the same key on every path.
       machine: target.host ?? "",
       folder: shortenHome(item?.cwd ?? folderShown(ask.cwd, home), home),
@@ -338,17 +368,51 @@ function NewPage({ search }: { search: string }) {
     });
   }
 
+  /** A typed line: ask the machine what it is (a read), then the same guard as every other start. */
+  async function checkThenBegin(ask: { what: StartWhat; cwd: string; branch: boolean }, print: string) {
+    if (ask.what.kind !== "run" || checkingRef.current) return;
+    checkingRef.current = true;
+    setChecking(true);
+    setStartRefusal(null);
+    let answer: Awaited<ReturnType<typeof checkRun>>;
+    try {
+      answer = await checkRun(ask.what.line, target);
+    } catch (e) {
+      checkingRef.current = false;
+      setChecking(false);
+      setStartRefusal({ print, message: describeThrownError(e) });
+      return;
+    }
+    checkingRef.current = false;
+    setChecking(false);
+    if (answer.problem !== undefined) {
+      // The refusal a run of this line would get, said in the same place.
+      const detail = { problem: answer.problem, max: MAX_RUN_CHARS };
+      setStartRefusal({ print, message: describeApiError({ code: "launch.bad_line", detail }) });
+      return;
+    }
+    begin(ask, print, { noPrompts: answer.noPrompts });
+  }
+
   function startNow() {
-    if (blocked || what === null) return;
-    begin({ what, cwd: showWhere ? cwd.trim() : "", branch: branchActive }, fingerprint);
+    if (blocked || what === null || busy) return;
+    const ask = { what, cwd: showWhere ? cwd.trim() : "", branch: branchActive };
+    if (command.kind === "typed" && kind === "shell") void checkThenBegin(ask, fingerprint);
+    else begin(ask, fingerprint);
   }
 
   /** Again: a plain start runs at once; a worktree start fills the form with a fresh name. */
   function useAgain() {
-    if (again === null) return;
+    if (again === null || busy) return;
     setKindPick(kindOf(again.what, offer));
+    let typedAgain = false;
     if (kindOf(again.what, offer) === "agent") setAgentPick(whatKey(again.what));
-    else setCommandPick(again.what);
+    else if (again.what.kind === "run" && !offer.recent.some((r) => r.key === whatKey(again.what) && r.unavailable === null)) {
+      // A line the history no longer holds comes back through the field, and is checked like any typed line.
+      typedAgain = true;
+      setCommandPick({ kind: "typed" });
+      setTypedLine(again.what.line);
+    } else setCommandPick(again.what);
     setCwd(again.cwd ?? "");
     if (again.branch !== null) {
       setBranchOn(true);
@@ -358,7 +422,9 @@ function NewPage({ search }: { search: string }) {
       return;
     }
     const print = startFingerprint({ machine: machineKey, what: again.what, cwd: again.cwd ?? "", branch: null });
-    begin({ what: again.what, cwd: again.cwd ?? "", branch: false }, print);
+    const ask = { what: again.what, cwd: again.cwd ?? "", branch: false };
+    if (typedAgain) void checkThenBegin(ask, print);
+    else begin(ask, print);
   }
 
   function chooseKind(next: Kind) {
@@ -366,7 +432,33 @@ function NewPage({ search }: { search: string }) {
     rememberKind(machineKey, next);
   }
 
-  const busy = phase === "starting" || creatingSpace;
+  /** A Recent pick: the line starts as it is, and its folder fills the field unless the person set one. */
+  function chooseCommand(key: string) {
+    setCommandPick(pickOfKey(offer, key));
+    const entry = offer.recent.find((r) => r.key === key);
+    if (entry !== undefined && !cwdTouched.current) setCwd(entry.runCwd ?? "");
+  }
+
+  // The history's two writes (ADR 0095). Silent kind (lib/ack-manifest.ts): a refusal is said on the
+  // status line, and the list is read again either way. The pick falls back to Shell at once, since the
+  // entry it named is gone.
+  const [historyBusy, setHistoryBusy] = useState(false);
+  async function editHistory(write: () => ReturnType<typeof removeRecentRun>) {
+    if (historyBusy) return;
+    setHistoryBusy(true);
+    const out = await mutate(write);
+    setHistoryBusy(false);
+    if (out.ok && !out.value.ok) setStatus(describeApiError(out.value), "error");
+    if (out.ok) setCommandPick({ kind: "shell" });
+    launchers.reload();
+  }
+  function removeFromHistory() {
+    if (what?.kind !== "run") return;
+    const line = what.line;
+    void editHistory(() => removeRecentRun(line, target));
+  }
+
+  const busy = phase === "starting" || creatingSpace || checking;
   const refusedText = startRefusal !== null && startRefusal.print === fingerprint ? startRefusal.message : null;
   const adds = loaded && launchers.adding?.adds === true && refusal === undefined;
   /** "Add your own": a level below this page, on the machine chosen here and the pane it was opened for. */
@@ -464,18 +556,21 @@ function NewPage({ search }: { search: string }) {
               ))}
             </Select>
           ) : (
-            <Select
-              aria-label={t("newPage.kind.command")}
-              value={whatKey(command)}
-              lead={<TerminalSquare className="size-4" />}
-              onChange={(event) => setCommandPick(offer.commands.find((c) => c.key === event.target.value)?.what ?? null)}
-            >
-              {commandOptions(offer, t("newPage.shell.option")).map((o) => (
-                <option key={o.key} value={o.key} disabled={o.disabled}>
-                  {o.text}
-                </option>
-              ))}
-            </Select>
+            <CommandPicker
+              options={commandOptions(offer, t("newPage.shell.option"))}
+              value={commandKey(command)}
+              onChoose={chooseCommand}
+              typed={command.kind === "typed" ? { line: typedLine, onLine: setTypedLine, onGo: startNow } : null}
+              recent={
+                command.kind === "run"
+                  ? {
+                      busy: historyBusy || busy,
+                      onRemove: removeFromHistory,
+                      onClear: () => void editHistory(() => clearRecentRuns(target)),
+                    }
+                  : null
+              }
+            />
           )}
           {/* One note and one link under the select, whichever half is on. The two share a box as big
               as the larger, so the Segmented switch moves nothing (DESIGN.md §2). */}
@@ -507,7 +602,7 @@ function NewPage({ search }: { search: string }) {
                     href={NEW_PAGE_DOCS.command}
                     link={t("newPage.commands.docs")}
                     onAdd={adds ? () => openAdd("shell") : undefined}
-                    noPrompts={kind === "shell" && itemOf(offer, command)?.noPrompts === true}
+                    noPrompts={kind === "shell" && command.kind !== "typed" && itemOf(offer, command)?.noPrompts === true}
                   />
                 ),
               },
@@ -521,7 +616,7 @@ function NewPage({ search }: { search: string }) {
               <span className="text-xs font-medium text-muted-foreground">{t("newPage.where")}</span>
               <input
                 value={cwd}
-                onChange={(e) => setCwd(e.target.value)}
+                onChange={(e) => editCwd(e.target.value)}
                 placeholder={t("space.new.dir.placeholder")}
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -529,7 +624,7 @@ function NewPage({ search }: { search: string }) {
                 className="h-11 rounded-md border border-border bg-background px-3 font-mono text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
             </label>
-            <FolderSections folders={folders} onUse={setCwd} onStar={(f, s) => void star(f, s)} />
+            <FolderSections folders={folders} onUse={editCwd} onStar={(f, s) => void star(f, s)} />
           </div>
         ) : pinned !== undefined ? (
           <p className="text-xs text-muted-foreground">{t("newPage.where.pinned", { folder: shortenHome(pinned, home) })}</p>

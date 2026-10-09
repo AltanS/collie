@@ -209,7 +209,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
     [open, blockedText, refusedAsSavedCopy],
   );
 
-  // THE NEW PAGE'S ONE START (M48, ADR 0091, ADR 0093): an agent, a row or a shell, in a folder, and
+  // THE NEW PAGE'S ONE START (M48, ADR 0091, ADR 0093, ADR 0095): an agent, a row, a shell or a one-off line, in a folder, and
   // optionally on a new branch. Same write gates and the same in-flight flag as a space create, and
   // the same `open` on success. It answers what became of it, because the page, not the status line,
   // owns the one case a toast cannot carry: an outcome nobody can confirm. Then nothing is said here
@@ -225,6 +225,14 @@ export function useSpaceActions(canWrite?: () => boolean) {
       setCreatingSpace(true);
       const scope = at ?? scopeRef.current;
       try {
+        if (ask.what.kind === "run") {
+          // A one-off line never starts on a branch; the page switches that off, and the bridge refuses it too.
+          if (ask.branch !== undefined) return { kind: "refused", message: t("apiError.launch.run_no_branch") };
+          const res = await api.startRun(ask.what.line, { cwd: ask.cwd, requestId: ask.requestId }, scope);
+          if (!res.ok) return { kind: "refused", message: describeApiError(res) };
+          open(res, "space", scope);
+          return { kind: "done" };
+        }
         if (ask.branch !== undefined) {
           const res = await api.createWorktreeAt(
             { cwd: ask.branch.cwd, branch: ask.branch.name, base: ask.branch.base, folder: ask.branch.folder, requestId: ask.requestId, what: ask.what },

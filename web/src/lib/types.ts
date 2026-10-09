@@ -1667,6 +1667,18 @@ export interface RecentRun {
   reason?: "run_off";
 }
 
+/**
+ * POST /api/launch/check: what a typed one-off line would be, before it runs (ADR 0095, amendment).
+ * A read. `problem` is the character rule's refusal (and then `noPrompts` is false). Mirrors
+ * `LaunchCheckResponse` in bridge/types.ts.
+ */
+export interface LaunchCheckResponse {
+  ok: true;
+  /** The line carries a flag known to skip permission prompts: confirm once per device before it runs. */
+  noPrompts: boolean;
+  problem?: "empty" | "too_long" | "forbidden_character";
+}
+
 /** POST /api/launch/recent/remove and /clear. Mirrors `RecentRunsResponse` in bridge/types.ts. */
 export type RecentRunsResponse =
   | { ok: true; removed: number }

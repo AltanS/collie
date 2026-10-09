@@ -1488,6 +1488,17 @@ export type RecentRunsResponse =
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
+ * POST /api/launch/check `{ run }` (ADR 0095, amendment): what a one-off line would be, before it runs.
+ * A READ: it runs nothing and stores nothing. `noPrompts` is {@link scanNoPrompts}'s answer on the
+ * cleaned line; `problem` is the character rule's refusal, in which case `noPrompts` is false.
+ */
+export interface LaunchCheckResponse {
+  ok: true;
+  noPrompts: boolean;
+  problem?: "empty" | "too_long" | "forbidden_character";
+}
+
+/**
  * One thing the New page may start on THIS machine, with whether it can start here now and why not
  * (ADR 0094). The page draws every item; an unavailable one is a disabled option with its reason.
  * Machine-wide reasons (the machine is not taking writes, an older Collie) are the phone's own, from
