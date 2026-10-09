@@ -530,16 +530,22 @@ export function loadContext(
      * bridge process (`_exec-bridge`) passes `true`; every other command verifies and warns.
      */
     readonly repairAcl?: boolean;
+    /**
+     * The environment to resolve from, in place of this process's own. The Windows launcher passes
+     * the bridge's (`cli/task-scheduler.ts`), whose paths arrive on its command line, not in its env.
+     */
+    readonly ambient?: Environment;
   } = {},
 ): CliContext {
   const repairAcl = opts.repairAcl === true;
+  const ambient = opts.ambient ?? process.env;
   const root = pluginRoot();
-  const home = resolveHome(process.env);
+  const home = resolveHome(ambient);
   const { dir: configDir, note } = resolveConfigDir({
-    env: process.env,
+    env: ambient,
     home,
     fileExists: existsSync,
-    askHerdr: () => askHerdrConfigDir(process.env, home),
+    askHerdr: () => askHerdrConfigDir(ambient, home),
   });
   if (note !== null) warn(note);
 
@@ -548,20 +554,20 @@ export function loadContext(
   // alone, because it decides which file is read and a file cannot name itself.
   const configLayer = readConfigFilesSync(
     diskConfigReader,
-    configFilePaths(process.env, home, configDir),
+    configFilePaths(ambient, home, configDir),
     warn,
     { home, perms: diskEnvPerms, repairAcl },
   );
 
   // `.env` overrides the ambient environment, exactly as `set -a; . .env` did.
-  const env: Environment = overlayConfig(process.env, configLayer);
+  const env: Environment = overlayConfig(ambient, configLayer);
   const envPath = join(configDir, ".env");
   const dotenv = readIfPresent(envPath);
   if (dotenv !== null) {
     const tightened = tightenEnvFile(envPath, diskEnvPerms, repairAcl);
     if (tightened !== null) warn(tightened);
     const fromFile = parseEnvFile(dotenv);
-    for (const line of shadowNotes(process.env, fromFile)) warn(line);
+    for (const line of shadowNotes(ambient, fromFile)) warn(line);
     Object.assign(env, fromFile);
   }
 
