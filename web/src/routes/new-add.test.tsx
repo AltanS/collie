@@ -43,7 +43,7 @@ const HARNESSES: HarnessInfo[] = [
 ];
 
 const FILE = "/home/op/.config/collie/launchers.toml";
-const ADDING: LaunchersAdding = { adds: true, freeText: true, file: FILE, count: 1, max: 20, recipes: [CLAUDE, CODEX, GROK], off: [] };
+const ADDING: LaunchersAdding = { adds: true, freeText: true, file: FILE, count: 1, max: 20, recipes: [CLAUDE, CODEX, GROK], off: [], run: true };
 
 const ROWS: LauncherItem[] = [
   {

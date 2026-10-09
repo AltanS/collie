@@ -740,7 +740,7 @@ const ITEMS: LauncherItem[] = [
   }),
 ];
 
-const ADDING: LaunchersAdding = { adds: true, freeText: false, file: "/home/op/.config/collie/launchers.toml", count: 2, max: 20, recipes: [], off: [] };
+const ADDING: LaunchersAdding = { adds: true, freeText: false, file: "/home/op/.config/collie/launchers.toml", count: 2, max: 20, recipes: [], off: [], run: true };
 
 /** A 1.19.0 bridge: the answer carries `items` and `adding`. */
 function serveItems(adding: LaunchersAdding | null = ADDING, items: LauncherItem[] = ITEMS): void {
