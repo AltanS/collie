@@ -9,6 +9,15 @@ import { useLocale } from "@/hooks/use-locale";
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
 // keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
 // focused before it opened. The panel must carry tabIndex={-1} to be a focus target.
+//
+// BOTH focus calls pass `preventScroll: true`, and that is the fix for a page that jumped when a
+// sheet opened (M48 spec 03, seen in the keys playground). A bare `focus()` asks the browser to
+// scroll the focused element into view, and this panel is focused on the very frame it mounts, while
+// its slide-in keyframe still holds it a full height below the screen. The browser then scrolls the
+// nearest scroll container to reach it, and that container is the content BEHIND the sheet (any
+// ancestor that clips with `overflow` and moves a `fixed` child with `transform`). A modal that
+// opens must not move the page under its scrim. The restore on close has the same flaw in reverse:
+// the opener may have been scrolled out of view while the sheet was open.
 export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
   React.useEffect(() => {
     if (!open) return;
@@ -16,9 +25,9 @@ export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElem
     // is the optional `focus()`, which is what makes it an HTMLElement in practice. The optional
     // call is what covers the case where it isn't one (an SVG element, say).
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
+    panelRef.current?.focus({ preventScroll: true });
     return () => {
-      previouslyFocused?.focus?.();
+      previouslyFocused?.focus?.({ preventScroll: true });
     };
   }, [open, panelRef]);
 }

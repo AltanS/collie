@@ -308,6 +308,39 @@ describe("BottomSheet: pull-driven peek", () => {
     const backdrop = container.querySelector<HTMLElement>('button[aria-hidden="true"]');
     expect(backdrop?.className).toMatch(/\babsolute inset-0\b/);
   });
+  // M48 spec 03. A bare focus() scrolls the focused element into view, and the panel is focused while
+  // its slide-in still holds it below the screen, so the content BEHIND the sheet jumped. jsdom runs
+  // no layout and cannot show the scroll, so the test pins the call that prevents it.
+  it("never scrolls the page to focus the panel, on open or on restore", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const calls: Array<{ el: Element; options: FocusOptions | undefined }> = [];
+    const real = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
+      calls.push({ el: this, options });
+      real.call(this, options);
+    };
+    try {
+      const { rerender } = render(
+        <BottomSheet open onClose={vi.fn()} title="Keys">
+          body
+        </BottomSheet>,
+      );
+      const panel = screen.getByRole("dialog").querySelector("div[tabindex='-1']");
+      expect(calls.find((c) => c.el === panel)?.options).toEqual({ preventScroll: true });
+
+      rerender(
+        <BottomSheet open={false} onClose={vi.fn()} title="Keys">
+          body
+        </BottomSheet>,
+      );
+      expect(calls.find((c) => c.el === opener)?.options).toEqual({ preventScroll: true });
+    } finally {
+      HTMLElement.prototype.focus = real;
+      opener.remove();
+    }
+  });
 });
 
 // The count behind the dashboard's floating New button, which steps aside while any sheet is open.
