@@ -18,6 +18,7 @@ import {
   RecentRunStore,
   coerceRecentFile,
   formatRecentFile,
+  looksSecret,
   memoryRecentRuns,
   recentRunFileIo,
   runProgram,
@@ -347,6 +348,25 @@ describe("the history: recorded by a run that worked", () => {
     await f.run({ run: "ls", command: "htop" });
     expect(await f.recent.list()).toEqual([]);
     expect(f.io.writes).toBe(0);
+  });
+
+  test("a line that seems to carry a secret runs, and is not kept", async () => {
+    const f = fixture();
+    for (const run of ["TOKEN=abc deploy", "export GH_PAT=x; gh pr list", "curl https://me:hunter2@example.com", "op read --api-key k", "make FOO=1"]) {
+      const out = await f.run({ run });
+      expect(out.status).toBe(200);
+    }
+    expect(f.mux.texts).toHaveLength(5);
+    expect(await f.recent.list()).toEqual([]);
+  });
+
+  test("looksSecret keeps ordinary lines, flags included", () => {
+    for (const line of ["make test", "git log --format=%h -n 5", "htop", "claude --dangerously-skip-permissions", "ls -la ~/projects", "curl https://example.com/a?b"]) {
+      expect(looksSecret(line)).toBe(false);
+    }
+    for (const line of ["A=1 make", "x && KEY=v y", "psql postgres://u:p@db/x", "echo $SECRET", "vault login -method=token", "Authorization: x"]) {
+      expect(looksSecret(line)).toBe(true);
+    }
   });
 
   test("a history that cannot be written does not undo a run that happened", async () => {

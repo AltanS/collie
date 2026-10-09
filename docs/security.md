@@ -190,8 +190,10 @@ Key security boundaries and risks:
   type a line it wrote into a fresh shell on a machine. This adds no power, because a paired phone can
   already open a shell and type into it. The line follows the free-line character rule, and the bridge
   refuses it with no paired device. Each command that started is kept, up to 12, in
-  `commands-recent.json` in the state folder (mode 0600). A line there can hold a secret you typed, so
-  the audit log records only its first word and its length. Unpairing or revoking a device leaves the
+  `commands-recent.json` in the state folder (mode 0600). A line that seems to carry a secret (an
+  assignment such as `TOKEN=…`, a URL with a password, or a word such as `token` or `password`) runs
+  but is not kept. The check is a guess, so a secret can still slip into the list; the audit log
+  records only a line's first word and its length. Unpairing or revoking a device leaves the
   list as it is, because running a line again needs a paired device. Set `run = false` to remove the
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),

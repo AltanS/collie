@@ -91,6 +91,7 @@ import { checkRunLine, cleanLauncherText, MAX_COMMAND_CHARS, scanNoPrompts } fro
 import {
   clearRecentRuns,
   memoryRecentRuns,
+  looksSecret,
   recentRunsWire,
   removeRecentRun,
   runProgram,
@@ -5533,7 +5534,8 @@ export async function launch(
   // A one-off run that worked joins this machine's history, at the top (ADR 0095). Only here: a
   // refusal returned above, and a replay or a joined retry never reaches this line. A history that
   // cannot be written does not undo a run that happened.
-  if (deps.recentRuns !== undefined) {
+  // A line that seems to carry a secret ran, and is not kept (bridge/recent-runs.ts).
+  if (deps.recentRuns !== undefined && !looksSecret(row.command)) {
     const where = asked ?? besidePane?.cwd ?? null;
     try {
       const recorded = await deps.recentRuns.record({ line: row.command, cwd: where, at: Date.now(), noPrompts: picked.noPrompts === true });

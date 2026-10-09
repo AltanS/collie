@@ -33,6 +33,22 @@ import type { RecentRunWire, RecentRunsResponse } from "./types.ts";
 // and renamed over the target. At most {@link MAX_RECENT} entries, newest first, one per exact line:
 // a line run again moves to the top.
 
+// ── A LINE THAT SEEMS TO CARRY A SECRET IS NOT KEPT ─────────────────────────────────────────────
+// `TOKEN=… deploy` runs once and is gone with its pane; kept here it would sit on disk and come back
+// on every New page. So a line with an assignment (`NAME=value`), a URL with a password in it, or a
+// word such as token, secret or password runs as usual and is not recorded. The test is a cheap
+// guess that errs towards keeping too little: a line it skips is typed again, a line it keeps can
+// leak (ADR 0095, 2026-10-09 amendment).
+
+const ASSIGNMENT = /(?:^|[\s;&|(])[A-Za-z_][A-Za-z0-9_]*=\S/;
+const URL_PASSWORD = /:\/\/[^\s/@:]+:[^\s/@]+@/;
+const SECRET_WORD = /password|passwd|secret|token|api[-_]?key|bearer|authorization|credential/i;
+
+/** Whether a line seems to carry a secret, so the history leaves it out. */
+export function looksSecret(line: string): boolean {
+  return ASSIGNMENT.test(line) || URL_PASSWORD.test(line) || SECRET_WORD.test(line);
+}
+
 /** The file's name inside the state dir. */
 export const RECENT_FILE = "commands-recent.json";
 /** The file's schema version. Another number reads as empty and refuses writes. */

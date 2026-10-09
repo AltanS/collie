@@ -121,3 +121,21 @@ come first. So:
     `noPrompts` it was stored with and needs no check. The check's `problem` is shown as the refusal
     `launch.bad_line` would be. The check is advice for the person: the bridge does not require it, and
     a run of a line that was never checked is still allowed (rule 6).
+
+## Amendment (2026-10-09): a line that seems to carry a secret is not kept
+
+Release counsel pointed out that the history keeps on disk, and lists on every New page, a secret a
+person typed once, such as `TOKEN=abc deploy`. The pane that ran it is gone in minutes; the entry
+stays until it falls off the end.
+
+16. **A run whose line `looksSecret` is not recorded.** The test (bridge/recent-runs.ts) flags an
+    assignment word (`NAME=value`, at the start or after a space, `;`, `&`, `|` or `(`), a URL with a
+    password (`scheme://user:pass@`), and the words password, passwd, secret, token, api key, bearer,
+    authorization and credential, in any case. The line runs as usual; only its record is skipped.
+    The test is a guess that errs towards keeping too little: a line it skips is typed again, a line
+    it keeps can leak. `make FOO=1` is therefore not kept either, and that is accepted.
+17. **The rest stands.** Listing the history to paired devices adds no reader, because a paired
+    device can already read every pane, where the line was typed. Revoke still leaves the list alone,
+    and `[phone] run` stays on by default (rule 3): the counsel that asked for it off was answered by
+    the fact that a paired device can open a shell and type the same line.
+

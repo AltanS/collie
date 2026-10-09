@@ -492,7 +492,9 @@ The **Again** row at the top of the page repeats a one-off run too. With `run = 
 
 Each command that started is kept in that machine's state folder, in `commands-recent.json`. The file
 keeps at most 12 lines, newest first, with the folder each one last ran in. Running a line again moves
-it to the top. You can remove one line, or clear the list, from the phone. With `run = false` the list
+it to the top. A line that seems to carry a secret, such as `TOKEN=abc deploy`, a URL with a
+password, or a word like `token`, `secret` or `password`, still runs but is not kept. You can remove
+one line, or clear the list, from the phone. With `run = false` the list
 is still shown, but nothing in it starts. In a crew, each machine keeps its own list, and nothing is
 copied between machines.
 
