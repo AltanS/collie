@@ -1747,7 +1747,7 @@ interface RepoCrewDeps extends CrewDeps {
 
 /** A repo-scoped env with no `PATH` surprises and no inherited `GIT_*` — see collie-cli.test.sh. */
 function gitEnv(): Environment {
-  return { PATH: process.env.PATH };
+  return { PATH: process.env.PATH, LC_ALL: "C" };
 }
 
 function minimalCrewDeps(root: string): RepoCrewDeps {
