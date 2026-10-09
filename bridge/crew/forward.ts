@@ -83,6 +83,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // lead's. Both ride the crew link exactly like `workspace` does.
   /^launch$/,
   /^launchers$/,
+  // The rows a phone adds, removes and renames (ADR 0094). Each machine keeps its own store, so a
+  // `?host=` write lands in THAT member's `launchers-added.json` and nowhere else; no row is ever
+  // copied between machines. `forget-device` is the lead's own call when it revokes a device; the
+  // lead's browser path refuses it, so only an admitted lead's request reaches a member with it.
+  /^launchers\/added(?:\/(?:remove|rename|forget-device))?$/,
   // The new-space sheet's folder list (#289): folders exist on ONE machine, so the list is that
   // machine's own `folders.json`, read and starred on the member that holds it — the lead keeps no
   // copy. Additive-optional (CREW_PROTOCOL.md §7.1): a member that predates it answers 404, and the

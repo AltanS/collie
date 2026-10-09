@@ -25,6 +25,7 @@ import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import type {
   ActionResponse,
+  AddedLauncherResponse,
   BridgeConfig,
   ChatAfter,
   ChatBefore,
@@ -1370,6 +1371,51 @@ export function outcomeUnknown<TThrown>(thrown: TThrown): boolean {
  */
 export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
   return req<LaunchersResponse>(withScope("/api/launchers", scope));
+}
+
+// ── Rows a phone adds on one machine (ADR 0094) ─────────────────────────────────────────────────
+//
+// Each machine keeps its own list: a `scope` with `host` writes THAT member's store through the
+// lead's ordinary forward, and nothing is copied anywhere else. All three are writes on the write gate.
+
+/** What "Add your own" sends: a recipe the bridge builds, or a line typed by hand. */
+export type AddLauncherAsk =
+  | { recipe: { harness: string; options: string[] }; label?: string }
+  | {
+      text: string;
+      kind: "agent" | "command";
+      /** Required for an agent line: which harness reads it. */
+      harness?: string;
+      /** The person's own tick: an alias hides its flags. */
+      noPrompts?: boolean;
+      label?: string;
+    };
+
+/**
+ * POST /api/launchers/added. `requestId` is a UUID minted per add (`mintRequestId`); a retry with the
+ * same id answers the stored row with `replayed: true` and adds nothing.
+ */
+export function addLauncher(ask: AddLauncherAsk, requestId: string, scope?: Scope): Promise<AddedLauncherResponse> {
+  return req<AddedLauncherResponse>(withScope("/api/launchers/added", scope), {
+    method: "POST",
+    body: JSON.stringify({ ...ask, requestId }),
+  });
+}
+
+/** POST /api/launchers/added/remove — remove one row a phone added on that machine. */
+export function removeAddedLauncher(id: string, scope?: Scope): Promise<{ ok: true; removed: number }> {
+  return req<{ ok: true; removed: number }>(withScope("/api/launchers/added/remove", scope), {
+    method: "POST",
+    body: JSON.stringify({ id }),
+  });
+}
+
+/** POST /api/launchers/added/rename — a new label for one row a phone added. */
+export function renameAddedLauncher(id: string, label: string, scope?: Scope): Promise<AddedLauncherResponse> {
+  return req<AddedLauncherResponse>(withScope("/api/launchers/added/rename", scope), {
+    method: "POST",
+    body: JSON.stringify({ id, label }),
+  });
 }
 
 /**

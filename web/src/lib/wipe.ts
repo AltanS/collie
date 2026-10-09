@@ -45,6 +45,7 @@
 import { mounted } from "@/lib/base-path";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-sheet";
+import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import {
   clearDeviceToken,
   EXPIRED_BODY,
@@ -156,6 +157,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "new-sheet",
     (context) => {
       if (context.reason !== "password") forgetAgain();
+    },
+  ],
+  [
+    // The per-device "No prompts" confirms (ADR 0094): they name machines and command lines.
+    "no-prompts",
+    (context) => {
+      if (context.reason !== "password") forgetNoPromptsConfirms();
     },
   ],
   [

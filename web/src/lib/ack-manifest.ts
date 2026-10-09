@@ -132,6 +132,18 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "The New sheet's Start creates a space and the app navigates straight into its pane, so the sheet is already gone; hooks/use-spaces.ts `start` names a refusal on the status line as `launch` does. An answer that never came is the sheet's own notice and its Try again button instead (M48, ADR 0091): the status line could only guess whether the pane exists.",
   },
+  addLauncher: {
+    channel: "inline",
+    why: "The added row appears in the list the person is looking at, so the list is the acceptance. A refusal names a field (a character the bridge refuses, a line too long) or a switch the operator turned off, and the person must still read it while they fix the line, so it sits in the add form itself and not on the status line (M48, ADR 0094).",
+  },
+  removeAddedLauncher: {
+    channel: "silent",
+    why: "The row leaves the list under the thumb once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the list is read again.",
+  },
+  renameAddedLauncher: {
+    channel: "silent",
+    why: "The new label replaces the old one in the row being edited once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the row keeps its old label.",
+  },
   starFolder: {
     channel: "silent",
     why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both in the sheet the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",

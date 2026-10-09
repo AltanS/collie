@@ -683,6 +683,14 @@ describe("solo zero-tax — routes", () => {
       // read-gated through the same closure `/api/launch` rides, so a `?host=` call forwards to
       // the peer that runs the rows rather than reading the lead's own file.
       "/api/launchers",
+      // Rows a phone adds, removes and renames on THIS machine (ADR 0094) — three SOLO writes that
+      // legitimately extend this list, named here rather than exempted. Session-scoped and write-gated
+      // through the same closure `/api/launch` rides, so a `?host=` call lands in that member's own
+      // store. A fourth path, the crew's forget (`FORGET_DEVICE_PATH`), is refused on the browser path
+      // and served on the link only, so it registers no browser route here.
+      "/api/launchers/added",
+      "/api/launchers/added/remove",
+      "/api/launchers/added/rename",
       // Machines (ADR 0084): the list with each machine's latest sample. A read, gated as one.
       "/api/machines",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
@@ -966,6 +974,9 @@ const STATE_DIR_ENTRIES = [
   // opens a second pane. Written by use and by nothing else: absent until the first launch that
   // carries an id succeeds.
   "launch-receipts.json",
+  // The launcher rows phones added on this machine (ADR 0094). Written by use and by nothing else:
+  // absent until the first add from a phone succeeds.
+  "launchers-added.json",
   // The host's own read credential (bridge/local-secret.ts), a §11 row RENEGOTIATED ON PURPOSE: reads
   // need the pairing token (ADR 0086), so the CLI's own reads of its bridge need a credential too. A
   // started bridge writes it (one 0600 file, rotated per start) and a clean stop deletes it, so a

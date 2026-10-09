@@ -1535,7 +1535,92 @@ export interface Launcher {
    * shortened under home (`shortenHome`) wherever the row's folder is displayed.
    */
   cwd?: string;
+  /** `launchers.toml` or a phone (ADR 0094). Absent from an older bridge: read as the operator's. */
+  source?: "operator" | "added";
+  /** An added row's id, for rename and remove. */
+  id?: string;
+  /** `agent` when a harness reads the row; absent or `command` for a plain line. */
+  kind?: "agent" | "command";
+  /** The harness that reads an agent row. */
+  harness?: string;
+  /** The line skips permission prompts: badge it, and confirm once per device before it starts. */
+  noPrompts?: boolean;
+  /** Added rows: the pairing label of the device that added it, when, and how. */
+  addedBy?: string;
+  addedAt?: number;
+  addedAs?: "recipe" | "text";
 }
+
+/** One option chip of a recipe. Mirrors `RecipeOptionWire` in bridge/types.ts. */
+export interface RecipeOption {
+  id: string;
+  /** The chip's words: the CLI's own vocabulary, never translated. */
+  label: string;
+  /** What the option appends to the line, for a preview; the bridge builds the real line. */
+  args: string;
+  /** Options sharing a group exclude each other. */
+  group?: string;
+  /** The option makes the agent act without asking. */
+  noPrompts?: true;
+}
+
+/** One harness's recipe. Mirrors `RecipeWire` in bridge/types.ts. */
+export interface Recipe {
+  harness: string;
+  label: string;
+  binary: string;
+  options: RecipeOption[];
+}
+
+/** What "Add your own" needs about one machine. Mirrors `LaunchersAdding` in bridge/types.ts. */
+export interface LaunchersAdding {
+  /** `[phone] adds` in that machine's `launchers.toml`: phone rows may be added and may start. */
+  adds: boolean;
+  /** `[phone] free_text`: a line typed by hand may be added and may start. Off by default. */
+  freeText: boolean;
+  /** The absolute path of that machine's `launchers.toml`, written or not. */
+  file: string;
+  count: number;
+  max: number;
+  recipes: Recipe[];
+  /** Added rows that do not start there now. The same rows are in `items`, unavailable. */
+  off: { id: string; label: string; command: string; kind: "agent" | "command"; harness?: string; reason: "adds_off" | "free_text_off" }[];
+}
+
+/** Why an item does not start on that machine now. Mirrors `LauncherItem.reason` in bridge/types.ts. */
+export type LauncherItemReason = "not_found" | "adds_off" | "free_text_off";
+
+/**
+ * One thing the New page may start on ONE machine, with its availability there (ADR 0094). Mirrors
+ * `LauncherItem` in bridge/types.ts. An unavailable item is a disabled option with its reason; the
+ * reasons a whole machine has (not taking writes, an older Collie) are the phone's own to add.
+ */
+export interface LauncherItem {
+  /** `harness:<id>`, `row:<command>` or `shell`. Stable per machine. */
+  key: string;
+  /** What `startLaunch` sends for it. */
+  start: { harness: string } | { command: string } | { shell: true };
+  group: "agents" | "commands";
+  label: string;
+  harness?: string;
+  command?: string;
+  cwd?: string;
+  source: "builtin" | "operator" | "added";
+  noPrompts: boolean;
+  /** Whether it may start on a new branch: agents and the shell, never a command row. */
+  branch: boolean;
+  available: boolean;
+  reason?: LauncherItemReason;
+  id?: string;
+  addedBy?: string;
+  addedAt?: number;
+  addedAs?: "recipe" | "text";
+}
+
+/** POST /api/launchers/added and /rename. Mirrors `AddedLauncherResponse` in bridge/types.ts. */
+export type AddedLauncherResponse =
+  | { ok: true; row: Launcher; replayed?: true }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /**
  * GET /api/launchers — the rows for ONE host (a crew has one file per member), read live off its
@@ -1552,6 +1637,10 @@ export interface LaunchersResponse {
    * none by id: the New sheet then offers no agents for that machine and says why.
    */
   harnesses?: HarnessInfo[];
+  /** "Add your own" for that machine (ADR 0094). Absent from a bridge older than 1.19.0: offer no add. */
+  adding?: LaunchersAdding;
+  /** Every agent, row and the shell, each with its availability there (ADR 0094). Absent from an older bridge. */
+  items?: LauncherItem[];
 }
 
 /** One agent a host can start by id. Mirrors `HarnessInfo` in bridge/types.ts. */

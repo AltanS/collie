@@ -59,6 +59,15 @@ export const API_ERROR_CODES = [
   "launch.pane_unknown",
   "launch.unknown_harness",
   "launch.bad_folder",
+  "launcher.adds_off",
+  "launcher.free_text_off",
+  "launcher.bad_text",
+  "launcher.bad_recipe",
+  "launcher.duplicate",
+  "launcher.added_full",
+  "launcher.unknown_row",
+  "launcher.store_unreadable",
+  "launcher.no_device",
 
   // The new-space folder list — POST /api/folders/star (#289)
   "folders.unknown",

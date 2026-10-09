@@ -1,5 +1,6 @@
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { AGAIN_KEY, rememberAgain } from "@/lib/new-sheet";
+import { NO_PROMPTS_KEY, rememberNoPromptsConfirm } from "@/lib/no-prompts";
 import { loadLastPaneText, loadLastSnapshot, saveLastPaneText, saveLastSnapshot } from "@/lib/last-seen";
 import { http, HttpResponse } from "msw";
 
@@ -137,6 +138,23 @@ describe("wipeDevice — a pairing that ended", () => {
     expect(localStorage.getItem(AGAIN_KEY)).not.toBeNull();
     await wipeDevice("unpair");
     expect(localStorage.getItem(AGAIN_KEY)).toBeNull();
+  });
+
+  it("forgets the per-device No prompts confirms, so a new pairing asks again (ADR 0094)", async () => {
+    stubCaches([]);
+    stubServiceWorker();
+    rememberNoPromptsConfirm("", "claude --dangerously-skip-permissions", 1);
+    expect(localStorage.getItem(NO_PROMPTS_KEY)).not.toBeNull();
+    await wipeDevice("unpair");
+    expect(localStorage.getItem(NO_PROMPTS_KEY)).toBeNull();
+  });
+
+  it("keeps the No prompts confirms on a password wipe, which clears session text only", async () => {
+    stubCaches([]);
+    stubServiceWorker();
+    rememberNoPromptsConfirm("", "codex --yolo", 1);
+    await wipeDevice("password", { scope: LEAD, paneId: "w1:p1" });
+    expect(localStorage.getItem(NO_PROMPTS_KEY)).not.toBeNull();
   });
 
   it("clears the memory tier of drafts too, not only localStorage", async () => {

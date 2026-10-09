@@ -1365,6 +1365,69 @@ export interface Launcher {
    * either way.
    */
   cwd?: string;
+  /**
+   * Where the row comes from (ADR 0094): the operator's `launchers.toml`, or a phone (this machine's
+   * `launchers-added.json`). Absent from an older bridge, which only had the first.
+   */
+  source?: "operator" | "added";
+  /** An added row's id: the request id of the add. Absent on an operator row. */
+  id?: string;
+  /** `agent` when a harness reads the row; absent or `command` for a plain line. */
+  kind?: "agent" | "command";
+  /** The harness id that reads an agent row. */
+  harness?: string;
+  /** True when the line skips permission prompts: the phone badges it and asks once per device. */
+  noPrompts?: boolean;
+  /** The pairing label of the device that added the row. Added rows only. */
+  addedBy?: string;
+  /** Epoch ms of the add. Added rows only. */
+  addedAt?: number;
+  /** How the row was added: built from a recipe, or a line typed by hand. Added rows only. */
+  addedAs?: "recipe" | "text";
+}
+
+/** One option chip of a recipe, as the phone draws it (bridge/launcher-recipes.ts). */
+export interface RecipeOptionWire {
+  id: string;
+  label: string;
+  /** The words the option appends, so the phone can show the line before the bridge builds it. */
+  args: string;
+  group?: string;
+  noPrompts?: true;
+}
+
+/** One harness's recipe: its binary and the option chips this bridge's table lists for it. */
+export interface RecipeWire {
+  harness: string;
+  label: string;
+  binary: string;
+  options: RecipeOptionWire[];
+}
+
+/** An added row that does not start here now, and why (ADR 0094). */
+export interface AddedOffWire {
+  id: string;
+  label: string;
+  command: string;
+  kind: "agent" | "command";
+  harness?: string;
+  /** `adds_off`: the operator turned phone rows off. `free_text_off`: free lines are off. */
+  reason: "adds_off" | "free_text_off";
+}
+
+/** What "Add your own" needs to know about THIS machine (ADR 0094). */
+export interface LaunchersAdding {
+  /** `[phone] adds`: whether a phone may add rows here, and its rows may start. */
+  adds: boolean;
+  /** `[phone] free_text`: whether a phone may add a line typed by hand. */
+  freeText: boolean;
+  /** The absolute path of this machine's `launchers.toml`, written or not. */
+  file: string;
+  /** Rows stored now, and the most there may be. */
+  count: number;
+  max: number;
+  recipes: RecipeWire[];
+  off: AddedOffWire[];
 }
 
 /**
@@ -1382,7 +1445,60 @@ export interface LaunchersResponse {
    * bridge that predates the New sheet, which is how the phone tells an older crew member apart.
    */
   harnesses?: HarnessInfo[];
+  /**
+   * What "Add your own" needs (ADR 0094). Absent from a bridge older than 1.19.0, which takes no
+   * phone-added rows: the phone then offers no add.
+   */
+  adding?: LaunchersAdding;
+  /**
+   * Every agent, row and the shell, in the order the page lists them, each with its availability on
+   * THIS machine and the reason code when it is off (ADR 0094). Absent from an older bridge.
+   */
+  items?: LauncherItem[];
 }
+
+/**
+ * One thing the New page may start on THIS machine, with whether it can start here now and why not
+ * (ADR 0094). The page draws every item; an unavailable one is a disabled option with its reason.
+ * Machine-wide reasons (the machine is not taking writes, an older Collie) are the phone's own, from
+ * the crew health and from this list's absence; these are the reasons only this machine knows.
+ */
+export interface LauncherItem {
+  /** Stable per machine: `harness:<id>`, `row:<command>`, or `shell`. */
+  key: string;
+  /** What `POST /api/launch` (and `POST /api/worktree`) names to start it. */
+  start: { harness: string } | { command: string } | { shell: true };
+  /** Agents: Collie reads the pane as that harness. Commands: a plain line, no agent status. */
+  group: "agents" | "commands";
+  label: string;
+  /** The harness that reads it: a built-in agent, or an agent row. */
+  harness?: string;
+  /** The line a row types. */
+  command?: string;
+  /** A row's pinned folder. */
+  cwd?: string;
+  source: "builtin" | "operator" | "added";
+  /** True when the line skips permission prompts: badge it, and confirm once per device. */
+  noPrompts: boolean;
+  /** Whether it may start on a new branch: agents and the shell, never a command row. */
+  branch: boolean;
+  available: boolean;
+  /**
+   * Why not, when `available` is false. `not_found`: the binary is not on this machine's login PATH.
+   * `adds_off`: the operator turned phone rows off. `free_text_off`: free lines are off.
+   */
+  reason?: "not_found" | "adds_off" | "free_text_off";
+  /** Added rows: the id (for rename and remove), who added it, when, and how. */
+  id?: string;
+  addedBy?: string;
+  addedAt?: number;
+  addedAs?: "recipe" | "text";
+}
+
+/** POST /api/launchers/added and /rename's answer. */
+export type AddedLauncherResponse =
+  | { ok: true; row: Launcher; replayed?: true }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /** One agent a host can start by id (`bridge/harness-launch.ts`). */
 export interface HarnessInfo {

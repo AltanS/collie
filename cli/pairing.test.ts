@@ -11,6 +11,7 @@ import {
   PENDING_FILENAME,
   sha256Hex,
 } from "../bridge/pairing.ts";
+import { ADDED_FILE } from "../bridge/launchers-added.ts";
 import { capture, context, type FakeFiles, fakeExec, fakeFiles, type SeededFiles, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
@@ -461,5 +462,53 @@ describe("the devices parent verb", () => {
       // Only a real mistake is called one.
       expect(err.includes("unknown devices subcommand")).toBe(args[0] === "lst");
     }
+  });
+});
+
+// ADR 0094: the launcher rows a revoked device added from its phone go with it, and the audit log says so.
+describe("collie devices revoke — the device's launcher rows", () => {
+  const ADDED = `${STATE}/${ADDED_FILE}`;
+  const row = (id: string, by: string, via: "local" | "crew", command: string) => ({
+    id,
+    kind: "command",
+    source: "text",
+    command,
+    label: command,
+    noPrompts: false,
+    device: by,
+    via,
+    at: 1,
+  });
+  const file = (...rows: ReturnType<typeof row>[]) => JSON.stringify({ version: 1, rows });
+
+  test("removes the local rows it added, keeps the rest, and appends one audit line per row", () => {
+    const d = deps({
+      ...registryFile(device({ label: "pixel" }), device({ label: "ipad" })),
+      [ADDED]: file(
+        row("11111111-1111-4111-8111-111111111111", "pixel", "local", "htop"),
+        row("22222222-2222-4222-8222-222222222222", "pixel", "crew", "btop"),
+        row("33333333-3333-4333-8333-333333333333", "ipad", "local", "top"),
+      ),
+    });
+    const audit: string[] = [];
+    expect(cmdDevicesRevoke({ ...d, appendAudit: (l) => audit.push(l) }, ["pixel"])).toBe(EXIT.OK);
+    const entry = d.files.entries.get(ADDED)!;
+    expect(entry.mode).toBe(0o600);
+    // SAFETY: the store's own file shape, written by `formatAddedFile`.
+    expect((JSON.parse(entry.text) as { rows: { command: string }[] }).rows.map((r) => r.command)).toEqual(["btop", "top"]);
+    expect(audit).toHaveLength(1);
+    expect(JSON.parse(audit[0]!)).toMatchObject({ action: "launcher.remove", detail: { addedBy: "pixel", reason: "device-revoked" } });
+    expect(d.io.stdout.join("\n")).toContain("Removed 1 launcher row");
+  });
+
+  test("no file, or a file it may not write over, is left alone", () => {
+    const none = deps(registryFile(device({ label: "pixel" })));
+    expect(cmdDevicesRevoke(none, ["pixel"])).toBe(EXIT.OK);
+    expect(none.files.entries.get(ADDED)).toBeUndefined();
+    const foreign = JSON.stringify({ version: 9, rows: [] });
+    const d = deps({ ...registryFile(device({ label: "pixel" })), [ADDED]: foreign });
+    expect(cmdDevicesRevoke(d, ["pixel"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(ADDED)!.text).toBe(foreign);
+    expect(d.io.stderr.join("\n")).toContain("cannot be read");
   });
 });

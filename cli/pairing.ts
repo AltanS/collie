@@ -1,5 +1,7 @@
 import { join } from "node:path";
 
+import { formatAuditLine } from "../bridge/audit.ts";
+import { ADDED_FILE, formatAddedFile, parseAddedText } from "../bridge/launchers-added.ts";
 import {
   CODE_TTL_MS,
   coerceRegistry,
@@ -58,6 +60,11 @@ export interface PairingDeps {
   now?: () => number;
   /** Injected so a test can pin the minted code; production leaves it. */
   random?: (n: number) => Buffer;
+  /**
+   * Append one line to `<stateDir>/audit.log`, the bridge's own trail. `devices revoke` writes the
+   * launcher rows it removes there (ADR 0094). Absent writes no line.
+   */
+  appendAudit?: (line: string) => void;
 }
 
 const pendingPath = (ctx: CliContext): string => join(ctx.stateDir, PENDING_FILENAME);
@@ -401,10 +408,59 @@ export function cmdDevicesRevoke(deps: PairingDeps, args: readonly string[]): nu
   }
 
   deps.io.out(`✓ revoked "${label}" — it loses all access on its next request (no restart needed).`);
+  const forgotten = forgetLauncherRows(deps, label);
+  if (forgotten > 0) {
+    deps.io.out(
+      `  Removed ${forgotten} launcher row${forgotten === 1 ? "" : "s"} it added from its phone. The running bridge removes the ones it added on crew members.`,
+    );
+  }
   if (next.devices.length === 0) {
     deps.io.out("  That was the last paired device: Collie now answers no phone or browser. Run `collie pair` to pair one.");
   }
   return EXIT.OK;
+}
+
+/**
+ * Remove the launcher rows `label` added from its phone on THIS machine (ADR 0094), and write one
+ * audit line per row. The bridge reads `launchers-added.json` by mtime, so the rows leave the launch
+ * allowlist on its next read. A file the store would not write over is left alone and said so: the
+ * bridge's read-time sweep drops the rows once the file reads again. Answers how many went.
+ */
+function forgetLauncherRows(deps: PairingDeps, label: string): number {
+  const path = join(deps.ctx.stateDir, ADDED_FILE);
+  const text = deps.files.read(path);
+  if (text === null) return 0;
+  const { rows } = parseAddedText(text);
+  if (rows === null) {
+    deps.io.err(`  note: ${path} cannot be read, so the launcher rows "${label}" added stay until it can.`);
+    return 0;
+  }
+  const gone = rows.filter((r) => r.device === label && r.via === "local");
+  if (gone.length === 0) return 0;
+  try {
+    const tmp = `${path}.${process.pid}.cli.tmp`;
+    deps.files.write(tmp, formatAddedFile(rows.filter((r) => !gone.includes(r))), 0o600);
+    deps.files.rename(tmp, path);
+  } catch (err) {
+    deps.io.err(`  note: could not write ${path} — ${err instanceof Error ? err.message : String(err)}; the bridge drops the rows on its next read.`);
+    return 0;
+  }
+  const content = deps.ctx.env.COLLIE_AUDIT_CONTENT === "none" ? "none" : "preview";
+  const now = (deps.now ?? Date.now)();
+  for (const row of gone) {
+    deps.appendAudit?.(
+      formatAuditLine(
+        {
+          action: "launcher.remove",
+          device: null,
+          detail: { requestId: row.id, command: row.command, label: row.label, addedBy: row.device, reason: "device-revoked" },
+        },
+        now,
+        content,
+      ),
+    );
+  }
+  return gone.length;
 }
 
 export function devicesUsage(): string {

@@ -544,6 +544,11 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   maps to ONE binary word in `bridge/harness-launch.ts` and reports per machine on `/api/launchers`;
   a launch with a `requestId` replays from `launch-receipts.json` instead of opening a second pane
   ([ADR 0091](./.adr/0091-launch-by-id-with-a-request-id.md)).
+  Rows a phone adds live in `<stateDir>/launchers-added.json` under the operator's `[phone]` switches,
+  never in `launchers.toml`; they are merged into the allowlist at read time, the operator's row wins
+  a duplicate line, a recipe row is rebuilt from `bridge/launcher-recipes.ts` and a free line is
+  re-checked at every read. The bridge never writes `launchers.toml`, and a revoke takes the device's
+  rows with it ([ADR 0094](./.adr/0094-launchers-added-from-a-phone.md)).
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by

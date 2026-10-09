@@ -35,6 +35,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   pane is on another branch, and it opens on "This branch"; changes you have not committed stay behind.
   Collie never fetches to do this.
 
+- **A phone can add its own launchers, under the operator's switches.** Each machine keeps the rows a phone adds in its own `launchers-added.json` (at most 20), never in `launchers.toml`, and merges them into the launch allowlist; a row in `launchers.toml` wins on the same line. A row is a recipe, an agent plus option chips whose flags the bridge picks from its own table, or, only when `[phone] free_text = true` is set in `launchers.toml`, a line typed by hand. `[phone] adds = false` turns every phone row off. Lines and labels with control, separator or bidi characters are refused when added and again when read. Revoking a device removes the rows it added, also on crew members, and the audit log records each add, rename and removal. A row that skips permission prompts is marked so the phone can badge it and confirm it once per device, and `GET /api/launchers` now says per machine what can start and why not. Rows in `launchers.toml` may name `harness` and `no_prompts`.
+
 ### Changed
 
 - **The new-space sheet is gone, folded into the New sheet.** A space label and the list of worktrees that already exist are no longer offered there; open an existing worktree with `herdr worktree open` on the machine. The agent you picked for a branch is now remembered per machine with the folder, as the Again row, and forgotten when the phone is unpaired.

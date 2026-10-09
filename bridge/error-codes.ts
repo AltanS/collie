@@ -97,6 +97,27 @@ export const ERROR_CODES = {
   /** A launch's `cwd` is not an absolute folder (after a leading `~`), or carries a control character. */
   "launch.bad_folder": "the folder must be an absolute path",
 
+  // ── Rows added from a phone: POST /api/launchers/added, /remove, /rename (ADR 0094) ──────────
+  // Each refusal is answered before the store is written: nothing was added, removed or renamed.
+  /** The operator turned phone-added rows off on this machine (`[phone] adds = false`). */
+  "launcher.adds_off": "adding launchers from a phone is turned off on this machine",
+  /** The operator has not turned free lines on (`[phone] free_text`, off by default). */
+  "launcher.free_text_off": "a command typed by hand is turned off on this machine",
+  /** The line or the label breaks the character rule, is empty, or is too long. */
+  "launcher.bad_text": "{field}: {problem}",
+  /** A recipe named an agent Collie does not start, an option its table does not list, or two of one group. */
+  "launcher.bad_recipe": "{reason}",
+  /** The same line is already a row, in `launchers.toml` or added before. */
+  "launcher.duplicate": "this command is already a launcher",
+  /** This machine keeps at most {max} phone-added rows. */
+  "launcher.added_full": "this machine already has {max} added launchers; remove one first",
+  /** No added row has this id on this machine. */
+  "launcher.unknown_row": "no such launcher",
+  /** `launchers-added.json` is there and is not a file this Collie may write over. */
+  "launcher.store_unreadable": "launchers-added.json cannot be read; move it away to add launchers",
+  /** The write came with no device name, so the row could not be attributed. */
+  "launcher.no_device": "this request names no paired device",
+
   // ── The new-space folder list: POST /api/folders/star (#289, M40/02) ───────────────
   /**
    * The folder is in neither list. Only a folder a space already opened in can be starred, so this

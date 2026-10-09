@@ -1,7 +1,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { harnessLaunch } from "./harness-launch.ts";
 import type { JsonObject } from "./json.ts";
+import { isForbiddenCodePoint } from "./launcher-recipes.ts";
 import { createOperatorFileReader, diskIo, type OperatorFileIo } from "./operator-file.ts";
 import type { Launcher } from "./types.ts";
 
@@ -31,15 +33,16 @@ import type { Launcher } from "./types.ts";
 // operator's intended command.
 
 /**
- * Whether the line carries an ASCII control character.
+ * Whether the line carries a character no typed line may hold: an ASCII or C1 control character, a
+ * line or paragraph separator, or a bidi control (`isForbiddenCodePoint`, bridge/launcher-recipes.ts,
+ * the one rule phone-added rows meet too, ADR 0094).
  *
  * A scan rather than a regular expression: a control-character CLASS in a pattern is itself the
  * thing the lint rule warns about, and the question here is a plain one about code points.
  */
 function hasControlChar(line: string): boolean {
   for (const ch of line) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code < 0x20 || code === 0x7f) return true;
+    if (isForbiddenCodePoint(ch.codePointAt(0) ?? 0)) return true;
   }
   return false;
 }
@@ -61,6 +64,8 @@ interface LaunchersDocument {
  * command = "rumen-peek"        # required; the shell line, typed verbatim
  * label = "Runs & quota"        # optional; defaults to the command's first whitespace-separated token
  * cwd = "~/dev/collie"          # optional; absent means "here" (home from the dashboard, the pane's own dir from a pane); leading ~ expanded
+ * harness = "claude"            # optional; the agent that reads this row, so the sheet lists it under Agents (ADR 0094)
+ * no_prompts = true             # optional; the line skips permission prompts (an alias hides its flags)
  * ```
  *
  * A later row for the same `command` replaces the earlier one IN PLACE, so correcting a row does
@@ -135,7 +140,33 @@ export function validateOperatorLaunchers(
       else cwd = rawCwd;
     }
 
+    // `harness` names the agent that reads the row (ADR 0094): the sheet lists it under Agents with
+    // that agent's mark. Only an id Collie starts is accepted; a typo drops the row, as above.
+    let harness: string | undefined;
+    if (row.harness !== undefined) {
+      if (typeof row.harness !== "string" || harnessLaunch(row.harness.trim()) === undefined) {
+        warn(`ignoring "${command}" — harness must be one of the agents Collie starts`);
+        continue;
+      }
+      harness = row.harness.trim();
+    }
+    // `no_prompts = true` marks a line whose flags the scan cannot see (an alias), so the phone shows
+    // the "No prompts" badge and asks once per device (ADR 0094).
+    let noPrompts: true | undefined;
+    if (row.no_prompts !== undefined) {
+      if (typeof row.no_prompts !== "boolean") {
+        warn(`ignoring "${command}" — no_prompts must be true or false`);
+        continue;
+      }
+      if (row.no_prompts) noPrompts = true;
+    }
+
     const parsed: Launcher = cwd === undefined ? { command, label } : { command, label, cwd };
+    if (harness !== undefined) {
+      parsed.kind = "agent";
+      parsed.harness = harness;
+    }
+    if (noPrompts !== undefined) parsed.noPrompts = true;
     const prev = at.get(command);
     if (prev !== undefined) {
       warn(`"${command}" redefined — the later row wins`);
@@ -163,6 +194,68 @@ export function createOperatorLaunchers(
   warn = defaultWarn,
 ): () => Promise<Launcher[]> {
   return createOperatorFileReader(path, validateOperatorLaunchers, io, warn);
+}
+
+// ── The operator's switches for rows added from a phone (ADR 0094) ───────────────────────────────
+//
+// A `[phone]` table in the same file, because these are the operator's rules about the same list:
+//
+// ```toml
+// [phone]
+// adds = true          # default true: a phone may add rows built from a recipe
+// free_text = false    # default false: a phone may also add a line typed by hand
+// ```
+//
+// A table rather than top-level keys, so its place in the file does not matter (a top-level key
+// written after the first `[[launchers]]` would belong to that row). Enforced by the bridge: a phone
+// that is told "no" by the UI is told "no" again by the route, and a row a switch covers leaves the
+// launch allowlist (it stays on disk, so turning the switch back on restores it). A value that is
+// not true or false reads as OFF: a switch the operator touched and got wrong must not open a door.
+
+/** The switches, as the bridge enforces them. */
+export interface LauncherSwitches {
+  /** Phones may add rows at all, and rows they added may start. */
+  adds: boolean;
+  /** Phones may add a free line, and free lines they added may start. */
+  freeText: boolean;
+}
+
+/** The defaults: recipes on, free text off. */
+export const DEFAULT_SWITCHES: LauncherSwitches = { adds: true, freeText: false };
+
+/** A parsed `launchers.toml`'s `[phone]` table, before a byte of it is believed. */
+interface SwitchesDocument {
+  phone?: unknown;
+}
+
+/** Read the `[phone]` table. Pure and total; a wrong value is OFF with one warning. */
+export function launcherSwitches(doc: SwitchesDocument | null | undefined, warn = defaultWarn): LauncherSwitches {
+  const table = doc?.phone;
+  if (table === undefined || table === null) return { ...DEFAULT_SWITCHES };
+  if (typeof table !== "object" || Array.isArray(table)) {
+    warn("`phone` must be a [phone] table — phone adds and free text are off");
+    return { adds: false, freeText: false };
+  }
+  // SAFETY: a TOML table parses to a plain object; every field is checked below before it is believed.
+  const t = table as JsonObject;
+  const read = (key: string, fallback: boolean): boolean => {
+    const v = t[key];
+    if (v === undefined) return fallback;
+    if (typeof v === "boolean") return v;
+    warn(`[phone] ${key} must be true or false — reading it as false`);
+    return false;
+  };
+  return { adds: read("adds", DEFAULT_SWITCHES.adds), freeText: read("free_text", DEFAULT_SWITCHES.freeText) };
+}
+
+/** A reader for the switches, on the same mtime cache and hold-the-last-good posture as the rows. */
+export function createLauncherSwitches(
+  path: string,
+  io: OperatorFileIo = diskIo,
+  warn = defaultWarn,
+): () => Promise<LauncherSwitches> {
+  const read = createOperatorFileReader<SwitchesDocument, LauncherSwitches>(path, (doc, w) => [launcherSwitches(doc, w)], io, warn);
+  return async () => (await read())[0] ?? { ...DEFAULT_SWITCHES };
 }
 
 /** The io shape this reader is driven with in tests. */

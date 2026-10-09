@@ -71,7 +71,22 @@ import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
 import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
-import { createOperatorLaunchers } from "./operator-launchers.ts";
+import { createLauncherSwitches, createOperatorLaunchers } from "./operator-launchers.ts";
+import {
+  addingBody,
+  addLauncher,
+  createRevokeWatch,
+  forgetDeviceRows,
+  launcherItems,
+  readMerged,
+  removeLauncher,
+  renameLauncher,
+  sweepRevokedRows,
+  type LauncherSources,
+  type MergedLaunchers,
+  type RouteAnswer,
+} from "./launcher-adds.ts";
+import { memoryAddedLaunchers, type AddedLauncherSurface } from "./launchers-added.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyPromptBinding,
@@ -514,6 +529,11 @@ interface RouteCaller {
   device(): string | null;
   /** Where a write's audit line lands — the peer's is pre-stamped `via:"crew"` + originator (§12). */
   readonly audit: AuditLog;
+  /**
+   * `crew` on the crew caller: a phone-added launcher row then records that the lead forwarded it, so
+   * a forget the lead sends later reaches it (ADR 0094). Absent on the browser caller.
+   */
+  readonly via?: "crew";
 }
 
 /**
@@ -1005,6 +1025,12 @@ export function startServer(opts: {
    */
   launchReceipts?: LaunchReceiptSurface;
   /**
+   * The launcher rows phones added on this machine (ADR 0094, `bridge/launchers-added.ts`). Absent
+   * means an in-memory store; `bridge/index.ts` passes the file-backed one, which writes nothing until
+   * the first add.
+   */
+  addedLaunchers?: AddedLauncherSurface;
+  /**
    * The agents this host can start by id, with their found flags (ADR 0091). Absent builds the real
    * probe, which asks nothing until the first `GET /api/launchers`.
    */
@@ -1072,6 +1098,76 @@ export function startServer(opts: {
   const operatorFonts = createOperatorFonts(cfg.themeFile);
   // Its sibling too, on the same contract: one reader, one mtime cache, launchers.toml off the hot path.
   const operatorLaunchers = createOperatorLaunchers(cfg.launchersFile);
+  // The rows phones added here, and the operator's `[phone]` switches over them (ADR 0094). The launch
+  // allowlist is the MERGE of the operator's rows and these, read fresh each time (bridge/launcher-adds.ts).
+  const addedLaunchers = opts.addedLaunchers ?? memoryAddedLaunchers();
+  const launcherSources: LauncherSources = {
+    operator: operatorLaunchers,
+    added: addedLaunchers,
+    switches: createLauncherSwitches(cfg.launchersFile),
+  };
+  /** This machine's paired labels, or `null` when there is no registry to ask or it cannot be read. */
+  const pairedLabels = (): Set<string> | null => {
+    if (pairing === undefined) return null;
+    try {
+      return new Set(pairing.registry().devices.map((d) => d.label));
+    } catch {
+      return null;
+    }
+  };
+  /**
+   * The launch allowlist: the operator's rows, then the added rows the switches allow (operator wins
+   * on the same line). The read-time sweep runs first, so a row whose device was revoked behind this
+   * process's back is gone before it can be offered or started.
+   */
+  const allowedLaunchers = async (): Promise<Launcher[]> => {
+    // A label gone from the registry since the last look takes its rows with it, here and on every
+    // member (ADR 0094); then the sweep catches anything this process never saw go.
+    await noticeRevokes();
+    await sweepRevokedRows(addedLaunchers, pairedLabels(), audit);
+    return (await readMerged(launcherSources)).rows;
+  };
+  const launchersAdding = { merged: () => readMerged(launcherSources), file: cfg.launchersFile };
+  // A label that disappears from the registry (a revoke from the phone, from `collie devices revoke`,
+  // or a re-pair over an expired device) takes its rows with it: here, and on every crew member,
+  // which cannot see this registry and so is told (ADR 0094).
+  const revokeWatch = createRevokeWatch();
+  // Seeded now, so a `collie devices revoke` before the first launcher call is still seen.
+  revokeWatch(pairedLabels());
+  const forgetDevice = async (label: string, reason: string): Promise<void> => {
+    await forgetDeviceRows(addedLaunchers, label, "local", audit, reason);
+    if (crewLead !== undefined) void forgetOnMembers(label);
+  };
+  const noticeRevokes = async (): Promise<void> => {
+    for (const label of revokeWatch(pairedLabels())) await forgetDevice(label, "device-revoked");
+  };
+  /** Best-effort: each reachable member drops the rows this label added through the crew link. */
+  const forgetOnMembers = async (label: string): Promise<void> => {
+    const lead = crewLead;
+    if (lead === undefined) return;
+    await Promise.all(
+      lead.contributions().map(async ({ state }) => {
+        const resolved = lead.resolve({ kind: "member", id: state.memberId });
+        if (resolved === undefined || resolved.kind !== "peer") return;
+        const url = new URL(`http://collie.invalid${FORGET_DEVICE_PATH}`);
+        url.searchParams.set("host", state.memberId);
+        const req = new Request(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ device: label }),
+        });
+        try {
+          const res = await lead.forward(req, url, resolved, {
+            device: null,
+            audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: { forwarded: entry.outcome } }),
+          });
+          await res.body?.cancel();
+        } catch (err) {
+          console.warn(`[launchers] could not tell ${state.memberId} to forget ${label}'s rows: ${errorText(err)}`);
+        }
+      }),
+    );
+  };
   // The sixth on that contract: the operator's own prompt-cache TTLs, cache-rules.toml off the hot path.
   const operatorCacheRules = createCacheRulesReader(cfg.cacheRulesFile);
   // ONE registry for the process, built by the caller so the cache tracker probes through the same
@@ -1313,7 +1409,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers, {}, {
+      return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
         harnesses,
         receipts: launchReceipts,
         folders,
@@ -1329,8 +1425,13 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"), harnesses);
+      return launchersRoute(allowedLaunchers, req.headers.get("accept-encoding"), harnesses, launchersAdding);
     }
+    // Add, remove or rename a row a phone added (ADR 0094). Writes, on the write gate, and
+    // session-scoped for `/api/launchers`' reason: `?host=` reaches THAT machine's own store through
+    // the ordinary forward, and nothing is ever copied to another machine.
+    const addedAnswer = await serveAddedLauncherRoute(req, pathname, caller, launcherSources);
+    if (addedAnswer !== null) return addedAnswer;
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
@@ -1466,7 +1567,7 @@ export function startServer(opts: {
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
       server.timeout(req, WORKTREE_ROUTE_BUDGET_S);
-      return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers, {
+      return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {
         receipts: worktreeReceipts,
         bases: worktreeBases,
         choices: worktreeChoices,
@@ -1498,7 +1599,7 @@ export function startServer(opts: {
         caller.audit,
         device,
         rt.name,
-        operatorLaunchers,
+        allowedLaunchers,
         worktreeReceipts,
         {},
         { bases: worktreeBases },
@@ -1612,6 +1713,23 @@ export function startServer(opts: {
     dispatch: async (req, url, from) => {
       const session = url.searchParams.get("session") ?? undefined;
       const device = crewDeviceOf(req);
+      // The lead's forget for a device it revoked (ADR 0094). Crew-only by construction: the browser
+      // path refuses this path before routing, so only an admitted lead's request reaches it. Admitted
+      // as a READ: the link's two factors are the authority, and the revoked device is, by definition,
+      // not one this machine's device policy would still name.
+      if (url.pathname === FORGET_DEVICE_PATH && req.method === "POST") {
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; only one string is read.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return text("bad body", 400);
+        }
+        const forgotten = asJsonRecord(body)?.device;
+        if (typeof forgotten !== "string" || forgotten.trim() === "") return text("bad body", 400);
+        const gone = await forgetDeviceRows(addedLaunchers, forgotten.trim(), "crew", audit.scoped({ via: "crew", from }), "device-revoked");
+        return json({ ok: true, removed: gone.length }, req.headers.get("accept-encoding"));
+      }
       const routed = await serveSessionRoute(req, url, {
         resolve: async () => localRuntime(session, null),
         gate: (level) => {
@@ -1620,6 +1738,7 @@ export function startServer(opts: {
         },
         device: () => device,
         audit: audit.scoped({ via: "crew", from }),
+        via: "crew",
       });
       // Deliberately UNCODED. This is the crew link's own 404, answered to a LEAD and never to a
       // browser, and `/crew/v1/*` is a separately-versioned surface (CREW_PROTOCOL.md, ADR 0025) —
@@ -1979,6 +2098,12 @@ export function startServer(opts: {
       // checks meant to be identical drift the moment one of them is edited, so there is only one
       // (spec M15/05; `server.test.ts` → "same device auth as pane input").
       const browserGate = (level: GateLevel): Response | null => guard(req, cfg, level, pairingGate);
+      // The crew's forget is never a browser route, on this machine or forwarded to a member.
+      if (pathname === FORGET_DEVICE_PATH) {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        return text("not found", 404);
+      }
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
         gate: browserGate,
@@ -2578,6 +2703,9 @@ export function startServer(opts: {
             device: parsed.label,
             detail: { label: parsed.label, reason: "expired-replaced" },
           });
+          // The expired device's launcher rows go with it (ADR 0094): the new phone under the same
+          // name is not the person who added them. Before the watch can see the label come back.
+          await forgetDevice(parsed.label, "expired-replaced");
         }
         audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
@@ -2672,6 +2800,10 @@ export function startServer(opts: {
           return jsonError(apiError("device.unknown"), 404, req.headers.get("accept-encoding"));
         }
         audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
+        // The rows that device added from its phone go with it, here and on every crew member (ADR 0094).
+        await forgetDevice(label, "device-revoked");
+        // Seen now, so the watch does not report the same label a second time.
+        revokeWatch(pairedLabels());
         let after: DevicesResponseBody;
         try {
           const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
@@ -4881,11 +5013,69 @@ export async function launchersRoute(
   getLaunchers: () => Promise<Launcher[]>,
   acceptEncoding: string | null,
   harnesses?: Pick<HarnessProbe, "list">,
+  adding?: { merged: () => Promise<MergedLaunchers>; file: string },
 ): Promise<Response> {
   const rows = await getLaunchers();
   const body: LaunchersResponse = { launchers: rows, home: homedir() };
   if (harnesses !== undefined) body.harnesses = await harnesses.list();
+  // ADR 0094: the switches, this machine's `launchers.toml` path, the recipes, the rows held back, and
+  // the one list the New page draws, each item with its availability here and its reason code.
+  if (adding !== undefined) {
+    const merged = await adding.merged();
+    body.adding = addingBody(merged, adding.file);
+    body.items = launcherItems(body.harnesses, merged);
+  }
   return json(body, acceptEncoding);
+}
+
+// ── Rows a phone added (ADR 0094, bridge/launcher-adds.ts) ─────────────────────────────────────────
+//
+// Three writes, one per act: add, remove, rename. The ORDER is the folder routes' and is what makes
+// them safe: the caller's write gate first, then its resolver (which forwards a `?host=` call to the
+// member whose store it is and hands the member's answer back untouched), and only then THIS
+// machine's own store. A member that is not taking writes refuses before the attempt (§10.3).
+
+/** The crew-only forget: the lead tells a member to drop the rows a revoked device added through it. */
+export const FORGET_DEVICE_PATH = "/api/launchers/added/forget-device";
+
+/** What the added-launcher routes need of their caller. */
+export type AddedRouteCaller = Pick<RouteCaller, "gate" | "resolve" | "device" | "audit" | "via">;
+
+/** Serve one of the three added-launcher writes, or `null` when `pathname` is none of them. */
+export async function serveAddedLauncherRoute(
+  req: Request,
+  pathname: string,
+  caller: AddedRouteCaller,
+  sources: LauncherSources,
+): Promise<Response | null> {
+  const act =
+    pathname === "/api/launchers/added"
+      ? addLauncher
+      : pathname === "/api/launchers/added/remove"
+        ? removeLauncher
+        : pathname === "/api/launchers/added/rename"
+          ? renameLauncher
+          : null;
+  if (act === null || req.method !== "POST") return null;
+  const denied = caller.gate("write");
+  if (denied) return denied;
+  const rt = await caller.resolve();
+  if (rt instanceof Response) return rt;
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; each act checks every field.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const answer: RouteAnswer = await act(body, {
+    sources,
+    device: caller.device(),
+    via: caller.via === "crew" ? "crew" : "local",
+    audit: caller.audit,
+    session: rt.name,
+  });
+  return json(answer.body, req.headers.get("accept-encoding"), answer.status);
 }
 
 // ── The new-space folder list (#289, bridge/folders.ts) ──────────────────────────

@@ -1,3 +1,6 @@
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
@@ -195,7 +198,14 @@ async function crewVerbDeps(io: Io, ui: Ui | null = null): Promise<CrewAddDeps> 
  */
 function pairingDeps(io: Io): PairingDeps {
   const ctx = loadContext(io.err);
-  return { ctx, io, files: realFiles, exec: realExec(ctx.env, ctx.home) };
+  return {
+    ctx,
+    io,
+    files: realFiles,
+    exec: realExec(ctx.env, ctx.home),
+    // The bridge's own trail: `devices revoke` records the launcher rows it removes there (ADR 0094).
+    appendAudit: (line) => appendFileSync(join(ctx.stateDir, "audit.log"), `${line}\n`, { mode: 0o600 }),
+  };
 }
 
 /**

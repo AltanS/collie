@@ -130,7 +130,7 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `keys.toml` | optional, per row | `danger = true` | yes, no restart needed |
 | `quick-replies.toml` | optional, per row | none | yes, no restart needed |
 | `theme.toml` | none, the faces are a device setting | none | yes, on the next page reload |
-| `launchers.toml` | none, matched by exact command instead | none | yes, but an already-open tab re-reads the rows only on its next load |
+| `launchers.toml` | none, matched by exact command instead; `[phone]` switches the rows a phone adds | none | yes, but an already-open tab re-reads the rows only on its next load |
 | `cache-rules.toml` | none, matched by exact rule id instead | none | yes, no restart needed |
 
 These files are unchanged by the config file. They share the instance `config.toml`'s
@@ -313,10 +313,22 @@ Leave it out and it means "here": the dashboard opens it in your home dir, a pan
 *that pane's own* cwd — one cwd-less row follows you around your checkouts instead of always
 landing at the top of one.
 
-This file is the allowlist. `POST /api/launch` accepts only a `command` that matches a row here
-exactly, an agent id from the machine's own list (the machine types that agent's command itself),
-or a plain shell. A phone can send no command line of its own. Changes apply immediately without a
+This file and the rows added from a phone (below) are the allowlist. `POST /api/launch` accepts
+only a `command` that matches one of those rows exactly, an agent id from the machine's own list (the
+machine types that agent's command itself), or a plain shell. Changes apply immediately without a
 restart, but an already-open tab re-reads the rows only on its next load.
+
+Two optional keys tell the phone more about a row:
+
+```toml
+[[launchers]]
+command = "claude-danger"
+label = "Claude Code, no prompts"
+# The agent that reads the row: it is listed under Agents with that agent's mark.
+harness = "claude"
+# The line skips permission prompts, but an alias hides its flags.
+no_prompts = true
+```
 
 Your rows appear in three places: under **Commands** in the New sheet (tap **+ New** on the
 dashboard), a **Launch** section on the dashboard, which folds like Spaces, and a **Launch** section
@@ -331,6 +343,52 @@ a row launches on whichever machine's dashboard or pane you tapped it from, not 
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
+
+### Launchers added from a phone
+
+A phone can add its own rows on a machine. They are kept in that machine's state folder, in
+`launchers-added.json`, never in `launchers.toml`, and never copied to another machine.
+
+```toml
+[phone]
+adds = true          # default true: a phone may add rows built from a recipe
+free_text = false    # default false: a phone may also add a line typed by hand
+```
+
+Put the `[phone]` table anywhere in `launchers.toml`. A value that is not `true` or `false` reads
+as `false`. The bridge enforces both switches: a refused add changes nothing, and a row a switch
+turns off stops starting at once. The row stays in the file, so turning the switch back on restores
+it.
+
+A **recipe** is an agent plus option chips from the bridge's own table, for example Claude Code and
+"Skip permission prompts". The phone sends only the ids, and the bridge builds the line. Every chip
+was read off that agent's own `--help`:
+
+| Agent | Option | Adds |
+| --- | --- | --- |
+| Claude Code | Skip permission prompts | `--dangerously-skip-permissions` |
+| Claude Code | Plan mode | `--permission-mode plan` |
+| Claude Code | Model: opus, Model: sonnet | `--model opus`, `--model sonnet` |
+| Claude Code | Continue last | `--continue` |
+| Codex | Skip approvals and sandbox | `--dangerously-bypass-approvals-and-sandbox` |
+| Codex | Never ask | `--ask-for-approval never` |
+| Codex | Read-only sandbox, Web search | `--sandbox read-only`, `--search` |
+| opencode | Auto-approve, Plan agent, Continue last | `--auto`, `--agent plan`, `--continue` |
+| pi | Continue last, Thinking: high | `--continue`, `--thinking high` |
+| omp | Continue last, Thinking: high | `--continue`, `--thinking=high` |
+
+A **free line**, such as an alias like `claude-danger` or a plain `htop`, is possible only with
+`free_text = true`. It is at most 200 characters, and the bridge refuses a control character, a line
+or paragraph separator and a bidi control in it, both when it is added and each time it is read.
+
+A machine keeps at most 20 added rows. If a row has the same line as a row in `launchers.toml`, the
+row in `launchers.toml` wins. Each added row records the paired device that added it. Revoking that
+device removes its rows, from the phone or with `collie devices revoke`, and the audit log records
+every add, rename and removal.
+
+> **Caution.** A row that skips permission prompts carries a "No prompts" badge. Each device asks
+> once before it first starts that row, and shows the command, the folder and the machine. Set
+> `adds = false` to turn off every phone-added row on a machine.
 
 ## Your own typefaces
 

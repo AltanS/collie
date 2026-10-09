@@ -994,3 +994,15 @@ describe("journal, uploads and state stay host-local", () => {
     expect(contract).toContain("listSessions` and the three worktree verbs have no forwardable route");
   });
 });
+
+// ADR 0094: a phone's own launcher rows live on ONE machine; `?host=` writes reach that member's store.
+describe("the added-launcher routes cross the link as writes", () => {
+  test("add, remove, rename and the lead's forget are forwardable writes; nothing else under the path is", () => {
+    for (const route of ["launchers/added", "launchers/added/remove", "launchers/added/rename", "launchers/added/forget-device"]) {
+      expect(crewRouteFor(`/api/${route}`)).toBe(route);
+      expect(forwardKind(route)).toBe("write");
+    }
+    expect(crewRouteFor("/api/launchers/added/list")).toBeNull();
+    expect(crewRouteFor("/api/launchers/added/")).toBeNull();
+  });
+});

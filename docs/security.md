@@ -110,7 +110,7 @@ When a pairing ends, the phone deletes what Collie stored under it. This happens
 phone from Settings, and when the bridge refuses its token with `device not paired` or `device expired`.
 
 The phone deletes the token, every unsent draft, the saved pane text and herd, the push subscription,
-and Collie's caches except the app shell. Your settings stay: theme, language, pins and other
+the "No prompts" confirms, and Collie's caches except the app shell. Your settings stay: theme, language, pins and other
 preferences hold no session text. Settings asks you to confirm before it revokes any device.
 
 The phone's own wipe is the only one. The bridge sends no `Clear-Site-Data` header, because that
@@ -179,6 +179,13 @@ Key security boundaries and risks:
   `~/.codex`, `~/.config/gh` or `~/.ssh` shows what is there. So does the `.env` of a second Collie
   whose config folder sits under the workspace. A hard link inside the folder to a file outside it is
   not caught either.
+- **A paired device can add launchers.** With the default `[phone] adds = true`, a phone may add a
+  row built from a recipe: an agent plus option chips whose flags the bridge picks from its own
+  table. A line typed by hand needs `free_text = true`, which is off by default. A recipe can still
+  skip permission prompts. Such a row carries a "No prompts" badge, and each device confirms it once.
+  Revoking a device removes the rows it added. Set `adds = false` to turn off every phone-added row
+  ([Your own launchers](configure.md#launchers-added-from-a-phone),
+  [ADR 0094](../.adr/0094-launchers-added-from-a-phone.md)).
 - **A single instance exposes all sessions.** By default, one Collie process fronts every
   multiplexer session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
