@@ -889,3 +889,27 @@ describe("resolveBlobPath", () => {
     await rm(base, { recursive: true, force: true });
   });
 });
+
+// A message sent while pi works. Measured 2026-10-09 (pi 0.87.1 sessions): pi keeps a steer or a
+// follow-up in memory and writes NOTHING until it delivers the message, as an ordinary `message` row
+// with `role: "user"` right after the tool result it waited for. So there is no special record to read,
+// and the adapter must keep showing that row once. omp is the same adapter (registry.ts).
+describe("parsePiTranscript — a message delivered while the agent works", () => {
+  test("a steer after a tool result is one user turn, in order", () => {
+    const entries = parsePiTranscript(
+      [
+        header(),
+        msg("u1", null, { role: "user", content: [{ type: "text", text: "run the slow script" }] }),
+        msg("a1", "u1", { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "sleep 20" } }] }),
+        msg("r1", "a1", { role: "toolResult", toolCallId: "t1", toolName: "bash", content: [{ type: "text", text: "done" }] }),
+        msg("u2", "r1", { role: "user", content: [{ type: "text", text: "are you updating build artifacts ??" }] }),
+        msg("a2", "u2", { role: "assistant", content: [{ type: "text", text: "No." }] }),
+      ].join("\n"),
+    );
+    expect(entries.filter((e) => e.role === "user").map((e) => [e.uuid, e.parts[0]])).toEqual([
+      ["u1", { kind: "text", text: "run the slow script" }],
+      ["u2", { kind: "text", text: "are you updating build artifacts ??" }],
+    ]);
+    expect(entries.map((e) => e.role)).toEqual(["user", "assistant", "user", "assistant"]);
+  });
+});

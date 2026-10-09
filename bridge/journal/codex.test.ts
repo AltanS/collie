@@ -500,3 +500,50 @@ describe("parseCodexTranscript — custom_tool_call", () => {
     expect(part.call).toEqual({ kind: "read", path: "/repo/a.ts" });
   });
 });
+
+// A message sent while Codex is working (steered, or queued): measured 2026-10-09 in codex 0.156.1
+// sessions, it is an ordinary user `response_item` with the running turn's id, followed by an
+// `item_completed` event for the same words. The event family is dropped (see above), so the message is
+// ONE row. Pinned because Claude Code's equivalent is not a user row at all, and this adapter must
+// never come to need that: a steer that goes missing here is a Chat message that vanishes.
+describe("parseCodexTranscript — a message sent while the agent works", () => {
+  test("a steer after the answer is one user turn, and its event twin adds none", () => {
+    const steer = "Queued note: reply with only OK.";
+    const entries = parseCodexTranscript(
+      [
+        meta(),
+        message("user", "Write a 500-word story"),
+        message("assistant", "Once upon a time"),
+        item({
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: steer }],
+          internal_chat_message_metadata_passthrough: { turn_id: "01a0df5a-b64d" },
+        }),
+        event({ type: "item_completed", turn_id: "01a0df5a-b64d", item: { type: "UserMessage", content: [{ type: "text", text: steer }] } }),
+        message("assistant", "OK"),
+      ].join("\n"),
+    );
+    expect(entries.map((e) => [e.role, e.parts[0]])).toEqual([
+      ["user", { kind: "text", text: "Write a 500-word story" }],
+      ["assistant", { kind: "text", text: "Once upon a time" }],
+      ["user", { kind: "text", text: steer }],
+      ["assistant", { kind: "text", text: "OK" }],
+    ]);
+  });
+
+  test("a steer between a tool call and its output is shown where it was written", () => {
+    const entries = parseCodexTranscript(
+      [
+        item({ type: "function_call", name: "exec_command", arguments: '{"cmd":"sleep 20"}', call_id: "c1" }),
+        message("user", "stop after this one"),
+        item({ type: "function_call_output", call_id: "c1", output: '{"output":"done"}' }),
+        message("assistant", "Stopped."),
+      ].join("\n"),
+    );
+    expect(entries.filter((e) => e.role === "user").map((e) => e.parts[0])).toEqual([
+      { kind: "text", text: "stop after this one" },
+    ]);
+    expect(entries.some((e) => e.parts.some((p) => p.kind === "tool" && p.result !== undefined))).toBe(true);
+  });
+});
