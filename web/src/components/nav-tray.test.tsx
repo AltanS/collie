@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { NavTray } from "./nav-tray";
+import { addRow, boardOf, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 
 describe("NavTray", () => {
   // ── Immediate path (nothing armed / empty queue): unchanged from before the key-queue refactor ──
@@ -42,7 +43,7 @@ describe("NavTray", () => {
     expect(onSend.mock.calls).toEqual([[["1"]], [["5"]], [["9"]]]);
   });
 
-  it("the main grid is 7 cols + a 12px gap + Enter, 2 rows, Enter set apart and tinted (variant 4)", () => {
+  it("the Default board is today's pad: Esc/Tab/modifiers/Up/^C over Space/Enter/arrows, Enter away from the arrows", () => {
     render(<NavTray onSend={vi.fn()} />);
 
     const esc = screen.getByRole("button", { name: "Esc" });
@@ -70,48 +71,41 @@ describe("NavTray", () => {
     expect(isBefore(alt, up)).toBe(true);
     expect(isBefore(up, ctrlC)).toBe(true);
 
-    // Row 2 begins only after all of row 1: a 4-wide Space, then the inverted-T's Left, Down, Right.
+    // Row 2: Space, Enter, then the inverted-T's Left, Down, Right.
     expect(isBefore(ctrlC, space)).toBe(true);
-    expect(isBefore(space, left)).toBe(true);
+    expect(isBefore(space, enter)).toBe(true);
+    expect(isBefore(enter, left)).toBe(true);
     expect(isBefore(left, down)).toBe(true);
     expect(isBefore(down, right)).toBe(true);
 
-    // Enter sits apart from the arrows, last in the grid (issue #263), and spans both rows.
-    expect(isBefore(right, enter)).toBe(true);
-    expect(enter).toHaveClass("row-span-2");
-
-    // Space spans the first 4 columns; Up and Down share one column (the inverted T's stem), and
-    // that column is neither Left's nor Right's.
-    expect(space).toHaveClass("col-span-4");
-    const colOf = (el: HTMLElement) => [...el.classList].find((c) => c.startsWith("col-start-"));
-    expect(colOf(up)).toBe(colOf(down));
-    expect(colOf(up)).not.toBe(colOf(left));
-    expect(colOf(down)).not.toBe(colOf(right));
+    // Every key is one cell of a 7-column grid, and Enter stays away from the arrows (issue #263):
+    // two empty cells sit between it and Left.
+    const grid = esc.parentElement!;
+    expect(grid).toHaveClass("grid-cols-7");
+    const cells = [...grid.children];
+    expect(cells).toHaveLength(14);
+    expect(cells.indexOf(enter)).toBe(8);
+    expect(cells.indexOf(left)).toBe(11);
+    expect(cells.indexOf(up) % 7).toBe(cells.indexOf(down) % 7);
+    expect(cells[9]).toHaveAttribute("aria-hidden", "true");
+    expect(cells[10]).toHaveAttribute("aria-hidden", "true");
 
     // Enter carries a low-opacity tint of the primary colour at rest — the commit-key read.
     expect(enter).toHaveClass("bg-primary/15");
     expect(enter).toHaveClass("border-primary/40");
   });
 
-  // jsdom lays out nothing, so what a real phone showed (Enter one row high, not two) can only be
-  // pinned by the CLASSES that produce it. A shared fixed-height class (`h-9`, the size every other
-  // key gets) wins over `row-span-2` via tailwind-merge unless Enter itself carries a stretch class
-  // listed after it — this test is what stops that regressing silently.
-  it("Enter has no fixed-height class and stretches to fill its two-row span; the grid pins explicit row heights", () => {
-    render(<NavTray onSend={vi.fn()} />);
+  // jsdom lays out nothing, so the row heights can only be pinned by the style that produces them.
+  it("the grid pins explicit 36px rows, one per used row, and hides trailing empty rows", () => {
+    const { rerender } = render(<NavTray onSend={vi.fn()} />);
+    const grid = () => screen.getByRole("button", { name: "Esc" }).parentElement!;
+    expect(grid().style.gridTemplateRows).toBe("repeat(2, 36px)");
 
-    const enter = screen.getByRole("button", { name: "Enter" });
-    for (const fixedHeight of ["h-9", "h-8", "h-10"]) {
-      expect(enter).not.toHaveClass(fixedHeight);
-    }
-    expect(enter).toHaveClass("h-auto");
-    expect(enter).toHaveClass("self-stretch");
-    expect(enter).toHaveClass("row-span-2");
-
-    // The grid itself: explicit 36px rows are what gives Enter's stretch a real 76px (36+4+36) to
-    // fill, rather than leaving both rows to size from their own single-row content.
-    const grid = screen.getByRole("button", { name: "Esc" }).parentElement;
-    expect(grid).toHaveClass("grid-rows-[36px_36px]");
+    // A third row that holds nothing is not drawn.
+    const spare = addRow(DEFAULT_BOARD);
+    rerender(<NavTray onSend={vi.fn()} board={spare} />);
+    expect(grid().style.gridTemplateRows).toBe("repeat(2, 36px)");
+    expect(grid().children).toHaveLength(14);
   });
 
   it("the quick Ctrl+C key shows ^C (fits its 1/7 column) but keeps its chord and accessible name", async () => {
@@ -794,5 +788,95 @@ describe("NavTray — operator preset rows", () => {
     await user.click(screen.getByRole("button", { name: "Quit" }));
     expect(screen.queryByRole("button", { name: "Confirm?" })).toBeNull();
     expect(onSend).not.toHaveBeenCalled();
+  });
+  // ── A custom board (M48 spec 03): the same send path, whatever the cells hold ──
+
+  const key = (...steps: string[]) => {
+    const made = chordKey(steps);
+    if (made === null) throw new Error(`not a key: ${steps.join(" ")}`);
+    return made;
+  };
+  const custom = boardOf(1, [
+    [0, key("ctrl+alt+shift+t")],
+    [1, key("ctrl+b", "c")],
+    [2, key("ctrl+d")],
+    [3, key("Home")],
+    [4, { kind: "mod", mod: "shift" }],
+    [5, key("ctrl+c", "Enter")],
+  ]);
+
+  it("a chord key sends its whole chord through onSend, and a sequence sends its steps in order in one call", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} board={custom} />);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl+Alt+Shift+T" }));
+    expect(onSend).toHaveBeenLastCalledWith(["ctrl+alt+shift+t"]);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl+B, then C" }));
+    expect(onSend).toHaveBeenLastCalledWith(["ctrl+b", "c"]);
+    expect(onSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("a key with a danger step asks a second tap, and only the second tap sends", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} board={custom} />);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl+D" }));
+    expect(onSend).not.toHaveBeenCalled();
+    const armed = screen.getByRole("button", { name: "Ctrl+D, tap again to send" });
+    expect(armed).toHaveTextContent("Sure?");
+    await user.click(armed);
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+d"]);
+
+    // A sequence that holds ctrl+c is not the stock ^C: it asks too.
+    onSend.mockClear();
+    await user.click(screen.getByRole("button", { name: "Ctrl+C, then Enter" }));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("the stock ^C keeps its single tap", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+    await user.click(screen.getByRole("button", { name: "Ctrl+C" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
+  });
+
+  it("a key the multiplexer refuses is disabled, as on the fixed pad", () => {
+    render(<NavTray onSend={vi.fn()} board={custom} unsupportedKeys={["Home"]} />);
+    expect(screen.getByRole("button", { name: "Home" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ctrl+B, then C" })).toBeEnabled();
+  });
+
+  it("a refused key anywhere in a sequence greys the whole key", () => {
+    render(<NavTray onSend={vi.fn()} board={boardOf(1, [[0, key("ctrl+b", "End")]])} unsupportedKeys={["End"]} />);
+    expect(screen.getByRole("button", { name: "Ctrl+B, then End" })).toBeDisabled();
+  });
+
+  it("a sticky modifier key still composes onto the next chord key and stages it", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} board={boardOf(1, [[0, { kind: "mod", mod: "ctrl" }], [1, key("x")]])} />);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl" }));
+    await user.click(screen.getByRole("button", { name: "X" }));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Remove Ctrl X" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+x"]);
+  });
+
+  it("a renamed key shows its name and says what it sends", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const renamed = chordKey(["ctrl+b", "c"], "Window");
+    if (renamed === null) throw new Error("bad key");
+    render(<NavTray onSend={onSend} board={setCell(boardOf(1, []), 0, renamed)} />);
+    const btn = screen.getByRole("button", { name: "Window, sends Ctrl+B, then C" });
+    expect(btn).toHaveTextContent("Window");
+    await user.click(btn);
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+b", "c"]);
   });
 });

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   ArrowBigUp,
   ArrowDown,
@@ -25,6 +26,17 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { keysSendable } from "@/lib/mux-capability";
 import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
+import {
+  BOARD_COLS,
+  DEFAULT_BOARD,
+  keyLabel,
+  needsSecondTap,
+  stepsWords,
+  usedRows,
+  type ChordKey,
+  type KeyBoard,
+  type ModKey,
+} from "@/lib/key-board";
 
 // The inline navigation tray: the keys you need to drive an interactive agent prompt (selection
 // menus, multi-select forms, numbered choices) WITHOUT covering the terminal mirror — it docks
@@ -46,16 +58,22 @@ import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
 // dimming here (unlike the quick replies): this is a keypad you drum on, and dimming eight keys per
 // arrow press would strobe.
 //
-// The pad is a fixed 7-column, 2-row grid — row 1 is Esc/Tab/the three modifiers/Up/quick Ctrl+C,
-// row 2 is a 4-wide Space then the inverted-T's Left-Down-Right (Down sits under Up, same column) —
-// plus a 12px gap and a tall Enter set apart on its own column at the right edge, spanning both
-// rows. Enter carries a low-opacity tint of the primary colour at rest, so it reads as the commit
-// key even before it's pressed, and never sits beside the arrows: a miss on Enter confirms a
-// prompt, a miss on an arrow is reversible (issue #263). Space, Shift, Tab, Enter and the arrows
-// show icons; Esc, Ctrl, Alt and the quick Ctrl+C stay short text. Everything past that — the
-// phone-dialer digits, the labelled Ctrl presets, F1–F12 — sits behind a row of small chips
-// (123 / Presets / F keys) that opens at most one panel at a time directly under the chip row, so
-// the tray's resting height never carries a drawer it doesn't need.
+// The pad is THIS DEVICE'S KEY BOARD (lib/key-board.ts, ADR 0092): a grid of 7 columns where each
+// cell holds one key or nothing. The shipped board, the Default, is the old pad: row 1 is
+// Esc/Tab/the three modifiers/Up/quick Ctrl+C, row 2 is Space, Enter, two empty cells, then the
+// inverted-T's Left-Down-Right (Down under Up). Enter keeps its distance from the arrows: a miss on
+// Enter confirms a prompt, a miss on an arrow is reversible (issue #263), and it carries a
+// low-opacity tint of the primary colour at rest so it reads as the commit key before it is pressed.
+// An empty cell draws nothing but keeps its place, and trailing empty rows are not drawn. Space, Shift,
+// Tab, Enter and the arrows show icons; every other key shows its face or its own name. Everything
+// past the board — the phone-dialer digits, the labelled Ctrl presets, F1–F12 — sits behind a row of
+// small chips (123 / Presets / F keys) that opens at most one panel at a time directly under the chip
+// row, so the tray's resting height never carries a drawer it doesn't need.
+//
+// A board key reaches the pane through the SAME `onSend` the fixed keys always used. A chord key with
+// several steps hands them over as one ordered array, so a sequence is one call. A key with a step
+// that can stop a program (`needsSecondTap`) asks a second tap on the immediate path, like the Ctrl D
+// and Ctrl Z presets; while composing, the strip's Send is the review.
 
 interface NavTrayProps {
   /** Resolves true when the bridge accepted the keys — drives the ✓ echo on the pressed button. */
@@ -69,6 +87,8 @@ interface NavTrayProps {
   /** How many keys are staged, reported up so the Composer can guard closing the dock on a composed
    *  sequence. Reports 0 on unmount. Must be referentially stable (a setState fn is ideal). */
   onQueueChange?: (staged: number) => void;
+  /** This device's key board. Defaults to the shipped one, so a test or a playground needs no store. */
+  board?: KeyBoard;
   disabled?: boolean;
   /**
    * Neutral key spellings this multiplexer refuses (`/api/config`, M10/06). A button whose chord
@@ -82,6 +102,21 @@ interface NavTrayProps {
 
 /** Stable default so an omitted prop never re-renders the pad. */
 const NO_REFUSED_KEYS: readonly string[] = [];
+
+// The icon a default-faced key wears, keyed by its step. Everything else shows its text face.
+const FACE_ICON = new Map<string, LucideIcon>([
+  ["Tab", ArrowRightToLine],
+  ["Space", Space],
+  ["Enter", CornerDownLeft],
+  ["Up", ArrowUp],
+  ["Down", ArrowDown],
+  ["Left", ArrowLeft],
+  ["Right", ArrowRight],
+]);
+
+// Hold-to-repeat, WHITELISTED to the arrows (see navBtn). A whitelist rather than a blacklist: Enter,
+// Esc, Space, digits and every custom chord structurally must not repeat.
+const REPEATS: ReadonlySet<string> = new Set(["Up", "Down", "Left", "Right"]);
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
@@ -105,6 +140,7 @@ export function NavTray({
   onSend,
   presets = CONTROL_PRESETS,
   onQueueChange,
+  board = DEFAULT_BOARD,
   disabled,
   unsupportedKeys = NO_REFUSED_KEYS,
 }: NavTrayProps) {
@@ -187,8 +223,16 @@ export function NavTray({
     repeatable = false,
     extraClassName?: string,
     restingClassName?: string,
+    needsConfirm = false,
   ) => {
     const id = keys.join(" ");
+    // A key with a step that can stop a program asks a second tap, but only on the immediate path.
+    // While composing, the strip's Send is the review (the same split the Ctrl presets make).
+    const armed = needsConfirm && pending === id;
+    const tap = () => {
+      if (needsConfirm && !composing && !confirm(id)) return; // first tap arms the confirm
+      fire(keys, id);
+    };
     const phase = echo.phaseOf(id);
     const held = repeatable && repeat.holding === keys[0];
     const resting = !held && phase === "idle";
@@ -201,11 +245,11 @@ export function NavTray({
     return (
       <Button
         type="button"
-        variant={held || phase !== "idle" ? "default" : "outline"}
+        variant={armed ? "destructive" : held || phase !== "idle" ? "default" : "outline"}
         size="sm"
         disabled={disabled || refused}
-        {...(bind ?? { onClick: () => fire(keys, id) })}
-        aria-label={aria}
+        {...(bind ?? { onClick: tap })}
+        aria-label={armed && aria !== undefined ? t("keys.pad.tapAgain", { key: aria }) : aria}
         // A hover title for the icon keys — an icon-only button gives a desktop pointer nothing to
         // read until it commits to a tap. Harmless on the text keys that also pass `aria`.
         title={aria}
@@ -226,8 +270,10 @@ export function NavTray({
             {content}
             {repeat.count > 1 && <span className="text-xs tabular-nums">×{repeat.count}</span>}
           </span>
-        ) : phase === "done" ? (
+        ) : phase === "done" && !armed ? (
           <Check className="mx-auto size-4" />
+        ) : armed ? (
+          <span className="truncate text-xs">{t("keys.confirm.short")}</span>
         ) : (
           content
         )}
@@ -284,7 +330,49 @@ export function NavTray({
   // already clears 40px on its own.
   const KEY_TAP_TARGET =
     "relative before:absolute before:inset-x-0 before:-inset-y-[2px] before:content-['']";
-  const gridPos = (position: string) => cn(position, KEY_TAP_TARGET);
+
+  // The board's keys. A cell is a seventh of a phone wide, so every key gets `min-w-0` and the
+  // KEY_TAP_TARGET reach, exactly as the fixed pad's keys had.
+  const rows = usedRows(board);
+
+  const modKeyBtn = (key: ModKey, cell: number) => {
+    const word = key.mod === "shift" ? "Shift" : key.mod === "ctrl" ? "Ctrl" : "Alt";
+    return (
+      <Fragment key={cell}>
+        {modBtn(
+          key.mod,
+          key.mod === "shift" ? <ArrowBigUp className="size-4" aria-hidden="true" /> : word,
+          word,
+          cn("w-full min-w-0", KEY_TAP_TARGET),
+        )}
+      </Fragment>
+    );
+  };
+
+  const chordKeyBtn = (key: ChordKey, cell: number) => {
+    const only = key.steps.length === 1 ? key.steps[0] : undefined;
+    const words = stepsWords(key.steps, t("keys.pad.then"));
+    const aria = key.label === undefined ? words : t("keys.pad.sends", { label: key.label, keys: words });
+    // An icon stands for a key that wears its own default face. A key the person named shows the name.
+    const Icon = key.label === undefined && only !== undefined ? FACE_ICON.get(only) : undefined;
+    const content =
+      Icon !== undefined ? <Icon className="size-4" aria-hidden="true" /> : textLabel(keyLabel(key));
+    const isEnter = only === "Enter";
+    return (
+      <Fragment key={cell}>
+        {navBtn(
+          content,
+          [...key.steps],
+          aria,
+          only !== undefined && REPEATS.has(only),
+          cn("w-full", KEY_TAP_TARGET),
+          isEnter ? "bg-primary/15 border-primary/40" : undefined,
+          needsSecondTap(key),
+        )}
+      </Fragment>
+    );
+  };
+
 
   return (
     <div className="space-y-0.5 border-t border-rule bg-muted/30 px-2 py-1.5">
@@ -299,89 +387,14 @@ export function NavTray({
         disabled={disabled}
       />
 
-      {/* Row 1: Esc, Tab, the three modifiers, Up, a quick Ctrl+C. Row 2: a 4-wide Space, then the
-          inverted-T's Left-Down-Right (Down sits under Up, same column 6). A 12px empty column (a
-          spacer, never a button) separates that 7-column block from Enter, which sits apart on its
-          own column at the right edge and spans both rows.
-
-          Enter never sits beside the arrows (issue #263): rapid arrow taps build a thumb habit
-          around columns 5–7, and an arrow that lands wrong is reversible where an Enter that lands
-          wrong confirms a prompt. Set apart and tinted (`bg-primary/15` at rest — see `navBtn`'s
-          `restingClassName`), it reads as the commit key on sight, not just by position. */}
-      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_12px_1.5fr] grid-rows-[36px_36px] gap-1">
-        {navBtn(textLabel("Esc"), ["Escape"], undefined, false, gridPos("col-start-1 row-start-1"))}
-        {navBtn(
-          <ArrowRightToLine className="size-4" aria-hidden="true" />,
-          ["Tab"],
-          "Tab",
-          false,
-          gridPos("col-start-2 row-start-1"),
-        )}
-        {modBtn(
-          "shift",
-          <ArrowBigUp className="size-4" aria-hidden="true" />,
-          "Shift",
-          gridPos("col-start-3 row-start-1"),
-        )}
-        {modBtn("ctrl", "Ctrl", undefined, gridPos("col-start-4 row-start-1"))}
-        {modBtn("alt", "Alt", undefined, gridPos("col-start-5 row-start-1"))}
-        {navBtn(
-          <ArrowUp className="size-4" aria-hidden="true" />,
-          ["Up"],
-          "Up",
-          true,
-          gridPos("col-start-6 row-start-1"),
-        )}
-        {/* Visible label is "^C", not "Ctrl C" — "Ctrl C" is wider than a 1/7 column on a 390px
-            phone and used to spill past its key. The chord it sends and its aria-label are
-            unchanged: screen readers still hear "Ctrl+C". */}
-        {navBtn(textLabel("^C"), ["ctrl+c"], "Ctrl+C", false, gridPos("col-start-7 row-start-1"))}
-
-        {navBtn(
-          <Space className="size-4" aria-hidden="true" />,
-          ["Space"],
-          "Space",
-          false,
-          gridPos("col-start-1 col-span-4 row-start-2"),
-        )}
-        {navBtn(
-          <ArrowLeft className="size-4" aria-hidden="true" />,
-          ["Left"],
-          "Left",
-          true,
-          gridPos("col-start-5 row-start-2"),
-        )}
-        {navBtn(
-          <ArrowDown className="size-4" aria-hidden="true" />,
-          ["Down"],
-          "Down",
-          true,
-          gridPos("col-start-6 row-start-2"),
-        )}
-        {navBtn(
-          <ArrowRight className="size-4" aria-hidden="true" />,
-          ["Right"],
-          "Right",
-          true,
-          gridPos("col-start-7 row-start-2"),
-        )}
-
-        {navBtn(
-          <span className="flex flex-col items-center gap-0.5">
-            <CornerDownLeft className="size-4" aria-hidden="true" />
-            <span className="text-[9px] font-sans font-medium uppercase tracking-wide opacity-75">
-              Enter
-            </span>
-          </span>,
-          ["Enter"],
-          "Enter",
-          false,
-          // h-auto + self-stretch OVERRIDE the shared `h-9` every other key gets (twMerge drops
-          // `h-9` because these are listed after it) — without this, `h-9` capped Enter to a single
-          // 36px row despite `row-span-2`, and the grid's own explicit `grid-rows-[36px_36px]`
-          // (above) is what gives that stretch a real 76px (36+4+36) to fill.
-          "col-start-9 row-start-1 row-span-2 h-auto self-stretch flex-col gap-0.5",
-          "bg-primary/15 border-primary/40",
+      {/* The board: 7 columns, one 36px row per used row. A key sits in one cell; an empty cell is a
+          spacer, never a button, so every key keeps its place. */}
+      <div
+        className="grid grid-cols-7 gap-1"
+        style={{ gridTemplateRows: `repeat(${rows}, 36px)` }}
+      >
+        {board.cells.slice(0, rows * BOARD_COLS).map((key, i) =>
+          key === null ? <div key={i} aria-hidden="true" /> : key.kind === "mod" ? modKeyBtn(key, i) : chordKeyBtn(key, i),
         )}
       </div>
 

@@ -88,6 +88,7 @@ function seed(): void {
 const PREFERENCE_KEYS = [
   "collie:theme:v1",
   "collie:design:v1",
+  "collie:key-board:v1",
   "collie:display-prefs:v4",
   "collie:dash-prefs:v1",
   "collie:pins:v1",

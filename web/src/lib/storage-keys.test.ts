@@ -51,6 +51,7 @@ const KEYS = new Map<string, KeyFate>([
   // ── Kept: how this phone likes to look and behave, never what a session said ──
   ["collie:theme:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:design:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
+  ["collie:key-board:v1", { area: "local", prefix: false, fate: "kept", why: "preference, this phone's key layout" }],
   ["collie:display-prefs:v4", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:dash-prefs:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:locale:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],

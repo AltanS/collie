@@ -46,6 +46,7 @@ import {
   uploadLimits,
 } from "@/lib/attachments";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
+import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostLabel } from "@/components/crew-provider";
@@ -937,6 +938,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   // The Keys tray's preset row, resolved the same way from the same one-shot read of /api/config.
   const keyPresets = ctrlPresetsFor(agent, useOperatorKeys());
+  // This device's key board (ADR 0092): the pad the Keys dock draws. A hook, so an edit made in the
+  // editor sheet shows in the dock at once.
+  const keyBoard = useKeyBoard();
   // Empty on every adapter that refuses nothing, and empty for Herdr's six as far as this tray is
   // concerned — it offers none of the paging/edit keys Herdr rejects, so nothing greys out there.
   const unsupportedKeys = useMuxUnsupportedKeys();
@@ -1521,6 +1525,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               unsupportedKeys={unsupportedKeys}
               onSend={pressKeys}
               presets={keyPresets}
+              board={keyBoard}
               onQueueChange={setQueuedKeys}
               disabled={locked || offline}
             />
