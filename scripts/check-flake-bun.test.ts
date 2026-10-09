@@ -54,11 +54,11 @@ describe("flake.nix and MIN_BUN", () => {
   });
 
   test("the archive URLs the flake fetches carry the pinned version", () => {
-    // The version and the three sources are one pin. A `version` bumped without new hashes would
+    // The version and the four sources are one pin. A `version` bumped without new hashes would
     // fetch the old archives under the new name, and every claim above it would be a lie.
     const source = readFileSync(join(ROOT, "flake.nix"), "utf8");
     const urls = [...source.matchAll(/url = "([^"]*oven-sh\/bun[^"]*)";/g)].map((m) => m[1]!);
-    expect(urls).toHaveLength(3);
+    expect(urls).toHaveLength(4);
     for (const url of urls) {
       expect(url).toContain("bun-v${finalAttrs.version}");
     }
@@ -112,5 +112,21 @@ describe("the Windows check runs the flake's Bun", () => {
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).not.toContain("[int]$MaxSkips = ");
     expect(script).toContain("if ($skip -gt $skipBudget[$name])");
+  });
+
+  test("the Intel Mac nixpkgs revision in flake.nix is the one flake.lock recorded", () => {
+    // Same pin-written-twice rule as above, for the input only `x86_64-darwin` uses.
+    const declared = /inputs\.nixpkgs-darwin-x64\.url = "github:NixOS\/nixpkgs\/([0-9a-f]{40})";/.exec(
+      readFileSync(join(ROOT, "flake.nix"), "utf8"),
+    );
+    if (declared === null) {
+      throw new Error("flake.nix no longer pins nixpkgs-darwin-x64 by a 40-character revision — this test reads that line");
+    }
+    // SAFETY: the shape is asserted, not trusted — every step to `rev` is optional, so a lock that
+    // does not have it reads as `undefined` and fails the comparison below rather than throwing.
+    const lock = JSON.parse(readFileSync(join(ROOT, "flake.lock"), "utf8")) as {
+      nodes: { "nixpkgs-darwin-x64"?: { locked?: { rev?: string } } };
+    };
+    expect(lock.nodes["nixpkgs-darwin-x64"]?.locked?.rev).toBe(declared[1]!);
   });
 });

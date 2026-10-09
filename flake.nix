@@ -6,16 +6,27 @@
   # bumped in a feature commit means the binary a bisect builds is not the binary the release built.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/c043004d1c6985732bcc1cbc5a9c9aecbbb4e0f0";
 
+  # Intel Macs only. The revision above is from after nixpkgs 26.11 dropped `x86_64-darwin`, so
+  # `legacyPackages.x86_64-darwin` throws there. The 26.05 darwin branch still supports it and gets
+  # security fixes until the end of 2026; when it stops, the `macos-x64` release row has to move to
+  # another toolchain or be dropped. Every other system keeps the input above, byte for byte.
+  # Pinned by revision for the same reason; the pair is recorded in `flake.lock`.
+  inputs.nixpkgs-darwin-x64.url = "github:NixOS/nixpkgs/55afc4c3adc7194df3b96d43b7d18bf8131bfcfa";
+
   outputs =
-    { self, nixpkgs }:
+    {
+      self,
+      nixpkgs,
+      nixpkgs-darwin-x64,
+    }:
     let
-      # The three shipped release targets, and nothing else. `.github/workflows/release.yml`'s
-      # `payload` matrix is the list this mirrors; a fourth row there is commented out and stays out
-      # here too.
+      # The shipped release targets, and nothing else. `.github/workflows/release.yml`'s `payload`
+      # matrix is the list this mirrors.
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
+        "x86_64-darwin"
       ];
 
       # The pinned Bun. It must be at least `MIN_BUN` in cli/update-check.ts — the two are one fact
@@ -44,6 +55,10 @@
                   url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-darwin-aarch64.zip";
                   hash = "sha256-2Jc86DX6eGflzHmv7m/G8a4BF6pL1fwlRv0AxRL3E4Y=";
                 };
+                "x86_64-darwin" = pkgs.fetchurl {
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-darwin-x64-baseline.zip";
+                  hash = "sha256-SY521hu+h9Iwb2X+1groa2sMjuLacJ+DICgI2xoJ5Ac=";
+                };
                 "aarch64-linux" = pkgs.fetchurl {
                   url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-linux-aarch64.zip";
                   hash = "sha256-WAzndTMQjcaxC+wXITl+T1qkTpCXJtokUdSD38XlgdY=";
@@ -57,7 +72,9 @@
           }
         );
 
-      forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      pkgsFor = system: (if system == "x86_64-darwin" then nixpkgs-darwin-x64 else nixpkgs).legacyPackages.${system};
+
+      forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f (pkgsFor system));
     in
     {
       # `packages.<system>.collie` is Collie itself, and it WRAPS the release tarball rather than
