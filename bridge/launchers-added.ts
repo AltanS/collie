@@ -156,7 +156,16 @@ export interface AddedFileIo {
 
 /** The real io over `<stateDir>/launchers-added.json`. */
 export function addedFileIo(stateDir: string): AddedFileIo {
-  const file = join(stateDir, ADDED_FILE);
+  return stateFileIo(stateDir, join(stateDir, ADDED_FILE));
+}
+
+/**
+ * The real io over one owner-only JSON file in the state dir, written atomically: a temp name unique
+ * to the write, renamed over the target. Shared with the one-off command history (bridge/recent-runs.ts).
+ * `file` is the whole path, joined by the caller with its own name constant, so the state-dir scan in
+ * `solo-baseline.test.ts` can still read which entry each module names.
+ */
+export function stateFileIo(stateDir: string, file: string): AddedFileIo {
   let seq = 0;
   return {
     async mtime() {

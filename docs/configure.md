@@ -367,10 +367,11 @@ an example row you can copy.
 [phone]
 adds = true          # default true: a phone may add rows built from a recipe
 free_text = false    # default false: a phone may also add a line typed by hand
+run = true           # default true: a phone may run a one-off command, and run it again from history
 ```
 
 Put the `[phone]` table anywhere in `launchers.toml`. A value that is not `true` or `false` reads
-as `false`. The bridge enforces both switches: a refused add changes nothing, and a row a switch
+as `false`. The bridge enforces the switches: a refused add changes nothing, and a row a switch
 turns off stops starting at once. The row stays in the file, so turning the switch back on restores
 it.
 
@@ -405,6 +406,27 @@ every add, rename and removal.
 > **Caution.** A row that skips permission prompts carries a "No prompts" badge. Each device asks
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` to turn off every phone-added row on a machine.
+
+### One-off commands and their history
+
+A phone can also run a command that is not a launcher, once. Collie opens a shell in the folder you
+name and types the line there, the same way it starts a launcher row. The line follows the same rule
+as a free line: at most 200 characters, and no control, separator or bidi character. A one-off command
+never starts on a new branch.
+
+This is on by default, because a paired phone can already open a shell and type into it. Set
+`run = false` in the `[phone]` table to remove the shortcut on that machine.
+
+Each command that started is kept in that machine's state folder, in `commands-recent.json`. The file
+keeps at most 12 lines, newest first, with the folder each one last ran in. Running a line again moves
+it to the top. You can remove one line, or clear the list, from the phone. With `run = false` the list
+is still shown, but nothing in it starts. In a crew, each machine keeps its own list, and nothing is
+copied between machines.
+
+The list is not a permission. Starting a line from it is a new one-off run, which needs a paired
+device, so unpairing or revoking a device leaves the list as it is. The audit log records the first
+word of a one-off command and its length, never the whole line, because a line can hold a secret you
+typed.
 
 ## Your own typefaces
 

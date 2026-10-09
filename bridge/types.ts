@@ -1070,7 +1070,9 @@ export interface CreatedPane {
  * is that shell, so the client can navigate straight into it before the next poll lands.
  */
 export type CreateResponse =
-  | { ok: true; pane: CreatedPane; replayed?: true }
+  // `noPrompts`: a one-off run's line carries a flag known to skip permission prompts (ADR 0095).
+  // Present only on the answer to a fresh `run`; a replay answers the stored pane alone.
+  | { ok: true; pane: CreatedPane; replayed?: true; noPrompts?: boolean }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /** One Git worktree of the repo a space sits in (ADR 0032). */
@@ -1421,6 +1423,8 @@ export interface LaunchersAdding {
   adds: boolean;
   /** `[phone] free_text`: whether a phone may add a line typed by hand. */
   freeText: boolean;
+  /** `[phone] run`: whether a phone may run a one-off line here, and run a `recentRuns` entry again (ADR 0095). */
+  run: boolean;
   /** The absolute path of this machine's `launchers.toml`, written or not. */
   file: string;
   /** Rows stored now, and the most there may be. */
@@ -1455,7 +1459,33 @@ export interface LaunchersResponse {
    * THIS machine and the reason code when it is off (ADR 0094). Absent from an older bridge.
    */
   items?: LauncherItem[];
+  /**
+   * The one-off lines a phone ran on THIS machine, newest first, at most twelve (ADR 0095). Listed
+   * while `[phone] run` is off too, each then unavailable with `run_off`. Absent from an older bridge.
+   */
+  recentRuns?: RecentRunWire[];
 }
+
+/** One line in this machine's one-off command history (ADR 0095, `bridge/recent-runs.ts`). */
+export interface RecentRunWire {
+  /** The line, exactly as it ran. Running it again is `POST /api/launch` with `{ run: line }`. */
+  line: string;
+  /** The folder it last ran in, absolute, or `null` for home. */
+  cwd: string | null;
+  /** Epoch ms of the last run. */
+  at: number;
+  /** The line carries a flag known to skip permission prompts: badge it, and confirm once per device. */
+  noPrompts: boolean;
+  /** Whether it may run here now. */
+  available: boolean;
+  /** Why not: `run_off`, the operator turned one-off runs off (`[phone] run = false`). */
+  reason?: "run_off";
+}
+
+/** POST /api/launch/recent/remove and /clear (ADR 0095). `removed` is how many entries went. */
+export type RecentRunsResponse =
+  | { ok: true; removed: number }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
  * One thing the New page may start on THIS machine, with whether it can start here now and why not

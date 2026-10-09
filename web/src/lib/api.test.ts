@@ -9,6 +9,7 @@ import { resetBasePathForTests } from "./base-path";
 import { burstPaneId, resetPollIntent, sendCount } from "./poll-intent";
 import {
   checkForUpdates,
+  clearRecentRuns,
   createTab,
   fetchChat,
   fetchConfig,
@@ -22,11 +23,13 @@ import {
   readFailureKind,
   imageSrc,
   refreshNow,
+  removeRecentRun,
   sendKeys,
   sendReply,
   textBeforeLastSend,
   uploadFile,
   sttTimeoutFor,
+  startRun,
   transcribeAudio,
   withTimeout,
   XHR_HEADER,
@@ -1039,5 +1042,38 @@ describe("the Files image read (ADR 0090)", () => {
     const abort = new AbortController();
     abort.abort();
     await expect(fetchFileImage({ kind: "pane", paneId: "w1:p1" }, "logo.png", undefined, abort.signal)).rejects.toBeTruthy();
+  });
+});
+
+describe("one-off runs and their history (ADR 0095)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function capture() {
+    const calls: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      calls.push({ url: String(input), method: init?.method, body: init?.body == null ? undefined : JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({ ok: true, removed: 1 }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    return calls;
+  }
+
+  it("startRun sends `run`, the folder only when named, and the request id, to that machine", async () => {
+    const calls = capture();
+    await startRun("make test", { cwd: "~/src/app", requestId: "id-1" }, { host: "badger" });
+    await startRun("htop", { requestId: "id-2" });
+    expect(calls).toEqual([
+      { url: "/api/launch?host=badger", method: "POST", body: { run: "make test", requestId: "id-1", cwd: "~/src/app" } },
+      { url: "/api/launch", method: "POST", body: { run: "htop", requestId: "id-2" } },
+    ]);
+  });
+
+  it("remove names the exact line; clear sends an empty body; both reach the member on host=", async () => {
+    const calls = capture();
+    await expect(removeRecentRun("make test", { host: "badger" })).resolves.toEqual({ ok: true, removed: 1 });
+    await clearRecentRuns({ host: "badger" });
+    expect(calls).toEqual([
+      { url: "/api/launch/recent/remove?host=badger", method: "POST", body: { line: "make test" } },
+      { url: "/api/launch/recent/clear?host=badger", method: "POST", body: {} },
+    ]);
   });
 });

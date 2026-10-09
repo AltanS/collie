@@ -132,6 +132,18 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "The New page's Start creates a space and the app navigates straight into its pane, so the page is already gone; hooks/use-spaces.ts `start` names a refusal on the status line as `launch` does. An answer that never came is the page's own notice and its Try again button instead (M48, ADR 0091): the status line could only guess whether the pane exists.",
   },
+  startRun: {
+    channel: "status",
+    why: "A one-off run creates a space and the app navigates straight into its pane, exactly as `startLaunch` does, so the page is already gone; a refusal names the switch, the device or the character the bridge refused on the status line. An answer that never came is the page's own notice and its Try again button, with the same request id (ADR 0091, ADR 0095).",
+  },
+  removeRecentRun: {
+    channel: "silent",
+    why: "The line leaves the history under the thumb once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the history is read again (ADR 0095).",
+  },
+  clearRecentRuns: {
+    channel: "silent",
+    why: "The history empties on the page the person is looking at once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the history is read again (ADR 0095).",
+  },
   addLauncher: {
     channel: "inline",
     why: "The added row appears in the list the person is looking at, so the list is the acceptance. A refusal names a field (a character the bridge refuses, a line too long) or a switch the operator turned off, and the person must still read it while they fix the line, so it sits in the add form itself and not on the status line (M48, ADR 0094).",

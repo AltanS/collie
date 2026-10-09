@@ -204,6 +204,7 @@ export function createOperatorLaunchers(
 // [phone]
 // adds = true          # default true: a phone may add rows built from a recipe
 // free_text = false    # default false: a phone may also add a line typed by hand
+// run = true           # default true: a phone may run a one-off line, and one from its history (ADR 0095)
 // ```
 //
 // A table rather than top-level keys, so its place in the file does not matter (a top-level key
@@ -218,10 +219,16 @@ export interface LauncherSwitches {
   adds: boolean;
   /** Phones may add a free line, and free lines they added may start. */
   freeText: boolean;
+  /**
+   * Phones may run a one-off line, and a line from this machine's history (ADR 0095). On by default:
+   * a paired phone can already open a shell and type into it, so the run adds no power. The switch
+   * lets an operator remove the shortcut.
+   */
+  run: boolean;
 }
 
-/** The defaults: recipes on, free text off. */
-export const DEFAULT_SWITCHES: LauncherSwitches = { adds: true, freeText: false };
+/** The defaults: recipes on, free text off, one-off runs on. */
+export const DEFAULT_SWITCHES: LauncherSwitches = { adds: true, freeText: false, run: true };
 
 /** A parsed `launchers.toml`'s `[phone]` table, before a byte of it is believed. */
 interface SwitchesDocument {
@@ -233,8 +240,8 @@ export function launcherSwitches(doc: SwitchesDocument | null | undefined, warn 
   const table = doc?.phone;
   if (table === undefined || table === null) return { ...DEFAULT_SWITCHES };
   if (typeof table !== "object" || Array.isArray(table)) {
-    warn("`phone` must be a [phone] table — phone adds and free text are off");
-    return { adds: false, freeText: false };
+    warn("`phone` must be a [phone] table, so phone adds, free text and one-off runs are off");
+    return { adds: false, freeText: false, run: false };
   }
   // SAFETY: a TOML table parses to a plain object; every field is checked below before it is believed.
   const t = table as JsonObject;
@@ -245,7 +252,11 @@ export function launcherSwitches(doc: SwitchesDocument | null | undefined, warn 
     warn(`[phone] ${key} must be true or false — reading it as false`);
     return false;
   };
-  return { adds: read("adds", DEFAULT_SWITCHES.adds), freeText: read("free_text", DEFAULT_SWITCHES.freeText) };
+  return {
+    adds: read("adds", DEFAULT_SWITCHES.adds),
+    freeText: read("free_text", DEFAULT_SWITCHES.freeText),
+    run: read("run", DEFAULT_SWITCHES.run),
+  };
 }
 
 /** A reader for the switches, on the same mtime cache and hold-the-last-good posture as the rows. */

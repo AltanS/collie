@@ -88,6 +88,9 @@ const FORWARDABLE: readonly RegExp[] = [
   // copied between machines. `forget-device` is the lead's own call when it revokes a device; the
   // lead's browser path refuses it, so only an admitted lead's request reaches a member with it.
   /^launchers\/added(?:\/(?:remove|rename|forget-device))?$/,
+  // The one-off command history (ADR 0095): one per machine, so a `?host=` remove or clear changes
+  // THAT member's `commands-recent.json`, and nothing is copied. A run itself rides `launch` above.
+  /^launch\/recent\/(?:remove|clear)$/,
   // The new-space sheet's folder list (#289): folders exist on ONE machine, so the list is that
   // machine's own `folders.json`, read and starred on the member that holds it — the lead keeps no
   // copy. Additive-optional (CREW_PROTOCOL.md §7.1): a member that predates it answers 404, and the
@@ -202,6 +205,9 @@ export function forwardAuditAction(route: string): string | null {
   // alone can't see — this generic name is the LEAD's own line about the forward (§12's "plus the
   // target host"), and the peer's own audit line is the accurate record of which one ran.
   if (route === "launch") return "launch";
+  // The member writes the same two names for the history writes (ADR 0095).
+  if (route === "launch/recent/remove") return "launch.recent.remove";
+  if (route === "launch/recent/clear") return "launch.recent.clear";
   if (route === "launchers") return null;
   if (route === "folders" || route === "folders/star") return null; // a read, and a preference
   if (route.startsWith("blobs/")) return null; // a read

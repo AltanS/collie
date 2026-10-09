@@ -1341,8 +1341,9 @@ export interface CreatedPane {
 /** Result of creating a new tab/space — on success `pane` is the fresh shell to navigate into. */
 export type CreateResponse =
   // `replayed`: the answer to a launch whose request id the bridge already held (ADR 0091). The pane
-  // is the one the first request made; nothing new was started.
-  | { ok: true; pane: CreatedPane; replayed?: true }
+  // is the one the first request made; nothing new was started. `noPrompts`: the answer to a fresh
+  // one-off `run` says whether its line carries a flag known to skip permission prompts (ADR 0095).
+  | { ok: true; pane: CreatedPane; replayed?: true; noPrompts?: boolean }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /**
@@ -1578,6 +1579,8 @@ export interface LaunchersAdding {
   adds: boolean;
   /** `[phone] free_text`: a line typed by hand may be added and may start. Off by default. */
   freeText: boolean;
+  /** `[phone] run`: a one-off line may run there, and a `recentRuns` entry may run again. On by default (ADR 0095). */
+  run: boolean;
   /** The absolute path of that machine's `launchers.toml`, written or not. */
   file: string;
   count: number;
@@ -1641,7 +1644,33 @@ export interface LaunchersResponse {
   adding?: LaunchersAdding;
   /** Every agent, row and the shell, each with its availability there (ADR 0094). Absent from an older bridge. */
   items?: LauncherItem[];
+  /**
+   * The one-off lines run on that machine, newest first, at most twelve (ADR 0095). Mirrors
+   * `recentRuns` in bridge/types.ts. Listed while `[phone] run` is off too, each then unavailable.
+   * Absent from an older bridge: offer no history.
+   */
+  recentRuns?: RecentRun[];
 }
+
+/** One line in a machine's one-off command history. Mirrors `RecentRunWire` in bridge/types.ts. */
+export interface RecentRun {
+  /** The line, exactly as it ran. Running it again is `startRun(line, …)`. */
+  line: string;
+  /** The folder it last ran in, absolute, or `null` for home. */
+  cwd: string | null;
+  /** Epoch ms of the last run. */
+  at: number;
+  /** The line skips permission prompts: badge it, and confirm once per device before it runs. */
+  noPrompts: boolean;
+  available: boolean;
+  /** `run_off`: the operator turned one-off runs off on that machine. */
+  reason?: "run_off";
+}
+
+/** POST /api/launch/recent/remove and /clear. Mirrors `RecentRunsResponse` in bridge/types.ts. */
+export type RecentRunsResponse =
+  | { ok: true; removed: number }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /** One agent a host can start by id. Mirrors `HarnessInfo` in bridge/types.ts. */
 export interface HarnessInfo {

@@ -549,6 +549,10 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   a duplicate line, a recipe row is rebuilt from `bridge/launcher-recipes.ts` and a free line is
   re-checked at every read. The bridge never writes `launchers.toml`, and a revoke takes the device's
   rows with it ([ADR 0094](./.adr/0094-launchers-added-from-a-phone.md)).
+  The one exception to "never a command line" is a one-off `run`: a paired device, the operator's
+  `[phone] run` switch and the same character rule, typed as a row is, never on a new branch, and
+  recorded in `<stateDir>/commands-recent.json`, never as a row; its audit line keeps the command word
+  and the length, not the line ([ADR 0095](./.adr/0095-one-off-commands-and-their-history.md)).
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by

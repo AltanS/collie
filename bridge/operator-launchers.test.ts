@@ -305,10 +305,10 @@ command = "c"`),
 });
 
 describe("launcherSwitches", () => {
-  test("defaults: recipes on, free text off", () => {
+  test("defaults: recipes on, free text off, one-off runs on", () => {
     expect(launcherSwitches(Bun.TOML.parse(""), quiet)).toEqual(DEFAULT_SWITCHES);
-    expect(DEFAULT_SWITCHES).toEqual({ adds: true, freeText: false });
-    expect(launcherSwitches(undefined, quiet)).toEqual({ adds: true, freeText: false });
+    expect(DEFAULT_SWITCHES).toEqual({ adds: true, freeText: false, run: true });
+    expect(launcherSwitches(undefined, quiet)).toEqual({ adds: true, freeText: false, run: true });
   });
 
   test("the [phone] table, wherever it sits in the file", () => {
@@ -317,19 +317,21 @@ command = "htop"
 
 [phone]
 adds = false
-free_text = true`);
-    expect(launcherSwitches(doc, quiet)).toEqual({ adds: false, freeText: true });
+free_text = true
+run = false`);
+    expect(launcherSwitches(doc, quiet)).toEqual({ adds: false, freeText: true, run: false });
     expect(validateOperatorLaunchers(doc, quiet)).toEqual([{ command: "htop", label: "htop" }]);
   });
 
   test("a value that is not true or false reads as OFF", () => {
     const warnings: string[] = [];
-    expect(launcherSwitches(Bun.TOML.parse(`[phone]\nadds = "yes"\nfree_text = 1`), (m) => warnings.push(m))).toEqual({
+    expect(launcherSwitches(Bun.TOML.parse(`[phone]\nadds = "yes"\nfree_text = 1\nrun = "true"`), (m) => warnings.push(m))).toEqual({
       adds: false,
       freeText: false,
+      run: false,
     });
-    expect(warnings).toHaveLength(2);
-    expect(launcherSwitches(Bun.TOML.parse(`phone = "on"`), quiet)).toEqual({ adds: false, freeText: false });
+    expect(warnings).toHaveLength(3);
+    expect(launcherSwitches(Bun.TOML.parse(`phone = "on"`), quiet)).toEqual({ adds: false, freeText: false, run: false });
   });
 
   test("the reader holds the last good switches across a broken edit", async () => {
@@ -337,10 +339,10 @@ free_text = true`);
     let mtime = 1;
     const io: OperatorFileIo = { mtime: () => Promise.resolve(mtime), read: () => Promise.resolve(text) };
     const read = createLauncherSwitches("/x/launchers.toml", io, quiet);
-    expect(await read()).toEqual({ adds: false, freeText: false });
+    expect(await read()).toEqual({ adds: false, freeText: false, run: true });
     text = "[phone\n";
     mtime = 2;
-    expect(await read()).toEqual({ adds: false, freeText: false });
+    expect(await read()).toEqual({ adds: false, freeText: false, run: true });
     const none: OperatorFileIo = { mtime: () => Promise.resolve(null), read: () => Promise.reject(new Error("no")) };
     expect(await createLauncherSwitches("/x/none.toml", none, quiet)()).toEqual(DEFAULT_SWITCHES);
   });

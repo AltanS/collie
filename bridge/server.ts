@@ -71,7 +71,7 @@ import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
 import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
-import { createLauncherSwitches, createOperatorLaunchers } from "./operator-launchers.ts";
+import { createLauncherSwitches, createOperatorLaunchers, DEFAULT_SWITCHES, type LauncherSwitches } from "./operator-launchers.ts";
 import {
   addingBody,
   addLauncher,
@@ -87,6 +87,17 @@ import {
   type RouteAnswer,
 } from "./launcher-adds.ts";
 import { memoryAddedLaunchers, type AddedLauncherSurface } from "./launchers-added.ts";
+import { cleanLauncherText, MAX_COMMAND_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
+import {
+  clearRecentRuns,
+  memoryRecentRuns,
+  recentRunsWire,
+  removeRecentRun,
+  runProgram,
+  type RecentRouteAnswer,
+  type RecentRun,
+  type RecentRunSurface,
+} from "./recent-runs.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyPromptBinding,
@@ -1031,6 +1042,12 @@ export function startServer(opts: {
    */
   addedLaunchers?: AddedLauncherSurface;
   /**
+   * The one-off lines a phone ran on this machine (ADR 0095, `bridge/recent-runs.ts`). Absent means an
+   * in-memory history; `bridge/index.ts` passes the file-backed one, which writes nothing until the
+   * first run that works.
+   */
+  recentRuns?: RecentRunSurface;
+  /**
    * The agents this host can start by id, with their found flags (ADR 0091). Absent builds the real
    * probe, which asks nothing until the first `GET /api/launchers`.
    */
@@ -1127,7 +1144,13 @@ export function startServer(opts: {
     await sweepRevokedRows(addedLaunchers, pairedLabels(), audit);
     return (await readMerged(launcherSources)).rows;
   };
-  const launchersAdding = { merged: () => readMerged(launcherSources), file: cfg.launchersFile };
+  // The one-off lines run here (ADR 0095): recorded by a run that worked, listed beside the rows.
+  const recentRuns = opts.recentRuns ?? memoryRecentRuns();
+  const launchersAdding = {
+    merged: () => readMerged(launcherSources),
+    file: cfg.launchersFile,
+    recent: () => recentRuns.list(),
+  };
   // A label that disappears from the registry (a revoke from the phone, from `collie devices revoke`,
   // or a re-pair over an expired device) takes its rows with it: here, and on every crew member,
   // which cannot see this registry and so is told (ADR 0094).
@@ -1413,6 +1436,8 @@ export function startServer(opts: {
         harnesses,
         receipts: launchReceipts,
         folders,
+        switches: launcherSources.switches,
+        recentRuns,
       });
     }
     // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
@@ -1432,6 +1457,10 @@ export function startServer(opts: {
     // the ordinary forward, and nothing is ever copied to another machine.
     const addedAnswer = await serveAddedLauncherRoute(req, pathname, caller, launcherSources);
     if (addedAnswer !== null) return addedAnswer;
+    // Remove one line from this machine's one-off history, or clear it (ADR 0095). Writes, and
+    // session-scoped for the same reason: `?host=` reaches that member's own history.
+    const recentAnswer = await serveRecentRunRoute(req, pathname, caller, recentRuns);
+    if (recentAnswer !== null) return recentAnswer;
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
@@ -3689,7 +3718,9 @@ export async function awaitPaneReady(
  *
  * `["Enter"]` is literal, NOT `cfg.submitKeys`: `COLLIE_SUBMIT_KEYS` is the agent-dependent submit
  * sequence for a TUI composer, and this is a bare shell prompt where Enter is the only key that
- * means "run it". `tag` names the caller in the log line, so a repeat is traceable to one route.
+ * means "run it". `tag` names the caller in the log line, so a repeat is traceable to one route. A
+ * `run` tag is a one-off line the person typed (ADR 0095), which may hold a secret, so its log line
+ * gives the length and never the line.
  */
 export async function typeIntoFreshShell(
   herdr: GridReader & ReplySender,
@@ -3700,7 +3731,8 @@ export async function typeIntoFreshShell(
 ): Promise<ReplyOutcome> {
   const ready = await awaitPaneReady(herdr, paneId, wait);
   if (!ready.ready) {
-    console.warn(`[${tag}] pane ${paneId} did not settle after ${ready.ms}ms — sending "${command}" anyway`);
+    const what = tag === "run" ? `a ${[...command].length}-character line` : `"${command}"`;
+    console.warn(`[${tag}] pane ${paneId} did not settle after ${ready.ms}ms — sending ${what} anyway`);
   }
   return sendReplySteps(herdr, paneId, command, true, ["Enter"], wait.sleep);
 }
@@ -4861,8 +4893,9 @@ export async function createWorktreeAt(
   if (!parsedBase.ok) return refuse("worktree.invalid_base");
   const folder = parseFolderChoice(fields.folder);
   if (folder === null) return refuse("worktree.folder_invalid");
-  const named = ["command", "harness", "shell"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
-  const picked = named ? await pickLaunch(fields, getLaunchers, deps.harnesses) : ({ kind: "shell", row: undefined } as const);
+  // `run` counts as named so a one-off line on a branch is refused (ADR 0095), never read as a shell.
+  const named = ["command", "harness", "shell", "run"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
+  const picked = named ? await pickLaunch(fields, getLaunchers, deps.harnesses, null) : ({ kind: "shell", row: undefined } as const);
   if (picked instanceof Response) return picked;
   const cwd = askedFolder(fields.cwd, home);
   if (cwd === undefined || cwd === false) return refuse("worktree.folder_invalid");
@@ -5013,7 +5046,7 @@ export async function launchersRoute(
   getLaunchers: () => Promise<Launcher[]>,
   acceptEncoding: string | null,
   harnesses?: Pick<HarnessProbe, "list">,
-  adding?: { merged: () => Promise<MergedLaunchers>; file: string },
+  adding?: { merged: () => Promise<MergedLaunchers>; file: string; recent?: () => Promise<RecentRun[]> },
 ): Promise<Response> {
   const rows = await getLaunchers();
   const body: LaunchersResponse = { launchers: rows, home: homedir() };
@@ -5024,6 +5057,8 @@ export async function launchersRoute(
     const merged = await adding.merged();
     body.adding = addingBody(merged, adding.file);
     body.items = launcherItems(body.harnesses, merged);
+    // ADR 0095: the one-off lines run here, listed even while `[phone] run` is off, each then unavailable.
+    if (adding.recent !== undefined) body.recentRuns = recentRunsWire(await adding.recent(), merged.switches.run);
   }
   return json(body, acceptEncoding);
 }
@@ -5075,6 +5110,37 @@ export async function serveAddedLauncherRoute(
     audit: caller.audit,
     session: rt.name,
   });
+  return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+}
+
+// ── The one-off command history (ADR 0095, bridge/recent-runs.ts) ───────────────────────────────
+//
+// Two writes: remove one line, or clear the list. The added-launcher routes' order, for their reason:
+// the write gate first, then the resolver (which forwards a `?host=` call to the member whose history
+// it is), and only then THIS machine's own file. Any paired write device may change it.
+
+/** Serve one of the two history writes, or `null` when `pathname` is neither. */
+export async function serveRecentRunRoute(
+  req: Request,
+  pathname: string,
+  caller: Pick<RouteCaller, "gate" | "resolve" | "device" | "audit">,
+  recent: RecentRunSurface,
+): Promise<Response | null> {
+  const act =
+    pathname === "/api/launch/recent/remove" ? removeRecentRun : pathname === "/api/launch/recent/clear" ? clearRecentRuns : null;
+  if (act === null || req.method !== "POST") return null;
+  const denied = caller.gate("write");
+  if (denied) return denied;
+  const rt = await caller.resolve();
+  if (rt instanceof Response) return rt;
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; each act checks every field.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const answer: RecentRouteAnswer = await act(body, { recent, device: caller.device(), audit: caller.audit, session: rt.name });
   return json(answer.body, req.headers.get("accept-encoding"), answer.status);
 }
 
@@ -5320,7 +5386,10 @@ export async function cacheRulesRoute(
 //   `command`      a `launchers.toml` row, matched exactly, as it always was;
 //   `harness`      an agent id from this host's own list (`bridge/harness-launch.ts`), which the bridge
 //                  turns into the line it types; an id it does not start is a 400;
-//   `shell: true`  a plain shell, nothing typed.
+//   `shell: true`  a plain shell, nothing typed;
+//   `run`          a one-off line the person wrote (ADR 0095): a paired device, the operator's
+//                  `[phone] run` switch and the character rule first, then typed exactly as a row
+//                  is. A run that works joins this machine's history (bridge/recent-runs.ts).
 // `cwd` is the folder the sheet's Where field names. It is a place to open a shell, the thing
 // `POST /api/workspace` has always taken from the client, never a path anything here reads; a row's
 // pinned `cwd` still wins over it. `requestId` is a UUID the phone mints per intent: a known one
@@ -5359,11 +5428,14 @@ export async function launch(
   const replay = requestId === undefined ? null : earlierLaunch(receipts, requestId);
   if (replay !== null) return json(await replay, ae);
 
-  const picked = await pickLaunch(fields, getLaunchers, deps.harnesses);
+  const picked = await pickLaunch(fields, getLaunchers, deps.harnesses, {
+    device,
+    switches: deps.switches ?? (() => Promise.resolve({ ...DEFAULT_SWITCHES })),
+  });
   if (picked instanceof Response) return picked;
 
-  // The client never sends a command line. It may send the pane it wants the launch to open BESIDE,
-  // and the folder the sheet's Where field names.
+  // The client never sends a command line, except as a one-off `run`, which met its gates above. It
+  // may send the pane it wants the launch to open BESIDE, and the folder the sheet's Where field names.
   const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
   const asked = askedFolder(fields.cwd, deps.home ?? homedir());
   if (asked === false) return json({ ok: false, ...apiError("launch.bad_folder") } satisfies CreateResponse, ae, 400);
@@ -5418,7 +5490,20 @@ export async function launch(
   if (answer.ok && asked !== undefined && row?.cwd === undefined && deps.folders !== undefined) {
     await deps.folders.recordRecent(answer.pane.cwd);
   }
-  return json(answer, ae);
+  if (!answer.ok || picked.kind !== "run" || row === undefined) return json(answer, ae);
+  // A one-off run that worked joins this machine's history, at the top (ADR 0095). Only here: a
+  // refusal returned above, and a replay or a joined retry never reaches this line. A history that
+  // cannot be written does not undo a run that happened.
+  if (deps.recentRuns !== undefined) {
+    const where = asked ?? besidePane?.cwd ?? null;
+    try {
+      const recorded = await deps.recentRuns.record({ line: row.command, cwd: where, at: Date.now(), noPrompts: picked.noPrompts === true });
+      if (recorded === "unwritable") console.warn("[launch] the one-off run is not in the history: commands-recent.json cannot be written");
+    } catch (err) {
+      console.warn(`[launch] the one-off run is not in the history: ${errorText(err)}`);
+    }
+  }
+  return json({ ...answer, noPrompts: picked.noPrompts === true } satisfies CreateResponse, ae);
 }
 
 /** What `launch` needs beyond the route's own arguments. Every field defaults for a test. */
@@ -5433,6 +5518,10 @@ export interface LaunchDeps {
   home?: string;
   /** The disk, for "is that folder there". Absent: the real one. */
   fs?: Pick<FolderFs, "isDirectory">;
+  /** The operator's `[phone]` switches; only `run` is read here. Absent: the defaults (run on). */
+  switches?: () => Promise<LauncherSwitches>;
+  /** Where a one-off run that worked is recorded (ADR 0095). Absent: nothing is recorded. */
+  recentRuns?: Pick<RecentRunSurface, "record">;
 }
 
 /**
@@ -5448,24 +5537,37 @@ function earlierLaunch(receipts: LaunchReceiptSurface, requestId: string): Promi
   return running.then((answer) => (answer.ok ? { ...answer, replayed: true } : answer));
 }
 
-/** Which of the three kinds a launch body names, and the line it types. */
-type PickedLaunch = { kind: "row" | "harness" | "shell"; row: Launcher | undefined };
+/** Which of the four kinds a launch body names, and the line it types. */
+type PickedLaunch = { kind: "row" | "harness" | "shell" | "run"; row: Launcher | undefined; noPrompts?: boolean };
+
+/** What a one-off `run` is checked against: who asks, and the operator's switch (ADR 0095). */
+interface RunGate {
+  device: string | null;
+  switches: () => Promise<Pick<LauncherSwitches, "run">>;
+}
 
 /**
- * The launch a body names: exactly one of `command`, `harness` and `shell: true`. None or two is a
- * plain 400; a row or an id the host does not have is the catalogued refusal, before anything runs.
+ * The launch a body names: exactly one of `command`, `harness`, `shell: true` and `run`. None or two
+ * is a plain 400; a row or an id the host does not have is the catalogued refusal, before anything
+ * runs. `run` is checked in its own order, every step before anything runs: a paired device, the
+ * operator's switch, then the character rule. `runGate` is `null` where a run is never taken (a new
+ * branch), and a body naming one there is refused rather than read as a plain shell.
  */
 async function pickLaunch(
   fields: JsonObject,
   getLaunchers: () => Promise<Launcher[]>,
   harnesses: Pick<HarnessProbe, "launch"> | undefined,
+  runGate: RunGate | null,
 ): Promise<PickedLaunch | Response> {
   const command = typeof fields.command === "string" ? fields.command.trim() : "";
   const harness = typeof fields.harness === "string" ? fields.harness.trim() : "";
   const shell = fields.shell === true;
-  const named = [command !== "", harness !== "", shell].filter(Boolean).length;
+  // Any value counts as naming a run, an empty or a wrong one too, so it is refused for what it is.
+  const run = fields.run !== undefined && fields.run !== null;
+  const named = [command !== "", harness !== "", shell, run].filter(Boolean).length;
   if (named !== 1) return text("bad body", 400);
   if (shell) return { kind: "shell", row: undefined };
+  if (run) return pickRun(fields.run, runGate);
   if (harness !== "") {
     const known = harnesses?.launch(harness);
     if (known === undefined) {
@@ -5479,6 +5581,20 @@ async function pickLaunch(
   const row = (await getLaunchers()).find((r) => r.command === command);
   if (!row) return json({ ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse, null, 400);
   return { kind: "row", row };
+}
+
+/** A one-off run's gates, in order, and the line it types (ADR 0095). */
+async function pickRun(raw: JsonValue | undefined, gate: RunGate | null): Promise<PickedLaunch | Response> {
+  const refuse = (code: ErrorCode, status: number, detail: ApiErrorDetail = {}): Response =>
+    json({ ok: false, ...apiError(code, detail) } satisfies CreateResponse, null, status);
+  if (gate === null) return refuse("launch.run_no_branch", 400);
+  if (gate.device === null || gate.device === "") return refuse("launch.no_device", 403);
+  if (!(await gate.switches()).run) return refuse("launch.run_off", 403);
+  if (typeof raw !== "string") return refuse("launch.bad_line", 400, { problem: "empty", max: MAX_COMMAND_CHARS });
+  const line = cleanLauncherText(raw, MAX_COMMAND_CHARS);
+  if (!line.ok) return refuse("launch.bad_line", 400, { problem: line.problem, max: MAX_COMMAND_CHARS });
+  // The space is named after the command word, never after an assignment's value (`runProgram`).
+  return { kind: "run", row: { command: line.text, label: runProgram(line.text) }, noPrompts: scanNoPrompts(line.text) };
 }
 
 /**
@@ -5531,7 +5647,7 @@ async function runLaunch(
   }
   const created = outcome.value;
   if (row !== undefined) {
-    const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, "launch");
+    const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, job.kind === "run" ? "run" : "launch");
     if (!sent.ok) {
       // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
       // an empty shell nobody asked for. The rollback's own failure is swallowed because the original
@@ -5549,14 +5665,19 @@ async function runLaunch(
   // the line still answers the question a launch raises: who started something, in which pane and
   // Space, when. Which shell line ran is recoverable from `launchers.toml` in a way a reply's text
   // never is. A shell types nothing, so it is recorded as the create it is.
+  //
+  // A one-off run is the exception to "recoverable from launchers.toml": its line is the person's own,
+  // and a history line may hold a secret they typed. Pane input is never kept whole either (a reply is
+  // a bounded preview, Type mode keeps no character at all), so a run records its command word and its
+  // length, never the line (ADR 0095).
   const where = besidePane ? "tab" : "workspace";
-  const detail: AuditDetail =
-    row === undefined
-      ? { cwd, requestId: job.requestId }
-      : { command: row.command, label: row.label, cwd, requestId: job.requestId, harness: job.kind === "harness" ? row.command : undefined };
+  let detail: AuditDetail;
+  if (row === undefined) detail = { cwd, requestId: job.requestId };
+  else if (job.kind === "run") detail = { program: row.label, length: [...row.command].length, cwd, requestId: job.requestId };
+  else detail = { command: row.command, label: row.label, cwd, requestId: job.requestId, harness: job.kind === "harness" ? row.command : undefined };
   if (besidePane) detail.besidePaneId = besidePane.paneId;
   job.audit.record({
-    action: row === undefined ? `${where}.create` : `${where}.launch`,
+    action: row === undefined ? `${where}.create` : job.kind === "run" ? `${where}.run` : `${where}.launch`,
     paneId: created.paneId,
     session: job.session,
     device: job.device,

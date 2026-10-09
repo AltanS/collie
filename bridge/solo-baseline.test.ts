@@ -678,6 +678,12 @@ describe("solo zero-tax — routes", () => {
       // the client names a row, never a command line. An operator who declares none can call it,
       // and every call is refused.
       "/api/launch",
+      // Remove one line from THIS machine's one-off command history, or clear it (ADR 0095): two
+      // SOLO writes that legitimately extend this list, named here rather than exempted. Session-scoped
+      // and write-gated through the same closure `/api/launch` rides, so a `?host=` call lands in that
+      // member's own `commands-recent.json`.
+      "/api/launch/recent/clear",
+      "/api/launch/recent/remove",
       // This host's own launcher rows, read live off its `launchers.toml` — a SOLO route that
       // legitimately extends this list, named here rather than exempted. Session-scoped and
       // read-gated through the same closure `/api/launch` rides, so a `?host=` call forwards to
@@ -964,6 +970,9 @@ const STATE_DIR_ENTRIES = [
   // under the global switch — both are events, so a bridge that is merely started still writes the four
   // entries asserted below.
   "cache-watch.json",
+  // The one-off lines a phone ran on this machine, newest first (ADR 0095). Written by use and by
+  // nothing else: absent until the first one-off run that works.
+  "commands-recent.json",
   // The new-space sheet's folder list (M40/02, #289), and a §11 row RENEGOTIATED ON PURPOSE: it is
   // the one entry here a solo instance's own operator writes through ordinary use, from the phone.
   // Absent until the first space created with a folder or the first star — both are acts, and a

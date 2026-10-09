@@ -183,7 +183,7 @@ describe("the merged allowlist", () => {
     const merged = mergeLaunchers(
       [op, { command: "codex --yolo", label: "YOLO" }],
       [stored({ id: ID1, command: "make test", label: "mine" }), stored({ id: ID2, command: "htop" })],
-      { adds: true, freeText: true },
+      { adds: true, freeText: true, run: true },
     );
     expect(merged.rows.map((r) => [r.command, r.label, r.source, r.noPrompts])).toEqual([
       ["make test", "Tests", "operator", false],
@@ -195,10 +195,10 @@ describe("the merged allowlist", () => {
   test("switches take rows out without deleting them, with a reason", () => {
     const recipeRow = stored({ id: ID1, kind: "agent", harness: "claude", source: "recipe", options: [], command: "claude", label: "Claude Code" });
     const textRow = stored({ id: ID2 });
-    const freeOff = mergeLaunchers([], [recipeRow, textRow], { adds: true, freeText: false });
+    const freeOff = mergeLaunchers([], [recipeRow, textRow], { adds: true, freeText: false, run: true });
     expect(freeOff.rows.map((r) => r.command)).toEqual(["claude"]);
     expect(freeOff.off).toEqual([{ id: ID2, label: "htop", command: "htop", kind: "command", reason: "free_text_off" }]);
-    const allOff = mergeLaunchers([], [recipeRow, textRow], { adds: false, freeText: true });
+    const allOff = mergeLaunchers([], [recipeRow, textRow], { adds: false, freeText: true, run: true });
     expect(allOff.rows).toEqual([]);
     expect(allOff.off.map((o) => o.reason)).toEqual(["adds_off", "adds_off"]);
     expect(allOff.stored).toHaveLength(2);
@@ -208,7 +208,7 @@ describe("the merged allowlist", () => {
     const merged = mergeLaunchers(
       [op, { command: "claude-danger", label: "Danger", kind: "agent", harness: "claude", noPrompts: true }],
       [stored({ id: ID2 })],
-      { adds: true, freeText: false },
+      { adds: true, freeText: false, run: true },
     );
     const items = launcherItems(
       [

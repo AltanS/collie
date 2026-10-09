@@ -71,6 +71,7 @@ import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
+import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
@@ -718,6 +719,10 @@ await worktreeChoices.load();
 // on each use, because `collie devices revoke` edits it from another process. Nothing is written until
 // the first add.
 const addedLaunchers = new AddedLauncherStore(addedFileIo(cfg.stateDir));
+
+// The one-off lines a phone ran on this machine, newest first (ADR 0095, bridge/recent-runs.ts).
+// Nothing is written until the first run that works.
+const recentRuns = new RecentRunStore(recentRunFileIo(cfg.stateDir));
 
 // The warden that judges them. A DEPS LITERAL WITH NO LOGIC IN IT, for the reason
 // `bridge/update.ts`'s monitor is built the same way: there is no `bridge/index.test.ts`, so every gate
@@ -2002,6 +2007,7 @@ const server = startServer({
   launchReceipts,
   worktreeChoices,
   addedLaunchers,
+  recentRuns,
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
   crew,

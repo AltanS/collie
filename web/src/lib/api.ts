@@ -38,6 +38,7 @@ import type {
   CacheWatchState,
   FoldersResponse,
   LaunchersResponse,
+  RecentRunsResponse,
   NotifyPrefs,
   ChangeCommitDiffResponse,
   ChangeCommitResponse,
@@ -1301,6 +1302,47 @@ export function startLaunch(what: StartWhat, opts: { cwd?: string; requestId: st
   else body.shell = true;
   if (opts.cwd !== undefined) body.cwd = opts.cwd;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
+}
+
+// ── One-off commands and their history, per machine (ADR 0095) ──────────────────────────────────
+//
+// A line the person wrote, typed into a fresh shell on that machine. The bridge checks a paired
+// device, the operator's `[phone] run` switch and the character rule (200 characters, no control,
+// separator or bidi character) before anything runs. A run that works joins that machine's history,
+// which `fetchLaunchers` lists as `recentRuns`; running an entry again is this same call. A `scope`
+// with `host` reaches that member through the lead's ordinary forward.
+
+/** POST /api/launch's body for a one-off run. A named contract so `startRun` infers against it. */
+interface StartRunBody {
+  run: string;
+  cwd?: string;
+  requestId: string;
+}
+
+/**
+ * POST /api/launch `{ run }`. `requestId` is minted per intent (`mintRequestId`): a retry with it
+ * answers the first pane (`replayed: true`) and runs nothing. The answer's `noPrompts` says whether
+ * the line carries a flag known to skip permission prompts. Refusals: `launch.no_device`,
+ * `launch.run_off`, `launch.bad_line` (`detail.problem`, `detail.max`), `launch.bad_folder`,
+ * `launch.folder_missing`.
+ */
+export function startRun(line: string, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
+  const body: StartRunBody = { run: line, requestId: opts.requestId };
+  if (opts.cwd !== undefined) body.cwd = opts.cwd;
+  return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
+}
+
+/** POST /api/launch/recent/remove: remove one line from that machine's history. */
+export function removeRecentRun(line: string, scope?: Scope): Promise<RecentRunsResponse> {
+  return req<RecentRunsResponse>(withScope("/api/launch/recent/remove", scope), {
+    method: "POST",
+    body: JSON.stringify({ line }),
+  });
+}
+
+/** POST /api/launch/recent/clear: remove every line from that machine's history. */
+export function clearRecentRuns(scope?: Scope): Promise<RecentRunsResponse> {
+  return req<RecentRunsResponse>(withScope("/api/launch/recent/clear", scope), { method: "POST", body: "{}" });
 }
 
 /**

@@ -122,6 +122,7 @@ export function addingBody(merged: MergedLaunchers, file: string): LaunchersAddi
   return {
     adds: merged.switches.adds,
     freeText: merged.switches.freeText,
+    run: merged.switches.run,
     file,
     count: merged.stored.length,
     max: MAX_ADDED,

@@ -99,6 +99,20 @@ export const ERROR_CODES = {
   /** A launch's folder is not a directory on the machine that runs it. Nothing was created. */
   "launch.folder_missing": "there is no folder {folder} on this machine",
 
+  // ── One-off runs and their history: POST /api/launch `{ run }`, /api/launch/recent/* (ADR 0095) ──
+  /** A one-off run came with no paired device to attribute it to. Nothing ran. */
+  "launch.no_device": "this request names no paired device",
+  /** The operator turned one-off runs off on this machine (`[phone] run = false`). Nothing ran. */
+  "launch.run_off": "running a one-off command from a phone is turned off on this machine",
+  /** The line breaks the character rule, is empty, or is longer than {max} characters. Nothing ran. */
+  "launch.bad_line": "the command cannot be run: {problem}",
+  /** A one-off run never starts on a new branch. Nothing was created. */
+  "launch.run_no_branch": "a one-off command cannot start on a new branch",
+  /** No history entry has this line on this machine. */
+  "launch.recent_unknown": "that command is not in this machine's history",
+  /** `commands-recent.json` is there and is not a file this Collie may write over. */
+  "launch.recent_unreadable": "commands-recent.json cannot be read; move it away to keep a history",
+
   // ── Rows added from a phone: POST /api/launchers/added, /remove, /rename (ADR 0094) ──────────
   // Each refusal is answered before the store is written: nothing was added, removed or renamed.
   /** The operator turned phone-added rows off on this machine (`[phone] adds = false`). */
