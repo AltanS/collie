@@ -226,14 +226,13 @@ export function useSpaceActions(canWrite?: () => boolean) {
       const scope = at ?? scopeRef.current;
       try {
         if (ask.branch !== undefined) {
-          if (ask.what.kind === "row") return { kind: "refused", message: "" };
           const res = await api.createWorktreeAt(
             { cwd: ask.branch.cwd, branch: ask.branch.name, base: ask.branch.base, folder: ask.branch.folder, requestId: ask.requestId, what: ask.what },
             scope,
           );
           if (!res.ok) return { kind: "refused", message: describeApiError(res) };
           open(res, "space", scope);
-          if (ask.what.kind === "harness" && !res.launcherStarted) setStatus(t("branchOff.launcherFailed"), "error");
+          if (ask.what.kind !== "shell" && !res.launcherStarted) setStatus(t("branchOff.launcherFailed"), "error");
           return { kind: "done" };
         }
         // A machine older than 1.19.0 starts no plain shell by id: its own space create opens one.

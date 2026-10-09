@@ -1322,6 +1322,8 @@ interface WorktreeAtBody {
   folder: WorktreeFolderChoice;
   requestId: string;
   harness?: string;
+  /** An agent row (an operator's with a harness, or one a phone added): the allowlisted line. */
+  command?: string;
   shell?: true;
 }
 
@@ -1336,12 +1338,13 @@ export function createWorktreeAt(
     base: WorktreeBaseChoice;
     folder: WorktreeFolderChoice;
     requestId: string;
-    what: Exclude<StartWhat, { kind: "row" }>;
+    what: StartWhat;
   },
   scope?: Scope,
 ): Promise<WorktreeCreateResponse> {
   const body: WorktreeAtBody = { cwd: ask.cwd, branch: ask.branch, base: ask.base, folder: ask.folder, requestId: ask.requestId };
   if (ask.what.kind === "harness") body.harness = ask.what.id;
+  else if (ask.what.kind === "row") body.command = ask.what.command;
   else body.shell = true;
   return req<WorktreeCreateResponse>(withScope("/api/worktree", scope), {
     method: "POST",

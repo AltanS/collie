@@ -17,6 +17,8 @@ import { useNav } from "@/hooks/use-nav";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useAgentStart } from "@/hooks/use-agent-start";
 import { useLaunchers } from "@/lib/launchers";
+import { shortenHome } from "@/lib/shorten-home";
+import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { buzz } from "@/lib/haptics";
 import { handOf, mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
@@ -292,6 +294,8 @@ export function AgentChat({
   );
 
   const { launchers, home: launchersHome } = useLaunchers(scope);
+  // A row that skips permission prompts is confirmed once per device before it starts (ADR 0094).
+  const { guard: guardNoPrompts, sheet: noPromptsSheet } = useNoPromptsGuard();
   // "New agent in a worktree" (ADR 0089, M48): offered for a pane whose space sits in a Git repo, read
   // off the root snapshot's spaces. The other two gates (the capability, the lead scope) are the
   // actions sheet's own. It goes to the New page on this pane's folder with the worktree switch on.
@@ -2721,13 +2725,21 @@ export function AgentChat({
               readOnly
                 ? undefined
                 : (command: string) => {
-                    // Close first: the launch navigates into the new pane, and a sheet still up
-                    // while the route changes under it would have to be dismissed on the screen
-                    // you just arrived at (same order the deleted LaunchSheet used).
-                    closeDrawer();
-                    // Beside THIS pane — the switcher's launch always opens a tab in this pane's
-                    // Space, on this pane's own host (server.ts resolves `paneId` there).
-                    void launch(command, paneId);
+                    const row = launchers.find((l) => l.command === command);
+                    guardNoPrompts({
+                      item: row ?? { command },
+                      machine: scope?.host ?? "",
+                      folder: shortenHome(row?.cwd ?? agent?.cwd ?? launchersHome, launchersHome) || "~",
+                      go: () => {
+                        // Close first: the launch navigates into the new pane, and a sheet still up
+                        // while the route changes under it would have to be dismissed on the screen
+                        // you just arrived at (same order the deleted LaunchSheet used).
+                        closeDrawer();
+                        // Beside THIS pane — the switcher's launch always opens a tab in this pane's
+                        // Space, on this pane's own host (server.ts resolves `paneId` there).
+                        void launch(command, paneId);
+                      },
+                    });
                   }
             }
             launching={launching}
@@ -2878,6 +2890,8 @@ export function AgentChat({
               : undefined
           }
         />
+        {/* "Start without prompts?" for a Launch row that skips permission prompts. */}
+        {noPromptsSheet}
       </div>
     </CompactStripLabels>
   );

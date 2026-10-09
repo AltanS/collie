@@ -28,6 +28,7 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 import { server } from "@/test/setup";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
+import { noPromptsConfirmed, rememberNoPromptsConfirm } from "@/lib/no-prompts";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
@@ -2752,6 +2753,71 @@ describe("AgentChat: Launch section in the switcher", () => {
     await user.click(screen.getByRole("button", { name: "Switch pane" }));
     await user.click(await screen.findByText("Runs & quota"));
     await waitFor(() => expect(posted).toEqual({ command: "rumen-peek", paneId: agent.paneId }));
+  });
+
+  // THE NO PROMPTS CONFIRM (ADR 0094) in the switcher: a row that skips permission prompts asks first.
+  describe("a row that skips permission prompts", () => {
+    afterEach(() => localStorage.clear());
+
+    function declareNoPrompts(posted: LaunchPostedBody[]) {
+      server.use(
+        http.get("/api/launchers", () =>
+          HttpResponse.json({
+            launchers: [{ command: "claude --yolo", label: "Claude, no prompts", noPrompts: true, cwd: "/home" }],
+            home: "/home",
+          }),
+        ),
+        http.post("/api/launch", async ({ request }) => {
+          // SAFETY: the switcher's launch (`api.launch`) is the only caller and sends these two fields.
+          posted.push((await request.json()) as LaunchPostedBody);
+          return HttpResponse.json({
+            ok: true,
+            pane: { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "x", tabId: "w9:t1", cwd: "/home" },
+          });
+        }),
+      );
+    }
+
+    it("asks first and sends nothing until Start; Cancel sends nothing and the switcher stays open", async () => {
+      const posted: LaunchPostedBody[] = [];
+      declareNoPrompts(posted);
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: "Switch pane" }));
+      await user.click(await screen.findByText("Claude, no prompts"));
+      const sheet = await screen.findByRole("dialog", { name: "Start without prompts?" });
+      expect(within(sheet).getByTestId("no-prompts-command")).toHaveTextContent("claude --yolo");
+      expect(posted).toHaveLength(0);
+      await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull());
+      expect(posted).toHaveLength(0);
+      expect(screen.getByText("Claude, no prompts")).toBeInTheDocument();
+    });
+
+    it("Start launches beside this pane and remembers the answer", async () => {
+      const posted: LaunchPostedBody[] = [];
+      declareNoPrompts(posted);
+      const agent = fixtureAgents[0]!;
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: "Switch pane" }));
+      await user.click(await screen.findByText("Claude, no prompts"));
+      await user.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Start" }));
+      await waitFor(() => expect(posted).toEqual([{ command: "claude --yolo", paneId: agent.paneId }]));
+      expect(noPromptsConfirmed("", "claude --yolo")).toBe(true);
+    });
+
+    it("a line this device already confirmed on this machine launches with no question", async () => {
+      const posted: LaunchPostedBody[] = [];
+      declareNoPrompts(posted);
+      rememberNoPromptsConfirm("", "claude --yolo");
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: "Switch pane" }));
+      await user.click(await screen.findByText("Claude, no prompts"));
+      await waitFor(() => expect(posted).toHaveLength(1));
+      expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
+    });
   });
 
   it("is not offered on a read-only device", async () => {

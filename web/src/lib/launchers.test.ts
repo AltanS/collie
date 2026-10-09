@@ -52,7 +52,7 @@ describe("useLaunchers", () => {
     asked.mockRejectedValue(new Error("offline"));
     const { result } = renderHook(() => useLaunchers());
     await waitFor(() => expect(asked).toHaveBeenCalled());
-    expect(result.current).toEqual({ launchers: [], home: "", harnesses: null, loadedFor: null });
+    expect(result.current).toMatchObject({ launchers: [], home: "", harnesses: null, items: null, adding: null, loadedFor: null });
   });
 
   // M48: the agent list rides along on a 1.19.0 bridge; an older one sends none, and `loadedFor`

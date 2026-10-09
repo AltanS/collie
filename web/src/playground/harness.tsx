@@ -37,6 +37,7 @@ import { HomeRoute } from "@/routes/home";
 import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
 import { NewRoute } from "@/routes/new";
+import { NewAddRoute } from "@/routes/new-add";
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { SettingsRoute } from "@/routes/settings";
 import { SpaceRoute } from "@/routes/space";
@@ -256,9 +257,10 @@ export function SettingsRouter({
 }
 
 /**
- * The New page (`/new`) on a memory router, inside the app header and the crew context it reads. The
- * route reads the root snapshot (for a pane's folder and branch) and asks the bridge behind the
- * playground for its agent and command lists, so a card shows what that bridge reports.
+ * The New page (`/new`) and the page below it, Add your own (`/new/add`), on a memory router, inside
+ * the app header and the crew context they read. The routes read the root snapshot (for a pane's folder
+ * and branch) and ask the bridge behind the playground for its agent and command lists, so a card shows
+ * what that bridge reports.
  */
 export function NewRouter({ home, start = "/new" }: { home: HomeData; start?: string }) {
   const [router] = useState(() =>
@@ -278,6 +280,7 @@ export function NewRouter({ home, start = "/new" }: { home: HomeData; start?: st
           children: [
             { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
             { path: "new", element: <NewRoute /> },
+            { path: "new/add", element: <NewAddRoute /> },
           ],
         },
       ],

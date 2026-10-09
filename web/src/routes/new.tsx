@@ -6,6 +6,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
 import { useCrew } from "@/components/crew-provider";
 import { FolderSections } from "@/components/new-space-folders";
+import { NoPromptsBadge } from "@/components/no-prompts-badge";
 import { StatusArea } from "@/components/status-area";
 import { Button } from "@/components/ui/button";
 import { BottomBar } from "@/components/ui/bottom-bar";
@@ -19,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { planWorktree, type StartWhat } from "@/lib/api";
 import { describeApiError } from "@/lib/api-error-message";
@@ -29,20 +31,25 @@ import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost } from "@/lib/hosts"
 import { t } from "@/lib/i18n";
 import { launchersKey, useLaunchers } from "@/lib/launchers";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { homePath, readNewAt } from "@/lib/nav";
+import { homePath, newAddPath, readNewAt } from "@/lib/nav";
 import {
   NEW_PAGE_DOCS,
   agentChoice,
+  commandOptions,
   branchAllowed,
   commandChoice,
   defaultHost,
   defaultKind,
   folderShown,
+  itemOf,
+  keyToWhat,
   kindOf,
+  kindOfKey,
   machineWord,
   memberHealth,
   offerFor,
   offered,
+  optionText,
   readAgain,
   readKind,
   rememberAgain,
@@ -127,6 +134,7 @@ function NewPage({ search }: { search: string }) {
   const canWorktree = useMuxCapability("createWorktree").capable;
   const offer: Offer = offerFor({
     harnesses: loaded ? launchers.harnesses : null,
+    items: loaded ? launchers.items : null,
     loaded,
     rows: loaded ? launchers.launchers : [],
     refusal,
@@ -144,14 +152,17 @@ function NewPage({ search }: { search: string }) {
   // Agent or Command is a segment; each half keeps its own pick, so going back and forth loses neither.
   const rememberedKind = useMemo(() => readKind(machineKey), [machineKey]);
   const [kindPick, setKindPick] = useState<Kind | null>(null);
-  const kind = kindPick ?? defaultKind(offer, loaded, rememberedKind, again);
+  // `?pick=` is where "Add your own" sends the person back to: the row it just made, chosen. It only
+  // stands in for a pick the person has not made on this page.
+  const kind = kindPick ?? kindOfKey(offer, at.pick) ?? defaultKind(offer, loaded, rememberedKind, again);
   const [agentPick, setAgentPick] = useState<string | null>(null);
   const [commandPick, setCommandPick] = useState<StartWhat | null>(null);
-  const agentId = agentChoice(offer, agentPick, usable);
-  const command = commandChoice(offer, commandPick, usable);
-  const what: StartWhat | null = whatFor(kind, agentId, command);
+  const agentItem = agentChoice(offer, agentPick ?? at.pick ?? null, usable);
+  const command = commandChoice(offer, commandPick ?? keyToWhat(at.pick), usable);
+  const what: StartWhat | null = whatFor(kind, agentItem, command);
+  const chosenItem = what === null ? undefined : itemOf(offer, what);
   const [cwd, setCwd] = useState(() => from?.cwd ?? readAgain(machineKey)?.cwd ?? "");
-  const pinned = what?.kind === "row" ? offer.rows.find((r) => r.command === what.command)?.cwd : undefined;
+  const pinned = chosenItem?.cwd;
   // A machine older than 1.19.0 ignores a folder on a row, so it is not offered there.
   const legacy = loaded && !offer.shellById;
   const showWhere = pinned === undefined && !(legacy && what?.kind === "row");
@@ -161,8 +172,12 @@ function NewPage({ search }: { search: string }) {
   const [basePick, setBasePick] = useState<"default" | "branch" | null>(null);
   const [folderPick, setFolderPick] = useState<WorktreeFolderChoice["kind"] | null>(null);
   const [parentPick, setParentPick] = useState<string | null>(null);
-  const branchShown = branchAllowed(what);
-  const branchActive = branchShown && offer.branchBlocked === null && branchOn;
+  // The worktree block shows for anything chosen. A command row cannot start in one: the switch is
+  // off and disabled there, and its reason line says so.
+  const branchShown = what !== null;
+  const branchBlocked: Unavailable | null =
+    offer.branchBlocked ?? (branchAllowed(offer, what) ? null : { kind: "commandRow" });
+  const branchActive = branchShown && branchBlocked === null && branchOn;
 
   // ── The plan: what the bridge says a branch from this folder would be (ADR 0093) ─────────────
   const [plan, setPlan] = useState<{ key: string; answer: WorktreePlanResponse } | null>(null);
@@ -295,11 +310,12 @@ function NewPage({ search }: { search: string }) {
       rememberAgain(machineKey, {
         what: ask.what,
         label: whatLabel(ask.what, offer, t("newPage.shell")),
-        cwd: ask.what.kind === "row" ? null : (sendCwd ?? null),
+        // A row with a fixed folder remembers none: Again runs it where the operator pinned it.
+        cwd: itemOf(offer, ask.what)?.cwd !== undefined ? null : (sendCwd ?? null),
         branch: ask.branch ? { folder: folderChoice } : null,
         at: Date.now(),
       });
-      rememberKind(machineKey, kindOf(ask.what));
+      rememberKind(machineKey, kindOf(ask.what, offer));
       setPhase("idle");
       return;
     }
@@ -307,16 +323,31 @@ function NewPage({ search }: { search: string }) {
     setPhase(outcome.kind === "unknown" ? "unknown" : "idle");
   }
 
+  // EVERY START GOES THROUGH HERE (ADR 0094): Start, and the Again row. An item that skips permission
+  // prompts is confirmed once per device, machine and line before anything is sent; the other launch
+  // paths (the dashboard's Launch strip, the switcher's) use the same guard.
+  const { guard, sheet: noPromptsSheet } = useNoPromptsGuard();
+  function begin(ask: { what: StartWhat; cwd: string; branch: boolean }, print: string) {
+    const item = itemOf(offer, ask.what);
+    guard({
+      item: item ?? {},
+      // `""` for the lead or a solo install, the member's id otherwise: the same key on every path.
+      machine: target.host ?? "",
+      folder: shortenHome(item?.cwd ?? folderShown(ask.cwd, home), home),
+      go: () => void run(ask, print),
+    });
+  }
+
   function startNow() {
     if (blocked || what === null) return;
-    void run({ what, cwd: showWhere ? cwd.trim() : "", branch: branchActive }, fingerprint);
+    begin({ what, cwd: showWhere ? cwd.trim() : "", branch: branchActive }, fingerprint);
   }
 
   /** Again: a plain start runs at once; a worktree start fills the form with a fresh name. */
   function useAgain() {
     if (again === null) return;
-    setKindPick(kindOf(again.what));
-    if (again.what.kind === "harness") setAgentPick(again.what.id);
+    setKindPick(kindOf(again.what, offer));
+    if (kindOf(again.what, offer) === "agent") setAgentPick(whatKey(again.what));
     else setCommandPick(again.what);
     setCwd(again.cwd ?? "");
     if (again.branch !== null) {
@@ -327,7 +358,7 @@ function NewPage({ search }: { search: string }) {
       return;
     }
     const print = startFingerprint({ machine: machineKey, what: again.what, cwd: again.cwd ?? "", branch: null });
-    void run({ what: again.what, cwd: again.cwd ?? "", branch: false }, print);
+    begin({ what: again.what, cwd: again.cwd ?? "", branch: false }, print);
   }
 
   function chooseKind(next: Kind) {
@@ -337,7 +368,12 @@ function NewPage({ search }: { search: string }) {
 
   const busy = phase === "starting" || creatingSpace;
   const refusedText = startRefusal !== null && startRefusal.print === fingerprint ? startRefusal.message : null;
-  const commands: StartWhat[] = [{ kind: "shell" }, ...offer.rows.map((r) => ({ kind: "row" as const, command: r.command }))];
+  const adds = loaded && launchers.adding?.adds === true && refusal === undefined;
+  /** "Add your own": a level below this page, on the machine chosen here and the pane it was opened for. */
+  function openAdd(next: Kind) {
+    // Adding to the second half adds a command row, so there the word is Command.
+    nav.down(newAddPath({ machine: target.host, pane: at.pane, session: at.session }, next === "shell" ? "command" : "agent"));
+  }
   const backLabel = t("newPage.back");
 
   return (
@@ -409,21 +445,21 @@ function NewPage({ search }: { search: string }) {
             onChange={chooseKind}
             options={[
               { value: "agent", label: t("newPage.kind.agent") },
-              { value: "command", label: t("newPage.kind.command") },
+              { value: "shell", label: t("newPage.shell") },
             ]}
           />
           {kind === "agent" ? (
             <Select
               aria-label={t("newPage.kind.agent")}
-              value={agentId ?? ""}
+              value={agentItem?.key ?? ""}
               disabled={offer.agents.length === 0}
-              lead={<AgentIcon agent={agentId} className="size-4 rounded-sm" />}
+              lead={<AgentIcon agent={agentItem?.harness} className="size-4 rounded-sm" />}
               onChange={(event) => setAgentPick(event.target.value)}
             >
-              {agentId === null && <option value="" disabled aria-label={t("newPage.kind.agent")} />}
+              {agentItem === null && <option value="" disabled aria-label={t("newPage.kind.agent")} />}
               {offer.agents.map((a) => (
-                <option key={a.id} value={a.id} disabled={a.unavailable !== null}>
-                  {a.unavailable === null ? a.label : `${a.label} (${unavailableText(a.unavailable)})`}
+                <option key={a.key} value={a.key} disabled={a.unavailable !== null}>
+                  {optionText(a, t("newPage.shell"))}
                 </option>
               ))}
             </Select>
@@ -432,11 +468,11 @@ function NewPage({ search }: { search: string }) {
               aria-label={t("newPage.kind.command")}
               value={whatKey(command)}
               lead={<TerminalSquare className="size-4" />}
-              onChange={(event) => setCommandPick(commands.find((w) => whatKey(w) === event.target.value) ?? null)}
+              onChange={(event) => setCommandPick(offer.commands.find((c) => c.key === event.target.value)?.what ?? null)}
             >
-              {commands.map((w) => (
-                <option key={whatKey(w)} value={whatKey(w)}>
-                  {whatLabel(w, offer, t("newPage.shell"))}
+              {commandOptions(offer, t("newPage.shell.option")).map((o) => (
+                <option key={o.key} value={o.key} disabled={o.disabled}>
+                  {o.text}
                 </option>
               ))}
             </Select>
@@ -450,7 +486,13 @@ function NewPage({ search }: { search: string }) {
               {
                 key: "agent",
                 node: (
-                  <DocsNote note={t("newPage.agents.note")} href={NEW_PAGE_DOCS.agent} link={t("newPage.agents.docs")}>
+                  <DocsNote
+                    note={t("newPage.agents.note")}
+                    href={NEW_PAGE_DOCS.agent}
+                    link={t("newPage.agents.docs")}
+                    onAdd={adds ? () => openAdd("agent") : undefined}
+                    noPrompts={kind === "agent" && agentItem?.noPrompts === true}
+                  >
                     <Collapse open={offer.agentsNote !== null}>
                       {offer.agentsNote !== null ? <Reason reason={offer.agentsNote} /> : null}
                     </Collapse>
@@ -458,8 +500,16 @@ function NewPage({ search }: { search: string }) {
                 ),
               },
               {
-                key: "command",
-                node: <DocsNote note={t("newPage.commands.note")} href={NEW_PAGE_DOCS.command} link={t("newPage.commands.docs")} />,
+                key: "shell",
+                node: (
+                  <DocsNote
+                    note={t("newPage.commands.note")}
+                    href={NEW_PAGE_DOCS.command}
+                    link={t("newPage.commands.docs")}
+                    onAdd={adds ? () => openAdd("shell") : undefined}
+                    noPrompts={kind === "shell" && itemOf(offer, command)?.noPrompts === true}
+                  />
+                ),
               },
             ]}
           />
@@ -488,8 +538,8 @@ function NewPage({ search }: { search: string }) {
         <Collapse open={branchShown}>
           {branchShown ? (
             <BranchBlock
-              on={branchOn && offer.branchBlocked === null}
-              blocked={offer.branchBlocked}
+              on={branchOn && branchBlocked === null}
+              blocked={branchBlocked}
               onToggle={setBranchOn}
               name={branchName}
               onName={setBranchName}
@@ -567,35 +617,52 @@ function NewPage({ search }: { search: string }) {
       <ToastViewport className="bottom-40">
         <StatusArea />
       </ToastViewport>
+
+      {/* "Start without prompts?", the one question before a launcher that skips permission prompts. */}
+      {noPromptsSheet}
     </div>
   );
 }
 
-/** The note under the Agent or Command select, then the one small link that says how to add another. */
+/**
+ * The note under the Agent or Command select, then ONE line of small links: how to add one (the docs),
+ * "Add your own" when this machine lets a phone add (a page below this one), and the "No prompts"
+ * badge when the chosen item skips permission prompts. The badge's cell is always laid out (a
+ * `OneOf` with nothing on top when off), so it appearing moves nothing (DESIGN.md §2).
+ */
 function DocsNote({
   note,
   href,
   link,
+  onAdd,
+  noPrompts,
   children,
 }: {
   note: string;
   href: string;
   link: string;
+  onAdd: (() => void) | undefined;
+  noPrompts: boolean;
   children?: React.ReactNode;
 }) {
+  // A text link on its own line owes the same 44px floor as a button (DESIGN.md §6).
+  const linkClass =
+    "inline-flex min-h-11 items-center text-xs underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
   return (
     <div className="flex flex-col items-start">
       <p className="text-xs leading-snug text-muted-foreground">{note}</p>
       {children}
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer noopener"
-        // A text link on its own line owes the same 44px floor as a button (DESIGN.md §6).
-        className="inline-flex min-h-11 items-center text-xs underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        {link}
-      </a>
+      <div className="flex flex-wrap items-center gap-x-4">
+        <a href={href} target="_blank" rel="noreferrer noopener" className={linkClass}>
+          {link}
+        </a>
+        {onAdd !== undefined && (
+          <button type="button" onClick={onAdd} className={linkClass}>
+            {t("newPage.add")}
+          </button>
+        )}
+        <OneOf active={noPrompts ? "badge" : null} options={[{ key: "badge", node: <NoPromptsBadge /> }]} />
+      </div>
     </div>
   );
 }

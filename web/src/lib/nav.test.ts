@@ -11,11 +11,13 @@ import {
   machinePath,
   machinesPath,
   machineTabOf,
+  newAddPath,
   newPath,
   pairLandingPath,
   panePath,
   parentChain,
   readFrom,
+  readNewAddKind,
   readNewAt,
   resolveTreeUp,
   resolveUp,
@@ -147,6 +149,46 @@ describe("the New page's address", () => {
     expect(readNewAt("?machine=mini&pane=w1%3Ap1&s=demo")).toEqual({ machine: "mini", pane: "w1:p1", session: "demo" });
     expect(readNewAt("")).toEqual({ machine: undefined, pane: undefined, session: undefined });
     expect(readNewAt("?machine=%20&pane=")).toEqual({ machine: undefined, pane: undefined, session: undefined });
+  });
+
+  it("carries the item to open on (?pick=) back from Add your own, and reads it back", () => {
+    expect(newPath({ machine: "mini", pick: "row:claude --model opus" })).toBe("/new?machine=mini&pick=row%3Aclaude+--model+opus");
+    expect(readNewAt("?pick=row%3Aclaude+--model+opus").pick).toBe("row:claude --model opus");
+    expect(readNewAt("").pick).toBeUndefined();
+  });
+});
+
+describe("Add your own's address", () => {
+  it("is /new/add with the half to open on, then the machine, the pane and the session when given", () => {
+    expect(newAddPath()).toBe("/new/add?kind=agent");
+    expect(newAddPath({}, "command")).toBe("/new/add?kind=command");
+    expect(newAddPath({ machine: "mini", pane: "w1:p1", session: "demo" }, "agent")).toBe(
+      "/new/add?kind=agent&machine=mini&pane=w1%3Ap1&s=demo",
+    );
+  });
+
+  it("reads the half back: only command is Command", () => {
+    expect(readNewAddKind("?kind=command")).toBe("command");
+    expect(readNewAddKind("?kind=agent")).toBe("agent");
+    expect(readNewAddKind("?kind=other")).toBe("agent");
+    expect(readNewAddKind("")).toBe("agent");
+  });
+
+  it("sits below the New page: the dashboard, a space and a pane are above it, and so is /new", () => {
+    expect(isAncestor("/new", "/new/add")).toBe(true);
+    expect(isAncestor("/", "/new/add")).toBe(true);
+    expect(isAncestor("/pane/w1%3Ap1", "/new/add")).toBe(true);
+    expect(isAncestor("/settings", "/new/add")).toBe(false);
+    expect(isAncestor("/new/add", "/new")).toBe(false);
+  });
+
+  it("a cold deep link has the New page it names behind it, and that page's own parents", () => {
+    expect(parentChain("/new/add", "?kind=agent")).toEqual(["/", "/new"]);
+    expect(parentChain("/new/add", "?kind=command&machine=mini&pane=w1%3Ap1&s=demo")).toEqual([
+      "/?h=mini&s=demo",
+      "/pane/w1%3Ap1?h=mini&s=demo",
+      "/new?machine=mini&pane=w1%3Ap1&s=demo",
+    ]);
   });
 });
 

@@ -1,6 +1,8 @@
 // Settings section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
+import { LauncherHowSheet } from "@/components/launcher-how-sheet";
+import { NoPromptsSheet } from "@/components/no-prompts-sheet";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { SpaceOverview } from "@/components/space-overview";
 import {
@@ -134,6 +136,56 @@ export function SettingsSection() {
           <PhoneFrameCard height={640}>
             <NewRouter home={homeCrew} start="/new?machine=workshop" />
           </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="new-page-add"
+          label="Add your own, Agent, a recipe"
+          reach="on the New page, tap Add your own under the Agent select. It shows when the machine's launchers.toml lets a phone add."
+          note="Pick the harness, tap the option chips (one per group), read the line Collie will type, and tap Add. The list below is every row a phone added on that machine, with Rename and Remove, and the operator's own rows locked. The recipes and rows are the chosen machine's own answer, so this card shows what the bridge behind the playground reports."
+          span={2}
+        >
+          <PhoneFrameCard height={760}>
+            <NewRouter home={homeSolo} start="/new/add?kind=agent" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="new-page-add-command"
+          label="Add your own, Command, a typed line"
+          reach="on the New page, switch to Shell and tap Add your own under the Command select. Agent has the same way under Write a command."
+          note="A typed line is off until the operator sets [phone] free_text = true; then the card shows one disabled row saying so. Check the line shows every hidden character as its code before Add turns on."
+          span={2}
+        >
+          <PhoneFrameCard height={760}>
+            <NewRouter home={homeSolo} start="/new/add?kind=command" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="new-page-add-how"
+          label="How adding works, the explainer sheet"
+          reach="on the Add your own page, tap How adding works."
+          note="The recipe, Write a command and how the operator turns it on, this machine's launchers.toml path with one example row and a Copy button, where phone rows live, and the docs link."
+        >
+          <Stage height={640}>
+            <LauncherHowSheet open onClose={() => {}} file="/home/op/.config/collie/launchers.toml" />
+          </Stage>
+        </Card>
+
+        <Card
+          state="new-page-no-prompts-confirm"
+          label="Start without prompts?, the confirm sheet"
+          reach="on the New page, tap Start on a launcher with the No prompts badge for the first time on this phone and machine. The dashboard's Launch strip and the switcher's Launch section ask the same question."
+          note="Asked once per phone, machine and line. Cancel does nothing; Start remembers the answer and goes on."
+        >
+          <Stage height={520}>
+            <NoPromptsSheet
+              ask={{ command: "claude --dangerously-skip-permissions", folder: "~/projects/collie", machine: "workshop" }}
+              onStart={() => {}}
+              onCancel={() => {}}
+            />
+          </Stage>
         </Card>
       </Group>
     </Section>

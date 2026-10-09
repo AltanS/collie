@@ -162,11 +162,18 @@ export interface NewAt {
   machine?: string;
   pane?: string;
   session?: string;
+  /**
+   * The select option to open on, an item key (`row:claude --model opus`): where "Add your own"
+   * sends the person back to, with the row it just made chosen.
+   */
+  pick?: string;
 }
 
 /** The query keys of {@link NewAt}. `session` is the scope's own `s`, so the root snapshot follows it. */
 export const NEW_MACHINE_PARAM = "machine";
 export const NEW_PANE_PARAM = "pane";
+export const NEW_PICK_PARAM = "pick";
+export const NEW_KIND_PARAM = "kind";
 
 /** The New page (`/new`), a child of the screen it was opened from. Absent fields emit nothing. */
 export function newPath(at: NewAt = {}): string {
@@ -174,8 +181,23 @@ export function newPath(at: NewAt = {}): string {
   if (at.machine) q.set(NEW_MACHINE_PARAM, at.machine);
   if (at.pane) q.set(NEW_PANE_PARAM, at.pane);
   if (at.session) q.set(SESSION_PARAM, at.session);
+  if (at.pick) q.set(NEW_PICK_PARAM, at.pick);
   const query = q.toString();
   return query === "" ? "/new" : `/new?${query}`;
+}
+
+/** "Add your own" (`/new/add`), a child of the New page: the same machine, pane and session, and which half opens. */
+export function newAddPath(at: NewAt = {}, kind: "agent" | "command" = "agent"): string {
+  const q = new URLSearchParams({ [NEW_KIND_PARAM]: kind });
+  if (at.machine) q.set(NEW_MACHINE_PARAM, at.machine);
+  if (at.pane) q.set(NEW_PANE_PARAM, at.pane);
+  if (at.session) q.set(SESSION_PARAM, at.session);
+  return `/new/add?${q.toString()}`;
+}
+
+/** Which half "Add your own" opens on, from its query. Anything but `command` is Agent. */
+export function readNewAddKind(search: string): "agent" | "command" {
+  return new URLSearchParams(search).get(NEW_KIND_PARAM) === "command" ? "command" : "agent";
 }
 
 /** {@link NewAt} read back off a query string. Blank values are absent. */
@@ -185,7 +207,12 @@ export function readNewAt(search: string): NewAt {
     const v = q.get(key)?.trim();
     return v ? v : undefined;
   };
-  return { machine: field(NEW_MACHINE_PARAM), pane: field(NEW_PANE_PARAM), session: field(SESSION_PARAM) };
+  return {
+    machine: field(NEW_MACHINE_PARAM),
+    pane: field(NEW_PANE_PARAM),
+    session: field(SESSION_PARAM),
+    pick: field(NEW_PICK_PARAM),
+  };
 }
 
 /**
@@ -337,7 +364,7 @@ const ANY_PANE = "/pane/*";
  *
  *   L0 `/`
  *   L1 `/space/:id`, `/settings`, `/crew`, `/new` (from the dashboard, a space or a pane)
- *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
+ *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
@@ -374,6 +401,8 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "settings" && seg.length === 1) return ["/"];
   // The New page is opened from the dashboard, from a space, and from a pane's ⋯ menu.
   if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
+  // "Add your own" is a level below the New page.
+  if (head === "new" && seg.length === 2 && id === "add") return ["/new", "/", ANY_SPACE, ANY_PANE];
   // Updates and the crew census are opened from the System section, so that is their nearest
   // legitimate parent. `/settings` stays in the list behind it: both were reachable straight from
   // the index before the split, and a stored `from` pointing there is still a step UP, not a push.
@@ -596,6 +625,13 @@ export function parentChain(pathname: string, search: string): string[] {
     const at = readNewAt(search);
     const view = { host: at.machine, session: at.session };
     return at.pane === undefined ? [homePath(view)] : [homePath(view), panePath(at.pane, view)];
+  }
+  // "Add your own": behind it the New page it was opened from, and behind that the New page's own.
+  if (head === "new" && seg.length === 2 && id === "add") {
+    const at = readNewAt(search);
+    const view = { host: at.machine, session: at.session };
+    const chain = at.pane === undefined ? [homePath(view)] : [homePath(view), panePath(at.pane, view)];
+    return [...chain, newPath({ machine: at.machine, pane: at.pane, session: at.session })];
   }
   if (head === "settings" && seg.length === 2 && id === "updates") {
     return [home, `/settings${q}`, `/settings/system${q}`];

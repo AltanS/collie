@@ -330,7 +330,7 @@ harness = "claude"
 no_prompts = true
 ```
 
-Your rows appear in three places: under **Command** on the New page, or under **Agent** with
+Your rows appear in three places: on the New page, in the **Command** select under **Shell**, or under **Agent** with
 `harness` (tap **+ New** on the dashboard), a **Launch** section on the dashboard, which folds like Spaces, and a **Launch** section
 in the switcher sheet (swipe up from a pane). On the New page a cwd-less row runs in the folder you
 name there, and a row with a fixed folder shows that folder in place of the field. A row never
@@ -344,7 +344,7 @@ a row launches on whichever machine's dashboard or pane you tapped it from, not 
 The **Agent** select on the New page is Collie's own list: Claude Code, Codex, opencode, pi, omp,
 Grok, Hermes, Muse and Antigravity. One that is not on the machine's login `PATH` stays in the list,
 disabled, marked "not installed". For another terminal agent, declare a row for it as above: it shows
-under **Command**, starts in a pane like any command, and Collie shows no status for it.
+in the **Command** select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
@@ -353,6 +353,15 @@ To verify, reload the dashboard and look under the herd. If a row fails to load,
 
 A phone can add its own rows on a machine. They are kept in that machine's state folder, in
 `launchers-added.json`, never in `launchers.toml`, and never copied to another machine.
+
+On the New page, tap **Add your own** under the **Agent** select or under the **Command** select.
+It opens the page `/new/add` for the machine chosen there. Pick **Agent** or **Command** at the top.
+An agent has two ways: a **recipe** (a harness, option chips, and the exact line Collie will type)
+and **Write a command**. A command row is always written by hand. **Add** returns to the New page
+with the new row chosen. Below the form, **Added on this machine** lists every row a phone added
+there, with **Rename** and **Remove**, and the rows from `launchers.toml` with a lock and no
+actions. **How adding works** opens a short explainer with this machine's `launchers.toml` path and
+an example row you can copy.
 
 ```toml
 [phone]
@@ -383,7 +392,9 @@ was read off that agent's own `--help`:
 | omp | Continue last, Thinking: high | `--continue`, `--thinking=high` |
 
 A **free line**, such as an alias like `claude-danger` or a plain `htop`, is possible only with
-`free_text = true`. It is at most 200 characters, and the bridge refuses a control character, a line
+`free_text = true`. Without it, **Write a command** shows one disabled row, "Turned off on" the
+machine, and **Add** stays off. With it, **Check the line** shows the line with every hidden
+character written as its code (for example `⟨U+200B⟩`) before **Add** turns on. It is at most 200 characters, and the bridge refuses a control character, a line
 or paragraph separator and a bidi control in it, both when it is added and each time it is read.
 
 A machine keeps at most 20 added rows. If a row has the same line as a row in `launchers.toml`, the

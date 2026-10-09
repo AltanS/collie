@@ -10,7 +10,17 @@ import { t } from "@/lib/i18n";
 import { KIND_KEY } from "@/lib/new-page";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { clearStatus } from "@/lib/status";
-import type { AgentView, HarnessInfo, MuxCapability, MuxConfig, ServerSummary, WorktreePlanResponse } from "@/lib/types";
+import { NO_PROMPTS_KEY, noPromptsConfirmed } from "@/lib/no-prompts";
+import type {
+  AgentView,
+  HarnessInfo,
+  LauncherItem,
+  LaunchersAdding,
+  MuxCapability,
+  MuxConfig,
+  ServerSummary,
+  WorktreePlanResponse,
+} from "@/lib/types";
 import { fixtureAgents } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -72,6 +82,7 @@ function mount(opts: MountOptions = {}) {
         children: [
           { index: true, element: <div data-testid="home" /> },
           { path: "new", element: <NewRoute /> },
+          { path: "new/add", element: <div data-testid="add-page" /> },
           { path: "pane/:paneId", element: <div data-testid="pane" /> },
         ],
       },
@@ -257,7 +268,7 @@ describe("the New page: Agent and Command", () => {
     ]);
     expect(within(select).getByRole("option", { name: "Grok (not installed)" })).toBeDisabled();
     expect(within(select).getByRole("option", { name: "Codex" })).toBeEnabled();
-    expect(select).toHaveValue("claude");
+    expect(select).toHaveValue("harness:claude");
     expect(summary()).toHaveTextContent("Claude Code in ~");
   });
 
@@ -265,32 +276,42 @@ describe("the New page: Agent and Command", () => {
     serveLaunchers();
     mount();
     const select = await agentSelect();
-    await waitFor(() => expect(select).toHaveValue("claude"));
+    await waitFor(() => expect(select).toHaveValue("harness:claude"));
     expect(select.parentElement?.querySelector("svg")).not.toBeNull();
     await userEvent.selectOptions(select, "Codex");
-    expect(select).toHaveValue("codex");
+    expect(select).toHaveValue("harness:codex");
     expect(summary()).toHaveTextContent("Codex in ~");
   });
 
-  it("Command lists Shell first, then the machine's rows, and a row with a pinned folder shows that folder", async () => {
+  it("Shell holds the Command select: Just a shell first, then the machine's rows, and a row with a pinned folder shows that folder", async () => {
     serveLaunchers();
     mount();
-    await userEvent.click(await screen.findByRole("radio", { name: "Command" }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
     const select = await commandSelect();
     await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
-    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Shell", "htop", "watch"]);
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Just a shell", "htop", "watch"]);
     await userEvent.selectOptions(select, "htop");
     expect(screen.queryByRole("textbox", { name: "Folder" })).toBeNull();
     expect(screen.getByText("This command always runs in ~/ops.")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("switch", { name: /New worktree/ })).toBeNull());
+    // A command cannot start in a worktree: the switch stays, off and disabled, with the reason.
+    await waitFor(() => expect(screen.getByRole("switch", { name: /New worktree/ })).toBeDisabled());
+    expect(screen.getByText("a command cannot start in a new worktree")).toBeInTheDocument();
     expect(summary()).toHaveTextContent("htop in ~/ops");
   });
 
-  it("an older Collie: opens on Command, the Agent select is empty and disabled with a note, and Shell still starts", async () => {
+  it("a half stored as 'command' before it was called Shell still opens on Shell", async () => {
+    serveLaunchers();
+    localStorage.setItem(KIND_KEY, JSON.stringify({ "": "command" }));
+    mount();
+    expect(await screen.findByRole("radio", { name: "Shell" })).toHaveAttribute("aria-checked", "true");
+    expect(await commandSelect()).toBeInTheDocument();
+  });
+
+  it("an older Collie: opens on Shell, the Agent select is empty and disabled with a note, and Shell still starts", async () => {
     serveLaunchers(null);
     mount();
-    // No agent starts there, so once the answer is in the page opens on Command.
-    await waitFor(() => expect(screen.getByRole("radio", { name: "Command" })).toHaveAttribute("aria-checked", "true"));
+    // No agent starts there, so once the answer is in the page opens on Shell.
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Shell" })).toHaveAttribute("aria-checked", "true"));
     expect(summary()).toHaveTextContent("Shell in ~");
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
     await userEvent.click(screen.getByRole("radio", { name: "Agent" }));
@@ -330,35 +351,35 @@ describe("the New page: Agent and Command", () => {
   it("remembers the half chosen, per machine, and opens on it next time", async () => {
     serveLaunchers();
     const first = mount({ servers: roster });
-    await userEvent.click(await screen.findByRole("radio", { name: "Command" }));
-    expect(JSON.parse(localStorage.getItem(KIND_KEY) ?? "{}")).toEqual({ lead: "command" });
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
+    expect(JSON.parse(localStorage.getItem(KIND_KEY) ?? "{}")).toEqual({ lead: "shell" });
     first.dispose();
     cleanup();
 
-    // The same machine opens on Command; another machine has no memory and opens on Agent.
+    // The same machine opens on Shell; another machine has no memory and opens on Agent.
     mount({ servers: roster });
-    expect(await screen.findByRole("radio", { name: "Command" })).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByRole("radio", { name: "Shell" })).toHaveAttribute("aria-checked", "true");
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Host" }), "minibuch");
     await waitFor(() => expect(screen.getByRole("radio", { name: "Agent" })).toHaveAttribute("aria-checked", "true"));
-    await userEvent.click(screen.getByRole("radio", { name: "Command" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Shell" }));
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Host" }), "bluefin");
-    // Back on the first machine, Command is still what it chose.
-    await waitFor(() => expect(screen.getByRole("radio", { name: "Command" })).toHaveAttribute("aria-checked", "true"));
-    expect(JSON.parse(localStorage.getItem(KIND_KEY) ?? "{}")).toEqual({ lead: "command", mini: "command" });
+    // Back on the first machine, Shell is still what it chose.
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Shell" })).toHaveAttribute("aria-checked", "true"));
+    expect(JSON.parse(localStorage.getItem(KIND_KEY) ?? "{}")).toEqual({ lead: "shell", mini: "shell" });
   });
 
   it("a start remembers its half too", async () => {
     serveLaunchers();
     serveLaunch([]);
     mount();
-    await userEvent.click(await screen.findByRole("radio", { name: "Command" }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
-    await waitFor(() => expect(JSON.parse(localStorage.getItem(KIND_KEY) ?? "{}")).toEqual({ "": "command" }));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(KIND_KEY) ?? "{}")).toEqual({ "": "shell" }));
   });
 });
 
 describe("the New page: the docs links", () => {
-  it("Agent has How to add an agent, Command has How to add a command, each in a new tab", async () => {
+  it("Agent has How to add an agent, Shell has How to add a command, each in a new tab", async () => {
     serveLaunchers();
     mount();
     await agentSelect();
@@ -368,7 +389,7 @@ describe("the New page: the docs links", () => {
     expect(agentLink).toHaveAttribute("rel", expect.stringContaining("noopener"));
     // The other half is in the page but inert and hidden, so it is not a link a person can reach.
     expect(screen.queryByRole("link", { name: "How to add a command" })).toBeNull();
-    await userEvent.click(screen.getByRole("radio", { name: "Command" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Shell" }));
     const commandLink = await screen.findByRole("link", { name: "How to add a command" });
     expect(commandLink).toHaveAttribute("href", "https://colliepwa.dev/docs/configure#your-own-launchers");
     expect(commandLink).toHaveAttribute("target", "_blank");
@@ -437,7 +458,7 @@ describe("the New page: Start", () => {
     const bodies: Array<{ requestId?: string }> = [];
     serveLaunch(bodies, [1]);
     const router = mount();
-    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Collie could not confirm the start.");
     expect(bodies).toHaveLength(1);
@@ -500,7 +521,7 @@ describe("the New page: a refused Start", () => {
       http.post("/api/launch", () => HttpResponse.json({ ok: false, error: "english", code, detail }, { status: 400 })),
     );
     const router = mount();
-    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     const shown = await screen.findByTestId("new-page-refusal");
     expect(shown).toHaveTextContent(t(`apiError.${code}`, detail));
@@ -519,7 +540,7 @@ describe("the New page: a refused Start", () => {
       ),
     );
     mount();
-    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     expect(await screen.findByTestId("new-page-refusal")).toHaveTextContent("There is no folder /home/op/nope on this machine.");
   });
@@ -546,7 +567,7 @@ describe("the New page: a refused Start", () => {
       http.post("/api/launch", () => HttpResponse.json({ ok: false, error: "x", code: "launch.bad_folder" }, { status: 400 })),
     );
     mount();
-    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     const shown = await screen.findByTestId("new-page-refusal");
     // One cell holds both, so showing the refusal resizes nothing.
@@ -561,7 +582,7 @@ describe("the New page: a refused Start", () => {
     const bodies: unknown[] = [];
     serveLaunch(bodies);
     mount();
-    await waitFor(async () => expect(await agentSelect()).toHaveValue("claude"));
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "projects");
     expect(summary()).toHaveTextContent("Claude Code in ~/projects");
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
@@ -643,7 +664,7 @@ describe("the New page: New worktree", () => {
   it("Shell may start in a worktree", async () => {
     serveLaunchers();
     mount();
-    await userEvent.click(await screen.findByRole("radio", { name: "Command" }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
     expect(await screen.findByRole("switch", { name: /New worktree/ })).toHaveAttribute("aria-checked", "false");
   });
 
@@ -663,5 +684,338 @@ describe("the New page: New worktree", () => {
     await waitFor(() => expect(toggle).toBeDisabled());
     expect(await screen.findByText("only on bluefin")).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-checked", "false");
+  });
+});
+
+// ── M48 spec 02: the lists come from the bridge's `items`, and Add your own is a link ───────────
+
+const item = (over: Partial<LauncherItem> & Pick<LauncherItem, "key" | "start" | "group" | "label">): LauncherItem => ({
+  source: "builtin",
+  noPrompts: false,
+  branch: false,
+  available: true,
+  ...over,
+});
+
+const NO_PROMPTS_LINE = "claude --dangerously-skip-permissions";
+
+const ITEMS: LauncherItem[] = [
+  item({ key: "harness:claude", start: { harness: "claude" }, group: "agents", label: "Claude Code", harness: "claude", branch: true }),
+  item({
+    key: "row:claude --model opus",
+    start: { command: "claude --model opus" },
+    group: "agents",
+    label: "Claude, opus",
+    harness: "claude",
+    command: "claude --model opus",
+    source: "added",
+    branch: true,
+    id: "r1",
+    addedBy: "phone",
+  }),
+  item({
+    key: `row:${NO_PROMPTS_LINE}`,
+    start: { command: NO_PROMPTS_LINE },
+    group: "agents",
+    label: "Claude, no prompts",
+    harness: "claude",
+    command: NO_PROMPTS_LINE,
+    source: "added",
+    branch: true,
+    noPrompts: true,
+    id: "r2",
+  }),
+  item({ key: "harness:grok", start: { harness: "grok" }, group: "agents", label: "Grok", harness: "grok", branch: true, available: false, reason: "not_found" }),
+  item({ key: "shell", start: { shell: true }, group: "commands", label: "Shell", branch: true }),
+  item({ key: "row:make test", start: { command: "make test" }, group: "commands", label: "make test", command: "make test", source: "operator" }),
+  item({
+    key: "row:htop --typed",
+    start: { command: "htop --typed" },
+    group: "commands",
+    label: "typed",
+    command: "htop --typed",
+    source: "added",
+    available: false,
+    reason: "free_text_off",
+  }),
+];
+
+const ADDING: LaunchersAdding = { adds: true, freeText: false, file: "/home/op/.config/collie/launchers.toml", count: 2, max: 20, recipes: [], off: [] };
+
+/** A 1.19.0 bridge: the answer carries `items` and `adding`. */
+function serveItems(adding: LaunchersAdding | null = ADDING, items: LauncherItem[] = ITEMS): void {
+  server.use(
+    http.get("/api/launchers", () =>
+      HttpResponse.json({
+        launchers: [{ command: "make test", label: "make test" }],
+        home: "/home/op",
+        harnesses: HARNESSES,
+        items,
+        adding,
+      }),
+    ),
+  );
+}
+
+/** The "No prompts" badges that are on screen: the other select's note carries one too, kept inert. */
+const liveBadges = () =>
+  [...document.querySelectorAll('[data-slot="no-prompts-badge"]')].filter((el) => el.closest('[aria-hidden="true"]') === null);
+
+describe("the New page: the lists are the bridge's items", () => {
+  it("Agent holds the built-in agents and the agent rows; a No prompts row says so in its text", async () => {
+    serveItems();
+    mount();
+    const select = await agentSelect();
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(4));
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Claude Code",
+      "Claude, opus",
+      "Claude, no prompts (No prompts)",
+      "Grok (not installed)",
+    ]);
+  });
+
+  it("The Command select under Shell is Just a shell first, then the rows, and an off row is disabled with its reason", async () => {
+    serveItems();
+    mount();
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
+    const select = await commandSelect();
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Just a shell",
+      "make test",
+      "typed (typed lines are turned off on this machine)",
+    ]);
+    expect(within(select).getByRole("option", { name: /^typed/ })).toBeDisabled();
+  });
+
+  it("with no items (a bridge before 1.19.0) the lists are today's, and there is no Add your own", async () => {
+    serveLaunchers();
+    mount();
+    const select = await agentSelect();
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
+    expect(screen.queryByRole("button", { name: "Add your own" })).toBeNull();
+    expect(liveBadges()).toHaveLength(0);
+  });
+
+  it("shows the No prompts badge under the select while a No prompts item is chosen, and reserves its line otherwise", async () => {
+    serveItems();
+    mount();
+    const select = await agentSelect();
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(4));
+    expect(liveBadges()).toHaveLength(0);
+    // The line is laid out either way: the badge's cell exists, empty, so nothing moves.
+    expect(document.querySelectorAll('[data-slot="no-prompts-badge"]').length).toBeGreaterThan(0);
+    await userEvent.selectOptions(select, `Claude, no prompts (No prompts)`);
+    expect(liveBadges()).toHaveLength(1);
+    expect(liveBadges()[0]).toHaveTextContent("No prompts");
+    expect(liveBadges()[0]?.className).toContain("text-status-working");
+    await userEvent.selectOptions(select, "Claude Code");
+    expect(liveBadges()).toHaveLength(0);
+  });
+
+  it("an agent row starts by its line, and the worktree switch is on offer for it", async () => {
+    serveItems();
+    declares({ createWorktree: true });
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await userEvent.selectOptions(await agentSelect(), "Claude, opus");
+    const toggle = await screen.findByRole("switch", { name: /New worktree/ });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(screen.queryByText("a command cannot start in a new worktree")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ command: "claude --model opus" });
+  });
+
+  it("an agent row starts in a worktree by its line", async () => {
+    serveItems();
+    servePlan();
+    declares({ createWorktree: true });
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/worktree", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          alreadyOpen: false,
+          launcherStarted: true,
+          pane: { paneId: "w7:p1", workspaceId: "w7", workspaceLabel: "app", tabId: "w7:t1", cwd: "/home/op/trees/x" },
+        });
+      }),
+    );
+    const router = mount({ entries: [`/new?pane=${encodeURIComponent("w1:p1")}`], agents: [PANE] });
+    await userEvent.selectOptions(await agentSelect(), "Claude, opus");
+    await screen.findByRole("textbox", { name: "Branch name" });
+    await waitFor(() => expect(screen.getByTestId("new-page-target")).toHaveTextContent("New folder"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w7%3Ap1"));
+    expect(bodies[0]).toMatchObject({ command: "claude --model opus", cwd: "/home/op/src/app" });
+    expect(bodies[0]).not.toHaveProperty("harness");
+    expect(bodies[0]).not.toHaveProperty("shell");
+  });
+
+  it("a command row cannot start in a worktree: the switch is off and disabled, and the reason line says so", async () => {
+    serveItems();
+    declares({ createWorktree: true });
+    mount();
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
+    await userEvent.selectOptions(await commandSelect(), "make test");
+    const toggle = await screen.findByRole("switch", { name: /New worktree/ });
+    await waitFor(() => expect(toggle).toBeDisabled());
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("a command cannot start in a new worktree")).toBeInTheDocument();
+    // Back on the shell, the switch works again.
+    await userEvent.selectOptions(await commandSelect(), "Just a shell");
+    await waitFor(() => expect(screen.getByRole("switch", { name: /New worktree/ })).toBeEnabled());
+  });
+
+  it("?pick= opens on that item: an agent row in Agent, a command row under Shell", async () => {
+    serveItems();
+    mount({ entries: [`/new?pick=${encodeURIComponent("row:claude --model opus")}`] });
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("row:claude --model opus"));
+    cleanup();
+    serveItems();
+    mount({ entries: [`/new?pick=${encodeURIComponent("row:make test")}`] });
+    await waitFor(async () => expect(await commandSelect()).toHaveValue("row:make test"));
+  });
+});
+
+describe("the New page: the Add your own link", () => {
+  it("sits under each select and opens the add page on that half, with the same machine and pane", async () => {
+    serveItems();
+    const router = mount({ entries: ["/new?machine=mini&s=work"], servers: roster });
+    await userEvent.click(await screen.findByRole("button", { name: "Add your own" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new/add"));
+    expect(new URLSearchParams(router.state.location.search).toString()).toBe("kind=agent&machine=mini&s=work");
+    await router.navigate(-1);
+    await userEvent.click(await screen.findByRole("radio", { name: "Shell" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add your own" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new/add"));
+    expect(new URLSearchParams(router.state.location.search).get("kind")).toBe("command");
+  });
+
+  it("is not offered when the machine turned adding off", async () => {
+    serveItems({ ...ADDING, adds: false });
+    mount();
+    await agentSelect();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Add your own" })).toBeNull());
+  });
+});
+
+// ── The No prompts confirm, on this page's start paths ──────────────────────────────────────────
+
+describe("the New page: Start without prompts?", () => {
+  const pickNoPrompts = async () => userEvent.selectOptions(await agentSelect(), "Claude, no prompts (No prompts)");
+
+  it("the first start asks, showing the line, the folder and the machine, and sends nothing until Start", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount({ servers: roster });
+    await pickNoPrompts();
+    await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "~/src/app");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const sheet = await screen.findByRole("dialog", { name: "Start without prompts?" });
+    expect(within(sheet).getByTestId("no-prompts-command")).toHaveTextContent(NO_PROMPTS_LINE);
+    expect(within(sheet).getByText("~/src/app")).toBeInTheDocument();
+    expect(within(sheet).getByText("bluefin")).toBeInTheDocument();
+    expect(within(sheet).getByText("This one will not ask before it acts.")).toBeInTheDocument();
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("Cancel does nothing: no request, nothing remembered, the next start asks again", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await pickNoPrompts();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull());
+    expect(bodies).toHaveLength(0);
+    expect(localStorage.getItem(NO_PROMPTS_KEY)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByRole("dialog", { name: "Start without prompts?" })).toBeInTheDocument();
+  });
+
+  it("Start remembers it and starts; the second start of the same line does not ask", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await pickNoPrompts();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ command: NO_PROMPTS_LINE });
+    expect(noPromptsConfirmed("", NO_PROMPTS_LINE)).toBe(true);
+    await router.navigate("/new");
+    await pickNoPrompts();
+    await userEvent.click(await screen.findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
+  });
+
+  it("the Again row goes through the same confirm", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await pickNoPrompts();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    // Forget the confirm (another day, another phone): Again must ask like Start does.
+    localStorage.removeItem(NO_PROMPTS_KEY);
+    await router.navigate("/new");
+    await userEvent.click(await screen.findByRole("button", { name: /Again: Claude, no prompts/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Start without prompts?" });
+    expect(bodies).toHaveLength(1);
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    expect(bodies).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: /Again: Claude, no prompts/ }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+  });
+
+  it("is kept per machine: the lead's confirm does not cover a member", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount({ entries: ["/new?machine=mini"], servers: roster });
+    const { rememberNoPromptsConfirm } = await import("@/lib/no-prompts");
+    rememberNoPromptsConfirm("", NO_PROMPTS_LINE);
+    await pickNoPrompts();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const sheet = await screen.findByRole("dialog", { name: "Start without prompts?" });
+    expect(within(sheet).getByText("minibuch")).toBeInTheDocument();
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("is kept per line: a confirm for one line does not cover another", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    const { rememberNoPromptsConfirm } = await import("@/lib/no-prompts");
+    rememberNoPromptsConfirm("", "claude --dangerously-skip-permissions --model opus");
+    await pickNoPrompts();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByRole("dialog", { name: "Start without prompts?" })).toBeInTheDocument();
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("an item that does not skip prompts starts at once", async () => {
+    serveItems();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount();
+    await userEvent.selectOptions(await agentSelect(), "Claude, opus");
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
   });
 });
