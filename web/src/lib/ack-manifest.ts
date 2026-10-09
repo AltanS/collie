@@ -128,17 +128,17 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "A launcher creates a Space (dashboard) or a tab beside the pane you launched it from (switcher), and the app navigates straight into its pane either way, so the button that asked is already off screen; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does. A refusal (an unlisted row, an unknown pane, a failed send) has no control left to sit in either.",
   },
+  startLaunch: {
+    channel: "status",
+    why: "The New sheet's Start creates a space and the app navigates straight into its pane, so the sheet is already gone; hooks/use-spaces.ts `start` names a refusal on the status line as `launch` does. An answer that never came is the sheet's own notice and its Try again button instead (M48, ADR 0091): the status line could only guess whether the pane exists.",
+  },
   starFolder: {
     channel: "silent",
     why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both in the sheet the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
   },
-  createWorktree: {
+  createWorktreeAt: {
     channel: "status",
-    why: "A worktree arrives as a whole new space and the app navigates into its pane, so the eye has already left the button that asked for it; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does.",
-  },
-  openWorktree: {
-    channel: "status",
-    why: "Same navigation, same reason as createWorktree — and `alreadyOpen` is an answer rather than a refusal (ADR 0032), so the operator is told the space is ready without being told which of the two things just happened.",
+    why: "A branch arrives as a whole new space and the app navigates into its pane, so the eye has already left the New sheet; hooks/use-spaces.ts `start` names what was created on arrival, exactly as createWorkspace does. An answer that never came is the sheet's own notice instead (M48, ADR 0091), because the status line cannot say whether the start happened.",
   },
   setSnooze: {
     channel: "echo",

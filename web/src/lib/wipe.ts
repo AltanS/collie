@@ -44,6 +44,7 @@
 
 import { mounted } from "@/lib/base-path";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
+import { forgetAgain } from "@/lib/new-sheet";
 import {
   clearDeviceToken,
   EXPIRED_BODY,
@@ -149,6 +150,12 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     (context) => {
       if (context.reason === "password") clearDraft(context.pane.scope, context.pane.paneId);
       else clearAllDrafts();
+    },
+  ],
+  [
+    "new-sheet",
+    (context) => {
+      if (context.reason !== "password") forgetAgain();
     },
   ],
   [

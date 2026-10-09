@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -8,28 +8,22 @@ import { CrewProvider } from "@/components/crew-provider";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { clearStatus } from "@/lib/status";
-import type { MuxCapability, MuxConfig, WorkspaceView } from "@/lib/types";
+import type { HarnessInfo, MuxCapability, MuxConfig } from "@/lib/types";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureWorkspaces } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 import { HomeRoute } from "./home";
 
-// THE FLOATING NEW BUTTON (DESIGN.md §1, card 1.3, 2026-10-08), through the real home route: when it
-// is drawn, what its sheet offers, and the three ways it steps aside (a sheet, the keyboard, a
-// device that may not write). Its look is pinned in components/ui/fab.test.tsx and the sheet's rows
-// in components/new-sheet.test.tsx.
+// THE FLOATING NEW BUTTON AND THE ONE NEW SHEET (DESIGN.md §1, M48 spec 01), through the real home
+// route: when the button is drawn, how it shrinks, what the sheet offers and lists as not working,
+// the start by id with its request id, the unknown outcome, and the ways the button steps aside. Its
+// look is pinned in components/ui/fab.test.tsx and the sheet's rules in lib/new-sheet.test.ts.
 
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
 const keyboard = vi.hoisted(() => ({ open: false }));
 vi.mock("@/hooks/use-keyboard", () => ({ useKeyboardOpen: () => keyboard.open }));
 
 const REFUSAL = "Saved copy. Reconnect to make changes.";
-
-const repoSpaces: WorkspaceView[] = fixtureWorkspaces.map((w) => ({
-  ...w,
-  repoRoot: `/home/op/${w.label}`,
-  isWorktree: false,
-}));
 
 function homeData(over: Partial<HomeData> = {}): HomeData {
   return {
@@ -79,15 +73,32 @@ function declares(capabilities: Partial<Record<MuxCapability, boolean>>): void {
   server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
 }
 
-function serveNoWorktrees(): void {
-  server.use(http.get(/\/api\/workspace\/[^/]+\/worktrees$/, () => HttpResponse.json({ ok: true, worktrees: [] })));
-}
+const HARNESSES: readonly HarnessInfo[] = [
+  { id: "claude", label: "Claude Code", found: true },
+  { id: "codex", label: "Codex", found: true },
+  { id: "grok", label: "Grok", found: false },
+];
 
-function serveLaunchers(): void {
+/** This machine's rows and agents, as a 1.19.0 bridge answers them. */
+function serveLaunchers(harnesses: readonly HarnessInfo[] = HARNESSES): void {
   server.use(
     http.get("/api/launchers", () =>
-      HttpResponse.json({ launchers: [{ command: "rumen-peek", label: "Runs & quota" }], home: "/home/op" }),
+      HttpResponse.json({ launchers: [{ command: "rumen-peek", label: "Runs & quota" }], home: "/home/op", harnesses }),
     ),
+  );
+}
+
+/** Answer every launch with a fresh pane, and keep each body. */
+function serveLaunch(bodies: unknown[], fail: number[] = []): void {
+  server.use(
+    http.post("/api/launch", async ({ request }) => {
+      bodies.push(await request.json());
+      if (fail.includes(bodies.length)) return new HttpResponse("bad gateway", { status: 502 });
+      return HttpResponse.json({
+        ok: true,
+        pane: { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "new", tabId: "w9:t1", cwd: "/home/op" },
+      });
+    }),
   );
 }
 
@@ -105,79 +116,146 @@ afterEach(() => {
 });
 
 describe("the floating New button on the dashboard", () => {
-  it("is drawn, round, named New, with the Plus glyph", async () => {
+  it("reads \"+ New\" at the top: a pill in the house 2px corner, named New", async () => {
     renderHome(homeData());
     const button = await screen.findByRole("button", { name: "New" });
     expect(button).toBe(fab());
-    expect(button).toHaveClass("size-14", "rounded-full", "bg-primary");
+    expect(button).toHaveClass("w-28", "rounded-md", "bg-primary");
+    expect(button).not.toHaveAttribute("data-collapsed");
   });
 
-  it("opens ONE sheet titled New, with only the Space row when nothing else can be made", async () => {
+  it("shrinks to the round \"+\" once the list scrolls, and grows back at the top", async () => {
+    renderHome(homeData());
+    const button = await screen.findByRole("button", { name: "New" });
+    const scroller = document.querySelector<HTMLElement>("div.overflow-y-auto");
+    expect(scroller).not.toBeNull();
+    scroller!.scrollTop = 200;
+    fireEvent.scroll(scroller!);
+    await waitFor(() => expect(button).toHaveAttribute("data-collapsed", "true"));
+    expect(button).toHaveClass("w-14", "rounded-[28px]");
+    scroller!.scrollTop = 0;
+    fireEvent.scroll(scroller!);
+    await waitFor(() => expect(button).not.toHaveAttribute("data-collapsed"));
+  });
+
+  it("opens ONE sheet: the agents this machine found, Shell and the rows, and Start runs the agent by id", async () => {
+    serveLaunchers();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = renderHome(homeData());
+    await userEvent.click(await screen.findByRole("button", { name: "New" }));
+    const sheet = await screen.findByRole("dialog", { name: "New" });
+    const group = within(sheet).getByRole("radiogroup", { name: "What to start" });
+    await within(group).findByRole("radio", { name: /Claude Code/ });
+    expect(within(group).getAllByRole("radio").map((r) => r.textContent)).toEqual([
+      expect.stringContaining("Claude Code"),
+      expect.stringContaining("Codex"),
+      "Shell",
+      "Runs & quota",
+    ]);
+    // Opens on the first agent found, and the line above Start says so.
+    expect(within(group).getByRole("radio", { name: /Claude Code/ })).toHaveAttribute("aria-checked", "true");
+    expect(within(sheet).getByTestId("new-sheet-summary")).toHaveTextContent("Claude Code in ~");
+    await userEvent.click(within(group).getByRole("radio", { name: /Codex/ }));
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Folder" }), "~/src/app");
+    expect(within(sheet).getByTestId("new-sheet-summary")).toHaveTextContent("Codex in ~/src/app");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bodies).toEqual([{ harness: "codex", cwd: "~/src/app", requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+  });
+
+  it("lists what cannot run at the TOP, each with its reason, and never offers it below", async () => {
+    serveLaunchers();
+    declares({ createWorktree: false });
     renderHome(homeData());
     await userEvent.click(await screen.findByRole("button", { name: "New" }));
     const sheet = await screen.findByRole("dialog", { name: "New" });
-    expect(within(sheet).getByRole("button", { name: "Space" })).toBeInTheDocument();
-    expect(within(sheet).queryByRole("button", { name: "Agent" })).toBeNull();
-    expect(within(sheet).queryByRole("button", { name: "Agent on a branch" })).toBeNull();
+    const off = await within(sheet).findByTestId("new-sheet-off");
+    await waitFor(() => expect(off).toHaveTextContent("Grok: not found on this machine"));
+    await waitFor(() => expect(off).toHaveTextContent("On a new branch: needs Herdr"));
+    expect(within(sheet).queryByRole("radio", { name: /Grok/ })).toBeNull();
+    // The block sits above everything it is about.
+    const group = within(sheet).getByRole("radiogroup", { name: "What to start" });
+    expect(off.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers Agent once the launcher rows arrive, and a row runs the same /api/launch call", async () => {
-    serveLaunchers();
-    const bodies: unknown[] = [];
+  it("an older Collie: no agents, a line that says why, and Shell goes through its space create", async () => {
+    // The default handler answers without `harnesses`, as a bridge before 1.19.0 does.
+    const created: unknown[] = [];
     server.use(
-      http.post("/api/launch", async ({ request }) => {
-        bodies.push(await request.json());
+      http.post("/api/workspace", async ({ request }) => {
+        created.push(await request.json());
         return HttpResponse.json({
           ok: true,
-          pane: { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "peek", tabId: "w9:t1", cwd: "/home/op" },
+          pane: { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "new", tabId: "w9:t1", cwd: "/home/op" },
         });
       }),
     );
     const router = renderHome(homeData());
     await userEvent.click(await screen.findByRole("button", { name: "New" }));
     const sheet = await screen.findByRole("dialog", { name: "New" });
-    await userEvent.click(await within(sheet).findByRole("button", { name: "Agent" }));
-    // The second level lists the rows, with the command as the hint, and a Back row.
-    const agents = await screen.findByRole("dialog", { name: "Agent" });
-    expect(within(agents).getByRole("button", { name: "Back" })).toBeInTheDocument();
-    await userEvent.click(within(agents).getByRole("button", { name: /Runs & quota/ }));
+    expect(await within(sheet).findByTestId("new-sheet-off")).toHaveTextContent(
+      "Agents: this machine runs an older Collie, which cannot start agents by name",
+    );
+    expect(within(sheet).getByRole("radio", { name: "Shell" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
-    expect(bodies).toEqual([{ command: "rumen-peek" }]);
+    expect(created).toEqual([{}]);
   });
 
-  it("offers Agent on a branch only with a repo, and opens the new-space sheet on its Worktree tab", async () => {
-    serveNoWorktrees();
-    renderHome(homeData({ workspaces: repoSpaces }));
+  it("an answer that never came is shown, never re-sent, and Try again sends the SAME request id", async () => {
+    serveLaunchers();
+    const bodies: Array<{ requestId?: string }> = [];
+    serveLaunch(bodies, [1]);
+    const router = renderHome(homeData());
     await userEvent.click(await screen.findByRole("button", { name: "New" }));
     const sheet = await screen.findByRole("dialog", { name: "New" });
-    await userEvent.click(within(sheet).getByRole("button", { name: "Agent on a branch" }));
-    // The New sheet closes and the other one arrives alone, already on the Worktree side.
-    const space = await screen.findByRole("dialog", { name: "New space" });
-    expect(screen.queryByRole("dialog", { name: "New" })).toBeNull();
-    expect(within(space).getByRole("tab", { name: "Worktree" })).toHaveAttribute("aria-selected", "true");
+    await within(sheet).findByRole("radio", { name: /Claude Code/ });
+    await userEvent.click(within(sheet).getByRole("button", { name: "Start" }));
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("Collie could not confirm the start.");
+    expect(bodies).toHaveLength(1);
+    await userEvent.click(within(sheet).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.requestId).toBe(bodies[0]?.requestId);
   });
 
-  it("Space opens the new-space sheet on its plain side", async () => {
-    serveNoWorktrees();
-    renderHome(homeData({ workspaces: repoSpaces }));
+  it("the next opening offers Again with the last start, and one tap runs it", async () => {
+    serveLaunchers();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = renderHome(homeData());
     await userEvent.click(await screen.findByRole("button", { name: "New" }));
-    await userEvent.click(within(await screen.findByRole("dialog", { name: "New" })).getByRole("button", { name: "Space" }));
-    const space = await screen.findByRole("dialog", { name: "New space" });
-    expect(within(space).getByRole("tab", { name: "Space" })).toHaveAttribute("aria-selected", "true");
-  });
-
-  it("hides the branch row when the multiplexer cannot make a worktree, whatever repos are open", async () => {
-    declares({ createWorktree: false });
-    renderHome(homeData({ workspaces: repoSpaces }));
+    let sheet = await screen.findByRole("dialog", { name: "New" });
+    await userEvent.click(await within(sheet).findByRole("radio", { name: /Codex/ }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    // Back on the dashboard, a second opening.
+    await router.navigate("/");
     await userEvent.click(await screen.findByRole("button", { name: "New" }));
-    const sheet = await screen.findByRole("dialog", { name: "New" });
-    expect(within(sheet).getByRole("button", { name: "Space" })).toBeInTheDocument();
-    // The capability read is async and the default reads as capable (lib/mux-capability.ts), so the
-    // row is withdrawn when the bridge's answer lands.
-    await waitFor(() => expect(within(sheet).queryByRole("button", { name: "Agent on a branch" })).toBeNull());
+    sheet = await screen.findByRole("dialog", { name: "New" });
+    const again = await within(sheet).findByRole("button", { name: /Again: Codex/ });
+    await userEvent.click(again);
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ harness: "codex" });
   });
 
-  it("is not drawn when nothing can be created: no createSpace, no launchers, no repo", async () => {
+  it("the Spaces list's folder button opens the same sheet", async () => {
+    renderHome(homeData());
+    await screen.findByRole("button", { name: "New" });
+    const spaces = screen.getByRole("button", { name: /new space/i });
+    await userEvent.click(spaces);
+    expect(await screen.findByRole("dialog", { name: "New" })).toBeInTheDocument();
+  });
+
+  it("an empty dashboard shows the large first-agent card, which opens the same sheet", async () => {
+    renderHome(homeData({ agents: [], shellPanes: [] }));
+    const card = await screen.findByRole("button", { name: /Start your first agent/ });
+    await userEvent.click(card);
+    expect(await screen.findByRole("dialog", { name: "New" })).toBeInTheDocument();
+  });
+
+  it("is not drawn when nothing can be created: no createSpace and no launchers", async () => {
     declares({ createSpace: false });
     renderHome(homeData());
     await screen.findByRole("combobox", { name: "Workspace" });
@@ -185,17 +263,6 @@ describe("the floating New button on the dashboard", () => {
     await waitFor(() => expect(fab()).toBeNull());
     await new Promise((r) => setTimeout(r, 50));
     expect(fab()).toBeNull();
-  });
-
-  it("is drawn on launchers alone when the multiplexer cannot make a space", async () => {
-    declares({ createSpace: false });
-    serveLaunchers();
-    renderHome(homeData());
-    await screen.findByRole("button", { name: "New" });
-    await userEvent.click(fab()!);
-    const sheet = await screen.findByRole("dialog", { name: "New" });
-    expect(within(sheet).getByRole("button", { name: "Agent" })).toBeInTheDocument();
-    expect(within(sheet).queryByRole("button", { name: "Space" })).toBeNull();
   });
 
   it("is drawn on the Dashboard tab only: not on Files, and back on return", async () => {
@@ -223,14 +290,6 @@ describe("the floating New button on the dashboard", () => {
     expect(fab()).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(fab()).not.toBeNull());
-  });
-
-  it("stays hidden across the hand-off from the New sheet to the new-space sheet", async () => {
-    renderHome(homeData());
-    await userEvent.click(await screen.findByRole("button", { name: "New" }));
-    await userEvent.click(within(await screen.findByRole("dialog", { name: "New" })).getByRole("button", { name: "Space" }));
-    await screen.findByRole("dialog", { name: "New space" });
-    expect(fab()).toBeNull();
   });
 
   it("steps aside while the on-screen keyboard is up", async () => {

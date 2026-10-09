@@ -5,7 +5,7 @@ import { fixtureNewSpace } from "@/test/handlers";
 
 import { fill, installApiStub } from "./fixtures/api";
 
-// FAVOURITE AND RECENT FOLDERS IN THE NEW-SPACE SHEET (M40/02, issue 289). The machine's bridge keeps
+// FAVOURITE AND RECENT FOLDERS IN THE NEW SHEET (M40/02, issue 289; the one New sheet since M48). The machine's bridge keeps
 // the list and records Recent itself after a create that worked; the sheet reads it when it opens,
 // offers each folder as a row that FILLS the Directory field, and stars one into Favourites. What a
 // real engine has to show: the create request is exactly today's, the folder is under Recent the
@@ -14,7 +14,8 @@ import { fill, installApiStub } from "./fixtures/api";
 // Chromium and in WebKit.
 //
 // The stub (e2e/fixtures/api.ts) stands in for the bridge with one FolderWorld per page, so the list
-// starts empty in every case.
+// starts empty in every case. Its `/api/launchers` has no agent list, as a bridge before 1.19.0, so
+// Start with Shell goes through the plain space create.
 
 test.use({ serviceWorkers: "block" });
 
@@ -31,7 +32,7 @@ const sheet = (page: Page) => page.getByRole("dialog");
 const recent = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.recent"] });
 const favourites = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.favourites"] });
 const dirField = (page: Page) => sheet(page).getByPlaceholder(en["space.new.dir.placeholder"]);
-const createButton = (page: Page) => sheet(page).getByRole("button", { name: en["space.new.create"] });
+const createButton = (page: Page) => sheet(page).getByRole("button", { name: en["newSheet.start"] });
 
 async function openSheet(page: Page): Promise<void> {
   await page.getByRole("button", { name: en["space.overview.new.aria"] }).click();

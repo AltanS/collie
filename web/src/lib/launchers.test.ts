@@ -52,6 +52,32 @@ describe("useLaunchers", () => {
     asked.mockRejectedValue(new Error("offline"));
     const { result } = renderHook(() => useLaunchers());
     await waitFor(() => expect(asked).toHaveBeenCalled());
-    expect(result.current).toEqual({ launchers: [], home: "" });
+    expect(result.current).toEqual({ launchers: [], home: "", harnesses: null, loadedFor: null });
+  });
+
+  // M48: the agent list rides along on a 1.19.0 bridge; an older one sends none, and `loadedFor`
+  // tells "no list yet" from "this machine has no list" for the New sheet.
+  it("carries the machine's agent list, and names the scope the answer is for", async () => {
+    asked.mockClear();
+    asked.mockResolvedValue({ launchers: [], home: "/home/op", harnesses: [{ id: "claude", label: "Claude Code", found: true }] });
+    const { result } = renderHook(() => useLaunchers({ host: "desk" }));
+    await waitFor(() => expect(result.current.loadedFor).not.toBeNull());
+    expect(result.current.harnesses).toEqual([{ id: "claude", label: "Claude Code", found: true }]);
+  });
+
+  it("an older bridge's answer has no agent list, but is loaded", async () => {
+    asked.mockClear();
+    asked.mockResolvedValue({ launchers: [peek], home: "/home/op" });
+    const { result } = renderHook(() => useLaunchers());
+    await waitFor(() => expect(result.current.loadedFor).not.toBeNull());
+    expect(result.current.harnesses).toBeNull();
+  });
+
+  it("asks nothing while not enabled", async () => {
+    asked.mockClear();
+    asked.mockResolvedValue({ launchers: [], home: "" });
+    renderHook(() => useLaunchers(undefined, false));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(asked).not.toHaveBeenCalled();
   });
 });

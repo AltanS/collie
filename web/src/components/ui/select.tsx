@@ -25,8 +25,8 @@ interface SelectProps extends Omit<ComponentProps<"select">, "className"> {
  * the tap floor (DESIGN.md §6), and nothing about the select changes its box when the value does
  * (§2): the native control sizes itself to its widest option, not to the chosen one.
  *
- * The first user is the "New agent on a branch" sheet's Repository and Agent fields
- * (`new-space-sheet.tsx`); the dashboard's workspace and order selects are the second. The three
+ * The dashboard's workspace and order selects use it (the old new-space sheet's Repository and
+ * Agent fields did, before the one New sheet replaced them with chips in M48). The three
  * Settings selects (language, typeface, terminal font) carry the same construction by hand and have
  * not been moved onto this yet.
  */

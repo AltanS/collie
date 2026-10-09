@@ -3,7 +3,7 @@
 
 import { CrewProvider } from "@/components/crew-provider";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
-import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { NewSheet } from "@/components/new-sheet";
 import { SpaceOverview } from "@/components/space-overview";
 import {
   devicesPaired,
@@ -14,7 +14,7 @@ import {
   spacesWithWorktrees,
   watchedPanes,
 } from "../fixtures";
-import { SettingsRouter } from "../harness";
+import { RootRouter, SettingsRouter } from "../harness";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
@@ -116,38 +116,32 @@ export function SettingsSection() {
         </Card>
 
         <Card
-          state="new-space-worktree-tab"
-          label="new space, the worktree tab"
-          reach="tap + on the spaces list where at least one open space sits in a repo. With no repo open (or a multiplexer that cannot make one) the tab strip is not rendered at all and this is the plain new-space sheet."
-          note="The repo picker is here because the sheet is opened from the LIST, where there is no current space to take a repo from. `Or open one that already exists` reads the worktrees of the chosen repo once — it is the only route to a checkout that is not a space."
+          state="new-sheet"
+          label="the one New sheet"
+          reach="tap + New on the dashboard, the folder button on the Spaces list, or the empty dashboard's first-agent card. A pane's ⋯ New agent on a branch opens it with the branch switch on."
+          note="The agents and the commands are the chosen machine's own answer (GET /api/launchers), so this card shows what the bridge behind the playground reports. What cannot run there is listed at the top with its reason, never hidden."
           span={2}
         >
-          <PhoneFrameCard height={560}>
-            <NewSpaceSheet
-              open
-              onClose={() => {}}
-              onCreate={() => {}}
-              repos={[
-                { workspaceId: "w1", repoRoot: "/src/collie", label: "collie" },
-                { workspaceId: "w9", repoRoot: "/src/nixcfg", label: "nixcfg" },
-              ]}
-              onCreateWorktree={() => {}}
-              onOpenWorktree={() => {}}
-            />
+          <PhoneFrameCard height={640}>
+            <RootRouter data={homeSolo}>
+              <NewSheet open onClose={() => {}} />
+            </RootRouter>
           </PhoneFrameCard>
         </Card>
 
         <Card
-          state="new-space-pick-host"
-          label="new space, crew, pick a host"
-          reach="tap + on the spaces list of a lead with peers. On a solo collie this row is not rendered at all and the sheet is the one above."
-          note="The chip that is marked is where the create lands: the machine the list was already showing, or the lead. `attic`, `cellar` and `garage` keep their chips and their names — a machine that cannot take writes is dimmed and says why, never dropped, because a missing row reads as a machine you do not have."
+          state="new-sheet-pick-host"
+          label="New sheet, crew, pick a machine"
+          reach="open the New sheet on a lead with peers. On a solo collie this row is not rendered at all."
+          note="The chip that is marked is where the start lands: the machine the list was already showing, or the lead. A machine that cannot take writes is dimmed and says why, never dropped."
           span={2}
         >
-          <PhoneFrameCard height={560}>
-            <CrewProvider servers={rosterFive} ts={homeCrew.ts} pollMs={3_000}>
-              <NewSpaceSheet open onClose={() => {}} onCreate={() => {}} scope={{ host: "workshop" }} />
-            </CrewProvider>
+          <PhoneFrameCard height={640}>
+            <RootRouter data={homeCrew}>
+              <CrewProvider servers={rosterFive} ts={homeCrew.ts} pollMs={3_000}>
+                <NewSheet open onClose={() => {}} scope={{ host: "workshop" }} />
+              </CrewProvider>
+            </RootRouter>
           </PhoneFrameCard>
         </Card>
       </Group>

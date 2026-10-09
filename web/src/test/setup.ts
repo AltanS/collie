@@ -71,7 +71,7 @@ Object.defineProperty(URL, "createObjectURL", {
 });
 Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: () => undefined });
 beforeEach(() => __resetAuthedUrls());
-// The new-space sheet's folder cache is module-scoped: one test's list must not open the next test's sheet.
+// The New sheet's folder cache is module-scoped: one test's list must not open the next test's sheet.
 beforeEach(() => resetFoldersCacheForTests());
 
 // jsdom gaps that the terminal mirror / sheets touch.

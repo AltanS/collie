@@ -67,20 +67,30 @@ herdr workspace create --label review --cwd ~/src/app-review
 ```
 
 On Herdr you can also do both steps from the phone. Open a pane's **⋯** menu and tap **New agent
-on a branch**. Collie creates a worktree of that pane's repo on a new branch, opens it as its own
-workspace, and starts the agent you pick in it. The branch is named `worktree/<word>-<word>-<hex>`,
-and you can change the name before you tap Create.
+on a branch**. The New sheet opens with **On a new branch** already on, for that pane's repo. Pick
+the agent, then tap Start. Collie makes a worktree on a new branch, opens it as its own workspace,
+and starts the agent in it. The branch is named `worktree/<word>-<word>-<hex>`, and you can change
+the name before you tap Start. The same switch is in the sheet you open with **+ New** on the
+dashboard, once you name a folder inside a repo.
 
 Under the name, **Start from** picks where the new branch begins: the repo's default branch (for
-example `main`), or **This branch**, the branch the pane is on. The choice shows only when the pane
-is on a branch other than the default, and it opens on **This branch**. Changes you have not
-committed stay behind, because the new worktree starts from the last commit. Collie never fetches,
-so the default is the copy of the branch you already have.
+example `main`), or **This branch**, the branch the folder is on. The choice shows only when that is
+a branch other than the default, and it opens on **This branch**. Changes you have not committed
+stay behind, because the new worktree starts from the last commit. Collie never fetches, so the
+default is the copy of the branch you already have.
 
-The agent list is your [launchers](configure.md#your-own-launchers), plus a plain shell. Collie
-remembers the last one you picked. A create can take up to a minute on a large repo. If the phone
-loses the reply, tap Create again: Collie answers with the worktree it already made, and does not
-make a second one. The row shows only on Herdr, and only for a pane on the lead machine.
+**Branch folder** says where the worktree goes. **Herdr's default** leaves it to Herdr, which uses
+`~/.herdr/worktrees/<repo>/<branch>` unless its `config.toml` names another `[worktrees] directory`.
+**Other folder** puts it in a folder you name, which must already exist under your home folder, and
+must not be hidden, a link, or inside the repo. The sheet shows the full path of the new folder
+before you tap Start, and Collie checks the rule again at the moment it creates it. Collie remembers
+your choice for each repo.
+
+The agents in the sheet are the ones Collie found on that machine, plus a plain shell and your
+[launchers](configure.md#your-own-launchers). A create can take up to a minute on a large repo. If
+the phone loses the reply, the sheet says so and does not send it again. Look at the dashboard
+first. **Try again** sends the same request, so Collie answers with the worktree it already made and
+does not make a second one. The switch shows only on Herdr, and only for the lead machine.
 
 Running multiple sessions creates multiple waiting prompts. Collie groups panes by workspace and
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count

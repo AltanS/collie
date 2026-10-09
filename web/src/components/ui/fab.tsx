@@ -14,28 +14,36 @@ interface FabProps {
    * under it (the dashboard's footer), the primitive does not.
    */
   bottom: string;
+  /**
+   * Draw the round "+" alone. Absent or false draws "+ New", the word beside the glyph, in the house
+   * 2px corner. The caller sets it once the list under the button has scrolled, and clears it at the
+   * top: the word teaches the button once, then the circle gets out of the way.
+   */
+  collapsed?: boolean;
 }
 
 /**
- * The one floating action button: a round "+" in the primary fill, bottom-right of the content
- * column. It is the single exception to "the sheet is the app's only floating layer" (DESIGN.md §1),
- * and the exception is narrow. It is `fixed` and reserves nothing in flow, so showing, hiding or
- * busying it moves no content (§2); the caller keeps the last row scrollable clear of it.
+ * The one floating action button, bottom-right of the content column. It is the single exception to
+ * "the sheet is the app's only floating layer" (DESIGN.md §1), and the exception is narrow. It is
+ * `fixed` and reserves nothing in flow, so showing, hiding, busying or shrinking it moves no content
+ * (§2); the caller keeps the last row scrollable clear of it.
+ *
+ * TWO SHAPES, ONE BUTTON (M48, card 3.2). At rest it reads "+ New": wider than tall, so it takes the
+ * house 2px corner (§3), never a stadium. `collapsed` shrinks it to the 56px round "+", the one shape
+ * allowed a full radius, because width equals height. Width and corner move together over 200ms,
+ * and not at all under reduced motion. The word is the button's name in both shapes (`aria-label`),
+ * so a screen reader hears "New" whichever is drawn.
  *
  * Portalled to <body> for the reason `ui/toast-viewport.tsx` is: a screen transition's `transform`
  * on any ancestor would turn `fixed` into "fixed to that ancestor" and silently carry the button
- * with the route. The layer is the same 640px column the toast and the sheet stop at, so on a wide
- * screen the button sits at the column's right edge, not the window's. `z-30` sits under the toast
- * (`z-40`) and the sheets (`z-50`); the caller's toast lift keeps the two from overlapping at all.
+ * with the route. The layer is the same 640px column the toast and the sheet stop at. `z-30` sits
+ * under the toast (`z-40`) and the sheets (`z-50`); the caller's toast lift keeps the two apart.
  *
  * It owns the look, the busy swap and the name. It owns no gate: whether it is drawn, and whether a
- * tap may write, is the caller's.
- *
- * A true circle is the one shape allowed `rounded-full` (DESIGN.md §3). The glyph and the spinner
- * are the same 24px in the same box, swapped in place. `disabled:opacity-100` keeps a busy button at
- * full ink: the spinner is the state, and a faded spinner reads as broken.
+ * tap may write, is the caller's. `disabled:opacity-100` keeps a busy button at full ink: the spinner
+ * is the state, and a faded spinner reads as broken.
  */
-export function Fab({ label, onClick, busy = false, bottom }: FabProps) {
+export function Fab({ label, onClick, busy = false, bottom, collapsed = false }: FabProps) {
   return createPortal(
     <div
       data-slot="fab-layer"
@@ -51,9 +59,25 @@ export function Fab({ label, onClick, busy = false, bottom }: FabProps) {
         aria-label={label}
         aria-busy={busy}
         data-slot="fab"
-        className="pointer-events-auto flex size-14 items-center justify-center rounded-full border border-transparent bg-primary text-primary-foreground shadow-lg transition-transform duration-150 animate-in fade-in hover:bg-primary/90 active:scale-95 disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        data-collapsed={collapsed || undefined}
+        className={cn(
+          "pointer-events-auto flex h-14 items-center justify-center overflow-hidden border border-transparent bg-primary text-primary-foreground shadow-lg animate-in fade-in hover:bg-primary/90 active:scale-95 disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          "transition-[width,border-radius,transform] duration-200 ease-out motion-reduce:transition-none",
+          // 28px on a 56px square is the circle; 2px is the house corner on the wider pill.
+          collapsed ? "w-14 rounded-[28px]" : "w-28 rounded-md",
+        )}
       >
-        {busy ? <Loader2 className="size-6 animate-spin" aria-hidden /> : <Plus className="size-6" aria-hidden />}
+        {busy ? <Loader2 className="size-6 shrink-0 animate-spin" aria-hidden /> : <Plus className="size-6 shrink-0" aria-hidden />}
+        {/* The word fades and folds with the width. aria-hidden: the label above already names it. */}
+        <span
+          aria-hidden
+          className={cn(
+            "overflow-hidden whitespace-nowrap text-sm font-semibold transition-[max-width,opacity,margin] duration-200 ease-out motion-reduce:transition-none",
+            collapsed ? "ml-0 max-w-0 opacity-0" : "ml-1.5 max-w-16 opacity-100",
+          )}
+        >
+          {label}
+        </span>
       </button>
     </div>,
     document.body,

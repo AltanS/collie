@@ -28,16 +28,20 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Each machine says which agents it can start.** The bridge checks for Claude Code, Codex, opencode, pi, omp, Grok, Hermes, Muse and Antigravity on the PATH your login shell uses, so an agent installed through nvm or in your home folder counts. In a crew, each member answers for itself.
 - **A tapped Start never opens two panes.** Each start carries an id. If the reply is lost and you try again, Collie shows the pane the first tap made instead of starting a second one.
 - **A new branch can go in a folder you choose.** Next to Herdr's own worktree folder, you can pick a parent folder in your home, and Collie names the new folder after the branch. Collie shows the full path before you start and refuses a folder that is hidden, inside the repo, behind a link, outside your home, or already there. Each repo remembers your last choice on that machine.
-- **One floating New button on the dashboard.** A round "+" sits at the bottom right of the Dashboard tab, above the footer, and opens one sheet with Agent (your launchers), Space and Agent on a branch. A row is hidden when it cannot work on your machine, and the Spaces header's folder button stays.
+- **One New button and one New sheet.** A "+ New" button sits at the bottom right of the Dashboard tab and folds to a round "+" while you scroll. It opens one sheet: Again (your last start on that machine), the agents the machine found, Shell and your launchers, the folder, an "On a new branch" switch, a line that says what will start where, and Start. What cannot run is listed at the top with the reason, never hidden. The Spaces header's folder button and a pane's "New agent on a branch" open the same sheet. If the reply is lost, the sheet says so and sends nothing again until you tap Try again.
+- **An empty dashboard offers "Start your first agent".** With no pane running and a phone that may start one, a large card takes the place of "No agents running." and opens the New sheet.
 - **A new worktree starts from main or from this branch.** "New agent on a branch" now asks where the
   branch begins: the repo's default branch, or the branch the pane is on. The choice shows only when the
   pane is on another branch, and it opens on "This branch"; changes you have not committed stay behind.
-  The dashboard's Worktree tab always starts from the default branch. Collie never fetches to do this.
+  Collie never fetches to do this.
+
+### Changed
+
+- **The new-space sheet is gone, folded into the New sheet.** A space label and the list of worktrees that already exist are no longer offered there; open an existing worktree with `herdr worktree open` on the machine. The agent you picked for a branch is now remembered per machine with the folder, as the Again row, and forgotten when the phone is unpaired.
 
 ### Fixed
 
 - **The dashboard no longer offers a worktree on a multiplexer that cannot make one.** The check read the capability's answer object instead of its yes or no, so "Worktree" in the New space sheet showed even when the multiplexer declared it unsupported.
-- **The German New space sheet no longer calls the Space tab "Leertaste".** The tab label meant the keyboard space bar; it now reads "Space", like the rest of the German app.
 
 ## [1.18.1] - 2026-10-09
 

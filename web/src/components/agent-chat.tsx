@@ -96,9 +96,9 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { branchOffRepos, paneBranchName } from "@/lib/branch-off";
+import { paneBranchName, paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
-import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { NewSheet } from "@/components/new-sheet";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
@@ -265,9 +265,8 @@ export function AgentChat({
   // hook already refuses on a saved HERD, and this adds what only this view knows, that THIS pane's
   // last read failed or its screen is a saved copy. Set below, once both facts exist.
   const structuralWritesOff = useRef(false);
-  const { newTab, newSpace, launch, launching, creatingTab, branchOff } = useSpaceActions(
-    () => !structuralWritesOff.current,
-  );
+  const canWriteHere = useCallback(() => !structuralWritesOff.current, []);
+  const { newTab, launch, launching, creatingTab } = useSpaceActions(canWriteHere);
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
@@ -294,14 +293,11 @@ export function AgentChat({
   );
 
   const { launchers, home: launchersHome } = useLaunchers(scope);
-  // "New agent on a branch" (ADR 0089): the repo this pane sits in, read off the root snapshot's
-  // spaces. Null for a pane outside a Git repo, which is what keeps the ⋯ row away from it. The
-  // other two gates (the capability, the lead scope) are the actions sheet's own.
+  // "New agent on a branch" (ADR 0089, M48): offered for a pane whose space sits in a Git repo, read
+  // off the root snapshot's spaces. The other two gates (the capability, the lead scope) are the
+  // actions sheet's own. It opens the one New sheet on this pane's folder with the switch on.
   const rootSpaces = useOptionalRootData()?.workspaces;
-  const branchOffTarget = useMemo(
-    () => (agent === undefined || rootSpaces === undefined ? null : branchOffRepos(rootSpaces, agent.workspaceId)),
-    [agent, rootSpaces],
-  );
+  const branchOffOffered = agent !== undefined && rootSpaces !== undefined && paneInRepo(rootSpaces, agent.workspaceId);
   const [branchOffOpen, setBranchOffOpen] = useState(false);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, stepChatFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
@@ -2858,24 +2854,17 @@ export function AgentChat({
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}
-          onBranchOff={branchOffTarget === null ? undefined : () => setBranchOffOpen(true)}
+          onBranchOff={branchOffOffered ? () => setBranchOffOpen(true) : undefined}
         />
-        {/* "New agent on a branch" (ADR 0089): the new-space sheet in worktree mode, on this pane's
-            repo, with a branch name typed and an agent picker. `onCreate` is the plain space create
-            the sheet's type requires; a branch-off sheet never shows that side. */}
-        {branchOffTarget !== null && (
-          <NewSpaceSheet
+        {/* "New agent on a branch" (ADR 0089, M48): the one New sheet, on this pane's folder, with
+            the branch switch on and this pane's branch offered as the start. */}
+        {branchOffOffered && agent !== undefined && (
+          <NewSheet
             open={branchOffOpen}
             onClose={() => setBranchOffOpen(false)}
-            onCreate={newSpace}
-            repos={branchOffTarget.repos}
             scope={scope}
-            branchOff={{
-              workspaceId: branchOffTarget.selected,
-              launchers,
-              branch: paneBranchName(agent),
-              onCreate: (workspaceId, branch, extras) => branchOff(workspaceId, branch, extras, scope),
-            }}
+            from={{ cwd: agent.cwd, branch: paneBranchName(agent) }}
+            canWrite={canWriteHere}
           />
         )}
         {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to

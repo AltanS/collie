@@ -37,7 +37,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). Space and tab strips. |
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
-| `ui/fab.tsx` | The floating New button: a 56px round "+" in the primary fill, `fixed` at the right edge of the content column, portalled to `<body>`, at `z-30` (under the toast's `z-40` and the sheets' `z-50`). The ONE exception to "the sheet is the app's only floating layer", and only on the dashboard's Dashboard tab. It owns the look, the busy spinner swap and the name; the caller owns whether it is drawn and the `bottom-` that clears its footer. Exception rules below the table. |
+| `ui/fab.tsx` | The floating New button: a 56px-tall "+ New" pill in the primary fill with the house 2px corner, that folds to a 56px round "+" once the list scrolls (`collapsed`) and opens out again at the top; width and corner move on one transition that `motion-reduce` turns off. It is `fixed` at the right edge of the content column, portalled to `<body>`, at `z-30` (under the toast's `z-40` and the sheets' `z-50`). The ONE exception to "the sheet is the app's only floating layer", and only on the dashboard's Dashboard tab. It owns the look, the busy spinner swap and the name; the caller owns whether it is drawn and the `bottom-` that clears its footer. Exception rules below the table. |
 | `ui/image-card.tsx` | One journal picture, framed, as an anchor to its bytes, with a caption saying where it came from. The mirror's placeholder clusters, and the newest turn's picture right after the mirror. Every element is a `<span>`, so it may sit inside the mirror's `<pre>`. `surface` picks the frame: dark-space inside the mirror, the app's tokens on the page. |
 | `ui/image-frame.tsx` | One picture shown whole in the content column: at most the column's width and 70% of the screen's height, centred, on a checkerboard of `--card` and `--muted` that shows transparency in both themes, with one caption line under it that is always there, so filling it moves nothing. The Files view's picture and SVG previews (ADR 0090). Not for a journal picture, which is `ImageCard`. |
 | `ui/list-group.tsx` | A run of flat rows drawn as ONE bordered region. Gives a `divide-y` list a first and last edge. |
@@ -64,8 +64,9 @@ If the thing you need is not in that table, say so in the diff and put it in tha
 floating New button** (`ui/fab.tsx`, mounted by `routes/home.tsx` on the Dashboard tab only, never on Crew or Files). Why: the
 only create control on the dashboard was a FolderPlus in the Spaces section header, low on a long
 scrolling page and out of reach of the thumb, and a worktree was two taps behind it. One create entry
-under the thumb, opening one sheet with Agent, Space and Agent on a branch, was the pick (card 1.3,
-2026-10-08). The exception is bounded by these rules, and a second floating control must change this
+under the thumb, opening one sheet, was the pick (card 1.3, 2026-10-08). Since M48 (1.19.0) that sheet
+is the one New sheet (`components/new-sheet.tsx`): Again, Agents, Commands, Folder, "On a new branch",
+the summary line and Start, with what cannot run listed at the top. The exception is bounded by these rules, and a second floating control must change this
 section first:
 
 - **It reserves nothing in flow.** It is `fixed`, so showing, hiding or going busy moves no content
@@ -81,7 +82,12 @@ section first:
 - **It is drawn only if a row could work.** Not on a device that may not write, and not when the
   multiplexer cannot make a space, no launcher is configured and no repo is open. On a saved copy it
   stays drawn and refuses on the tap, as `workspace-new-tab.tsx` does.
-- **The Spaces header's FolderPlus stays.** The button adds an entry; it removes none.
+- **It reads "+ New" at the top and folds to "+" on scroll.** The word is the label a first-time
+  reader needs; once the list moves, the round "+" covers less of it. The pill takes the 2px corner,
+  because it is wider than it is tall; only the folded circle is full-round. The accessible name is
+  "New" in both shapes, and the word is `aria-hidden`.
+- **The Spaces header's FolderPlus stays,** and opens the same sheet. So does the empty dashboard's
+  "Start your first agent" card. The button adds an entry; it removes none.
 
 ### The alert family: the primitive landed, the conversion did not finish
 
@@ -265,7 +271,7 @@ round came back softer than the direction that was chosen.
 
 **Full-round is RESERVED** for shapes whose width equals their height, where it draws a
 circle: status dots, the avatar, the switch thumb, a bead, the dashed "+" of
-`ui/add-button.tsx` at both its sizes, the floating New button of `ui/fab.tsx`. Anything wider than it is tall becomes a *stadium*,
+`ui/add-button.tsx` at both its sizes, the floating New button of `ui/fab.tsx` when folded (its "+ New" pill takes 2px). Anything wider than it is tall becomes a *stadium*,
 and there is no stadium in the mark. The chip, the pane pill and the switch track all take
 2px, each with a comment at the line saying why, so nobody "fixes" one back.
 

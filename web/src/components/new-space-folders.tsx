@@ -10,7 +10,7 @@ import { shortenHome } from "@/lib/shorten-home";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 
-// The new-space sheet's Favourites and Recent sections (#289, M40/02), directly under its Directory
+// The New sheet's Favourites and Recent sections (#289, M40/02), directly under its Folder
 // field, for the machine the host picker chose. A row FILLS the field and creates nothing, so the
 // operator can still set a label, and a folder that has since gone is one more tap from being
 // noticed rather than a surprise create. The star beside it moves the folder between the two lists.

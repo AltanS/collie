@@ -6,12 +6,31 @@ import { Fab } from "./fab";
 const BOTTOM = "bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]";
 
 describe("Fab, the dashboard's one floating New button", () => {
-  it("is a 56px circle in the primary fill, named by the caller", () => {
+  it("reads \"+ New\" at rest, a 56px-tall pill in the house 2px corner, named by the caller", () => {
     render(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} />);
     const button = screen.getByRole("button", { name: "New" });
-    expect(button).toHaveClass("size-14", "rounded-full", "bg-primary", "text-primary-foreground");
+    expect(button).toHaveClass("h-14", "w-28", "rounded-md", "bg-primary", "text-primary-foreground");
+    expect(button).not.toHaveClass("rounded-[28px]");
+    expect(button).toHaveTextContent("New");
     // The reserved transparent edge (DESIGN.md §2): a state recolours, never re-lays-out.
     expect(button).toHaveClass("border", "border-transparent");
+  });
+
+  it("collapses to the 56px round \"+\", keeping its name, and moves without motion when asked", () => {
+    const { rerender } = render(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} />);
+    const pill = screen.getByRole("button", { name: "New" });
+    rerender(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} collapsed />);
+    const round = screen.getByRole("button", { name: "New" });
+    // One button through both shapes: the same element, so focus and a tap in flight survive.
+    expect(round).toBe(pill);
+    expect(round).toHaveClass("h-14", "w-14", "rounded-[28px]");
+    expect(round).toHaveAttribute("data-collapsed", "true");
+    // The word folds away and is never read twice: the label is the name in both shapes.
+    const word = round.querySelector("span[aria-hidden]");
+    expect(word).toHaveClass("max-w-0", "opacity-0");
+    // Reduced motion: the width, the corner and the word change at once.
+    expect(round).toHaveClass("motion-reduce:transition-none");
+    expect(word).toHaveClass("motion-reduce:transition-none");
   });
 
   it("portals to <body>, never inside the caller's tree", () => {

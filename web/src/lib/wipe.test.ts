@@ -1,4 +1,5 @@
 import { loadDraft, saveDraft } from "@/lib/drafts";
+import { AGAIN_KEY, rememberAgain } from "@/lib/new-sheet";
 import { loadLastPaneText, loadLastSnapshot, saveLastPaneText, saveLastSnapshot } from "@/lib/last-seen";
 import { http, HttpResponse } from "msw";
 
@@ -127,6 +128,15 @@ describe("wipeDevice — a pairing that ended", () => {
     expect(await loadLastPaneText(LEAD, "w1:p1")).toBeNull();
     expect(localStorage.getItem(PUSH_ENDPOINT_KEY)).toBeNull();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("forgets the New sheet's last start per machine, because it names that pairing's folders", async () => {
+    stubCaches([]);
+    stubServiceWorker();
+    rememberAgain("", { what: { kind: "shell" }, label: "Shell", cwd: "~/src/client", branch: null, at: 1 });
+    expect(localStorage.getItem(AGAIN_KEY)).not.toBeNull();
+    await wipeDevice("unpair");
+    expect(localStorage.getItem(AGAIN_KEY)).toBeNull();
   });
 
   it("clears the memory tier of drafts too, not only localStorage", async () => {

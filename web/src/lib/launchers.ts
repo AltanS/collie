@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { fetchLaunchers } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
-import type { Launcher } from "@/lib/types";
+import type { HarnessInfo, Launcher } from "@/lib/types";
 
 // THIS scope's own launcher rows — deliberately NOT part of lib/operator-config.ts's one-shot
 // `/api/config` cache. Rows must come from the host that RUNS them: a crew peer keeps its own
@@ -18,26 +18,51 @@ import type { Launcher } from "@/lib/types";
 export interface LaunchersState {
   launchers: readonly Launcher[];
   home: string;
+  /**
+   * The agents that host starts by id (ADR 0091). `null` until an answer arrived, and for good from a
+   * bridge older than 1.19.0, which sends none: tell the two apart with {@link loadedFor}.
+   */
+  harnesses: readonly HarnessInfo[] | null;
+  /**
+   * The `host\u0000session` of the scope the answer above belongs to, `null` before the first one. A
+   * view that switches machines keeps the last machine's rows until the new answer lands, so a
+   * caller that must not show one machine's agents under another's name compares this first.
+   */
+  loadedFor: string | null;
 }
 
-const EMPTY: LaunchersState = { launchers: [], home: "" };
+const EMPTY: LaunchersState = { launchers: [], home: "", harnesses: null, loadedFor: null };
+
+/** The key {@link LaunchersState.loadedFor} is written with. */
+export function launchersKey(scope: Scope | undefined): string {
+  return `${scope?.host ?? ""}\u0000${scope?.session ?? ""}`;
+}
 
 /**
  * Reactive read of one scope's launcher rows. The dashboard calls this with the ambient scope (no
  * `?h=`); the switcher sheet in agent-chat.tsx calls it with the current pane's scope, which is
  * already ambient there.
  */
-export function useLaunchers(scope?: Scope): LaunchersState {
+export function useLaunchers(scope?: Scope, enabled = true): LaunchersState {
   const host = scope?.host;
   const session = scope?.session;
   const [state, setState] = useState<LaunchersState>(EMPTY);
 
+  // `enabled` false reads nothing: the New sheet mounts this while closed and reads on its opening.
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetchLaunchers(host === undefined && session === undefined ? undefined : { host, session });
-        if (!cancelled) setState({ launchers: res.launchers, home: res.home });
+        if (!cancelled) {
+          setState({
+            launchers: res.launchers,
+            home: res.home,
+            harnesses: res.harnesses ?? null,
+            loadedFor: launchersKey({ host, session }),
+          });
+        }
       } catch {
         // See the header: leave the previous rows in place and let the next mount retry.
       }
@@ -45,7 +70,7 @@ export function useLaunchers(scope?: Scope): LaunchersState {
     return () => {
       cancelled = true;
     };
-  }, [host, session]);
+  }, [host, session, enabled]);
 
   return state;
 }

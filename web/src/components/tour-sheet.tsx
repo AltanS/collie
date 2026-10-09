@@ -8,10 +8,9 @@ import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { CollieMark } from "@/components/collie-mark";
-import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { NewSheet } from "@/components/new-sheet";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
-import { useSpaceActions } from "@/hooks/use-spaces";
 import { t, tn } from "@/lib/i18n";
 import { promptInstall, useInstallOffer } from "@/lib/install";
 import { reasonText } from "@/lib/push-copy";
@@ -444,7 +443,6 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
   const mux = useMuxName();
   const { state, busy, setEnabled } = usePushControl();
   const installOffer = useInstallOffer();
-  const { newSpace } = useSpaceActions();
   const [spaceOpen, setSpaceOpen] = React.useState(false);
 
   // The blocked panes, in the dashboard's own order (lib/triage.ts): "needs you" is the first
@@ -493,15 +491,9 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
       />
       {/* The "Nothing is running yet" card's remedy, mounted HERE rather than reached for on the
           dashboard: this gate is not always opened over the dashboard, and a button that navigated
-          first and opened a sheet second would need a signal to survive the navigation. No `repos`
-          is passed, and that is a fact rather than an omission — the card only appears when nothing
-          is running, so there is no open space for a worktree to be branched from. */}
-      <NewSpaceSheet
-        open={spaceOpen}
-        onClose={() => setSpaceOpen(false)}
-        onCreate={newSpace}
-        scope={home.scope}
-      />
+          first and opened a sheet second would need a signal to survive the navigation. It is the
+          one New sheet, the same the dashboard opens (M48). */}
+      <NewSheet open={spaceOpen} onClose={() => setSpaceOpen(false)} scope={home.scope} />
     </>
   );
 }

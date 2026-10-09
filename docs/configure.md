@@ -314,11 +314,15 @@ Leave it out and it means "here": the dashboard opens it in your home dir, a pan
 landing at the top of one.
 
 This file is the allowlist. `POST /api/launch` accepts only a `command` that matches a row here
-exactly, so a phone can start nothing that is not in the file. Changes apply immediately without a
+exactly, an agent id from the machine's own list (the machine types that agent's command itself),
+or a plain shell. A phone can send no command line of its own. Changes apply immediately without a
 restart, but an already-open tab re-reads the rows only on its next load.
 
-Your rows appear in two places: a **Launch** section on the dashboard, which folds like Spaces,
-and a **Launch** section in the switcher sheet (swipe up from a pane). A row with a fixed folder
+Your rows appear in three places: under **Commands** in the New sheet (tap **+ New** on the
+dashboard), a **Launch** section on the dashboard, which folds like Spaces, and a **Launch** section
+in the switcher sheet (swipe up from a pane). In the New sheet a cwd-less row runs in the folder you
+name there, and a row with a fixed folder shows that folder in place of the field. A row never
+starts on a new branch; pick an agent or Shell for that. A row with a fixed folder
 shows it, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
 implies home, so it says nothing there). Declare no rows and neither section appears.
 
@@ -511,21 +515,23 @@ what its lead let through.
 
 ## Favourite and recent folders
 
-The new-space sheet lists the folders you opened spaces in before, so you tap one instead of typing
+The New sheet lists the folders you started something in before, so you tap one instead of typing
 a path.
 
-Under the Directory field sit two lists for the machine the space goes to. **Recent** holds the last
-8 folders a space was created in, newest first. It counts only creates that worked and named a
-folder, and it never lists your home dir, because a blank field already means home.
+Under the Folder field sit two lists for the machine the start goes to. **Recent** holds the last
+8 folders something was started in, newest first. It counts only starts that worked and named a
+folder, and it never lists your home dir, because a blank field already means home. A new branch's
+own folder is not added, because it is a new checkout, not a place you return to.
 
-A tap on a row fills the Directory field and creates nothing, so you can still add a label. The star
+A tap on a row fills the Folder field and starts nothing, so you can still change the choice above. The star
 beside a row moves it to **Favourites**, up to 12, in the order you starred them. A second tap on the
 star moves it back to the top of Recent.
 
 The list belongs to the machine, not to the phone. Each machine keeps its own in `folders.json` in
 its state directory, `~/.local/state/collie/folders.json` unless `COLLIE_STATE_DIR` moves it. Every
-device you use sees the same list, and the file appears only after the first space created in a
-folder or the first star.
+device you use sees the same list, and the file appears only after the first start in a folder or
+the first star. The same lists fill **Other folder** under **On a new branch**, where they pick the
+folder the branch's own folder goes in.
 
 In a [crew](crew.md), each machine keeps the folders that exist on it, and the sheet shows the list
 of the machine you picked. A machine that runs an older Collie has no list, and the sheet then shows

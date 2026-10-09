@@ -1340,7 +1340,9 @@ export interface CreatedPane {
 
 /** Result of creating a new tab/space — on success `pane` is the fresh shell to navigate into. */
 export type CreateResponse =
-  | { ok: true; pane: CreatedPane }
+  // `replayed`: the answer to a launch whose request id the bridge already held (ADR 0091). The pane
+  // is the one the first request made; nothing new was started.
+  | { ok: true; pane: CreatedPane; replayed?: true }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /**
@@ -1544,11 +1546,27 @@ export interface Launcher {
 export interface LaunchersResponse {
   launchers: Launcher[];
   home: string;
+  /**
+   * The agents this host starts by id, and whether each binary is on its login PATH (ADR 0091).
+   * Mirrors `harnesses` in bridge/types.ts. ABSENT from a bridge older than 1.19.0, which starts
+   * none by id: the New sheet then offers no agents for that machine and says why.
+   */
+  harnesses?: HarnessInfo[];
+}
+
+/** One agent a host can start by id. Mirrors `HarnessInfo` in bridge/types.ts. */
+export interface HarnessInfo {
+  /** The id `POST /api/launch` takes as `harness`, and the brand key `AgentIcon` draws. */
+  id: string;
+  /** What the sheet calls it. */
+  label: string;
+  /** Whether the binary was found on that host's login PATH. */
+  found: boolean;
 }
 
 /**
  * GET /api/folders, and the answer to POST /api/folders/star — ONE host's folder list for the
- * new-space sheet (#289), read off that machine's own `folders.json`. `recent` is newest first (at
+ * New sheet (#289), read off that machine's own `folders.json`. `recent` is newest first (at
  * most eight, only folders a space was created in), `favourites` in starred order (at most twelve),
  * and the two never overlap. `home` is that host's home dir, never an entry, for shortening a folder
  * to `~/…` without the client knowing which machine answered. A host on an older version answers
@@ -1740,6 +1758,29 @@ export type WorktreeOpenResponse =
  * `WorktreeBaseRequest` in bridge/worktree-base.ts.
  */
 export type WorktreeBaseChoice = { kind: "default" } | { kind: "ref"; ref: string };
+
+/**
+ * GET /api/worktree/plan — what a branch from a folder would be, before Start (ADR 0093). Mirrors
+ * `WorktreePlanResponse` in bridge/types.ts. `branchValid`, `defaultTarget` and `parentTarget` are
+ * there only when the query named a branch (and a parent).
+ */
+export type WorktreePlanResponse =
+  | {
+      ok: true;
+      repoRoot: string;
+      defaultBranch: string | null;
+      currentBranch: string | null;
+      remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
+      branchValid?: boolean;
+      defaultTarget?: { path: string; exists: boolean };
+      parentTarget?:
+        | { ok: true; path: string }
+        | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+    }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
+/** Where a new branch's folder goes (ADR 0093): Herdr's own place, or a child of a parent folder. */
+export type WorktreeFolderChoice = { kind: "default" } | { kind: "parent"; parent: string };
 
 /**
  * POST /api/workspace/:id/worktree — the new space, and whether the launcher was typed into it

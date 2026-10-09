@@ -5,7 +5,7 @@ import { mutate } from "@/lib/mutate";
 import { scopeKey, type Scope } from "@/lib/scope";
 import type { FoldersResponse } from "@/lib/types";
 
-// The new-space sheet's folder list (#289, M40/02): the folders a space was created in on ONE
+// The New sheet's folder list (#289, M40/02): the folders a space was created in on ONE
 // machine, and the ones the operator starred. The list is that machine's own — its bridge keeps it
 // in `folders.json` and records Recent itself after a create that worked — so this module is the
 // bridge's mirror and nothing more. It READS: when the sheet opens, again whenever the sheet's chosen

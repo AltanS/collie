@@ -10,7 +10,7 @@ import type { DeviceAuth, Launcher } from "@/lib/types";
 // Stub the launcher store at its seam — same idiom as operator-commands tests: the component
 // reads the hook, so we control what the hook returns per-case without touching the network.
 const { launchersValue } = vi.hoisted(() => {
-  const current: LaunchersState = { launchers: [], home: "" };
+  const current: LaunchersState = { launchers: [], home: "", harnesses: null, loadedFor: null };
   return { launchersValue: { current } };
 });
 vi.mock("@/lib/launchers", () => ({
@@ -82,7 +82,7 @@ const onOpenChange = vi.fn();
 
 describe("LaunchStrip", () => {
   it("renders nothing when no launchers are configured", async () => {
-    launchersValue.current = { launchers: [], home: "" };
+    launchersValue.current = { launchers: [], home: "", harnesses: null, loadedFor: null };
     mockLaunch.mockClear();
     render(<RouterProvider router={makeRouter(undefined)} />);
     // Empty → null, so an operator who never set `launchers.toml` sees today's dashboard byte
@@ -92,7 +92,7 @@ describe("LaunchStrip", () => {
   });
 
   it("renders one button per launcher using its label", async () => {
-    launchersValue.current = { launchers: [peek, quota], home: "/home/op" };
+    launchersValue.current = { launchers: [peek, quota], home: "/home/op", harnesses: null, loadedFor: null };
     mockLaunch.mockClear();
     render(<RouterProvider router={makeRouter(undefined)} />);
     expect(await screen.findByRole("button", { name: /Runs & quota/ })).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe("LaunchStrip", () => {
   });
 
   it("a pinned row shows its folder shortened under home; an absent one shows nothing", async () => {
-    launchersValue.current = { launchers: [peek, here], home: "/home/op" };
+    launchersValue.current = { launchers: [peek, here], home: "/home/op", harnesses: null, loadedFor: null };
     render(<RouterProvider router={makeRouter(undefined)} />);
     // The dashboard implies home, so the folder only earns a suffix when it differs from it.
     expect(await screen.findByText("~/project")).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("LaunchStrip", () => {
   });
 
   it("tapping a button calls the launch API with that launcher command", async () => {
-    launchersValue.current = { launchers: [peek, quota], home: "/home/op" };
+    launchersValue.current = { launchers: [peek, quota], home: "/home/op", harnesses: null, loadedFor: null };
     mockLaunch.mockClear();
     const user = userEvent.setup();
     render(<RouterProvider router={makeRouter(undefined)} />);
@@ -128,7 +128,7 @@ describe("LaunchStrip", () => {
   });
 
   it("double tap launches once", async () => {
-    launchersValue.current = { launchers: [peek, quota], home: "/home/op" };
+    launchersValue.current = { launchers: [peek, quota], home: "/home/op", harnesses: null, loadedFor: null };
     mockLaunch.mockClear();
     // A launch is the slowest create there is — the bridge waits for the new shell to draw before
     // it types — so hold this one open and tap again, the way an impatient thumb does.
@@ -159,7 +159,7 @@ describe("LaunchStrip", () => {
   });
 
   it("a read-only device does not fire the launch API", async () => {
-    launchersValue.current = { launchers: [peek], home: "/home/op" };
+    launchersValue.current = { launchers: [peek], home: "/home/op", harnesses: null, loadedFor: null };
     mockLaunch.mockClear();
     const user = userEvent.setup();
     // Build the read-only record the way fixtures do: `enforced` + not `authorized` → read-only.
@@ -174,7 +174,7 @@ describe("LaunchStrip", () => {
   });
 
   it("folds to its header, keeping the count visible", async () => {
-    launchersValue.current = { launchers: [peek, quota], home: "/home/op" };
+    launchersValue.current = { launchers: [peek, quota], home: "/home/op", harnesses: null, loadedFor: null };
     render(<RouterProvider router={makeRouter(undefined, false)} />);
 
     // Folded, the buttons are gone but the header still says how many there are — the count is the
@@ -189,7 +189,7 @@ describe("LaunchStrip", () => {
   });
 
   it("reports a fold toggle to the dashboard, which persists it", async () => {
-    launchersValue.current = { launchers: [peek, quota], home: "/home/op" };
+    launchersValue.current = { launchers: [peek, quota], home: "/home/op", harnesses: null, loadedFor: null };
     onOpenChange.mockClear();
     const user = userEvent.setup();
     render(<RouterProvider router={makeRouter(undefined, null)} />);

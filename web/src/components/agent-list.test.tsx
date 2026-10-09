@@ -422,6 +422,23 @@ describe("AgentList — the empty herd", () => {
     expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
   });
 
+  // M48 spec 01: a connected, empty herd on a device that may start something is the large card, and
+  // the card is the one way in to the New sheet from there.
+  it("offers the first-agent card in place of the placeholder when a start is possible", async () => {
+    const onFirstStart = vi.fn();
+    render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} onFirstStart={onFirstStart} />);
+    expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Start your first agent/ }));
+    expect(onFirstStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("never offers the card on a stale render or a bridge that is down", () => {
+    const { rerender } = render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} onFirstStart={vi.fn()} error />);
+    expect(screen.queryByRole("button", { name: /Start your first agent/ })).toBeNull();
+    rerender(<AgentList agents={[]} bridge="disconnected" onOpen={vi.fn()} onFirstStart={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Start your first agent/ })).toBeNull();
+  });
+
   it("says it's waiting when the bridge is down, rather than 'no agents'", () => {
     render(<AgentList agents={[]} bridge="disconnected" onOpen={vi.fn()} />);
     expect(screen.getByText(/waiting for herdr/i)).toBeInTheDocument();

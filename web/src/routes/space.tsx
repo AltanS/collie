@@ -6,7 +6,7 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
 import { TabStrip } from "@/components/tab-strip";
-import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { NewSheet } from "@/components/new-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
@@ -32,9 +32,9 @@ export function SpaceRoute() {
   const { spaceId = "" } = useParams();
   const nav = useNav();
   const revalidator = useRevalidator();
-  const { newTab, newSpace, creatingTab, creatingSpace } = useSpaceActions();
+  const { newTab, creatingTab, creatingSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  // The new-space sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
+  // The New sheet's Favourites and Recent, read once ahead of the tap so the sheet opens at its
   // final height (lib/folders.ts). Once per mount, for the machine this view shows.
   const folderHost = data.scope?.host;
   const folderSession = data.scope?.session;
@@ -180,7 +180,7 @@ export function SpaceRoute() {
         <StatusArea />
       </ToastViewport>
 
-      <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} />
+      <NewSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} scope={data.scope} />
     </div>
   );
 }

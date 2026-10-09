@@ -57,10 +57,10 @@ import type {
   UpdateRun,
   UpdateStartResponse,
   UploadResponse,
-  WorktreeListResponse,
   WorktreeBaseChoice,
   WorktreeCreateResponse,
-  WorktreeOpenResponse,
+  WorktreeFolderChoice,
+  WorktreePlanResponse,
 } from "./types";
 import type { SubscribeBody } from "./push";
 
@@ -1275,6 +1275,94 @@ export function launch(command: string, besidePaneId?: string, scope?: Scope): P
 }
 
 /**
+ * What the New sheet starts (ADR 0091): a `launchers.toml` row by its command, an agent by its id,
+ * or a plain shell. Exactly one, which is what the bridge checks first.
+ */
+export type StartWhat = { kind: "row"; command: string } | { kind: "harness"; id: string } | { kind: "shell" };
+
+/** POST /api/launch's body from the New sheet. A named contract so `startLaunch` infers against it. */
+interface StartLaunchBody {
+  command?: string;
+  harness?: string;
+  shell?: true;
+  cwd?: string;
+  requestId: string;
+}
+
+/**
+ * POST /api/launch from the New sheet: one kind, an optional folder, and a request id the phone
+ * minted for this intent. A retry with the same id answers the first pane (`replayed: true`).
+ */
+export function startLaunch(what: StartWhat, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
+  const body: StartLaunchBody = { requestId: opts.requestId };
+  if (what.kind === "row") body.command = what.command;
+  else if (what.kind === "harness") body.harness = what.id;
+  else body.shell = true;
+  if (opts.cwd !== undefined) body.cwd = opts.cwd;
+  return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * GET /api/worktree/plan — what a branch from `cwd` would be (ADR 0093). A read, lead-local: the
+ * sheet asks it only of the lead. `branch` and `parent` add the folder answers.
+ */
+export function planWorktree(query: { cwd: string; branch?: string; parent?: string }, scope?: Scope): Promise<WorktreePlanResponse> {
+  const params = new URLSearchParams({ cwd: query.cwd });
+  if (query.branch !== undefined && query.branch !== "") params.set("branch", query.branch);
+  if (query.parent !== undefined && query.parent !== "") params.set("parent", query.parent);
+  return req<WorktreePlanResponse>(withScope(`/api/worktree/plan?${params.toString()}`, scope));
+}
+
+/** POST /api/worktree's body. A named contract so `createWorktreeAt` infers against it. */
+interface WorktreeAtBody {
+  cwd: string;
+  branch: string;
+  base: WorktreeBaseChoice;
+  folder: WorktreeFolderChoice;
+  requestId: string;
+  harness?: string;
+  shell?: true;
+}
+
+/**
+ * POST /api/worktree — a new branch in its own folder from the folder `cwd` names, opened as a
+ * space, with an agent or a shell in it (ADR 0093). Lead-local, like every worktree call.
+ */
+export function createWorktreeAt(
+  ask: {
+    cwd: string;
+    branch: string;
+    base: WorktreeBaseChoice;
+    folder: WorktreeFolderChoice;
+    requestId: string;
+    what: Exclude<StartWhat, { kind: "row" }>;
+  },
+  scope?: Scope,
+): Promise<WorktreeCreateResponse> {
+  const body: WorktreeAtBody = { cwd: ask.cwd, branch: ask.branch, base: ask.base, folder: ask.folder, requestId: ask.requestId };
+  if (ask.what.kind === "harness") body.harness = ask.what.id;
+  else body.shell = true;
+  return req<WorktreeCreateResponse>(withScope("/api/worktree", scope), {
+    method: "POST",
+    body: JSON.stringify(body),
+    timeoutMs: WORKTREE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Whether a Start that threw may still have happened on the host (ADR 0091). A refusal (a 4xx) is an
+ * answer: nothing ran. So is a crew member that was never reached (503 `host_unreachable`,
+ * `host_incompatible`). Everything else, a transport failure, a timeout, a 5xx or the crew's 504
+ * `write_outcome_unknown`, says nothing about the host, so the phone must not guess.
+ */
+export function outcomeUnknown<TThrown>(thrown: TThrown): boolean {
+  if (!(thrown instanceof ApiError)) return true;
+  if (thrown.status < 500) return false;
+  const code = thrown.fields?.code;
+  return !(thrown.status === 503 && (code === "host_unreachable" || code === "host_incompatible"));
+}
+
+/**
  * GET /api/launchers — THIS scope's own host's launcher rows, read live off its `launchers.toml`.
  * Never cached alongside `/api/config`: rows must come from the host that runs them, and the
  * operator file is read live on the bridge, so this is fetched on mount and again whenever the
@@ -1285,7 +1373,7 @@ export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
 }
 
 /**
- * GET /api/folders — THIS scope's own host's folder list for the new-space sheet (#289), off that
+ * GET /api/folders — THIS scope's own host's folder list for the New sheet (#289), off that
  * machine's `folders.json`. Session-scoped only so `?host=` reaches the machine whose folders they
  * are; the list itself is one per machine. Read when the sheet opens and when its chosen machine
  * changes (lib/folders.ts), never polled and never part of the snapshot.
@@ -1325,64 +1413,6 @@ export function starFolder(folder: string, starred: boolean, scope?: Scope): Pro
 export function fetchCacheRules(): Promise<CacheRulesResponse> {
   return req<CacheRulesResponse>("/api/cache-rules");
 }
-
-/** The worktrees of the repo a space sits in. Empty-handed when the space is not in one. */
-export function listWorktrees(workspaceId: string, scope?: Scope): Promise<WorktreeListResponse> {
-  return req<WorktreeListResponse>(
-    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktrees`, scope),
-  );
-}
-
-/**
- * What a worktree create may carry beyond the branch (ADR 0089). All are optional, and a caller that
- * sends none is the body the route has always taken.
- */
-export interface WorktreeCreateExtras {
-  /** One id per intent, minted by the phone. A retry with the same id replays, never re-creates. */
-  requestId?: string;
-  /** A launcher row's `command`, typed into the new shell. Absent is a plain shell. */
-  launcher?: string;
-  /** Where the branch starts. Absent leaves it to the multiplexer, which cuts from the repo's own HEAD. */
-  base?: WorktreeBaseChoice;
-}
-
-/** The create's wire body: the branch, plus the extras when the caller has them. */
-interface WorktreeCreateBody {
-  branch: string;
-  requestId?: string;
-  launcher?: string;
-  base?: WorktreeBaseChoice;
-}
-
-/** Create a worktree on a new branch and open it as its own space, optionally starting an agent in it. */
-export function createWorktree(
-  workspaceId: string,
-  branch: string,
-  scope?: Scope,
-  extras: WorktreeCreateExtras = {},
-): Promise<WorktreeCreateResponse> {
-  const body: WorktreeCreateBody = { branch };
-  if (extras.requestId !== undefined) body.requestId = extras.requestId;
-  if (extras.launcher !== undefined) body.launcher = extras.launcher;
-  if (extras.base !== undefined) body.base = extras.base;
-  return req<WorktreeCreateResponse>(
-    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree`, scope),
-    { method: "POST", body: JSON.stringify(body), timeoutMs: WORKTREE_TIMEOUT_MS },
-  );
-}
-
-/** Show a worktree that already exists. Answers `alreadyOpen` rather than refusing. */
-export function openWorktree(
-  workspaceId: string,
-  path: string,
-  scope?: Scope,
-): Promise<WorktreeOpenResponse> {
-  return req<WorktreeOpenResponse>(
-    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree/open`, scope),
-    { method: "POST", body: JSON.stringify({ path }), timeoutMs: WORKTREE_TIMEOUT_MS },
-  );
-}
-
 
 /**
  * The bridge's startup config: push setup, the build id, the operator's own rows, and the
