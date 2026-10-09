@@ -1990,3 +1990,27 @@ describe("parseOpencodeTranscript — V1 compaction is a summary, not speech", (
     expect(entries[0]!.role).toBe("assistant");
   });
 });
+
+// A message sent while opencode works. Measured 2026-10-09 (opencode 1.18.34, 7 cases in 4 local
+// sessions): it is an ordinary user `message` row with a `text` part, created while the running
+// assistant message is still open, and the next assistant message takes it as `parentID`. No flag, no
+// queue marker. Rows are read in `time_created` order, so it sits between the two assistant messages.
+describe("parseOpencodeTranscript — a message sent while the agent works", () => {
+  test("a user message created inside a running assistant message is one user turn, in order", () => {
+    const entries = parseOpencodeTranscript(
+      [
+        line("msg_1", userData(1000), [textPart("write a story")], 1000),
+        line("msg_2", assistantData(1100), [textPart("Once upon a time")], 1100),
+        line("msg_3", userData(1200), [textPart("Queued note: reply with only OK.")], 1200),
+        line("msg_4", { ...assistantData(1300), parentID: "msg_3" }, [textPart("OK")], 1300),
+      ].join("\n"),
+    );
+    expect(entries.map((e) => [e.uuid, e.role])).toEqual([
+      ["msg_1", "user"],
+      ["msg_2", "assistant"],
+      ["msg_3", "user"],
+      ["msg_4", "assistant"],
+    ]);
+    expect(entries[2]!.parts).toEqual([{ kind: "text", text: "Queued note: reply with only OK." }]);
+  });
+});
