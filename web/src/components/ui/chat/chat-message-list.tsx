@@ -13,6 +13,10 @@ export interface ChatMessageListHandle {
   scrollToBottom: () => void;
   /** The scroll container itself — lets the parent measure/anchor (e.g. "Load older" scrollback). */
   getScrollElement: () => HTMLElement | null;
+  /** Bring a child's top edge to the top of the scrollport and stop following the tail. `force` moves
+   *  even a reader who had scrolled away — for a control they pressed, not for content that arrived
+   *  (useAutoScroll § scrollToChild). False when it declined. */
+  scrollToChild: (child: HTMLElement | null, force?: boolean) => boolean;
 }
 
 interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -41,17 +45,22 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
     ref,
   ) {
     useLocale();
-    const { scrollRef, isAtBottom, scrollToBottom, onScroll } = useAutoScroll<HTMLDivElement>({
-      dep,
-      onAtBottomChange,
-    });
+    const { scrollRef, isAtBottom, scrollToBottom, scrollToChild, onScroll } =
+      useAutoScroll<HTMLDivElement>({
+        dep,
+        onAtBottomChange,
+      });
 
     const bandStyle = useBandInset(scrollRef, clearBand ?? 0);
 
     React.useImperativeHandle(
       ref,
-      () => ({ scrollToBottom: () => scrollToBottom(), getScrollElement: () => scrollRef.current }),
-      [scrollToBottom, scrollRef],
+      () => ({
+        scrollToBottom: () => scrollToBottom(),
+        getScrollElement: () => scrollRef.current,
+        scrollToChild: (child: HTMLElement | null, force?: boolean) => scrollToChild(child, force),
+      }),
+      [scrollToBottom, scrollToChild, scrollRef],
     );
 
     return (
