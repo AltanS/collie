@@ -27,7 +27,9 @@
 // first id because it accepts a replacement from grok only for source `new` (still so on Herdr's
 // main that day). `reconcile` corrects it from `$GROK_HOME/active_sessions.json`, the list grok
 // itself keeps of the session each live process holds. That file is grok's own and undocumented,
-// so anything short of one unambiguous live match leaves Herdr's id alone.
+// so anything short of one unambiguous live match leaves Herdr's id alone. The reconcile step is a
+// workaround for herdrdev/herdr#2683 and is to be removed once the Herdr version Collie requires
+// takes a grok session start with source `load`.
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -115,6 +117,9 @@ export function pickLiveSession(
  * Whether a path is known to be missing. Only ENOENT and ENOTDIR say so; any other stat failure (a
  * folder without search permission, say) leaves it unknown, which is not the same as absent.
  */
+/** A live-session list is a few rows. One over this size is not grok's list, so it is not read. */
+const MAX_ACTIVE_SESSIONS_BYTES = 1024 * 1024;
+
 async function knownAbsent(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -452,6 +457,8 @@ export class GrokTranscriptSource implements TranscriptSource {
       if (await knownAbsent(path)) continue;
       const real = await containedRealpath(path, home);
       if (real === null) return null;
+      const size = await stat(real).then((st) => st.size, () => null);
+      if (size === null || size > MAX_ACTIVE_SESSIONS_BYTES) return null;
       const text = await readFile(real, "utf8").catch(() => null);
       const parsed = text === null ? null : parseActiveSessions(text);
       if (parsed === null) return null;

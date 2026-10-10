@@ -362,6 +362,13 @@ describe("GrokTranscriptSource.reconcile", () => {
     }
   });
 
+  test("a list over 1 MiB is not read, so the reported id is kept", async () => {
+    const padding = " ".repeat(1024 * 1024 + 1);
+    const root = await grokHome(JSON.stringify([row(RESUMED)]) + padding);
+    const src = new GrokTranscriptSource(root, alive);
+    expect(await src.reconcile({ kind: "id", value: STALE }, CWD)).toEqual({ kind: "id", value: STALE });
+  });
+
   test("a root with no list at all does not stop the swap from another root", async () => {
     const empty = await grokHome(null);
     const listed = await grokHome(JSON.stringify([row(RESUMED)]));

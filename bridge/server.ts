@@ -3123,10 +3123,20 @@ export function historyParams(url: URL): HistoryParams {
  * The session a pane's journal routes read: the reported ref (corrected by an adapter that knows its
  * multiplexer can keep a stale one, while the pane still runs that harness), else a discovered one.
  */
-export async function journalRefOf(adapter: JournalAdapter, pane: AgentView): Promise<AgentSessionRef | null> {
+export async function journalRefOf(
+  adapter: JournalAdapter,
+  pane: AgentView,
+  panes: readonly AgentView[],
+): Promise<AgentSessionRef | null> {
   const reported = pane.agentSession;
   if (reported === undefined) return (await adapter.discover?.(pane.cwd)) ?? null;
   if (adapter.reconcile === undefined || pane.agent !== adapter.agent) return reported;
+  // A fresh pane's row may not be written yet. With another pane running the same harness in the
+  // same folder, the one live session found there could be that pane's, so the reported ref stands.
+  const neighbour = panes.some(
+    (other) => other.paneId !== pane.paneId && other.agent === adapter.agent && other.cwd === pane.cwd,
+  );
+  if (neighbour) return reported;
   return adapter.reconcile(reported, pane.cwd);
 }
 
@@ -3154,7 +3164,8 @@ async function paneHistory(
   if (!cfg.transcript || transcripts === null || journals === null) return unavailable("disabled");
 
   const { agents, shellPanes } = engine.current();
-  const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
+  const panes = [...agents, ...shellPanes];
+  const pane = panes.find((a) => a.paneId === paneId);
   if (pane === undefined) return unavailable("no-session");
   // An agent with no adapter has no journal. Same answer — the UI shouldn't distinguish "this
   // harness isn't supported" from "this pane never started one"; both mean there's nothing to show.
@@ -3168,7 +3179,7 @@ async function paneHistory(
   // discovery widens WHICH panes answer, never how an answer is read. A shell, or a harness whose
   // integration isn't installed, still names nothing discoverable: no-session, an ordinary answer
   // rather than an error.
-  const ref = await journalRefOf(adapter, pane);
+  const ref = await journalRefOf(adapter, pane, panes);
   if (ref === null) return unavailable("no-session");
 
   try {
@@ -3220,7 +3231,8 @@ async function paneChat(
   if (!cfg.transcript || live === null || journals === null) return unavailable("disabled");
 
   const { agents, shellPanes } = engine.current();
-  const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
+  const panes = [...agents, ...shellPanes];
+  const pane = panes.find((a) => a.paneId === paneId);
   // Identical to the history route's reading, and deliberately the same words: a pane with no session
   // and a harness with no adapter are both "nothing to show", never an error. `journalAgentOf` rather
   // than `pane.agent`, so a pane whose agent EXITED still reads the journal that agent wrote.
@@ -3230,7 +3242,7 @@ async function paneChat(
   // The reported ref, or the discovered one — the history route's rule, word for word. Discovery
   // runs per poll here, a bounded newest-first walk that costs milliseconds in the common case;
   // the resolved path below is what the live window holds.
-  const ref = await journalRefOf(adapter, pane);
+  const ref = await journalRefOf(adapter, pane, panes);
   if (ref === null) return unavailable("no-session");
 
   const params = chatParams(url);

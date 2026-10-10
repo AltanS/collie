@@ -4325,22 +4325,54 @@ describe("journalRefOf — which session the history and chat routes read", () =
         return resumed;
       },
     });
-    expect(await journalRefOf(a, pane({ agentSession: reported }))).toEqual(resumed);
+    expect(await journalRefOf(a, pane({ agentSession: reported }), [])).toEqual(resumed);
     expect(seen).toEqual([`${reported.value}@/home/op/proj`]);
   });
 
   test("a pane whose grok exited keeps the reported ref: nothing live to move to", async () => {
     const a = adapter({ reconcile: async () => resumed });
-    expect(await journalRefOf(a, pane({ agent: "shell", agentSession: reported }))).toEqual(reported);
+    expect(await journalRefOf(a, pane({ agent: "shell", agentSession: reported }), [])).toEqual(reported);
   });
 
   test("a pane with no reported ref still falls back to discovery", async () => {
     const a = adapter({ reconcile: async () => resumed, discover: async () => resumed });
-    expect(await journalRefOf(a, pane({}))).toEqual(resumed);
+    expect(await journalRefOf(a, pane({}), [])).toEqual(resumed);
+  });
+
+  describe("another pane in the folder", () => {
+    const calls: string[] = [];
+    const a = adapter({
+      reconcile: async (ref) => {
+        calls.push(ref.value);
+        return resumed;
+      },
+    });
+    const mine = pane({ agentSession: reported });
+
+    test("another grok pane in the same cwd blocks the correction", async () => {
+      calls.length = 0;
+      const other = pane({ paneId: "w1:p2", agentSession: resumed });
+      expect(await journalRefOf(a, mine, [mine, other])).toEqual(reported);
+      expect(calls).toEqual([]);
+    });
+
+    test("another grok pane in a different cwd leaves the correction on", async () => {
+      calls.length = 0;
+      const other = pane({ paneId: "w1:p2", cwd: "/home/op/elsewhere" });
+      expect(await journalRefOf(a, mine, [mine, other])).toEqual(resumed);
+      expect(calls).toEqual([reported.value]);
+    });
+
+    test("a non-grok pane in the same cwd does not block the correction", async () => {
+      calls.length = 0;
+      const other = pane({ paneId: "w1:p2", agent: "shell" });
+      expect(await journalRefOf(a, mine, [mine, other])).toEqual(resumed);
+      expect(calls).toEqual([reported.value]);
+    });
   });
 
   test("an adapter without reconcile reads the reported ref as before", async () => {
-    expect(await journalRefOf(adapter({}), pane({ agentSession: reported }))).toEqual(reported);
+    expect(await journalRefOf(adapter({}), pane({ agentSession: reported }), [])).toEqual(reported);
   });
   // The cases above stub reconcile; this one keeps the real grok adapter, so dropping its reconcile
   // binding leaves the stale id in place and fails here.
@@ -4351,7 +4383,7 @@ describe("journalRefOf — which session the history and chat routes read", () =
       const row = { session_id: resumed.value, pid: process.pid, cwd: "/home/op/proj" };
       await writeFile(join(base, "active_sessions.json"), JSON.stringify([row]));
       const real = grokJournal([join(base, "sessions")]);
-      expect(await journalRefOf(real, pane({ agentSession: reported }))).toEqual(resumed);
+      expect(await journalRefOf(real, pane({ agentSession: reported }), [])).toEqual(resumed);
     } finally {
       await rm(base, { recursive: true, force: true });
     }
@@ -4362,7 +4394,7 @@ describe("journalRefOf — which session the history and chat routes read", () =
   test("every journal route reads the ref journalRefOf settles on, never the reported one", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // history and chat
-    expect([...src.matchAll(/await journalRefOf\(adapter, pane\)/g)]).toHaveLength(2);
+    expect([...src.matchAll(/await journalRefOf\(adapter, pane, panes\)/g)]).toHaveLength(2);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
   });
 });
