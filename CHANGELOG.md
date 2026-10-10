@@ -23,18 +23,20 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.19.2] - 2026-10-10
+
 ### Fixed
 
-- **The harness canary marks a pane live when it reads it.** The canary's own transport never told `lib/liveness.ts` about a successful pane read, so the M46 liveness gate in `sendGuardedReply` refused every canary send; the canary now stamps the pane live after each 200 or 304 read, as the client does, and skips this on older `--readers` checkouts that have no liveness module. Thanks @raffaelenatale (#397).
-- **An omp question whose options have descriptions gets its option card.** Each description shows on its option, instead of a card with only Esc. Thanks @Aeternologist (#372, #399).
-- **The unread-dialog card follows Wrap lines.** Its mirror of a wide pane wraps or pans as the pane mirror does, also after Put away (#372, #399).
-- **A reply to Muse no longer stays in the box as an unsent draft.** Muse waits 350 ms after the text before the guarded Enter; other agents send as before. Thanks @jpcarranza94 (#395).
-- **The copy icons work over plain HTTP.** Where the browser has no clipboard API, as on a tailnet page served from `http://host:8788`, the icon on code, table, command and diff blocks and the Copy output row copy through the browser's older copy command and show up again.
-- **An installed iPhone app no longer hides its bottom row behind the home bar.** The standalone height now takes the smaller of the large viewport and the dynamic viewport plus the top inset, so iOS releases that report the large viewport too tall no longer push the composer off screen (#394, also the cause of #371). Checked against the reporter's screenshot and a WebKit run, not yet on a device; please report if your iPhone still cuts the bottom row.
+- **The harness canary marks a pane live when it reads it.** The canary's own transport never told `lib/liveness.ts` about a successful pane read, so the M46 liveness gate in `sendGuardedReply` refused every canary send; the canary now stamps the pane live after each 200 or 304 read, as the client does, and skips this on older `--readers` checkouts that have no liveness module. Thanks @raffaelenatale (#397). ([fee6f273](https://github.com/AltanS/collie/commit/fee6f273))
+- **An omp question whose options have descriptions gets its option card.** Each description shows on its option, instead of a card with only Esc. Thanks @Aeternologist (#372, #399). ([d80253ce](https://github.com/AltanS/collie/commit/d80253ce))
+- **The unread-dialog card follows Wrap lines.** Its mirror of a wide pane wraps or pans as the pane mirror does, also after Put away (#372, #399). ([d80253ce](https://github.com/AltanS/collie/commit/d80253ce))
+- **A reply to Muse no longer stays in the box as an unsent draft.** Muse waits 350 ms after the text before the guarded Enter; other agents send as before. Thanks @jpcarranza94 (#395). ([2089b132](https://github.com/AltanS/collie/commit/2089b132))
+- **Copy works over plain HTTP.** Where the browser has no clipboard API, as on a tailnet page served from `http://host:8788`, the Copy output row and the new copy icons fall back to the browser's older copy command, so they copy there too. ([292dd2bd](https://github.com/AltanS/collie/commit/292dd2bd))
+- **An installed iPhone app no longer hides its bottom row behind the home bar.** The standalone height now takes the smaller of the large viewport and the dynamic viewport plus the top inset, so iOS releases that report the large viewport too tall no longer push the composer off screen (#394, also the cause of #371). Checked against the reporter's screenshot and a WebKit run, not yet on a device; please report if your iPhone still cuts the bottom row. ([7a994d31](https://github.com/AltanS/collie/commit/7a994d31))
 
 ### Added
 
-- **Code blocks, tables, commands and diffs have a copy icon.** One tap copies the block as text, masked secrets stay masked, and the icon confirms the copy on every screen. Thanks @GGGODLIN (#396).
+- **Code blocks, tables, commands and diffs have a copy icon.** One tap copies the block as text, masked secrets stay masked, and the icon confirms the copy on every screen. Thanks @GGGODLIN (#396). ([edac919d](https://github.com/AltanS/collie/commit/edac919d))
 
 ## [1.19.1] - 2026-10-10
 
