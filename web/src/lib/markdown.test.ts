@@ -286,6 +286,7 @@ describe("parseMarkdown", () => {
       expect(parseMarkdown(src)).toEqual([
         {
           kind: "table",
+          source: src,
           align: [null, null],
           header: [[text("Option")], [text("Cost")]],
           rows: [
@@ -301,6 +302,7 @@ describe("parseMarkdown", () => {
       expect(parseMarkdown(src)).toEqual([
         {
           kind: "table",
+          source: src,
           align: [null, null],
           header: [[text("Option")], [text("Cost")]],
           rows: [[[text("A")], [text("low")]]],

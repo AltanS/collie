@@ -62,7 +62,7 @@ export type MdBlock =
    * GFM table. `align` is one entry per column (null = unaligned), and every row is padded or
    * truncated to that width so the renderer never has to reason about ragged input.
    */
-  | { kind: "table"; align: MdAlign[]; header: MdSpan[][]; rows: MdSpan[][][] }
+  | { kind: "table"; source: string; align: MdAlign[]; header: MdSpan[][]; rows: MdSpan[][][] }
   | { kind: "rule" };
 
 export type MdAlign = "left" | "center" | "right" | null;
@@ -483,6 +483,7 @@ export function parseMarkdown(source: string, opts: { images?: boolean } = {}): 
     // Tables come last of the recognised blocks: every other construct wins a line that could be
     // read as either, and a table is the only one that needs to look ahead.
     if (startsTable(line, lines[i + 1])) {
+      const start = i;
       const header = splitRow(line).map((cell) => parseBounded(cell, [line], doc));
       // Widths already match — `startsTable` refused the row otherwise — so the columns line up
       // without padding either side.
@@ -495,7 +496,7 @@ export function parseMarkdown(source: string, opts: { images?: boolean } = {}): 
         rows.push(fitRow(lines[i]!, header.length, doc));
         i++;
       }
-      blocks.push({ kind: "table", align, header, rows });
+      blocks.push({ kind: "table", source: lines.slice(start, i).join("\n"), align, header, rows });
       continue;
     }
 
