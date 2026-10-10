@@ -13,6 +13,7 @@ import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import { Composer, TUI_SETTLE_MS } from "./composer";
+import * as harness from "@/lib/harness";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { type ServerSummary } from "@/lib/types";
@@ -238,6 +239,145 @@ describe("Composer — send", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(calls).toEqual([]);
     expect(box).toHaveValue("please do not approve anything");
+  });
+
+  describe("lifted dialog typing (dialogAcceptsTyping)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("keeps refusal when adapter has no probe and dialog is present", async () => {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      server.use(replyHandler(() => calls.push("reply")));
+      const props = renderComposerWithStatus({ dialogPresent: true });
+      const box = screen.getByPlaceholderText(/type a reply/i);
+
+      await user.type(box, "answer");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
+      expect(calls).toEqual([]);
+      expect(box).toHaveValue("answer");
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
+
+    it("keeps refusal when dialogAcceptsTyping is explicitly false", async () => {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      server.use(replyHandler(() => calls.push("reply")));
+      const props = renderComposerWithStatus({ dialogPresent: true, dialogAcceptsTyping: false });
+      const box = screen.getByPlaceholderText(/type a reply/i);
+
+      await user.type(box, "answer");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
+      expect(calls).toEqual([]);
+      expect(box).toHaveValue("answer");
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
+
+    it("keeps refusal when adapter probe answers false on pane lines", async () => {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      const real = harness.adapterFor("claude")!;
+      vi.spyOn(harness, "adapterFor").mockReturnValue({
+        ...real,
+        dialogAcceptsTyping: () => false,
+      });
+      server.use(replyHandler(() => calls.push("reply")));
+      const props = renderComposerWithStatus({ dialogPresent: true });
+      const box = screen.getByPlaceholderText(/type a reply/i);
+
+      await user.type(box, "answer");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
+      expect(calls).toEqual([]);
+      expect(box).toHaveValue("answer");
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
+
+    it("allows send through normal type-then-verify path when dialogAcceptsTyping is true", async () => {
+      const user = userEvent.setup();
+      let submitted = false;
+      server.use(replyHandler(() => {}, () => (submitted = true)));
+      const props = renderComposerWithStatus({ dialogPresent: true, dialogAcceptsTyping: true });
+      const box = screen.getByPlaceholderText(/type an answer/i);
+
+      await user.type(box, "typed answer");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(submitted).toBe(true));
+      await waitFor(() => expect(box).toHaveValue(""));
+      expect(props.onSent).toHaveBeenCalled();
+    });
+
+    it("allows send when adapter probe answers true on pane lines", async () => {
+      const user = userEvent.setup();
+      let submitted = false;
+      const real = harness.adapterFor("claude")!;
+      const probe = vi.fn().mockReturnValue(true);
+      vi.spyOn(harness, "adapterFor").mockReturnValue({
+        ...real,
+        dialogAcceptsTyping: probe,
+      });
+      server.use(replyHandler(() => {}, () => (submitted = true)));
+      const props = renderComposerWithStatus({ dialogPresent: true });
+      const box = screen.getByPlaceholderText(/type an answer/i);
+
+      await user.type(box, "typed answer");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(submitted).toBe(true));
+      await waitFor(() => expect(box).toHaveValue(""));
+      expect(props.onSent).toHaveBeenCalled();
+      expect(probe).toHaveBeenCalled();
+    });
+
+    it("blocks send when probe is true but pre-flight composerReady fails", async () => {
+      const user = userEvent.setup();
+      const real = harness.adapterFor("claude")!;
+      vi.spyOn(harness, "adapterFor").mockReturnValue({
+        ...real,
+        dialogAcceptsTyping: () => true,
+        composerReady: () => false,
+      });
+      const props = renderComposerWithStatus({ dialogPresent: true });
+      const box = screen.getByPlaceholderText(/type an answer/i);
+
+      await user.type(box, "typed answer");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      // Preflight blocked: arms "Type anyway?" override, does NOT show "a dialog is waiting"
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument(),
+      );
+      expect(props.onSent).not.toHaveBeenCalled();
+      expect(screen.queryByText(/a dialog is waiting/i)).toBeNull();
+    });
+
+    it("refuses send when probe rejects candidate text on send", async () => {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      server.use(replyHandler(() => calls.push("reply")));
+      const real = harness.adapterFor("claude")!;
+      vi.spyOn(harness, "adapterFor").mockReturnValue({
+        ...real,
+        dialogAcceptsTyping: (_lines, text) => text !== "disallowed",
+      });
+      const props = renderComposerWithStatus({ dialogPresent: true });
+      const box = screen.getByPlaceholderText(/type an answer/i);
+
+      await user.type(box, "disallowed");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
+      expect(calls).toEqual([]);
+      expect(box).toHaveValue("disallowed");
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
   });
 
   // The same #34 failure one step upstream. `dialogPresent` and the stranded draft are both derived

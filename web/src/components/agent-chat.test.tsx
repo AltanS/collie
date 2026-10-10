@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams, useRevalidator } from "react-router";
 
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import * as harness from "@/lib/harness";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
@@ -138,6 +139,84 @@ describe("AgentChat — reply flow", () => {
 
     expect(await screen.findByText("agent busy")).toBeInTheDocument();
     expect(box).toHaveValue("retry this"); // not cleared on failure
+  });
+});
+
+describe("AgentChat — lifted dialog typing (dialogAcceptsTyping)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("refuses to send while a lifted dialog is on screen when the adapter lacks the probe", async () => {
+    const user = userEvent.setup();
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "typed answer");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText(/a dialog is waiting/i)).toBeInTheDocument();
+    expect(box).toHaveValue("typed answer");
+  });
+
+  it("refuses to send while a lifted dialog is on screen when the probe answers false", async () => {
+    const user = userEvent.setup();
+    const real = harness.adapterFor("claude")!;
+    vi.spyOn(harness, "adapterFor").mockReturnValue({
+      ...real,
+      dialogAcceptsTyping: () => false,
+    });
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "typed answer");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText(/a dialog is waiting/i)).toBeInTheDocument();
+    expect(box).toHaveValue("typed answer");
+  });
+
+  it("allows sending through normal type-then-verify path when the probe answers true on current lines", async () => {
+    const user = userEvent.setup();
+    const real = harness.adapterFor("claude")!;
+    const probe = vi.fn().mockReturnValue(true);
+    vi.spyOn(harness, "adapterFor").mockReturnValue({
+      ...real,
+      dialogAcceptsTyping: probe,
+    });
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    const box = screen.getByPlaceholderText(/type an answer/i);
+
+    await user.type(box, "typed answer");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(box).toHaveValue(""));
+    expect(screen.queryByText(/a dialog is waiting/i)).toBeNull();
+    expect(probe).toHaveBeenCalled();
+  });
+
+  it("blocks send when probe answers true but preflight composerReady returns false", async () => {
+    const user = userEvent.setup();
+    const real = harness.adapterFor("claude")!;
+    vi.spyOn(harness, "adapterFor").mockReturnValue({
+      ...real,
+      dialogAcceptsTyping: () => true,
+      composerReady: () => false,
+    });
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    const box = screen.getByPlaceholderText(/type an answer/i);
+
+    await user.type(box, "typed answer");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/a dialog is waiting/i)).toBeNull();
   });
 });
 
@@ -4192,18 +4271,18 @@ describe("AgentChat — the model label and a footer that already names it", () 
     expect(tag(container)?.textContent).toContain("gpt-5.6-sol");
   });
 
-  it("pi: no adapter lifts its footer, so the raw mirror's last rows are judged", () => {
+  it("hermes: no adapter lifts its footer, so the raw mirror's last rows are judged", () => {
     terminal();
     const footer = [
-      "hello from pi",
+      "hello from hermes",
       "",
       "~/webapp (main)",
       "↑1.2k ↓300 $0.012 4.5%/200k (auto)  (anthropic) claude-sonnet-4-5 • medium",
     ].join("\n");
-    const named = renderChat({ text: footer, agent: on("pi", "anthropic:claude-sonnet-4-5") });
+    const named = renderChat({ text: footer, agent: on("hermes", "anthropic:claude-sonnet-4-5") });
     expect(tag(named.container)).toBeNull();
     cleanup();
-    const other = renderChat({ text: footer, agent: on("pi", "anthropic:claude-opus-5-5") });
+    const other = renderChat({ text: footer, agent: on("hermes", "anthropic:claude-opus-5-5") });
     expect(tag(other.container)?.textContent).toContain("Opus 5.5");
   });
 
@@ -4223,7 +4302,7 @@ describe("AgentChat — the model label and a footer that already names it", () 
     const footer = "~/webapp (main)\n(anthropic) claude-sonnet-4-5 • medium";
     const { container } = renderChat({
       text: footer,
-      agent: on("pi", "anthropic:claude-sonnet-4-5", { hasSession: true }),
+      agent: on("hermes", "anthropic:claude-sonnet-4-5", { hasSession: true }),
     });
     expect(await screen.findByText("what changed today?")).toBeInTheDocument();
     expect(tag(container)?.textContent).toContain("Sonnet 4.5");

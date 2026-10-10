@@ -628,6 +628,30 @@ describe("submitPromptOption — same-shaped successor prompt (H1)", () => {
   });
 });
 
+describe("PromptSelectBlock — customInput and customAnswer", () => {
+  it("renders custom answer button and clicking it populates the textarea", async () => {
+    const user = userEvent.setup();
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+
+    const base = fixtureModel("claude--select-menu.txt");
+    const model = {
+      ...base,
+      customInput: true,
+      customAnswer: "existing answer",
+    };
+
+    render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    const btn = screen.getByRole("button", { name: /existing answer/i });
+    expect(btn).toBeInTheDocument();
+
+    await user.click(btn);
+    expect(textarea.value).toBe("existing answer");
+    expect(document.activeElement).toBe(textarea);
+    document.body.removeChild(textarea);
+  });
+});
+
 // The plan dialog's inline input row (issue #95). Three surfaces, and the state that decides which
 // one shows also decides whether the ANSWER buttons work at all — so this block is where the phone
 // stops lying about a screen it cannot drive. Fixtures are real captures; PLAN_FEEDBACK_NOTES.md is

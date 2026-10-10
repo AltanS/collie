@@ -165,6 +165,20 @@ describe("WizardBlock — review (Submit) step presentation", () => {
     const model = fixtureModel("claude--wizard-submit-unanswered.txt");
     render(<WizardBlock wizard={model} onAction={vi.fn()} />);
     expect(screen.getByText(/not answered all questions/)).toBeInTheDocument();
+    // Claude without submitLabel still presents "Submit answers" button
+    expect(screen.getByRole("button", { name: /Submit answers/ })).toBeInTheDocument();
+  });
+
+  it("shows localized first-unanswered label when submitAction is goToFirstUnanswered", () => {
+    const model = fixtureModel("claude--wizard-submit-unanswered.txt");
+    if (model.phase !== "review") throw new Error("expected review phase");
+    render(
+      <WizardBlock
+        wizard={{ ...model, submitAction: "goToFirstUnanswered" }}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /first unanswered question/i })).toBeInTheDocument();
   });
 });
 

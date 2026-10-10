@@ -341,6 +341,7 @@ export function emittableKeys(block: Block): string[] | null {
     case "multi-select":
       // checkbox: a digit toggles each option (and the "Chat about this" escape) in digit mode, or
       // jumps the pointer there in pointer mode — either way the digits ride plus Up/Down/Enter.
+      // walkSpace walks the pointer with Up/Down and toggles with Space.
       // A declared `advanceKeys` plan rides too. review: the confirm screen's `1. Submit answers /
       // 2. Cancel` in digit mode, a pointer walk + Enter in pointer mode, or the declared plans in
       // keys mode, plus the declared way back.
@@ -351,6 +352,7 @@ export function emittableKeys(block: Block): string[] | null {
           "Up",
           "Down",
           "Enter",
+          ...(block.multi.toggle === "walkSpace" ? ["Space"] : []),
           ...(block.multi.advanceKeys ?? []),
         ];
       }

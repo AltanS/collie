@@ -242,3 +242,23 @@ export function OptionButton({
     </button>
   );
 }
+
+/** Populate and focus the mobile composer textarea with `text`. */
+export function populateComposer(text?: string): void {
+  const el = document.querySelector<HTMLTextAreaElement>("textarea");
+  if (!el) return;
+  if (text) {
+    if (!el.value || el.value === text) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      nativeSetter?.call(el, text);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  } else {
+    el.focus();
+  }
+}

@@ -225,3 +225,68 @@ describe("MultiSelectBlock — as a step of a wizard", () => {
     expect(screen.queryByRole("list", { name: "Questions" })).not.toBeInTheDocument();
   });
 });
+
+describe("MultiSelectBlock — advanceNeedsChecked opt-in flag", () => {
+  function makeCheckboxModel(opts: {
+    advanceNeedsChecked?: boolean;
+    checked?: boolean[];
+    pointer?: "option" | "other" | "advance" | "chat" | null;
+  }): MultiSelectModel {
+    const base = fixtureModel("claude--select-multiselect-single.txt");
+    if (base.phase !== "checkbox") throw new Error("not a checkbox fixture");
+    const checked = opts.checked ?? [false, false, false, false];
+    return {
+      ...base,
+      advanceNeedsChecked: opts.advanceNeedsChecked,
+      pointer: opts.pointer ?? "option",
+      options: base.options.map((opt, i) => Object.assign({}, opt, { checked: checked[i] ?? false })),
+    };
+  }
+
+  it("disables Confirm when advanceNeedsChecked is true and 0 options are checked", () => {
+    const m = makeCheckboxModel({
+      advanceNeedsChecked: true,
+      checked: [false, false, false, false],
+      pointer: "option",
+    });
+    render(<MultiSelectBlock multi={m} onAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^Submit$/ })).toBeDisabled();
+  });
+
+  it("disables Confirm when advanceNeedsChecked is true and pointer sits on 'other'", () => {
+    const m = makeCheckboxModel({
+      advanceNeedsChecked: true,
+      checked: [true, false, false, false],
+      pointer: "other",
+    });
+    render(<MultiSelectBlock multi={m} onAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^Submit$/ })).toBeDisabled();
+  });
+
+  it("enables Confirm when advanceNeedsChecked is true, >=1 option is checked, and pointer is on an option", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    const m = makeCheckboxModel({
+      advanceNeedsChecked: true,
+      checked: [true, false, false, false],
+      pointer: "option",
+    });
+    render(<MultiSelectBlock multi={m} onAction={onAction} />);
+    const submitButton = screen.getByRole("button", { name: /^Submit$/ });
+    expect(submitButton).not.toBeDisabled();
+
+    await user.click(submitButton);
+    expect(onAction).toHaveBeenCalledWith({ kind: "advance" });
+  });
+
+  it("leaves Confirm enabled without advanceNeedsChecked even with 0 checked options", () => {
+    const m = makeCheckboxModel({
+      advanceNeedsChecked: undefined,
+      checked: [false, false, false, false],
+      pointer: "other",
+    });
+    render(<MultiSelectBlock multi={m} onAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^Submit$/ })).not.toBeDisabled();
+  });
+});
+

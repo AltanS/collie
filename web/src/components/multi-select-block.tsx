@@ -85,6 +85,11 @@ function CheckboxPhase({
   sending: string | null;
   onPress: (id: string, action: MultiSelectIntent) => void;
 }) {
+  const advanceDisabled =
+    locked ||
+    (Boolean(multi.advanceNeedsChecked) &&
+      (!multi.options.some((o) => o.checked) || multi.pointer !== "option"));
+
   return (
     <PromptPanel ariaLabel={multi.question} raw={lines}>
       {multi.steps && (
@@ -147,7 +152,7 @@ function CheckboxPhase({
           closed-loop macro that walks the pointer onto it and verifies before pressing Enter. */}
       <button
         type="button"
-        disabled={locked}
+        disabled={advanceDisabled}
         // The name is on the ATTRIBUTE, not just the text: this same button element is renamed
         // "Next" → "Submit" underneath a user who may already have it focused, and a plain
         // child-text swap on a focused control is not reliably re-announced.

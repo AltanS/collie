@@ -54,6 +54,19 @@ export interface HarnessAdapter {
    */
   composerReady?(lines: StyledLine[]): boolean;
   /**
+   * Whether a LIFTED dialog currently on screen accepts typed answers through the composer.
+   *
+   * By default, any lifted dialog causes the composer to refuse typed sends (#34) because the
+   * keystrokes would land in the dialog and Enter would submit/confirm whatever was highlighted.
+   * An adapter can opt in by declaring this probe: when it answers true for the current screen's
+   * lines (and optional candidate `text`), the composer bypasses the #34 refusal and sends through
+   * the normal type-then-verify path (which still performs the pre-flight `composerReady` check
+   * against a fresh read of the pane).
+   *
+   * OPTIONAL; absence or returning false keeps the standard #34 refusal.
+   */
+  dialogAcceptsTyping?(lines: StyledLine[], text?: string): boolean;
+  /**
    * The key THIS harness's own modals print as the way OUT of them — a Herdr key token ("Escape",
    * "ctrl+c"), declared here and read from nowhere else.
    *

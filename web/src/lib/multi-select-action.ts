@@ -32,13 +32,15 @@
 import { type MultiSelectModel } from "./blocks";
 import {
   guardDialog,
+  pollDialog,
   readDialog,
   sendBoundKeys,
   type DialogTarget,
 } from "./dialog-guard";
-import { multiSelectIdentity } from "./harness/multi-select-model";
+import { multiSelectEquals, multiSelectIdentity } from "./harness/multi-select-model";
 import { defaultSleep, type ActionResult, type Sleep } from "./harness/guard";
 import { paneScopeKey, type Scope } from "./scope";
+import { describeThrownError } from "./api-error-message";
 
 /** One tap's intent, resolved to keystrokes by {@link submitMultiSelectIntent}. Shared with the
  *  MultiSelectBlock renderer (its `onAction` emits exactly these). */
@@ -112,6 +114,16 @@ export async function submitMultiSelectIntent(
   }
 }
 
+/** Under `advanceNeedsChecked`, the advance needs at least one checked option AND the pointer on an
+ *  option row (not on `other`, not on an action row). */
+function advanceBlocked(m: MultiSelectModel): boolean {
+  return (
+    m.phase === "checkbox" &&
+    Boolean(m.advanceNeedsChecked) &&
+    (!m.options.some((o) => o.checked) || m.pointer !== "option")
+  );
+}
+
 /** Resolve one intent to its guarded keystroke(s). Runs with the per-pane lock held. */
 async function dispatchIntent(
   args: GuardArgs & { intent: MultiSelectIntent },
@@ -119,9 +131,13 @@ async function dispatchIntent(
   const { intent } = args;
   if (intent.kind === "advance") {
     if (args.multi.phase !== "checkbox") return { status: "changed" };
+    if (advanceBlocked(args.multi)) return { status: "changed" };
     // No advance row to walk onto: the harness declared the advance as keys, so it is one guarded
     // write bound to the entry region, and the pointer is never moved.
-    if (args.multi.advanceKeys) return guardedKey(args, args.multi.advanceKeys);
+    if (args.multi.advanceKeys) {
+      if (args.multi.advanceNeedsChecked) return guardedAdvanceKey(args, args.multi.advanceKeys);
+      return guardedKey(args, args.multi.advanceKeys);
+    }
     return runAdvanceMacro(args);
   }
   if (intent.kind === "toggle") {
@@ -133,6 +149,7 @@ async function dispatchIntent(
       return { status: "changed" };
     }
     if (args.multi.toggle === "pointer") return runToggleMacro(args, intent.n);
+    if (args.multi.toggle === "walkSpace") return runWalkSpaceMacro(args, intent.n);
     return guardedKey(args, [String(intent.n)]);
   }
   if (intent.kind === "nav") {
@@ -169,6 +186,18 @@ async function guardedKey(args: GuardArgs, keys: string[]): Promise<ActionResult
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
   return sendBoundKeys(args, keys, guarded.region);
+}
+
+/** Entry guard for the advance under `advanceNeedsChecked`: additionally refuses on the FRESH
+ * derivation, because the comparators deliberately ignore the transient pointer — a second device
+ * moving it to 'other' (or a box flipped underfoot, which equals DOES catch) must not ship. */
+async function guardedAdvanceKey(args: GuardArgs, keys: string[]): Promise<ActionResult> {
+  const fresh = await readDialog(target(args));
+  if (!fresh.model || fresh.model.phase !== "checkbox") return { status: "changed" };
+  if (fresh.revision !== args.detectedRevision) return { status: "changed" };
+  if (!multiSelectEquals(args.multi, fresh.model)) return { status: "changed" };
+  if (advanceBlocked(fresh.model)) return { status: "changed" };
+  return sendBoundKeys(args, keys, fresh.model.regionSignature);
 }
 
 // The pointer settles fast after a nav key — a pointer move is a cheap redraw, unlike the note-focus
@@ -230,6 +259,7 @@ async function readMacroDialog(
  */
 async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox") return { status: "changed" };
+  if (advanceBlocked(args.multi)) return { status: "changed" };
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
@@ -245,6 +275,7 @@ async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
     if (!m) continue;
     // Drift guard: a successor dialog, or the checkbox screen already gone — abort before any key.
     if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
+    if (advanceBlocked(m)) return { status: "changed" };
     if (m.pointer === "advance") {
       // Verified on the advance row: activate it. What appears next — the following question of a
       // wizard, or the review screen — is re-detected by whichever grammar owns it on the next poll.
@@ -264,6 +295,55 @@ async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
 // The pointer-mode toggle needs no walk (the digit jumps straight there), only retries for a
 // redraw that swallows the jump — a small fixed bound, not the advance macro's row-counted one.
 const TOGGLE_MACRO_MAX_STEPS = 6;
+
+function walkArrows(fromRow: number, targetRow: number): string[] {
+  const diff = targetRow - fromRow;
+  if (diff === 0) return [];
+  const arrow = diff > 0 ? "Down" : "Up";
+  return Array<string>(Math.abs(diff)).fill(arrow);
+}
+
+/**
+ * The walkSpace-mode toggle (checkbox): entry guard → walk Up/Down arrows directly to row `n`
+ * bound to the tapped screen → verify pointerRow === n on a fresh read → Space bound to that
+ * read (the walk, verify, confirm of ADR 0080).
+ */
+async function runWalkSpaceMacro(args: GuardArgs, n: number): Promise<ActionResult> {
+  if (args.multi.phase !== "checkbox") return { status: "changed" };
+
+  const guarded = await guardDialog(target(args));
+  if (!guarded.ok) return guarded.result;
+
+  if (guarded.model.phase !== "checkbox") return { status: "changed" };
+  const fromRow = guarded.model.pointerRow;
+  if (fromRow === null) return { status: "changed" };
+
+  const arrows = walkArrows(fromRow, n);
+  if (arrows.length > 0) {
+    const walked = await sendBoundKeys(args, arrows, guarded.region, guarded.styled);
+    if (walked.status !== "sent") return walked;
+  }
+
+  const landed = (m: MultiSelectModel) => {
+    return (
+      m.phase === "checkbox" &&
+      multiSelectIdentity(m, args.multi) &&
+      m.pointerRow === n
+    );
+  };
+
+  try {
+    const polled = await pollDialog(target(args), landed);
+    if (polled.status === "timeout") return { status: "changed", why: "timeout" };
+    if (polled.status === "drifted") {
+      return { status: "changed", why: "drift" };
+    }
+    const { model } = polled;
+    return sendBoundKeys(args, ["Space"], model.regionSignature);
+  } catch (e) {
+    return { status: "error", error: describeThrownError(e) };
+  }
+}
 
 // Two action rows: any walk longer than this is a wedged pane, not a slow redraw.
 const REVIEW_MACRO_MAX_STEPS = 8;

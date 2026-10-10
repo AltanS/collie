@@ -56,6 +56,9 @@ import { AttachmentChip, type ComposerAttachment } from "@/components/attachment
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
+import { parseAnsi } from "@/lib/ansi";
+import type { HarnessAdapter } from "@/lib/harness/types";
+import { splitLines } from "@/lib/blocks";
 import { keyLabel } from "@/lib/key-queue";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { useLive } from "@/lib/liveness";
@@ -119,6 +122,10 @@ interface ComposerProps {
    * screen or an alt-screen tool that trips the card's four conditions costs one extra tap instead
    * of a locked composer. False while any READ dialog is up, where the refusal stands flat. */
   dialogUnread?: boolean;
+  /** Whether the lifted dialog on screen accepts typed answers through the composer.
+   * When true, send() bypasses the #34 dialogWaiting refusal and proceeds through the normal
+   * type-then-verify path. */
+  dialogAcceptsTyping?: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -329,8 +336,42 @@ interface ClearedDraft {
   caret: number | null;
 }
 
+/** Whether the lifted dialog on screen accepts typed answers: the adapter's opt-in
+ *  probe, evaluated against `paneText` (and optional candidate `text`). A throw or a missing probe counts as "no". */
+function probeDialogAcceptsTyping(adapter: HarnessAdapter, paneText: string, text?: string): boolean {
+  if (!adapter.dialogAcceptsTyping) return false;
+  try {
+    return Boolean(adapter.dialogAcceptsTyping(splitLines(parseAnsi(paneText)), text));
+  } catch {
+    return false;
+  }
+}
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
+  {
+    paneId,
+    scope,
+    agent,
+    isShell,
+    gone,
+    readOnly,
+    hostBlock,
+    composing,
+    dialogPresent,
+    dialogUnread,
+    dialogAcceptsTyping: dialogAcceptsTypingProp,
+    text,
+    terminalDraft,
+    rawTerminalDraft,
+    prefs,
+    display,
+    onSent,
+    pullHandle,
+    draftNoticeSlot,
+    changesPill,
+    stale,
+    hand = "right",
+  },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -697,7 +738,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function acceptTranscript(transcript: string) {
     const draftEmpty = inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0;
     const mayHandsFree =
-      handsFree && draftEmpty && noEchoRef.current === null && !locked && !offline && !dialogPresent;
+      handsFree && draftEmpty && noEchoRef.current === null && !locked && !offline && (!dialogPresent || dialogAcceptsTyping);
     if (mayHandsFree) {
       void send(transcript, false);
       return;
@@ -743,6 +784,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // draft helpers below stay harness-free: they take the capability, never the grammar. Undefined for
   // any agent without an adapter, which is exactly the "no idea" case those helpers already handle.
   const adapter = adapterFor(agent ?? undefined);
+
+  // Whether the lifted dialog on screen accepts typed answers through the composer. Either passed
+  // from the parent (which derives it from the mirror's styled lines), or evaluated
+  // directly against this pane's text when the prop is omitted.
+  const dialogAcceptsTyping =
+    dialogAcceptsTypingProp ??
+    (dialogPresent && adapter ? probeDialogAcceptsTyping(adapter, text) : false);
 
   // Guard against a false stranded-draft: if the detected draft is what we JUST sent, it's our own
   // reply still echoing on the "❯" line before the bridge's pending Enter — suppress both the preview
@@ -981,7 +1029,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // kept: the user answers the dialog with its own buttons, then taps Send again. We never
     // queue-and-auto-send, because the text may be a reaction to state the dialog just changed —
     // sending is consent, and the conditions moved.
-    if (dialogPresent) {
+    //
+    // An adapter can opt in via `dialogAcceptsTyping` to declare that a lifted dialog
+    // accepts typed answers. Only when that probe answers true does the send bypass this refusal
+    // and proceed through the normal type-then-verify path (which still performs the pre-flight
+    // `composerReady` check against a fresh read of the pane).
+    const acceptsThisText = adapter?.dialogAcceptsTyping
+      ? probeDialogAcceptsTyping(adapter, text, t)
+      : dialogAcceptsTyping;
+    if (dialogPresent && !acceptsThisText) {
       // A READ dialog is a parsed fact: the refusal stands flat, and the way through it is its own
       // buttons.
       if (!dialogUnread) {
@@ -1921,7 +1977,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       ? translate("composer.placeholder.direct")
                       : isShell
                         ? translate("composer.placeholder.shell")
-                        : translate("composer.placeholder.reply")
+                        : dialogPresent && dialogAcceptsTyping
+                          ? translate("composer.placeholder.answer")
+                          : translate("composer.placeholder.reply")
             }
             autoCorrect={direct.active ? "off" : undefined}
             spellCheck={direct.active ? false : undefined}

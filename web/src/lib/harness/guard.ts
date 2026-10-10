@@ -37,8 +37,8 @@ export type ActionResult =
  * read alike. The passing case carries its payload instead of borrowing a type that reads as a
  * failure, and no call site has to reason about truthiness to tell the two apart.
  */
-export type GuardOutcome =
-  | { ok: true; region: string; styled?: string }
+export type GuardOutcome<M = unknown> =
+  | { ok: true; region: string; styled?: string; model: M }
   | { ok: false; result: ActionResult };
 
 /** Test seam for the verification polls' pacing. */
@@ -94,7 +94,7 @@ export async function entryGuard<M>(
   equals: (a: M, b: M) => boolean,
   regionOf: RegionOf<M>,
   styledOf?: StyledOf<M>,
-): Promise<GuardOutcome> {
+): Promise<GuardOutcome<M>> {
   let fresh;
   try {
     fresh = await readModel(args.paneId, args.requestedLines, args.scope, detect);
@@ -118,7 +118,9 @@ export async function entryGuard<M>(
   const region = regionOf(fresh.model);
   const styled = styledOf?.(fresh.model);
   // Assigned, never conditionally spread: a model with no style-only state binds `region` alone.
-  return styled === undefined ? { ok: true, region } : { ok: true, region, styled };
+  return styled === undefined
+    ? { ok: true, region, model: fresh.model }
+    : { ok: true, region, styled, model: fresh.model };
 }
 
 /**

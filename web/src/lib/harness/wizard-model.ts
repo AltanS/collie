@@ -64,6 +64,10 @@ export type WizardModel =
       steps: WizardStepChip[];
       question: string;
       options: WizardOption[];
+      /** Whether the question offers free-text / custom input ("Type something."). */
+      customInput?: boolean;
+      /** The custom answer text already recorded for this question, if any. */
+      customAnswer?: string;
       signature: string;
     }
   | {
@@ -73,6 +77,11 @@ export type WizardModel =
       incomplete: boolean;
       /** The submit plan; absent ⇒ `WIZARD_SUBMIT_KEYS`. Compared exactly by `wizardsEqual`. */
       submitKeys?: string[];
+      /** The submit button label; absent ⇒ translated "Submit answers". */
+      submitLabel?: string;
+      /** What the submit button does when tapped: submits answers (default) or jumps to the
+       *  first unanswered question (Pi's incomplete review). Absent ⇒ "submit". */
+      submitAction?: "submit" | "goToFirstUnanswered";
       /** The cancel plan; absent ⇒ `WIZARD_CANCEL_KEYS`. Compared exactly by `wizardsEqual`. */
       cancelKeys?: string[];
       /** The terminal's own words for cancel (opencode's `dismiss` ends the turn); absent ⇒ the
@@ -119,6 +128,8 @@ export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
   if (a.phase === "question" && b.phase === "question") {
     return (
       a.question === b.question &&
+      (a.customInput ?? false) === (b.customInput ?? false) &&
+      a.customAnswer === b.customAnswer &&
       a.options.length === b.options.length &&
       a.options.every(
         (o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen,
@@ -128,6 +139,8 @@ export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
   if (a.phase === "review" && b.phase === "review") {
     return (
       a.incomplete === b.incomplete &&
+      a.submitLabel === b.submitLabel &&
+      a.submitAction === b.submitAction &&
       sameOptionalKeys(a.submitKeys, b.submitKeys) &&
       sameOptionalKeys(a.cancelKeys, b.cancelKeys) &&
       a.cancelLabel === b.cancelLabel &&
