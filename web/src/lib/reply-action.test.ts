@@ -1312,3 +1312,99 @@ describe("the pre-type work is handed the region its keys must be bound to", () 
     expect(log).toEqual([]);
   });
 });
+
+describe("the submit settle", () => {
+  // The TUI needs a beat between the typed bytes landing and the submit key: Muse swallows an
+  // Enter sent within ~60ms of the text (measured on Muse 1.4.4: fails at ≤50ms, works at
+  // ≥100ms; the audit trail's failures sit at 55-62ms with one at 197ms, smallest success at
+  // 411ms), while the verify loop can confirm the draft on its first read. So the guard holds
+  // every submit until SUBMIT_SETTLE_MS have passed since the type call returned — the same
+  // floor the pre-#34 blind flow always paid, now only the remainder of it.
+  /** The `harness` helper, but type/submit/sleep share one timeline so order is asserted too. */
+  function eventHarness(screen: () => string, events: string[]) {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: screen(), truncated: false, revision: 1 }),
+      ),
+      http.post<never, { text: string; submit: boolean }>(
+        /\/api\/pane\/[^/]+\/reply$/,
+        async ({ request }) => {
+          const body = await request.json();
+          events.push(body.submit ? "post:submit" : "post:type");
+          return HttpResponse.json({ ok: true });
+        },
+      ),
+    );
+  }
+
+  const settled = (ms: number) => `sleep:${ms}`;
+
+  it("waits the full settle when verification was instant", async () => {
+    const text = "ship the release checklist";
+    const events: string[] = [];
+    eventHarness(() => paneWithDraft(text), events);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      now: () => 1000,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    // No poll sleeps (first read already matched) and the settle lands between the two POSTs.
+    expect(events).toEqual(["post:type", settled(350), "post:submit"]);
+  });
+
+  it("skips the settle when verification already took longer than it", async () => {
+    const text = "ship the release checklist";
+    const events: string[] = [];
+    let now = 1000;
+    let reads = 0;
+    eventHarness(() => {
+      reads += 1;
+      // Preflight + first verify read see a bare box; the draft arrives on the second verify.
+      if (reads > 1) now += 300;
+      return reads >= 3 ? paneWithDraft(text) : paneWithDraft("");
+    }, events);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      now: () => now,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    // One poll delay between the verify attempts, and no settle on top: 600ms had passed.
+    expect(events).toEqual(["post:type", settled(350), "post:submit"]);
+  });
+
+  it("pays a bounded full settle when the clock stepped backwards", async () => {
+    const text = "ship the release checklist";
+    const events: string[] = [];
+    eventHarness(() => paneWithDraft(text), events);
+    let calls = 0;
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      // typedAt reads 2000; by the settle computation the clock says 1000.
+      now: () => (calls++ === 0 ? 2000 : 1000),
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    // Unknown elapsed, so assume just-typed — but never more than one settle, whatever the step.
+    expect(events).toEqual(["post:type", settled(350), "post:submit"]);
+  });
+});
