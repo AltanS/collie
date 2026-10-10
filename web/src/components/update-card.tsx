@@ -223,6 +223,17 @@ export function UpdateCard() {
     return () => ac.abort();
   }, [settled]);
 
+  // EXCEPT WHEN THE HELD ANSWER IS UNUSABLE AT OPEN. The store reads once per document, so a read
+  // that failed or carried no preflight (a bridge mid-restart right after an update) would otherwise
+  // keep this button disabled until the app is reloaded; opening the card is the moment to ask again.
+  const unusableAtOpen = useRef(checked && preflight === null);
+  useEffect(() => {
+    if (!unusableAtOpen.current) return;
+    const ac = new AbortController();
+    void readUpdateState(ac.signal);
+    return () => ac.abort();
+  }, []);
+
   // THE SNAPSHOT'S OWN COPY, HANDED TO THE STORE. `routes/root.tsx` publishes it too, and that is the
   // one that matters in the app — this card is a route away and may not be mounted at all. It is
   // published here as well so a card mounted WITHOUT that root (the playground, a unit test) still

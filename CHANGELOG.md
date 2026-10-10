@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The update button no longer stays greyed out until the app reloads.** When the first update read failed or carried no preflight, the card asks again when it opens, and the bridge logs a preflight that cannot start. Thanks @GGGODLIN (#404).
 - **A sheet opens whole after a slide into a pane.** The slide no longer holds its last frame, which made every sheet on that screen, such as the pane menu, open one header too low with its last row off screen. Thanks @GGGODLIN (#403).
 
 ## [1.19.2] - 2026-10-10

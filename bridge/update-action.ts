@@ -693,9 +693,10 @@ export class PreflightCache {
     let report: PreflightReport | null;
     try {
       report = parsePreflightReport((await this.deps.run()).stdout);
-    } catch {
+    } catch (error) {
       // The subprocess could not be started at all. That is "no report", which refuses the update —
-      // never "nothing is red".
+      // never "nothing is red". Logged, because the card then says only "could not be run".
+      console.warn(`[update] preflight could not start: ${error instanceof Error ? error.message : String(error)}`);
       report = null;
     }
     this.value = report;
