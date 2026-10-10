@@ -21,7 +21,7 @@ const fixtureLines = (name: string): StyledLine[] =>
   linesOf(readFileSync(join(PANES_DIR, name), "utf8"));
 
 /** Every registered agent string. agy and antigravity are two registrations of one adapter. */
-const AGENTS = ["claude", "codex", "grok", "omp", "agy", "antigravity", "muse", "opencode"] as const;
+const AGENTS = ["claude", "codex", "grok", "omp", "agy", "antigravity", "muse", "opencode", "pi"] as const;
 
 /** What the post-pass answers for `agent` on `lines` — the exact composition the three call sites
  *  use (harness/index.ts buildBlocks, agent-chat's dialogPresent, dialog-guard's dialogDetector). */
@@ -43,6 +43,7 @@ describe("the cancel key each adapter declares", () => {
     ["antigravity", "Escape"],
     ["opencode", "Escape"],
     ["omp", "Escape"],
+    ["pi", "Escape"],
     ["grok", "ctrl+c"],
   ])("%s declares %s", (agent, key) => {
     expect(adapterFor(agent)!.cancelKey).toBe(key);
@@ -67,6 +68,7 @@ describe("a real unread modal gets the card", () => {
     ["grok", "grok--ask-multi.txt", "ctrl+c"],
     ["muse", "muse--ask-color-notes-open.txt", "Escape"],
     ["opencode", "oc--agents-picker.txt", "Escape"],
+    ["pi", "pi--v110-core-selector.txt", "Escape"],
     // The Ask tool's multi-select, which no grammar lifts (.adr/0077); its single-select twin is a card
     // of its own now.
     ["omp", "omp--select-multi.txt", "Escape"],
@@ -305,6 +307,10 @@ const CARD_FIXTURES = {
       "omp--v18-4-switch-quick-roles.txt",
       "omp--v18-4-switch-task.txt",
     ],
+    notModals: [],
+  },
+  pi: {
+    modals: ["pi--v110-core-selector.txt"],
     notModals: [],
   },
 } satisfies Record<string, { modals: string[]; notModals: string[] }>;

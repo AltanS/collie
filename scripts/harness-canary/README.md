@@ -33,9 +33,8 @@ Six scenarios per agent. Only `sends` makes model turns: four per agent.
 | `start-exit` | samples every 150 ms while starting and after exiting         | no unread card                                         |
 
 The message kinds live in `messages.ts`: the 14 hand kinds of 2026-09-26, plus `15-rule`, a
-pasted `────` line. claude, codex and opencode are read with their adapters. pi has no adapter. For
-it a draft passes when its words show on the raw mirror, and a send goes through the one-step path
-the phone uses.
+pasted `────` line. claude, codex, opencode and pi are read with their adapters. For
+each, drafts and sends go through type-then-verify.
 
 ### The journal (spec M41/05)
 

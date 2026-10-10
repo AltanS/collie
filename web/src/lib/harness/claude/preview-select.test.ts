@@ -194,9 +194,10 @@ describe("detectPreviewSelectRegion + buildBlocks — render boundary and gating
   });
 
   it("buildBlocks lifts NOTHING from a Claude dialog for every other agent", () => {
-    // The fail-closed claim is that no foreign adapter READS this screen. `opencode` and `pi` have
-    // no adapter at all and `undefined` has none either, so all three keep the pure raw mirror.
-    for (const agent of ["opencode", "pi", undefined]) {
+    // The fail-closed claim is that no foreign adapter READS this screen. `opencode` and `pi`
+    // decline foreign screens (and their modalOnScreen returns false), while `hermes` and
+    // `undefined` have no adapter at all, so they keep the pure raw mirror.
+    for (const agent of ["opencode", "pi", "hermes", undefined]) {
       const blocks = buildBlocks(fixtureLines("claude--select-preview.txt"), { agent });
       expect(blocks.map((b) => b.kind)).toEqual(["raw"]);
     }

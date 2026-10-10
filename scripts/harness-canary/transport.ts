@@ -26,6 +26,11 @@ export interface Transport {
   readScreen(paneId: string): Promise<string>;
   /** The audit lines the bridge's reply handler wrote, in order. */
   readonly audit: readonly string[];
+  /**
+   * Who hears of a successful pane read (a 200 or a 304), the way the client's `fetchPane` stamps
+   * lib/liveness.ts. Without it M46's isLive gate in `sendGuardedReply` refuses every canary send.
+   */
+  onLiveRead(fn: (paneId: string) => void): void;
 }
 
 /**
@@ -65,6 +70,7 @@ export function installTransport(session: CanarySession, home: string): Transpor
     },
   });
 
+  let liveRead: ((paneId: string) => void) | undefined;
   const canaryFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input), ORIGIN);
     const match = PANE_PATH.exec(url.pathname);
@@ -72,7 +78,11 @@ export function installTransport(session: CanarySession, home: string): Transpor
     const paneId = decodeURIComponent(match[1]!);
     if (!session.isOwnedPane(paneId)) throw new Error(`canary transport: refusing pane ${paneId}, not the canary's`);
     const req = new Request(url, init);
-    if (match[2] === undefined && req.method === "GET") return readPane(mux, cfg, paneId, url, req);
+    if (match[2] === undefined && req.method === "GET") {
+      const res = await readPane(mux, cfg, paneId, url, req);
+      if (res.status === 200 || res.status === 304) liveRead?.(paneId);
+      return res;
+    }
     if (match[2] === "reply" && req.method === "POST") {
       return replyPane(mux, cfg, paneId, req, log, CANARY_DEVICE, CANARY_SESSION);
     }
@@ -82,6 +92,9 @@ export function installTransport(session: CanarySession, home: string): Transpor
 
   return {
     audit,
+    onLiveRead(fn) {
+      liveRead = fn;
+    },
     async readScreen(paneId) {
       const res = await canaryFetch(`/api/pane/${encodeURIComponent(paneId)}`);
       const body = await res.text();

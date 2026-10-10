@@ -40,6 +40,15 @@ export interface Readers {
   adapterFor(agent: string): Adapter | undefined;
   draftCarriesSend(sent: string, draft: string | null): boolean;
   sendGuardedReply(paneId: string, text: string, agent: string): Promise<ReplyOutcome>;
+  /**
+   * Stamp a successful read into the readers' own lib/liveness.ts (M46). Absent when the checkout
+   * predates it (`--readers` at v1.13.1), where the reply action has no liveness gate to satisfy.
+   */
+  readonly markLive?: (paneId: string) => void;
+}
+
+interface LivenessModule {
+  markLive(paneId: string): void;
 }
 
 interface AnsiModule {
@@ -69,6 +78,7 @@ export async function loadReaders(root: string): Promise<Readers> {
   const blocks: BlocksModule = await import(join(lib, "blocks.ts"));
   const harness: HarnessModule = await import(join(lib, "harness", "index.ts"));
   const reply: ReplyModule = await import(join(lib, "reply-action.ts"));
+  const liveness: LivenessModule | undefined = await import(join(lib, "liveness.ts")).catch(() => undefined);
   return {
     root,
     parse: (text) => blocks.splitLines(ansi.parseAnsi(text)),
@@ -77,5 +87,6 @@ export async function loadReaders(root: string): Promise<Readers> {
     adapterFor: (agent) => harness.adapterFor(agent),
     draftCarriesSend: (sent, draft) => reply.draftCarriesSend(sent, draft),
     sendGuardedReply: (paneId, text, agent) => reply.sendGuardedReply({ paneId, text, agent }),
+    markLive: liveness === undefined ? undefined : (paneId) => liveness.markLive(paneId),
   };
 }

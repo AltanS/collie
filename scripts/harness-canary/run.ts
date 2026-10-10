@@ -111,6 +111,8 @@ async function main(options: CanaryOptions): Promise<number> {
     const transport = installTransport(session, join(project, ".collie-home-unused"));
     audit = transport.audit;
     const readers = await loadReaders(options.readers);
+    // A successful read makes the pane live, as the client's `fetchPane` does (M46).
+    if (readers.markLive !== undefined) transport.onLiveRead(readers.markLive);
     // The journal adapters are THIS checkout's, never `--readers`': that flag swaps the web/src
     // screen readers so an older checkout can be shown missing what it missed, and the bridge side
     // of the canary has always been this checkout's (README § "Proof against 1.13.1").

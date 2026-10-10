@@ -1597,3 +1597,61 @@ The last seven rows were captured on opencode 1.18.34, the rest of this corpus o
 `idle`, not `blocked`, under the question dialogs probed in round two (see "Round two" in
 `QUESTION_NOTES.md`). Each of the seven was checked for user and host names, home paths, tokens and
 session ids and holds only probe strings and the model name.
+
+## pi 1.1.0 corpus (captured 2026-10-10, pi 1.1.0 with a pi question extension, Linux sandbox panes)
+
+Byte-faithful `format:ansi` captures of **pi 1.1.0** with a pi question extension loaded,
+captured through an isolated second Collie bridge instance running on port 8788
+(`COLLIE_PORT=8788 COLLIE_STATE_DIR=<mktemp> HERDR_PLUGIN_CONFIG_DIR=<mktemp> COLLIE_INSTANCE=test COLLIE_SKIP_SERVE=1 bun run bridge/index.ts`).
+Pane buffers were captured through the bridge's `GET /api/pane/:id?lines=300` API (bearer authenticated with the
+bridge's `local-secret`) via `curl` and `bun` for JSON extraction, identical to `scripts/capture-fixture.sh`.
+Keypresses and prompts were driven strictly in dedicated sandbox panes.
+
+Privacy: the raw 300-row captures carried the shell prompt (user@host), launch commands with home paths,
+the operator's skill/extension inventory, extension warnings with home paths and the package-update box.
+Each file is therefore **cut to the tail**: it starts at the final frame (the composer's top rule, the
+dialog's top rule, the `/model` selector's top rule, or the last user message for `working`), whole rows
+only, and those kept rows parse to the same styled segments as in the full capture. In the kept rows, three
+strings were replaced with neutral text, ANSI styling unchanged: the private provider profile name
+(powerbar footer and `/model` list) became `proxy-1` and the proxy's abbreviation in the model description
+became `API`, both at the same width; the default footer's working directory became `~/projects/pi-demo`,
+on a left-aligned row with no padding after it. No user, host, home path, handle, private package name, key
+or token remains; a grep for those strings finds nothing.
+
+The Pi composer is framed by horizontal rule rows (`────`, U+2500) above and below the draft row(s),
+with a status/footer at the tail: either the operator's custom powerbar 1-row footer or the built-in 2-row
+footer (`~/... (main)` and `0.0%/0 (auto)`). The pi question dialogs replace
+the composer at the buffer tail with an accent-rule frame, question title, option rows, and a key-hint footer
+(`↑↓ navigate • Enter to select • Tab to add note • type a number or an answer • Esc to cancel`). Multi-select
+dialogs feature checkboxes (`[ ]` / `[x]`), and questionnaire dialogs feature a tab bar (`▢` open, `▣` answered,
+`✓ Review`, or compact `▢ 1 ▢ 2 ...` when width is constrained). Free-answer editing opens an inline Editor
+with footer `Enter to submit • Esc to go back`.
+
+| Fixture | State / what's in it | Herdr status |
+| --- | --- | --- |
+| `pi--v110-idle.txt` | Idle composer with powerbar operator footer and horizontal rule borders | `idle` |
+| `pi--v110-idle-default-footer.txt` | Idle composer launched with `pi --no-extensions -e <question-extension>`, showing Pi's default 2-row footer | `idle` |
+| `pi--v110-draft.txt` | Single-line draft (`Add unit tests for the parser`) inside the composer frame | `idle` |
+| `pi--v110-draft-multiline.txt` | Two-line draft separated by a newline inside the composer frame | `idle` |
+| `pi--v110-slash-palette.txt` | Slash command palette popup open above the composer after typing `/` | `idle` |
+| `pi--v110-working.txt` | Model turn active, showing `⠸ Working` spinner above composer rule | `working` |
+| `pi--v110-narrow-idle.txt` | Idle composer in a narrow (~50 columns) terminal viewport | `idle` |
+| `pi--v110-core-selector.txt` | Pi core modal selector (`/model`) with key hints `Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel` | `blocked` |
+| `pi--v110-single.txt` | Standalone single-select question dialog, 4 options plus `5. Type something.`, pointer on option 1 | `blocked` |
+| `pi--v110-single-desc.txt` | Single-select question dialog with multi-line option descriptions, pointer on option 1 | `blocked` |
+| `pi--v110-single-moved.txt` | Single-select question dialog with pointer moved to option 2 (`> 2. SQLite`) | `blocked` |
+| `pi--v110-single-editor-open.txt` | Single-select dialog with free-answer editor open, footer `Enter to submit • Esc to go back` | `blocked` |
+| `pi--v110-single-narrow.txt` | Single-select question dialog rendered in a ~50-column terminal | `blocked` |
+| `pi--v110-multi.txt` | Standalone multi-select dialog (`multiple: true`), checkboxes `> [ ] 1. ESLint`, footer `Space to tick • Enter to confirm` | `blocked` |
+| `pi--v110-multi-ticked.txt` | Multi-select dialog with option 1 ticked (`> [x] 1. ESLint`) | `blocked` |
+| `pi--v110-multi-moved.txt` | Multi-select dialog with option 1 ticked and pointer moved to option 2 (`> [ ] 2. Prettier`) | `blocked` |
+| `pi--v110-multi-pointer-other.txt` | Multi-select dialog with pointer on `> 5. Type something.` | `blocked` |
+| `pi--v110-multi-editor-open.txt` | Multi-select dialog with free-answer editor open on `5. Type something. ✎` | `blocked` |
+| `pi--v110-tabs-single.txt` | Questionnaire on single-choice tab `Auth`, tab bar `← ▢ Auth ▢ Features ▢ Deploy ✓ Review →`, pointer on option 1 | `blocked` |
+| `pi--v110-tabs-single-recorded.txt` | Questionnaire on tab `Auth` after recording answer, showing `1. OAuth 2.0 / OIDC ✓` and tab bar `▣ Auth` | `blocked` |
+| `pi--v110-tabs-multi.txt` | Questionnaire on multi-choice tab `Features`, checkboxes `> [ ] 1. Audit logs`, tab bar `▣ Auth ▢ Features ▢ Deploy` | `blocked` |
+| `pi--v110-tabs-compact.txt` | Questionnaire with compact numeric tab bar (`← ▢ 1 ▢ 2 ... ✓ →`) due to constrained width | `blocked` |
+| `pi--v110-tabs-editor-open.txt` | Questionnaire tab page with free-answer editor open, footer `Enter to submit • Esc to go back` | `blocked` |
+| `pi--v110-review-incomplete.txt` | Questionnaire on `Review` tab with incomplete answers, showing `Unanswered: Features, Deploy` and footer `Enter goes to the first unanswered` | `blocked` |
+| `pi--v110-review-complete.txt` | Questionnaire on `Review` tab with all tabs answered, showing `✓ All answered — Enter to submit` and footer `Enter submit` | `blocked` |
+

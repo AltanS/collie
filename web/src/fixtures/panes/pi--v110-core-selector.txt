@@ -1,0 +1,25 @@
+[0m[38;2;79;79;79m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[38;2;235;203;139mOnly showing models from configured providers. Use /login to add providers.[0m                                             
+
+> [0m[7m [0m                                                                                                                     
+
+[0m[38;2;235;203;139m→ ✓ profile-flash[0m [0m[38;2;79;79;79m[proxy-1] · default[0m                                                                                   
+    claude-fable-5-1 [0m[38;2;79;79;79m[proxy-1][0m                                                                                          
+    claude-haiku-4-5-20251001 [0m[38;2;79;79;79m[proxy-1][0m                                                                                 
+    claude-haiku-5-5 [0m[38;2;79;79;79m[proxy-1][0m                                                                                          
+    claude-opus-5-5 [0m[38;2;79;79;79m[proxy-1][0m                                                                                           
+    claude-sonnet-5-5 [0m[38;2;79;79;79m[proxy-1][0m                                                                                         
+    gemini-3-flash [0m[38;2;79;79;79m[proxy-1][0m                                                                                            
+    gemini-3.1-flash-lite [0m[38;2;79;79;79m[proxy-1][0m                                                                                     
+    gemini-3.5-flash-lite [0m[38;2;79;79;79m[proxy-1][0m                                                                                     
+    gemini-3.8-flash-high [0m[38;2;79;79;79m[proxy-1][0m                                                                                     
+[0m[38;2;79;79;79m  (1/21)[0m                                                                                                                
+
+[0m[38;2;79;79;79m  Model Name: profile-flash (API · Claude Haiku 5.5 → GLM 5.3 Flash · effort off/low)[0m                                   
+
+[0m[38;2;135;191;208m  Model catalogs refreshed.[0m                                                                                             
+
+[0m[38;2;79;79;79m  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel[0m                                                  
+[0m[38;2;79;79;79m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;79;79;79m⎇[0m [0m[38;2;79;79;79mmain │ [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[48;2;79;79;79m [0m [0m[38;2;79;79;79m0%[0m                                                            [0m[38;2;79;79;79mproxy-1 │ profile-flash · low[0m

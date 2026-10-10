@@ -124,13 +124,23 @@ const allGrokFixtures = readdirSync(PANES_DIR)
 const allOpencodeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("oc--") && f.endsWith(".txt"))
   .toSorted();
+// Every pi capture must stay raw under the claude adapter too — the cross-adapter leg.
+const allPiFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("pi--") && f.endsWith(".txt"))
+  .toSorted();
 
 const ownFixtures = allClaudeFixtures.filter((f) => !NEUTRAL.has(f));
 const neutralFixtures = allClaudeFixtures.filter((f) => NEUTRAL.has(f));
 
 describeAdapterConformance(claudeAdapter, {
   ownFixtures,
-  foreignFixtures: [...allOmpFixtures, ...allCodexFixtures, ...allGrokFixtures, ...allOpencodeFixtures], // the other adapters' captures — cross-adapter fail-closed
+  foreignFixtures: [
+    ...allOmpFixtures,
+    ...allCodexFixtures,
+    ...allGrokFixtures,
+    ...allOpencodeFixtures,
+    ...allPiFixtures,
+  ], // the other adapters' captures — cross-adapter fail-closed
   neutralFixtures,
 });
 
