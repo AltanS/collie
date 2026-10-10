@@ -341,6 +341,7 @@ export const ko: Dictionary = {
   "chat.history.label": "대화 기록",
   "copyable.copy": "복사",
   "copyable.command": "명령 복사",
+  "copyable.output": "명령어 출력 복사",
   "copyable.done": "클립보드에 복사했습니다",
   "copyable.failed": "클립보드에 복사할 수 없습니다",
   "chat.copyOutput.label": "출력 복사",

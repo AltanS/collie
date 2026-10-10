@@ -278,6 +278,7 @@ export const pt: Dictionary = {
   "chat.history.label": "Histórico da conversa",
   "copyable.copy": "Copiar",
   "copyable.command": "Copiar comando",
+  "copyable.output": "Copiar a saída do comando",
   "copyable.done": "Copiado para a área de transferência",
   "copyable.failed": "Não foi possível copiar para a área de transferência",
   "chat.copyOutput.label": "Copiar saída",

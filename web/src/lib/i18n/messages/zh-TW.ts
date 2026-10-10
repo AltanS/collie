@@ -330,6 +330,7 @@ export const zhTW: Dictionary = {
   "chat.history.label": "對話記錄",
   "copyable.copy": "複製",
   "copyable.command": "複製指令",
+  "copyable.output": "複製指令輸出",
   "copyable.done": "已複製到剪貼簿",
   "copyable.failed": "無法複製到剪貼簿",
   "chat.copyOutput.label": "複製輸出",

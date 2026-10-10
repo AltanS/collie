@@ -282,6 +282,7 @@ export const ru: Dictionary = {
   "chat.history.label": "История диалога",
   "copyable.copy": "Копировать",
   "copyable.command": "Копировать команду",
+  "copyable.output": "Скопировать вывод команды",
   "copyable.done": "Скопировано в буфер обмена",
   "copyable.failed": "Не удалось скопировать в буфер обмена",
   "chat.copyOutput.label": "Копировать вывод",

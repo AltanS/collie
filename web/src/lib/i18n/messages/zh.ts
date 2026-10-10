@@ -331,6 +331,7 @@ export const zh: Dictionary = {
   "chat.history.label": "对话历史",
   "copyable.copy": "复制",
   "copyable.command": "复制命令",
+  "copyable.output": "复制命令输出",
   "copyable.done": "已复制到剪贴板",
   "copyable.failed": "无法复制到剪贴板",
   "chat.copyOutput.label": "复制输出",

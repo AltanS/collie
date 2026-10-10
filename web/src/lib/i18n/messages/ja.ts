@@ -342,6 +342,7 @@ export const ja: Dictionary = {
   "chat.history.label": "会話履歴",
   "copyable.copy": "コピー",
   "copyable.command": "コマンドをコピー",
+  "copyable.output": "コマンド出力をコピー",
   "copyable.done": "クリップボードにコピーしました",
   "copyable.failed": "クリップボードにコピーできませんでした",
   "chat.copyOutput.label": "出力をコピー",

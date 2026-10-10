@@ -377,6 +377,7 @@ export const en = {
   "chat.history.label": "Conversation history",
   "copyable.copy": "Copy",
   "copyable.command": "Copy command",
+  "copyable.output": "Copy command output",
   "copyable.done": "Copied to clipboard",
   "copyable.failed": "Couldn't copy to clipboard",
   "chat.copyOutput.label": "Copy output",

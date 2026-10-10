@@ -56,13 +56,13 @@ describe("copyable reading blocks", () => {
     const { container } = render(<ToolCard tool={{ kind: "execute", command, output }} status="done" />);
     fireEvent.click(within(container).getByRole("button", { name: "Copy command" }));
     await waitFor(() => expect(writeText).toHaveBeenNthCalledWith(1, command));
-    expect(within(container).queryByRole("button", { name: "Copy output" })).toBeNull();
+    expect(within(container).queryByRole("button", { name: "Copy command output" })).toBeNull();
     fireEvent.click(within(container).getByRole("button", { expanded: false }));
     expect(container.querySelector("pre")?.textContent).not.toContain("output 0\n");
-    fireEvent.click(within(container).getByRole("button", { name: "Copy output" }));
+    fireEvent.click(within(container).getByRole("button", { name: "Copy command output" }));
     await waitFor(() => expect(writeText).toHaveBeenNthCalledWith(2, output));
     const commandButton = within(container).getByRole("button", { name: "Copy command" });
-    const outputButton = within(container).getByRole("button", { name: "Copy output" });
+    const outputButton = within(container).getByRole("button", { name: "Copy command output" });
     expect(outputButton.closest(".invert")).toBeNull();
     expect(commandButton.parentElement).not.toBe(outputButton.parentElement);
     expect(commandButton.nextElementSibling?.className).toContain("min-h-11");

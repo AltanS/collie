@@ -979,7 +979,7 @@ function CommandBlock({ command, output, preview }: { command: string; output?: 
           </div>
         </CopyableBlock>
         {open && lines.length > 0 && (
-          <CopyableBlock text={output ?? ""} label={t("chat.copyOutput.label")}>
+          <CopyableBlock text={output ?? ""} label={t("copyable.output")}>
             <pre className={cn("m-0 overflow-x-auto rounded-b-md border-t border-white/10 px-2.5 py-2 font-mono text-[11px] leading-[1.4] whitespace-pre", MIRROR_SPACE, MIRROR_INVERT)}>{shown.join("\n")}</pre>
           </CopyableBlock>
         )}

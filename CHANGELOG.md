@@ -31,6 +31,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A reply to Muse no longer stays in the box as an unsent draft.** Muse waits 350 ms after the text before the guarded Enter; other agents send as before. Thanks @jpcarranza94 (#395).
 - **An installed iPhone app no longer hides its bottom row behind the home bar.** The standalone height now takes the smaller of the large viewport and the dynamic viewport plus the top inset, so iOS releases that report the large viewport too tall no longer push the composer off screen (#394, also the cause of #371).
 
+### Added
+
+- **Code blocks, tables, commands and diffs have a copy icon.** One tap copies the block as text, masked secrets stay masked, and the icon confirms the copy on every screen. Thanks @GGGODLIN (#396).
+
 ## [1.19.1] - 2026-10-10
 
 ### Fixed
