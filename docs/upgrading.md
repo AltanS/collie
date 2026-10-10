@@ -660,6 +660,9 @@ Version 1.18.0 makes pairing mandatory for reads as well as writes
 - **Unpaired browsers see the pair screen.** A desktop browser that never paired, which could read
   before, now gets `403 device not paired`. Run `collie pair` on the host, then enter the code in
   Settings on that browser ([Pair a device](security.md#pair-a-device--the-write-credential)).
+- **An installed app can keep the old screens for one more load.** An installed app may still show
+  the previous version's screens until it loads once more. If it shows "Sign in" after the update to
+  1.18 or later, reload the app, or close and reopen it. Then pair it as above.
 - **Scripts must pair once.** A script that read the API without a token gets `403` now. Run
   `collie pair --expires 30d`, then claim the code with a POST to `/api/pair` that carries
   `{"code": "...", "label": "script"}` and a same-origin `Origin` header. The token comes back once,

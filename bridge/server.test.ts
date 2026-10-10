@@ -30,6 +30,7 @@ import {
   isHostAllowed,
   isLoopbackPeer,
   isReservedAuthPath,
+  reservedAuthPlaceholder,
   keysPane,
   cacheRulesRoute,
   launchersRoute,
@@ -2148,6 +2149,32 @@ describe("isReservedAuthPath — the namespace a fronting proxy owns", () => {
     for (const path of ["/", "/settings", "/pane/w1:p1", "/authors", "/api/snapshot"]) {
       expect(isReservedAuthPath(path)).toBe(false);
     }
+  });
+});
+
+describe("reservedAuthPlaceholder — what /auth/ says when no proxy answers", () => {
+  test("stays a 404 and keeps the strict CSP", async () => {
+    const res = reservedAuthPlaceholder();
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-security-policy")).toContain("default-src");
+    const body = await res.text();
+    expect(body).not.toMatch(/<script|<style|style=/i);
+  });
+
+  test("tells an unpaired device to pair, and links Settings next to the way back", async () => {
+    const body = await reservedAuthPlaceholder().text();
+    expect(body).toContain("<code>collie pair</code>");
+    expect(body).toContain("enter the code in Settings");
+    expect(body).toContain('<a href="/settings/system">Open Settings</a>');
+    expect(body).toContain('<a href="/">Back to Collie</a>');
+    // The operator paragraph is still there, after the pairing one.
+    expect(body.indexOf("collie pair")).toBeLessThan(body.indexOf("If you are the operator"));
+  });
+
+  test("under a mount both links carry it (ADR 0052)", async () => {
+    const body = await reservedAuthPlaceholder("/collie/").text();
+    expect(body).toContain('<a href="/collie/">Back to Collie</a>');
+    expect(body).toContain('<a href="/collie/settings/system">Open Settings</a>');
   });
 });
 

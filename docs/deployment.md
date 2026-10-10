@@ -156,6 +156,9 @@ serve as the access gate.
   Service workers bypass caching for `/auth/*`.
 - Forward-auth redirects on API requests are treated as 401s to expose the login UI. Authentik
   setups should route `/auth/` to `/outpost.goauthentik.io/start`.
+- Without a proxy on `/auth/`, Collie answers `404` there. The page now tells an unpaired device
+  to run `collie pair` and enter the code in Settings. It never redirects, because the path
+  belongs to your proxy.
 
 ```caddyfile
 collie.example.com {

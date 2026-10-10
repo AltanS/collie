@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The `/auth/` page tells an unpaired device to pair.** With no proxy in front of Collie, the page now says to run `collie pair` on the computer and enter the code in Settings, and links Settings next to the way back, also under a `COLLIE_BASE_PATH` mount. Reported by @djbclark (#393).
+
 ## [1.19.0] - 2026-10-09
 
 ### Added

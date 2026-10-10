@@ -2868,7 +2868,7 @@ export function startServer(opts: {
       // the bridge refuses a stale session. Collie never routes it. If a request gets this far, no
       // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
       // leave the operator staring at the UI they were trying to escape.
-      if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
+      if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder(cfg.basePath);
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
       return serveStatic(pathname, req.headers.get("accept-encoding"), WEB_DIR, cfg.basePath);
@@ -6615,8 +6615,16 @@ export function isReservedAuthPath(pathname: string): boolean {
  * installed PWA this page may be the only thing on screen and there is no address bar to leave it.
  * Unauthenticated by design: it sits outside every gate, since the reason to be here is that a gate
  * refused you.
+ *
+ * The page also serves a second reader: a device that is simply not paired. Since pairing became
+ * mandatory for reads (ADR 0086) an unpaired phone, or an installed app still running an older shell
+ * that treats every 403 as a proxy refusal, can land here from a "Not paired" or "Sign in" message
+ * with no proxy anywhere. The page tells that person to pair (`collie pair`, then the code in
+ * Settings) and links the System page, where the pairing form lives. It does NOT redirect there: the
+ * path belongs to an operator's proxy, and a redirect would take it from them. Both links carry the
+ * mount (`basePath`, ADR 0052), so a mounted Collie does not send the reader to the origin root.
  */
-function reservedAuthPlaceholder(): Response {
+export function reservedAuthPlaceholder(basePath: string = "/"): Response {
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -6629,9 +6637,12 @@ function reservedAuthPlaceholder(): Response {
 <p>Collie reserves <code>/auth/</code> for a reverse proxy sitting in front of it, so that an
 installed app has somewhere to reach a sign-in or device-enrolment page. Collie itself serves
 nothing here and has no sign-in of its own.</p>
+<p>If a <em>Not paired</em> or <em>Sign in</em> message sent you here and no proxy sits in front of
+this Collie, pair this device instead: run <code>collie pair</code> on the computer that runs
+Collie, then enter the code in Settings.</p>
 <p>If you are the operator: point this path at your proxy's sign-in flow. See <em>Serving Collie
 behind your own reverse proxy</em> in the README.</p>
-<p><a href="/">Back to Collie</a></p>
+<p><a href="${basePath}">Back to Collie</a> · <a href="${basePath}settings/system">Open Settings</a></p>
 </body>
 </html>
 `;
