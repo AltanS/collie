@@ -209,6 +209,16 @@ export interface JournalAdapter {
    */
   discover?(cwd: string): Promise<AgentSessionRef | null>;
   /**
+   * Correct a reported ref the multiplexer kept after the harness moved to another session, or
+   * return it unchanged.
+   *
+   * OPTIONAL, and present only on grok, whose in-agent `/resume` Herdr does not take
+   * (journal/grok.ts). Called only while the pane still runs this harness, because a pane whose
+   * agent exited has no live session to move to. Like `discover`, the answer is an ordinary id ref
+   * that goes through the same `resolve` and containment.
+   */
+  reconcile?(ref: AgentSessionRef, cwd: string): Promise<AgentSessionRef>;
+  /**
    * The prompt-cache reading for one session, off the same log `parse` reads — or null when there is
    * nothing to read yet.
    *

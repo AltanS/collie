@@ -21,9 +21,16 @@
 //
 // Where Herdr's id comes from: the grok integration reports `session_id` (kind `id`) matching the
 // session directory name — a UUID, v7 observed. It needs `herdr integration install grok`.
+//
+// That id can go stale (live-verified 2026-10-08, grok 1.0.46, Herdr 0.9.0): `/resume` inside a
+// running grok fires SessionStart with the resumed id and source `load`, and Herdr keeps the pane's
+// first id because it accepts a replacement from grok only for source `new` (still so on Herdr's
+// main that day). `reconcile` corrects it from `$GROK_HOME/active_sessions.json`, the list grok
+// itself keeps of the session each live process holds. That file is grok's own and undocumented,
+// so anything short of one unambiguous live match leaves Herdr's id alone.
 
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
@@ -54,6 +61,77 @@ const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 export function isGrokSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
+}
+
+/** One row of grok's `active_sessions.json`: the session a live grok process currently holds. */
+export interface GrokActiveSession {
+  sessionId: string;
+  pid: number;
+  cwd: string;
+}
+
+/**
+ * The rows of `active_sessions.json`, or null when the file or any row does not read cleanly. A
+ * skipped row could be the one holding the reported id, so a partial list is no list at all.
+ */
+export function parseActiveSessions(text: string): GrokActiveSession[] | null {
+  let parsed: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction — a string, number, boolean, null,
+    // or an array/object of those. The array check and every field read below narrow it further.
+    parsed = JSON.parse(text) as JsonValue;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const rows: GrokActiveSession[] = [];
+  for (const row of parsed) {
+    if (row === null || typeof row !== "object" || Array.isArray(row)) return null;
+    const { session_id: sessionId, pid, cwd } = row;
+    if (typeof sessionId !== "string" || !isGrokSessionId(sessionId)) return null;
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return null;
+    if (typeof cwd !== "string" || cwd === "") return null;
+    rows.push({ sessionId, pid, cwd });
+  }
+  return rows;
+}
+
+/**
+ * The session a grok pane really holds. `live` is the rows whose process is still running. Herdr's
+ * id stands while grok still lists it; otherwise the one live session opened in the pane's cwd
+ * replaces it. Two in the same cwd could be either pane's, so the reported id stands then too.
+ */
+export function pickLiveSession(
+  reported: string,
+  cwd: string,
+  live: readonly GrokActiveSession[],
+): string {
+  if (live.some((s) => s.sessionId === reported)) return reported;
+  const here = live.filter((s) => s.cwd === cwd);
+  return here.length === 1 && here[0] !== undefined ? here[0].sessionId : reported;
+}
+
+/**
+ * Whether a path is known to be missing. Only ENOENT and ENOTDIR say so; any other stat failure (a
+ * folder without search permission, say) leaves it unknown, which is not the same as absent.
+ */
+async function knownAbsent(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return false;
+  } catch (err) {
+    return err instanceof Error && "code" in err && (err.code === "ENOENT" || err.code === "ENOTDIR");
+  }
+}
+
+/** Whether a pid names a running process. EPERM means it runs as someone else, which is still alive. */
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err instanceof Error && "code" in err && err.code === "EPERM";
+  }
 }
 
 /** Inner text of the first `<user_query>…</user_query>`, trimmed; null when the tag isn't present. */
@@ -341,8 +419,45 @@ export class GrokTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, { path: string; root: string }>();
   private readonly roots: string[];
 
-  constructor(roots: string | readonly string[]) {
+  constructor(
+    roots: string | readonly string[],
+    private readonly isAlive: (pid: number) => boolean = processAlive,
+  ) {
     this.roots = rootList(roots);
+  }
+
+  /**
+   * Herdr's id, or the live session grok says this pane's process moved to (header: the id can go
+   * stale). The answer is only ever a key for `resolve`, which still finds and contains the file.
+   */
+  async reconcile(ref: AgentSessionRef, cwd: string): Promise<AgentSessionRef> {
+    if (ref.kind !== "id") return ref;
+    const sessions = await this.activeSessions();
+    if (sessions === null) return ref;
+    const live = sessions.filter((s) => this.isAlive(s.pid));
+    const value = pickLiveSession(ref.value, cwd, live);
+    return value === ref.value ? ref : { kind: "id", value };
+  }
+
+  /**
+   * Every root's `active_sessions.json`, which sits in `$GROK_HOME`, one level above `sessions`, or
+   * null when any of them may exist and cannot be read whole. A root known to have no file holds no
+   * live grok.
+   */
+  private async activeSessions(): Promise<GrokActiveSession[] | null> {
+    const rows: GrokActiveSession[] = [];
+    for (const root of this.roots) {
+      const home = dirname(root);
+      const path = join(home, "active_sessions.json");
+      if (await knownAbsent(path)) continue;
+      const real = await containedRealpath(path, home);
+      if (real === null) return null;
+      const text = await readFile(real, "utf8").catch(() => null);
+      const parsed = text === null ? null : parseActiveSessions(text);
+      if (parsed === null) return null;
+      rows.push(...parsed);
+    }
+    return rows;
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -390,10 +505,12 @@ export class GrokTranscriptSource implements TranscriptSource {
 }
 
 export function grokJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new GrokTranscriptSource(roots);
   return {
     agent: "grok",
-    source: new GrokTranscriptSource(roots),
+    source,
     parse: parseGrokTranscript,
     reducer: createGrokReducer,
+    reconcile: (ref, cwd) => source.reconcile(ref, cwd),
   };
 }

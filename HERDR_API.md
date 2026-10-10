@@ -314,6 +314,12 @@ not require a literal `done` from Herdr. See [ADR 0003](.adr/0003-one-shared-see
 > harness leaves the previous one's ref behind: a pane running `pi` was observed still advertising a
 > `herdr:claude` id. The record's own `agent` field is what distinguishes the two — compare it against
 > the pane's `agent` before trusting the ref (`bridge/state-engine.ts`).
+>
+> "Last" does not hold within one running grok (live-verified 2026-10-08, grok 1.0.46, Herdr 0.9.0).
+> A `/resume` inside grok reports the resumed id with session-start source `load`, and Herdr answers
+> `ok` but keeps the pane's first id. Herdr accepts a replacement from grok only for source `new`,
+> still so on its main branch that day. `GrokTranscriptSource.reconcile` (`bridge/journal/grok.ts`)
+> corrects the stale id from grok's own `active_sessions.json`.
 
 > **Pane records now carry `scroll`** (new in 0.7.2, live-verified 2026-07-07): `pane.list`,
 > `pane.get`, `pane.current`, and `session.snapshot` panes all include
