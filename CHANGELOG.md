@@ -30,7 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The unread-dialog card follows Wrap lines.** Its mirror of a wide pane wraps or pans as the pane mirror does, also after Put away (#372, #399).
 - **A reply to Muse no longer stays in the box as an unsent draft.** Muse waits 350 ms after the text before the guarded Enter; other agents send as before. Thanks @jpcarranza94 (#395).
 - **The copy icons work over plain HTTP.** Where the browser has no clipboard API, as on a tailnet page served from `http://host:8788`, the icon on code, table, command and diff blocks and the Copy output row copy through the browser's older copy command and show up again.
-- **An installed iPhone app no longer hides its bottom row behind the home bar.** The standalone height now takes the smaller of the large viewport and the dynamic viewport plus the top inset, so iOS releases that report the large viewport too tall no longer push the composer off screen (#394, also the cause of #371).
+- **An installed iPhone app no longer hides its bottom row behind the home bar.** The standalone height now takes the smaller of the large viewport and the dynamic viewport plus the top inset, so iOS releases that report the large viewport too tall no longer push the composer off screen (#394, also the cause of #371). Checked against the reporter's screenshot and a WebKit run, not yet on a device; please report if your iPhone still cuts the bottom row.
 
 ### Added
 
