@@ -326,6 +326,27 @@ describe("preflight red — the button is disabled with the red's own reason", (
     await waitFor(() => expect(button).toBeDisabled());
     expect(screen.getByText("The preflight couldn't be run on this machine.")).toBeInTheDocument();
   });
+
+  it("a failed read is asked again when the card opens next, so the button is not stuck until a reload", async () => {
+    server.use(http.get("/api/update/check", () => new HttpResponse(null, { status: 500 })));
+    const first = renderCard(info());
+    const stuck = await screen.findByRole("button", { name: "Update to 1.4.0" });
+    await waitFor(() => expect(stuck).toBeDisabled());
+    first.unmount();
+    serveCheck(info(), GREEN);
+    renderCard(info());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Update to 1.4.0" })).toBeEnabled());
+  });
+
+  it("a preflight that could not be run is asked again when the card opens next", async () => {
+    serveCheck(info(), null);
+    const first = renderCard(info());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Update to 1.4.0" })).toBeDisabled());
+    first.unmount();
+    serveCheck(info(), GREEN);
+    renderCard(info());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Update to 1.4.0" })).toBeEnabled());
+  });
 });
 
 describe("the button opens update mode, and Start update there is the confirm (ADR 0064)", () => {
