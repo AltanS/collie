@@ -27,6 +27,7 @@
 import type {
   ChatEntry,
   ChatOlderBody,
+  ChatPrompt,
   ChatWindowBody,
   PaneChatResponse,
 } from "./types";
@@ -98,6 +99,13 @@ export interface ChatWindow {
    */
   readonly sendQueuedNow: readonly string[];
   /**
+   * The operator's newest prompt as the bridge last reported it, or `null` when it reported none (a
+   * window with no prompt, a bridge one release behind, a saved copy). Replaced with every live
+   * answer, like {@link queued}; a `?before=` page leaves it alone. The view pins it above a thread
+   * whose loaded turns start after it.
+   */
+  readonly lastPrompt: ChatPrompt | null;
+  /**
    * When the bridge answered with these turns, set ONLY while the window is the SAVED COPY: the tail
    * the phone kept (lib/chat-tail.ts), read back because a live read failed (M46 spec 09). `null` for
    * every window a live answer built. The view says "Saved copy from {time}" while it is set, and
@@ -143,6 +151,7 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
   entries: [],
   queued: EMPTY_QUEUE,
   sendQueuedNow: EMPTY_QUEUE,
+  lastPrompt: null,
   savedAt: null,
 };
 
@@ -166,6 +175,8 @@ export function savedChatWindow(entries: readonly ChatEntry[], savedAt: number):
     queued: EMPTY_QUEUE,
     // What could be sent now then is not a thing a copy can do (nothing saved acts, M46).
     sendQueuedNow: EMPTY_QUEUE,
+    // The copy keeps turns only; a prompt it holds is still pinned from those turns by the view.
+    lastPrompt: null,
     savedAt,
   };
 }
@@ -226,6 +237,7 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     // is the honest reading of a bridge that does not know the question.
     queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
     sendQueuedNow: nextQueue(held.sendQueuedNow, body.sendQueuedNow ?? EMPTY_QUEUE),
+    lastPrompt: nextPrompt(held.lastPrompt, body.lastPrompt ?? null),
     // A live answer: whatever the window was before, it is current now.
     savedAt: null,
   };
@@ -239,6 +251,13 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
  */
 function nextQueue(held: readonly string[], next: readonly string[]): readonly string[] {
   const same = held.length === next.length && held.every((text, i) => text === next[i]);
+  return same ? held : next;
+}
+
+/** The held prompt when the answer reports the same one, so an unchanged poll keeps its identity. */
+function nextPrompt(held: ChatPrompt | null, next: ChatPrompt | null): ChatPrompt | null {
+  if (held === null || next === null) return next;
+  const same = held.uuid === next.uuid && held.text === next.text && held.truncated === next.truncated;
   return same ? held : next;
 }
 
