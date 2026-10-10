@@ -851,20 +851,33 @@
   --default-font-family: var(--font-sans);
 }
 
-/* THE APP'S HEIGHT, as one token. `100dvh` everywhere but one place: an iOS home-screen launch, where
- * WebKit (iOS 26) reports `100dvh`, `100svh` and `100%` short by the status bar's height, so every
- * screen ended ~59pt above the glass and the tab bar/composer sat on a dead band over the home
- * indicator. Only `100lvh` reads the full height there. Nothing is lost by it: standalone has no
- * browser toolbar to collapse, and iOS never resizes the layout for the keyboard (the visual
- * viewport shrinks instead), so `lvh` and a correct `dvh` would be the same number. Android keeps
- * `dvh`, which is what tracks its keyboard (`interactive-widget=resizes-content`). */
+/* THE APP'S HEIGHT, as one token. `100dvh` everywhere but one place: an iOS home-screen launch.
+ * There no single unit is right on every iOS release, because WebKit has two bugs that pull in
+ * opposite directions:
+ *
+ *  - The web view reaches under the status bar (`env(safe-area-inset-top)` is the bar, ~59-62pt),
+ *    but `100dvh`, `100svh` and `100%` come up short by that inset. Every screen ended above the
+ *    glass, on a dead band over the home indicator (#355, iOS 26).
+ *  - The web view starts BELOW an opaque status bar (`env(safe-area-inset-top)` is 0), and `100vh`
+ *    and `100lvh` still report the whole screen, so they are too tall by the bar. The app ran
+ *    ~62pt past the bottom edge, the composer was cut off and the page scrolled under the app's
+ *    own lists (#394, #371; WebKit bugs 301994 and 316008). We ship the opaque bar on purpose
+ *    (index.html), so a fresh install lands in this case on the releases that have it.
+ *
+ * `100dvh + inset` is the full height in the first case and the visible height in the second. The
+ * `min()` with `100lvh` caps it on a WebKit that has neither bug, where `dvh + inset` would be the
+ * screen plus the bar. A correct WebKit gives `100dvh` either way. iOS never resizes the layout
+ * for the keyboard, so nothing here has to track it. Android keeps `dvh`, which is what tracks its
+ * keyboard (`interactive-widget=resizes-content`). The expression is its own token so the e2e
+ * tier can resolve it in WebKit, which cannot emulate a home-screen launch. */
 :root {
   --app-h: 100dvh;
+  --app-h-ios-standalone: min(100lvh, calc(100dvh + env(safe-area-inset-top, 0px)));
 }
 @media (display-mode: standalone) {
   @supports (-webkit-touch-callout: none) {
     :root {
-      --app-h: 100lvh;
+      --app-h: var(--app-h-ios-standalone);
     }
   }
 }
