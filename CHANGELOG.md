@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A sheet opens whole after a slide into a pane.** The slide no longer holds its last frame, which made every sheet on that screen, such as the pane menu, open one header too low with its last row off screen. Thanks @GGGODLIN (#403).
+
 ## [1.19.2] - 2026-10-10
 
 ### Fixed
