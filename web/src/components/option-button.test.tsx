@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import type { AnsiSegment } from "@/lib/ansi";
 import type { StyledLine } from "@/lib/blocks";
-import { PromptPanel } from "./option-button";
+import { OptionButton, PromptPanel } from "./option-button";
 
 // PromptPanel's own way back to the terminal (ADR 0056): an optional `raw` region turns on a
 // ghost "Terminal" control that swaps the panel's children for a mirror of that region, plus a
@@ -122,5 +122,32 @@ describe("PromptPanel", () => {
     await user.click(putAway);
     expect(screen.getByRole("button", { name: "Show the buttons" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Back to the card" })).toBeNull();
+  });
+});
+
+describe("OptionButton description", () => {
+  const HOSTILE = "<img src=x onerror=alert(1)> **bold** [a](https://example.com) https://example.org " + "long ".repeat(80);
+
+  it("renders the description as plain text: no markup, no markdown, no link", () => {
+    const { container } = render(<OptionButton label="Staging" description={HOSTILE} onClick={() => {}} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("strong, em")).toBeNull();
+    expect(container.textContent).toContain("<img src=x onerror=alert(1)> **bold** [a](https://example.com) https://example.org");
+  });
+
+  it("wraps a long description inside the row: the badge cannot shrink and the text column can", () => {
+    render(<OptionButton keyLabel="1" label="Staging" description={HOSTILE} onClick={() => {}} />);
+    const button = screen.getByRole("button");
+    const badge = screen.getByText("1");
+    const label = screen.getByText("Staging");
+    const description = screen.getByText(/onerror/);
+    expect(badge.className).toContain("shrink-0");
+    expect(label.parentElement?.className).toContain("min-w-0");
+    expect(label.className).toContain("break-words");
+    expect(description.className).toContain("break-words");
+    // The label comes before the description in the same column, so a long description grows the row downward.
+    expect(label.parentElement).toBe(description.parentElement);
+    expect(button.className).toContain("w-full");
   });
 });
