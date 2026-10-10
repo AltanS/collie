@@ -310,4 +310,19 @@ describe("what is queued", () => {
     const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
     expect(mergeChat(one, { outcome: "stale" }).queued).toEqual(["waiting"]);
   });
+
+  it("carries the newest prompt the same way: replaced, identity kept, untouched by an older page", () => {
+    expect(EMPTY_CHAT_WINDOW.lastPrompt).toBeNull();
+    const prompt = { uuid: "p1", ts: "", text: "fix it" };
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], lastPrompt: prompt }));
+    expect(one.lastPrompt).toEqual(prompt);
+    // The same prompt again, as a fresh object off the wire: the held one is kept.
+    const two = mergeChat(one, live({ rev: 3, upserts: [], lastPrompt: { ...prompt } }));
+    expect(two.lastPrompt).toBe(one.lastPrompt);
+    expect(mergeChat(two, older({ upserts: [entry("z", BASE - 1)] })).lastPrompt).toBe(one.lastPrompt);
+    const next = mergeChat(two, live({ rev: 4, upserts: [], lastPrompt: { uuid: "p2", ts: "", text: "now this" } }));
+    expect(next.lastPrompt?.uuid).toBe("p2");
+    // A bridge one release behind sends no field: not known.
+    expect(mergeChat(next, live({ rev: 5, upserts: [] })).lastPrompt).toBeNull();
+  });
 });

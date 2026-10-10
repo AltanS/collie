@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 
@@ -535,5 +535,272 @@ describe("SessionStream — Send now", () => {
     for (const name of ["claude", "codex", "opencode", "grok", "hermes", "muse", "pi", "omp"]) {
       expect(source).not.toMatch(new RegExp(`["'\\u0060]${name}["'\\u0060]`, "i"));
     }
+  });
+});
+
+// The prompt pin. jsdom lays nothing out, so each case gives every block a 100px row whose top is
+// `index * 100 - scrolled` and the scroller a top of 0: block `i` is then the topmost visible one when
+// `scrolled` sits inside its row.
+describe("SessionStream — the prompt pin", () => {
+  /** `step` below 100 makes neighbouring rows overlap, the way a block's `-m-3 p-3` does. */
+  function layOut(scrolled: number, step = 100) {
+    return vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (!this.hasAttribute("data-block")) return DOMRect.fromRect({ x: 0, y: 0, width: 390, height: 600 });
+      const index = [...(this.parentElement?.querySelectorAll(":scope > [data-block]") ?? [])].indexOf(this);
+      return DOMRect.fromRect({ x: 0, y: index * step - scrolled, width: 390, height: 100 });
+    });
+  }
+  const prompt = (uuid: string, seq: number, text: string) => entry(uuid, seq, text, { role: "user" });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("pins a held prompt once the reader has scrolled past it", () => {
+    layOut(250);
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
+      }),
+    );
+    const pin = document.querySelector('[data-slot="prompt-pin"]');
+    expect(pin).toHaveTextContent("fix the flaky test");
+  });
+
+  it("pins nothing while the prompt itself is the top block", () => {
+    layOut(50);
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one")],
+      }),
+    );
+    expect(document.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+  });
+
+  it("pins the bridge's report when the first page left the prompt out, and a tap walks back to it", async () => {
+    layOut(150);
+    const feed = feedOf({
+      status: { kind: "live" },
+      hasOlder: true,
+      entries: [entry("a", BASE + 10, "one"), entry("b", BASE + 11, "two"), entry("c", BASE + 12, "three")],
+      lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+    });
+    renderStream(feed);
+    const pin = document.querySelector<HTMLButtonElement>('[data-slot="prompt-pin"]');
+    expect(pin).toHaveTextContent("rename the route");
+    await userEvent.click(pin!);
+    expect(feed.loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers older turns when the prompt is neither held nor reported", async () => {
+    layOut(150);
+    const feed = feedOf({
+      status: { kind: "live" },
+      hasOlder: true,
+      entries: [entry("a", BASE + 10, "one"), entry("b", BASE + 11, "two"), entry("c", BASE + 12, "three")],
+    });
+    renderStream(feed);
+    const pin = document.querySelector<HTMLButtonElement>('[data-slot="prompt-pin"]');
+    expect(pin).toHaveTextContent("Asked further back");
+    await userEvent.click(pin!);
+    expect(feed.loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it("pins over 'Load older' when the whole thread fits and its prompt is not held", () => {
+    // A long tool run folds into one card that fits the screen, so the top edge never scrolls away.
+    layOut(-40);
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        hasOlder: true,
+        entries: [entry("a", BASE + 10, "one"), entry("b", BASE + 11, "two")],
+        lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+      }),
+    );
+    expect(document.querySelector('[data-slot="prompt-pin"]')).toHaveTextContent("rename the route");
+  });
+
+  it("a jump that lands the prompt at the top pins nothing over it, though the block above overlaps it", () => {
+    // Neighbours overlap by 24px (each block's -12px margin, top and bottom). A jump puts the prompt's
+    // box top exactly on the line, so the reply above ends 24px below it. Found on a phone-sized screen
+    // on 2026-10-10: the pin read the reply above as the top block and drew "Asked further back" over
+    // the prompt itself.
+    layOut(76, 76);
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        hasOlder: true,
+        entries: [entry("a", BASE + 9, "earlier reply"), prompt("p1", BASE + 10, "rename the route"), entry("b", BASE + 11, "two")],
+        lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+      }),
+    );
+    expect(document.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+  });
+
+  /** Where a jump to the block holding `text` scrolls, under {@link layOut}'s fixed geometry. */
+  function jumpTop(text: string, scrolled: number, padding = 0): number {
+    const nodes = [...document.querySelectorAll<HTMLElement>("[data-block]")];
+    const index = nodes.findIndex((node) => node.textContent?.includes(text));
+    expect(index).toBeGreaterThanOrEqual(0);
+    return index * 100 - scrolled - padding;
+  }
+
+  it("a tap seeks the prompt it was tapped for, not one that lands while older pages load", async () => {
+    layOut(150);
+    const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
+    const listRef = createRef<ChatMessageListHandle>();
+    const view = (feed: ChatFeed) => (
+      <SessionStream
+        feed={feed}
+        address="w1:p1"
+        working={false}
+        starting={false}
+        showToolCalls
+        showCompactions={false}
+        fontSize={14}
+        listRef={listRef}
+      />
+    );
+    const held = [entry("a", BASE + 10, "one"), entry("b", BASE + 11, "two"), entry("c", BASE + 12, "three")];
+    const tapped = feedOf({
+      status: { kind: "live" },
+      hasOlder: true,
+      entries: held,
+      lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+    });
+    const { rerender } = render(view(tapped));
+    await userEvent.click(document.querySelector<HTMLButtonElement>('[data-slot="prompt-pin"]')!);
+    expect(tapped.loadOlder).toHaveBeenCalledTimes(1);
+    rerender(view({ ...tapped, loadingOlder: true }));
+    // While that page loads, a new prompt lands live; then the page settles without p1 in it.
+    scrollTo.mockClear();
+    rerender(
+      view(
+        feedOf(
+          {
+            status: { kind: "live" },
+            hasOlder: true,
+            entries: [...held, prompt("p2", BASE + 13, "a different question"), entry("d", BASE + 14, "four")],
+            lastPrompt: { uuid: "p2", ts: "", text: "a different question" },
+          },
+          { loadOlder: tapped.loadOlder },
+        ),
+      ),
+    );
+    expect(scrollTo).not.toHaveBeenCalledWith(expect.objectContaining({ top: jumpTop("a different question", 150) }));
+
+    // The walk goes on, and the page that holds p1 ends it on p1.
+    expect(tapped.loadOlder).toHaveBeenCalledTimes(2);
+    scrollTo.mockClear();
+    rerender(
+      view(
+        feedOf(
+          {
+            status: { kind: "live" },
+            hasOlder: true,
+            entries: [prompt("p1", BASE + 5, "rename the route"), entry("z", BASE + 6, "zero"), ...held, prompt("p2", BASE + 13, "a different question"), entry("d", BASE + 14, "four")],
+            lastPrompt: { uuid: "p2", ts: "", text: "a different question" },
+          },
+          { loadOlder: tapped.loadOlder },
+        ),
+      ),
+    );
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: jumpTop("rename the route", 150) }));
+  });
+
+  it("a reader who scrolls while older pages load is not pulled to the prompt when it arrives", async () => {
+    layOut(150);
+    const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
+    const listRef = createRef<ChatMessageListHandle>();
+    const view = (feed: ChatFeed) => (
+      <SessionStream
+        feed={feed}
+        address="w1:p1"
+        working={false}
+        starting={false}
+        showToolCalls
+        showCompactions={false}
+        fontSize={14}
+        listRef={listRef}
+      />
+    );
+    const held = [entry("a", BASE + 10, "one"), entry("b", BASE + 11, "two"), entry("c", BASE + 12, "three")];
+    const tapped = feedOf({
+      status: { kind: "live" },
+      hasOlder: true,
+      entries: held,
+      lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+    });
+    const { rerender } = render(view(tapped));
+    await userEvent.click(document.querySelector<HTMLButtonElement>('[data-slot="prompt-pin"]')!);
+    rerender(view({ ...tapped, loadingOlder: true }));
+    fireEvent.wheel(listRef.current!.getScrollElement()!);
+    scrollTo.mockClear();
+    rerender(
+      view(
+        feedOf(
+          {
+            status: { kind: "live" },
+            hasOlder: true,
+            entries: [prompt("p1", BASE + 5, "rename the route"), ...held],
+            lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+          },
+          { loadOlder: tapped.loadOlder },
+        ),
+      ),
+    );
+    expect(scrollTo).not.toHaveBeenCalledWith(expect.objectContaining({ top: jumpTop("rename the route", 150) }));
+  });
+
+  it("a jump stops re-aligning once the reader asks for the latest turn", () => {
+    vi.useFakeTimers();
+    try {
+      layOut(250);
+      const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
+      renderStream(
+        feedOf({
+          status: { kind: "live" },
+          entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
+        }),
+      );
+      fireEvent.click(document.querySelector<HTMLButtonElement>('[data-slot="prompt-pin"]')!);
+      const toPrompt = expect.objectContaining({ top: jumpTop("fix the flaky test", 250) });
+      expect(scrollTo).toHaveBeenCalledWith(toPrompt);
+      // The latest-turn button sits beside the scroller, not in it, and it is the reader's own move.
+      fireEvent.click(screen.getByRole("button", { name: "Scroll to latest" }));
+      scrollTo.mockClear();
+      act(() => vi.advanceTimersByTime(600));
+      expect(scrollTo).not.toHaveBeenCalledWith(toPrompt);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a jump lands the prompt below the scroller's top padding, the line the pin reads", async () => {
+    layOut(250);
+    const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
+      }),
+    );
+    // The band inset pads the scroller's top while a status band sits over it.
+    document.querySelector<HTMLElement>("[data-block]")!.parentElement!.style.paddingTop = "40px";
+    await userEvent.click(document.querySelector<HTMLButtonElement>('[data-slot="prompt-pin"]')!);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: jumpTop("fix the flaky test", 250, 40) }));
+  });
+
+  it("leaves the top edge alone when the prompt is held and on screen", () => {
+    layOut(-40);
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        hasOlder: true,
+        entries: [prompt("p1", BASE + 10, "rename the route"), entry("b", BASE + 11, "two")],
+        lastPrompt: { uuid: "p1", ts: "", text: "rename the route" },
+      }),
+    );
+    expect(document.querySelector('[data-slot="prompt-pin"]')).toBeNull();
   });
 });

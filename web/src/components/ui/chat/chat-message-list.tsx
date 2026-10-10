@@ -34,6 +34,12 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
    * padding that results replaces it.
    */
   clearBand?: number;
+  /**
+   * Drawn OVER the top of the scrollport, below the strip band when {@link clearBand} is set. It
+   * takes no room in the list, so showing or hiding it moves nothing the reader is on. Its wrapper
+   * ignores the pointer; a control inside opts back in with `pointer-events-auto`.
+   */
+  overlay?: React.ReactNode;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -41,7 +47,7 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, clearBand, style, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, style, ...props },
     ref,
   ) {
     useLocale();
@@ -80,6 +86,15 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
         >
           {children}
         </div>
+
+        {overlay !== undefined && overlay !== null && (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 px-3 pt-1"
+            style={clearBand !== undefined ? { top: bandStyle?.paddingTop } : undefined}
+          >
+            {overlay}
+          </div>
+        )}
 
         {!isAtBottom && (
           <Button

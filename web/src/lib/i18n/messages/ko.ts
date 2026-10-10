@@ -405,6 +405,8 @@ export const ko: Dictionary = {
   "chat.stream.empty": "메시지를 보내 시작하세요.",
   "chat.stream.working": "계속 작업 중…",
   "chat.stream.queued": "전송 대기 중",
+  "chat.pin.label": "내 프롬프트",
+  "chat.pin.earlier": "프롬프트는 더 이전에 있습니다 · 이전 로그 불러오기",
   "chat.stream.sendNow": "지금 보내기",
   "chat.stream.sendNowAria": "지금 보내기, 대기 중인 메시지",
   "chat.stream.loadOlderFailed": "이전 대화를 불러오지 못했습니다",

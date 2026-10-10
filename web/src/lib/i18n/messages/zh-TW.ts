@@ -394,6 +394,8 @@ export const zhTW: Dictionary = {
   "chat.stream.empty": "傳送一則訊息即可開始。",
   "chat.stream.working": "仍在處理…",
   "chat.stream.queued": "等待傳送",
+  "chat.pin.label": "你的提問",
+  "chat.pin.earlier": "提問在更早的紀錄裡 · 載入較早記錄",
   "chat.stream.sendNow": "立即傳送",
   "chat.stream.sendNowAria": "立即傳送，等待中的訊息",
   "chat.stream.loadOlderFailed": "無法載入較早的對話",
