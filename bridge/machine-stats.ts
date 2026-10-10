@@ -1,10 +1,13 @@
 // What this machine is doing right now: CPU, memory and network, sampled from the existing tick.
 //
-// ── PURE PARSERS, ONE READER, NO CHILD PROCESS ───────────────────────────────
-// Every number comes from a file the kernel already keeps or from `node:os`, never from `top`, `ps`,
-// `vm_stat` or `typeperf`. A spawn on the poll path would cost more than the reading is worth, and
-// Collie runs no long-lived child for content (CLAUDE.md, Security posture). The parsers below take
-// text and return numbers, and the one reader takes its file and `os` access as parameters, so
+// ── PURE PARSERS, ONE READER, ONE SHORT CHILD ON macOS ONLY ──────────────────
+// Every number comes from a file the kernel already keeps or from `node:os`, never from `top`, `ps`
+// or `typeperf`. A spawn on the poll path would cost more than the reading is worth, and Collie runs
+// no long-lived child for content (CLAUDE.md, Security posture). The one exception is macOS memory:
+// `os.freemem()` there counts only free and speculative pages, so the file cache reads as used, and
+// the number Activity Monitor shows (app + wired + compressed) is in no file. It comes from one
+// short `/usr/bin/vm_stat` run per sample, see {@link parseVmStat}. The parsers below take text and
+// return numbers, and the one reader takes its file, command and `os` access as parameters, so
 // `bun test` drives a Linux, a macOS-like and a Windows-like host on any machine.
 //
 // ── WHY LINUX READS /proc/stat AND NOT os.cpus() ─────────────────────────────
@@ -35,6 +38,14 @@
 // together, because each walks only the lines it needs. Linux takes its core count from the `cpuN`
 // lines of `/proc/stat`, which it reads anyway, and never calls `os.cpus()`. Reading
 // `/sys/class/net/<iface>/statistics` instead of `/proc/net/dev` was measured too, and was no cheaper.
+// macOS is the exception: one `/usr/bin/vm_stat` process per sample, so at most one every
+// {@link SAMPLE_WATCHED_MS} (5 s) and one every {@link SAMPLE_IDLE_MS} (15 s) otherwise. The run is
+// async and fire-and-forget, like the disks: the tick STARTS `vm_stat` (`Bun.spawn`, killed after 1 s,
+// bridge/index.ts) and returns at once, so a hung child can never hold the event loop. The answer is
+// served on the NEXT sample, one tick late, and only one `vm_stat` runs at a time ({@link VmStatWatch}).
+// The cost is not measured, no Mac was at hand; Apple's tool is a few `host_statistics64` calls and a
+// print. Until the first answer exists, when it is older than {@link VM_STAT_MAX_AGE_MS}, or after a
+// failure (no binary, timeout, unreadable output), memory falls back to `totalmem - freemem` silently.
 
 import type { CpuInfo } from "node:os";
 import { type DiskWatch, MAX_DISKS } from "./machine-disks.ts";
@@ -155,6 +166,43 @@ export function parseMeminfo(text: string): { used: number; total: number } | nu
   return { used: used * 1024, total: total * 1024 };
 }
 
+/**
+ * `vm_stat` on macOS as bytes in use. Used is what Activity Monitor calls Memory Used: app memory plus
+ * wired plus compressed, so the file cache (`File-backed pages`, inactive, speculative) is left out.
+ *
+ *   - App memory is `Anonymous pages - Pages purgeable`. `Anonymous pages` is the kernel's
+ *     `internal_page_count`, which `host_statistics64` fills from `vm_page_pageable_internal_count`
+ *     (xnu `osfmk/kern/host.c`), the counter `sysctl vm.page_pageable_internal_count` prints. Purgeable
+ *     memory can be dropped on demand, so it does not count.
+ *   - `Pages wired down` cannot be paged out.
+ *   - `Pages occupied by compressor` is the memory the compressor itself takes, not the larger
+ *     `Pages stored in compressor` it holds.
+ *
+ * Every count is in pages of the size the first line names (`page size of 16384 bytes` on Apple
+ * silicon, 4096 on Intel). `null` when the page size or any of the four counts is missing, so a
+ * format change reads as "no answer" and the caller falls back.
+ */
+export function parseVmStat(text: string): { used: number; pageSize: number } | null {
+  const pageSize = /page size of (\d+) bytes/.exec(text);
+  const anonymous = vmStatPages(text, "Anonymous pages");
+  const purgeable = vmStatPages(text, "Pages purgeable");
+  const wired = vmStatPages(text, "Pages wired down");
+  const compressor = vmStatPages(text, "Pages occupied by compressor");
+  if (pageSize === null || anonymous === null || purgeable === null || wired === null || compressor === null) {
+    return null;
+  }
+  const size = Number(pageSize[1]);
+  if (!(size > 0)) return null;
+  const pages = Math.max(0, anonymous - purgeable) + wired + compressor;
+  return { used: pages * size, pageSize: size };
+}
+
+/** One `vm_stat` line, `Label:      12345.`, as its count. `null` when the line is absent. */
+function vmStatPages(text: string, label: string): number | null {
+  const m = new RegExp(`(?:^|\\n)${label}:\\s+(\\d+)\\.`).exec(text);
+  return m === null ? null : Number(m[1]);
+}
+
 /** Received and sent byte counters per interface. */
 export type NetCounters = ReadonlyMap<string, { readonly rx: number; readonly tx: number }>;
 
@@ -246,6 +294,12 @@ export interface MachineReaders {
    * for, and those live in memory, so a synchronous read costs microseconds and never a disk seek.
    */
   readonly readText: (path: string) => string | null;
+  /**
+   * Run one short command and resolve with its stdout, or `null` when it cannot run, fails or times
+   * out. Never awaited by the tick (see {@link VmStatWatch}). Only macOS asks (`/usr/bin/vm_stat`,
+   * once per sample). Absent in a harness that never runs one.
+   */
+  readonly run?: (command: string, args: readonly string[]) => Promise<string | null>;
   readonly os: OsReader;
   readonly now: () => number;
   /**
@@ -276,7 +330,64 @@ function attempt<T>(fn: () => T | null): T | null {
   }
 }
 
-function readCounters(r: MachineReaders): Counters {
+/** Apple's tool, by absolute path, so a `PATH` with a shadowing `vm_stat` is never run. */
+export const VM_STAT = "/usr/bin/vm_stat";
+
+/**
+ * How old a held `vm_stat` answer may be and still be served: three idle sample intervals. A sampler
+ * that stopped getting answers (the binary is gone, every run times out) drifts back to
+ * `totalmem - freemem` rather than serving a number from minutes ago.
+ */
+export const VM_STAT_MAX_AGE_MS = 3 * SAMPLE_IDLE_MS;
+
+/**
+ * The last parsed `vm_stat` answer, refreshed by fire-and-forget runs. {@link VmStatWatch.tick}
+ * starts one run unless one is still in flight, and returns the held answer at once, so macOS memory
+ * is served one tick late and the tick never waits on a child process (the way `DiskWatch` never
+ * waits on a `statfs`). A run that fails, times out or prints something unparsable keeps the previous
+ * answer, which then ages out after {@link VM_STAT_MAX_AGE_MS}.
+ */
+export class VmStatWatch {
+  private held: { readonly used: number; readonly at: number } | null = null;
+  private inFlight = false;
+
+  constructor(
+    private readonly run: (command: string, args: readonly string[]) => Promise<string | null>,
+    private readonly now: () => number,
+  ) {}
+
+  /** Start a run when none is in flight; return the held bytes in use, or `null` when none is fresh. */
+  tick(): number | null {
+    if (!this.inFlight) {
+      this.inFlight = true;
+      void this.fill();
+    }
+    const held = this.held;
+    return held !== null && this.now() - held.at <= VM_STAT_MAX_AGE_MS ? held.used : null;
+  }
+
+  private async fill(): Promise<void> {
+    try {
+      const text = await this.run(VM_STAT, []);
+      const stat = text === null ? null : parseVmStat(text);
+      if (stat !== null) this.held = { used: stat.used, at: this.now() };
+    } catch {
+      // A failed run reads as "no new answer".
+    } finally {
+      this.inFlight = false;
+    }
+  }
+}
+
+/** The vm_stat path for macOS memory, or `null` for the caller to fall back to `totalmem - freemem`. */
+function darwinMemory(r: MachineReaders, watch: VmStatWatch | null): { used: number; total: number } | null {
+  const used = watch?.tick() ?? null;
+  const total = r.os.totalmem();
+  if (used === null || !(total > 0)) return null;
+  return { used: Math.min(total, Math.max(0, used)), total };
+}
+
+function readCounters(r: MachineReaders, vmStat: VmStatWatch | null): Counters {
   const linux = r.host.platform === "linux";
   // Linux: the busy counters and the core count both come off `/proc/stat`. `os.cpus()` is asked
   // only when that file said nothing usable, and on every other platform.
@@ -294,6 +405,7 @@ function readCounters(r: MachineReaders): Counters {
   }
   const mem =
     (linux ? attempt(() => parseMeminfo(r.readText("/proc/meminfo") ?? "")) : null) ??
+    (r.host.platform === "darwin" ? attempt(() => darwinMemory(r, vmStat)) : null) ??
     attempt(() => {
       const total = r.os.totalmem();
       const free = r.os.freemem();
@@ -322,8 +434,13 @@ function readCounters(r: MachineReaders): Counters {
 export class MachineSampler {
   private prev: Counters | null = null;
   private last: MachineSample | null = null;
+  /** Only a macOS host with a runner holds one. */
+  private readonly vmStat: VmStatWatch | null;
 
-  constructor(private readonly readers: MachineReaders) {}
+  constructor(private readonly readers: MachineReaders) {
+    this.vmStat =
+      readers.host.platform === "darwin" && readers.run !== undefined ? new VmStatWatch(readers.run, readers.now) : null;
+  }
 
   /**
    * Read, at most once every `minIntervalMs`: {@link SAMPLE_IDLE_MS} unless the caller says a phone
@@ -343,7 +460,7 @@ export class MachineSampler {
     // clock catches up with the one it left behind.
     const age = this.prev === null ? Number.POSITIVE_INFINITY : now - this.prev.at;
     if (age >= 0 && age < floor) return null;
-    const next = readCounters(this.readers);
+    const next = readCounters(this.readers, this.vmStat);
     const prev = this.prev;
     this.prev = next;
     if (prev === null) return null;

@@ -1695,13 +1695,30 @@ function settleUpdateGate(): void {
 // ── Machines: every machine's load (ADR 0084) ────────────────────────────────
 // Every collie samples itself — a peer for the `machineStats` sibling it answers its lead with, a lead
 // and a solo collie for their own row. The sampler reads `/proc` (Linux) or `node:os` and nothing
-// else, and never spawns a process. Only a lead and a solo collie keep the watch: the day of minutes,
+// else, except on macOS, where one async, killed-after-1-s `vm_stat` run per sample gives the memory
+// Activity Monitor shows, served one tick late (machine-stats.ts, VmStatWatch). Only a lead and a solo collie keep the watch: the day of minutes,
 // the alert rules and the push. A peer is not a front door (ADR 0013), so it has no Machines page.
 const machineSampler = new MachineSampler({
   host: HOST,
   readText: (path) => {
     try {
       return readFileSync(path, "utf8");
+    } catch {
+      return null;
+    }
+  },
+  // Only macOS runs a command (`vm_stat`). Async, never awaited by the tick, killed after 1 s; any
+  // failure resolves null.
+  run: async (command, args) => {
+    try {
+      const proc = Bun.spawn([command, ...args], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+      const timer = setTimeout(() => proc.kill("SIGKILL"), 1000);
+      try {
+        const [text, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+        return code === 0 ? text : null;
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
       return null;
     }

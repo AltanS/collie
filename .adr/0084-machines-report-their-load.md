@@ -27,7 +27,7 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    memory, load and network from the `StateEngine.onTick` listener list, at most once every 15 s,
    and at most once every 5 s while a phone asked for `GET /api/machines` in the last 30 s
    (`MachineWatch.sampleEveryMs`). There is no second timer and no child process
-   (CREW_PROTOCOL.md §10.1, §11). The idle tick is 12 s, so an unwatched machine samples every 24 s,
+   (CREW_PROTOCOL.md §10.1, §11; macOS memory is the one exception, see the amendment below). The idle tick is 12 s, so an unwatched machine samples every 24 s,
    two or three times a minute, and any tick up to 60 s still puts a reading in every minute: the
    80% coverage rule in point 4 holds without a page open. A sample needs two readings, and the
    first sample after a start comes at the 5 s pace, so a machine that just started or joined shows
@@ -46,6 +46,14 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    VLANs are left out, because their bytes also cross a physical interface and would be counted twice
    (`isSkippedInterface` holds the list). Every other platform reads `node:os`: CPU from `os.cpus()`, memory
    from `totalmem - freemem`, no network, and no load average on Windows, where Node answers zeros.
+   *Amended 2026-10-10 (#383): on macOS `os.freemem()` is only the free and speculative pages, so the file
+   cache read as used and a Mac sat at 88 to 98 %. macOS memory now comes from one `/usr/bin/vm_stat` run
+   per sample (an async `Bun.spawn`, killed after 1 s, started from the tick and never awaited, at most one
+   in flight, the one child process this sampler starts), and its answer is served on the next sample, one
+   tick late. Until the first answer, or when the held one is older than three idle sample intervals, memory
+   is the old `totalmem - freemem`, also after a failed run. The figure is app
+   (`Anonymous pages - Pages purgeable`) plus wired plus compressed, what Activity Monitor calls Memory
+   Used, against `os.totalmem()`. Windows keeps `totalmem - freemem`.*
 
 2. **A member's reading rides the answer it already gives.** `machineStats` is an additive-optional
    sibling of the `/crew/v1/snapshot` body, beside `version`, `updatePreflight` and `updateRun`. The

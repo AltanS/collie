@@ -254,7 +254,7 @@ each machine, for 24 hours. A Collie with no crew keeps the same day for its own
 | what | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | CPU | yes | yes | yes |
-| Memory | yes, without the page cache | yes | yes |
+| Memory | yes, without the page cache | yes, without the file cache | yes |
 | Load average | yes | yes | no |
 | Network | yes, physical interfaces only | no | no |
 | Disks | yes | yes | yes |
