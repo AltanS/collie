@@ -182,4 +182,9 @@ export const museAdapter: HarnessAdapter = {
   draftCarriesSend: (sent, draft) =>
     musePasteCarriesSend(sent, draft) || museAttachCarriesSend(sent, draft),
   draftIsOpaque: museDraftIsOpaque,
+  // Muse 1.4.4 swallows an Enter sent within ~60ms of the text (#395); the bridge's own
+  // REPLY_SETTLE_MS in bridge/server.ts is the same 350, which web code cannot import.
+  submitSettleMs() {
+    return 350;
+  },
 };

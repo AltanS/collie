@@ -60,18 +60,6 @@ export type ReplyOutcome =
 /** Minimum visible characters that must match before we believe the input box holds OUR text. */
 export const MIN_MATCH_CHARS = 8;
 
-/**
- * Floor between the type call returning and the submit key going out. The echo on screen is NOT
- * the TUI being ready for Enter: Muse swallows a submit sent within ~60ms of the text (measured
- * on Muse 1.4.4: fails at ≤50ms, works at ≥100ms; the audit trail's failures sit at 55-62ms
- * with one at 197ms, smallest success at 411ms), while the verify loop below can confirm the
- * draft on its first read. So the guard holds every submit until this long after the type call —
- * the same floor the pre-#34 blind flow always paid, now only the remainder of it. Paid in the
- * client rather than the bridge on purpose: the bridge's submit-only request cannot know when
- * the text landed, so it would have to sleep the whole floor on every send.
- */
-export const SUBMIT_SETTLE_MS = 350;
-
 const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
 
 /**
@@ -389,9 +377,11 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     return { status: "error", error: message(e) };
   }
   if (!typed.ok) return { status: "error", error: describeApiError(typed) };
-  // The submit settle is measured from the last bytes landing: the verify loop below can match
-  // on its first read, and an Enter sent that fast is swallowed (SUBMIT_SETTLE_MS).
+  // The submit settle is measured from the last type call returning: the verify loop below can
+  // match on its first read, and a harness may swallow an Enter sent that fast
+  // (`submitSettleMs`, e.g. Muse 1.4.4, #395).
   const typedAt = (args.now ?? Date.now)();
+  const settleMs = adapter.submitSettleMs?.() ?? 0;
 
   const sleep = args.sleep ?? defaultSleep;
   // The last screen a verification read actually saw, kept only so the stall below can be named. The
@@ -405,9 +395,10 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   let lastLines: StyledLine[] | null = null;
   for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
     // Read BEFORE the first sleep: pane.read is an on-demand live read, not a cached poll, so the
-    // text is often already on screen by the time the type call returns. That saves a poll round
-    // off verification — but the TUI still needs its beat before Enter, so the submit below pays
-    // the SUBMIT_SETTLE_MS floor the old blind flow always paid here.
+    // text is often already on screen by the time the type call returns. That saves a whole
+    // POLL_DELAY_MS off the common path — the old blind flow always paid a fixed 350ms here. An
+    // adapter whose harness needs a beat before Enter declares it (`submitSettleMs`), and the
+    // submit below pays only the remainder of that floor.
     if (attempt > 0) await sleep(POLL_DELAY_MS);
     let draft: string | null = null;
     let verifiedPrompt: string | undefined;
@@ -437,7 +428,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     // box — three stalls in the 2026-09-27 audit trail. A complete echo is the final state, so once
     // the tail is on screen the bound region is stable; token-collapsed sends still route to the
     // adapter's second look below, which is its purpose.
-    if (draftCarriesSend(args.text, draft) && carriesReplyTail(args.text, draft) && (chunks.length === 1 || draft !== previousDraft)) return submitOnly(args, verifiedPrompt, typedAt);
+    if (draftCarriesSend(args.text, draft) && carriesReplyTail(args.text, draft) && (chunks.length === 1 || draft !== previousDraft)) return submitOnly(args, verifiedPrompt, typedAt, settleMs);
     // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
     // paint a token of its own instead (Claude collapses anything past its paste threshold into
     // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
@@ -446,7 +437,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     // (.adr/0010). It can only widen the evidence, never narrow it, so a harness without the
     // capability is untouched.
     if (draft !== null && adapter.draftCarriesSend?.(args.text, draft)) {
-      return submitOnly(args, verifiedPrompt, typedAt);
+      return submitOnly(args, verifiedPrompt, typedAt, settleMs);
     }
   }
 
@@ -669,13 +660,18 @@ async function submitOnly(
   args: GuardedReplyArgs,
   expectedPrompt: string | undefined,
   typedAt: number,
+  settleMs: number,
 ): Promise<ReplyOutcome> {
   // The echo proved the bytes are ON SCREEN, not that the TUI will act on Enter: hold the
-  // submit until the settle floor has passed since the type call. Clamped both ways — a slow
-  // verify pays nothing extra, and a backward clock step pays one full floor, never more.
-  const elapsed = (args.now ?? Date.now)() - typedAt;
-  const wait = Math.min(SUBMIT_SETTLE_MS, Math.max(0, SUBMIT_SETTLE_MS - elapsed));
-  if (wait > 0) await (args.sleep ?? defaultSleep)(wait);
+  // submit until the adapter's settle floor has passed since the type call. Clamped both ways — a
+  // slow verify pays nothing extra, and a backward clock step pays one full floor, never more.
+  // `force` does not reach here: it only overrides the pre-flight refusal, so a forced send that
+  // verifies pays the same floor.
+  if (settleMs > 0) {
+    const elapsed = (args.now ?? Date.now)() - typedAt;
+    const wait = Math.min(settleMs, Math.max(0, settleMs - elapsed));
+    if (wait > 0) await (args.sleep ?? defaultSleep)(wait);
+  }
   try {
     const res = await sendReply(args.paneId, "", true, args.scope, expectedPrompt);
     if (res.ok) return { status: "sent" };

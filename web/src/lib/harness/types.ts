@@ -22,6 +22,15 @@ export interface HarnessAdapter {
    * OPTIONAL: only for a harness that turns bracketed paste on, or the markers are typed as junk.
    */
   bracketedPaste?(text: string): boolean;
+  /**
+   * The minimum time in ms between the type call and the guarded Enter. The echo on screen proves
+   * the bytes are in the box, not that the TUI will act on a submit key yet; a harness that swallows
+   * an Enter sent right behind its own text declares a floor here, and the guarded send holds the
+   * submit until that long after the LAST type call (lib/reply-action.ts). A verify loop that
+   * already took longer pays nothing extra.
+   * OPTIONAL: adapters that need no settle omit it and send as before.
+   */
+  submitSettleMs?(): number;
   /** The exact Herdr snapshot `agent` string this adapter claims (its registry key). */
   agent: string;
   /** The adapter's OWN full block pipeline over the pane's styled lines — for Claude that is the

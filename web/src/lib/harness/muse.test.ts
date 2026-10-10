@@ -116,6 +116,12 @@ describe("the muse corpus", () => {
   });
 });
 
+describe("submitSettleMs — Muse 1.4.4 swallows an Enter sent right behind the text (#395)", () => {
+  it("declares the 350 ms floor", () => {
+    expect(museAdapter.submitSettleMs!()).toBe(350);
+  });
+});
+
 describe("composerReady — the gate the reply path pre-flights on", () => {
   it.each(
     neutralFixtures.filter(

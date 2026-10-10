@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
+import { POLL_DELAY_MS } from "./harness/guard";
 import * as registry from "./harness/registry";
+import type { HarnessAdapter } from "./harness/types";
 import { bracketPaste, draftCarriesSend, sendGuardedReply } from "./reply-action";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
@@ -1314,12 +1316,22 @@ describe("the pre-type work is handed the region its keys must be bound to", () 
 });
 
 describe("the submit settle", () => {
-  // The TUI needs a beat between the typed bytes landing and the submit key: Muse swallows an
+  // Some TUIs need a beat between the typed bytes landing and the submit key: Muse swallows an
   // Enter sent within ~60ms of the text (measured on Muse 1.4.4: fails at ≤50ms, works at
   // ≥100ms; the audit trail's failures sit at 55-62ms with one at 197ms, smallest success at
-  // 411ms), while the verify loop can confirm the draft on its first read. So the guard holds
-  // every submit until SUBMIT_SETTLE_MS have passed since the type call returned — the same
-  // floor the pre-#34 blind flow always paid, now only the remainder of it.
+  // 411ms), while the verify loop can confirm the draft on its first read. An adapter that needs
+  // the beat declares `submitSettleMs`; the guard then holds the submit until that long after the
+  // LAST type call, paying only the remainder. An adapter without the hook pays nothing (#395).
+  const SETTLE = 350;
+  /** The real Claude adapter plus the hook (and anything else a test overrides). */
+  const settling = (extra: Partial<HarnessAdapter> = {}) =>
+    vi.spyOn(registry, "adapterFor").mockReturnValue({
+      ...registry.adapterFor("claude")!,
+      submitSettleMs: () => SETTLE,
+      ...extra,
+    });
+  afterEach(() => vi.restoreAllMocks());
+
   /** The `harness` helper, but type/submit/sleep share one timeline so order is asserted too. */
   function eventHarness(screen: () => string, events: string[]) {
     server.use(
@@ -1340,6 +1352,7 @@ describe("the submit settle", () => {
   const settled = (ms: number) => `sleep:${ms}`;
 
   it("waits the full settle when verification was instant", async () => {
+    settling();
     const text = "ship the release checklist";
     const events: string[] = [];
     eventHarness(() => paneWithDraft(text), events);
@@ -1360,6 +1373,7 @@ describe("the submit settle", () => {
   });
 
   it("skips the settle when verification already took longer than it", async () => {
+    settling();
     const text = "ship the release checklist";
     const events: string[] = [];
     let now = 1000;
@@ -1383,10 +1397,11 @@ describe("the submit settle", () => {
 
     expect(out).toEqual({ status: "sent" });
     // One poll delay between the verify attempts, and no settle on top: 600ms had passed.
-    expect(events).toEqual(["post:type", settled(350), "post:submit"]);
+    expect(events).toEqual(["post:type", settled(POLL_DELAY_MS), "post:submit"]);
   });
 
   it("pays a bounded full settle when the clock stepped backwards", async () => {
+    settling();
     const text = "ship the release checklist";
     const events: string[] = [];
     eventHarness(() => paneWithDraft(text), events);
@@ -1406,5 +1421,113 @@ describe("the submit settle", () => {
     expect(out).toEqual({ status: "sent" });
     // Unknown elapsed, so assume just-typed — but never more than one settle, whatever the step.
     expect(events).toEqual(["post:type", settled(350), "post:submit"]);
+  });
+
+  it("adds no wait for an adapter without the hook", async () => {
+    const real = registry.adapterFor("claude")!;
+    expect(real.submitSettleMs).toBeUndefined();
+    const text = "ship the release checklist";
+    const events: string[] = [];
+    eventHarness(() => paneWithDraft(text), events);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      now: () => 1000,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(events).toEqual(["post:type", "post:submit"]);
+  });
+
+  it("waits only the declared floor, not a fixed one", async () => {
+    settling({ submitSettleMs: () => 120 });
+    const text = "ship the release checklist";
+    const events: string[] = [];
+    eventHarness(() => paneWithDraft(text), events);
+
+    await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      now: () => 1000,
+    });
+
+    expect(events).toEqual(["post:type", settled(120), "post:submit"]);
+  });
+
+  // `force` only overrides the PRE-FLIGHT refusal (a box the adapter cannot see). It never reaches
+  // the submit, so a forced send that then verifies a draft pays the same floor as any other.
+  it("force does not skip the floor", async () => {
+    settling({ composerReady: () => false });
+    const text = "ship the release checklist";
+    const events: string[] = [];
+    eventHarness(() => paneWithDraft(text), events);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      force: true,
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      now: () => 1000,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(events).toEqual(["post:type", settled(350), "post:submit"]);
+  });
+
+  it("measures the floor from the LAST type call of a multi-chunk send", async () => {
+    settling({ replyChunks: () => ["first part of the message ", "and the second part"] });
+    const text = "first part of the message and the second part";
+    // A fake clock that only moves when the pane is read: 100ms per read.
+    let now = 0;
+    let typedSoFar = "";
+    const events: string[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        now += 100;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: paneWithDraft(typedSoFar),
+          truncated: false,
+          revision: 1,
+        });
+      }),
+      http.post<never, { text: string; submit: boolean }>(
+        /\/api\/pane\/[^/]+\/reply$/,
+        async ({ request }) => {
+          const body = await request.json();
+          if (!body.submit) typedSoFar += body.text;
+          events.push(body.submit ? "post:submit" : "post:type");
+          return HttpResponse.json({ ok: true });
+        },
+      ),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "claude",
+      sleep: async (ms) => {
+        events.push(settled(ms));
+      },
+      now: () => now,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    // Reads before the last chunk (probe, plan, chunk-1 verify) moved the clock 300ms+; measured
+    // from the first chunk the wait would be shorter. From the last type call exactly one verify
+    // read (100ms) has passed, so 250ms of the 350 remain.
+    expect(events).toEqual(["post:type", "post:type", settled(250), "post:submit"]);
   });
 });
