@@ -8,10 +8,9 @@
 # NOT A CI JOB. It needs a real Herdr session, a real opencode pane, and exactly one model call
 # (which costs money — hence --allow-model-call). Run by hand, from the collie checkout:
 #
-#     web/e2e/manual/question-wizard-live.sh --pane w1:p8 --allow-model-call
+#     web/e2e/manual/question-wizard-live.sh --pane <pane-id> --allow-model-call
 #
-# Allowlist (the ONLY inputs this script ever sends into a pane; see the collie skill,
-# references/live-trigger.md — the list lives there, this script enforces it):
+# Allowlist (the ONLY inputs this script ever sends into a pane; this script enforces it):
 #   /new ...................... the only reset command (clear step)
 #   trigger file .............. exactly one prompt: two-question.trigger.txt beside this script
 #   Enter ..................... submit the trigger / submit /new

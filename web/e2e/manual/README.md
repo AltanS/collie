@@ -43,7 +43,7 @@ list). The Q/A-style tabs used so far: an idle tab that has produced question di
 before. Never: busy panes, `working`/`blocked` panes, panes with an open dialog, panes
 owned by someone else's session, the pane you are working in.
 
-## Safety rules (non-negotiable, also in the collie skill)
+## Safety rules (non-negotiable)
 
 - Never type into a pane with an open dialog — digits submit.
 - Never answer or take over foreign sessions — this flow only LIFTS, it never answers.

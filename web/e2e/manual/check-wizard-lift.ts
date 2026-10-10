@@ -7,7 +7,7 @@
 //
 // Run with bun from the web/ directory:
 //
-//     bun e2e/manual/check-wizard-lift.ts /tmp/collie-wizard-w1-p8.ansi
+//     bun e2e/manual/check-wizard-lift.ts /tmp/collie-wizard-<pane>.ansi
 //
 // No network, no model, no writes: the capture is read, nothing is sent anywhere.
 import { readFileSync } from "node:fs";
