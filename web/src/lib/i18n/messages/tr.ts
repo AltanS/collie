@@ -278,7 +278,7 @@ export const tr: Dictionary = {
   "chat.history.label": "Konuşma geçmişi",
   "copyable.copy": "Kopyala",
   "copyable.command": "Komutu kopyala",
-  "copyable.output": "Komut çıktısını kopyalayın",
+  "copyable.output": "Komut çıktısını kopyala",
   "copyable.done": "Panoya kopyalandı",
   "copyable.failed": "Panoya kopyalanamadı",
   "chat.copyOutput.label": "Çıktıyı kopyala",
