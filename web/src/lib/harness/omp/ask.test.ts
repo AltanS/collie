@@ -393,6 +393,46 @@ describe("fails closed", () => {
     expect(detectAskSelect(fromTexts(previewed))).toBeNull();
   });
 
+  it("with glyphs and a rail inside a description row, the description stays on the option above and the pointer stays put", () => {
+    const described = textsOf("omp--v18-8-ask-single-described.txt");
+    const base = detectAskSelect(fromTexts(described))!;
+    const pad = (s: string) => `│${s.padEnd(described[26]!.length - 2)}│`;
+    // Row 30 is Production's description. Each case edits that row alone, then compares to the capture.
+    const edit = (text: string) => described.map((t, i) => (i === 30 ? pad(`       ${text}`) : t));
+    const cases: Array<[string, string]> = [
+      ["a pointer glyph past the first column", "Ship ❯ straight to production."],
+      ["a radio glyph past the first column", "Ship ○ straight to production."],
+      ["another option's label as its whole text", "Skip"],
+      ["a rail in the middle", "Ship straight │ to production."],
+      ["omp's own Other label as its whole text", OTHER],
+    ];
+    for (const [name, text] of cases) {
+      // Today every case lifts. Declining would also be safe, but that must be a decision, not a drift.
+      const model = detectAskSelect(fromTexts(edit(text)))!;
+      expect(model, name).not.toBeNull();
+      expect(model.options.map((o) => o.label), name).toEqual(base.options.map((o) => o.label));
+      expect(model.options.map((o) => o.keyLabel), name).toEqual(base.options.map((o) => o.keyLabel));
+      expect(model.options.map((o) => o.keys), name).toEqual(base.options.map((o) => o.keys));
+      expect(model.options.map((o) => o.description), name).toEqual(
+        base.options.map((o) => (o.label === "Production" ? text : o.description)),
+      );
+      // Only the pointed row's own pointer is blanked: the description's glyph stays in the core.
+      const count = (x: string) => x.split("❯").length - 1;
+      expect(count(model.signature) - count(model.coreSignature), name).toBe(1);
+    }
+  });
+
+  it("with descriptions on screen, a moved pointer AND a changed label still moves the core signature", () => {
+    const first = detectAskSelect(load("omp--v18-8-ask-single-described.txt"))!;
+    const moved = textsOf("omp--v18-8-ask-single-described-moved.txt");
+    // Control: the pointer alone is ignored.
+    expect(detectAskSelect(fromTexts(moved))!.coreSignature).toBe(first.coreSignature);
+    const relabelled = moved.map((t) => t.replace("○ Skip", "○ Skim"));
+    const after = detectAskSelect(fromTexts(relabelled))!;
+    expect(after.options.map((o) => o.label)).toContain("Skim");
+    expect(after.coreSignature).not.toBe(first.coreSignature);
+  });
+
   it("when `Other` is not the last row, is missing, or is listed twice", () => {
     const moved = single.map((t, i) => (i === 203 ? single[204]! : i === 204 ? single[203]! : t));
     expect(detectAskSelect(fromTexts(moved))).toBeNull();
