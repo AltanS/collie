@@ -97,3 +97,14 @@ that token only while the send holds at least as many upload paths in the shape 
 the text). A prose mention of `shot.png` lifts nothing, so it never explains a token.
 
 Chunking stays rejected, for the reasons above.
+
+## Addendum — 2026-10-10: the per-adapter settle floor (#395)
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum records one
+named exception to the rule above.
+
+Muse 1.4.4 swallows an Enter sent within about 60 ms of the text (#395). The guarded send therefore
+holds the submit until an adapter-declared floor has passed since the last type call
+(`submitSettleMs`, `lib/reply-action.ts`). Muse declares 350 ms. Every other adapter declares none
+and sends as before. This is one named exception to the rule above, measured on one harness, not a
+return of the fixed pacing #34 removed.
