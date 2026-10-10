@@ -59,6 +59,7 @@ import { StatusDot } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
+import { CopyableBlock } from "@/components/ui/copyable-block";
 import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
@@ -649,7 +650,7 @@ export function ToolCard({
   switch (tool.kind) {
     case "edit":
       return (
-        <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
+        <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
           <ToolHead
             icon={tool.created ? FilePlusCorner : Pencil}
             label={t(tool.created ? "chat.card.create" : "chat.card.edit")}
@@ -664,14 +665,16 @@ export function ToolCard({
             <ToolPath path={tool.path} />
           </ToolHead>
           {tool.diff && tool.diff.length > 0 && (
-            <HunkDiff hunks={tool.diff} path={tool.path} limit={preview ? 30 : 16} />
+            <CopyableBlock text={tool.diff.map((hunk) => [hunk.header, ...hunk.lines].join("\n")).join("\n")}>
+              <HunkDiff hunks={tool.diff} path={tool.path} limit={preview ? 30 : 16} />
+            </CopyableBlock>
           )}
           <WaitingArea waiting={waiting} />
         </Card>
       );
     case "execute":
       return (
-        <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
+        <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
           <ToolHead icon={SquareTerminal} label={t("chat.card.run")} status={status} exitCode={tool.exitCode}>
             {tool.description && (
               <span className="font-content min-w-0 truncate text-muted-foreground">{tool.description}</span>
@@ -965,14 +968,20 @@ function CommandBlock({ command, output, preview }: { command: string; output?: 
   const shown = all ? lines : lines.slice(-TAIL);
   return (
     <>
-      <div className={cn("mx-2 mb-2 overflow-hidden rounded-md font-mono text-[11px] leading-[1.4]", MIRROR_SPACE, MIRROR_INVERT)}>
-        <div className="px-2.5 py-2">
-          <div className="line-clamp-6 whitespace-pre-wrap break-words">
-            <span className="text-[#23d18b]">$</span> {command}
+      <div className="mx-2 mb-2 rounded-md">
+        <CopyableBlock text={command} label={t("copyable.command")}>
+          {/* With the output open below, a one-line command is shorter than a copy icon's 44px reach,
+              and the output icon's reach would take the bottom of this one; min-h-11 keeps them apart. */}
+          <div className={cn("rounded-t-md px-2.5 py-2 font-mono text-[11px] leading-[1.4]", open && lines.length > 0 ? "min-h-11" : "rounded-b-md", MIRROR_SPACE, MIRROR_INVERT)}>
+            <div className="line-clamp-6 whitespace-pre-wrap break-words">
+              <span className="text-[#23d18b]">$</span> {command}
+            </div>
           </div>
-        </div>
+        </CopyableBlock>
         {open && lines.length > 0 && (
-          <pre className="m-0 overflow-x-auto border-t border-white/10 px-2.5 py-2 whitespace-pre">{shown.join("\n")}</pre>
+          <CopyableBlock text={output ?? ""} label={t("chat.copyOutput.label")}>
+            <pre className={cn("m-0 overflow-x-auto rounded-b-md border-t border-white/10 px-2.5 py-2 font-mono text-[11px] leading-[1.4] whitespace-pre", MIRROR_SPACE, MIRROR_INVERT)}>{shown.join("\n")}</pre>
+          </CopyableBlock>
         )}
       </div>
       {/* Output that arrives after the card is on screen (the run the reader just allowed) slides
@@ -1037,7 +1046,7 @@ function HunkDiff({ hunks, path, limit }: { hunks: Hunk[]; path: string; limit: 
   const max = open ? total : limit;
   const text = useMemo(() => numberedDiff(hunks, max), [hunks, max]);
   return (
-    <div className="border-t border-border">
+    <div className="overflow-hidden rounded-b-md border-t border-border">
       {text !== null ? <DiffView diff={text} path={path} /> : <PlainDiff hunks={hunks} path={path} limit={max} />}
       {/* The same sentence a command's output fold says, so one message serves both. */}
       {total > limit && (

@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
+import { CopyableBlock } from "@/components/ui/copyable-block";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
 import { splitHighlight } from "@/lib/transcript-search";
@@ -334,9 +335,11 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
     }
     case "code":
       return (
-        <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
-          <Hit text={block.text} />
-        </pre>
+        <CopyableBlock text={block.text}>
+          <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
+            <Hit text={block.text} />
+          </pre>
+        </CopyableBlock>
       );
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
@@ -365,36 +368,38 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
       // Columns can't be made to fit a phone, so the table keeps its real widths and pans inside its
       // own scroller — the same thing a mobile browser does with a table on any normal page.
       return (
-        <div className="overflow-x-auto">
-          <table className="w-max border-collapse text-xs">
-            <thead>
-              <tr>
-                {block.header.map((cell, i) => (
-                  <th
-                    key={i}
-                    className={`border px-2 py-1 font-semibold ${ALIGN_CLASS.get(block.align[i] ?? "left") ?? "text-left"}`}
-                  >
-                    <Spans spans={cell} />
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {block.rows.map((row, r) => (
-                <tr key={r}>
-                  {row.map((cell, c) => (
-                    <td
-                      key={c}
-                      className={`border px-2 py-1 align-top ${ALIGN_CLASS.get(block.align[c] ?? "left") ?? "text-left"}`}
+        <CopyableBlock text={block.source}>
+          <div className="overflow-x-auto">
+            <table className="w-max border-collapse text-xs">
+              <thead>
+                <tr>
+                  {block.header.map((cell, i) => (
+                    <th
+                      key={i}
+                      className={`border px-2 py-1 font-semibold ${ALIGN_CLASS.get(block.align[i] ?? "left") ?? "text-left"}`}
                     >
                       <Spans spans={cell} />
-                    </td>
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {block.rows.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, c) => (
+                      <td
+                        key={c}
+                        className={`border px-2 py-1 align-top ${ALIGN_CLASS.get(block.align[c] ?? "left") ?? "text-left"}`}
+                      >
+                        <Spans spans={cell} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CopyableBlock>
       );
     case "rule":
       return <hr className="border-border" />;
