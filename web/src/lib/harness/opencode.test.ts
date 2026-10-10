@@ -753,8 +753,8 @@ describe("opencode pickers", () => {
 describe("overlayHoldsKeyboard", () => {
   // The /models-style overlay paints its own bordered box over the screen while the composer tail
   // stays intact, so the composer gate still answers true although typing would land in the
-  // overlay's filter, never the input box. Only the closed box matches: a looser shape would also
-  // match the composer's own interior rows and refuse every live send.
+  // overlay's filter, never the input box. Only a run of closed rows matches: a looser shape would
+  // also match the composer's own interior rows and a pasted table's echo, and refuse live sends.
   it("sees the slash-palette overlay box, and nothing else in any corpus", () => {
     expect(overlayHoldsKeyboard(loadLines("oc--slash-palette.txt"))).toBe(true);
     const rest = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt") && f !== "oc--slash-palette.txt");
@@ -768,6 +768,26 @@ describe("overlayHoldsKeyboard", () => {
   // composers too. Pinned here so closing that gap must update this test, not slip past it.
   it("does not claim the typed-filter palette (known gap, still open)", () => {
     expect(overlayHoldsKeyboard(loadLines("oc--command-palette-query.txt"))).toBe(false);
+  });
+
+  // A user message echoing a pasted table drawn in heavy ┃ (rich, eza, lazygit) sits in the
+  // scrollback; one or two closed rows must not refuse every send, only a run of three can.
+  const textLines = (rows: string[]) => splitLines(parseAnsi(rows.join("\n")));
+  const echoRow = "  ┃  a ┃ b ┃";
+  const bare = "  ┃";
+
+  it("ignores a user echo with one or two closed ┃ rows", () => {
+    expect(overlayHoldsKeyboard(textLines([bare, echoRow, bare, "reply"]))).toBe(false);
+    expect(overlayHoldsKeyboard(textLines([bare, echoRow, echoRow, bare, "reply"]))).toBe(false);
+  });
+
+  it("ignores closed rows that a bare or plain row keeps apart", () => {
+    expect(overlayHoldsKeyboard(textLines([echoRow, echoRow, bare, echoRow, echoRow]))).toBe(false);
+    expect(overlayHoldsKeyboard(textLines([echoRow, echoRow, "text", echoRow, echoRow]))).toBe(false);
+  });
+
+  it("claims three consecutive closed ┃ rows", () => {
+    expect(overlayHoldsKeyboard(textLines([bare, echoRow, echoRow, echoRow, bare]))).toBe(true);
   });
 });
 

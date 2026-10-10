@@ -84,7 +84,7 @@ export interface HarnessAdapter {
    * card needs it to answer `true` as well; a throw counts as `false`. Read from the harness's own
    * captures, and pinned by the card's allow-list test.
    */
-   modalOnScreen?(lines: StyledLine[]): boolean;
+  modalOnScreen?(lines: StyledLine[]): boolean;
   /**
    * Positive evidence that a full overlay box holds the keyboard — the /models-style overlay
    * paints its own bordered box over the middle of the screen while the composer tail stays

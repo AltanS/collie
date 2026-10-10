@@ -403,27 +403,45 @@ export function modalOnScreen(lines: StyledLine[]): boolean {
   return false;
 }
 
+/** Consecutive closed, non-blank bar rows that count as an overlay box (`overlayHoldsKeyboard`). */
+const OVERLAY_BOX_MIN_ROWS = 3;
+
+/** A bar row the heavy ┃ opens AND closes, with text between. */
+function isClosedBarRow(text: string): boolean {
+  if (!isBarRow(text) || !text.endsWith("┃")) return false;
+  return text.replace(/^\s*┃/, "").slice(0, -1).trim().length > 0;
+}
+
 /**
- * Whether a full overlay box holds the keyboard: a bar row the heavy ┃ opens AND closes (the
- * /models-style overlay paints its own bordered box over the middle of the screen, filter row
- * included). Transcript, composer, description and footer rows never close with ┃, and
- * agent-authored │ tables cannot match either — only the overlay box borders in heavy ┃ on both
- * sides. Bare bar rows (padding) are excluded.
+ * Whether a full overlay box holds the keyboard: a run of at least three CONSECUTIVE bar rows the
+ * heavy ┃ opens AND closes (the /models-style overlay paints its own bordered box over the middle
+ * of the screen, list rows included). Transcript, composer, description and footer rows never
+ * close with ┃, and agent-authored │ tables cannot match either. Bare bar rows (padding) are
+ * excluded and end a run, as does any row that is not closed.
  *
  * Deliberately NOT folded into `pickerOverlayUp`/`modalOnScreen`: those feed the unread-dialog
  * card, the composer gate and the conformance leg, where a new shape would move existing
  * verdicts. The reply path consults this separately (`lib/reply-action.ts`), so a miss here only
- * ever refuses a send, never a card. Measured on 1.18.32 (`oc--slash-palette.txt`,
- * `oc--command-palette-query.txt`); every non-box capture must stay false (the suites pin it).
- * User-typed text ending in a heavy ┃ would match too — accepted, essentially untypable, and a
- * hit only ever refuses.
+ * ever lets a send through to the guarded type-and-verify path, and a hit only ever refuses one.
+ * Measured on 1.18.32: `oc--slash-palette.txt` shows ten consecutive closed rows. Every non-box
+ * capture must stay false (the suites pin it); `oc--command-palette-query.txt` stays false too
+ * (its rows open but never close, the documented known gap).
+ *
+ * The run rule exists because a user message that echoes a pasted table drawn in heavy ┃ (Python
+ * `rich`, eza, lazygit) paints closed rows into the scrollback, and one or two such rows must not
+ * refuse every send until they scroll away. Remaining gap: three or more consecutive pasted rows
+ * with no separator row or blank line between them still match until they scroll away, and an
+ * overlay box with fewer than three list rows is missed. Colour does not close the gap: the bar
+ * glyph colour differs between the overlay (72;72;72) and the composer bar (92;156;245) in the
+ * capture, but it follows the agent mode and the theme.
  */
 export function overlayHoldsKeyboard(lines: StyledLine[]): boolean {
-  return lines.some((l) => {
-    const text = rstrip(lineText(l));
-    if (!isBarRow(text) || !text.endsWith("┃")) return false;
-    return text.replace(/^\s*┃/, "").slice(0, -1).trim().length > 0;
-  });
+  let run = 0;
+  for (const l of lines) {
+    run = isClosedBarRow(rstrip(lineText(l))) ? run + 1 : 0;
+    if (run >= OVERLAY_BOX_MIN_ROWS) return true;
+  }
+  return false;
 }
 
 /** The model row down to the rule, verbatim as they sit on screen (trailing padding dropped) — the
