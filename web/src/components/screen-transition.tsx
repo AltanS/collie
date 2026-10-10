@@ -47,9 +47,9 @@ import { isInAppBack } from "@/lib/nav-entry";
  * `position: fixed` descendant, so a sheet (`ui/sheet.tsx`, `fixed inset-0`, rendered in tree)
  * would resolve against it rather than the viewport FOR THE 240ms. It is inherent to sliding
  * anything and not to the fill mode, and it is unreachable in practice: a sheet is opened by a tap
- * on a screen that has been standing still, and a navigation closes the route it lives in. The
- * `from`-only `enter` keyframe leaves no transform behind once the animation ends, so nothing
- * outlives the move.
+ * on a screen that has been standing still, and a navigation closes the route it lives in. Once the
+ * animation ends the wrapper carries no transform, because ENTER sets no fill mode (see there), so
+ * nothing outlives the move.
  */
 
 /** Which of the two everyday moves this navigation is, if it is one of them at all. */
@@ -87,15 +87,18 @@ export function classifyMove(prev: string | null, next: string): ScreenMove {
  * as `COLLAPSE_MS`, written as a literal here for the reason that file gives: the motion tokens
  * (`--dur-move`, `--ease-orbit`) do not exist yet, and a primitive is not the place to mint them.
  *
- * `fill-mode-forwards` holds the last frame, so the arriving screen cannot flash at its start
- * position between the animation ending and the class being irrelevant. `motion-reduce:animate-none`
- * is the whole opt-out: a reader who asked for less motion gets the new screen, immediately, in
- * place.
+ * NO FILL MODE. The keyframe states only `from`, so the end of the slide is the screen's own resting
+ * place and there is nothing to hold. `fill-mode-forwards` held it anyway, as `transform:
+ * matrix(1,0,0,1,0,0)` and `filter: blur(0px)`, which are not `none`: the wrapper then stayed the
+ * containing block of every in-tree `fixed` sheet for the screen's whole life, and each sheet opened
+ * shifted down by the header with its bottom off screen (measured in Chrome and on an iPhone,
+ * 2026-10-10). `motion-reduce:animate-none` is the whole opt-out: a reader who asked for less motion
+ * gets the new screen, immediately, in place.
  */
 const ENTER = {
   forward:
-    "duration-[240ms] ease-out animate-in slide-in-from-right fill-mode-forwards motion-reduce:animate-none",
-  back: "duration-[240ms] ease-out animate-in slide-in-from-left fill-mode-forwards motion-reduce:animate-none",
+    "duration-[240ms] ease-out animate-in slide-in-from-right motion-reduce:animate-none",
+  back: "duration-[240ms] ease-out animate-in slide-in-from-left motion-reduce:animate-none",
   none: "",
 } satisfies Record<ScreenMove, string>;
 

@@ -94,6 +94,18 @@ describe("ScreenTransition — what the arriving screen carries", () => {
     expect(wrapper(container).className).not.toMatch(/slide-in-from-right/);
   });
 
+  // A held last frame is transform: matrix(1,0,0,1,0,0) and filter: blur(0px), not `none`, so the
+  // wrapper stayed the containing block of every in-tree `fixed` sheet for the screen's whole life
+  // and each one opened shifted down by the header, its bottom off screen. Measured in Chrome and
+  // on an iPhone, 2026-10-10. jsdom computes no animation, so this pins the class that held it.
+  it("holds no frame after either slide ends", async () => {
+    const { router, container } = mount();
+    await act(() => router.navigate("/pane/p1"));
+    expect(wrapper(container).className).not.toMatch(/fill-mode-(forwards|both)/);
+    await act(() => router.navigate("/"));
+    expect(wrapper(container).className).not.toMatch(/fill-mode-(forwards|both)/);
+  });
+
   it("carries neither on a same-path navigation — the revalidation case", async () => {
     const { router, container } = mount();
     await act(() => router.navigate("/pane/p1"));
