@@ -1373,6 +1373,33 @@ carry only omp's welcome panel, its `Update Available` notice and the palette.
 | `omp--v18-8-slash-palette.txt` | `/resume` typed on a 168-column pi-shaped composer: eight palette entries and no scrollbar. `composerReady` true, `extractInputDraft` reads `/resume` off the filter row, and there is no statusline to lift | `idle` |
 | `omp--v18-8-slash-palette-w48.txt` | The same screen on a 48-column pane: every entry wraps, continuations land on the description column, and the scrollbar column is on screen | `idle` |
 
+## OMP 18.8 `ask` with option descriptions (captured 2026-10-07 and 2026-10-10, oh-my-pi `omp` v18.8.0 and v18.8.7, herdr 0.9.3, throwaway Herdr panes, #372)
+
+Two captures of one `ask` call: a single-select question whose three options each carry a
+`description`, Staging marked recommended. They exist for
+[issue #372](https://github.com/AltanS/collie/issues/372): the grammar declined every description row,
+so the phone showed the unread-dialog card, with only Esc, over a plain single-select. omp prints a
+description on rows of its own under its option, six columns in, and wraps a long one at that indent
+(the 18.4.10 source already did; these are the first captures). omp draws every option's
+description wherever the pointer is, so the second capture's dialog matches the first byte for byte,
+styles included, except the two rows the pointer left and reached; the stats and working rows above
+it are each session's own.
+
+The first is the capture attached to the issue: `herdr pane read <pane-id> --source recent --lines 200
+--format ansi` while the phone showed the card, trimmed to the last turn (the rows above it were
+unrelated test chatter). For the second, the same prompt went verbatim to omp 18.8.7 in a fresh
+throwaway workspace, the same dialog came up, one `Down` moved the pointer, and
+`scripts/capture-fixture.sh <pane> omp--v18-8-ask-single-described-moved 37` read it. Each buffer
+holds that last turn at 217 columns: the prompt, omp's render of the tool call, the turn's stats row,
+the working row with the session title, then the dialog at the tail. CRLF throughout, as the bridge
+serves it. **No sanitization was needed**: neither capture carries a username, hostname or path. The
+first one's session title is in Russian, left from an earlier test of that session.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-8-ask-single-described.txt` | `Which deploy target should the release use?`: `❯ ○ Staging (Recommended)` with a two-row description, `○ Production` and `○ Skip` with one row each, `○ Other (type your own)`, no padding rows, footer `⏎ select · n note · ↑/↓ move · ⎋ cancel`. Lifts as a `prompt-select` (`omp/ask.ts`), each description on its option | not recorded |
+| `omp--v18-8-ask-single-described-moved.txt` | The same dialog after one `Down`: the pointer on Production. Staging walks `Up` | not recorded |
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

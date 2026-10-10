@@ -2506,6 +2506,7 @@ export function AgentChat({
               scope={scope}
               stale={actsDisabledByCache}
               composing={composing}
+              wrap={prefs.wrap}
               faceClassName={mirrorFace.className}
               faceStyle={mirrorFace.style}
               onClick={focusFromMirror}

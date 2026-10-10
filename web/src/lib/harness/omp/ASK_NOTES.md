@@ -4,9 +4,10 @@ The choreography notes file the Tier-2 bar asks for (`HARNESS_CONTRIBUTING.md`),
 screen the adapter lifts ([ADR 0077](../../../../../.adr/0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md)).
 Grammar: `ask.ts`. Corpus: `omp--select-menu.txt` and `omp--select-menu-moved.txt` (omp 17.2.12,
 2026-08), `omp--select-menu-other.txt` and `omp--select-menu-noted.txt` (omp 18.4.4, Nerd Font preset,
-2026-10-01), `omp--v18-4-ask-*.txt` (omp 18.4.10, 2026-10-02). Behaviour below is read from
-pi-tui's `overlays/ask-dialog.ts` in the published omp 18.4.10 packages and checked against those
-captures.
+2026-10-01), `omp--v18-4-ask-*.txt` (omp 18.4.10, 2026-10-02), `omp--v18-8-ask-single-described.txt`
+(omp 18.8.0, 2026-10-07) and `omp--v18-8-ask-single-described-moved.txt` (omp 18.8.7, 2026-10-10).
+Behaviour below is read from pi-tui's `overlays/ask-dialog.ts` in the published omp 18.4.10 packages,
+the description rows from the same file in the omp 18.8.7 build, and checked against those captures.
 
 ## What the screen prints
 
@@ -35,6 +36,27 @@ The same box in the other two keycap dialects:
 | Nerd Font (`nerd`) | `U+F0311 select · n note · ↑/↓ move · U+F12B7 cancel` | U+F054 | U+F10C | `omp--select-menu-other.txt` |
 
 A row with a saved note ends in `  ✎ note` (`omp--select-menu-noted.txt`).
+
+An option with a `description` prints it on rows of its own under the label, six columns in,
+wrapped at that indent. The 18.4.10 source already draws these rows; 18.8.0 is where they were first
+captured (`omp--v18-8-ask-single-described.txt`, 217 columns, cut narrow here):
+
+```
+│ ❯ ○ Staging (Recommended)                      │
+│       Deploy to the staging cluster first, run │   a description, wrapped onto more rows
+│       the full smoke suite against it, …       │
+│   ○ Production                                 │
+│       Ship straight to production.             │
+│   ○ Skip                                       │
+│       Do not deploy now.                       │
+│   ○ Other (type your own)                      │
+```
+
+omp draws every option's description wherever the pointer is: one `Down` changes the pointer column
+and nothing else (`omp--v18-8-ask-single-described-moved.txt`). It shows the first two rows of a
+description and adds `<key> expand` to the footer when any description runs longer. At the same
+indent it also prints an answer typed earlier under `Other`, and an option's `preview` behind a `│`
+rail of its own.
 
 ## What a tap sends
 
@@ -74,8 +96,12 @@ Its source is not on this host.
    This one check pins three facts: a single-select question (multi-select prints `toggle`), a
    one-question dialog (several questions add a `⇥/←/→` tab segment, and there `Enter` advances to
    the next question), and arrows as the move keys (omp prints the user's own binding).
-3. The body is option rows, then blank rows. Every option row carries that preset's pointer or a
-   space, then that preset's unselected radio, then a label.
+3. The body is option rows, each followed by its description rows if it has any, then blank rows.
+   Every option row carries that preset's pointer or a space, then that preset's unselected radio,
+   then a label. A description row is exactly six columns in and sits under an option or under that
+   option's previous description row, never under `Other`, never behind a `│`, and never opening
+   with the preset's radio or pointer. Its rows join, one space apart, into the option's description
+   on the card.
 4. The last option is exactly `Other (type your own)`, no other row is, and at least one option sits
    above it.
 5. Exactly one pointer.
@@ -88,7 +114,7 @@ Anything missing returns null, and the screen stays raw with the unread-dialog c
 
 - **`n note`.** It opens the same editor for a note on the pointed row. `PromptModel` has no field for
   a footer action, so the card does not offer it; the Keys drawer sends `n`. A saved note shows as
-  the row's description, `✎ note`.
+  the row's description, `✎ note`, or as `✎ note · <description>` when omp prints one under the row.
 - **The multi-select dialog** (see below).
 - **A multi-question call.** Its footer adds the tab segment, so the grammar declines every step of it.
 
@@ -121,10 +147,24 @@ mirror and the Escape card. ADR 0077 says what a later slice needs.
   Escape card, as designed. Not probed: a composer reply typed into the editor after the `Other` tap
   (PR 336 covers the editor itself), the Cancel row on this card, a pointer moved at the desk between
   the render and the tap, and the Nerd Font preset.
-- **Shapes read from source, none captured, all declined:** an option with a description (rows six
-  columns in), a label that wraps (rows four columns in), an option with a preview, a list taller
-  than the body (scrollbar cells and a `↑`/`↓` indicator in the footer), a question past four rows
-  (`ctrl+o expand` in the footer), the `ask.timeout` countdown (`Ask (30s)` in the title), and the
-  `ascii` symbol preset. Each needs its own capture before the grammar may read it.
+- **Probed live, 2026-10-10 (omp 18.8.7, Herdr, paired headless browser).** At 217 columns the
+  same call draws the 18.8.0 capture's Ask region again. After one `Down` the region matches it
+  byte for byte except the two rows the pointer left and reached, and `Escape` reports `Ask tool was
+  cancelled by the user`. At 120 columns, against the web app from the #372 branch, a call whose
+  first description wraps to two rows drew the card with each description on its option. A tap on
+  `Production`, under that description, walked `Down` and confirmed with `Enter`, the prompt binding
+  passing on both requests (ADR 0080), and the agent echoed `Production`. A first description too
+  long for two rows put `Ctrl+O expand` in the footer: that screen drew no card at all, not even the
+  Escape card, because `modalOnScreen` is false for it, on main too. The multi-select dialog drew the
+  Escape card, its mirror wrapping or panning with Wrap lines before and after Put away; there
+  `Space` toggled the pointed row and `Enter` submitted the ticked rows alone, as in 18.4.10. Not
+  probed: a tap on the pointed row, on `Other` or on Cancel of a described card.
+- **Shapes read from source, none captured, all declined:** a description longer than two rows
+  (`<key> expand` in the footer), a label that wraps (rows four columns in), an option with a preview,
+  an answer typed earlier under `Other`, a list taller than the body (scrollbar cells and a `↑`/`↓`
+  indicator in the footer), a question past four rows (`ctrl+o expand` in the footer), the
+  `ask.timeout` countdown (`Ask (30s)` in the title), and the `ascii` symbol preset. Each needs its
+  own capture before the grammar may read it.
 - **A recommended option** carries ` (Recommended)` after its label and starts with the pointer on
-  it. Both are read off the screen as they are, so nothing special is needed. Not captured.
+  it. Both are read off the screen as they are, so nothing special is needed
+  (`omp--v18-8-ask-single-described.txt`: `Staging (Recommended)`, pointed when the dialog opens).

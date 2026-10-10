@@ -131,6 +131,44 @@ describe("the Nerd Font preset (18.4.4) lifts, read from its own glyphs", () => 
   });
 });
 
+describe("the 18.8.0 dialog with option descriptions (#372) lifts, each description on its option", () => {
+  const DESCRIBED = "omp--v18-8-ask-single-described.txt";
+  // Staging's description wraps onto a second row at the same indent, six columns in.
+  const STAGING =
+    "Deploy to the staging cluster first, run the full smoke suite against it, wait for the error-budget " +
+    "dashboard to stay green for an hour, and only then promote the same build to production with the existing " +
+    "pipeline. This keeps the rollback path short and matches the last three releases.";
+
+  it("the description rows leave the list of options alone and join into each option's description", () => {
+    const model = detectAskSelect(load(DESCRIBED))!;
+    expect(model.question).toBe("Which deploy target should the release use?");
+    expect(model.options.map((o) => o.label)).toEqual(["Staging (Recommended)", "Production", "Skip", OTHER, "Cancel"]);
+    expect(model.options.map((o) => o.keys)).toEqual([
+      ["Enter"],
+      ["Down", "Enter"],
+      ["Down", "Down", "Enter"],
+      ["Down", "Down", "Down", "Enter"],
+      ["Escape"],
+    ]);
+    expect(model.options.map((o) => o.keyLabel)).toEqual(["❯", "", "", "", "Esc"]);
+    expect(model.options.map((o) => o.description)).toEqual([
+      STAGING,
+      "Ship straight to production.",
+      "Do not deploy now.",
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("a saved note's mark and the description both reach the card, the mark first as on screen", () => {
+    const texts = textsOf(DESCRIBED);
+    const noted = texts.map((t, i) => (i === 29 ? t.replace("○ Production        ", "○ Production  ✎ note") : t));
+    const model = detectAskSelect(fromTexts(noted))!;
+    expect(model.options[1]!.label).toBe("Production");
+    expect(model.options[1]!.description).toBe("✎ note · Ship straight to production.");
+  });
+});
+
 describe("every tap is the walk plus a key the footer printed", () => {
   const LIFTED = [
     "omp--select-menu-moved.txt",
@@ -139,6 +177,8 @@ describe("every tap is the walk plus a key the footer printed", () => {
     "omp--select-menu.txt",
     "omp--v18-4-ask-single-moved.txt",
     "omp--v18-4-ask-single.txt",
+    "omp--v18-8-ask-single-described-moved.txt",
+    "omp--v18-8-ask-single-described.txt",
   ];
 
   it.each(LIFTED)("%s: no key is a digit, and each option walks from the pointed row", (name) => {
@@ -181,6 +221,20 @@ describe("the race guard sees the pointer and every row", () => {
     // The pointer is the one difference between the two captures, and the core signature is blind to it.
     expect(first.coreSignature).toBe(moved.coreSignature);
     expect(first.coreSignature).not.toContain("❯");
+  });
+
+  it("with descriptions on screen, the core signature blanks the pointed option's own row", () => {
+    // Description rows push every option below them down, so the pointed row is counted in body rows:
+    // counted in options, the moved capture's blank lands on Staging's description, not on Production.
+    const first = detectAskSelect(load("omp--v18-8-ask-single-described.txt"))!;
+    const moved = detectAskSelect(load("omp--v18-8-ask-single-described-moved.txt"))!;
+    expect(moved.signature).not.toBe(first.signature);
+    expect(first.coreSignature).toBe(moved.coreSignature);
+    expect(moved.coreSignature).not.toContain("❯");
+    // Every description row stays in the core: a description changed under the tap is not the same prompt.
+    const texts = textsOf("omp--v18-8-ask-single-described.txt");
+    const edited = texts.map((t, i) => (i === 30 ? t.replace("Ship straight", "Ship directly") : t));
+    expect(detectAskSelect(fromTexts(edited))!.coreSignature).not.toBe(detectAskSelect(fromTexts(texts))!.coreSignature);
   });
 
   it("a question row is free text: text past its right border still lifts and moves the signature", () => {
@@ -303,15 +357,40 @@ describe("fails closed", () => {
     expect(detectAskSelect(fromTexts(single.slice(0, -1)))).toBeNull();
   });
 
-  it("with an unknown row between the options: a description, a wrapped label, a row below the padding", () => {
+  it("with a row the body does not know: a wrapped label, a row below the padding", () => {
     const insert = (at: number, row: string) => [...single.slice(0, at), row, ...single.slice(at + 1)];
     const pad = (s: string) => `│${s.padEnd(single[201]!.length - 2)}│`;
-    // A description row (six columns in) under Red, in place of Green: the row count stays the same.
-    expect(detectAskSelect(fromTexts(insert(202, pad("       the colour of warnings"))))).toBeNull();
     // A wrapped label's continuation (four columns in).
     expect(detectAskSelect(fromTexts(insert(202, pad("     continued label"))))).toBeNull();
-    // Text below a blank padding row.
+    // Text below a blank padding row, as an option or as a description.
     expect(detectAskSelect(fromTexts(insert(206, pad("   ○ Purple"))))).toBeNull();
+    expect(detectAskSelect(fromTexts(insert(206, pad("       the colour of warnings"))))).toBeNull();
+  });
+
+  it("with a description-shaped row under no option, under `Other`, off its indent, led by an option's glyph, or an option's preview", () => {
+    const described = textsOf("omp--v18-8-ask-single-described.txt");
+    expect(detectAskSelect(fromTexts(described))).not.toBeNull();
+    const pad = (s: string) => `│${s.padEnd(described[26]!.length - 2)}│`;
+    // Staging's option row swapped below its two description rows, which then open the body.
+    const orphaned = described.map((t, i) => (i === 26 ? described[28]! : i === 28 ? described[26]! : t));
+    expect(detectAskSelect(fromTexts(orphaned))).toBeNull();
+    // omp prints a row at this indent under `Other` only for an answer typed earlier, which is not a
+    // description.
+    const underOther = [...described.slice(0, 34), pad("       a deep teal"), ...described.slice(34)];
+    expect(detectAskSelect(fromTexts(underOther))).toBeNull();
+    for (const indent of ["      ", "        "]) {
+      const shifted = described.map((t, i) => (i === 30 ? pad(`${indent}Ship straight to production.`) : t));
+      expect(detectAskSelect(fromTexts(shifted)), `${indent.length} spaces in`).toBeNull();
+    }
+    // A row at this indent that opens with the radio or the pointer has an option row's glyphs.
+    for (const glyph of ["○", "❯"]) {
+      const led = described.map((t, i) => (i === 30 ? pad(`       ${glyph} Ship straight to production.`) : t));
+      expect(detectAskSelect(fromTexts(led)), `led by ${glyph}`).toBeNull();
+    }
+    // An option's `preview`, which omp draws under its description at the same indent, behind a `│`
+    // rail of its own (read from omp 18.8.7's `ask-dialog.ts`; no capture shows one).
+    const previewed = [...described.slice(0, 31), pad("       │ kubectl rollout status deploy/api"), ...described.slice(31)];
+    expect(detectAskSelect(fromTexts(previewed))).toBeNull();
   });
 
   it("when `Other` is not the last row, is missing, or is listed twice", () => {
@@ -371,9 +450,11 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--select-menu.txt",
     "omp--v18-4-ask-single-moved.txt",
     "omp--v18-4-ask-single.txt",
+    "omp--v18-8-ask-single-described-moved.txt",
+    "omp--v18-8-ask-single-described.txt",
   ]);
 
-  it("lifts exactly the six one-question single-select captures, out of every capture in the corpus", () => {
+  it("lifts exactly the eight one-question single-select captures, out of every capture in the corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectAskSelect(load(name)) !== null);

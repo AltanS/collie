@@ -94,6 +94,7 @@ export function PromptPanel({
   ariaLabel,
   raw,
   rawMode = "reveal",
+  wrap,
   children,
 }: {
   ariaLabel: string;
@@ -101,6 +102,10 @@ export function PromptPanel({
   raw?: StyledLine[];
   /** What the Terminal control actually does on this card — see the ADR 0056 note above. */
   rawMode?: "reveal" | "declutter";
+  /** Whether the Terminal view's mirror wraps, for a card whose own mirror follows the device's Wrap
+   *  lines setting, so putting the buttons away keeps the mirror as it was. Default false, as
+   *  RawMirror. */
+  wrap?: boolean;
   children: ReactNode;
 }) {
   useLocale();
@@ -149,7 +154,7 @@ export function PromptPanel({
       )}
       {raw !== undefined && showRaw ? (
         <>
-          <RawMirror lines={raw} />
+          <RawMirror lines={raw} wrap={wrap} />
           <button
             ref={backControlRef}
             type="button"

@@ -86,11 +86,12 @@ const SWITCH_LIFTED = SWITCH_COHORT.filter((name) => !DECLINED_SWITCH.includes(n
 // The screens this adapter lifts. The `/resume` captures that list at least one session, seven of the
 // eight (`omp--v18-4-resume-nomatch.txt` has no rows and stays raw, below), the Ask tool's
 // one-question single-select dialog in all three keycap dialects: text (17.2.12), Nerd Font (18.4.4)
-// and glyph (18.4.10), and the tool-approval dialog in both captured presets: `nerd` with text keycaps
-// (18.1.17, `bash` and `write`, the latter in both selection states) and `unicode` with glyph keycaps
-// (18.4.10, `bash` and `write` in both selection states, and a fourteen-row `write`), and the compact
-// model picker's session state (18.4.10: the pointer moved, wrapped and at both window edges, searches,
-// over-context and truncated rows, role chips, and windows of 16, 15 and 5 rows).
+// and glyph (18.4.10, and 18.8 with option descriptions), and the tool-approval dialog in both
+// captured presets: `nerd` with text keycaps (18.1.17, `bash` and `write`, the latter in both selection
+// states) and `unicode` with glyph keycaps (18.4.10, `bash` and `write` in both selection states, and a
+// fourteen-row `write`), and the compact model picker's session state (18.4.10: the pointer moved,
+// wrapped and at both window edges, searches, over-context and truncated rows, role chips, and windows
+// of 16, 15 and 5 rows).
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
   "omp--menu-resume.txt",
@@ -105,6 +106,8 @@ const LIFTED = new Set([
   "omp--select-menu.txt",
   "omp--v18-4-ask-single-moved.txt",
   "omp--v18-4-ask-single.txt",
+  "omp--v18-8-ask-single-described-moved.txt",
+  "omp--v18-8-ask-single-described.txt",
   "omp--approval-bash.txt",
   "omp--approval-write--deny.txt",
   "omp--approval-write.txt",
@@ -330,6 +333,8 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch-wrapped.txt",
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
+    "omp--v18-8-ask-single-described-moved.txt",
+    "omp--v18-8-ask-single-described.txt",
     "omp--v18-8-slash-palette-w48.txt",
     "omp--v18-8-slash-palette.txt",
     "omp--v18-pi-effort-hint.txt",
