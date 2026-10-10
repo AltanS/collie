@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The harness canary marks a pane live when it reads it.** The canary's own transport never told `lib/liveness.ts` about a successful pane read, so the M46 liveness gate in `sendGuardedReply` refused every canary send; the canary now stamps the pane live after each 200 or 304 read, as the client does, and skips this on older `--readers` checkouts that have no liveness module. Thanks @raffaelenatale (#397).
+
 ## [1.19.1] - 2026-10-10
 
 ### Fixed
