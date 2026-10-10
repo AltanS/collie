@@ -26,6 +26,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The harness canary marks a pane live when it reads it.** The canary's own transport never told `lib/liveness.ts` about a successful pane read, so the M46 liveness gate in `sendGuardedReply` refused every canary send; the canary now stamps the pane live after each 200 or 304 read, as the client does, and skips this on older `--readers` checkouts that have no liveness module. Thanks @raffaelenatale (#397).
+- **An omp question whose options have descriptions gets its option card.** Each description shows on its option, instead of a card with only Esc. Thanks @Aeternologist (#372, #399).
+- **The unread-dialog card follows Wrap lines.** Its mirror of a wide pane wraps or pans as the pane mirror does, also after Put away (#372, #399).
 
 ## [1.19.1] - 2026-10-10
 
