@@ -849,10 +849,18 @@ async function helpGuard(
   helpAsked: boolean,
   name: string,
   summary: string,
+  internal: boolean,
   args: readonly string[],
   body: Command["run"],
 ): Promise<number> {
   if (!helpAsked) return body(args, session);
+  // A `_` verb is only ever spelled by another Collie (`_apply-update` by `update`), never by
+  // a person. A `--help` there means a caller built a wrong argv, so it fails loudly: an update whose
+  // second half answered usage with exit 0 would report success with nothing swapped.
+  if (internal) {
+    session.io.err(`error: \`collie ${name}\` is internal and has no usage; nothing was run`);
+    return EXIT.USAGE;
+  }
   session.io.out(`usage: collie ${name} [options]`);
   session.io.out("");
   session.io.out(`  ${summary}`);
@@ -910,7 +918,7 @@ function buildProgram(
       .helpOption(false)
       .argument("[args...]");
     if (c.subcommands === undefined) {
-      leaf.action(async (args: string[]) => setCode(await helpGuard(session, helpAsked, c.name, c.summary, args, c.run)));
+      leaf.action(async (args: string[]) => setCode(await helpGuard(session, helpAsked, c.name, c.summary, c.name.startsWith("_"), args, c.run)));
       continue;
     }
     // A parent with children: commander matches a child by name, and anything else — including
@@ -927,7 +935,7 @@ function buildProgram(
         .helpOption(false)
         .argument("[args...]")
         .action(async (args: string[]) =>
-          setCode(await helpGuard(session, helpAsked, `${c.name} ${sub.name}`, sub.summary, args, sub.run)),
+          setCode(await helpGuard(session, helpAsked, `${c.name} ${sub.name}`, sub.summary, c.name.startsWith("_"), args, sub.run)),
         );
     }
   }

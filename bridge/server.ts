@@ -6625,6 +6625,9 @@ export function isReservedAuthPath(pathname: string): boolean {
  * mount (`basePath`, ADR 0052), so a mounted Collie does not send the reader to the origin root.
  */
 export function reservedAuthPlaceholder(basePath: string = "/"): Response {
+  // The mount is operator config and already normalised, but it lands in HTML on a page anyone can
+  // reach, so it is escaped for an attribute all the same.
+  const base = basePath.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -6642,7 +6645,7 @@ this Collie, pair this device instead: run <code>collie pair</code> on the compu
 Collie, then enter the code in Settings.</p>
 <p>If you are the operator: point this path at your proxy's sign-in flow. See <em>Serving Collie
 behind your own reverse proxy</em> in the README.</p>
-<p><a href="${basePath}">Back to Collie</a> · <a href="${basePath}settings/system">Open Settings</a></p>
+<p><a href="${base}">Back to Collie</a> · <a href="${base}settings/system">Open Settings</a></p>
 </body>
 </html>
 `;

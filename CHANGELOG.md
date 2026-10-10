@@ -28,7 +28,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The `/auth/` page tells an unpaired device to pair.** With no proxy in front of Collie, the page now says to run `collie pair` on the computer and enter the code in Settings, and links Settings next to the way back, also under a `COLLIE_BASE_PATH` mount. Reported by @djbclark (#393).
 - **`--help` on a command prints its usage and changes nothing.** `collie update --help` used to start the real update, and `restart`, `uninstall` and `build` did the same; every command and sub-command now answers `-h` and `--help` with its usage first, and an argument after `--` is left alone. Reported by @djbclark (#392).
 - **A send no longer types into an opencode overlay box.** When a /models-style box holds the keyboard, Collie refuses the send instead of typing into the box's filter, and a send that stalls on a dialog, menu or overlay now names it. Thanks @AndiWandHerd (#391).
-- **A Mac's memory figure leaves out the file cache.** On macOS, Collie now reports app memory, wired memory and compressed memory, the figure Activity Monitor calls Memory Used, so a Mac no longer sits at 88 to 98 % all the time. Reported by @dmstjd1024 (#383).
+- **A Mac's memory figure leaves out the file cache.** On macOS, Collie now reports app memory, wired memory and compressed memory, the figure Activity Monitor calls Memory Used, so a Mac no longer sits at 88 to 98 % all the time. It reads `vm_stat` and was checked against Apple's source, not yet on a Mac; if `vm_stat` fails, the old figure comes back. Reported by @dmstjd1024 (#383).
 
 ## [1.19.0] - 2026-10-09
 

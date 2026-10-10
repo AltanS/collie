@@ -1711,7 +1711,7 @@ const machineSampler = new MachineSampler({
   // failure resolves null.
   run: async (command, args) => {
     try {
-      const proc = Bun.spawn([command, ...args], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+      const proc = Bun.spawn([command, ...args], { stdin: "ignore", stdout: "pipe", stderr: "ignore", env: { LC_ALL: "C" } });
       const timer = setTimeout(() => proc.kill("SIGKILL"), 1000);
       try {
         const [text, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);

@@ -2176,6 +2176,12 @@ describe("reservedAuthPlaceholder — what /auth/ says when no proxy answers", (
     expect(body).toContain('<a href="/collie/">Back to Collie</a>');
     expect(body).toContain('<a href="/collie/settings/system">Open Settings</a>');
   });
+
+  test("the mount is escaped, since the page is open to anyone", async () => {
+    const body = await reservedAuthPlaceholder('/a"><b>/').text();
+    expect(body).not.toContain('"><b>');
+    expect(body).toContain('<a href="/a&#34;&#62;&#60;b&#62;/">Back to Collie</a>');
+  });
 });
 
 // marksPaneSeen guards the one place a READ mutates server state. checkAccess lets a read through

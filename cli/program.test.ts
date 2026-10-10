@@ -260,11 +260,23 @@ describe("dispatch", () => {
       for (const argv of argvs) {
         const { table, ran } = spied();
         const io = capture();
-        expect(await run([...argv, "--help"], io, table)).toBe(EXIT.OK);
+        // An internal verb fails loudly instead: only another Collie spells it, so `--help` there is
+        // a wrong argv, and exit 0 would let an update report success with nothing swapped.
+        const internal = c.name.startsWith("_");
+        expect(await run([...argv, "--help"], io, table)).toBe(internal ? EXIT.USAGE : EXIT.OK);
         expect(ran).toEqual([]);
-        expect(io.stdout.length).toBeGreaterThan(0);
+        expect((internal ? io.stderr : io.stdout).length).toBeGreaterThan(0);
       }
     }
+  });
+
+  test("`_apply-update --help` runs nothing and exits non-zero", async () => {
+    const { table, ran } = spied();
+    const io = capture();
+    expect(await run(["_apply-update", "--to", "v1.0.0", "--help"], io, table)).toBe(EXIT.USAGE);
+    expect(ran).toEqual([]);
+    expect(io.stdout).toEqual([]);
+    expect(io.stderr.join("\n")).toContain("nothing was run");
   });
 
   test("the usage names the summary of the verb asked about", async () => {
