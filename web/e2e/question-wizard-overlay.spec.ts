@@ -30,6 +30,11 @@ import { installApiStub } from "./fixtures/api";
 // advance to. A Playwright case that holds a conversation with a live model is a cost centre, not
 // a regression test; the live trigger for real panes is `e2e/manual/question-wizard-live.sh`.
 
+// No service worker here: `page.route` does not see a request the worker makes for the page, so once
+// it takes control the pane read reaches the real static server instead of the fixture. WebKit is
+// slow enough for that to happen before the tap (`e2e/issue-180.spec.ts` has the whole story).
+test.use({ serviceWorkers: "block" });
+
 const PANE_ID = fixtureAgents[0]!.paneId;
 const PANE_URL = `/pane/${encodeURIComponent(PANE_ID)}`;
 const PANE_ROUTE = new RegExp(`/api/pane/${encodeURIComponent(PANE_ID)}(?:\\?.*)?$`);
