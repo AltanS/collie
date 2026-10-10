@@ -18,9 +18,9 @@ const REGISTERED_AGENTS = registeredAgents();
 // drift apart because a vendor can change what it paints without changing what it writes.
 const JOURNAL_AGENTS = [...JOURNAL_AGENT_NAMES];
 
-// pi and hermes have no block grammar at all — raw mirror, one-shot send — but the ledger still owes
-// them an entry: pi is installed and its version drifts too, and hermes has a journal reader.
-const UNADAPTED_AGENTS = ["pi", "hermes"];
+// hermes has no block grammar at all — raw mirror, one-shot send — but the ledger still owes
+// it an entry: hermes has a journal reader.
+const UNADAPTED_AGENTS = ["hermes"];
 
 const ALLOWED_HOW = new Set(["canary", "live sweep", "capture", "unverified"]);
 
@@ -68,7 +68,7 @@ describe("verified-versions ledger", () => {
     }
   });
 
-  it("has an entry for pi, with adapter: false", () => {
+  it("has an entry for unadapted agents (hermes), with adapter: false", () => {
     for (const agent of UNADAPTED_AGENTS) {
       const entry = entryFor(agent);
       expect(entry, `missing ledger entry for "${agent}"`).toBeDefined();
@@ -78,6 +78,7 @@ describe("verified-versions ledger", () => {
 
   it("marks every registered adapter's entry adapter: true", () => {
     expect(REGISTERED_AGENTS).toContain("opencode");
+    expect(REGISTERED_AGENTS).toContain("pi");
     for (const agent of REGISTERED_AGENTS) {
       expect(entryFor(agent)?.adapter, agent).toBe(true);
     }

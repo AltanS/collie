@@ -47,6 +47,8 @@ export type MultiPointer = "advance" | "chat" | "option" | "other" | null;
  *    and review confirms on `1` / cancels on `2` (constants, off the model). Claude.
  *  - `"pointer"`: the pointer must be walked onto the row and Enter pressed — a digit merely MOVES
  *    the pointer (verified target row first), and review swallows digits entirely. Muse.
+ *  - `"walkSpace"`: Up/Down arrows walk the pointer onto row n directly, verified on a fresh read,
+ *    then Space toggles row n (the walk, verify, confirm of ADR 0080). pi.
  *
  * Compared by both comparators below: a dialog that changed modes mid-flight is a different dialog.
  * The mode is load-bearing for SAFETY, not just UX — sending a digit where Enter toggles (or vice
@@ -56,7 +58,7 @@ export type MultiPointer = "advance" | "chat" | "option" | "other" | null;
  * no action rows at all, where submit and cancel are fixed keys the harness declares on the model
  * (opencode's `Confirm` tab: `Enter` submits, `Escape` dismisses).
  */
-export type MultiSelectChoreography = "digit" | "pointer";
+export type MultiSelectChoreography = "digit" | "pointer" | "walkSpace";
 
 /**
  * How the review screen submits and cancels, a union on `submit`. The two row-driven recipes of
@@ -124,6 +126,12 @@ export type MultiSelectModel =
        * because a different key on the same screen lands somewhere the button did not advertise.
        */
       advanceKeys?: string[];
+      /**
+       * Opt-in: the advance needs at least one checked option AND the pointer on an option row (not
+       * `other`). Otherwise the card disables its advance button and multi-select-action refuses the
+       * advance.
+       */
+      advanceNeedsChecked?: boolean;
       /**
        * The toggle recipe (see {@link MultiSelectChoreography}). Compared by both comparators.
        */
@@ -244,6 +252,7 @@ export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boo
       sameSteps(a, b) &&
       a.advanceLabel === b.advanceLabel &&
       sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&
+      (a.advanceNeedsChecked ?? false) === (b.advanceNeedsChecked ?? false) &&
       a.question === b.question &&
       a.toggle === b.toggle &&
       a.options.length === b.options.length &&
@@ -276,6 +285,7 @@ export function multiSelectIdentity(a: MultiSelectModel, b: MultiSelectModel): b
       sameSteps(a, b) &&
       a.advanceLabel === b.advanceLabel &&
       sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&
+      (a.advanceNeedsChecked ?? false) === (b.advanceNeedsChecked ?? false) &&
       a.question === b.question &&
       a.toggle === b.toggle &&
       a.options.length === b.options.length &&

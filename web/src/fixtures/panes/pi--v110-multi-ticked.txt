@@ -1,0 +1,17 @@
+[0m[38;2;235;203;139m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ Select code quality tools to enable:
+ [0m[38;2;79;79;79mPick one or more options.[0m
+
+[0m[38;2;235;203;139m> [x] 1. ESLint[0m
+         [0m[38;2;79;79;79mPluggable JavaScript linter[0m
+  [ ] 2. Prettier
+         [0m[38;2;79;79;79mOpinionated code formatter[0m
+  [ ] 3. Vitest
+         [0m[38;2;79;79;79mVite-native unit test framework[0m
+  [ ] 4. Tailwind CSS
+         [0m[38;2;79;79;79mUtility-first CSS framework[0m
+      5. Type something.
+
+ [0m[38;2;79;79;79m↑↓ navigate • Space to tick • Enter to confirm • type numbers (1,3) or an answer • Esc to cancel[0m
+[0m[38;2;235;203;139m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;79;79;79m⎇[0m [0m[38;2;79;79;79mmain[0m                                                                                                                   [0m[38;2;79;79;79munknown │ unknown[0m

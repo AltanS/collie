@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Loader2, MessageSquarePlus } from "lucide-react";
+import { Check, Loader2, MessageSquarePlus, PenLine } from "lucide-react";
 
 import type {
   PromptFamily,
@@ -10,7 +10,7 @@ import type {
   StyledLine,
 } from "@/lib/blocks";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
-import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { OptionButton, OptionGroupCaption, PromptPanel, populateComposer } from "@/components/option-button";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { RawMirror } from "@/components/raw-mirror";
 import { hasResizeObserver } from "@/lib/env";
@@ -353,6 +353,33 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           );
         })}
       </div>
+
+      {prompt.customInput && (
+        <button
+          type="button"
+          disabled={locked}
+          onClick={() => populateComposer(prompt.customAnswer)}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg border border-dashed px-3 py-1.5 text-left text-xs transition-colors disabled:opacity-60",
+            prompt.customAnswer
+              ? "border-primary/50 bg-primary/10 text-foreground active:bg-primary/20"
+              : "border-border text-muted-foreground active:bg-muted",
+          )}
+        >
+          <PenLine className="size-3.5 shrink-0" />
+          <span className="font-content min-w-0 flex-1 truncate">
+            {prompt.customAnswer ? (
+              <>
+                <span className="text-muted-foreground">{t("dialog.customAnswerPrefix")} </span>
+                <span className="font-medium">{prompt.customAnswer}</span>
+              </>
+            ) : (
+              t("dialog.typeCustomAnswer")
+            )}
+          </span>
+          {prompt.customAnswer ? <Check className="size-3.5 shrink-0 text-primary" /> : null}
+        </button>
+      )}
 
       {/* The inline text input, in whichever of its states this screen is in. OUR OWN send comes
           first: the choreography focuses the row and fills it, so from the moment Send is pressed the

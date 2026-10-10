@@ -135,6 +135,13 @@ export interface PromptModel {
    */
   clampedEnds?: true;
   /**
+   * Whether the dialog offers free-text / custom input ("Type something."). When true, the block
+   * can render a dedicated action inviting the user to type their answer into the composer.
+   */
+  customInput?: boolean;
+  /** The custom answer text already recorded for this dialog, if any. */
+  customAnswer?: string;
+  /**
    * The dialog's identity, independent of everything OUR OWN choreography changes: the `❯` pointer,
    * the feedback row's contents, and the row's HEIGHT (a long value wraps, which re-flows the screen
    * above it). Runs from the QUESTION — not `signature`'s wider lookback — with pointers normalised
@@ -260,6 +267,8 @@ export function identityDiff(a: PromptModel, b: PromptModel): string | null {
   // A declared fact about the list, not a state: a model that gained or lost it is another
   // grammar's reading, and the commit batch the action layer builds from it would differ.
   if (a.clampedEnds !== b.clampedEnds) return "clampedEnds";
+  if ((a.customInput ?? false) !== (b.customInput ?? false)) return "customInput";
+  if (a.customAnswer !== b.customAnswer) return "customAnswer";
   // The arrow COUNT of a pointer walk is not compared (ADR 0080): a walk is a claim about where
   // the pointer stands, and the pointer is our own choreography's effect, which `coreSignature`
   // already blanks. `promptsEqual` still compares the byte-faithful `signature`, which carries

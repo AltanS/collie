@@ -331,7 +331,7 @@ describe("mirror line wrapping", () => {
     const text = `ordinary prose\n${rule}\n`;
     const visibleText = `ordinary prose\n${visibleRule}\n`;
     const query = `${url} ─`; // crosses the label → tail split introduced by structural refinement
-    const { container, rerender } = render(<AnsiOutput text={text} query={query} currentMatch={0} agent="pi" />);
+    const { container, rerender } = render(<AnsiOutput text={text} query={query} currentMatch={0} agent="hermes" />);
     const pre = container.querySelector("pre")!;
     // `span.overflow-hidden`, not `span.inline-block`: the table-run scroller is an inline-block too.
     const clipped = pre.querySelector("span.overflow-hidden")!;
@@ -401,7 +401,7 @@ describe("mirror line wrapping", () => {
     selection.removeAllRanges();
     expect(pre.textContent).toBe(visibleText);
 
-    rerender(<AnsiOutput text={text} query={query} currentMatch={0} agent="pi" wrap={false} />);
+    rerender(<AnsiOutput text={text} query={query} currentMatch={0} agent="hermes" wrap={false} />);
     expect(container.querySelector("span.overflow-hidden")).toBeNull();
     expect(container.querySelector("pre")!.textContent).toBe(visibleText);
   });

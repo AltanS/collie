@@ -1,0 +1,16 @@
+[0m[38;2;235;203;139m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ Which database provider should we use?
+
+  1. PostgreSQL
+     [0m[38;2;79;79;79mRelational SQL database with ACID transactions[0m
+[0m[38;2;235;203;139m> 2. SQLite[0m
+     [0m[38;2;79;79;79mLightweight serverless embedded database[0m
+  3. Redis
+     [0m[38;2;79;79;79mIn-memory key-value data store and cache[0m
+  4. ClickHouse
+     [0m[38;2;79;79;79mColumn-oriented analytical DBMS[0m
+  5. Type something.
+
+ [0m[38;2;79;79;79m↑↓ navigate • Enter to select • Tab to add note • type a number or an answer • Esc to cancel[0m
+[0m[38;2;235;203;139m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;79;79;79m⎇[0m [0m[38;2;79;79;79mmain[0m                                                                                                 [0m[38;2;79;79;79munknown │ unknown[0m

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Loader2, PenLine } from "lucide-react";
 
 import { AnswerList } from "@/components/answer-list";
 import { WizardStepper } from "@/components/wizard-stepper";
 import type { StyledLine, WizardModel, WizardOption } from "@/lib/blocks";
-import { OptionButton, PromptPanel, QuestionHeading } from "@/components/option-button";
+import { cn } from "@/lib/utils";
+import { OptionButton, PromptPanel, QuestionHeading, populateComposer } from "@/components/option-button";
 import {
   WIZARD_BACK_KEYS,
   WIZARD_CANCEL_KEYS,
@@ -79,6 +80,8 @@ export function WizardBlock({ wizard, lines, onAction, disabled }: WizardBlockPr
         <QuestionStep
           question={wizard.question}
           options={wizard.options}
+          customInput={wizard.customInput}
+          customAnswer={wizard.customAnswer}
           locked={locked}
           sendingId={sending}
           onPress={press}
@@ -93,12 +96,16 @@ export function WizardBlock({ wizard, lines, onAction, disabled }: WizardBlockPr
 function QuestionStep({
   question,
   options,
+  customInput,
+  customAnswer,
   locked,
   sendingId,
   onPress,
 }: {
   question: string;
   options: WizardOption[];
+  customInput?: boolean;
+  customAnswer?: string;
   locked: boolean;
   sendingId: string | null;
   onPress: (id: string, keys: string[]) => void;
@@ -155,6 +162,32 @@ function QuestionStep({
           </button>
         );
       })}
+      {customInput && (
+        <button
+          type="button"
+          disabled={locked}
+          onClick={() => populateComposer(customAnswer)}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg border border-dashed px-3 py-1.5 text-left text-xs transition-colors disabled:opacity-60",
+            customAnswer
+              ? "border-primary/50 bg-primary/10 text-foreground active:bg-primary/20"
+              : "border-border text-muted-foreground active:bg-muted",
+          )}
+        >
+          <PenLine className="size-3.5 shrink-0" />
+          <span className="font-content min-w-0 flex-1 truncate">
+            {customAnswer ? (
+              <>
+                <span className="text-muted-foreground">{t("dialog.customAnswerPrefix")} </span>
+                <span className="font-medium">{customAnswer}</span>
+              </>
+            ) : (
+              t("dialog.typeCustomAnswer")
+            )}
+          </span>
+          {customAnswer ? <Check className="size-3.5 shrink-0 text-primary" /> : null}
+        </button>
+      )}
     </>
   );
 }
@@ -191,7 +224,9 @@ function ReviewStep({
           {sendingId === "submit" ? (
             <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
           ) : null}
-          {t("dialog.submitAnswers")}
+          {wizard.submitAction === "goToFirstUnanswered"
+            ? t("dialog.review.goToFirstUnanswered")
+            : (wizard.submitLabel ?? t("dialog.submitAnswers"))}
         </button>
         <button
           type="button"

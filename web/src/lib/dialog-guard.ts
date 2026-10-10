@@ -109,9 +109,9 @@ export type Compare = "commits" | "identity";
 export async function guardDialog<K extends DialogKind>(
   target: DialogTarget<K>,
   compare: Compare = "commits",
-): Promise<GuardOutcome> {
+): Promise<GuardOutcome<DialogModels[K]>> {
   const contract = DIALOG_CONTRACT[target.kind];
-  return entryGuard(
+  return entryGuard<DialogModels[K]>(
     target,
     target.model,
     dialogDetector(target.kind, target.agent),

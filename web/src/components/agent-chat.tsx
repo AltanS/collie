@@ -829,6 +829,19 @@ export function AgentChat({
     () => blocks.some((b) => b.kind === "unread-dialog"),
     [blocks],
   );
+  // Whether the lifted dialog on screen accepts typed answers through the composer. Opt-in per
+  // adapter: true only while a dialog is on screen, grammars are on, and the adapter's
+  // `dialogAcceptsTyping` answers true on the current display lines. A throw counts as no.
+  const dialogAcceptsTyping = useMemo(() => {
+    if (!dialogPresent || !grammarsOn) return false;
+    const probe = adapterFor(agent?.agent)?.dialogAcceptsTyping;
+    if (!probe) return false;
+    try {
+      return Boolean(probe(splitLines(parseAnsi(display))));
+    } catch {
+      return false;
+    }
+  }, [dialogPresent, grammarsOn, agent?.agent, display]);
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
   // is stateless, so it can't distinguish a stranded draft from the ~350ms flash where our OWN
@@ -2688,6 +2701,7 @@ export function AgentChat({
                   hostBlock={hostBlock}
                   dialogPresent={dialogPresent}
                   dialogUnread={dialogUnread}
+                  dialogAcceptsTyping={dialogAcceptsTyping}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

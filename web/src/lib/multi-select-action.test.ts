@@ -28,22 +28,63 @@ const keysHarness = vi.hoisted(() => {
         };
   return { agent, declare };
 });
+
+interface WalkSpaceState {
+  advanceNeedsChecked: boolean;
+  advanceKeys: string[] | undefined;
+}
+
+const walkSpaceHarness = vi.hoisted(() => {
+  const agent = "walk-space-harness";
+  const state: WalkSpaceState = {
+    advanceNeedsChecked: false,
+    advanceKeys: ["Enter"],
+  };
+  const declare = (m: import("./blocks").MultiSelectModel): import("./blocks").MultiSelectModel => {
+    if (m.phase !== "checkbox") return m;
+    const res: import("./blocks").MultiSelectModel = {
+      ...m,
+      toggle: "walkSpace",
+      advanceKeys: state.advanceKeys,
+    };
+    if (state.advanceNeedsChecked) {
+      res.advanceNeedsChecked = true;
+    }
+    return res;
+  };
+  return { agent, state, declare };
+});
+
 vi.mock("./harness/registry", async (importOriginal) => {
   const real = await importOriginal<typeof import("./harness/registry")>();
   return {
     ...real,
     adapterFor: (agent: string | undefined) => {
-      if (agent !== keysHarness.agent) return real.adapterFor(agent);
-      const claude = real.adapterFor("claude")!;
-      return {
-        ...claude,
-        agent: keysHarness.agent,
-        buildBlocks: (lines: import("./blocks").StyledLine[]) => {
-          const blocks = claude.buildBlocks(lines);
-          for (const b of blocks) if (b.kind === "multi-select") b.multi = keysHarness.declare(b.multi);
-          return blocks;
-        },
-      };
+      if (agent === keysHarness.agent) {
+        const claude = real.adapterFor("claude")!;
+        return {
+          ...claude,
+          agent: keysHarness.agent,
+          buildBlocks: (lines: import("./blocks").StyledLine[]) => {
+            const blocks = claude.buildBlocks(lines);
+            for (const b of blocks) if (b.kind === "multi-select") b.multi = keysHarness.declare(b.multi);
+            return blocks;
+          },
+        };
+      }
+      if (agent === walkSpaceHarness.agent) {
+        const muse = real.adapterFor("muse")!;
+        return {
+          ...muse,
+          agent: walkSpaceHarness.agent,
+          buildBlocks: (lines: import("./blocks").StyledLine[]) => {
+            const blocks = muse.buildBlocks(lines);
+            for (const b of blocks) if (b.kind === "multi-select") b.multi = walkSpaceHarness.declare(b.multi);
+            return blocks;
+          },
+        };
+      }
+      return real.adapterFor(agent);
     },
   };
 });
@@ -149,6 +190,8 @@ beforeEach(() => {
   mockFetchPane.mockReset();
   mockSendKeys.mockReset();
   mockSendKeys.mockResolvedValue({ ok: true });
+  walkSpaceHarness.state.advanceNeedsChecked = false;
+  walkSpaceHarness.state.advanceKeys = ["Enter"];
 });
 
 describe("multiSelectEquals / multiSelectIdentity", () => {
@@ -477,7 +520,7 @@ describe("multiSelectEquals / multiSelectIdentity — wizard step identity", () 
 // and review submit/cancel is a verified pointer walk + a freshly-bound Enter. The buffers below are
 // synthetic plain-text screens in the verified Muse layout; the detector is the real thing.
 
-type MusePointer = number | "submit" | "none";
+type MusePointer = number | "submit" | "none" | "other";
 
 function museCheckboxBuffer(
   opts: { pointer?: MusePointer; checked?: number[]; question?: string } = {},
@@ -488,7 +531,7 @@ function museCheckboxBuffer(
   const optRows = labels.map((label, i) => {
     const n = i + 1;
     const box = checked.has(n) ? "[x]" : "[ ]";
-    const ptr = pointer === n ? "› " : "  ";
+    const ptr = pointer === n || (pointer === "other" && (n === 1 || n === 2)) ? "› " : "  ";
     return `  ${ptr}${n}. ${box} ${label}`;
   });
   const submitRow = `  ${pointer === "submit" ? "› " : "  "}4. Submit answer (${checked.size} checked)`;
@@ -823,5 +866,158 @@ describe("comparators — declared plans and answers", () => {
     expect(multiSelectEquals(checkbox, keysHarness.declare(model(checkboxBuffer({}))))).toBe(true);
     expect(multiSelectIdentity(review, keysHarness.declare(model(reviewBuffer())))).toBe(true);
     expect(multiSelectEquals(review, keysHarness.declare(model(reviewBuffer())))).toBe(true);
+  });
+});
+
+describe("walkSpace mode — toggle macro (walk Up/Down directly, verify, Space)", () => {
+  const walkSpaceBase = { ...museBase, agent: walkSpaceHarness.agent };
+  const wsModel = (text: string) => walkSpaceHarness.declare(museModel(text));
+
+  it("walk+verify+Space: walks Down to target row, verifies on fresh read, then sends Space", async () => {
+    const s1 = museCheckboxBuffer({ pointer: 1 });
+    const s2 = museCheckboxBuffer({ pointer: 2 });
+    const m = wsModel(s1);
+    script(s1, s2);
+    expect(
+      await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "toggle", n: 2 } }),
+    ).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Down"], ["Space"]]);
+    const regions = regionsSent();
+    expect(regions[0]).toBe(m.regionSignature); // arrows bound to tapped screen
+    expect(regions[1]).toBe(wsModel(s2).regionSignature); // Space bound to fresh read
+  });
+
+  it("walk+verify+Space: walks Up when target is above pointer, verifies, then sends Space", async () => {
+    const s3 = museCheckboxBuffer({ pointer: 3 });
+    const s1 = museCheckboxBuffer({ pointer: 1 });
+    const m = wsModel(s3);
+    script(s3, s1);
+    expect(
+      await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "toggle", n: 1 } }),
+    ).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up", "Up"], ["Space"]]);
+    const regions = regionsSent();
+    expect(regions[0]).toBe(m.regionSignature);
+    expect(regions[1]).toBe(wsModel(s1).regionSignature);
+  });
+
+  it("sends Space directly (bound to fresh read) when already on target row", async () => {
+    const s2 = museCheckboxBuffer({ pointer: 2 });
+    const m = wsModel(s2);
+    script(s2, s2);
+    expect(
+      await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "toggle", n: 2 } }),
+    ).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Space"]]);
+    expect(regionsSent()[0]).toBe(m.regionSignature);
+  });
+
+  it("second-device pointer move refusal: aborts when pointer lands on wrong row mid-walk", async () => {
+    const s1 = museCheckboxBuffer({ pointer: 1 });
+    const s3 = museCheckboxBuffer({ pointer: 3 }); // second device moved pointer to 3 instead of 2
+    const m = wsModel(s1);
+    script(s1, s3);
+    expect(
+      await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "toggle", n: 2 } }),
+    ).toEqual({ status: "changed", why: "timeout" });
+    // Down went out, but Space is never sent
+    expect(keysSent()).toEqual([["Down"]]);
+  });
+
+  it("second-device pointer move refusal: aborts when pointer moved off row before Space send", async () => {
+    const s2 = museCheckboxBuffer({ pointer: 2 });
+    const s1 = museCheckboxBuffer({ pointer: 1 }); // second device moved pointer off row 2
+    const m = wsModel(s2);
+    script(s2, s1);
+    expect(
+      await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "toggle", n: 2 } }),
+    ).toEqual({ status: "changed", why: "timeout" });
+    expect(keysSent()).toEqual([]);
+  });
+
+  it("aborts when a box flips mid-walk", async () => {
+    const s1 = museCheckboxBuffer({ pointer: 1 });
+    const flipped = museCheckboxBuffer({ pointer: 2, checked: [3] });
+    const m = wsModel(s1);
+    script(s1, flipped);
+    expect(
+      await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "toggle", n: 2 } }),
+    ).toEqual({ status: "changed", why: "drift" });
+    expect(keysSent()).toEqual([["Down"]]);
+  });
+});
+
+describe("advanceNeedsChecked opt-in flag", () => {
+  const walkSpaceBase = { ...museBase, agent: walkSpaceHarness.agent };
+  beforeEach(() => {
+    walkSpaceHarness.state.advanceNeedsChecked = true;
+  });
+
+  it("zero-checked advance refusal: refuses at entry guard before sending keys", async () => {
+    const s = museCheckboxBuffer({ pointer: 1, checked: [] });
+    const m = walkSpaceHarness.declare(museModel(s));
+    mockFetchPane.mockResolvedValue(paneWith(s));
+    const res = await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("zero-checked advance refusal: refuses on fresh derivation when box was unchecked underfoot", async () => {
+    const sTapped = museCheckboxBuffer({ pointer: 1, checked: [1] });
+    const sFresh = museCheckboxBuffer({ pointer: 1, checked: [] });
+    const m = walkSpaceHarness.declare(museModel(sTapped));
+    mockFetchPane.mockResolvedValue(paneWith(sFresh));
+    const res = await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("pointer-on-other advance refusal: refuses when pointer is on 'other'", async () => {
+    const s = museCheckboxBuffer({ pointer: "other", checked: [1] });
+    const m = walkSpaceHarness.declare(museModel(s));
+    mockFetchPane.mockResolvedValue(paneWith(s));
+    const res = await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("second-device pointer move refusal: refuses advance when second device moves pointer to 'other'", async () => {
+    const sTapped = museCheckboxBuffer({ pointer: 1, checked: [1] });
+    const sOther = museCheckboxBuffer({ pointer: "other", checked: [1] });
+    const m = walkSpaceHarness.declare(museModel(sTapped));
+    mockFetchPane.mockResolvedValue(paneWith(sOther));
+    const res = await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("allows advance when >=1 option checked AND pointer is on an option row", async () => {
+    const s = museCheckboxBuffer({ pointer: 1, checked: [1] });
+    const m = walkSpaceHarness.declare(museModel(s));
+    mockFetchPane.mockResolvedValue(paneWith(s));
+    const res = await submitMultiSelectIntent({ ...walkSpaceBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Enter"], undefined, m.regionSignature],
+    ]);
+  });
+});
+
+describe("comparators — advanceNeedsChecked and walkSpace", () => {
+  it("advanceNeedsChecked difference breaks equality and identity", () => {
+    const a = museModel(museCheckboxBuffer({ pointer: 1 }));
+    // SAFETY: synthetic checkbox model variant with advanceNeedsChecked flag set for comparator testing.
+    const withFlag = { ...a, advanceNeedsChecked: true } as MultiSelectModel;
+    expect(multiSelectEquals(a, withFlag)).toBe(false);
+    expect(multiSelectIdentity(a, withFlag)).toBe(false);
+  });
+
+  it("walkSpace vs digit/pointer modes are different dialogs", () => {
+    const a = museModel(museCheckboxBuffer({ pointer: 1 }));
+    // SAFETY: synthetic checkbox model variant with walkSpace toggle for comparator testing.
+    const ws = { ...a, toggle: "walkSpace" } as MultiSelectModel;
+    expect(multiSelectEquals(a, ws)).toBe(false);
+    expect(multiSelectIdentity(a, ws)).toBe(false);
   });
 });

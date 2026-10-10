@@ -94,16 +94,16 @@
       }
     },
     "pi": {
-      "version": "0.87.1",
-      "verified": "2026-09-30",
+      "version": "1.1.0",
+      "verified": "2026-10-10",
       "how": "canary",
-      "adapter": false,
-      "evidence": "canary run 20260930T135314Z: idle, drafts, sends, journal, narrow, start-exit pass",
+      "adapter": true,
+      "evidence": "canary run 20261010T064017Z: idle, drafts, sends, journal, narrow, start-exit pass",
       "journal": {
-        "version": "0.87.1",
-        "verified": "2026-09-30",
+        "version": "1.1.0",
+        "verified": "2026-10-10",
         "how": "canary",
-        "evidence": "canary run 20260930T135314Z: journal kinds asserted, nothing unrecognised"
+        "evidence": "canary run 20261010T064017Z: journal kinds asserted, nothing unrecognised"
       }
     },
     "hermes": {
