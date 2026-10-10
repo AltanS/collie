@@ -620,7 +620,10 @@ describe("Composer — send", () => {
         callLog.push("keys");
         return HttpResponse.json({ ok: true });
       }),
-      replyHandler((typed) => callLog.push(`reply:${typed}`)),
+      replyHandler(
+        (typed) => callLog.push(`reply:${typed}`),
+        () => callLog.push("submit"),
+      ),
     );
     renderComposer();
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -628,6 +631,9 @@ describe("Composer — send", () => {
     await user.type(box, "first");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(callLog).toContain("reply:first"));
+    // The guard holds the submit for its settle window; the second send must wait for the
+    // first to complete, as sequential human taps do.
+    await waitFor(() => expect(callLog).toContain("submit"));
 
     await user.type(box, "second");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -2032,7 +2038,10 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
         callLog.push("keys");
         return HttpResponse.json({ ok: true });
       }),
-      replyHandler((typed) => callLog.push(`reply:${typed}`)),
+      replyHandler(
+        (typed) => callLog.push(`reply:${typed}`),
+        () => callLog.push("submit"),
+      ),
     );
     renderEcho("/rename");
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -2041,6 +2050,8 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
     await user.type(box, "/rename");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(callLog).toContain("reply:/rename"));
+    // Let the first send clear its settle window before the follow-up, as a human pause does.
+    await waitFor(() => expect(callLog).toContain("submit"));
 
     // The mirror now echoes the in-flight "/rename" back onto the ❯ line — no stranded-draft chip.
     await user.click(screen.getByRole("button", { name: "__set-draft" }));
@@ -2592,7 +2603,8 @@ describe("Composer — quick dock (in-flow, matches the keys dock)", () => {
     await user.click(screen.getByRole("button", { name: "continue" }));
 
     await waitFor(() => expect(replyText).toBe("continue"));
-    expect(props.onSent).toHaveBeenCalled();
+    // onSent fires on send completion, which waits out the submit settle past the type POST.
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
     // The dock deliberately OUTLIVES the send — the ✓ has to land somewhere the user is still
     // looking — and closes itself once the echo has been seen.
     await waitFor(
