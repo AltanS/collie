@@ -102,6 +102,23 @@ describe("copyable reading blocks", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("a.txt\n-old\n+  new"));
   });
 
+  it("copies over plain HTTP: with no clipboard API the icon uses the legacy command", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
+    Object.defineProperty(document, "queryCommandSupported", { configurable: true, value: () => true });
+    try {
+      const { container } = render(<MarkdownText text={"```\nrm -rf build\n```"} />);
+      fireEvent.click(within(container).getByRole("button", { name: "Copy" }));
+      await waitFor(() => expect(setStatus).toHaveBeenCalledWith("Copied to clipboard", "success"));
+      expect(execCommand).toHaveBeenCalledWith("copy");
+      expect(writeText).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(document, "execCommand");
+      Reflect.deleteProperty(document, "queryCommandSupported");
+    }
+  });
+
   it("keeps all four surfaces readable with no clipboard API", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
     const { container } = render(<>

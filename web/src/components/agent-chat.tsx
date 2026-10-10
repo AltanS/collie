@@ -30,6 +30,7 @@ import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
+import { canCopyText, copyText } from "@/lib/clipboard";
 import { t, type MessageKey } from "@/lib/i18n";
 import { savedAtLabel } from "@/lib/format";
 import { settleAfterSend } from "@/lib/harness/guard";
@@ -870,13 +871,13 @@ export function AgentChat({
   // is looking at (`shown`, not the live props) so a poll landing mid-tap can't swap what gets
   // copied. Prefer the unwrapped logical text — the buffer without the phone-width hard wraps, so a
   // paste reads as real lines — and fall back to the display text when the agent reports no unwrapped
-  // form. `navigator.clipboard` is absent over plain HTTP (an insecure context, a supported deploy —
-  // see status-detail-sheet's copy), so this can reject; `canCopyOutput` keeps the row off that
-  // deploy, and the catch keeps a failure honest rather than claiming a copy that never happened.
-  const canCopyOutput = !!navigator.clipboard;
+  // form. `navigator.clipboard` is absent over plain HTTP (an insecure context, a supported deploy), so
+  // `copyText` falls back to the legacy copy command there; `canCopyOutput` keeps the row off a browser
+  // with neither, and the catch keeps a failure honest rather than claiming a copy that never happened.
+  const canCopyOutput = canCopyText();
   async function copyOutput() {
     try {
-      await navigator.clipboard.writeText(shown.logicalText || shown.text);
+      await copyText(shown.logicalText || shown.text);
       setStatus(t("chat.copyOutput.done"), "success");
     } catch {
       setStatus(t("chat.copyOutput.failed"), "error");

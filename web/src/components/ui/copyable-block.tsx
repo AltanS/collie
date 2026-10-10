@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/hooks/use-locale";
+import { canCopyText, copyText } from "@/lib/clipboard";
 import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ type CopyState = "idle" | "done" | "failed";
 
 export function CopyableBlock({ text, children, label, className }: CopyableBlockProps): ReactNode {
   useLocale();
-  const canCopy = !!navigator.clipboard;
+  const canCopy = canCopyText();
   const [state, setState] = useState<CopyState>("idle");
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -35,7 +36,7 @@ export function CopyableBlock({ text, children, label, className }: CopyableBloc
     state === "done" ? t("copyable.done") : state === "failed" ? t("copyable.failed") : (label ?? t("copyable.copy"));
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       show("done");
       setStatus(t("copyable.done"), "success");
     } catch {
