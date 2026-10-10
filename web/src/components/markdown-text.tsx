@@ -368,7 +368,10 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
       // Columns can't be made to fit a phone, so the table keeps its real widths and pans inside its
       // own scroller — the same thing a mobile browser does with a table on any normal page.
       return (
-        <CopyableBlock text={block.source}>
+        // `w-fit max-w-full` makes the wrapper the table's own width (the scroller's content is `w-max`)
+        // up to the column, so a narrow table's icon sits at the table's corner and a wide one's at the
+        // scroller's visible corner.
+        <CopyableBlock text={block.source} className="w-fit max-w-full">
           <div className="overflow-x-auto">
             <table className="w-max border-collapse text-xs">
               <thead>

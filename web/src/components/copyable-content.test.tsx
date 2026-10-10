@@ -46,7 +46,9 @@ describe("copyable reading blocks", () => {
     expect(container.querySelector("table")?.parentElement?.className).toContain("overflow-x-auto");
     expect(button.textContent).toBe("");
     expect(button.parentElement).toBe(container.querySelector("table")?.parentElement?.parentElement);
-    expect(button.parentElement?.className).toBe("relative min-w-0");
+    // Anchored to the table's own width, not the column's: the wrapper shrinks to fit the table
+    // and stops at the column, so a narrow table's icon sits at its right edge.
+    expect(button.parentElement?.className).toBe("relative min-w-0 w-fit max-w-full");
     expect(within(container).getByText("after")).toBeInTheDocument();
   });
 
