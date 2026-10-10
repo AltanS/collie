@@ -85,6 +85,25 @@ describe("UnreadDialogBlock", () => {
     expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
   });
 
+  // #372: the pane was drawn at the desk's width, so the device's Wrap lines decides whether the
+  // card's mirror wraps or pans, in both views, as it does for the pane mirror.
+  it("wraps or pans its mirror by the device's Wrap lines, before and after Put away", async () => {
+    const user = userEvent.setup();
+    const block = cardBlock();
+    const props = { cancel: block.cancel, lines: block.lines, onAction: vi.fn() };
+    const { container, rerender } = render(<UnreadDialogBlock {...props} wrap />);
+    expect(container.querySelector("pre")!.className).toContain("whitespace-pre-wrap");
+
+    await user.click(
+      screen.getByRole("button", { name: "Hide this card's buttons, keep the terminal" }),
+    );
+    expect(container.querySelector("pre")!.className).toContain("whitespace-pre-wrap");
+
+    rerender(<UnreadDialogBlock {...props} wrap={false} />);
+    expect(container.querySelector("pre")!.className).toContain("overflow-x-auto");
+    expect(container.querySelector("pre")!.className).not.toContain("whitespace-pre-wrap");
+  });
+
   // #339: the first tap arms, the second sends. An Escape over a screen nobody read can end a
   // question turn, so one stray tap must never do it.
   it("arms on the first tap and sends nothing", async () => {

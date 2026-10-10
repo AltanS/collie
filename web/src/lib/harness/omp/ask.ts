@@ -40,14 +40,35 @@
 //
 // NOT MODELLED. `n note` opens the same editor for a note on the pointed row; `PromptModel` has no field
 // for a footer action, so it stays off the card, and the Keys drawer reaches it. A row that already
-// carries a note shows `  ✎ note` after its label (`omp--select-menu-noted.txt`), which becomes the
-// option's description.
+// carries a note shows `  ✎ note` after its label (`omp--select-menu-noted.txt`). On the card that
+// mark is the option's description, or leads it as `✎ note · <description>` when omp prints one.
+//
+// OPTION DESCRIPTIONS (#372). An option the agent gave a `description` carries it on rows of its
+// own under the label, six columns in (two past the label), wrapped at that indent; the 18.4.10
+// source draws them as well, and `omp--v18-8-ask-single-described.txt` captures them on 18.8.0:
+//
+//     │ ❯ ○ Staging (Recommended)                           │
+//     │       Deploy to the staging cluster first, run the  │     a description, wrapped
+//     │       full smoke suite against it, …                │
+//     │   ○ Production                                      │
+//     │       Ship straight to production.                  │
+//
+// The rows join, one space apart, into that option's `description` on the card. omp draws every
+// option's description wherever the pointer is, so a walk moves the pointer and nothing else
+// (`omp--v18-8-ask-single-described-moved.txt`, 18.8.7). omp shows two rows of a description and adds
+// `<key> expand` to the footer when one runs longer, a footer this grammar declines, so a lifted
+// description is never cut short.
 //
 // FAIL CLOSED. Every piece below is required, and any one missing returns null:
 //   * the bottom border is the last non-blank row, the footer is the row above it, a divider above that;
 //   * the footer's four segments are exactly one preset's;
-//   * the body is option rows, then blank rows, nothing else: no description row, no wrapped label, no
-//     preview, no scrollbar cell (omp can print all four; none is captured, so none is guessed);
+//   * the body is option rows, each followed by its description rows, then blank rows, nothing else:
+//     no wrapped label, no preview, no scrollbar cell (omp can print all three; none is captured, so
+//     none is guessed);
+//   * a description row is exactly six columns in, under an option or that option's previous
+//     description row, never under `Other` (omp prints an answer typed earlier there, at the same
+//     indent), never behind a `│` (an option's preview, at the same indent), and never opening with
+//     the preset's radio or pointer, the glyphs of an option row;
 //   * every option row carries that preset's unselected radio, the last one reads exactly
 //     `Other (type your own)`, and no other row does;
 //   * exactly one pointer, in that preset's glyph;
@@ -129,11 +150,20 @@ const BOX_ROW = /^│ ([\s\S]*)│$/;
 /** A question row: the box's left side, then free text up to its right side if there is one. */
 const QUESTION_ROW = /^│ ([\s\S]*?)(?:\s*│)?$/;
 const BLANK_ROW = /^│\s*│$/;
+/** An option's description row: the box's left side and its padding space, the six columns omp
+ *  indents every description row by, then text. A long description wraps onto more rows at that
+ *  same indent (`omp--v18-8-ask-single-described.txt`). The text never opens with `│`: that is the
+ *  rail of an option's `preview`, which omp draws at the same indent and this grammar does not read. */
+const DESCRIPTION_ROW = /^│ {7}([^\s│][\s\S]*?)\s*│$/;
 
 interface Option {
   label: string;
   note: boolean;
   pointed: boolean;
+  /** The option row's index in the body. Description rows push every option below them down. */
+  bodyRow: number;
+  /** The option's description rows, joined with a space; absent when omp printed none. */
+  description?: string;
 }
 
 /**
@@ -187,7 +217,7 @@ export function detectAskSelectRegion(lines: StyledLine[]): AskSelectRegion | nu
   const signature = region.join("\n");
   if (signature.length > MAX_REGION_CHARS) return null;
   const pointedAt = options.findIndex((o) => o.pointed);
-  const pointedRow = upperDivider + 1 + pointedAt;
+  const pointedRow = upperDivider + 1 + options[pointedAt]!.bodyRow;
   const coreSignature = region
     .map((row, i) => (titleAt + i === pointedRow ? row.replace(preset.pointer, " ") : row))
     .join("\n");
@@ -201,6 +231,10 @@ export function detectAskSelectRegion(lines: StyledLine[]): AskSelectRegion | nu
       keyLabel: i === pointedAt ? POINTER_BADGE : "",
     };
     if (option.note) row.description = "✎ note";
+    // A description omp printed under the row follows the note's mark, in screen order.
+    if (option.description !== undefined) {
+      row.description = option.note ? `✎ note · ${option.description}` : option.description;
+    }
     return row;
   });
   // The footer's own way out, in its own words, as the last row (ADR 0058 point 5).
@@ -222,21 +256,34 @@ export function detectAskSelect(lines: StyledLine[]): PromptModel | null {
 }
 
 /**
- * The body's rows as options, or null. Option rows come first and are contiguous, then blank rows to
- * the divider; anything else declines. Each option row is the pointer column (the preset's pointer or
- * a space), a space, the preset's unselected radio, a space and the label.
+ * The body's rows as options, or null. Option rows come first and are contiguous, each followed by
+ * its description rows if it has any, then blank rows to the divider; anything else declines. Each
+ * option row is the pointer column (the preset's pointer or a space), a space, the preset's
+ * unselected radio, a space and the label.
  */
 function readBody(rows: string[], preset: Preset): Option[] | null {
   const options: Option[] = [];
   let padding = false;
-  for (const row of rows) {
+  for (let at = 0; at < rows.length; at++) {
+    const row = rows[at]!;
     if (BLANK_ROW.test(row)) {
       padding = true;
       continue;
     }
     // A row of text below a blank one is not this layout: omp pads only after the last option.
     if (padding) return null;
-    const option = readOption(row, preset);
+    const description = DESCRIPTION_ROW.exec(row)?.[1];
+    if (description !== undefined) {
+      // Directly under its option, or under that option's previous description row. Never under
+      // `Other`: omp prints that indent there only for an answer typed earlier, not a description.
+      // Never opening with the radio or the pointer either: those glyphs open an option row.
+      const owner = options.at(-1);
+      if (owner === undefined || owner.label === OTHER_LABEL) return null;
+      if (description.startsWith(preset.radio) || description.startsWith(preset.pointer)) return null;
+      owner.description = owner.description === undefined ? description : `${owner.description} ${description}`;
+      continue;
+    }
+    const option = readOption(row, preset, at);
     if (option === null) return null;
     options.push(option);
   }
@@ -248,7 +295,7 @@ function readBody(rows: string[], preset: Preset): Option[] | null {
   return options;
 }
 
-function readOption(row: string, preset: Preset): Option | null {
+function readOption(row: string, preset: Preset, bodyRow: number): Option | null {
   const inner = BOX_ROW.exec(row)?.[1]?.replace(/\s+$/, "");
   if (inner === undefined) return null;
   const pointed = inner.startsWith(`${preset.pointer} ${preset.radio} `);
@@ -256,7 +303,7 @@ function readOption(row: string, preset: Preset): Option | null {
   const rest = inner.slice((pointed ? preset.pointer.length : 1) + 1 + preset.radio.length + 1);
   if (rest.length === 0 || /^\s/.test(rest)) return null;
   const noted = NOTE_MARK.exec(rest);
-  return { label: noted === null ? rest : noted[1]!, note: noted !== null, pointed };
+  return { label: noted === null ? rest : noted[1]!, note: noted !== null, pointed, bodyRow };
 }
 
 function sameSegments(a: string[], b: string[]): boolean {

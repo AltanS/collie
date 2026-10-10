@@ -20,6 +20,9 @@ export interface UnreadDialogBlockProps {
   onAction: (key: string) => void | Promise<void>;
   /** Read-only device or a gone pane: everything renders (for context) but can't be pressed. */
   disabled?: boolean;
+  /** The device's Wrap lines setting, so the whole-pane mirror wraps or pans as the pane mirror
+   *  does (#372). Default false: it pans, as RawMirror does. */
+  wrap?: boolean;
 }
 
 // The UNREAD-DIALOG CARD — one declared key over a screen Collie could not read (.adr/0053).
@@ -34,8 +37,9 @@ export interface UnreadDialogBlockProps {
 // operator has to read when nothing else is understood, so unlike the four cards that fully replace
 // their region this one never hides it. Same treatment as menu-block.tsx: React text nodes only, and
 // the agent's own terminal colours (MIRROR_SPACE / MIRROR_INVERT, ADR 0002), via the shared
-// RawMirror. PromptPanel's own Terminal toggle (ADR 0056) still applies on top, for a decluttered
-// view with the key control put away.
+// RawMirror, wrapped or panned by the device's Wrap lines setting like the pane mirror. PromptPanel's
+// own Terminal toggle (ADR 0056) still applies on top, for a decluttered view with the key control put
+// away, and that view's mirror keeps the same setting.
 //
 // DESIGN.md §2: the in-flight state recolours the button and changes NOTHING else — no spinner child
 // appears, no border is added, no padding moves. The border is reserved in the base string and the
@@ -49,7 +53,7 @@ export interface UnreadDialogBlockProps {
 export const ARM_MS = 4000;
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
-export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadDialogBlockProps) {
+export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
@@ -95,7 +99,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
   return (
     // rawMode (ADR 0056 counsel fix): this card always shows the mirror by default (below), so
     // its control only puts the button away — never a swap from nothing.
-    <PromptPanel ariaLabel={caption} raw={lines} rawMode="declutter">
+    <PromptPanel ariaLabel={caption} raw={lines} rawMode="declutter" wrap={wrap}>
       <OptionGroupCaption>{caption}</OptionGroupCaption>
 
       <button
@@ -117,7 +121,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
         {armed ? armedLabel : ""}
       </span>
 
-      <RawMirror lines={lines} />
+      <RawMirror lines={lines} wrap={wrap} />
     </PromptPanel>
   );
 }
