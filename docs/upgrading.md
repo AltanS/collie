@@ -212,6 +212,9 @@ collie update --rollback         # put the previous version back
 collie update --major            # cross one major, see below
 ```
 
+`collie update --help` prints the usage and starts nothing. Every `collie` command answers `-h` and
+`--help` the same way, before it does any work.
+
 On a Herdr-managed install the same verbs are Herdr actions:
 
 ```bash

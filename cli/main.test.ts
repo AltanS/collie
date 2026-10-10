@@ -114,6 +114,14 @@ describe("the pre-dispatch", () => {
     expect(bootstrapVerb(["_apply-update"])).toBe("_apply-update");
   });
 
+  // #392: a help request is not a build and not an update half, so it goes to the table's guard.
+  test("a help request on a bootstrap verb is the table's, not the bootstrap's", () => {
+    for (const argv of [["build", "--help"], ["build", "-h"], ["--plain", "_apply-update", "--help"], ["_apply-update", "--to", "v1", "-h"]]) {
+      expect(bootstrapVerb(argv)).toBeNull();
+    }
+    expect(bootstrapVerb(["build", "--", "--help"])).toBe("build");
+  });
+
   test("routes nothing else — every other verb is the table's", () => {
     for (const argv of [[], ["status"], ["--plain"], ["crew", "add", "nas"], ["pack", "add", "nas"], ["buildx"], [""]]) {
       expect(bootstrapVerb(argv)).toBeNull();

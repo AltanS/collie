@@ -32,3 +32,18 @@ export const realIo: Io = {
   err: (line) => console.error(line),
   errIsTty: process.stderr.isTTY === true,
 };
+
+/**
+ * Did the operator ask for help: is `-h` or `--help` among the arguments, before any literal `--`?
+ *
+ * Everything after a `--` is data (`collie crew rename -- --help` names a thing called `--help`), so
+ * the scan stops there. Lives in this dependency-free module because `cli/main.ts` needs the same
+ * answer for the bootstrap verbs, before `cli/program.ts` and commander are loaded.
+ */
+export function asksForHelp(args: readonly string[]): boolean {
+  for (const arg of args) {
+    if (arg === "--") return false;
+    if (arg === "-h" || arg === "--help") return true;
+  }
+  return false;
+}

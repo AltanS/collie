@@ -1,6 +1,6 @@
 import { cmdBuild } from "./build.ts";
 import { lifecycleDeps, updateDeps } from "./deps.ts";
-import { EXIT, type Io, realIo } from "./io.ts";
+import { asksForHelp, EXIT, type Io, realIo } from "./io.ts";
 import { takePlainFlag } from "./render.ts";
 import { cmdApplyUpdate } from "./update.ts";
 
@@ -43,7 +43,12 @@ export const BOOTSTRAP_VERBS = ["build", "_apply-update"] as const;
  * left in the argv handed on to commander, which strips it again.
  */
 export function bootstrapVerb(argv: readonly string[]): (typeof BOOTSTRAP_VERBS)[number] | null {
-  const verb = takePlainFlag(argv).rest[0];
+  const { rest } = takePlainFlag(argv);
+  const verb = rest[0];
+  // `build --help` and `_apply-update --help` are help requests, not runs (#392): they go on to the
+  // table, whose guard prints the usage. A bare checkout then gets `loadFailure`'s one-liner instead
+  // of a build, which is the safe way for that to fail.
+  if (asksForHelp(rest.slice(1))) return null;
   return BOOTSTRAP_VERBS.find((v) => v === verb) ?? null;
 }
 

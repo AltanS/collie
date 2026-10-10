@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The `/auth/` page tells an unpaired device to pair.** With no proxy in front of Collie, the page now says to run `collie pair` on the computer and enter the code in Settings, and links Settings next to the way back, also under a `COLLIE_BASE_PATH` mount. Reported by @djbclark (#393).
+- **`--help` on a command prints its usage and changes nothing.** `collie update --help` used to start the real update, and `restart`, `uninstall` and `build` did the same; every command and sub-command now answers `-h` and `--help` with its usage first, and an argument after `--` is left alone. Reported by @djbclark (#392).
 
 ## [1.19.0] - 2026-10-09
 

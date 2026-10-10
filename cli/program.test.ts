@@ -206,10 +206,104 @@ describe("dispatch", () => {
     ]);
   });
 
-  test("a verb's own `--help` stays the verb's argument — commander does not intercept it", async () => {
-    const { command, seen } = spy("logs");
-    expect(await go(["logs", "--help"], [command])).toBe(EXIT.OK);
+  // #392: `collie update --help` began a real update. The table below is the REAL verb list with
+  // every body swapped for a spy, so a verb that runs on `--help` shows up here by name and nothing
+  // in this file can touch the machine.
+  interface Spied {
+    table: Command[];
+    ran: string[];
+  }
+
+  function spied(): Spied {
+    const ran: string[] = [];
+    const table: Command[] = COMMANDS.map((c) => ({
+      ...c,
+      run: (args) => {
+        ran.push([c.name, ...args].join(" "));
+        return EXIT.OK;
+      },
+      subcommands: c.subcommands?.map((sub) => ({
+        ...sub,
+        run: (args) => {
+          ran.push([c.name, sub.name, ...args].join(" "));
+          return EXIT.OK;
+        },
+      })),
+    }));
+    return { table, ran };
+  }
+
+  test("`--help` and `-h` print the verb's usage and never run the verb", async () => {
+    for (const argv of [
+      ["update", "--help"],
+      ["update", "-h"],
+      ["restart", "--help"],
+      ["uninstall", "--help"],
+      ["crew", "update", "--help"],
+      ["crew", "add", "-h"],
+      ["pack", "update", "--help"],
+      ["build", "--help"],
+      ["update", "--major", "--help"],
+    ]) {
+      const { table, ran } = spied();
+      const io = capture();
+      expect(await run(argv, io, table)).toBe(EXIT.OK);
+      expect(ran).toEqual([]);
+      expect(io.stderr).toEqual([]);
+      expect(io.stdout[0]).toBe(`usage: collie ${argv.filter((a) => !a.startsWith("-")).join(" ")} [options]`);
+    }
+  });
+
+  test("every non-parent verb and every sub-verb answers `--help` without running", async () => {
+    for (const c of COMMANDS) {
+      const argvs = c.subcommands === undefined ? [[c.name]] : c.subcommands.map((sub) => [c.name, sub.name]);
+      for (const argv of argvs) {
+        const { table, ran } = spied();
+        const io = capture();
+        expect(await run([...argv, "--help"], io, table)).toBe(EXIT.OK);
+        expect(ran).toEqual([]);
+        expect(io.stdout.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("the usage names the summary of the verb asked about", async () => {
+    const { table } = spied();
+    const io = capture();
+    await run(["update", "--help"], io, table);
+    expect(io.stdout.join("\n")).toContain(findCommand("update")!.summary);
+  });
+
+  test("only an argument before `--` is a help request", async () => {
+    const { command, seen } = spy("rename");
+    const io = capture();
+    expect(await run(["rename", "--", "--help"], io, [command])).toBe(EXIT.OK);
+    expect(await run(["rename", "a", "--", "-h"], io, [command])).toBe(EXIT.OK);
+    expect(io.stdout).toEqual([]);
+    // A leading `--` is commander's own, and does not hide a help request that follows the verb.
+    const { table, ran } = spied();
+    expect(await run(["--", "update", "--help"], capture(), table)).toBe(EXIT.OK);
+    expect(ran).toEqual([]);
+    expect(seen.length).toBe(2);
+    expect(seen.every((row) => row[0] === "(parent)")).toBe(true);
+    expect(seen[0]).toContain("--help");
+    expect(seen[1]).toContain("-h");
+  });
+
+  test("a parent verb's own action is untouched: it is already a usage printer", async () => {
+    const { command, seen } = spy("crew", ["status"]);
+    expect(await go(["crew", "--help"], [command])).toBe(EXIT.OK);
     expect(seen).toEqual([["(parent)", "--help"]]);
+  });
+
+  test("a sub-verb is guarded too, and its siblings still run", async () => {
+    const { command, seen } = spy("crew", ["status", "invite"]);
+    const io = capture();
+    expect(await run(["crew", "status", "--help"], io, [command])).toBe(EXIT.OK);
+    expect(seen).toEqual([]);
+    expect(io.stdout[0]).toBe("usage: collie crew status [options]");
+    expect(await run(["crew", "invite", "--no-probe"], capture(), [command])).toBe(EXIT.OK);
+    expect(seen).toEqual([["invite", "--no-probe"]]);
   });
 
   test("a subcommand is matched by name; anything else reaches the parent", async () => {
