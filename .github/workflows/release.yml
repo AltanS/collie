@@ -119,7 +119,9 @@ jobs:
   #     with SIGILL on older hardware, which is exactly the hardware a self-hosted tool lives on.
   #     Collie is I/O-bound (a Unix socket and static files), so the baseline penalty is not
   #     observable here.
-  # The matrix is written for the full four-target set and SHIPS three; a user on a fast-follow
+  #   * macos-x64 ships Bun's BASELINE target for the same reason linux-x64 does, and builds on
+  #     `macos-15-intel`: GitHub retired the `macos-13` Intel image, and this is its successor.
+  # The matrix is written for the full four-target set and SHIPS four; a user on a fast-follow
   # platform gets `collie update`'s honest "no artifact for your platform, build from source"
   # rather than a wrong binary. Uncomment a row to publish it.
   payload:
@@ -137,15 +139,15 @@ jobs:
           - platform: linux-arm64
             runs-on: ubuntu-24.04-arm
             bun-target: bun-linux-arm64
-          # - platform: macos-x64
-          #   runs-on: macos-13
-          #   bun-target: bun-darwin-x64
+          - platform: macos-x64
+            runs-on: macos-15-intel
+            bun-target: bun-darwin-x64-baseline
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       # The build environment is `flake.nix`, not whatever Bun a setup action resolved on the day.
-      # This installer is the one that covers all three shipped runners — Linux x86_64, Linux
-      # aarch64 and macOS aarch64 — and it turns flakes on out of the box.
+      # This installer is the one that covers all four shipped runners — Linux x86_64, Linux
+      # aarch64, macOS aarch64 and macOS x86_64 — and it turns flakes on out of the box.
       - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build the payload
@@ -212,7 +214,18 @@ jobs:
           chmod 0755 "$stage/scripts/collie-ctl.sh"
 
           PAYLOAD
-          nix develop --command bash "$RUNNER_TEMP/build-payload.sh"
+          # `nix develop` takes its own bash from the flake's `nixpkgs` INPUT. On Intel that input is a
+          # nixpkgs that has dropped `x86_64-darwin`, the lookup throws (logged as "error (ignored)"),
+          # and the shell falls back to macOS's bash 3.2, which cannot parse the devshell script. For
+          # this one row, hand it the revision `flake.lock` already pins as `nixpkgs-darwin-x64`.
+          # `${develop_args[@]+...}` because the runner's bash 3.2 treats an empty array as unset.
+          develop_args=()
+          if [ "$PLATFORM" = "macos-x64" ]; then
+            rev="$(jq -r '.nodes["nixpkgs-darwin-x64"].locked.rev' flake.lock)"
+            [ "${#rev}" -eq 40 ] || { echo "flake.lock has no nixpkgs-darwin-x64 revision" >&2; exit 1; }
+            develop_args=(--override-input nixpkgs "github:NixOS/nixpkgs/$rev" --no-write-lock-file)
+          fi
+          nix develop ${develop_args[@]+"${develop_args[@]}"} --command bash "$RUNNER_TEMP/build-payload.sh"
 
       # OUTSIDE `nix develop`, and that is the whole point of it being its own step. Everything
       # above ran inside the flake, and the bun derivation's own install check runs inside Nix too,
