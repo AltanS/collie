@@ -193,6 +193,19 @@ export function displayWidth(text: string): number {
   return width;
 }
 
+/** Each grapheme cluster keyed by the terminal column it starts at, laid out with the same widths as
+ *  {@link displayWidth}. The second column of a wide cluster has no entry, and a zero-width cluster
+ *  never displaces the cluster already standing at its column. */
+export function cellsByColumn(text: string): ReadonlyMap<number, string> {
+  const cells = new Map<number, string>();
+  let column = 0;
+  for (const cluster of clusters(text)) {
+    if (!cells.has(column)) cells.set(column, cluster);
+    column += clusterWidth(cluster);
+  }
+  return cells;
+}
+
 // There is deliberately NO companion "error bar" function here, and one must not be re-added. A round
 // of this adapter shipped `widthUncertainty(text)` — a per-cluster count of the glyphs this table
 // resolves by default rather than by evidence — so a detector could compare two measured widths

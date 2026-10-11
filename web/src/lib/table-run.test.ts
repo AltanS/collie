@@ -164,6 +164,21 @@ describe("tableRuns — box drawing", () => {
     expect(runs(text)).toEqual([{ start: 0, end: 3 }]);
   });
 
+  it("claims a table whose cells hold double-width characters, matching walls by terminal column", () => {
+    // Each ideograph is two terminal columns and one string index, so the walls of a CJK row stand at
+    // the anchor's COLUMN but not at its index. Matched by index, no row joined and the table wrapped
+    // into the stacked rules a phone cannot read (grok--reply-table-scrollbar.txt is the real one).
+    const text = [
+      "┌──────────┬────────┐",
+      "│ 用水位置 │ 建議   │",
+      "├──────────┼────────┤",
+      "│ 廚房     │ 淨水   │",
+      "└──────────┴────────┘",
+    ].join("\n");
+
+    expect(runs(text)).toEqual([{ start: 0, end: 4 }]);
+  });
+
   it("refuses a neighbouring box whose walls stand somewhere else", () => {
     const text = [
       "┌────┬────┬────┐",
@@ -288,6 +303,12 @@ describe("tableRuns — the whole pane corpus", () => {
       // pure frame row and it cannot be the anchor; the floor `╰───┴───╯` anchors instead and the run
       // grows up through the whole box.
       "claude--workflow-view.txt 8..59",
+      // Grok's replies with a Chinese table, claimed since walls are matched by terminal column
+      // rather than string index. Each run is the table and nothing else: both start at the header row
+      // (the lid scrolled out of the capture) and the highlighted one stops above the floor of Grok's
+      // highlight frame.
+      "grok--reply-table-highlighted.txt 9..26",
+      "grok--reply-table-scrollbar.txt 9..26",
       // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
       // It sits in the scrollback of most omp captures, which is why it appears so often and always
       // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the

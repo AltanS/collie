@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { displayWidth, WIDE_RANGES, COMBINING_RANGES } from "./text-width";
+import { cellsByColumn, displayWidth, WIDE_RANGES, COMBINING_RANGES } from "./text-width";
+
+describe("cellsByColumn", () => {
+  it("keys each cluster by the column it starts at, leaving a wide cluster's second column empty", () => {
+    expect([...cellsByColumn("│ 廚房 │")]).toEqual([
+      [0, "│"],
+      [1, " "],
+      [2, "廚"],
+      [4, "房"],
+      [6, " "],
+      [7, "│"],
+    ]);
+  });
+});
 
 describe("displayWidth", () => {
   it("counts ASCII as one column each", () => {

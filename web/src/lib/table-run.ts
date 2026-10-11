@@ -39,6 +39,7 @@ import {
   BOX_DRAWING_RULE_GLYPH_CLASS,
   BOX_VERTICAL_GLYPH_CLASS,
 } from "./rule-glyphs";
+import { cellsByColumn } from "./text-width";
 
 /** A contiguous, inclusive range of line indices to pan as one unit. */
 export interface TableRun {
@@ -59,7 +60,7 @@ const PIPE = /\|/g;
 // The `+---+---+` rule of mysql, sqlite3 -table, psql, docker, tabulate and comfy-table — the most
 // common table an agent pastes out of a shell tool, after markdown.
 const ASCII_DELIMITER = /^\+(?:-+\+)+$/;
-const PLUS = /\+/g;
+const PLUS = /^\+$/;
 const ASCII_SEPARATOR = /^[|+]$/;
 
 // A row whose every printable character is box drawing: a frame row, top, bottom or divider.
@@ -88,7 +89,7 @@ const BOX_ANCHOR = new RegExp(`[${BOX_COLUMN_JUNCTION_GLYPH_CLASS}]`);
 // Interior junctions carry the anchor's column offsets. Corners and side tees (`┌ ┐ ├ ┤`) are not
 // here: they mark where the FRAME is, and a lid draws a corner where a content row draws a border,
 // so an offset taken from one would never match the other.
-const BOX_JUNCTION = new RegExp(`[${BOX_COLUMN_JUNCTION_GLYPH_CLASS}]`, "g");
+const BOX_JUNCTION = new RegExp(`^[${BOX_COLUMN_JUNCTION_GLYPH_CLASS}]$`);
 // What may stand at a column offset on a member row: a cell wall, or another row's junction.
 const BOX_SEPARATOR = new RegExp(`^[${BOX_VERTICAL_GLYPH_CLASS}${BOX_COLUMN_JUNCTION_GLYPH_CLASS}]$`);
 
@@ -139,8 +140,7 @@ export function tableRuns(lines: StyledLine[]): readonly TableRun[] {
 /** Where the anchor's separators stand, in terminal columns. */
 function offsetsOf(row: string, separator: RegExp): number[] {
   const at: number[] = [];
-  separator.lastIndex = 0;
-  for (let m = separator.exec(row); m; m = separator.exec(row)) at.push(m.index);
+  for (const [column, cell] of cellsByColumn(row)) if (separator.test(cell)) at.push(column);
   return at;
 }
 
@@ -168,12 +168,15 @@ function markdownMember(pipes: number): (text: string) => boolean {
  *   · A single-column chrome box below a table — Claude's input box — has walls only at its own two
  *     edges, so a multi-column anchor cannot grow into it even with no blank line between them.
  *
- * The cost is a table whose cells hold double-width characters: the terminal's columns and the
- * string's indices stop agreeing, no offset matches, and the table wraps as it did before.
+ * Offsets are terminal columns, not string indices, so a CJK cell (one index, two columns) keeps
+ * its row's walls where the anchor's junctions are. Where the width table and the TUI disagree on a
+ * glyph (a ZWJ emoji sequence, text-width.ts), the walls after it miss, the row is not a member, and
+ * the table wraps, as it did before this change.
  */
 function offsetMember(offsets: number[], separator: RegExp): (row: string) => boolean {
   return (row) => {
     if (isBlank(row)) return false;
-    return offsets.every((at) => separator.test(row.charAt(at)));
+    const cells = cellsByColumn(row);
+    return offsets.every((at) => separator.test(cells.get(at) ?? ""));
   };
 }
