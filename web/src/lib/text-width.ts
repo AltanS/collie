@@ -193,6 +193,24 @@ export function displayWidth(text: string): number {
   return width;
 }
 
+/** The text cut so every double-width cluster stands alone; the narrow clusters between them stay
+ *  joined. Concatenated, the pieces are the text. */
+export function widePieces(text: string): readonly { text: string; wide: boolean }[] {
+  const pieces: { text: string; wide: boolean }[] = [];
+  let narrow = "";
+  for (const cluster of clusters(text)) {
+    if (clusterWidth(cluster) < 2) {
+      narrow += cluster;
+      continue;
+    }
+    if (narrow !== "") pieces.push({ text: narrow, wide: false });
+    narrow = "";
+    pieces.push({ text: cluster, wide: true });
+  }
+  if (narrow !== "") pieces.push({ text: narrow, wide: false });
+  return pieces;
+}
+
 /** Each grapheme cluster keyed by the terminal column it starts at, laid out with the same widths as
  *  {@link displayWidth}. The second column of a wide cluster has no entry, and a zero-width cluster
  *  never displaces the cluster already standing at its column. */
