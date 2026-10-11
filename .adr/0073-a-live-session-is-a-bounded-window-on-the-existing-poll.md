@@ -5,6 +5,8 @@
 - **Amended:** 2026-10-01 (M41/12) — the live body gained `queued`. Additive, and the reasoning is a
   blockquote under point 4 rather than a new ADR, because it does not change a decision here; it
   answers a question this one did not ask.
+- **Amended:** 2026-10-10 — the live body gained `lastPrompt`, on the same terms as `queued` and in a
+  blockquote under it.
 - **Changes:** adds `GET /api/pane/:id/chat` and `bridge/journal/live.ts`. It closes off two options
   people will reasonably propose again: a WebSocket, and a `seq`-cursored delta.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) is untouched — this reads the agent's
@@ -83,6 +85,31 @@ one job.**
    > One harness fills it. Claude Code records the queue in its log; the other five record none and
    > answer `[]`. A member one release behind sends no field at all, and a client reads that as
    > nothing waiting, which is point 7's rule applied to one field instead of the whole route.
+
+   > **Amended (2026-10-10).** The live body also carries `lastPrompt`: the newest turn the
+   > operator wrote that the window knows, capped at `LAST_PROMPT_MAX_CHARS` (1000). The phone pins
+   > it above the thread so a reply on
+   > screen always shows the question it answers. It exists because of the consequence below that a
+   > first paint is a screenful: a long run of tool calls fills the forty turns sent, so the prompt
+   > that started the run is routinely outside them.
+   > Widening the first page until it reached a prompt would make every first paint a History page,
+   > which is the thing that consequence rules out.
+   >
+   > It is a field for the reason `queued` is: it is state with one answer per session, and it arrives
+   > WHOLE on every answer. It is read off the rows the window holds, so an ordinary poll costs no
+   > read.
+   >
+   > One case does read. The initial tail can start in the middle of a long run, with no operator
+   > prompt in it; its `user` rows may be only orphaned tool results. For that window alone, the bridge
+   > looks the prompt up once per generation through `TranscriptStore`, without holding the answer for
+   > it, and the next poll carries what it found. That is the History read: a valid History cache is
+   > reused, and a cold one costs the same bounded read and parse a History page does, up to
+   > `MAX_TRANSCRIPT_BYTES` for a file-backed journal, kept in that cache afterwards. Until this
+   > amendment only a History or "load older" tap paid that read; now opening Chat on such a window
+   > pays it once. A finished lookup can change the body with no new turn, and the body-based ETag
+   > covers that. Only `user` turns with text count; a `note` is a prompt the agent sent itself and is
+   > never drawn as the operator's words. A window that knows no prompt, and a member one release
+   > behind, send no field, and the phone reads that as "not known" and offers to load older turns.
 
 5. **A tick happens because somebody asked.** There is no timer in `live.ts`. `stat` is the pre-check,
    so a quiet session costs one `stat`; `TICK_FLOOR_MS` (250 ms) makes several readers of one session
