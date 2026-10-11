@@ -137,9 +137,9 @@ jobs:
           - platform: linux-arm64
             runs-on: ubuntu-24.04-arm
             bun-target: bun-linux-arm64
-          # - platform: macos-x64
-          #   runs-on: macos-13
-          #   bun-target: bun-darwin-x64
+          - platform: macos-x64
+            runs-on: macos-14
+            bun-target: bun-darwin-x64-baseline
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -237,6 +237,19 @@ jobs:
           stage="$RUNNER_TEMP/$root"
 
           bash scripts/check-payload-links.sh "$stage/bin/collie"
+
+          # The macos-x64 binary is cross-compiled on an arm64 runner and cannot run here: Rosetta has
+          # no AVX and Bun's x64 runtime dies with SIGILL under it, baseline target or not. So that row
+          # is checked by what it IS, an x86_64 Mach-O that carries a signature, and not by running it.
+          if [ "$PLATFORM" = "macos-x64" ]; then
+            archs="$(lipo -archs "$stage/bin/collie")"
+            [ "$archs" = "x86_64" ] || { echo "the macos-x64 binary is '$archs', not x86_64" >&2; exit 1; }
+            echo "✓ $root/bin/collie is x86_64 (not run: no x86_64 runtime on this runner)"
+            tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
+            echo "root=$root" >> "$GITHUB_OUTPUT"
+            echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           reported="$("$stage/bin/collie" version)"
           case "$reported" in
