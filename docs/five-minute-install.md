@@ -11,8 +11,8 @@ install script. For other setups, see [Install](install.md).
 
 ## What you need
 
-- A Linux or macOS computer (the host). A Mac needs Apple Silicon
-  and macOS 13 or newer.
+- A Linux or macOS computer (the host). A Mac needs macOS 13 or newer,
+  Apple Silicon or Intel.
 - An iPhone or an Android phone.
 - A Tailscale account.
 
