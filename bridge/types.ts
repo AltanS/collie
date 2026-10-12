@@ -1478,8 +1478,8 @@ export interface LaunchCheckResponse {
 export interface LauncherItem {
   /** Stable per machine: `harness:<id>`, `row:<command>`, or `shell`. */
   key: string;
-  /** What `POST /api/launch` (and `POST /api/worktree`) names to start it. */
-  start: { harness: string } | { command: string } | { shell: true };
+  /** What `POST /api/launch` (and `POST /api/worktree`) names to start it. A starter is run by `POST /api/launch` alone (ADR 0102). */
+  start: { harness: string } | { command: string } | { shell: true } | { starter: string };
   /** Agents: Collie reads the pane as that harness. Commands: a plain line, no agent status. */
   group: "agents" | "commands";
   label: string;
@@ -1489,9 +1489,16 @@ export interface LauncherItem {
   command?: string;
   /** A row's pinned folder. */
   cwd?: string;
-  source: "builtin" | "operator" | "added";
+  /** `program`: a starter the durable program offers (ADR 0102). */
+  source: "builtin" | "operator" | "added" | "program";
   /** True when the line skips permission prompts: badge it, and confirm once per device. */
   noPrompts: boolean;
+  /**
+   * False on a starter: it takes no text of any kind, so the page shows no prompt field and a launch
+   * body carrying text is refused. Absent on every other item (ADR 0102). This is NOT `noPrompts`,
+   * which marks a line that skips an agent's permission prompts.
+   */
+  takesPrompt?: false;
   /** Whether it may start on a new branch: agents and the shell, never a command row. */
   branch: boolean;
   available: boolean;

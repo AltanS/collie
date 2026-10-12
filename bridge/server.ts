@@ -30,7 +30,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
-import type { MuxAdapter, MuxAck, MuxGrid, MuxWorktreeCreateRequest } from "./mux/types.ts";
+import type { MuxAdapter, MuxAck, MuxGrid, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
@@ -44,6 +44,7 @@ import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
 import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import {
   memoryWorktreeChoices,
   type BaseKind,
@@ -1078,6 +1079,11 @@ export function startServer(opts: {
    */
   launchReceipts?: LaunchReceiptSurface;
   /**
+   * One receipt per starter run (ADR 0102, `bridge/starter-launch.ts`). Absent means an in-memory
+   * store; `bridge/index.ts` passes the file-backed one, which writes nothing until a starter runs.
+   */
+  starterReceipts?: StarterReceiptSurface;
+  /**
    * The launcher rows phones added on this machine (ADR 0094, `bridge/launchers-added.ts`). Absent
    * means an in-memory store; `bridge/index.ts` passes the file-backed one, which writes nothing until
    * the first add.
@@ -1131,6 +1137,7 @@ export function startServer(opts: {
   const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
   const worktreeBases = opts.worktreeBases ?? memoryWorktreeBases();
   const launchReceipts = opts.launchReceipts ?? memoryLaunchReceipts();
+  const starterReceipts = opts.starterReceipts ?? memoryStarterReceipts();
   const harnesses = opts.harnesses ?? createHarnessProbe();
   const worktreeChoices = opts.worktreeChoices ?? memoryWorktreeChoices();
   const machines = opts.machines;
@@ -1499,6 +1506,7 @@ export function startServer(opts: {
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
         harnesses,
         receipts: launchReceipts,
+        starterReceipts,
         folders,
         switches: launcherSources.switches,
         recentRuns,
@@ -1514,7 +1522,8 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return launchersRoute(allowedLaunchers, req.headers.get("accept-encoding"), harnesses, launchersAdding);
+      // A durable program's starters ride the same list (ADR 0102); every other multiplexer has none.
+      return launchersRoute(allowedLaunchers, req.headers.get("accept-encoding"), harnesses, launchersAdding, rt.herdr.listStarters?.bind(rt.herdr));
     }
     // Add, remove or rename a row a phone added (ADR 0094). Writes, on the write gate, and
     // session-scoped for `/api/launchers`' reason: `?host=` reaches THAT machine's own store through
@@ -4904,6 +4913,7 @@ export async function launchersRoute(
   acceptEncoding: string | null,
   harnesses?: Pick<HarnessProbe, "list">,
   adding?: { merged: () => Promise<MergedLaunchers>; file: string; recent?: () => Promise<RecentRun[]> },
+  starters?: () => Promise<MuxStarters>,
 ): Promise<Response> {
   const rows = await getLaunchers();
   const body: LaunchersResponse = { launchers: rows, home: homedir() };
@@ -4914,6 +4924,9 @@ export async function launchersRoute(
     const merged = await adding.merged();
     body.adding = addingBody(merged, adding.file);
     body.items = launcherItems(body.harnesses, merged);
+    // ADR 0102: what a durable program offers to start, ahead of the rest of the agents. A program that
+    // cannot be reached lists none, so a failed read is no row, never a failed list.
+    if (starters !== undefined) body.items = [...starterItems(await starters().catch(() => ({ hostName: "", starters: [], reachable: false }))), ...body.items];
     // ADR 0095: the one-off lines run here, listed even while `[phone] run` is off, each then unavailable.
     if (adding.recent !== undefined) body.recentRuns = recentRunsWire(await adding.recent(), merged.switches.run);
   }
@@ -5310,6 +5323,20 @@ export async function launch(
   const ae = req.headers.get("accept-encoding");
   const receipts = deps.receipts ?? memoryLaunchReceipts();
 
+  // A starter (ADR 0102) has its own receipt and never touches the multiplexer's create calls, so it
+  // is handed over before the launch's own receipt and kinds are read.
+  if (isStarterBody(fields)) {
+    return launchStarter(fields, {
+      mux: herdr,
+      receipts: deps.starterReceipts ?? memoryStarterReceipts(),
+      audit,
+      device,
+      session,
+      json: (answer, status) => json(answer, ae, status),
+      text,
+    });
+  }
+
   // The id first: a known one answers without any other field being looked at again.
   const rawId = fields.requestId;
   if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
@@ -5402,6 +5429,8 @@ export interface LaunchDeps {
   harnesses?: Pick<HarnessProbe, "launch">;
   /** Absent: an in-memory store. */
   receipts?: LaunchReceiptSurface;
+  /** The receipts of starter runs (ADR 0102). Absent: an in-memory store. */
+  starterReceipts?: StarterReceiptSurface;
   /** Where a launch into a named folder is recorded as Recent. Absent: nothing is recorded. */
   folders?: Pick<FolderSurface, "recordRecent">;
   /** This machine's home, for a leading `~` in `cwd`. */

@@ -18,6 +18,7 @@ export const CAPS = {
   harness: 64,
   cwd: 4096,
   reason: 2048,
+  problemMessage: 512,
   toolName: 128,
   toolSummary: 1024,
   toolOutput: 16384,

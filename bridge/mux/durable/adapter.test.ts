@@ -524,3 +524,94 @@ describe("snapshot reads", () => {
     expect(snapshot.panes.map((pane) => [pane.paneId, pane.status])).toEqual([["p", "unknown"]]);
   });
 });
+
+describe("starters (WIRE.md sections 7.6 and 7.7)", () => {
+  const REQUEST = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
+
+  test("the program's starters are listed with its machine name, and none while it is unreachable", async () => {
+    const { adapter, program, tick } = await rig();
+    expect(await adapter.listStarters()).toEqual({ hostName: "denis-laptop", starters: [{ id: "notes-new", label: "New note chat" }], reachable: true });
+    await program.close();
+    tick();
+    expect(await adapter.listStarters()).toEqual({ hostName: "", starters: [], reachable: false });
+  });
+
+  test("a program without the starters cap lists none and is never asked to start one", async () => {
+    const { adapter, program } = await rig();
+    program.hello.caps.starters = false;
+    expect(await adapter.listStarters()).toMatchObject({ starters: [], reachable: true });
+    expect(await adapter.startStarter("notes-new", REQUEST)).toMatchObject({ kind: "unsupported" });
+    expect(program.requests.some((request) => request.method === "POST")).toBe(false);
+  });
+
+  test("a start passes the request id through and the new pane is in the next census", async () => {
+    const { adapter, program } = await rig();
+    const outcome = await adapter.startStarter("notes-new", REQUEST);
+    expect(outcome.kind).toBe("started");
+    if (outcome.kind !== "started") return;
+    expect(outcome.replayed).toBe(false);
+    expect(program.starts).toEqual([{ starterId: "notes-new", requestId: REQUEST, paneId: outcome.paneId }]);
+    expect((await adapter.snapshot()).panes.map((pane) => pane.paneId)).toContain(outcome.paneId);
+  });
+
+  test("a repeat of the request id is the program's own replay and runs nothing", async () => {
+    const { adapter, program } = await rig();
+    const first = await adapter.startStarter("notes-new", REQUEST);
+    const second = await adapter.startStarter("notes-new", REQUEST);
+    expect(first.kind === "started" && second.kind === "started" && first.paneId === second.paneId).toBe(true);
+    expect(second).toMatchObject({ kind: "started", replayed: true });
+    expect(program.starts).toHaveLength(1);
+  });
+
+  test("a failed start is the program's message, cleaned, and the same id may run again", async () => {
+    const { adapter, program } = await rig();
+    program.starterFailure = hostileText("no model key", 2000);
+    const failed = await adapter.startStarter("notes-new", REQUEST);
+    expect(failed.kind).toBe("failed");
+    if (failed.kind === "failed") {
+      expect(failed.message.startsWith("no model key")).toBe(true);
+      expect(hasHostileChars(failed.message)).toBe(false);
+      expect(Buffer.byteLength(failed.message)).toBeLessThanOrEqual(CAPS.problemMessage);
+    }
+    program.starterFailure = null;
+    expect(await adapter.startStarter("notes-new", REQUEST)).toMatchObject({ kind: "started", replayed: false });
+    expect(program.starts).toHaveLength(1);
+  });
+
+  test("a 409 not-supported is unsupported, a 404 and a reused id are refused", async () => {
+    const { adapter, program } = await rig();
+    program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "not-supported" }, { status: 409 }) : undefined);
+    expect(await adapter.startStarter("notes-new", REQUEST)).toMatchObject({ kind: "unsupported" });
+    program.override = null;
+    expect(await adapter.startStarter("nope", REQUEST)).toEqual({ kind: "refused", detail: "program answered 404 no-such-starter" });
+    expect(await adapter.startStarter("notes-new", REQUEST)).toMatchObject({ kind: "started" });
+    program.snapshot.starters.push({ id: "other", label: "Other" });
+    expect(await adapter.startStarter("other", REQUEST)).toEqual({ kind: "refused", detail: "program answered 409 request-id-reused" });
+  });
+
+  test("a 5xx, an unreadable reply and a dropped connection are an unknown outcome, never a retry", async () => {
+    const { adapter, program } = await rig();
+    program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "internal" }, { status: 500 }) : undefined);
+    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unknown", detail: "program answered 500" });
+    program.override = (path) => (path.includes("/starter/") ? new Response("<html>") : undefined);
+    expect((await adapter.startStarter("notes-new", REQUEST)).kind).toBe("unknown");
+    program.override = (path) => (path.includes("/starter/") ? new Response("x".repeat(20_000)) : undefined);
+    expect((await adapter.startStarter("notes-new", REQUEST)).kind).toBe("unknown");
+    expect(program.requests.filter((request) => request.method === "POST")).toHaveLength(3);
+  });
+
+  test("a 503 starting is unreachable: nothing ran", async () => {
+    const { adapter, program } = await rig();
+    program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "starting" }, { status: 503 }) : undefined);
+    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unreachable", detail: STARTING });
+  });
+
+  test("a program that is down is unreachable, and a bad id never leaves", async () => {
+    const { adapter, program, tick } = await rig();
+    expect(await adapter.startStarter("a/b", REQUEST)).toMatchObject({ kind: "refused" });
+    expect(program.requests).toEqual([]);
+    await program.close();
+    tick();
+    expect((await adapter.startStarter("notes-new", REQUEST)).kind).toBe("unreachable");
+  });
+});

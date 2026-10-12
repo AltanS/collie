@@ -462,6 +462,16 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` to turn off every phone-added row on a machine.
 
+### Starters from a durable program (experimental)
+
+A peer that mirrors a durable agent program (`COLLIE_MUX=durable`) lists the program's starters as
+rows on the New page, in the **Agent** select, on that machine. A starter is a named way to begin a
+conversation, such as a code review. It takes no text: you tap it, and the program decides what to
+start. The new conversation opens as a pane. A tap repeated with the same request id opens
+the same conversation and starts nothing new, and if the program does not answer, **Try again** sends
+the same request id. A program that cannot be reached lists no starters. This is experimental and may
+change in any minor release.
+
 ### One-off commands and their history
 
 A phone can also run a command that is not a launcher, once. Collie opens a shell in the folder you

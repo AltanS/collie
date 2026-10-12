@@ -7,8 +7,10 @@
 //
 // WHAT IS HERE: the hello and ready and epoch rules (WIRE.md sections 2 and 8), the snapshot with
 // its ETag and 304 (section 7.1), the 250 ms floor between two snapshot reads, and the mapping.
-// WHAT IS NOT: a pane's events, answers, sends, aborts and starters. Those are later specs, and they
-// read the clean view this class holds (`program()`, `held()`).
+// AND STARTERS (ADR 0102): `listStarters()` and `startStarter()`, the program's named ways to begin a
+// conversation, run with the phone's request id passed through unchanged.
+// WHAT IS NOT: a pane's events, answers, sends and aborts. Those are later specs, and they read the
+// clean view this class holds (`program()`, `held()`).
 //
 // NOT READY IS NOT EMPTY. While the program lays out its panes after a start, or when it speaks no
 // version we do, the adapter is `unreachable` with a detail that says why. It never answers an
@@ -29,6 +31,8 @@ import {
   type MuxRefusalOutcome,
   type MuxSession,
   type MuxSnapshot,
+  type MuxStarterOutcome,
+  type MuxStarters,
   type MuxSpaceRequest,
   type MuxSubscription,
   type MuxTabRequest,
@@ -39,7 +43,7 @@ import {
   type MuxWorktreeOpened,
   type MuxWorktreeScope,
 } from "../types.ts";
-import { REPLY_CAPS } from "./clean.ts";
+import { isWireId, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
   DurableSocketClient,
@@ -55,6 +59,7 @@ import {
   parseHello,
   parseProblem,
   parseSnapshot,
+  parseStarterReply,
   toMuxSnapshot,
   type DurableCaps,
   type DurableSnapshot,
@@ -71,6 +76,9 @@ export const MIN_SNAPSHOT_GAP_MS = 250;
 
 /** The budget for `hello` and `snapshot` (WIRE.md section 7.6). */
 export const READ_TIMEOUT_MS = 1000;
+
+/** The budget for a starter (WIRE.md section 7.6). A start may spin up a whole conversation. */
+export const STARTER_TIMEOUT_MS = 30_000;
 
 /** The refusal detail for a program that has not laid out its panes yet. */
 export const STARTING = "starting";
@@ -208,6 +216,82 @@ export class DurableMux implements MuxAdapter {
    */
   held(): DurableSnapshot | null {
     return this.kept?.snapshot ?? null;
+  }
+
+  /**
+   * What the program offers to start. A program that is unreachable, not ready, or has no `starters`
+   * cap lists none: the answer is empty, not an error, because a row that cannot start is not shown.
+   */
+  async listStarters(): Promise<MuxStarters> {
+    const outcome = await this.poll();
+    const program = outcome.ok ? this.program() : null;
+    if (program === null) return { hostName: "", starters: [], reachable: false };
+    if (!program.session.caps.starters) return { hostName: program.session.hostName, starters: [], reachable: true };
+    return { hostName: program.session.hostName, starters: program.snapshot.starters, reachable: true };
+  }
+
+  /**
+   * Run one starter with the phone's request id (WIRE.md section 7.7). The id goes through unchanged,
+   * so a repeat is the program's own `replayed` answer. The adapter never retries a POST: a timeout, a
+   * dropped connection or a 5xx is `unknown`, and the caller keeps its receipt so "Try again" sends
+   * the same id.
+   */
+  async startStarter(starterId: string, requestId: string): Promise<MuxStarterOutcome> {
+    if (!isWireId(starterId) || !isWireId(requestId)) return { kind: "refused", detail: "the starter or request id is not a valid id" };
+    const read = await this.poll();
+    const session = this.current;
+    if (!read.ok || session === null) return { kind: "unreachable", detail: read.ok ? STARTING : read.detail };
+    if (!session.caps.starters) return { kind: "unsupported", detail: "this program starts nothing from here" };
+
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.post({
+        path: `/starter/${encodeURIComponent(starterId)}`,
+        version: session.version,
+        body: JSON.stringify({ requestId }),
+        timeoutMs: STARTER_TIMEOUT_MS,
+        maxBytes: REPLY_CAPS.post,
+      });
+    } catch (err) {
+      // After any failed connect the next read starts with `hello` again (WIRE.md section 8.8).
+      this.current = null;
+      const detail = err instanceof Error ? err.message : String(err);
+      return err instanceof DurableUnreachable && !err.sent ? { kind: "unreachable", detail } : { kind: "unknown", detail };
+    }
+    return this.starterOutcome(reply);
+  }
+
+  private async starterOutcome(reply: DurableReply): Promise<MuxStarterOutcome> {
+    if (reply.status === 200) {
+      const parsed = parseStarterReply(reply.text);
+      // The program ran it and said something unreadable: it may have started, so the id stays good.
+      if (!parsed.ok) return { kind: "unknown", detail: `unreadable starter reply: ${parsed.detail}` };
+      // The pane is in the next snapshot (WIRE.md section 7.7). Look now, so the census has it.
+      this.last = null;
+      await this.poll();
+      return { kind: "started", paneId: parsed.value.paneId, replayed: parsed.value.replayed };
+    }
+    const problem = parseProblem(reply.text);
+    if (reply.status === 422) return { kind: "failed", message: problem.message === "" ? "the starter failed" : problem.message };
+    if (reply.status === 503) {
+      // Not ready, so nothing ran. Ask `hello` again on the next read.
+      this.current = null;
+      return { kind: "unreachable", detail: STARTING };
+    }
+    if (reply.status === 401) {
+      this.current = null;
+      return { kind: "unreachable", detail: "incompatible: program asks for a token" };
+    }
+    if (reply.status === 409 && problem.code === "incompatible") {
+      this.agreedVersion = null;
+      this.current = null;
+      return { kind: "unreachable", detail: incompatibleDetail(problem.range) };
+    }
+    if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "the program cannot start this" };
+    if (reply.status >= 400 && reply.status < 500) {
+      return { kind: "refused", detail: `program answered ${String(reply.status)} ${problem.code}`.trim() };
+    }
+    return { kind: "unknown", detail: `program answered ${String(reply.status)}` };
   }
 
   private gapLeft(): number {

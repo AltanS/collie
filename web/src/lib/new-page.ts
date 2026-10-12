@@ -26,7 +26,7 @@ export type Kind = "agent" | "shell";
  * a row reads as a command, as it did before agent rows.
  */
 export function kindOf(what: StartWhat, offer?: Offer): Kind {
-  if (what.kind === "harness") return "agent";
+  if (what.kind === "harness" || what.kind === "starter") return "agent";
   if (what.kind === "row" && offer?.agents.some((a) => whatKey(a.what) === whatKey(what)) === true) return "agent";
   return "shell";
 }
@@ -34,6 +34,7 @@ export function kindOf(what: StartWhat, offer?: Offer): Kind {
 /** One stable string per choice, for an option value and a React key. */
 export function whatKey(what: StartWhat): string {
   if (what.kind === "harness") return `harness:${what.id}`;
+  if (what.kind === "starter") return `starter:${what.id}`;
   if (what.kind === "row") return `row:${what.command}`;
   if (what.kind === "run") return `run:${what.line}`;
   return "shell";
@@ -45,6 +46,7 @@ export function keyToWhat(key: string | null | undefined): StartWhat | null {
   if (key === "shell") return { kind: "shell" };
   if (key.startsWith("harness:") && key.length > 8) return { kind: "harness", id: key.slice(8) };
   if (key.startsWith("row:") && key.length > 4) return { kind: "row", command: key.slice(4) };
+  if (key.startsWith("starter:") && key.length > 8) return { kind: "starter", id: key.slice(8) };
   if (key.startsWith("run:") && key.length > 4) return { kind: "run", line: key.slice(4) };
   return null;
 }
@@ -194,7 +196,13 @@ function reasonOf(reason: NonNullable<LauncherItem["reason"]>): Unavailable {
 /** One item of `GET /api/launchers` as the page holds it. */
 function fromItem(item: LauncherItem): OfferItem {
   const what: StartWhat =
-    "harness" in item.start ? { kind: "harness", id: item.start.harness } : "command" in item.start ? { kind: "row", command: item.start.command } : { kind: "shell" };
+    "harness" in item.start
+      ? { kind: "harness", id: item.start.harness }
+      : "command" in item.start
+        ? { kind: "row", command: item.start.command }
+        : "starter" in item.start
+          ? { kind: "starter", id: item.start.starter }
+          : { kind: "shell" };
   const out: OfferItem = {
     key: whatKey(what),
     what,
@@ -392,7 +400,7 @@ export function truncateLine(line: string): string {
 export function whatLabel(what: StartWhat, offer: Offer, shellLabel: string): string {
   if (what.kind === "shell") return shellLabel;
   if (what.kind === "run") return what.line;
-  return itemOf(offer, what)?.label ?? (what.kind === "harness" ? what.id : what.command);
+  return itemOf(offer, what)?.label ?? (what.kind === "row" ? what.command : what.id);
 }
 
 /** The words of one option: its label (a history line is shortened), then "(No prompts)", then the reason it cannot start, each in brackets. */
@@ -540,6 +548,7 @@ function parseWhat(raw: JsonValue | undefined): StartWhat | null {
   if (kind === "shell") return { kind: "shell" };
   const id = asJsonString(o?.id);
   if (kind === "harness" && id !== undefined && id !== "") return { kind: "harness", id };
+  if (kind === "starter" && id !== undefined && id !== "") return { kind: "starter", id };
   const command = asJsonString(o?.command);
   if (kind === "row" && command !== undefined && command !== "") return { kind: "row", command };
   const line = asJsonString(o?.line);

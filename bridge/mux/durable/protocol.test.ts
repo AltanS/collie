@@ -8,6 +8,7 @@ import {
   parseHello,
   parseProblem,
   parseSnapshot,
+  parseStarterReply,
   statusOf,
   toMuxSnapshot,
   type DurableAsk,
@@ -103,9 +104,24 @@ describe("hello", () => {
   test("an error body gives its code and range", () => {
     expect(parseProblem(JSON.stringify({ code: "incompatible", range: { min: 2, max: 3 } }))).toEqual({
       code: "incompatible",
+      message: "",
       range: { min: 2, max: 3 },
     });
-    expect(parseProblem("<html>")).toEqual({ code: "", range: null });
+    expect(parseProblem("<html>")).toEqual({ code: "", message: "", range: null });
+  });
+
+  test("an error body's message is cleaned and cut to 512 bytes", () => {
+    const parsed = parseProblem(JSON.stringify({ code: "starter-failed", message: hostileText("no model", 2000) }));
+    expect(hasHostileChars(parsed.message)).toBe(false);
+    expect(Buffer.byteLength(parsed.message)).toBeLessThanOrEqual(CAPS.problemMessage);
+  });
+
+  test("a starter reply needs a usable pane id", () => {
+    expect(parseStarterReply(JSON.stringify({ paneId: "ws:p1" }))).toEqual({ ok: true, value: { paneId: "ws:p1", replayed: false } });
+    expect(parseStarterReply(JSON.stringify({ paneId: "ws:p1", replayed: true }))).toEqual({ ok: true, value: { paneId: "ws:p1", replayed: true } });
+    expect(parseStarterReply(JSON.stringify({ paneId: "a/b" })).ok).toBe(false);
+    expect(parseStarterReply(JSON.stringify({})).ok).toBe(false);
+    expect(parseStarterReply("<html>").ok).toBe(false);
   });
 });
 

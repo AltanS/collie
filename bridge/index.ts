@@ -70,6 +70,7 @@ import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
+import { StarterReceiptStore } from "./starter-launch.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
@@ -718,6 +719,10 @@ await worktreeBases.load();
 // pane (ADR 0091, bridge/launch-receipts.ts). Loading writes nothing.
 const launchReceipts = new LaunchReceiptStore(cfg.stateDir);
 await launchReceipts.load();
+
+// One receipt per starter run (ADR 0102, bridge/starter-launch.ts). Loading writes nothing.
+const starterReceipts = new StarterReceiptStore(cfg.stateDir);
+await starterReceipts.load();
 
 // The New sheet's last branch choices per repo on this machine (M48, bridge/worktree-choices.ts).
 // Loading writes nothing: the file appears on the first branch create that works.
@@ -2023,6 +2028,7 @@ const server = startServer({
   worktreeReceipts,
   worktreeBases,
   launchReceipts,
+  starterReceipts,
   worktreeChoices,
   addedLaunchers,
   recentRuns,

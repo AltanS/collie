@@ -152,6 +152,37 @@ describe("offerFor", () => {
   });
 });
 
+describe("a durable program's starter (ADR 0102)", () => {
+  const starter = item({
+    key: "starter:denis-laptop:notes-new",
+    start: { starter: "notes-new" },
+    group: "agents",
+    label: "New note chat",
+    source: "program",
+    takesPrompt: false,
+  });
+  const offer = offerFor({ harnesses: [CLAUDE], items: [starter, ...ITEMS], loaded: true, rows: [], canWorktree: true });
+
+  it("is an Agent select option that starts by its id, and never reads as a shell", () => {
+    const row = offer.agents[0]!;
+    expect(row.what).toEqual({ kind: "starter", id: "notes-new" });
+    expect(row.key).toBe("starter:notes-new");
+    expect(row.noPrompts).toBe(false);
+    expect(row.branch).toBe(false);
+    expect(row.unavailable).toBeNull();
+    expect(optionText(row, "Shell")).toBe("New note chat");
+    expect(kindOf(row.what, offer)).toBe("agent");
+    expect(kindOfKey(offer, row.key)).toBe("agent");
+  });
+
+  it("never starts on a branch, and the key round-trips", () => {
+    expect(branchAllowed(offer, { kind: "starter", id: "notes-new" })).toBe(false);
+    expect(keyToWhat("starter:notes-new")).toEqual({ kind: "starter", id: "notes-new" });
+    expect(offered(offer, { kind: "starter", id: "notes-new" })).toBe(true);
+    expect(whatLabel({ kind: "starter", id: "gone" }, offer, "Shell")).toBe("gone");
+  });
+});
+
 describe("offerFor with the bridge's items", () => {
   const offer = offerFor({ harnesses: [CLAUDE], items: ITEMS, loaded: true, rows: [], canWorktree: true });
 

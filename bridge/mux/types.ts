@@ -531,6 +531,39 @@ export interface MuxSubscription {
   close(): void;
 }
 
+// ── Starters ──────────────────────────────────────────────────────────────────
+
+/** One named way to begin a conversation, as the program offers it (ADR 0102). Cleaned text. */
+export interface MuxStarter {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * What a program offers to start, and the name it gave its own machine. Empty while it is
+ * unreachable, and `reachable` says which kind of empty it is: a program with nothing to start, or a
+ * program that could not be asked.
+ */
+export interface MuxStarters {
+  readonly hostName: string;
+  readonly starters: readonly MuxStarter[];
+  readonly reachable: boolean;
+}
+
+/**
+ * What a start came to (ADR 0102). The phone treats each kind differently: `started` opens the pane;
+ * `failed` and `refused` show a reason, and the same request id may run again; `unsupported` never
+ * will work; `unreachable` means nothing reached the program; `unknown` means it may have run, so the
+ * caller keeps its receipt and "Try again" sends the same request id.
+ */
+export type MuxStarterOutcome =
+  | { readonly kind: "started"; readonly paneId: string; readonly replayed: boolean }
+  | { readonly kind: "failed"; readonly message: string }
+  | { readonly kind: "unsupported"; readonly detail: string }
+  | { readonly kind: "refused"; readonly detail: string }
+  | { readonly kind: "unreachable"; readonly detail: string }
+  | { readonly kind: "unknown"; readonly detail: string };
+
 // ── The port ──────────────────────────────────────────────────────────────────
 
 /**
@@ -607,6 +640,19 @@ export interface MuxAdapter {
    * (HERDR_API.md → `pane.read`).
    */
   readLogicalText?(paneId: string, lines: number): Promise<MuxOutcome<string>>;
+
+  /**
+   * The named ways this multiplexer can begin a conversation (ADR 0102). OPTIONAL: only a durable
+   * program has starters, and every other adapter simply has none. A program that cannot be reached
+   * lists none, rather than failing.
+   */
+  listStarters?(): Promise<MuxStarters>;
+
+  /**
+   * Run one starter with the phone's request id, passed through unchanged so a repeat is the
+   * program's own replay (ADR 0102). Never retried here: an outcome that may have run is `unknown`.
+   */
+  startStarter?(starterId: string, requestId: string): Promise<MuxStarterOutcome>;
 
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
@@ -718,7 +764,13 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
  * A decorator spreads this rather than conditionally spreading inline, so a multiplexer that cannot
  * unwrap (tmux) never comes out of a decorator appearing to offer the read: absent stays absent.
  */
-export function muxOptionalMethods(adapter: MuxAdapter): Pick<MuxAdapter, "readLogicalText"> {
+export function muxOptionalMethods(adapter: MuxAdapter): Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter"> {
+  const methods: Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter"> = {};
   const readLogicalText = adapter.readLogicalText?.bind(adapter);
-  return readLogicalText === undefined ? {} : { readLogicalText };
+  if (readLogicalText !== undefined) methods.readLogicalText = readLogicalText;
+  const listStarters = adapter.listStarters?.bind(adapter);
+  if (listStarters !== undefined) methods.listStarters = listStarters;
+  const startStarter = adapter.startStarter?.bind(adapter);
+  if (startStarter !== undefined) methods.startStarter = startStarter;
+  return methods;
 }

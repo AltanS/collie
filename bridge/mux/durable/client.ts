@@ -33,7 +33,15 @@ export const REPLY_TOO_LARGE = "too-large";
 
 /** The program could not be asked. `detail` is the one line the adapter reports. */
 export class DurableUnreachable extends Error {
-  constructor(readonly detail: string) {
+  /**
+   * `sent` is true when the request may have left for the program, so a POST that ended this way has
+   * an unknown outcome (WIRE.md section 7.6). It is false when the connect was refused or the path was
+   * never dialled: nothing reached the program. A read does not care.
+   */
+  constructor(
+    readonly detail: string,
+    readonly sent = false,
+  ) {
     super(detail);
     this.name = "DurableUnreachable";
   }
@@ -55,9 +63,21 @@ export interface DurableGet {
   readonly maxBytes: number;
 }
 
+/** One POST with a JSON body. `path` is the part after `/session/v1`. */
+export interface DurablePost {
+  readonly path: string;
+  readonly version: number;
+  /** One JSON object, already encoded. */
+  readonly body: string;
+  readonly timeoutMs: number;
+  readonly maxBytes: number;
+}
+
 /** What the adapter needs from a transport. It throws `DurableUnreachable` when it cannot ask. */
 export interface DurableTransport {
   get(request: DurableGet): Promise<DurableReply>;
+  /** A write. The transport never retries it (WIRE.md section 7.6). */
+  post(request: DurablePost): Promise<DurableReply>;
 }
 
 // ── The path ──────────────────────────────────────────────────────────────────
@@ -160,6 +180,12 @@ function describeFailure(err: Error, timeoutMs: number, timedOut: boolean): stri
   return err.message === "" ? "connection failed" : err.message;
 }
 
+/** Whether the connect itself was refused, so nothing reached the program. */
+function refusedToConnect(err: Error): boolean {
+  const code = "code" in err ? err.code : undefined;
+  return code === "ConnectionRefused" || code === "ECONNREFUSED" || code === "ENOENT";
+}
+
 /** The real transport: the privacy check, then one HTTP request on the Unix socket. */
 export class DurableSocketClient implements DurableTransport {
   constructor(
@@ -167,15 +193,32 @@ export class DurableSocketClient implements DurableTransport {
     private readonly probe: SocketProbe = SYSTEM_PROBE,
   ) {}
 
-  async get(request: DurableGet): Promise<DurableReply> {
+  get(request: DurableGet): Promise<DurableReply> {
+    const headers = new Headers({ accept: "application/json" });
+    if (request.version !== null) headers.set("x-collie-session", String(request.version));
+    if (request.ifNoneMatch !== null) headers.set("if-none-match", request.ifNoneMatch);
+    return this.send("GET", request, headers, undefined);
+  }
+
+  post(request: DurablePost): Promise<DurableReply> {
+    const headers = new Headers({
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-collie-session": String(request.version),
+    });
+    return this.send("POST", request, headers, request.body);
+  }
+
+  private async send(
+    method: "GET" | "POST",
+    request: { readonly path: string; readonly timeoutMs: number; readonly maxBytes: number },
+    headers: Headers,
+    body: string | undefined,
+  ): Promise<DurableReply> {
     const resolved = resolveSocketPath(this.configured);
     if (!resolved.ok) throw new DurableUnreachable(resolved.detail);
     const problem = await socketAccessProblem(resolved.path, this.probe);
     if (problem !== null) throw new DurableUnreachable(problem);
-
-    const headers = new Headers({ accept: "application/json" });
-    if (request.version !== null) headers.set("x-collie-session", String(request.version));
-    if (request.ifNoneMatch !== null) headers.set("if-none-match", request.ifNoneMatch);
 
     const controller = new AbortController();
     let timedOut = false;
@@ -184,18 +227,15 @@ export class DurableSocketClient implements DurableTransport {
       controller.abort();
     }, request.timeoutMs);
     try {
-      const response = await fetch(`http://localhost${ROUTE_PREFIX}${request.path}`, {
-        unix: resolved.path,
-        headers,
-        signal: controller.signal,
-        redirect: "manual",
-      });
+      const init: BunFetchRequestInit = { method, unix: resolved.path, headers, signal: controller.signal, redirect: "manual" };
+      if (body !== undefined) init.body = body;
+      const response = await fetch(`http://localhost${ROUTE_PREFIX}${request.path}`, init);
       const text = await readCapped(response, request.maxBytes);
       return { status: response.status, etag: response.headers.get("etag"), text };
     } catch (err) {
-      if (err instanceof DurableUnreachable) throw err;
+      if (err instanceof DurableUnreachable) throw new DurableUnreachable(err.detail, true);
       const failure = err instanceof Error ? err : new Error(String(err));
-      throw new DurableUnreachable(describeFailure(failure, request.timeoutMs, timedOut));
+      throw new DurableUnreachable(describeFailure(failure, request.timeoutMs, timedOut), !refusedToConnect(failure));
     } finally {
       clearTimeout(timer);
     }

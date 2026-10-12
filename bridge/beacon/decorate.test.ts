@@ -16,6 +16,8 @@ import {
   type MuxSession,
   type MuxSnapshot,
   type MuxSpaceRequest,
+  type MuxStarterOutcome,
+  type MuxStarters,
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
@@ -64,6 +66,9 @@ class StubAdapter implements MuxAdapter {
   /** The unwrapped pane read, when a case gives it one. Absent by default, like a multiplexer that
    *  cannot unwrap at all (tmux) — the decorators must carry it without inventing it. */
   readLogicalText?: (paneId: string, lines: number) => Promise<MuxOutcome<string>>;
+  /** The starter pair of a durable program (ADR 0102). Absent by default, like every other multiplexer. */
+  listStarters?: () => Promise<MuxStarters>;
+  startStarter?: (starterId: string, requestId: string) => Promise<MuxStarterOutcome>;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -260,6 +265,8 @@ describe("a decorator preserves the adapter's whole surface", () => {
     refresh: true,
     readGrid: true,
     readLogicalText: true,
+    listStarters: true,
+    startStarter: true,
     typeText: true,
     sendKeys: true,
     renamePane: true,
@@ -295,6 +302,8 @@ describe("a decorator preserves the adapter's whole surface", () => {
     const stub = new StubAdapter();
     stub.logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`;
     stub.readLogicalText = (paneId, lines) => Promise.resolve(muxOk(`${paneId}:${lines}`));
+    stub.listStarters = () => Promise.resolve({ hostName: "stub", starters: [], reachable: true });
+    stub.startStarter = (starterId) => Promise.resolve({ kind: "started", paneId: starterId, replayed: false });
     return stub;
   }
 
