@@ -119,6 +119,11 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: what the checkout holding the pane's folder is on, read off the disk of
   // the machine the pane lives on. An older bridge or peer omits it.
   gitHead: true,
+  // Not crew dimensions: a durable program's open asks and newest turn (ADR 0100, ADR 0101), present
+  // only on a pane with no screen and absent from an older bridge or peer.
+  asks: true,
+  moreAsks: true,
+  turnId: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -208,6 +213,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     expect(AGENT_VIEW_KEYS.session).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
       "agent",
+      "asks",
       "cache",
       "cwd",
       "focused",
@@ -219,6 +225,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "lastActiveAt",
       "lastSeenAt",
       "model",
+      "moreAsks",
       "paneId",
       "paneLabel",
       "readableLines",
@@ -231,6 +238,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "turnId",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

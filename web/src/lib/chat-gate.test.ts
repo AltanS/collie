@@ -79,6 +79,39 @@ describe("paneBody", () => {
   });
 });
 
+// ADR 0099 point 9: a pane with no screen (`paneGrid` false) is Chat only. Every row below would be
+// the terminal on a pane with a screen; here none of them may be, whatever the device chose and
+// however the log reads. And the same inputs with `grid` true or absent are unchanged.
+describe("a pane with no screen: grid false hides the Terminal", () => {
+  const noScreen = (over: Partial<ChatGateInput>) => row({ grid: false, ...over });
+
+  const cases: [string, ChatGateInput, PaneBody][] = [
+    ["a readable session draws Chat", noScreen({ session: true, journal: "readable" }), "chat"],
+    ["a device that chose the terminal still draws Chat", noScreen({ chat: false, session: true, journal: "readable" }), "chat"],
+    ["a harness with no Chat still draws Chat", noScreen({ chat: false }), "start"],
+    ["a server that cannot read still draws Chat, which says why it is empty", noScreen({ session: true, journal: "off" }), "chat"],
+    ["a missing log draws the start line, never the terminal", noScreen({ session: true, journal: "missing", activity: "ended", settled: true }), "start"],
+    ["a pane first seen busy with no session draws the start line", noScreen({ history: "unknown" }), "start"],
+    ["a pane that asked for input draws the start line", noScreen({ activity: "blocked" }), "start"],
+    ["the last resort does not send it to the terminal", noScreen({ activity: "stalled" }), "start"],
+    ["the turn ended with no session: still no terminal", noScreen({ activity: "ended" }), "start"],
+  ];
+
+  it.each(cases)("%s", (_name, input, body) => {
+    expect(paneBody(input)).toBe(body);
+    expect(paneBody(input)).not.toBe("terminal");
+  });
+
+  it("grid true and grid absent change nothing for a pane with a screen", () => {
+    const terminalRows = rows.filter(([, , body]) => body === "terminal");
+    expect(terminalRows.length).toBeGreaterThan(5);
+    for (const [, input, body] of rows) {
+      expect(paneBody({ ...input, grid: true })).toBe(body);
+      expect(paneBody(input)).toBe(body);
+    }
+  });
+});
+
 describe("journalReadingOf", () => {
   it("reads each answer of the chat route", () => {
     expect(journalReadingOf({ kind: "empty" })).toBe("unasked");

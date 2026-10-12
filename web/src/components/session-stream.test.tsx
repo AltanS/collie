@@ -537,3 +537,54 @@ describe("SessionStream — Send now", () => {
     }
   });
 });
+
+// A durable pane's asks (ADR 0100): a card sits under the block that shows its item, else at the tail.
+describe("SessionStream: asks", () => {
+  const ask = (id: string, itemId: string) => ({
+    id,
+    kind: "permission",
+    toolCallId: `c-${id}`,
+    revision: 1,
+    title: `Question ${id}`,
+    itemId,
+    options: [{ id: "yes", label: `Yes ${id}`, effect: "allow" as const }],
+  });
+
+  function draw(list: ReturnType<typeof ask>[], more?: number) {
+    const listRef = createRef<ChatMessageListHandle>();
+    return render(
+      <SessionStream
+        feed={feedOf({
+          status: { kind: "live" },
+          entries: [entry("a", BASE, "first"), entry("b", BASE + 1, "second")],
+        })}
+        address="c1"
+        working={false}
+        showToolCalls
+        showCompactions={false}
+        fontSize={14}
+        listRef={listRef}
+        asks={{ list, more, card: { paneId: "c1" } }}
+      />,
+    );
+  }
+
+  it("puts a card inside the block of its item, and an unplaced one after every block", () => {
+    const { container } = draw([ask("1", "a"), ask("2", "nowhere")]);
+    const blocks = [...container.querySelectorAll("[data-block]")];
+    const placed = screen.getByRole("button", { name: "Yes 1" });
+    const tail = screen.getByRole("button", { name: "Yes 2" });
+    expect(blocks[0]).toContainElement(placed);
+    expect(blocks.some((b) => b.contains(tail))).toBe(false);
+  });
+
+  it("says how many asks are not listed", () => {
+    draw([ask("1", "a")], 3);
+    expect(screen.getByText("3 more waiting")).toBeInTheDocument();
+  });
+
+  it("a pane that carries no asks draws no card", () => {
+    renderStream(feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "first")] }));
+    expect(document.querySelector('[data-slot="stream-ask"]')).toBeNull();
+  });
+});

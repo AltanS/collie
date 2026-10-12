@@ -1571,3 +1571,104 @@ describe("the New page: a refused one-off run", () => {
     expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
   });
 });
+
+// A DURABLE PROGRAM'S STARTERS (ADR 0102). A machine whose program offers starters starts those and
+// nothing else: no Shell, no built-in agent, no Folder field, and the start posts the starter's id.
+describe("the New page: a durable program's starters", () => {
+  const STARTER: LauncherItem = {
+    key: "starter:review",
+    start: { starter: "review" },
+    group: "agents",
+    label: "Code review",
+    source: "program",
+    takesPrompt: false,
+    noPrompts: false,
+    branch: false,
+    available: true,
+  };
+  const BUILT_IN: LauncherItem = {
+    key: "harness:claude",
+    start: { harness: "claude" },
+    group: "agents",
+    label: "Claude Code",
+    source: "builtin",
+    harness: "claude",
+    noPrompts: false,
+    branch: true,
+    available: true,
+  };
+  const SHELL: LauncherItem = {
+    key: "shell",
+    start: { shell: true },
+    group: "commands",
+    label: "Shell",
+    source: "builtin",
+    noPrompts: false,
+    branch: true,
+    available: true,
+  };
+
+  function serveStarterItems(items: LauncherItem[]): void {
+    server.use(
+      http.get("/api/launchers", () =>
+        HttpResponse.json({ launchers: [], home: "/home/op", harnesses: HARNESSES, items }),
+      ),
+    );
+  }
+
+  it("a starter hides the Folder field and the worktree block, and the summary names no folder", async () => {
+    serveStarterItems([STARTER]);
+    mount();
+    await waitFor(() => expect(summary()).toHaveTextContent("Code review"));
+    expect(screen.queryByRole("textbox", { name: "Folder" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /New worktree/ })).toBeNull();
+    expect(summary()).not.toHaveTextContent(/ in /);
+  });
+
+  it("starts by the starter's id with a request id, and sends no folder", async () => {
+    serveStarterItems([STARTER]);
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ starter: "review" });
+    expect(bodies[0]).not.toHaveProperty("cwd");
+    expect(bodies[0]).not.toHaveProperty("harness");
+    expect(bodies[0]).not.toHaveProperty("shell");
+    expect(bodies[0]).toMatchObject({ requestId: expect.stringMatching(/^[0-9a-f-]{36}$/u) });
+  });
+
+  it("a durable peer lists only the starters, not the built-in agents or the Shell", async () => {
+    serveStarterItems([BUILT_IN, SHELL, STARTER]);
+    mount();
+    const select = await agentSelect();
+    await waitFor(() => expect(within(select).getAllByRole("option").map((o) => o.textContent)).toContain("Code review"));
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Code review"]);
+    // No Agent or Command switch to move to the half that cannot start here.
+    expect(screen.queryByRole("radio", { name: "Shell" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Command" })).toBeNull();
+  });
+
+  it("a peer without a screen lists nothing else even when the program offers no starter yet", async () => {
+    declares({ paneGrid: false });
+    serveStarterItems([BUILT_IN, SHELL]);
+    mount();
+    const select = await agentSelect();
+    expect(await screen.findByText("This machine's program offers no starters yet.")).toBeInTheDocument();
+    // Only the blank placeholder: neither Claude Code nor the Shell is offered.
+    expect(within(select).queryAllByRole("option").map((o) => o.textContent)).toEqual([""]);
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+  });
+
+  it("an ordinary machine keeps the Folder field, the Shell and the built-in agents", async () => {
+    serveStarterItems([BUILT_IN, SHELL]);
+    mount();
+    const select = await agentSelect();
+    await waitFor(() => expect(within(select).getAllByRole("option").map((o) => o.textContent)).toContain("Claude Code"));
+    expect(screen.getByRole("textbox", { name: "Folder" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Shell" })).toBeInTheDocument();
+  });
+});

@@ -23,6 +23,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
+import { parseAsk, type AnswerResult } from "./ask";
 import type {
   ActionResponse,
   AddedLauncherResponse,
@@ -120,6 +121,11 @@ class ApiError extends Error {
     this.status = status;
     this.fields = fields;
   }
+}
+
+/** The HTTP status an API request failed with, or `undefined` for anything that is not one (a network error). */
+export function apiErrorStatus<TThrown>(error: TThrown): number | undefined {
+  return error instanceof ApiError ? error.status : undefined;
 }
 
 /** True when an API request failed with the given HTTP status. */
@@ -1169,6 +1175,137 @@ export function sendKeys(
       recoverPromptChanged,
     ),
   );
+}
+
+// ── A pane with no screen: answer an ask, send, stop (ADR 0100, ADR 0101) ─────────────────────────
+//
+// Three writes that name WHAT THE PHONE SAW and carry a request id minted for the tap. None of them
+// types keys: a pane with no screen has none. Each answers one of a few outcomes as a VALUE, because
+// 409 and 504 are answers here and not failures; a transport error still throws, and the caller reads
+// it as "may have arrived". An OLDER machine answers 404 to all three (the routes are additive over a
+// crew link), which reads as `stale` with `older`, the way `fetchChat` reads its own 404.
+
+/** The status a recovered answer arrived with, kept on its body so one reader handles 200 and the rest. */
+const HTTP_STATUS = "httpStatus";
+
+/** Turn a refusal-shaped answer (404, 409, 504) into a body the readers below take; null falls through to the error path. */
+const recoverOutcome = (status: number, detail: string): JsonObject | null =>
+  status === 404 || status === 409 || status === 504 ? { ...parseJsonObject(detail), [HTTP_STATUS]: status } : null;
+
+/** The old-peer reading: the route is missing on that machine. */
+const isMissingRoute = (body: JsonObject): boolean => body[HTTP_STATUS] === 404;
+
+/** What `POST /api/pane/:id/answer` came to, as the card reads it (lib/ask.ts `AnswerResult`). */
+function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
+  if (body === undefined) return null;
+  if (isMissingRoute(body)) return { outcome: "stale", older: true };
+  switch (body.outcome) {
+    case "taken":
+      return body.replayed === true ? { outcome: "taken", replayed: true } : { outcome: "taken" };
+    case "too-late":
+      return body.replayed === true ? { outcome: "too-late", replayed: true } : { outcome: "too-late" };
+    case "stale": {
+      const ask = parseAsk(body.ask);
+      return ask === undefined ? { outcome: "stale" } : { outcome: "stale", ask };
+    }
+    case "unknown":
+      return { outcome: "unknown" };
+    case "refused":
+      return { outcome: "refused", detail: asJsonString(body.detail) ?? "" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * POST /api/pane/:id/answer: a person's tap answers one ask. `requestId` is minted per tap and reused
+ * only by "Try again" after an `unknown`; `revision` is the one the card showed. Never called by
+ * anything but a tap (ADR 0100 point 4).
+ */
+export async function answerAsk(
+  paneId: string,
+  answer: { requestId: string; askId: string; revision: number; optionId: string },
+  scope?: Scope,
+): Promise<AnswerResult> {
+  const body = await req<JsonObject>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/answer`, scope),
+    { method: "POST", body: JSON.stringify(answer) },
+    recoverOutcome,
+  );
+  const result = answerResultOf(body);
+  if (result === null) throw new ApiError("The answer route sent a body this phone cannot read.", 502);
+  return result;
+}
+
+/** Which of the two names a control carries: the turn the phone saw, or the ask it answers inside. */
+export type ControlTarget = { turnId: string } | { askId: string };
+
+/** What a send or an abort came to. `stale` carries what is current, so the pane can say what moved. */
+export type ControlResult =
+  | { outcome: "ok" }
+  | { outcome: "stale"; turnId?: string; askIds: string[]; older?: true }
+  | { outcome: "refused"; reason: string; detail: string }
+  | { outcome: "unknown" };
+
+function controlResultOf(body: JsonObject | undefined): ControlResult | null {
+  if (body === undefined) return null;
+  if (isMissingRoute(body)) return { outcome: "stale", askIds: [], older: true };
+  switch (body.outcome) {
+    case "ok":
+      return { outcome: "ok" };
+    case "stale": {
+      const ids = Array.isArray(body.askIds) ? body.askIds.map(asJsonString).filter((id): id is string => id !== undefined) : [];
+      const turnId = asJsonString(body.turnId);
+      return turnId === undefined ? { outcome: "stale", askIds: ids } : { outcome: "stale", turnId, askIds: ids };
+    }
+    case "unknown":
+      return { outcome: "unknown" };
+    case "refused":
+      return { outcome: "refused", reason: asJsonString(body.reason) ?? "refused", detail: asJsonString(body.detail) ?? "" };
+    default:
+      return null;
+  }
+}
+
+async function postControl(paneId: string, route: "send" | "abort", body: JsonObject, scope: Scope | undefined): Promise<ControlResult> {
+  // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
+  stampSend(paneId);
+  const got = await req<JsonObject>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/${route}`, scope),
+    { method: "POST", body: JSON.stringify(body) },
+    recoverOutcome,
+  );
+  const result = controlResultOf(got);
+  if (result === null) throw new ApiError(`The ${route} route sent a body this phone cannot read.`, 502);
+  if (result.outcome === "ok") stampSend(paneId);
+  return result;
+}
+
+/**
+ * POST /api/pane/:id/send: text for a pane with no screen. It names the turn or the ask the phone saw
+ * and carries a request id; a stale name is refused with 409 before anything reaches the program.
+ * `steer` says the text is for the turn that is running, not a new one.
+ */
+export function sendToPane(
+  paneId: string,
+  send: { requestId: string; text: string; steer: boolean; target: ControlTarget | null },
+  scope?: Scope,
+): Promise<ControlResult> {
+  const body: JsonObject = { requestId: send.requestId, text: send.text };
+  if (send.steer) body.steer = true;
+  if (send.target !== null) Object.assign(body, send.target);
+  return postControl(paneId, "send", body, scope);
+}
+
+/** POST /api/pane/:id/abort: stop the turn the phone saw. Same names and the same stale rule as a send. */
+export function abortPane(
+  paneId: string,
+  abort: { requestId: string; target: ControlTarget | null },
+  scope?: Scope,
+): Promise<ControlResult> {
+  const body: JsonObject = { requestId: abort.requestId };
+  if (abort.target !== null) Object.assign(body, abort.target);
+  return postControl(paneId, "abort", body, scope);
 }
 
 /**
