@@ -18,8 +18,8 @@ const REGISTERED_AGENTS = registeredAgents();
 // drift apart because a vendor can change what it paints without changing what it writes.
 const JOURNAL_AGENTS = [...JOURNAL_AGENT_NAMES];
 
-// Hermes has no block grammar, but its journal reader still needs a ledger entry.
-const UNADAPTED_AGENTS = ["hermes"];
+// Hermes and OpenClaw have no block grammar, but their journal readers still need a ledger entry.
+const UNADAPTED_AGENTS = ["hermes", "openclaw"];
 
 const ALLOWED_HOW = new Set(["canary", "live sweep", "capture", "unverified"]);
 

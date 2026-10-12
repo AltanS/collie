@@ -67,6 +67,15 @@ describe("parsePiTranscript", () => {
     ]);
   });
 
+  // OpenClaw writes pi's format with a user turn's `content` as a plain string, and walking block
+  // lists alone dropped every one of them (#401). A blank string is still no turn.
+  test("a user turn whose content is a string is one text part", () => {
+    expect(parsePiTranscript(row("a", { role: "user", content: "Reply with only the word ready." }))).toEqual([
+      { uuid: "a", ts: "2026-07-29T10:00:00.000Z", role: "user", parts: [{ kind: "text", text: "Reply with only the word ready." }] },
+    ]);
+    expect(parsePiTranscript(row("b", { role: "user", content: "  " }))).toEqual([]);
+  });
+
   test.each([
     ["model_change", { type: "model_change", id: "m", modelId: "x", provider: "y" }],
     ["thinking_level_change", { type: "thinking_level_change", id: "t", thinkingLevel: "high" }],
@@ -537,6 +546,16 @@ describe("parsePiTranscript — the structured call", () => {
     const part = partOf(call("call_1", "read", { path: "/repo/x.ts", offset: 10, limit: 20 }));
     expect(part.id).toBe("call_1");
     expect(part.call).toEqual({ kind: "read", path: "/repo/x.ts", range: [10, 30] });
+  });
+
+  // The shape OpenClaw's normaliser writes for an answered `ask_user` (journal/openclaw.ts): one list
+  // of labels per question. A list that does not match the questions is left unread.
+  test("a question call takes its answers from the result's details, one list per question", () => {
+    const ask = { questions: [{ id: "q1", header: "Color", question: "Which color?", options: [{ label: "Red" }, { label: "Blue" }] }] };
+    const answered = partOf(call("call_1", "ask_user", ask), result("call_1", "ask_user", "Color: Blue", { details: { answers: [["Blue"]] } }));
+    expect(answered.call).toMatchObject({ kind: "question", answers: [["Blue"]] });
+    const mismatched = partOf(call("call_1", "ask_user", ask), result("call_1", "ask_user", "x", { details: { answers: [["Red"], ["Blue"]] } }));
+    expect(mismatched.call?.kind === "question" && mismatched.call.answers).toBeUndefined();
   });
 
   test("`name` and `summary` are untouched by the classified call", () => {

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **OpenClaw panes show their conversation in Chat and History.** Herdr does not pass an OpenClaw session on, so Collie reads the session name off the TUI's footer and opens OpenClaw's own session database read-only. Chat shows user turns, replies, tool calls and `ask_user` questions with their answers. It reads `$OPENCLAW_STATE_DIR` or `~/.openclaw`; `openclaw_root` (`COLLIE_OPENCLAW_ROOT`) moves it. It never reads OpenClaw's config or its gateway token, and a database schema newer than the one Collie knows shows no history rather than a wrong one. The pane must report itself as agent `openclaw`. Thanks @gulliversgames (#401).
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed

@@ -230,6 +230,22 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined, text: string, is
     else if (!isError) call.exitCode = 0;
     return;
   }
+  if (call.kind === "question") {
+    // One list of chosen labels per question, in question order (`[["Blue"]]`), the shape the
+    // question card reads. pi's own log does not write it; OpenClaw's `ask_user` answers do, once
+    // its normaliser has put them in order (journal/openclaw.ts). Anything of another shape is left
+    // unread rather than guessed at.
+    const answers = details?.answers;
+    if (
+      Array.isArray(answers) &&
+      answers.length === call.questions.length &&
+      answers.every((a) => Array.isArray(a) && a.every((l) => typeof l === "string"))
+    ) {
+      // SAFETY: every element was just checked to be an array of strings.
+      call.answers = answers as string[][];
+    }
+    return;
+  }
   if (call.kind === "other") {
     // The one thing an unrecognised pi tool records that a view can draw: the answer a question got.
     // It joins the STRUCTURED summary only — the part's own `summary` is the call's one-line form and
@@ -531,7 +547,11 @@ export function createPiReducer(): RowReducer {
 
     const role: TranscriptEntry["role"] = m.role === "assistant" ? "assistant" : "user";
     const parts: TranscriptPart[] = [];
-    const content = Array.isArray(m.content) ? m.content : [];
+    // `content` is a block list in pi's own log, and a plain STRING in the same format as OpenClaw
+    // writes it (journal/openclaw.ts), where every user turn is one. A string is one text block:
+    // walking arrays alone dropped every OpenClaw user turn without a trace (issue #401).
+    const content: JsonValue[] =
+      typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : [];
     for (const b of content) {
       // A `continue` over the BLOCK, not the row: the other blocks of this turn still count.
       if (b === null || typeof b !== "object" || Array.isArray(b)) continue;

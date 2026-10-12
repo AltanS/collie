@@ -1,0 +1,40 @@
+ [1m[38;2;246;196;83mopenclaw tui - local embedded - agent main (main) - session main[0m
+
+ [38;2;155;163;178msession agent:main:main[39m
+
+[48;2;43;47;54m
+[38;2;243;238;224mReply with only the word ready.[39m
+
+
+[49mready
+
+[48;2;43;47;54m
+[38;2;243;238;224mList the files in this folder using a tool, then tell me how many there are in one short sentence.[39m
+
+
+[49mThere are some items in this folder.
+[1m[38;2;246;196;83mQuestion 1/1 · Color[0m
+Which color do you prefer?
+[38;2;123;127;135mExpires in 892s[39m
+[38;2;246;196;83m› 1. Red[39m
+[38;2;232;227;213m  2. Blue[39m
+[38;2;232;227;213m  3. Other…[39m
+[38;2;232;227;213m  Confirm answer[39m
+[38;2;232;227;213m  Skip[39m
+[38;2;123;127;135m↑/↓ or numbers select · Enter confirm · Esc collapse[39m
+[48;2;43;47;54m
+
+[49mThe command printed:
+
+lab-exec-test
+
+[48;2;43;47;54m
+[38;2;243;238;224mCall ask_user with one question (id q1, header Color, options Red and Blue), then repeat the answer.[39m
+
+
+[49m [38;2;246;196;83m⠋[39m [1m[38;2;242;166;90mrunning • 8s | local ready[0m
+ [38;2;123;127;135magent main (main) | session main | lab-model | deliver:off | tokens 100/128k (0%)[39m
+ [38;2;246;196;83mQuestion pending · 892s · /question to open[39m
+[38;2;60;65;75m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[7m[39m [0m
+[38;2;60;65;75m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
