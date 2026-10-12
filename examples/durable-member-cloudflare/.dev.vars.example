@@ -1,0 +1,3 @@
+# Copy to .dev.vars for wrangler dev. Never commit .dev.vars.
+# Make a real token with: openssl rand -hex 32
+COLLIE_TOKEN=your-32-byte-random-token-here
