@@ -1,15 +1,18 @@
-// A small test client for the wire. It dials the socket the way Collie's `durable` adapter does, with
+// A small test client for the wire. It dials the socket the way Collie's `durable` adapter does (or, for a dial
+// with a `handler`, calls the core's `handle` in process, with no socket), with
 // none of the adapter's checks, so a test can send what the adapter never would (a bad id, an old
 // version, a reused request id). The real adapter drives this example in collie's own test,
 // bridge/mux/durable/example.test.ts.
 
 import { randomUUID } from "node:crypto";
 import { request } from "node:http";
-import type { Ask, EventsReply, Hello, Problem, Snapshot } from "../sdk/types.ts";
+import type { Ask, EventsReply, Hello, Problem, Snapshot } from "../sdk/core/types.ts";
 
 export interface Dial {
   /** The program's Unix socket. */
-  socket: string;
+  socket?: string;
+  /** Instead of a socket: the core's `handle`, called in this process. */
+  handler?: (request: Request) => Promise<Response>;
   /** Sent as X-Collie-Session. Undefined sends none. */
   version?: number;
 }
@@ -26,6 +29,7 @@ export function call<T = any>(d: Dial, method: string, path: string, body?: unkn
   if (d.version !== undefined) headers["x-collie-session"] = String(d.version);
   const payload = body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
   if (payload) headers["content-type"] = "application/json";
+  if (d.handler) return callHandler(d.handler, method, path, headers, payload);
   return new Promise((ok, fail) => {
     const req = request({ socketPath: d.socket, method, path: `/session/v1${path}`, headers }, (res) => {
       const chunks: Buffer[] = [];
@@ -39,6 +43,12 @@ export function call<T = any>(d: Dial, method: string, path: string, body?: unkn
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+async function callHandler<T>(handler: NonNullable<Dial["handler"]>, method: string, path: string, headers: Record<string, string>, payload?: string): Promise<Reply<T>> {
+  const res = await handler(new Request(`http://localhost/session/v1${path}`, { method, headers, ...(payload ? { body: payload } : {}) }));
+  const text = await res.text();
+  return { status: res.status, etag: res.headers.get("etag") ?? undefined, body: text ? JSON.parse(text) : undefined };
 }
 
 const enc = encodeURIComponent;

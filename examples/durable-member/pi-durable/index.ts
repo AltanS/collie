@@ -21,7 +21,7 @@ import {
   ToolTask,
   watchEvents,
 } from "@earendil-works/pi-durable";
-import { type Item, type PaneHandle, safeId, type TabHandle } from "../sdk/index.ts";
+import { type Item, type PaneHandle, safeId, type TabHandle } from "../sdk/core/index.ts";
 
 const ctx0 = BACKGROUND_CONTEXT;
 

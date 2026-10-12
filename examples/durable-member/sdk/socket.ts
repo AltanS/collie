@@ -1,10 +1,10 @@
-// The socket path and the folder it sits in (WIRE.md section 1). The adapter walks the path from `/` down and
+// The socket path and the folder it sits in (WIRE.md section 1A). The adapter walks the path from `/` down and
 // refuses anything but a private folder and a private socket, so the program makes both so before it listens.
 
 import { chmodSync, lstatSync, mkdirSync, rmSync, type Stats } from "node:fs";
 import { connect } from "node:net";
 import { dirname, isAbsolute } from "node:path";
-import { bytes, CAPS } from "./rules.ts";
+import { bytes, CAPS } from "./core/rules.ts";
 
 /** The socket path must be absolute and at most 103 bytes. */
 export function checkSocketPath(path: unknown): string {

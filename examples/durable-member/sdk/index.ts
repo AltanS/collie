@@ -1,14 +1,14 @@
-// The neutral core. A program calls `openCollie`, lays out workspaces, tabs and panes, and the
-// durable socket wire (version 1) shows them to the Collie that dials it. No Pi Durable import in sdk/.
+// The SDK for a Bun program. A program calls `openCollie`, lays out workspaces, tabs and panes, and the durable
+// socket wire (version 1) shows them to the Collie that dials it. The layout and the wire are the core
+// (core/, no runtime import); this file adds the private Unix socket and the descendant check (server.ts).
+// No Pi Durable import in sdk/.
 
-import { type PaneHandle, Store, type TabHandle, type WorkspaceHandle } from "./layout.ts";
+import { type CollieCore, createCore } from "./core/index.ts";
 import { startServer } from "./server.ts";
-import type { Caps, Starter } from "./types.ts";
+import type { Caps, Starter } from "./core/types.ts";
+import type { WorkspaceHandle } from "./core/layout.ts";
 
-export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
-export { AskClosed } from "./layout.ts";
-export { assertId, CAPS, cut, idOk, LIMITS, safeId } from "./rules.ts";
-export * from "./types.ts";
+export * from "./core/index.ts";
 
 /** The variable both sides read to find the socket. */
 export const SOCKET_ENV = "COLLIE_DURABLE_SOCKET";
@@ -29,6 +29,8 @@ export interface Collie {
   /** The socket path it listens on. */
   readonly address: string;
   readonly epoch: string;
+  /** The core behind the socket. A test, or a second transport, can call `core.handle` directly. */
+  readonly core: CollieCore;
   workspace(id: string, o: { title: string; cwd?: string }): WorkspaceHandle;
   starters(list: Starter[]): void;
   /** Call once the layout is complete (after a restart: after every pane is shown again). Until then the caller gets 503 `starting`. */
@@ -39,17 +41,15 @@ export interface Collie {
 export async function openCollie(o: OpenOptions): Promise<Collie> {
   const socket = o.socket ?? process.env[SOCKET_ENV];
   if (!socket) throw new Error(`openCollie needs a socket path: pass socket or set ${SOCKET_ENV}`);
-  const store = new Store(o.tailLimit);
-  const running = await startServer(socket, { store, hostName: o.hostName, caps: o.caps, callerCheck: o.callerCheck });
+  const core = createCore({ hostName: o.hostName, tailLimit: o.tailLimit, caps: o.caps });
+  const running = await startServer(socket, { core, callerCheck: o.callerCheck });
   return {
     address: running.address,
-    epoch: store.epoch,
-    workspace: (id, w) => store.workspace(id, w),
-    starters: (list) => store.setStarters(list),
-    ready() {
-      store.ready = true;
-      store.rev++;
-    },
+    epoch: core.epoch,
+    core,
+    workspace: (id, w) => core.workspace(id, w),
+    starters: (list) => core.starters(list),
+    ready: () => core.ready(),
     // Stops the server only. Open asks stay open on purpose: a shutdown is not an answer, and the
     // program decides what happens to the work that waits on one.
     close: () => running.close(),
