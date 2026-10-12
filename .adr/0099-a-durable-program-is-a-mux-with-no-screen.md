@@ -15,7 +15,8 @@
   [ADR 0082](./0082-chat-is-the-default-view-of-an-agent-pane.md) ·
   [ADR 0100](./0100-an-ask-travels-as-data-and-is-answered-by-id.md) ·
   [ADR 0101](./0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) ·
-  [ADR 0102](./0102-starters-are-launcher-rows.md)
+  [ADR 0102](./0102-starters-are-launcher-rows.md) ·
+  `examples/durable-member/` (the example program and its SDK)
 
 ## Context
 
@@ -69,8 +70,9 @@ adapter in the registry, and the crew is unchanged.**
 5. **The wire is host-local, versioned by range, additive-optional, and experimental.** The hello
    message carries the lowest and highest version each side speaks, and the peer uses the highest
    both know. A new field is optional, and a reader ignores one it does not know. The wire document
-   ships with the adapter and says it is experimental. The program's SDK stays outside `collie/`
-   and unpublished until a second user exists.
+   ships with the adapter and says it is experimental. The program's SDK ships inside
+   `examples/durable-member/` as example code, unpublished and with no package, until a second
+   user exists.
 6. **Not ready is not empty.** Until the program says `ready`, every route that needs it answers
    503 and the adapter reports `unreachable`. It never reports an empty census. A changed `epoch`
    resets the event cursor.

@@ -5,6 +5,7 @@
 #
 # Bun does NOT read npm's `min-release-age` from .npmrc; this file is what actually enforces it here,
 # and `web/bunfig.toml` carries the same setting because web/ has its own lockfile and is installed
-# from its own directory. Keep the two in sync.
+# from its own directory. So does `examples/durable-member/bunfig.toml`, for the same reason. Keep the
+# three in sync.
 [install]
 minimumReleaseAge = 604800 # 7 days, in seconds

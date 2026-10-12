@@ -31,6 +31,9 @@
     ".tracker/**",
     ".adr/**",
     ".claude/**",
+    // A program of its own, with its own package.json, lockfile, typecheck and tests (M50 spec 10). It is
+    // example code a reader copies, written to the wire rather than to this codebase's rules.
+    "examples/**",
     // Vendored byte for byte and pinned by hash (ADR 0096 Decision 6): a lint fix would change the served bytes.
     "web/public/stt/**",
     "assets/**",
