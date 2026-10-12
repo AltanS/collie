@@ -1,0 +1,269 @@
+// The thin Pi Durable adapter. It is the only place that imports Pi Durable. It uses the SDK's
+// handles and nothing else: a conversation becomes a pane, `watchEvents` becomes events and state,
+// a `beforeTool` hook becomes an ask, send and stop become `submit` and `abort`.
+
+import type { Context } from "@earendil-works/chord";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { Type } from "@earendil-works/pi-ai";
+import {
+  type AgentEvent,
+  AssistantEntry,
+  type Conversation,
+  type ConversationId,
+  configure,
+  defineExtension,
+  defineTool,
+  type EntryRecord,
+  type Extension,
+  type Harness,
+  hook,
+  type SnapshotEvent,
+  ToolTask,
+  watchEvents,
+} from "@earendil-works/pi-durable";
+import { type Item, type PaneHandle, safeId, type TabHandle } from "../sdk/index.ts";
+
+const ctx0 = BACKGROUND_CONTEXT;
+
+/** Which pane shows which conversation. The guard hook looks panes up here. */
+export class PaneRegistry {
+  private panes = new Map<ConversationId, PaneHandle>();
+  private stops: (() => Promise<unknown>)[] = [];
+  get(id: ConversationId) {
+    return this.panes.get(id);
+  }
+  has(id: ConversationId) {
+    return this.panes.has(id);
+  }
+  set(id: ConversationId, pane: PaneHandle, stop: () => Promise<unknown>) {
+    this.panes.set(id, pane);
+    this.stops.push(stop);
+  }
+  /** Stop every event stream. Call before `harness.close()`. */
+  async close() {
+    await Promise.all(this.stops.splice(0).map((stop) => stop().catch(() => {})));
+  }
+}
+
+export interface PaneLocation {
+  tab: TabHandle;
+  title: string;
+  paneId?: string;
+  /** Absolute. Optional: the pane falls back to its workspace's folder. */
+  cwd?: string;
+}
+
+const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
+const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
+
+type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown };
+const textOf = (content: unknown): string =>
+  typeof content === "string"
+    ? content
+    : (content as Block[])
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("");
+
+/** Pi entries and agent events to the session stream. Whole blocks only: message_update is ignored. */
+class Mapper {
+  private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
+  constructor(private pane: PaneHandle) {}
+
+  private item(item: Item) {
+    this.pane.event({ type: "item", item });
+  }
+
+  snapshot(s: SnapshotEvent, first: boolean) {
+    if (!first) this.pane.event({ type: "reset" });
+    this.tools.clear();
+    for (const entry of s.entries) this.entry(entry);
+    this.pane.event({ type: "synced" });
+    this.pane.state(s.run ? "working" : "idle");
+  }
+
+  apply(e: AgentEvent) {
+    switch (e.type) {
+      case "snapshot": // the consumer fell behind: start over from the newest view
+        return this.snapshot(e, false);
+      case "run_start":
+      case "turn_start":
+        return this.pane.state("working");
+      case "run_end":
+        return this.pane.state("idle");
+      case "message_end":
+        return this.entry(e.entry);
+      case "submission":
+        // An abort appends no entry and no item. The input settles, and the wire says so with `settled`.
+        if (e.record.type !== "input" || (e.record.status !== "done" && e.record.status !== "unanswered")) return;
+        return this.pane.event({
+          type: "settled",
+          inputId: safeId(e.record.id),
+          ...(e.record.requestId === undefined ? {} : { requestId: safeId(e.record.requestId) }),
+          status: e.record.status === "done" ? "answered" : "unanswered",
+          ...(e.record.status === "unanswered" ? { reason: e.record.reason } : {}),
+        });
+      case "task_failed":
+        return this.item({ id: safeId(`fail:${e.taskId}`), kind: "notice", text: `${e.kind} failed: ${e.message}` });
+      case "auto_retry_start":
+        return this.item({ id: safeId(`retry:${e.at}`), kind: "notice", text: `retrying: ${e.errorMessage}` });
+    }
+  }
+
+  private entry(e: EntryRecord) {
+    const m = e.model?.[0];
+    if (!m) return;
+    const ts = new Date(m.timestamp).toISOString();
+    const id = safeId(`e${e.id}`);
+    if (m.role === "user") {
+      return this.item({ id, ts, kind: "user", text: textOf(m.content) });
+    }
+    if (m.role === "assistant") {
+      (m.content as Block[]).forEach((b, i) => {
+        if (b.type === "text") this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
+        else if (b.type === "thinking") this.item({ id: safeId(`${id}:${i}`), ts, kind: "thinking", text: b.thinking ?? "" });
+        else if (b.type === "toolCall") {
+          const tool: Extract<Item, { kind: "tool" }> = {
+            id: safeId(b.id),
+            ts,
+            kind: "tool",
+            status: "running",
+            tool: { kind: "other", name: b.name!, summary: clip(JSON.stringify(b.arguments)) },
+          };
+          this.tools.set(safeId(b.id), tool);
+          this.item(tool);
+        }
+      });
+      // A stop writes no item (WIRE.md 7.5): only a failed turn gets a notice.
+      if (m.stopReason === "error") this.item({ id: safeId(`${id}:end`), ts, kind: "notice", text: `turn ${m.stopReason}` });
+      return;
+    }
+    if (m.role === "toolResult") {
+      const diagnostics = (e.data as { diagnostics?: { code?: string }[] } | undefined)?.diagnostics ?? [];
+      const denied = diagnostics.some((d) => d.code === "blocked");
+      const callId = safeId(m.toolCallId);
+      const have = this.tools.get(callId);
+      const tool: Extract<Item, { kind: "tool" }> = {
+        id: callId,
+        ts,
+        kind: "tool",
+        status: denied ? "denied" : m.isError ? "failed" : "done",
+        tool: { ...(have?.tool ?? { kind: "other", name: m.toolName, summary: "" }), output: clip(textOf(m.content), 2000) },
+      };
+      this.tools.set(callId, tool);
+      this.item(tool);
+    }
+  }
+}
+
+/**
+ * Show a conversation as a pane. Safe to call twice for one conversation: the second call returns
+ * the pane that exists. History is sent first (then `synced`), after that events are live.
+ */
+export async function showConversation(
+  loc: PaneLocation,
+  harness: Harness,
+  conversation: Conversation,
+  opts: { panes: PaneRegistry; ctx?: Context },
+): Promise<PaneHandle> {
+  const have = opts.panes.get(conversation.id);
+  if (have) return have;
+  const ctx = opts.ctx ?? ctx0;
+  const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
+  const mapper = new Mapper(pane);
+
+  // The wire's request id goes to Pi Durable as the submission's own dedupe key, so a repeat that
+  // reaches Pi after a restart still admits the input once.
+  pane.onSend(async (text, { steer, requestId }) => {
+    await conversation.submit({ type: "input", content: text, whenBusy: steer ? "steer" : "followUp", requestId }, ctx);
+  });
+  pane.onAbort(() => conversation.abort(ctx));
+
+  const stream = await watchEvents(harness, conversation.id, ctx);
+  opts.panes.set(conversation.id, pane, () => stream.stop());
+  mapper.snapshot(stream.snapshot, true);
+  stream.start(async (events) => {
+    for (const e of events) mapper.apply(e);
+  });
+  return pane;
+}
+
+export interface Risky {
+  panes: PaneRegistry;
+  /** Tool names that need the phone's yes. */
+  risky: ReadonlySet<string>;
+}
+
+/** An extension whose `beforeTool` hook turns a risky call into an ask and waits for the answer. */
+export function riskGuard(o: Risky): Extension {
+  return defineExtension({
+    name: "collie-guard",
+    hooks: [
+      hook(ToolTask, {
+        beforeTool: async (call, api, ctx) => {
+          if (!o.risky.has(call.name)) return undefined;
+          const pane = o.panes.get(api.conversationId);
+          if (!pane) return { block: "no pane to ask on" }; // fail closed
+          const summary = clip(JSON.stringify(call.arguments));
+          const answer = await pane.ask(
+            {
+              kind: "permission",
+              toolCallId: safeId(call.id),
+              itemId: safeId(call.id), // the tool item of this call, which the mapper keys the same way
+              title: `${call.name} wants to run: ${summary}`,
+              tool: { kind: "other", name: call.name, summary },
+              reason: `${call.name} is marked risky`,
+              options: [
+                { id: "allow", label: "Allow", effect: "allow" },
+                { id: "deny", label: "Deny", effect: "deny" },
+              ],
+            },
+            { signal: ctx.abortSignal },
+          );
+          return answer.optionId === "allow" ? undefined : { block: "denied from the phone" };
+        },
+      }),
+    ],
+  });
+}
+
+export interface HelperOptions {
+  panes: PaneRegistry;
+  harness: () => Harness;
+  /** Where helper panes appear (tab "helpers"). */
+  tab: TabHandle;
+  /** The helper's model. Left out, it follows the host. */
+  model?: { provider: string; modelId: string };
+  /** Extensions the helper must not get, so it cannot spawn helpers of its own. */
+  without: () => Extension[];
+}
+
+/** `spawn_helper`: a child conversation owned by the call, shown as a new pane. Returns the helper's answer. */
+export function spawnHelperTool(o: HelperOptions) {
+  return defineTool({
+    name: "spawn_helper",
+    description: "Hand a small self-contained task to a helper agent and get its answer back.",
+    parameters: Type.Object({ task: Type.String() }),
+    replay: "safe", // a rerun after a crash finds the same child and the same submission
+    execute: async (args, api, ctx) => {
+      const child = await api.commit(async (tx) => {
+        const existing = (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0];
+        if (existing) return existing.id;
+        const created = await tx.createConversation({ ownership: { kind: "task", taskId: api.taskId } });
+        await configure(tx, created.id, { ...(o.model ? { model: o.model } : {}), extensions: { remove: o.without() } });
+        return created.id;
+      }, ctx);
+      const harness = o.harness();
+      const conversation = (await harness.conversation(child, ctx))!;
+      await showConversation({ tab: o.tab, title: `Helper #${child}` }, harness, conversation, { panes: o.panes, ctx });
+      await api.details({ conversationId: child }, ctx);
+      const handle = (await api.conversation(child, ctx))!;
+      const request = { type: "input", content: args.task, requestId: `helper:${api.taskId}` } as const;
+      const settled = await (await handle.submit(request, ctx)).wait(ctx);
+      if (settled.status !== "done" || settled.type !== "input") throw new Error(`helper failed: ${settled.status}`);
+      const entry = await api.commit((tx) => tx.entry(AssistantEntry, settled.answer), ctx);
+      const text = textOf((entry?.model?.[0] as { content?: unknown } | undefined)?.content ?? "");
+      return { content: [{ type: "text", text }], details: { conversationId: child } };
+    },
+  });
+}

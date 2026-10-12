@@ -52,7 +52,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
-| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the PATH of the Unix socket a durable program listens on. Absolute, at most 107 bytes, no default |
+| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the PATH of the Unix socket a durable program listens on. Absolute, at most 103 bytes, no default |
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
@@ -115,7 +115,7 @@ versions.
 
 With `automatic-rename` on, tmux renames a window after whatever program is running in it; Collie
 shows the last folder of that window's active pane instead, since a screenful of tabs named `bash`
-says nothing — a window you named yourself keeps that name.
+says nothing. A window you named yourself keeps that name.
 
 ### zellij notes
 
@@ -174,7 +174,7 @@ COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock   # where the program 
 ```
 
 The program listens on that socket, and Collie dials it. Name the backend with `COLLIE_MUX=durable`:
-Collie does not detect it on its own. The path must be absolute and at most 107 bytes. Collie
+Collie does not detect it on its own. The path must be absolute and at most 103 bytes. Collie
 connects only when the socket is yours and has no group or other permission (mode `0600`), because
 there is no token on this wire and a private socket is the whole gate. Run Collie in a peer of its
 own beside any Herdr one, since one install mirrors one backend.
@@ -196,6 +196,11 @@ What does not work:
 - A program on another machine. The socket is local, and TCP is not supported. Run a Collie peer on
   the machine with the program and join it to the crew.
 
+To try it, run the example program in
+[`examples/durable-member`](../examples/durable-member/README.md). It is a small Pi Durable app with
+a scripted model, so it needs no key, and it opens a conversation with a question to answer as soon
+as it starts. Its README walks you from the first command to the answer on your phone.
+
 One Collie serves one backend, so a durable program needs a Collie of its own, even on a host that
 already runs Herdr. A bridge that drives two backends at once is not part of this release. In
 practice you run a second Collie instance on the same host with `COLLIE_MUX=durable`, give it its
@@ -209,7 +214,7 @@ with a reason:
 
 | reason | what it means |
 | --- | --- |
-| `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 107 bytes` | the variable is missing or unusable |
+| `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 103 bytes` | the variable is missing or unusable |
 | `no socket at <path>` | nothing listens there yet |
 | `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |
 | `connection refused`, `no answer within <n>ms` | a stale socket file, or a program that hangs |
@@ -321,14 +326,14 @@ exact specification.
 
 | | Herdr | tmux | zellij |
 | --- | --- | --- | --- |
-| [a **space** is](../MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a workspace | a session | the session — exactly one, so the phone drops the space strip |
+| [a **space** is](../MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a workspace | a session | the session, exactly one, so the phone drops the space strip |
 | [a **tab** is](../MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a tab | a window | a tab |
 | [a **pane** is](../MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a pane | a pane | a terminal pane |
 | [who says a pane holds an agent](../MUX_CONTRACT.md#capabilities) | Herdr does, itself | a [beacon](#agent-beacons-optional-linux), or nothing | a [beacon](#agent-beacons-optional-linux), or nothing |
 | [how soon an unannounced change is seen](../MUX_CONTRACT.md#the-declared-facts--not-capabilities-either) | pushed | pushed | counted on a schedule, 12 s ceiling |
-| ["Show in terminal"](../MUX_CONTRACT.md#capabilities) | yes | yes | **no** — zellij accepts the request and moves nothing |
+| ["Show in terminal"](../MUX_CONTRACT.md#capabilities) | yes | yes | **no**, zellij accepts the request and moves nothing |
 | [open / rename / close a tab](../MUX_CONTRACT.md#capabilities) | yes | yes (opening is refused on the tmux crash case above) | yes |
-| [open a space](../MUX_CONTRACT.md#capabilities) | yes | yes | **no** — a session it made would be invisible to it |
+| [open a space](../MUX_CONTRACT.md#capabilities) | yes | yes | **no**, a session it made would be invisible to it |
 | [pane history](../MUX_CONTRACT.md#capabilities) | from Herdr's own pane record | from the beacon's session key | from the beacon's session key |
 
 Without active beacons, tmux, zellij and tern present panes as raw shells, and pane history is marked
@@ -349,7 +354,7 @@ unavailable rather than returning empty content.
 > affect the active host cursor
 > ([ADR 0031](../.adr/0031-freshness-is-a-declared-promise.md)).
 
-### tmux tips — getting your windows back after a reboot
+### tmux tips, getting your windows back after a reboot
 
 ```bash
 claude --resume      # reconnects the conversation, not the window
@@ -363,7 +368,7 @@ dashboard empty. Standard tmux plugins restore the window layouts and working di
 
 > **Note.** Running agent processes are not preserved. Restart Claude Code manually after recovery.
 
-### zellij tips — after a reboot there is nothing to restore
+### zellij tips, after a reboot there is nothing to restore
 
 ```bash
 zellij -s collie-zellij                                  # start the session

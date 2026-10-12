@@ -63,6 +63,28 @@ jobs:
       - name: Crew drill
         run: bun run test:crew
 
+  # The durable example (M50 spec 10). Its own job: the example is a program with its own lockfile,
+  # and Pi Durable never enters the root install. In `check`, bridge/mux/durable/example.test.ts
+  # skips for want of that install; here it runs, so the wire, the adapter and the example are proven
+  # to agree. Linux only, and never in windows.yml: the example's descendant check needs /proc and
+  # SO_PEERCRED, and a Windows socket has no owner for the adapter to check.
+  durable-example:
+    name: durable example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      - name: Install (example)
+        run: cd examples/durable-member && bun install --frozen-lockfile
+      - name: Typecheck (example)
+        run: cd examples/durable-member && bun run typecheck
+      - name: Test (example)
+        run: cd examples/durable-member && bun test
+      - name: Test (the adapter against the example)
+        run: bun test bridge/mux/durable
+
   # The browser tier (M26 spec 01). NO `needs`: a lint failure and a browser failure both have to
   # report in one run, so this job starts beside `check` rather than behind it. It installs only
   # `web/`, because Playwright is a devDependency of `web/` and of nothing else — the root tree
