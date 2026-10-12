@@ -4192,15 +4192,10 @@ describe("AgentChat — the model label and a footer that already names it", () 
     expect(tag(container)?.textContent).toContain("gpt-5.6-sol");
   });
 
-  it("pi: no adapter lifts its footer, so the raw mirror's last rows are judged", () => {
+  it("OmO reported as pi: its captured status strip names the model", () => {
     terminal();
-    const footer = [
-      "hello from pi",
-      "",
-      "~/webapp (main)",
-      "↑1.2k ↓300 $0.012 4.5%/200k (auto)  (anthropic) claude-sonnet-4-5 • medium",
-    ].join("\n");
-    const named = renderChat({ text: footer, agent: on("pi", "anthropic:claude-sonnet-4-5") });
+    const footer = pane("pi--omo-v5130-idle.txt");
+    const named = renderChat({ text: footer, agent: on("pi", "openai:gpt-6.1-sol") });
     expect(tag(named.container)).toBeNull();
     cleanup();
     const other = renderChat({ text: footer, agent: on("pi", "anthropic:claude-opus-5-5") });

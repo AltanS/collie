@@ -1,5 +1,5 @@
 // pi in the canary, with its default model and thinking off (`--thinking off`, a flag, cheaper).
-// Collie has no adapter for pi: raw mirror, one-step send.
+// Collie reads pi with its adapter (web/src/lib/harness/pi): the editor gates a guarded send.
 //
 // `--no-session` WAS here, so a run left no session file behind. It was dropped on 2026-09-30, when
 // spec 05 gave the canary a journal check, for three reasons and not for convenience:

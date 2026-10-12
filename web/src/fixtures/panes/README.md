@@ -16,6 +16,32 @@ scripts/capture-fixture.sh <paneId> <name> [lines]   # paneIds: /api/snapshot
 (`less -R <file>`) for private content before `git add` — prefer generating states in a sandbox
 pane over capturing real work sessions.
 
+## OmO 5.1.30 corpus (captured 2026-10-12, Herdr 0.9.3)
+
+`pi--omo-v5130-*.txt` comes from a disposable 113-column Herdr pane running OmO
+5.1.30 (Senpi 2026.10.11), which Herdr identifies as `pi`. Captured with
+`herdr pane read --source visible --format ansi --raw`, cut to the first rule of
+the question/editor frame. SGR bytes and row padding are preserved; transport
+CRLF is normalized to LF. No secrets were present. The discarded transcript
+contained sandbox prompts and local task-board text, not parser evidence.
+This cohort is OmO's built-in question UI, not stock pi's optional question extensions.
+
+| Fixture suffix | State |
+| --- | --- |
+| `single-described` | One unanswered single-select, descriptions and Red pointed |
+| `single-described-moved` | Same question after Down, Green pointed |
+| `single-other-focused` | Unnumbered Other row pointed; no option lift |
+| `answer-editor` | Other editor open, `> ` input and changed footer; raw-only |
+| `multi` | Multi-select's toggle footer; raw-only |
+| `idle` | Empty rule/`❯`/rule composer with three styled status rows |
+| `draft` | Literal `collie composer draft probe` typed without submission |
+
+`pi--v0851-idle.txt` and `pi--v0851-draft.txt` are stock pi 0.85.1, same date, a disposable
+225-column pane in `/tmp/stock-pi-cwd` with no login: the empty editor and the literal draft
+`collie stock pi draft probe`. They pin that stock pi's editor still reads as a composer.
+
+Keystroke probes and scope: [`pi/ASK_NOTES.md`](../../lib/harness/pi/ASK_NOTES.md).
+
 ## Codex corpus (captured 2026-08-22, Codex v0.149.0, sandbox panes)
 
 Byte-faithful `format:ansi` captures with one sanitization pass, every substitution

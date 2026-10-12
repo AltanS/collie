@@ -23,6 +23,7 @@ import { ompAdapter } from "./omp";
 import { opencodeAdapter } from "./opencode";
 import { agyAdapter, antigravityAdapter } from "./agy";
 import { museAdapter } from "./muse";
+import { piAdapter } from "./pi";
 
 // Built FROM the adapter list (not a hand-written literal) so a key can't silently drift from its
 const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
@@ -35,6 +36,7 @@ const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
     agyAdapter,
     antigravityAdapter,
     museAdapter,
+    piAdapter,
   ].map((a) => [a.agent, a]),
 );
 
