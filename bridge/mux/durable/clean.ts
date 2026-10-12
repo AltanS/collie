@@ -90,6 +90,21 @@ function isDirectionMark(codePoint: number): boolean {
   );
 }
 
+/**
+ * Characters with no width that can hide text or split a word a reader would otherwise recognise:
+ * the zero-width space, non-joiner and joiner (U+200B to U+200D), the word joiner (U+2060), the
+ * byte order mark (U+FEFF), and the tag characters (U+E0000 to U+E007F), which can carry a whole
+ * invisible sentence.
+ */
+function isInvisible(codePoint: number): boolean {
+  return (
+    (codePoint >= 0x200b && codePoint <= 0x200d) ||
+    codePoint === 0x2060 ||
+    codePoint === 0xfeff ||
+    (codePoint >= 0xe0000 && codePoint <= 0xe007f)
+  );
+}
+
 /** How many UTF-8 bytes one code point takes. A lone surrogate is cleaned away before this runs. */
 function utf8Size(codePoint: number): number {
   if (codePoint < 0x80) return 1;
@@ -107,7 +122,7 @@ export function byteLength(text: string): number {
  * Clean one display string (WIRE.md section 6, "Cleaning").
  *
  * 1. Remove C0 controls, DEL and C1 controls. A multi-line field keeps `\n` and `\t`.
- * 2. Remove the direction marks.
+ * 2. Remove the direction marks, the zero-width characters and the tag characters.
  * 3. Cut to the byte cap at a whole code point, leaving room for `…`, and append it.
  */
 export function cleanText(text: string, rule: TextRule): string {
@@ -120,7 +135,7 @@ export function cleanText(text: string, rule: TextRule): string {
       const allowed = rule.multiline && (codePoint === TAB || codePoint === NEWLINE);
       if (!allowed) continue;
     }
-    if (isDirectionMark(codePoint)) continue;
+    if (isDirectionMark(codePoint) || isInvisible(codePoint)) continue;
     kept += symbol;
   }
   if (byteLength(kept) <= rule.maxBytes) return kept;
@@ -135,6 +150,11 @@ export function cleanText(text: string, rule: TextRule): string {
     cut += symbol;
   }
   return cut + ELLIPSIS;
+}
+
+/** Whether cleaning changed `text`: a character was removed, or the string was cut. */
+export function changedByCleaning(text: string, rule: TextRule): boolean {
+  return cleanText(text, rule) !== text;
 }
 
 /**

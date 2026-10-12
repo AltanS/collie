@@ -6,6 +6,8 @@ import { join } from "node:path";
 import type { JsonObject } from "./json.ts";
 import type { WorktreeCreateResponse } from "./types.ts";
 import {
+  digestDiffers,
+  withDigest,
   MAX_RECEIPTS,
   RECEIPTS_FILE,
   WorktreeReceiptStore,
@@ -176,5 +178,15 @@ describe("the in-flight half", () => {
     const store = memoryWorktreeReceipts();
     await store.record(receiptOf(1));
     expect(store.get(idOf(1))).toEqual(receiptOf(1));
+  });
+});
+
+describe("the digest of a request in flight", () => {
+  test("a promise carries the digest it was asked with, so a different payload never joins it", () => {
+    const work = withDigest(Promise.resolve(1), "aaa");
+    expect(digestDiffers(work, "aaa")).toBe(false);
+    expect(digestDiffers(work, "bbb")).toBe(true);
+    // A promise with no digest tied to it (a worktree create) never differs.
+    expect(digestDiffers(Promise.resolve(2), "aaa")).toBe(false);
   });
 });

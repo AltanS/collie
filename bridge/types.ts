@@ -215,12 +215,10 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * as "no asks as data here". An empty list is a real answer: this pane takes answers by id and
    * has none open.
    *
-   * At most five are listed (`bridge/durable/guard.ts`, the open cap). {@link moreAsks} counts the
-   * rest. A closed ask frees its slot, and the next oldest takes it.
+   * EVERY open ask is listed, up to the adapter's cap of 50 per pane (WIRE.md section 6). The push
+   * guard caps pushes, never this list; the phone draws the first five and opens the rest on a tap.
    */
   asks?: Ask[];
-  /** How many open asks are past the five listed in {@link asks}. Absent when none are. */
-  moreAsks?: number;
   /**
    * The newest turn of this pane: the one running now, or the last one that ran (ADR 0101).
    *
@@ -269,6 +267,11 @@ export interface Ask {
   options: AskOption[];
   reason?: string;
   tool?: AskTool;
+  /**
+   * Present when the adapter's cleaning cut or changed the title or the reason (WIRE.md section 6).
+   * The card says the text was shortened and offers no `allow-always` on such an ask.
+   */
+  cleaned?: true;
 }
 
 /**
@@ -293,8 +296,12 @@ export interface AnswerRequest {
  *    program sent one. Nothing ran.
  *  • `unknown` (504): the answer may or may not have reached the program. The receipt stays, so
  *    "Try again" with the SAME request id replays rather than answers twice.
+ *  • `maybe-applied` (200): an earlier try with this request id had an unknown outcome, and this
+ *    retry found the ask closed or changed. The first try may be what closed it, so the phone says
+ *    "may already be applied, check the chat" instead of an error.
  *  • `refused` (409): nothing ran, and the same request would be refused again. `reason` is the
- *    mux refusal's word (ADR 0022): `unsupported` when this pane takes no answers at all.
+ *    mux refusal's word (ADR 0022): `unsupported` when this pane takes no answers at all, or
+ *    `request-id-reused` when this request id was already used for another answer.
  *
  * `replayed: true` marks an answer read off the receipt of an earlier request with this id.
  */
@@ -303,7 +310,8 @@ export type AnswerResponse =
   | { ok: false; outcome: "too-late"; replayed?: true }
   | { ok: false; outcome: "stale"; ask?: Ask; replayed?: true }
   | { ok: false; outcome: "unknown"; detail: string }
-  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused"; detail: string; replayed?: true };
+  | { ok: false; outcome: "maybe-applied"; replayed?: true }
+  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused" | "request-id-reused"; detail: string; replayed?: true };
 
 /**
  * `POST /api/pane/:id/send`'s body (ADR 0101). Exactly one of `turnId` and `askId`: the turn the
@@ -342,8 +350,12 @@ export type ControlRequest =
  *    `turnId` and `askIds` are what is current, so the phone can reload and show what changed.
  *  • `unknown` (504): the act may or may not have reached the program. The receipt stays, so
  *    "Try again" with the SAME request id replays rather than acts twice.
+ *  • `maybe-applied` (200): an earlier try with this request id had an unknown outcome, and this
+ *    retry found the turn moved on. The first try may be what moved it, so the phone says "may
+ *    already be applied, check the chat" instead of an error.
  *  • `refused` (409): nothing ran, and the same request would be refused again. `reason` is the
- *    mux refusal's word (ADR 0022): `unsupported` when this pane or program cannot take the act.
+ *    mux refusal's word (ADR 0022): `unsupported` when this pane or program cannot take the act, or
+ *    `request-id-reused` when this request id was already used for another send or stop.
  *
  * `replayed: true` marks an outcome read off the receipt of an earlier request with this id, or a
  * program that said it saw this request id before.
@@ -352,7 +364,8 @@ export type ControlResponse =
   | { ok: true; outcome: "ok"; replayed?: true }
   | { ok: false; outcome: "stale"; turnId: string; askIds: string[]; replayed?: true }
   | { ok: false; outcome: "unknown"; detail: string }
-  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused"; detail: string; replayed?: true };
+  | { ok: false; outcome: "maybe-applied"; replayed?: true }
+  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused" | "request-id-reused"; detail: string; replayed?: true };
 
 /**
  * Strip a pane down to its wire shape. The one place the session ref leaves the bridge's hands.

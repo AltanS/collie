@@ -121,20 +121,41 @@ describe("openAsks", () => {
     expect(Buffer.byteLength(shown?.title ?? "")).toBeLessThanOrEqual(256);
   });
 
-  test("asks on the wire: five are listed, the rest counted, and a pane of another adapter gains nothing", async () => {
+  test("asks on the wire: every open ask is listed, and a pane of another adapter gains nothing", async () => {
     const { program, adapter, read } = await rig();
     for (let i = 1; i <= 6; i++) program.raiseAsk("conv-02", askOn(i));
     expect((await read()).ok).toBe(true);
     const wired = withOpenAsks(WIRE_PANE, adapter);
-    expect(wired.asks?.map((a) => a.toolCallId)).toEqual(["call-02-1", "call-extra-1", "call-extra-2", "call-extra-3", "call-extra-4"]);
-    expect(wired.moreAsks).toBe(2);
+    expect(wired.asks?.map((a) => a.toolCallId)).toEqual(["call-02-1", ...[1, 2, 3, 4, 5, 6].map((i) => `call-extra-${String(i)}`)]);
+    expect("moreAsks" in wired).toBe(false);
     const herdrPane: PaneWire = { ...WIRE_PANE, paneId: "w1:p1", agent: "claude" };
     expect(withOpenAsks(herdrPane, {})).toBe(herdrPane);
     expect("asks" in withOpenAsks(herdrPane, {})).toBe(false);
-    // A durable pane with nothing open says so with an empty list, and no count.
+    // A durable pane with nothing open says so with an empty list.
     const quiet = withOpenAsks({ ...WIRE_PANE, paneId: "conv-01" }, adapter);
     expect(quiet.asks).toEqual([]);
-    expect("moreAsks" in quiet).toBe(false);
+  });
+
+  test("asks on the wire: fifty open asks all reach the pane, the adapter's own cap", async () => {
+    const { program, adapter, read } = await rig();
+    for (let i = 1; i <= 60; i++) program.raiseAsk("conv-02", askOn(i));
+    expect((await read()).ok).toBe(true);
+    expect(withOpenAsks(WIRE_PANE, adapter).asks).toHaveLength(50);
+  });
+
+  test("an ask whose title or reason was cut or changed by cleaning carries cleaned: true", async () => {
+    const { program, adapter, read } = await rig();
+    program.raiseAsk("conv-01", askOn(1, { title: "plain title", reason: "plain reason" }));
+    program.raiseAsk("conv-01", askOn(2, { title: `run\u200b ls` }));
+    program.raiseAsk("conv-01", askOn(3, { title: "ok", reason: "x".repeat(5000) }));
+    expect((await read()).ok).toBe(true);
+    const shown = adapter.openAsks("conv-01") ?? [];
+    const flag = (toolCallId: string) => shown.find((a) => a.toolCallId === toolCallId)?.cleaned;
+    expect(shown.map((a) => a.toolCallId)).toEqual(["call-extra-1", "call-extra-2", "call-extra-3"]);
+    expect(flag("call-extra-1")).toBeUndefined();
+    expect(flag("call-extra-2")).toBe(true);
+    expect(flag("call-extra-3")).toBe(true);
+    expect("cleaned" in (shown[0] ?? {})).toBe(false);
   });
 });
 

@@ -1210,6 +1210,8 @@ function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
     }
     case "unknown":
       return { outcome: "unknown" };
+    case "maybe-applied":
+      return { outcome: "maybe-applied" };
     case "refused":
       return { outcome: "refused", detail: asJsonString(body.detail) ?? "" };
     default:
@@ -1245,6 +1247,7 @@ export type ControlResult =
   | { outcome: "ok" }
   | { outcome: "stale"; turnId?: string; askIds: string[]; older?: true }
   | { outcome: "refused"; reason: string; detail: string }
+  | { outcome: "maybe-applied" }
   | { outcome: "unknown" };
 
 function controlResultOf(body: JsonObject | undefined): ControlResult | null {
@@ -1260,6 +1263,8 @@ function controlResultOf(body: JsonObject | undefined): ControlResult | null {
     }
     case "unknown":
       return { outcome: "unknown" };
+    case "maybe-applied":
+      return { outcome: "maybe-applied" };
     case "refused":
       return { outcome: "refused", reason: asJsonString(body.reason) ?? "refused", detail: asJsonString(body.detail) ?? "" };
     default:

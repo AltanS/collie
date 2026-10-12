@@ -325,11 +325,9 @@ const PANE_WIRE_KEYS = {
   // own disk. Attached at serialise time like `cache`, and absent here: this baseline builds its body
   // with no reader, so no golden byte moved.
   gitHead: true,
-  // Not crew dimensions: the open asks of a pane whose adapter raises them as data, and the count
-  // past the five listed (ADR 0100). Only the `durable` adapter fills them, so they are absent on
-  // every pane here and no golden byte moved.
+  // Not a crew dimension: the open asks of a pane whose adapter raises them as data (ADR 0100). Only
+  // the `durable` adapter fills it, so it is absent on every pane here and no golden byte moved.
   asks: true,
-  moreAsks: true,
   // Not a crew dimension either: the newest turn of a pane whose adapter takes guarded controls
   // (ADR 0101). Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
   turnId: true,
@@ -457,7 +455,6 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "lastActiveAt",
       "lastSeenAt",
       "model",
-      "moreAsks",
       "paneId",
       "paneLabel",
       "readableLines",

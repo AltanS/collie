@@ -38,8 +38,20 @@
 // stops at three quarters of the cap, so one that keeps huge items cannot trigger the next rewrite
 // at once.
 // The rewrite goes to a temporary file and is renamed over the log, so a crash leaves one whole file.
+//
+// PRIVATE. The folder is 0700 and every log 0600, set when a log is opened even if the folder or
+// the file was there before with a wider mode: a conversation holds what the agent read and wrote.
+//
+// A GAP IS SAID. A reset reply that left out older items (`trimmed`) and whose first item the log has
+// never seen means the log is missing what came before it. The log writes one notice item there,
+// "Older messages were left out", so Chat does not read as if the conversation began mid-way. Its
+// id is derived from the first item's, so the same reset twice writes one marker.
+//
+// ONE CAP FOR THE MACHINE. All the logs together stay under {@link HOST_MAX_BYTES} (256 MiB): past
+// it, the conversation logs written longest ago are deleted first, never the one just written.
 
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { appendFile, chmod, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { parseLogRow, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
@@ -56,6 +68,17 @@ export const LOG_MAX_BYTES = 8 * 1024 * 1024;
 /** How many items a rewrite keeps, the newest. */
 export const LOG_KEEP_ITEMS = 2000;
 
+/** All the pane logs of one machine together stay under this many bytes. */
+export const HOST_MAX_BYTES = 256 * 1024 * 1024;
+
+/** The words of the notice a gap leaves in the log. */
+export const GAP_NOTICE = "Older messages were left out: the program no longer keeps them.";
+
+/** The id of the gap notice in front of `firstItemId`. A valid wire id whatever the first id is. */
+export function gapItemId(firstItemId: string): string {
+  return `gap-${createHash("sha256").update(firstItemId, "utf8").digest("hex").slice(0, 32)}`;
+}
+
 /** The folder the logs live in, for a state dir. */
 export function durableLogDir(stateDir: string): string {
   return join(stateDir, LOG_DIR_NAME);
@@ -68,8 +91,11 @@ export function logFileName(paneId: string): string {
 
 /** What the adapter's events reader hands the log. */
 export interface PaneEventSink {
-  /** Record these events of one pane. Resolves with how many rows were written. */
-  apply(paneId: string, events: readonly DurableEvent[]): Promise<number>;
+  /**
+   * Record these events of one pane. Resolves with how many rows were written. `trimmed` is the
+   * reset reply's count of older items it left out, 0 for a plain reply.
+   */
+  apply(paneId: string, events: readonly DurableEvent[], trimmed?: number): Promise<number>;
 }
 
 interface Limits {
@@ -161,9 +187,19 @@ export class PaneLog {
     return this.apply([]).then(() => undefined);
   }
 
-  /** Record events in order. Resolves with the rows written. */
-  apply(events: readonly DurableEvent[]): Promise<number> {
-    const run = this.chain.then(() => this.write(events));
+  /** The file's size as this log last knew it, in bytes. 0 before it was opened. */
+  size(): number {
+    return this.index?.bytes ?? 0;
+  }
+
+  /** Forget what this log knew of its file: the file was deleted under it. */
+  forget(): void {
+    this.index = null;
+  }
+
+  /** Record events in order. Resolves with the rows written. `trimmed`: see {@link PaneEventSink}. */
+  apply(events: readonly DurableEvent[], trimmed = 0): Promise<number> {
+    const run = this.chain.then(() => this.write(events, trimmed));
     // A failed write must not poison the next one: the chain continues from the failure.
     this.chain = run.catch(() => undefined);
     return run;
@@ -171,7 +207,10 @@ export class PaneLog {
 
   private async load(): Promise<Index> {
     if (this.index !== null) return this.index;
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    const dir = dirname(this.path);
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    // `mode` only holds for a folder mkdir made. One that was there keeps its mode unless set here.
+    await chmod(dir, 0o700);
     let text: string;
     try {
       text = await readFile(this.path, "utf8");
@@ -184,14 +223,15 @@ export class PaneLog {
       text = headerLine(new Date(this.now()).toISOString());
       await appendFile(this.path, text, { mode: 0o600 });
     }
+    await chmod(this.path, 0o600);
     this.index = indexOf(text);
     return this.index;
   }
 
-  private async write(events: readonly DurableEvent[]): Promise<number> {
+  private async write(events: readonly DurableEvent[], trimmed: number): Promise<number> {
     const index = await this.load();
     try {
-      return await this.append(index, events);
+      return await this.append(index, events, trimmed);
     } catch (err) {
       // The index may be ahead of the disk now. Drop it, and the next call reads the file again.
       this.index = null;
@@ -199,18 +239,29 @@ export class PaneLog {
     }
   }
 
-  private async append(index: Index, events: readonly DurableEvent[]): Promise<number> {
+  private async append(index: Index, events: readonly DurableEvent[], trimmed: number): Promise<number> {
     const at = new Date(this.now()).toISOString();
     const lines: string[] = [];
     const put = (row: LogRow): void => {
       lines.push(JSON.stringify(row));
     };
     let resetting = false;
+    // The first item of a trimmed reset view decides whether the log has a gap in front of it.
+    let gapCheck = false;
     const listed = new Set<string>();
 
     for (const event of events) {
       switch (event.type) {
         case "item": {
+          if (gapCheck) {
+            gapCheck = false;
+            const gapId = gapItemId(event.item.id);
+            if (!index.items.has(event.item.id) && !index.items.has(gapId)) {
+              const notice = { id: gapId, kind: "notice" as const, text: GAP_NOTICE };
+              put({ k: "item", at, item: notice });
+              index.items.set(gapId, { json: JSON.stringify(notice), at });
+            }
+          }
           const json = JSON.stringify(event.item);
           const known = index.items.get(event.item.id);
           if (known?.json === json) break;
@@ -253,6 +304,7 @@ export class PaneLog {
           break;
         case "reset":
           resetting = true;
+          gapCheck = trimmed > 0;
           listed.clear();
           break;
         case "synced":
@@ -345,8 +397,9 @@ export class PaneLog {
 
     const body = [...lines, ...trailer].join("\n");
     const out = headerLine(new Date(this.now()).toISOString()) + (body === "" ? "" : `${body}\n`);
-    const temp = `${this.path}.tmp`;
-    await writeFile(temp, out, { mode: 0o600 });
+    // A fresh name each time, created exclusively, so its 0600 is the mode it is born with.
+    const temp = `${this.path}.${randomUUID()}.tmp`;
+    await writeFile(temp, out, { mode: 0o600, flag: "wx" });
     await rename(temp, this.path);
     this.index = indexOf(out);
   }
@@ -355,11 +408,14 @@ export class PaneLog {
 /** Every pane's log under one folder. The sink the adapter's events reader writes to. */
 export class DurableLogs implements PaneEventSink {
   private readonly logs = new Map<string, PaneLog>();
+  /** The folder's total bytes as last counted plus what was written since; null until first counted. */
+  private total: number | null = null;
 
   constructor(
     readonly dir: string,
     private readonly now: () => number = () => Date.now(),
     private readonly limits: Limits = DEFAULT_LIMITS,
+    private readonly hostMaxBytes: number = HOST_MAX_BYTES,
   ) {}
 
   /** The log of one pane. The same instance every time, so its writes stay in order. */
@@ -372,7 +428,47 @@ export class DurableLogs implements PaneEventSink {
     return log;
   }
 
-  apply(paneId: string, events: readonly DurableEvent[]): Promise<number> {
-    return this.forPane(paneId).apply(events);
+  async apply(paneId: string, events: readonly DurableEvent[], trimmed = 0): Promise<number> {
+    const log = this.forPane(paneId);
+    const before = log.size();
+    const wrote = await log.apply(events, trimmed);
+    if (wrote > 0) await this.hold(log, log.size() - before);
+    return wrote;
+  }
+
+  /** Keep the folder under the machine's cap, oldest conversation first, never `writing`. */
+  private async hold(writing: PaneLog, grew: number): Promise<void> {
+    this.total = this.total === null ? await this.count() : this.total + grew;
+    if (this.total <= this.hostMaxBytes) return;
+    const files = await this.files();
+    this.total = files.reduce((sum, file) => sum + file.bytes, 0);
+    for (const file of files.toSorted((a, b) => a.mtimeMs - b.mtimeMs)) {
+      if (this.total <= this.hostMaxBytes) break;
+      if (file.path === writing.path) continue;
+      await unlink(file.path).catch(() => undefined);
+      this.total -= file.bytes;
+      for (const [paneId, log] of this.logs) {
+        if (log.path !== file.path) continue;
+        log.forget();
+        this.logs.delete(paneId);
+      }
+    }
+  }
+
+  private async count(): Promise<number> {
+    return (await this.files()).reduce((sum, file) => sum + file.bytes, 0);
+  }
+
+  /** Every pane log in the folder, with its size and when it was last written. */
+  private async files(): Promise<{ path: string; bytes: number; mtimeMs: number }[]> {
+    const names = await readdir(this.dir).catch((): string[] => []);
+    const out: { path: string; bytes: number; mtimeMs: number }[] = [];
+    for (const name of names) {
+      if (!name.endsWith(".jsonl")) continue;
+      const path = join(this.dir, name);
+      const facts = await stat(path).catch(() => null);
+      if (facts !== null && facts.isFile()) out.push({ path, bytes: facts.size, mtimeMs: facts.mtimeMs });
+    }
+    return out;
   }
 }

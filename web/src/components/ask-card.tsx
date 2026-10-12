@@ -9,9 +9,12 @@ import { describeThrownError } from "@/lib/api-error-message";
 import {
   answerable,
   answered,
+  effectKey,
   freshCard,
   optionTone,
   polled,
+  pressed,
+  secondaryLabel,
   tapped,
   visibleOptions,
   type AnswerResult,
@@ -71,14 +74,22 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
   const busy = card.phase === "sending";
   // Off for good in these phases: the answer was taken, or someone else made it, or it is refused.
   // `unknown` leaves only "Try again" (the same intent); `stale` on an old machine cannot be tapped.
-  const settled = card.phase === "taken" || card.phase === "late" || card.phase === "refused";
+  const settled = card.phase === "taken" || card.phase === "late" || card.phase === "maybe" || card.phase === "refused";
   const frozen = disabled || offline || busy || settled || card.phase === "unknown" || (card.phase === "stale" && card.older);
 
-  async function tap(option: AskOption, again: boolean) {
+  /** A press on an option's button. "Always allow" arms on the first press and posts on the second. */
+  function onPress(option: AskOption) {
+    if (disabled || offline || busy) return;
+    const press = pressed(card, option);
+    setCard(press.state);
+    if (press.post) void tap(option, false, press.state);
+  }
+
+  async function tap(option: AskOption, again: boolean, from: AskCardState = card) {
     if (disabled || offline || busy) return;
     // A retry reuses the id of the tap it retries, and only after an unknown outcome.
     const requestId = again && card.requestId !== null ? card.requestId : mintRequestId();
-    const sent = card;
+    const sent = from;
     setCard(tapped(sent, option.id, requestId));
     let result: AnswerResult;
     try {
@@ -87,7 +98,9 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
       result = thrownAnswer(apiErrorStatus(error), describeThrownError(error));
     }
     setCard((now) => answered(now, result));
-    if (result.outcome === "taken" || result.outcome === "too-late" || result.outcome === "stale") onSettled?.();
+    if (result.outcome === "taken" || result.outcome === "too-late" || result.outcome === "stale" || result.outcome === "maybe-applied") {
+      onSettled?.();
+    }
   }
 
   // Taken closes the card. The program drops the ask from the next poll; until then nothing is drawn.
@@ -105,6 +118,11 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
       {shown.reason !== undefined ? (
         <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
           {shown.reason}
+        </p>
+      ) : null}
+      {shown.cleaned === true ? (
+        <p data-slot="ask-cleaned" className="pl-0.5 text-xs leading-snug text-muted-foreground">
+          {t("ask.cleaned")}
         </p>
       ) : null}
       {shown.tool !== undefined ? (
@@ -125,13 +143,16 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
         <div className="flex flex-col gap-1">
           {options.map((option) => {
             const inFlight = busy && card.optionId === option.id;
+            // Collie's words lead; the program's own label is the quiet second line (lib/ask.ts).
+            const main = card.armed === option.id ? t("ask.alwaysArmed", { tool: shown.tool?.name ?? "" }) : t(effectKey(option.effect));
             return (
               <OptionButton
                 key={option.id}
                 tone={inFlight ? "busy" : optionTone(option.effect)}
-                label={option.label}
+                label={main}
+                description={secondaryLabel(option.label, t(effectKey(option.effect)))}
                 disabled={frozen}
-                onClick={() => void tap(option, false)}
+                onClick={() => onPress(option)}
                 trailing={
                   inFlight ? (
                     <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
@@ -170,6 +191,8 @@ function noteFor(card: AskCardState, offline: boolean): string | null {
       return card.older ? t("ask.stale.older") : t("ask.stale");
     case "unknown":
       return t("ask.unknown");
+    case "maybe":
+      return t("ask.maybe");
     case "refused":
       return card.detail !== "" ? card.detail : t("ask.refused");
     case "idle":

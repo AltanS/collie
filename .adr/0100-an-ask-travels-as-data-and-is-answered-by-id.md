@@ -56,10 +56,16 @@ involved.**
 4. **Only a person's tap answers.** The route runs for a paired device acting on a tap. A program,
    a hook or a model output cannot answer its own ask. This is ADR 0024 applied to a channel that
    is structured: data from the emitter is a hint to show, and it is never a command.
-5. **The push guard lives in the bridge, on disk.** It is keyed on `(host, toolCallId)` and kept in
-   the state dir, so a bridge restart pushes nothing twice. The caps are 3 pushes per pane per
-   minute, 10 per host, and 5 open asks shown at once. An ask over a cap is still listed on the
-   pane. It only skips the push.
+5. **The push guard lives in the bridge, on disk, and caps pushes, never what is shown.** It is
+   keyed on `(host, toolCallId)` and kept in the state dir, so a bridge restart pushes nothing
+   twice. The caps are 3 pushes per pane per minute, 10 per host per minute, and 30 per host per
+   hour. The hourly cap is a breaker: the push past it becomes one summary, "A program on <host> is
+   raising many asks", and the host stays silent until the hour is over. Every open ask, up to the
+   program's 50 per pane, is listed on the pane; the phone shows five and opens the rest on a tap.
+   A key is forgotten an hour after it was last seen open, and the file keeps at most 2000 keys.
+   The push for an ask says "Permission needed in <pane>", where <pane> is the pane's push name,
+   never the ask's title, its reason or a command line. The guard runs where the push is sent: a
+   solo collie for its own panes, the lead for a peer's panes (CREW_PROTOCOL.md §5).
 6. **A restart re-ask is shown, not pushed.** The same tool call id arrives under a new ask id. The
    phone shows the new ask. The guard sees the key it already pushed and stays quiet. The old ask
    id answers `too-late`.
@@ -79,7 +85,17 @@ involved.**
   durable pane exists.
 - A hostile program can send many asks. The caps bound the noise, and the string cleaning of
   ADR 0099 bounds what each one can show. They do not make a bad ask safe to accept. A person still
-  reads the card.
+  reads the card. The card's buttons take their words and weight from the option's `effect`, in
+  Collie's own words, with the program's label as small text under them, and `allow-always` needs
+  a second tap that names the tool.
+- The socket does not stop a process of the same user, and a tool the agent runs is such a
+  process: it can open the socket and answer an ask, so a durable program SHOULD refuse callers
+  that are its own descendants or run its tools in a sandbox (WIRE.md, "What the socket does not
+  protect against"). Collie cannot make that check for it, and `allow-always` is the grant that
+  needs the most care.
+- A retry whose outcome Collie cannot know (the first try left with no reply, and the retry finds
+  the ask closed) reads "may have gone through" (`maybe-applied`), never "too late". A receipt is
+  bound to a digest of its payload, so one request id can never carry two different answers.
 - The phone shows `waiting` on an old lead, with no card. The person has to open the program to
   answer. That is the cost of not bumping the protocol, and it is a short skew while a crew levels.
 - A second producer of asks, for example a screen reader that also emits ids, would need a new

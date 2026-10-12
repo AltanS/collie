@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { parseLogRow, type DurableAsk, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
-import { DurableLogs, durableLogDir, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
+import { DurableLogs, durableLogDir, GAP_NOTICE, gapItemId, HOST_MAX_BYTES, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
 
 const dirs: string[] = [];
 
@@ -80,6 +80,19 @@ describe("where the log lives", () => {
     // Only the header, which names the file's generation.
     expect(await rows(path)).toEqual([]);
     expect(await generation(path)).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test("a folder and a file that were there with wider modes are made 0700 and 0600 when opened", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    const path = join(folder, logFileName("conv-01"));
+    await mkdir(folder, { mode: 0o755 });
+    await chmod(folder, 0o755);
+    await writeFile(path, "", { mode: 0o644 });
+    await chmod(path, 0o644);
+    await new PaneLog(path).ensure();
+    expect((await stat(folder)).mode & 0o777).toBe(0o700);
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 
   test("a rewrite starts a new generation, and a reopen of the same file keeps the one it has", async () => {
@@ -186,6 +199,31 @@ describe("reset", () => {
     await log.apply([{ type: "reset" }, { type: "ask", ask: ask("still-open") }, { type: "synced" }]);
     const closed = (await rows(path)).flatMap((row) => (row.k === "ask-closed" ? [[row.askId, row.by]] : []));
     expect(closed).toEqual([["before-restart", "reset"]]);
+  });
+
+  test("a trimmed reset whose first item the log never saw writes one gap notice in front of it", async () => {
+    const { log, path } = await newLog();
+    await log.apply([{ type: "reset" }, text("i90", "ninety"), text("i91", "ninety-one"), { type: "synced" }], 89);
+    const list = await rows(path);
+    expect(itemIds(list)).toEqual([gapItemId("i90"), "i90", "i91"]);
+    const notice = list.find((row) => row.k === "item" && row.item.id === gapItemId("i90"));
+    expect(notice?.k === "item" ? notice.item : null).toEqual({ id: gapItemId("i90"), kind: "notice", text: GAP_NOTICE });
+    // The same reset again writes no second marker, and nor does a reopened log.
+    await log.apply([{ type: "reset" }, text("i90", "ninety"), { type: "synced" }], 89);
+    expect(await new PaneLog(path).apply([{ type: "reset" }, text("i90", "ninety"), { type: "synced" }], 89)).toBe(0);
+    expect(itemIds(await rows(path)).filter((id) => id.startsWith("gap-"))).toHaveLength(1);
+  });
+
+  test("no gap notice when nothing was trimmed, or when the log already holds the first item", async () => {
+    const { log, path } = await newLog();
+    await log.apply([{ type: "reset" }, text("i1", "one"), { type: "synced" }], 0);
+    await log.apply([{ type: "reset" }, text("i1", "one"), text("i2", "two"), { type: "synced" }], 5);
+    expect(itemIds(await rows(path))).toEqual(["i1", "i2"]);
+  });
+
+  test("a gap id is a valid wire id whatever the first item id is", () => {
+    expect(gapItemId("x".repeat(128))).toMatch(/^gap-[0-9a-f]{32}$/);
+    expect(gapItemId("a")).not.toBe(gapItemId("b"));
   });
 
   test("a reset cut off before synced closes nothing", async () => {
@@ -353,6 +391,32 @@ describe("size cap", () => {
     expect(ids[0]).toBe("item-04501");
     expect(ids.at(-1)).toBe("item-06500");
     expect((await stat(path)).size).toBeLessThan(LOG_MAX_BYTES);
+  });
+});
+
+describe("the machine's byte cap", () => {
+  test("the cap is 256 MiB", () => {
+    expect(HOST_MAX_BYTES).toBe(256 * 1024 * 1024);
+  });
+
+  test("past the cap, the conversations written longest ago are deleted first, never the one being written", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    const logs = new DurableLogs(folder, () => Date.now(), { maxBytes: LOG_MAX_BYTES, keepItems: LOG_KEEP_ITEMS }, 3000);
+    const big = (id: string) => [text(id, "x".repeat(900))];
+    await logs.apply("oldest", big("a"));
+    await logs.apply("middle", big("b"));
+    // Make their write times plainly ordered.
+    await utimes(join(folder, logFileName("oldest")), new Date(1_000_000), new Date(1_000_000));
+    await utimes(join(folder, logFileName("middle")), new Date(2_000_000), new Date(2_000_000));
+    await logs.apply("newest", big("c"));
+    await logs.apply("newest", big("d"));
+    const left = (await readdir(folder)).toSorted();
+    expect(left).not.toContain(logFileName("oldest"));
+    expect(left).toContain(logFileName("newest"));
+    // A pane whose log was deleted writes a fresh one on its next event.
+    await logs.apply("oldest", big("e"));
+    expect(await readdir(folder)).toContain(logFileName("oldest"));
   });
 });
 

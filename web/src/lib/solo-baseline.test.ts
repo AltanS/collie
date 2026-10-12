@@ -122,7 +122,6 @@ const AGENT_VIEW_KEYS = {
   // Not crew dimensions: a durable program's open asks and newest turn (ADR 0100, ADR 0101), present
   // only on a pane with no screen and absent from an older bridge or peer.
   asks: true,
-  moreAsks: true,
   turnId: true,
 } satisfies Record<keyof AgentView, true>;
 
@@ -225,7 +224,6 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "lastActiveAt",
       "lastSeenAt",
       "model",
-      "moreAsks",
       "paneId",
       "paneLabel",
       "readableLines",

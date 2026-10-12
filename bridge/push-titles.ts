@@ -51,6 +51,15 @@ export const PUSH_TITLES = {
   "machine.mem": "Memory stays high on {machine}",
   /** The same for the fullest disk. */
   "machine.disk": "Disk stays full on {machine}",
+
+  // ── Asks that travel as data (`notifications.ts`, `durable/ask-push.ts`, ADR 0100) ──────────────
+  /**
+   * One outstanding pane, waiting on a durable program's ask. `{pane}` is the push name of the pane
+   * (`pushName`), never the program's title, and never the ask's own words or a command line.
+   */
+  "ask.permission": "Permission needed in {pane}",
+  /** A host's ask breaker tripped: past 30 pushes in an hour, this one summary, then silence. */
+  "ask.flood": "A program on {host} is raising many asks",
 } as const;
 
 /** Every code a push title can carry. The client mirror restates this union verbatim. */

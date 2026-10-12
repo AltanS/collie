@@ -2607,7 +2607,8 @@ describe("doctor durable", () => {
     const rows = await durableFindings({ ctx: context(onDurable(fake.socketPath)), probe });
     const row = rows.find((f) => f.check === "durable-socket")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("not by you");
+    // The walk meets the socket's own folder first, and that folder is not the other user's either.
+    expect(row.detail).toContain("belongs to user");
     expect(rows.find((f) => f.check === "durable-hello")!.status).toBe("skipped");
     expect(fake.requests).toEqual([]);
   });
@@ -2619,6 +2620,17 @@ describe("doctor durable", () => {
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
     expect(row.detail).toContain("status 500");
+    expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
+  });
+
+  test("a socket that answers without the durable service name fails the hello row as the wrong program", async () => {
+    const fake = await startFake();
+    fake.hello.service = undefined;
+    const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    const row = run.byCheck.get("durable-hello")!;
+    expect(row.status).toBe("error");
+    expect(row.detail).toContain("not a durable program");
+    expect(row.remedy).toContain("COLLIE_DURABLE_SOCKET");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });
 

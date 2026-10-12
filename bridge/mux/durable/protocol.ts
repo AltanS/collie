@@ -10,7 +10,7 @@ import { isAbsolute } from "node:path";
 
 import type { AgentStatus, Ask } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import { blockRule, byteLength, CAPS, cleanText, isWireId, lineRule } from "./clean.ts";
+import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule } from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,12 @@ export interface ProtocolRange {
 
 /** What this Collie speaks. This document is version 1, so the range is 1..1. */
 export const SPEAKS: ProtocolRange = { min: 1, max: 1 };
+
+/** The name every durable program sends in `hello` (WIRE.md section 4). A socket without it is something else. */
+export const DURABLE_SERVICE = "collie-durable";
+
+/** The refusal detail for a `hello` that does not name {@link DURABLE_SERVICE}. */
+export const NOT_A_DURABLE_PROGRAM = "not a durable program";
 
 /** The highest version inside both ranges, or null when they do not meet (WIRE.md section 2). */
 export function negotiateVersion(program: ProtocolRange): number | null {
@@ -81,6 +87,8 @@ export interface DurableAsk {
   readonly options: readonly DurableOption[];
   readonly reason?: string;
   readonly tool?: DurableToolCall;
+  /** True when cleaning cut or changed the title or the reason, so the card says the text was shortened. */
+  readonly cleaned?: true;
 }
 
 export interface DurableWorkspace {
@@ -211,6 +219,8 @@ function cwdOf(object: JsonObject): string | undefined {
 export function parseHello(text: string): Parsed<DurableHello> {
   const root = decode(text);
   if (!isRecord(root)) return bad("hello is not a JSON object");
+  // First, so a wrong socket path is named as such rather than as a bad range.
+  if (root.service !== DURABLE_SERVICE) return bad(NOT_A_DURABLE_PROGRAM);
 
   const range = root.protocol;
   if (!isRecord(range) || !isCount(range.min) || !isCount(range.max) || range.min > range.max) {
@@ -323,7 +333,16 @@ function readAsk(value: Json): DurableAsk | null {
   }
   const reason = blockOf(value, "reason", CAPS.reason);
   const tool = readTool(value.tool);
-  return {
+  const rawTitle = value.title;
+  const rawReason = value.reason;
+  // What the person reads is not what the program sent: the card says so, and offers no lasting grant.
+  // A flag already set is kept: the pane log stores the cleaned ask and reads it back through here.
+  // A program that sets it only makes its own card more careful.
+  const cleaned =
+    value.cleaned === true ||
+    (isText(rawTitle) && changedByCleaning(rawTitle, lineRule(CAPS.askTitle))) ||
+    (isText(rawReason) && changedByCleaning(rawReason, blockRule(CAPS.reason)));
+  const ask: DurableAsk = {
     id,
     kind: textOf(value, "kind", CAPS.askKind),
     toolCallId,
@@ -334,6 +353,7 @@ function readAsk(value: Json): DurableAsk | null {
     reason,
     tool,
   };
+  return cleaned ? { ...ask, cleaned: true } : ask;
 }
 
 function readWorkspace(value: Json): DurableWorkspace | null {
@@ -835,6 +855,7 @@ export function askForWire(ask: DurableAsk): Ask {
     options: ask.options.map((option) => ({ id: option.id, label: option.label, effect: option.effect })),
   };
   if (ask.reason !== undefined) wire.reason = ask.reason;
+  if (ask.cleaned === true) wire.cleaned = true;
   if (ask.tool !== undefined) {
     wire.tool = { name: ask.tool.name, summary: ask.tool.summary };
     if (ask.tool.output !== undefined) wire.tool.output = ask.tool.output;

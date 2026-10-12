@@ -502,7 +502,7 @@ describe("A pane with no screen, paneGrid", () => {
     expect(await screen.findByText("Run the tests?")).toBeInTheDocument();
     // Not asserted enabled: this harness never stamps liveness, so the pane reads as still connecting
     // and the buttons are off by design. The enabled card is pinned in ask-card.test.tsx.
-    expect(screen.getByRole("button", { name: "Run them" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Run them/ })).toBeInTheDocument();
   });
 
   it("stays on the terminal composer, with the choice and no cards, where a screen exists", async () => {

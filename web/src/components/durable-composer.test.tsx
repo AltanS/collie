@@ -157,6 +157,25 @@ describe("send", () => {
     expect(seen[1]!.requestId).not.toBe(seen[0]!.requestId);
   });
 
+  it("maybe-applied keeps the draft, reads the pane and says to check the chat before sending again", async () => {
+    const seen = stub("send", () => HttpResponse.json({ ok: false, outcome: "maybe-applied" }));
+    const { onSent, onReload } = draw();
+    const user = await type("steer left");
+    await user.click(sendButton());
+    await waitFor(() => expect(seen).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("said")).toHaveTextContent("May already be sent. Check the chat before you send again."),
+    );
+    expect(field()).toHaveValue("steer left");
+    expect(loadDraft(undefined, "c1")).toBe("steer left");
+    expect(onReload).toHaveBeenCalled();
+    expect(onSent).not.toHaveBeenCalled();
+    // The id is dropped: a send after the person has checked is a new intent.
+    await user.click(sendButton());
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]!.requestId).not.toBe(seen[0]!.requestId);
+  });
+
   it("a machine too old for the route says to update it and keeps the draft", async () => {
     server.use(http.post(/\/api\/pane\/[^/]+\/send$/, () => HttpResponse.json({ error: "not found" }, { status: 404 })));
     const { onReload } = draw();
@@ -223,6 +242,16 @@ describe("stop", () => {
     const { onReload } = draw({ status: "working" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Stop the running turn" }));
     await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent(/nothing was stopped/));
+    expect(onReload).toHaveBeenCalled();
+  });
+});
+
+describe("stop, maybe applied", () => {
+  it("reads the pane and says the stop may already be applied", async () => {
+    stub("abort", () => HttpResponse.json({ ok: false, outcome: "maybe-applied" }));
+    const { onReload } = draw({ status: "working" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Stop the running turn" }));
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("The stop may already be applied. Check the chat."));
     expect(onReload).toHaveBeenCalled();
   });
 });

@@ -5,7 +5,17 @@ import { apiError, type ErrorCode } from "./error-codes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { MuxAdapter, MuxStarterOutcome, MuxStarters } from "./mux/types.ts";
 import type { CreatedPane, CreateResponse, LauncherItem } from "./types.ts";
-import { isRequestId, memoryReceipts, ReceiptFileStore, type ReceiptSurface } from "./worktree-receipts.ts";
+import {
+  DURABLE_RECEIPT_LIMITS,
+  digestDiffers,
+  isRequestId,
+  memoryReceipts,
+  payloadDigest,
+  ReceiptFileStore,
+  type ReceiptRetention,
+  type ReceiptSurface,
+  withDigest,
+} from "./worktree-receipts.ts";
 
 // ── Starters as launcher rows (ADR 0102) ─────────────────────────────────────────────────────────
 //
@@ -24,6 +34,10 @@ import { isRequestId, memoryReceipts, ReceiptFileStore, type ReceiptSurface } fr
 // reply was lost, or the program did not answer) is NOT answered from the receipt: it runs again with
 // the same id, and the program replays it (WIRE.md section 7.6). So "Try again" can never double-start.
 //
+// ONE REQUEST ID, ONE STARTER. The receipt keeps a digest of the starter id. The same request id for
+// another starter is refused (409, the reason `request-id-reused`) and starts nothing. Receipts are
+// kept a week, the newest thousand, and an unfinished one at least a day.
+//
 // This file is the whole of the bridge's starter path. A launcher row, a harness or a shell never
 // comes through it, and `launch()` in server.ts hands over here on one test of the body.
 
@@ -36,8 +50,22 @@ export interface StarterReceipt {
   /** Epoch ms of the start. */
   at: number;
   starterId: string;
+  /** {@link starterDigest} of the starter id, so another starter under the same request id is refused. */
+  digest: string;
   pane: CreatedPane | null;
 }
+
+/** What one start asks for, as a digest. */
+export function starterDigest(starterId: string): string {
+  return payloadDigest(["starter", starterId]);
+}
+
+/** A week, the newest thousand, and an unfinished receipt kept for at least a day (ADR 0102). */
+export const STARTER_RETENTION: ReceiptRetention<StarterReceipt> = {
+  ...DURABLE_RECEIPT_LIMITS,
+  atOf: (receipt) => receipt.at,
+  pending: (receipt) => receipt.pane === null,
+};
 
 /** What the starter path needs of its store. */
 export type StarterReceiptSurface = ReceiptSurface<StarterReceipt, CreateResponse>;
@@ -59,19 +87,20 @@ function coercePane(raw: JsonValue | undefined): CreatedPane | null {
 export function coerceStarterReceipt(raw: JsonValue): StarterReceipt | null {
   const r = asRecord(raw);
   if (r === null) return null;
-  const { requestId, at, starterId, pane } = r;
+  const { requestId, at, starterId, digest, pane } = r;
   if (!isRequestId(requestId)) return null;
   if (typeof at !== "number" || !Number.isFinite(at)) return null;
   if (typeof starterId !== "string") return null;
-  if (pane === null) return { requestId, at, starterId, pane: null };
+  if (typeof digest !== "string" || !/^[0-9a-f]{64}$/u.test(digest)) return null;
+  if (pane === null) return { requestId, at, starterId, digest, pane: null };
   const made = coercePane(pane);
-  return made === null ? null : { requestId, at, starterId, pane: made };
+  return made === null ? null : { requestId, at, starterId, digest, pane: made };
 }
 
 /** The file-backed store `bridge/index.ts` builds once per bridge. */
 export class StarterReceiptStore extends ReceiptFileStore<StarterReceipt, CreateResponse> {
-  constructor(stateDir: string, warn: (line: string) => void = (line) => console.warn(line)) {
-    super(stateDir, join(stateDir, STARTER_RECEIPTS_FILE), coerceStarterReceipt, warn, "starter");
+  constructor(stateDir: string, warn: (line: string) => void = (line) => console.warn(line), now: () => number = Date.now) {
+    super(stateDir, join(stateDir, STARTER_RECEIPTS_FILE), coerceStarterReceipt, warn, "starter", STARTER_RETENTION, now);
   }
 }
 
@@ -135,12 +164,20 @@ function refuse(job: StarterLaunch, code: ErrorCode, status: number, detail?: Re
   return job.json({ ok: false, ...apiError(code, detail) }, status);
 }
 
-/** The answer an earlier request with this id gave, or the one it is still working on; `null` for a new id. SYNCHRONOUS. */
-function earlierStart(receipts: StarterReceiptSurface, requestId: string): Promise<CreateResponse> | null {
+/** The refusal for a request id that already named another starter. */
+const STARTER_ID_REUSED = "request-id-reused: this request id already started another starter";
+
+/**
+ * The answer an earlier request with this id gave, or the one it is still working on; `null` for a
+ * new id; `"reused"` when that earlier request named another starter. SYNCHRONOUS.
+ */
+function earlierStart(receipts: StarterReceiptSurface, requestId: string, digest: string): Promise<CreateResponse> | "reused" | null {
   const stored = receipts.get(requestId);
+  if (stored !== undefined && stored.digest !== digest) return "reused";
   if (stored?.pane) return Promise.resolve({ ok: true, replayed: true, pane: stored.pane });
   const running = receipts.inflight(requestId);
   if (running === undefined) return null;
+  if (digestDiffers(running, digest)) return "reused";
   return running.then((answer) => (answer.ok ? { ...answer, replayed: true } : answer));
 }
 
@@ -159,8 +196,11 @@ export async function launchStarter(fields: JsonObject, job: StarterLaunch): Pro
   if (typeof starterId !== "string" || starterId === "") return job.text("bad body", 400);
   if (!isRequestId(fields.requestId)) return job.text("bad requestId", 400);
   const requestId = fields.requestId;
+  const digest = starterDigest(starterId);
+  const reused = (): Response => refuse(job, "workspace.create_failed", 409, { reason: STARTER_ID_REUSED });
 
-  const replay = earlierStart(job.receipts, requestId);
+  const replay = earlierStart(job.receipts, requestId, digest);
+  if (replay === "reused") return reused();
   if (replay !== null) return job.json(await replay);
 
   const { mux } = job;
@@ -172,17 +212,18 @@ export async function launchStarter(fields: JsonObject, job: StarterLaunch): Pro
 
   // Checked again with no await between it and `track`, so two requests with one id that both got
   // past the check above cannot both start.
-  const again = earlierStart(job.receipts, requestId);
+  const again = earlierStart(job.receipts, requestId, digest);
+  if (again === "reused") return reused();
   if (again !== null) return job.json(await again);
 
   const start = mux.startStarter.bind(mux);
   const work = (async (): Promise<StarterAnswer> => {
     // The receipt first (ADR 0102): it exists before the start leaves for the program.
-    await job.receipts.record({ requestId, at: Date.now(), starterId, pane: null });
+    await job.receipts.record({ requestId, at: Date.now(), starterId, digest, pane: null });
     const outcome = await start(starterId, requestId);
     return answerFor(job, starterId, requestId, outcome);
   })();
-  const settled = work.then((done) => done.answer);
+  const settled = withDigest(work.then((done) => done.answer), digest);
   job.receipts.track(requestId, settled);
   const done = await work;
   return job.json(done.answer, done.status);
@@ -209,7 +250,7 @@ async function answerFor(job: StarterLaunch, starterId: string, requestId: strin
   switch (outcome.kind) {
     case "started": {
       const pane = await paneFor(job.mux, outcome.paneId);
-      await job.receipts.record({ requestId, at: Date.now(), starterId, pane });
+      await job.receipts.record({ requestId, at: Date.now(), starterId, digest: starterDigest(starterId), pane });
       return { answer: outcome.replayed ? { ok: true, pane, replayed: true } : { ok: true, pane }, status: 200 };
     }
     // The program ran it and said no. Nothing was stored for the id, so the same id may run again.

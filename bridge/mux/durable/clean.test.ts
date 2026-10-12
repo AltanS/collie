@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { blockRule, byteLength, CAPS, cleanText, isWireId, lineRule } from "./clean.ts";
+import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule } from "./clean.ts";
 
 describe("clean: controls, direction marks and caps (WIRE.md section 6)", () => {
   test("clean removes C0 controls, DEL and C1 controls from a one-line field, newline and tab included", () => {
@@ -16,6 +16,22 @@ describe("clean: controls, direction marks and caps (WIRE.md section 6)", () => 
     expect(cleanText(`ab${marks}cd`, lineRule(64))).toBe("abcd");
     // The neighbours of the ranges are not direction marks.
     expect(cleanText("\u2029\u202f⁥\u206a", lineRule(64))).toBe("\u2029\u202f⁥\u206a");
+  });
+
+  test("clean removes the zero-width characters and the tag characters", () => {
+    const hidden = "\u200b\u200c\u200d\u2060\ufeff";
+    expect(cleanText(`ru${hidden}n`, lineRule(64))).toBe("run");
+    // A whole sentence in tag characters reads as nothing.
+    const tags = [..."rm -rf"].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join("");
+    expect(cleanText(`ok${String.fromCodePoint(0xe0001)}${tags}${String.fromCodePoint(0xe007f)}`, blockRule(64))).toBe("ok");
+    // The neighbours of the ranges stay.
+    expect(cleanText("\u200a\u200e\u2061\ufefe\u{e0080}\u{dffff}", lineRule(64))).toBe("\u200a\u2061\ufefe\u{e0080}\u{dffff}");
+  });
+
+  test("changedByCleaning says whether a string was cut or lost a character", () => {
+    expect(changedByCleaning("plain", lineRule(64))).toBe(false);
+    expect(changedByCleaning("a\u200bb", lineRule(64))).toBe(true);
+    expect(changedByCleaning("x".repeat(100), lineRule(10))).toBe(true);
   });
 
   test("clean replaces a lone surrogate, which is not text, with U+FFFD", () => {

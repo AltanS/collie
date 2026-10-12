@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from "@/lib/json";
 import { asJsonNumber, asJsonObject, asJsonString } from "@/lib/json";
+import type { MessageKey } from "@/lib/i18n";
 import type { Ask, AskOption, AskTool } from "@/lib/types";
 
 // THE ASK CARD'S RULES (ADR 0100), apart from the component so each one is a table test.
@@ -21,9 +22,55 @@ const ANSWERABLE_KIND = "permission";
 
 const EFFECTS: readonly AskOption["effect"][] = ["allow", "allow-always", "deny", "cancel"];
 
-/** The options a card draws: the first six, in the program's order. */
+/** How many asks a pane draws as cards before the "N more" row. The bridge lists every open ask (up to 50). */
+export const ASKS_SHOWN = 5;
+
+export interface ShownAsks {
+  shown: readonly Ask[];
+  hidden: number;
+}
+
+/**
+ * The asks to draw and how many stay folded. The first {@link ASKS_SHOWN}, oldest first (the list's own
+ * order), until the person opens the rest; `hidden` is zero once `expanded` or when the list fits.
+ */
+export function shownAsks(list: readonly Ask[], expanded: boolean): ShownAsks {
+  if (expanded || list.length <= ASKS_SHOWN) return { shown: list, hidden: 0 };
+  return { shown: list.slice(0, ASKS_SHOWN), hidden: list.length - ASKS_SHOWN };
+}
+
+/**
+ * Whether "Always allow" may be offered on this ask. It needs a scope to state on the second tap, which
+ * is the tool's name, and it is withheld when the bridge cut or changed the program's words: a person
+ * must not grant a standing permission on text they were not shown whole.
+ */
+export function alwaysAllowOffered(ask: Ask): boolean {
+  return ask.cleaned !== true && ask.tool !== undefined && ask.tool.name.trim() !== "";
+}
+
+/** The options a card draws: the first six, in the program's order, without an "Always allow" the card cannot scope. */
 export function visibleOptions(ask: Ask): AskOption[] {
-  return ask.options.slice(0, MAX_ASK_OPTIONS);
+  const offered = alwaysAllowOffered(ask);
+  return ask.options.filter((o) => offered || o.effect !== "allow-always").slice(0, MAX_ASK_OPTIONS);
+}
+
+/** Collie's own wording for an option's effect. The program's label never replaces it. */
+export function effectKey(effect: AskOption["effect"]): MessageKey {
+  switch (effect) {
+    case "allow":
+      return "ask.effect.allow";
+    case "allow-always":
+      return "ask.effect.allowAlways";
+    case "deny":
+      return "ask.effect.deny";
+    case "cancel":
+      return "ask.effect.cancel";
+  }
+}
+
+/** The program's own label as the quiet second line of a button, or `undefined` when it only repeats the main wording. */
+export function secondaryLabel(label: string, main: string): string | undefined {
+  return label.trim().toLowerCase() === main.trim().toLowerCase() ? undefined : label;
 }
 
 /** Whether a person can answer this ask from here: a kind this version knows, and at least one option. */
@@ -51,9 +98,11 @@ export function optionTone(effect: AskOption["effect"]): "selected" | "default" 
  *  - `late`: someone else answered first. One line, no buttons, gone on the next poll.
  *  - `stale`: the ask changed under the phone. The card shows its new form and asks for a fresh tap.
  *  - `unknown`: the answer may or may not have arrived. "Try again" sends the SAME request id.
+ *  - `maybe`: an earlier try had an unknown outcome and the retry found the ask closed or changed, so
+ *    the first try may have landed. No buttons; the person checks the chat.
  *  - `refused`: nothing ran and the same request would be refused again. The detail is shown.
  */
-export type AskPhase = "idle" | "sending" | "taken" | "late" | "stale" | "unknown" | "refused";
+export type AskPhase = "idle" | "sending" | "taken" | "late" | "stale" | "unknown" | "maybe" | "refused";
 
 export interface AskCardState {
   phase: AskPhase;
@@ -67,10 +116,12 @@ export interface AskCardState {
   detail: string;
   /** For `stale` only: this machine's Collie is too old to take answers, so a fresh tap cannot help. */
   older: boolean;
+  /** The option whose first tap is in: "Always allow" posts only on a second tap. Any other tap clears it. */
+  armed: string | null;
 }
 
 export function freshCard(ask: Ask): AskCardState {
-  return { phase: "idle", ask, optionId: null, requestId: null, detail: "", older: false };
+  return { phase: "idle", ask, optionId: null, requestId: null, detail: "", older: false, armed: null };
 }
 
 /** What the answer route said, as the phone reads it. `older` is the old-peer 404, mapped to `stale`. */
@@ -79,11 +130,28 @@ export type AnswerResult =
   | { outcome: "too-late"; replayed?: true }
   | { outcome: "stale"; ask?: Ask; older?: true }
   | { outcome: "unknown" }
+  | { outcome: "maybe-applied" }
   | { outcome: "refused"; detail: string };
+
+export interface Pressed {
+  state: AskCardState;
+  post: boolean;
+}
+
+/**
+ * A press on an option, before anything is sent. "Always allow" needs two: the first arms it (the card
+ * then names the tool it would cover) and posts nothing; the second, on the same option, posts. A press
+ * on any other option disarms it. Every other effect posts at once.
+ */
+export function pressed(state: AskCardState, option: AskOption): Pressed {
+  if (option.effect !== "allow-always") return { state: { ...state, armed: null }, post: true };
+  if (state.armed === option.id) return { state: { ...state, armed: null }, post: true };
+  return { state: { ...state, armed: option.id }, post: false };
+}
 
 /** A tap: the buttons go off until the answer is in. `requestId` is the one this tap carries. */
 export function tapped(state: AskCardState, optionId: string, requestId: string): AskCardState {
-  return { ...state, phase: "sending", optionId, requestId, detail: "", older: false };
+  return { ...state, phase: "sending", optionId, requestId, detail: "", older: false, armed: null };
 }
 
 /** The route answered. */
@@ -102,6 +170,9 @@ export function answered(state: AskCardState, result: AnswerResult): AskCardStat
     case "unknown":
       // Keep the request id and the choice: "Try again" is the same intent, and the bridge replays it.
       return { ...state, phase: "unknown", detail: "", older: false };
+    case "maybe-applied":
+      // The retry found the ask closed or changed. The first try may have landed, so no button stays live.
+      return { ...state, phase: "maybe", detail: "", older: false };
     case "refused":
       return { ...state, phase: "refused", detail: result.detail, older: false };
   }
@@ -200,5 +271,6 @@ export function parseAsk(v: JsonValue | undefined): Ask | undefined {
   if (reason !== undefined) ask.reason = reason;
   const tool = toolOf(o.tool);
   if (tool !== undefined) ask.tool = tool;
+  if (o.cleaned === true) ask.cleaned = true;
   return ask;
 }

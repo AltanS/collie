@@ -1,18 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alwaysAllowOffered,
   answerable,
   answered,
+  ASKS_SHOWN,
   asksAt,
   blockOf,
+  effectKey,
   freshCard,
   MAX_ASK_OPTIONS,
   optionTone,
   parseAsk,
   polled,
+  pressed,
+  secondaryLabel,
+  shownAsks,
   tapped,
   visibleOptions,
 } from "./ask";
+import { t } from "./i18n";
 import type { Ask, AskOption } from "./types";
 
 // The ask card's rules (ADR 0100), as tables. Nothing here renders anything or sends anything.
@@ -45,6 +52,86 @@ describe("which options show", () => {
     expect(answerable(ask())).toBe(true);
     expect(answerable(ask({ kind: "form" }))).toBe(false);
     expect(answerable(ask({ options: [] }))).toBe(false);
+  });
+});
+
+describe("which asks show as cards", () => {
+  const list = (n: number) => Array.from({ length: n }, (_, i) => ask({ id: `a${i}` }));
+
+  it.each([
+    [0, false, 0, 0],
+    [1, false, 1, 0],
+    [5, false, 5, 0],
+    [6, false, 5, 1],
+    [50, false, 5, 45],
+    [6, true, 6, 0],
+    [50, true, 50, 0],
+  ])("%i open, expanded %s: draws %i, folds %i", (n, expanded, drawn, hidden) => {
+    const got = shownAsks(list(n), expanded);
+    expect(got.shown).toHaveLength(drawn);
+    expect(got.hidden).toBe(hidden);
+  });
+
+  it("keeps the first five, oldest first", () => {
+    expect(ASKS_SHOWN).toBe(5);
+    expect(shownAsks(list(8), false).shown.map((a) => a.id)).toEqual(["a0", "a1", "a2", "a3", "a4"]);
+  });
+});
+
+describe("Always allow needs a scope it can state", () => {
+  const always = option("always", "allow-always");
+  const withTool = { name: "bash", summary: "ls" };
+
+  it.each([
+    ["a tool with a name", { tool: withTool }, true],
+    ["no tool", {}, false],
+    ["a tool with a blank name", { tool: { name: "  ", summary: "ls" } }, false],
+    ["text the bridge cut or changed", { tool: withTool, cleaned: true as const }, false],
+  ])("%s: offered %s", (_name, over, offered) => {
+    const a = ask({ ...over, options: [option("yes"), always, option("no", "deny")] });
+    expect(alwaysAllowOffered(a)).toBe(offered);
+    expect(visibleOptions(a).map((o) => o.id)).toEqual(offered ? ["yes", "always", "no"] : ["yes", "no"]);
+  });
+
+  it("filters before it caps at six", () => {
+    const a = ask({ options: [always, ...Array.from({ length: 7 }, (_, i) => option(`o${i}`))] });
+    expect(visibleOptions(a).map((o) => o.id)).toEqual(["o0", "o1", "o2", "o3", "o4", "o5"]);
+  });
+
+  it("arms on the first press and posts on the second, on the same option", () => {
+    const start = freshCard(ask({ tool: withTool }));
+    const first = pressed(start, always);
+    expect(first).toMatchObject({ post: false, state: { armed: "always" } });
+    const second = pressed(first.state, always);
+    expect(second).toMatchObject({ post: true, state: { armed: null } });
+  });
+
+  it("a press on another option disarms it, and an ordinary option posts at once", () => {
+    const armed = pressed(freshCard(ask({ tool: withTool })), always).state;
+    expect(pressed(armed, option("no", "deny"))).toMatchObject({ post: true, state: { armed: null } });
+    expect(pressed(freshCard(ask()), option("yes"))).toMatchObject({ post: true, state: { armed: null } });
+  });
+
+  it("a newer revision from the poll disarms it", () => {
+    const armed = pressed(freshCard(ask({ tool: withTool })), always).state;
+    expect(polled(armed, ask({ revision: 2, tool: withTool })).armed).toBeNull();
+  });
+});
+
+describe("the words on a button come from the effect", () => {
+  it.each([
+    ["allow", "Allow"],
+    ["allow-always", "Always allow"],
+    ["deny", "Deny"],
+    ["cancel", "Cancel"],
+  ] as const)("%s says %s", (effect, words) => {
+    expect(t(effectKey(effect))).toBe(words);
+  });
+
+  it("the program's label is the second line, unless it only repeats the main words", () => {
+    expect(secondaryLabel("Run it", "Allow")).toBe("Run it");
+    expect(secondaryLabel("allow", "Allow")).toBeUndefined();
+    expect(secondaryLabel(" ALWAYS ALLOW ", "Always allow")).toBeUndefined();
   });
 });
 
@@ -86,6 +173,12 @@ describe("the card's state", () => {
     const s = answered(tapped(first, "yes", "r"), { outcome: "stale", older: true });
     expect(s.ask).toBe(first.ask);
     expect(s.older).toBe(true);
+  });
+
+  it("maybe-applied closes every button and leaves the card as it was", () => {
+    const s = answered(tapped(first, "yes", "req-4"), { outcome: "maybe-applied" });
+    expect(s.phase).toBe("maybe");
+    expect(s.ask).toBe(first.ask);
   });
 
   it("unknown keeps the SAME request id and the choice, for Try again", () => {
@@ -170,6 +263,13 @@ describe("an ask out of a response body", () => {
     ["an option list that is not a list", { ...good, options: "yes" }],
   ])("drops the whole ask for %s", (_name, body) => {
     expect(parseAsk(body)).toBeUndefined();
+  });
+
+  it("reads cleaned only when it is exactly true", () => {
+    expect(parseAsk({ ...good, cleaned: true })?.cleaned).toBe(true);
+    expect(parseAsk({ ...good, cleaned: false })).not.toHaveProperty("cleaned");
+    expect(parseAsk({ ...good, cleaned: "yes" })).not.toHaveProperty("cleaned");
+    expect(parseAsk(good)).not.toHaveProperty("cleaned");
   });
 
   it("drops a tool block it cannot read, and keeps the ask", () => {

@@ -2319,7 +2319,6 @@ export function AgentChat({
                       ? undefined
                       : {
                           list: agent.asks,
-                          more: agent.moreAsks,
                           card: {
                             paneId,
                             scope,

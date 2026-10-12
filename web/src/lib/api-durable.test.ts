@@ -41,6 +41,17 @@ describe("answerAsk", () => {
     await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "unknown" });
   });
 
+  it("reads maybe-applied at 200, and a reused request id as a refusal with the bridge's words", async () => {
+    server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ ok: false, outcome: "maybe-applied" })));
+    await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "maybe-applied" });
+    server.use(
+      http.post(/\/api\/pane\/c1\/answer$/, () =>
+        HttpResponse.json({ ok: false, outcome: "refused", reason: "request-id-reused", detail: "That request id was used for another answer." }, { status: 409 }),
+      ),
+    );
+    await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "refused", detail: "That request id was used for another answer." });
+  });
+
   it("throws on a failure that is not one of its answers", async () => {
     server.use(http.post(/\/api\/pane\/c1\/answer$/, () => new HttpResponse("boom", { status: 500 })));
     await expect(answerAsk("c1", ASK)).rejects.toThrow();
@@ -104,6 +115,23 @@ describe("sendToPane and abortPane", () => {
     });
     await expect(abortPane("c1", { requestId: ID, target: null })).resolves.toEqual({ outcome: "unknown" });
     await expect(abortPane("c2", { requestId: ID, target: null })).resolves.toEqual({ outcome: "stale", askIds: [], older: true });
+  });
+
+  it("reads maybe-applied on a send and an abort, and a reused request id as a refusal", async () => {
+    server.use(
+      http.post(/\/api\/pane\/c1\/send$/, () => HttpResponse.json({ ok: false, outcome: "maybe-applied" })),
+      http.post(/\/api\/pane\/c1\/abort$/, () => HttpResponse.json({ ok: false, outcome: "maybe-applied" })),
+      http.post(/\/api\/pane\/c2\/send$/, () =>
+        HttpResponse.json({ ok: false, outcome: "refused", reason: "request-id-reused", detail: "Used for other text." }, { status: 409 }),
+      ),
+    );
+    await expect(sendToPane("c1", { requestId: ID, text: "x", steer: false, target: null })).resolves.toEqual({ outcome: "maybe-applied" });
+    await expect(abortPane("c1", { requestId: ID, target: null })).resolves.toEqual({ outcome: "maybe-applied" });
+    await expect(sendToPane("c2", { requestId: ID, text: "x", steer: false, target: null })).resolves.toEqual({
+      outcome: "refused",
+      reason: "request-id-reused",
+      detail: "Used for other text.",
+    });
   });
 
   it("routes to the machine the scope names", async () => {

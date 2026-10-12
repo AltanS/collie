@@ -17,6 +17,7 @@ import { DEFAULT_SWITCHES } from "./operator-launchers.ts";
 import { launch, launchersRoute, type LaunchDeps } from "./server.ts";
 import {
   STARTER_RECEIPTS_FILE,
+  starterDigest,
   StarterReceiptStore,
   coerceStarterReceipt,
   memoryStarterReceipts,
@@ -366,17 +367,53 @@ describe("durable: the starter receipt file", () => {
 
   test("an unfinished receipt survives a restart as unfinished, so it still runs again with the same id", async () => {
     const store = new StarterReceiptStore(dir, () => {});
-    await store.record({ requestId: ID, at: 1, starterId: STARTER, pane: null });
+    const at = Date.now();
+    await store.record({ requestId: ID, at, starterId: STARTER, digest: starterDigest(STARTER), pane: null });
     const reborn = new StarterReceiptStore(dir, () => {});
     await reborn.load();
-    expect(reborn.get(ID)).toEqual({ requestId: ID, at: 1, starterId: STARTER, pane: null });
+    expect(reborn.get(ID)).toEqual({ requestId: ID, at, starterId: STARTER, digest: starterDigest(STARTER), pane: null });
     const rigged = await rig(reborn);
     expect((await run(rigged, { starter: STARTER, requestId: ID })).body?.ok).toBe(true);
     expect(rigged.program.starts).toHaveLength(1);
   });
 
+  test("the same request id for another starter is refused with 409 and starts nothing", async () => {
+    const store = new StarterReceiptStore(dir, () => {});
+    const rigged = await rig(store);
+    rigged.program.snapshot.starters.push({ id: "review", label: "Review" });
+    rigged.program.touch();
+    expect((await run(rigged, { starter: STARTER, requestId: ID })).body?.ok).toBe(true);
+    const reused = await run(rigged, { starter: "review", requestId: ID });
+    expect(reused.status).toBe(409);
+    expect(JSON.stringify(reused.body)).toContain("request-id-reused");
+    expect(rigged.program.starts).toHaveLength(1);
+  });
+
+  test("receipts older than a week go, an unfinished one younger than a day stays past the count cap", async () => {
+    let now = 10 * 24 * 60 * 60 * 1000;
+    const store = new StarterReceiptStore(dir, () => {}, () => now);
+    const digest = starterDigest(STARTER);
+    const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    await store.record({ requestId: id(0), at: now - 8 * 24 * 60 * 60 * 1000, starterId: STARTER, digest, pane: { paneId: "p", workspaceId: "w", workspaceLabel: "w", tabId: "t", cwd: "" } });
+    expect(store.get(id(0))).toBeUndefined();
+    // The oldest receipt is unfinished and an hour old: the thousand newer ones do not push it out.
+    await store.record({ requestId: id(1), at: now - 60 * 60 * 1000, starterId: STARTER, digest, pane: null });
+    for (let n = 2; n <= 1001; n += 1) {
+      now += 1;
+      await store.record({ requestId: id(n), at: now, starterId: STARTER, digest, pane: { paneId: "p", workspaceId: "w", workspaceLabel: "w", tabId: "t", cwd: "" } });
+    }
+    expect(store.get(id(1))).toBeDefined();
+    expect(store.get(id(2))).toBeUndefined();
+    expect(store.get(id(1001))).toBeDefined();
+    const reborn = new StarterReceiptStore(dir, () => {}, () => now);
+    await reborn.load();
+    expect(reborn.get(id(1))).toBeDefined();
+    expect(reborn.get(id(3))).toBeDefined();
+  });
+
   test("an entry that is not a receipt is dropped", () => {
     expect(coerceStarterReceipt({ requestId: "x", at: 1 })).toBeNull();
+    expect(coerceStarterReceipt({ requestId: ID, at: 1, starterId: STARTER, pane: null })).toBeNull();
     expect(coerceStarterReceipt({ requestId: ID, at: 1, starterId: STARTER, pane: { paneId: 1 } })).toBeNull();
     expect(coerceStarterReceipt([])).toBeNull();
   });

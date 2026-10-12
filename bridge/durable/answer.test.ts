@@ -12,11 +12,13 @@ import { muxGone, muxOk, muxRefused, muxUnreachable, type MuxAdapter, type MuxAn
 import type { AnswerRequest, AnswerResponse, Ask } from "../types.ts";
 import {
   ANSWER_RECEIPTS_FILE,
+  answerDigest,
   AnswerReceiptStore,
   answerPane,
   memoryAnswerReceipts,
   NO_ANSWERS,
   type AnswerDeps,
+  type AnswerReceipt,
   type AnswerReceiptSurface,
   type AnswerReply,
 } from "./answer.ts";
@@ -74,7 +76,7 @@ function rig(adapter: Pick<MuxAdapter, "answerAsk">, receipts: AnswerReceiptSurf
     device: "pixel",
     session: "default",
     settled: () => (settled += 1),
-    now: () => 1_000,
+    now: () => Date.now(),
   };
   const call = async (paneId: string, raw: JsonValue | undefined = body()): Promise<AnswerReply> => {
     const reply = await answerPane(paneId, raw, deps);
@@ -133,13 +135,14 @@ describe("answer: one shape for every outcome", () => {
   test("unknown: 504, and the receipt stays open", async () => {
     const r = rig(new ScriptedAdapter([muxOk({ kind: "unknown", detail: "no answer within 5000ms" })]));
     expect(await r.call("conv-02")).toEqual({ status: 504, body: { ok: false, outcome: "unknown", detail: "no answer within 5000ms" } });
-    expect(r.receipts.get(ID)?.state).toBe("pending");
+    expect(r.receipts.get(ID)?.state).toBe("unknown");
   });
 
   test("unknown: a program that did not answer at all is unknown too, and the receipt stays open", async () => {
     const r = rig(new ScriptedAdapter([muxUnreachable("starting")]));
     expect(await r.call("conv-02")).toEqual({ status: 504, body: { ok: false, outcome: "unknown", detail: "starting" } });
-    expect(r.receipts.get(ID)?.state).toBe("pending");
+    // Nothing reached the program, and the receipt says so: a retry is a plain first try.
+    expect(r.receipts.get(ID)?.state).toBe("unsent");
   });
 
   test("refused: 409 with the refusal's word, kept on the receipt", async () => {
@@ -209,7 +212,9 @@ describe("answer: the receipt comes first", () => {
 
     const second = new AnswerReceiptStore(dir);
     await second.load();
-    expect(second.get(ID)?.state).toBe("pending");
+    expect(second.get(ID)?.state).toBe("unknown");
+    expect(readFileSync(file, "utf8")).not.toContain(".tmp");
+    expect(existsSync(`${file}.tmp`)).toBe(false);
   });
 
   test("on disk: a settled receipt replays after a bridge restart, and nothing is sent", async () => {
@@ -277,12 +282,118 @@ describe("answer: replay", () => {
     const r = rig(adapter);
     await r.call("conv-02");
     for (const other of [body({ optionId: "deny" }), body({ askId: "ask-2" }), body({ revision: 2 })]) {
-      expect((await r.call("conv-02", other)).body).toMatchObject({ ok: false, outcome: "refused", reason: "refused" });
+      const reply = await r.call("conv-02", other);
+      expect(reply.status).toBe(409);
+      expect(reply.body).toMatchObject({ ok: false, outcome: "refused", reason: "request-id-reused" });
     }
-    expect((await r.call("conv-03")).body).toMatchObject({ ok: false, outcome: "refused" });
+    expect((await r.call("conv-03")).body).toMatchObject({ ok: false, outcome: "refused", reason: "request-id-reused" });
+    expect(adapter.calls).toHaveLength(1);
+  });
+
+  test("a reused id is refused even while the first request is still in flight, and only one POST leaves", async () => {
+    const adapter = new ScriptedAdapter([muxOk({ kind: "taken", replayed: false })]);
+    let release = () => {};
+    adapter.gate = new Promise((resolve) => (release = resolve));
+    const r = rig(adapter);
+    const first = r.call("conv-02");
+    const same = r.call("conv-02");
+    const other = await r.call("conv-02", body({ optionId: "deny" }));
+    expect(other.body).toMatchObject({ outcome: "refused", reason: "request-id-reused" });
+    release();
+    await Promise.all([first, same]);
     expect(adapter.calls).toHaveLength(1);
   });
 });
+
+describe("answer: after an unknown outcome", () => {
+  test("a retry that finds the ask closed is maybe-applied (200), and replays as such", async () => {
+    const adapter = new ScriptedAdapter([muxOk({ kind: "unknown", detail: "connection reset" }), muxOk({ kind: "too-late", replayed: false })]);
+    const r = rig(adapter);
+    expect((await r.call("conv-02")).body.outcome).toBe("unknown");
+    expect(await r.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "maybe-applied" } });
+    expect(r.receipts.get(ID)?.state).toBe("maybe-applied");
+    expect(await r.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "maybe-applied", replayed: true } });
+    expect(adapter.calls).toHaveLength(2);
+  });
+
+  test("a retry that finds the ask changed, or the pane gone, is maybe-applied too", async () => {
+    const stale = rig(new ScriptedAdapter([muxOk({ kind: "unknown", detail: "reset" }), muxOk({ kind: "stale", ask: STALE_ASK })]));
+    await stale.call("conv-02");
+    expect(await stale.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "maybe-applied" } });
+    const gone = rig(new ScriptedAdapter([muxOk({ kind: "unknown", detail: "reset" }), muxGone("no such pane")]));
+    await gone.call("conv-02");
+    expect((await gone.call("conv-02")).body).toEqual({ ok: false, outcome: "maybe-applied" });
+  });
+
+  test("a program that replays its own too-late for this id is believed: the first try did not land", async () => {
+    const r = rig(new ScriptedAdapter([muxOk({ kind: "unknown", detail: "reset" }), muxOk({ kind: "too-late", replayed: true })]));
+    await r.call("conv-02");
+    expect((await r.call("conv-02")).body).toEqual({ ok: false, outcome: "too-late", replayed: true });
+  });
+
+  test("after an unsent try, a too-late retry is plain too-late: nothing had reached the program", async () => {
+    const r = rig(new ScriptedAdapter([muxUnreachable("connection refused"), muxOk({ kind: "too-late", replayed: false })]));
+    await r.call("conv-02");
+    expect(await r.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "too-late" } });
+  });
+
+  test("a pending receipt left by a bridge that stopped mid-flight reads like unknown", async () => {
+    const dir = stateDir();
+    const first = new AnswerReceiptStore(dir);
+    await first.load();
+    const adapter = new ScriptedAdapter([muxOk({ kind: "taken", replayed: false })]);
+    let release = () => {};
+    adapter.gate = new Promise((resolve) => (release = resolve));
+    void rig(adapter, first).call("conv-02");
+    await Bun.sleep(5);
+    // The bridge stops here: the receipt on disk says the answer was on its way.
+    const reborn = new AnswerReceiptStore(dir);
+    await reborn.load();
+    expect(reborn.get(ID)?.state).toBe("pending");
+    const after = rig(new ScriptedAdapter([muxOk({ kind: "too-late", replayed: false })]), reborn);
+    expect(await after.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "maybe-applied" } });
+    release();
+  });
+});
+
+describe("answer: the receipt store keeps a week, the newest thousand, and every young pending one", () => {
+  test("pruned by age and count, never a pending receipt younger than a day", async () => {
+    const dir = stateDir();
+    let now = 30 * 24 * 60 * 60 * 1000;
+    const store = new AnswerReceiptStore(dir, () => {}, () => now);
+    const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    const receipt = (n: number, at: number, state: AnswerReceipt["state"]): AnswerReceipt => ({
+      requestId: uuid(n),
+      at,
+      paneId: "p",
+      askId: "a",
+      revision: 1,
+      optionId: "o",
+      digest: answerDigest("p", { askId: "a", revision: 1, optionId: "o" }),
+      state,
+    });
+    await store.record(receipt(0, now - 8 * DAY, "taken"));
+    expect(store.get(uuid(0))).toBeUndefined();
+    // Two old open ones: a day and a half old goes with the count, an hour old stays.
+    await store.record(receipt(1, now - 36 * HOUR, "unknown"));
+    await store.record(receipt(2, now - HOUR, "pending"));
+    for (let n = 3; n < 1003; n += 1) {
+      now += 1;
+      await store.record(receipt(n, now, "taken"));
+    }
+    expect(store.get(uuid(1))).toBeUndefined();
+    expect(store.get(uuid(2))?.state).toBe("pending");
+    expect(store.get(uuid(3))).toBeUndefined();
+    expect(store.get(uuid(1002))).toBeDefined();
+    const reborn = new AnswerReceiptStore(dir, () => {}, () => now);
+    await reborn.load();
+    expect(reborn.get(uuid(2))?.state).toBe("pending");
+    expect(reborn.get(uuid(4))).toBeDefined();
+  });
+});
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 
 // ── Through the real adapter, over a real socket ───────────────────────────────
 

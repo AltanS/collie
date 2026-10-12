@@ -60,7 +60,11 @@ adapter in the registry, and the crew is unchanged.**
      config line.
 4. **There is no token.** A socket with mode 0600, owned by the user who runs the peer, is the
    gate. It is the same gate as the Tern socket in `$XDG_RUNTIME_DIR`. A program run by a different
-   user is out of scope.
+   user is out of scope. Because a private socket in a folder someone else can write is not
+   private, the adapter checks the whole path before each connect: no symlink, the socket's folder
+   owned by the user with mode 0700, every folder above it owned by the user or root and not open
+   for group or other writes. The path is at most 103 bytes. The hello carries
+   `service: "collie-durable"`, so a different server at the path is refused by name.
 5. **The wire is host-local, versioned by range, additive-optional, and experimental.** The hello
    message carries the lowest and highest version each side speaks, and the peer uses the highest
    both know. A new field is optional, and a reader ignores one it does not know. The wire document
@@ -70,8 +74,9 @@ adapter in the registry, and the crew is unchanged.**
    503 and the adapter reports `unreachable`. It never reports an empty census. A changed `epoch`
    resets the event cursor.
 7. **The bridge cleans every string from the socket.** Titles, item text, `cwd`, `harness` and
-   option labels pass through one function that strips the direction marks U+200E, U+200F and
-   U+061C and applies a length cap. A reply body has a byte cap. The `harness` string is checked
+   option labels pass through one function that strips controls, the direction marks, the
+   zero-width characters and the tag characters, and applies a byte cap. An ask whose title or
+   reason was changed by it is marked `cleaned`, and the phone offers no `allow-always` on it. A reply body has a byte cap. The `harness` string is checked
    against the open harness list or shown as plain text. It never picks a screen grammar.
 8. **The bridge keeps a log.** Items from the program go into an append-only log per pane in the
    state dir. A `durable` journal adapter reads that log, so Chat and History work as for any

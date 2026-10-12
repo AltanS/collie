@@ -6,13 +6,23 @@ import {
   DURABLE_SOCKET_ENV,
   DurableSocketClient,
   DurableUnreachable,
+  describeFault,
+  octal,
   resolveSocketPath,
   socketFault,
   SYSTEM_PROBE,
   type SocketFault,
   type SocketProbe,
 } from "../bridge/mux/durable/client.ts";
-import { incompatibleDetail, negotiateVersion, parseHello, SPEAKS, type DurableHello } from "../bridge/mux/durable/protocol.ts";
+import {
+  DURABLE_SERVICE,
+  incompatibleDetail,
+  negotiateVersion,
+  NOT_A_DURABLE_PROGRAM,
+  parseHello,
+  SPEAKS,
+  type DurableHello,
+} from "../bridge/mux/durable/protocol.ts";
 import type { CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
 
@@ -64,7 +74,7 @@ export async function durableFindings(deps: DurableDeps): Promise<Finding[]> {
       skipped(READY_ROW, "no answer to read", FIRST),
     ];
   }
-  const socket = ok(SOCKET_ROW, `${path} is a socket, owned by you, mode 0600`);
+  const socket = ok(SOCKET_ROW, `${path} is a socket, owned by you, mode 0600, in a folder of yours with mode 0700, no link on the way`);
 
   const asked = await askHello(path);
   if (!asked.ok) return [env, socket, asked.row, skipped(READY_ROW, "no answer to read", FIRST)];
@@ -109,10 +119,28 @@ function socketRow(path: string, fault: SocketFault): Finding {
     case "unreadable":
       return bad(SOCKET_ROW, `cannot check ${path}: ${fault.message}`, `make ${path} readable to your user`);
     case "not-a-socket":
+      return bad(SOCKET_ROW, `${path} is not a socket`, `point ${DURABLE_SOCKET_ENV} at the socket itself, not at a file`);
+    case "symlink":
       return bad(
         SOCKET_ROW,
-        `${path} is not a socket (a symlink does not count, the check does not follow it)`,
-        `point ${DURABLE_SOCKET_ENV} at the socket itself, not at a file or a link`,
+        `${fault.path} is a symlink, and the check follows no link anywhere in the path`,
+        `point ${DURABLE_SOCKET_ENV} at the real path, with no link in it`,
+      );
+    case "not-a-directory":
+      return bad(SOCKET_ROW, `${fault.path} is not a directory`, `point ${DURABLE_SOCKET_ENV} at a socket inside a folder`);
+    case "parent-wrong-owner":
+    case "parent-open-mode":
+      return bad(
+        SOCKET_ROW,
+        describeFault(fault),
+        `make the program create its socket in a folder of your own with mode 0700 (for example under $XDG_RUNTIME_DIR), or run \`chmod 700 ${fault.path}\``,
+      );
+    case "ancestor-wrong-owner":
+    case "ancestor-open-mode":
+      return bad(
+        SOCKET_ROW,
+        describeFault(fault),
+        "move the socket under folders only you or root can write to, for example $XDG_RUNTIME_DIR",
       );
     case "no-uid":
       return bad(SOCKET_ROW, "this platform cannot show who owns the socket, so it is never dialled", "run Collie on a platform with Unix user ids");
@@ -125,7 +153,7 @@ function socketRow(path: string, fault: SocketFault): Finding {
     case "open-mode":
       return bad(
         SOCKET_ROW,
-        `${path} has mode ${fault.mode.toString(8).padStart(4, "0")}, so group or others can reach it; it must be 0600`,
+        `${path} has mode ${octal(fault.mode)}, so group or others can reach it; it must be 0600`,
         `make the program create the socket with mode 0600 (or run \`chmod 600 ${path}\`)`,
       );
   }
@@ -151,6 +179,12 @@ async function askHello(path: string): Promise<Asked> {
     return refuse(`the program answered hello with status ${String(reply.status)}`, "read the program's own log");
   }
   const parsed = parseHello(reply.text);
+  if (!parsed.ok && parsed.detail === NOT_A_DURABLE_PROGRAM) {
+    return refuse(
+      `something answered on this socket, and it is ${NOT_A_DURABLE_PROGRAM}: its hello has no service "${DURABLE_SERVICE}"`,
+      `point ${DURABLE_SOCKET_ENV} at your durable program's socket`,
+    );
+  }
   if (!parsed.ok) {
     return refuse(`the program's hello is unreadable: ${parsed.detail}`, "see bridge/mux/durable/WIRE.md section 4 for the hello document");
   }

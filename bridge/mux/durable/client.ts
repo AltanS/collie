@@ -2,9 +2,12 @@
 //
 // This is the only file that opens the socket. Two rules live here and nowhere else:
 //
-//  • THE PRIVACY CHECK. Before each connect the path is checked with `lstat`: it must be a socket,
-//    owned by this process's own user, with no group or other permission bit. There is no token on
-//    this wire, so a private socket is the whole gate. A path that fails is never dialled.
+//  • THE PRIVACY CHECK. Before each connect the whole path is checked with `lstat`, from the root
+//    down: no symlink anywhere, the socket's folder this user's own with mode 0700, every folder above
+//    it this user's or root's and not writable by others (a root-owned sticky folder such as /tmp is
+//    allowed above the parent), and the socket owned by this user with no group or other bit. There
+//    is no token on this wire, so a private socket is the whole gate. A path that fails is never
+//    dialled, and the refusal names the check.
 //  • THE BUDGETS. Every call has a time budget and a reply size cap. A reply past the cap is cut off
 //    while it is still being read, so a program cannot make the bridge hold a huge body.
 //
@@ -12,20 +15,23 @@
 // another transport, and the conformance fixture dials a real socket through this one.
 
 import { lstat as lstatFile } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 
 import { byteLength } from "./clean.ts";
 
 /** The variable that names the socket. The program SHOULD read the same one. */
 export const DURABLE_SOCKET_ENV = "COLLIE_DURABLE_SOCKET";
 
-/** The `sun_path` limit of a Unix socket, in bytes. */
-export const SOCKET_PATH_MAX_BYTES = 107;
+/**
+ * The longest socket path, in bytes. Linux allows 107, macOS 103; the smaller one holds on both, so a
+ * path that works on one host works on the other.
+ */
+export const SOCKET_PATH_MAX_BYTES = 103;
 
 /** Every path starts with this. It is a fixed name, not the version. */
 const ROUTE_PREFIX = "/session/v1";
 
-/** The refusal detail for a socket that is not private. */
+/** The start of the refusal detail for a socket that is not private. The failed check follows it. */
 export const SOCKET_NOT_PRIVATE = "socket-not-private";
 
 /** The refusal detail for a reply past its size cap. */
@@ -108,6 +114,8 @@ export function resolveSocketPath(configured: string | undefined): SocketPath {
 /** The part of `lstat` the check reads. A test can supply its own. */
 export interface SocketFacts {
   isSocket(): boolean;
+  isDirectory(): boolean;
+  isSymbolicLink(): boolean;
   readonly uid: number;
   readonly mode: number;
 }
@@ -127,46 +135,157 @@ export const SYSTEM_PROBE: SocketProbe = {
 /** Group and other permission bits. */
 const GROUP_AND_OTHER = 0o077;
 
-/** Which part of the privacy check a path failed. `doctor` names it; the adapter reports one word. */
+/** Group and other write bits. */
+const GROUP_OR_OTHER_WRITE = 0o022;
+
+/** The sticky bit: in a directory, only a file's owner may remove or rename it. */
+const STICKY = 0o1000;
+
+/** The mode the socket's own directory must have: the owner only. */
+const PRIVATE_DIR_MODE = 0o700;
+
+/** The user id of root. An ancestor directory may belong to root as well as to this user. */
+const ROOT_UID = 0;
+
+/** Which part of the privacy check a path failed. `doctor` names it; the adapter reports it in one line. */
 export type SocketFault =
   | { readonly kind: "missing" }
   | { readonly kind: "unreadable"; readonly message: string }
-  | { readonly kind: "not-a-socket" }
   | { readonly kind: "no-uid" }
+  | { readonly kind: "symlink"; readonly path: string }
+  | { readonly kind: "not-a-directory"; readonly path: string }
+  | { readonly kind: "parent-wrong-owner"; readonly path: string; readonly owner: number; readonly uid: number }
+  | { readonly kind: "parent-open-mode"; readonly path: string; readonly mode: number }
+  | { readonly kind: "ancestor-wrong-owner"; readonly path: string; readonly owner: number; readonly uid: number }
+  | { readonly kind: "ancestor-open-mode"; readonly path: string; readonly mode: number }
+  | { readonly kind: "not-a-socket" }
   | { readonly kind: "wrong-owner"; readonly owner: number; readonly uid: number }
   | { readonly kind: "open-mode"; readonly mode: number };
 
-/**
- * Which check this path fails, or null when it may be dialled (WIRE.md section 1).
- *
- * It must be a socket (a symlink is not one, because this is `lstat`), owned by the adapter's own
- * uid, with no group or other bit. A platform with no uid cannot show the owner, so it fails closed.
- * A missing path is a different answer: nothing is listening yet, and that is not a privacy problem.
- */
-export async function socketFault(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<SocketFault | null> {
-  let facts: SocketFacts;
+/** Every directory above `path`, from the root down to its direct parent. */
+function ancestorsOf(path: string): string[] {
+  const chain: string[] = [];
+  let dir = dirname(path);
+  for (;;) {
+    chain.unshift(dir);
+    const up = dirname(dir);
+    if (up === dir) return chain;
+    dir = up;
+  }
+}
+
+/** `lstat`, with a missing path and an unreadable one told apart. */
+async function factsOf(path: string, probe: SocketProbe): Promise<SocketFacts | SocketFault> {
   try {
-    facts = await probe.lstat(path);
+    return await probe.lstat(path);
   } catch (err) {
     const code = err instanceof Error && "code" in err ? err.code : undefined;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
     return { kind: "unreadable", message: err instanceof Error ? err.message : String(err) };
   }
-  if (!facts.isSocket()) return { kind: "not-a-socket" };
+}
+
+function isFault(value: SocketFacts | SocketFault): value is SocketFault {
+  return "kind" in value;
+}
+
+/**
+ * What is wrong with one directory on the way to the socket, or null when it is fine.
+ *
+ * The direct parent is where the program makes the socket, so it must be this user's own, mode 0700:
+ * a parent another user can write to lets them swap the socket for their own between this check and
+ * the connect. Every other ancestor must belong to this user or to root and be writable by neither
+ * group nor others, except a root-owned sticky directory such as `/tmp`, where nobody can rename what
+ * they do not own. That exception holds for an ancestor only, never for the parent.
+ */
+function directoryFault(path: string, facts: SocketFacts, parent: boolean, uid: number): SocketFault | null {
+  if (facts.isSymbolicLink()) return { kind: "symlink", path };
+  if (!facts.isDirectory()) return { kind: "not-a-directory", path };
+  const mode = facts.mode & 0o7777;
+  if (parent) {
+    if (facts.uid !== uid) return { kind: "parent-wrong-owner", path, owner: facts.uid, uid };
+    if ((mode & 0o777) !== PRIVATE_DIR_MODE) return { kind: "parent-open-mode", path, mode: mode & 0o777 };
+    return null;
+  }
+  if (facts.uid !== uid && facts.uid !== ROOT_UID) return { kind: "ancestor-wrong-owner", path, owner: facts.uid, uid };
+  const stickyRoot = facts.uid === ROOT_UID && (mode & STICKY) !== 0;
+  if ((mode & GROUP_OR_OTHER_WRITE) !== 0 && !stickyRoot) return { kind: "ancestor-open-mode", path, mode: mode & 0o777 };
+  return null;
+}
+
+/**
+ * Which check this path fails, or null when it may be dialled (WIRE.md section 1).
+ *
+ * The whole path is checked with `lstat`, from the root down, so no link is ever followed: a symlink
+ * anywhere in it is refused. Every ancestor directory passes {@link directoryFault}, and the socket
+ * itself must be a socket owned by the adapter's own uid with no group or other bit. A platform with
+ * no uid cannot show an owner, so it fails closed before anything is read. A missing path is a
+ * different answer: nothing is listening yet, and that is not a privacy problem.
+ */
+export async function socketFault(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<SocketFault | null> {
   const uid = probe.uid();
   if (uid === undefined) return { kind: "no-uid" };
+  const chain = ancestorsOf(path);
+  for (const [index, dir] of chain.entries()) {
+    const facts = await factsOf(dir, probe);
+    if (isFault(facts)) return facts;
+    const fault = directoryFault(dir, facts, index === chain.length - 1, uid);
+    if (fault !== null) return fault;
+  }
+  const facts = await factsOf(path, probe);
+  if (isFault(facts)) return facts;
+  if (facts.isSymbolicLink()) return { kind: "symlink", path };
+  if (!facts.isSocket()) return { kind: "not-a-socket" };
   if (facts.uid !== uid) return { kind: "wrong-owner", owner: facts.uid, uid };
   if ((facts.mode & GROUP_AND_OTHER) !== 0) return { kind: "open-mode", mode: facts.mode & 0o777 };
   return null;
 }
 
-/** Why this path may not be dialled, as the one line the adapter reports, or null when it may. */
+/** An octal mode as `0755`. */
+export function octal(mode: number): string {
+  return mode.toString(8).padStart(4, "0");
+}
+
+/** One line naming the privacy check a path failed. The adapter puts it after `socket-not-private: `. */
+export function describeFault(fault: SocketFault): string {
+  switch (fault.kind) {
+    case "missing":
+      return "nothing is at the path";
+    case "unreadable":
+      return `the path cannot be checked: ${fault.message}`;
+    case "no-uid":
+      return "this platform shows no file owner";
+    case "symlink":
+      return `${fault.path} is a symlink`;
+    case "not-a-directory":
+      return `${fault.path} is not a directory`;
+    case "parent-wrong-owner":
+      return `the socket's folder ${fault.path} belongs to user ${String(fault.owner)}, not to ${String(fault.uid)}`;
+    case "parent-open-mode":
+      return `the socket's folder ${fault.path} has mode ${octal(fault.mode)}, not 0700`;
+    case "ancestor-wrong-owner":
+      return `${fault.path} belongs to user ${String(fault.owner)}, neither ${String(fault.uid)} nor root`;
+    case "ancestor-open-mode":
+      return `${fault.path} has mode ${octal(fault.mode)}, so group or others can write to it`;
+    case "not-a-socket":
+      return "the path is not a socket";
+    case "wrong-owner":
+      return `the socket belongs to user ${String(fault.owner)}, not to ${String(fault.uid)}`;
+    case "open-mode":
+      return `the socket has mode ${octal(fault.mode)}, not 0600`;
+  }
+}
+
+/**
+ * Why this path may not be dialled, as the one line the adapter reports, or null when it may. A
+ * privacy fault reads `socket-not-private: <the check that failed>`.
+ */
 export async function socketAccessProblem(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<string | null> {
   const fault = await socketFault(path, probe);
   if (fault === null) return null;
   if (fault.kind === "missing") return `no socket at ${path}`;
   if (fault.kind === "unreadable") return `cannot check ${path}: ${fault.message}`;
-  return SOCKET_NOT_PRIVATE;
+  return `${SOCKET_NOT_PRIVATE}: ${describeFault(fault)}`;
 }
 
 // ── The socket client ─────────────────────────────────────────────────────────

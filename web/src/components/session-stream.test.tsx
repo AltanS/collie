@@ -550,7 +550,7 @@ describe("SessionStream: asks", () => {
     options: [{ id: "yes", label: `Yes ${id}`, effect: "allow" as const }],
   });
 
-  function draw(list: ReturnType<typeof ask>[], more?: number) {
+  function draw(list: ReturnType<typeof ask>[]) {
     const listRef = createRef<ChatMessageListHandle>();
     return render(
       <SessionStream
@@ -564,7 +564,7 @@ describe("SessionStream: asks", () => {
         showCompactions={false}
         fontSize={14}
         listRef={listRef}
-        asks={{ list, more, card: { paneId: "c1" } }}
+        asks={{ list, card: { paneId: "c1" } }}
       />,
     );
   }
@@ -572,15 +572,38 @@ describe("SessionStream: asks", () => {
   it("puts a card inside the block of its item, and an unplaced one after every block", () => {
     const { container } = draw([ask("1", "a"), ask("2", "nowhere")]);
     const blocks = [...container.querySelectorAll("[data-block]")];
-    const placed = screen.getByRole("button", { name: "Yes 1" });
-    const tail = screen.getByRole("button", { name: "Yes 2" });
+    const placed = screen.getByRole("button", { name: /Yes 1$/ });
+    const tail = screen.getByRole("button", { name: /Yes 2$/ });
     expect(blocks[0]).toContainElement(placed);
     expect(blocks.some((b) => b.contains(tail))).toBe(false);
   });
 
-  it("says how many asks are not listed", () => {
-    draw([ask("1", "a")], 3);
-    expect(screen.getByText("3 more waiting")).toBeInTheDocument();
+  it("draws the first five and folds the rest behind an N more button", async () => {
+    const list = Array.from({ length: 8 }, (_, i) => ask(String(i + 1), "nowhere"));
+    draw(list);
+    expect(screen.getAllByRole("button", { name: /^Allow/ })).toHaveLength(5);
+    expect(screen.queryByText("Question 6")).toBeNull();
+    const more = screen.getByRole("button", { name: "Show 3 more" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(more);
+    expect(screen.getAllByRole("button", { name: /^Allow/ })).toHaveLength(8);
+    expect(screen.getByText("Question 8")).toBeInTheDocument();
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    expect(fewer).toHaveAttribute("aria-expanded", "true");
+    await userEvent.setup().click(fewer);
+    expect(screen.getAllByRole("button", { name: /^Allow/ })).toHaveLength(5);
+  });
+
+  it("five or fewer asks draw no more row", () => {
+    draw(Array.from({ length: 5 }, (_, i) => ask(String(i + 1), "nowhere")));
+    expect(document.querySelector('[data-slot="stream-ask-more"]')).toBeNull();
+  });
+
+  it("placement applies to the shown subset: a hidden ask under a block draws nothing there", () => {
+    const list = [...Array.from({ length: 5 }, (_, i) => ask(String(i + 1), "nowhere")), ask("6", "a")];
+    const { container } = draw(list);
+    expect(screen.queryByText("Question 6")).toBeNull();
+    expect(container.querySelector("[data-block]")?.querySelector('[role="group"]')).toBeNull();
   });
 
   it("a pane that carries no asks draws no card", () => {

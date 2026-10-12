@@ -372,11 +372,41 @@ describe("a peer's pane that carries asks", () => {
     const burst = Array.from({ length: 50 }, (_, i) => ask(`a${String(i)}`, `call-${String(i)}`));
     // Five sweeps as the asks pile up, ten at a time, each sweep re-arming the debounce and firing it.
     for (let upTo = 10; upTo <= 50; upTo += 10) {
-      peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: burst.slice(0, upTo).slice(0, 5) })]));
+      peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: burst.slice(0, upTo) })]));
       clock.fireAll();
     }
-    // The member lists five (the open cap); the guard pushes three of them in the first sweep, which
-    // is one alert for the pane, and nothing after.
+    // The member lists every ask; the guard pushes three of them in the first sweep, which is one
+    // alert for the pane, and nothing after.
     expect(blockedPanes(push)).toBe(1);
+  });
+
+  test("the lead's push for an ask is generic: the pane's push name, never the ask's title or tool line", () => {
+    const { clock, push, peer } = guarded();
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    const secret = { ...ask("a1", "call-1"), title: "shell wants to run curl https://x/?token=hunter2", tool: { name: "shell", summary: "rm -rf /" } };
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [secret] })]));
+    clock.fireAll();
+    const msg = push.sent.find((m) => m.type !== "clear");
+    expect(msg?.titleCode).toBe("ask.permission");
+    expect(msg?.title).toBe("Permission needed in durable");
+    const text = JSON.stringify(msg);
+    for (const leak of ["hunter2", "curl", "rm -rf", "shell wants"]) expect(text).not.toContain(leak);
+  });
+
+  test("past 30 pushes in an hour, the lead sends one summary for the host and then nothing", () => {
+    const { clock, push, peer, tick } = guarded();
+    const panes: ReturnType<typeof pane>[] = [];
+    let floods = 0;
+    for (let i = 0; i < 40; i++) {
+      panes.push(pane(`conv-${String(i)}`, "blocked", "durable", { asks: [ask(`a${String(i)}`, `call-${String(i)}`)] }));
+      peer.observe("laptop", body([...panes]));
+      clock.fireAll();
+      tick(7_000);
+    }
+    floods = push.sent.filter((m) => m.titleCode === "ask.flood").length;
+    expect(floods).toBe(1);
+    const summary = push.sent.find((m) => m.titleCode === "ask.flood");
+    expect(summary?.title).toBe("A program on laptop is raising many asks");
+    expect(summary?.host).toBe("laptop");
   });
 });

@@ -59,6 +59,8 @@ import {
 
 /** A `hello` document as the fake serves it. `epoch`, `ready` and `protocol` come from the fake's state. */
 export interface FakeHello {
+  /** `collie-durable` for a durable program. A test removes or changes it to play a wrong socket. */
+  service?: string;
   host: { name: string };
   caps: {
     asks?: boolean;
@@ -433,6 +435,7 @@ export class FakeDurableProgram {
   /** The hello document the program serves right now. */
   currentHello(): HelloDoc {
     return {
+      service: this.hello.service,
       protocol: this.range,
       host: this.hello.host,
       epoch: this.epoch,

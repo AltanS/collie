@@ -82,7 +82,7 @@ function rig(adapter: Pick<MuxAdapter, "controlTurn">, receipts: ControlReceiptS
     device: "pixel",
     session: "default",
     settled: () => (settled += 1),
-    now: () => 1_000,
+    now: () => Date.now(),
   };
   const call = async (act: "send" | "abort", paneId: string, raw?: JsonValue): Promise<ControlReply> => {
     const reply = await controlPane(act, paneId, raw ?? (act === "send" ? sendBody() : abortBody()), deps);
@@ -210,7 +210,7 @@ describe("control: the request id", () => {
     const { program, posts, r } = await durable();
     program.override = (path) => (path.endsWith("/send") ? new Response(JSON.stringify({ code: "internal" }), { status: 500 }) : undefined);
     expect(await r.call("send", "conv-03")).toEqual({ status: 504, body: { ok: false, outcome: "unknown", detail: "program answered 500" } });
-    expect(r.receipts.get(ID)?.state).toBe("pending");
+    expect(r.receipts.get(ID)?.state).toBe("unknown");
     program.override = null;
     expect((await r.call("send", "conv-03")).body).toEqual({ ok: true, outcome: "ok" });
     expect(posts().map((q) => JSON.parse(q.body ?? "").requestId)).toEqual([ID, ID]);
@@ -250,9 +250,27 @@ describe("control: the request id", () => {
       ["send", "conv-04", sendBody()],
       ["abort", "conv-03", abortBody({ turnId: "turn-03-c" })],
     ] as const) {
-      expect((await r.call(act, paneId, raw)).body).toMatchObject({ ok: false, outcome: "refused", reason: "refused" });
+      const reply = await r.call(act, paneId, raw);
+      expect(reply.status).toBe(409);
+      expect(reply.body).toMatchObject({ ok: false, outcome: "refused", reason: "request-id-reused" });
     }
     expect(adapter.calls).toHaveLength(1);
+  });
+
+  test("request id: after an unknown outcome, a retry that finds the turn moved on is maybe-applied (200)", async () => {
+    const adapter = new ScriptedAdapter([{ kind: "unknown", detail: "connection reset" }, { kind: "stale", turnId: "turn-03-d", askIds: [] }]);
+    const r = rig(adapter);
+    expect((await r.call("send", "conv-03")).body.outcome).toBe("unknown");
+    expect(await r.call("send", "conv-03")).toEqual({ status: 200, body: { ok: false, outcome: "maybe-applied" } });
+    expect(r.receipts.get(ID)?.state).toBe("maybe-applied");
+    expect(await r.call("send", "conv-03")).toEqual({ status: 200, body: { ok: false, outcome: "maybe-applied", replayed: true } });
+    expect(adapter.calls).toHaveLength(2);
+  });
+
+  test("request id: after an unsent try, a stale retry stays stale, because nothing had left", async () => {
+    const r = rig(new ScriptedAdapter([{ kind: "unreachable", detail: "connection refused" }, { kind: "stale", turnId: "t9", askIds: [] }]));
+    await r.call("send", "conv-03");
+    expect((await r.call("send", "conv-03")).status).toBe(409);
   });
 
   test("request id: every settled outcome replays as itself", async () => {
@@ -386,7 +404,7 @@ describe("control: one shape for every outcome", () => {
     for (const outcome of [{ kind: "unknown", detail: "no answer within 5000ms" }, { kind: "unreachable", detail: "starting" }] as const) {
       const r = rig(new ScriptedAdapter([outcome]));
       expect(await r.call("send", "conv-03")).toEqual({ status: 504, body: { ok: false, outcome: "unknown", detail: outcome.detail } });
-      expect(r.receipts.get(ID)?.state).toBe("pending");
+      expect(r.receipts.get(ID)?.state).toBe(outcome.kind === "unknown" ? "unknown" : "unsent");
     }
   });
 
@@ -480,7 +498,7 @@ describe("control: the receipt comes first", () => {
 
     const second = new ControlReceiptStore(dir);
     await second.load();
-    expect(second.get(ID)).toMatchObject({ state: "pending", act: "send", target: "turn", targetId: "turn-03-c", steer: false });
+    expect(second.get(ID)).toMatchObject({ state: "unknown", act: "send", target: "turn", targetId: "turn-03-c", steer: false });
   });
 
   test("on disk: a settled receipt replays after a bridge restart, and nothing is sent", async () => {

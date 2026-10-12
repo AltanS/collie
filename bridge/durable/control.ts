@@ -16,10 +16,15 @@
 //      refused there and the program is never asked. The program checks again, because the turn can
 //      move in between, but it is not trusted to: a program written by someone else may not.
 //
+// ONE REQUEST ID, ONE PAYLOAD. The receipt keeps a digest of the pane, the act, the name, the steer
+// switch and the text. The same id with another payload is refused (409, `request-id-reused`).
+//
 // AN UNKNOWN OUTCOME KEEPS THE RECEIPT OPEN, as for an answer. "Try again" carries the same request
 // id, the adapter checks the name again, and the program's own request id memory (WIRE.md section
 // 7.6) answers `replayed` rather than acting twice. A send that landed and started a new turn makes
-// that retry `stale`: the person reloads and sees their text in the log, and nothing lands twice.
+// that retry find the turn moved on, and that is `maybe-applied`: the person is told to check the
+// chat, where their text is, and nothing lands twice. `pending`, `unknown` and `unsent` mean what
+// they mean for an answer (bridge/durable/answer.ts).
 //
 // A STOP WRITES NO ITEM (WIRE.md section 7.5). The program settles the running input as unanswered
 // with the reason `aborted`, and the pane log draws that one event as a "stopped" note
@@ -28,14 +33,22 @@
 // The handler is a pure function of its inputs and returns a status and a body; `bridge/server.ts`
 // turns that into a response, so `bun test` drives it with a fake adapter.
 
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import type { AuditDetail, AuditEntry } from "../audit.ts";
 import type { JsonValue } from "../json.ts";
 import type { MuxAdapter, MuxControlOutcome } from "../mux/types.ts";
 import type { ControlRequest, ControlResponse, ControlTarget } from "../types.ts";
-import { memoryReceipts, ReceiptFileStore, type ReceiptSurface } from "../worktree-receipts.ts";
+import {
+  DURABLE_RECEIPT_LIMITS,
+  digestDiffers,
+  memoryReceipts,
+  payloadDigest,
+  ReceiptFileStore,
+  type ReceiptRetention,
+  type ReceiptSurface,
+  withDigest,
+} from "../worktree-receipts.ts";
 import { coerceControlReceipt, readControlBody } from "./parse.ts";
 
 // ── The guard ─────────────────────────────────────────────────────────────────
@@ -61,12 +74,17 @@ export const CONTROL_RECEIPTS_FILE = "control-receipts.json";
 
 export type ControlAct = ControlRequest["act"];
 
-/** Where a control stands. `pending` is written first, and stays when the outcome is unknown. */
-export type ControlState = "pending" | "ok" | "stale" | "refused";
+/**
+ * Where a control stands. `pending` is written first and means it is on its way; `unknown`: it left
+ * and nobody knows what it did; `unsent`: nothing reached the program. Those three may go again.
+ */
+export type ControlState = "pending" | "unknown" | "unsent" | "ok" | "stale" | "refused" | "maybe-applied";
+
+const OPEN_STATES: ReadonlySet<ControlState> = new Set(["pending", "unknown", "unsent"]);
 
 /**
  * One send or abort a phone made, under its request id. Ids and the outcome only: the text itself is
- * not kept, only its SHA-256, so a different text under the same request id is still refused.
+ * not kept, only inside the payload digest, so a different text under the same request id is refused.
  */
 export interface ControlReceipt {
   requestId: string;
@@ -78,8 +96,8 @@ export interface ControlReceipt {
   targetId: string;
   /** For a send. */
   steer?: boolean;
-  /** For a send: the SHA-256 of its text, hex. */
-  textSha256?: string;
+  /** {@link controlDigest} of the request: pane, act, name, and for a send the steer switch and text. */
+  digest: string;
   state: ControlState;
   /** For `refused`: the line the refusal carried, and its word. */
   detail?: string;
@@ -97,10 +115,23 @@ export type ControlReceiptSurface = ReceiptSurface<ControlReceipt, ControlReply>
 
 /** The file-backed store `bridge/index.ts` builds once per bridge. Written on the first control only. */
 export class ControlReceiptStore extends ReceiptFileStore<ControlReceipt, ControlReply> {
-  constructor(stateDir: string, warn: (line: string) => void = (line) => console.warn(line)) {
-    super(stateDir, join(stateDir, CONTROL_RECEIPTS_FILE), coerceControlReceipt, warn, "control");
+  constructor(stateDir: string, warn: (line: string) => void = (line) => console.warn(line), now: () => number = Date.now) {
+    super(stateDir, join(stateDir, CONTROL_RECEIPTS_FILE), coerceControlReceipt, warn, "control", CONTROL_RETENTION, now);
   }
 }
+
+/** What one control asks for, as a digest. */
+export function controlDigest(paneId: string, request: ControlRequest): string {
+  const named = [request.act, paneId, request.target.kind, request.target.id];
+  return payloadDigest(request.act === "send" ? [...named, request.steer, request.text] : named);
+}
+
+/** A week, the newest thousand, and a pending receipt kept for at least a day (ADR 0101). */
+export const CONTROL_RETENTION: ReceiptRetention<ControlReceipt> = {
+  ...DURABLE_RECEIPT_LIMITS,
+  atOf: (receipt) => receipt.at,
+  pending: (receipt) => OPEN_STATES.has(receipt.state),
+};
 
 /** A store with no file, for a server built without one. Its first write never fails. */
 export function memoryControlReceipts(): ControlReceiptSurface {
@@ -146,7 +177,7 @@ export const NO_CONTROLS = "This pane takes no send or stop by turn.";
 /** The refusal `/reply` and `/keys` answer on a pane that takes guarded controls instead (ADR 0101). */
 export const NO_RAW_INPUT = "This conversation has no terminal. Send text with the turn you saw instead of typed keys.";
 
-function refused(reason: "unsupported" | "refused", detail: string, status = 409): ControlReply {
+function refused(reason: "unsupported" | "refused" | "request-id-reused", detail: string, status = 409): ControlReply {
   return { status, body: { ok: false, outcome: "refused", reason, detail } };
 }
 
@@ -159,23 +190,18 @@ export function rawInputRefusal(adapter: Pick<MuxAdapter, "controlTurn">): Contr
   return adapter.controlTurn === undefined ? null : refused("unsupported", NO_RAW_INPUT);
 }
 
-function sha256(text: string): string {
-  return createHash("sha256").update(text, "utf8").digest("hex");
-}
+/** The refusal for a request id already used for another payload. Nothing is sent. */
+export const CONTROL_ID_REUSED = "This request id was already used for another send or stop.";
 
-/** Whether a stored receipt is for this same control: one request id, one pane, one act, one name. */
-function sameControl(receipt: ControlReceipt, paneId: string, request: ControlRequest): boolean {
-  if (receipt.paneId !== paneId || receipt.act !== request.act) return false;
-  if (receipt.target !== request.target.kind || receipt.targetId !== request.target.id) return false;
-  if (request.act === "abort") return true;
-  return receipt.steer === request.steer && receipt.textSha256 === sha256(request.text);
-}
-
-/** The reply a settled receipt gives again. `null` for a `pending` one: that one is sent again. */
+/** The reply a settled receipt gives again. `null` for an open one: that one is sent again. */
 function replayOf(receipt: ControlReceipt): ControlReply | null {
   switch (receipt.state) {
     case "pending":
+    case "unknown":
+    case "unsent":
       return null;
+    case "maybe-applied":
+      return { status: 200, body: { ok: false, outcome: "maybe-applied", replayed: true } };
     case "ok":
       return { status: 200, body: { ok: true, outcome: "ok", replayed: true } };
     case "stale":
@@ -201,7 +227,18 @@ interface Settled {
   readonly current?: TurnView;
 }
 
-function settle(outcome: MuxControlOutcome): Settled {
+/**
+ * What an adapter outcome means. `afterUnknown`: an earlier try with this id may have landed, so a
+ * turn that moved on is `maybe-applied`, not an error.
+ */
+function settle(outcome: MuxControlOutcome, afterUnknown: boolean): Settled {
+  if (afterUnknown && outcome.kind === "stale") {
+    return { reply: { status: 200, body: { ok: false, outcome: "maybe-applied" } }, state: "maybe-applied" };
+  }
+  return settleOnce(outcome);
+}
+
+function settleOnce(outcome: MuxControlOutcome): Settled {
   switch (outcome.kind) {
     case "ok":
       return { reply: { status: 200, body: outcome.replayed ? { ok: true, outcome: "ok", replayed: true } : { ok: true, outcome: "ok" } }, state: "ok" };
@@ -213,8 +250,9 @@ function settle(outcome: MuxControlOutcome): Settled {
       };
     // Nothing reached the program, or it may have: either way the same request id may go again.
     case "unreachable":
+      return { reply: { status: 504, body: { ok: false, outcome: "unknown", detail: outcome.detail } }, state: "unsent" };
     case "unknown":
-      return { reply: { status: 504, body: { ok: false, outcome: "unknown", detail: outcome.detail } }, state: "pending" };
+      return { reply: { status: 504, body: { ok: false, outcome: "unknown", detail: outcome.detail } }, state: "unknown" };
     case "unsupported":
     case "refused":
       return { reply: refused(outcome.kind, outcome.detail), state: "refused", reason: outcome.kind, detail: outcome.detail };
@@ -242,15 +280,18 @@ export function controlPane(
   // SYNCHRONOUS from here to `track`: two taps with one request id must not both get past the look.
   const { receipts } = deps;
   const stored = receipts.get(request.requestId);
-  if (stored !== undefined && !sameControl(stored, paneId, request)) {
-    return Promise.resolve(refused("refused", "This request id was already used for another send or stop."));
+  if (stored !== undefined && stored.digest !== controlDigest(paneId, request)) {
+    return Promise.resolve(refused("request-id-reused", CONTROL_ID_REUSED));
   }
   const replay = stored === undefined ? null : replayOf(stored);
   if (replay !== null) return Promise.resolve(replay);
   const running = receipts.inflight(request.requestId);
+  if (running !== undefined && digestDiffers(running, controlDigest(paneId, request))) {
+    return Promise.resolve(refused("request-id-reused", CONTROL_ID_REUSED));
+  }
   if (running !== undefined) return running;
 
-  const work = send(paneId, request, stored, controlTurn, deps);
+  const work = withDigest(send(paneId, request, stored, controlTurn, deps), controlDigest(paneId, request));
   receipts.track(request.requestId, work);
   return work;
 }
@@ -263,12 +304,10 @@ function firstReceipt(paneId: string, request: ControlRequest, at: number): Cont
     act: request.act,
     target: request.target.kind,
     targetId: request.target.id,
+    digest: controlDigest(paneId, request),
     state: "pending",
   };
-  if (request.act === "send") {
-    receipt.steer = request.steer;
-    receipt.textSha256 = sha256(request.text);
-  }
+  if (request.act === "send") receipt.steer = request.steer;
   return receipt;
 }
 
@@ -280,22 +319,22 @@ async function send(
   deps: ControlDeps,
 ): Promise<ControlReply> {
   const { receipts } = deps;
-  const base = stored ?? firstReceipt(paneId, request, (deps.now ?? Date.now)());
-  // The receipt first. A retry of a pending one is already on disk.
-  if (stored === undefined && !(await receipts.recordFirst(base))) {
+  // An earlier try may have landed: it left with no answer, or this bridge stopped mid-flight.
+  const afterUnknown = stored?.state === "pending" || stored?.state === "unknown";
+  const base: ControlReceipt = { ...(stored ?? firstReceipt(paneId, request, (deps.now ?? Date.now)())), state: "pending" };
+  // The receipt first, marked on its way. A retry of a pending one is already on disk as such.
+  if (stored?.state !== "pending" && !(await receipts.recordFirst(base))) {
     return refused("refused", "The request could not be recorded on this machine, so it was not sent.", 503);
   }
-  const settled = settle(await controlTurn(paneId, request));
-  if (settled.state !== "pending") {
-    const receipt: ControlReceipt = { ...base, state: settled.state };
-    if (settled.detail !== undefined) receipt.detail = settled.detail;
-    if (settled.reason !== undefined) receipt.reason = settled.reason;
-    if (settled.current !== undefined) {
-      receipt.currentTurnId = settled.current.turnId;
-      receipt.currentAskIds = [...settled.current.askIds];
-    }
-    await receipts.record(receipt);
+  const settled = settle(await controlTurn(paneId, request), afterUnknown);
+  const receipt: ControlReceipt = { ...base, state: settled.state };
+  if (settled.detail !== undefined) receipt.detail = settled.detail;
+  if (settled.reason !== undefined) receipt.reason = settled.reason;
+  if (settled.current !== undefined) {
+    receipt.currentTurnId = settled.current.turnId;
+    receipt.currentAskIds = [...settled.current.askIds];
   }
+  await receipts.record(receipt);
   const detail: AuditDetail = { requestId: request.requestId, outcome: settled.reply.body.outcome };
   if (request.target.kind === "turn") detail.turnId = request.target.id;
   else detail.askId = request.target.id;

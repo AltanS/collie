@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { CAPS } from "./clean.ts";
 import { hasHostileChars, helloFixture, hostileText, snapshotFixture, type FakeSnapshot } from "./fixture.ts";
 import {
+  DURABLE_SERVICE,
+  NOT_A_DURABLE_PROGRAM,
   incompatibleDetail,
   negotiateVersion,
   parseHello,
@@ -67,7 +69,7 @@ describe("hello", () => {
 
   test("an absent cap is false, and null reads as absent", () => {
     const parsed = parseHello(
-      JSON.stringify({ protocol: { min: 1, max: 1 }, host: null, epoch: EPOCH, ready: false, caps: { asks: null, send: true } }),
+      JSON.stringify({ service: "collie-durable", protocol: { min: 1, max: 1 }, host: null, epoch: EPOCH, ready: false, caps: { asks: null, send: true } }),
     );
     expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false });
     expect(parsed.ok && parsed.value.hostName).toBe("");
@@ -92,13 +94,23 @@ describe("hello", () => {
 
   test("the host name is cleaned and capped like every display string", () => {
     const parsed = parseHello(
-      JSON.stringify({ protocol: { min: 1, max: 1 }, host: { name: hostileText("evil", 200) }, epoch: EPOCH, ready: true }),
+      JSON.stringify({ service: "collie-durable", protocol: { min: 1, max: 1 }, host: { name: hostileText("evil", 200) }, epoch: EPOCH, ready: true }),
     );
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.value.hostName.startsWith("evil")).toBe(true);
     expect(parsed.value.hostName.endsWith("…")).toBe(true);
     expect(Buffer.byteLength(parsed.value.hostName)).toBeLessThanOrEqual(CAPS.hostName);
+  });
+
+  test("a hello without the service name is not a durable program, whatever else it says", () => {
+    const base = { protocol: { min: 1, max: 1 }, host: { name: "h" }, epoch: EPOCH, ready: true, caps: {} };
+    for (const service of [undefined, null, "", "collie", "Collie-Durable", 1]) {
+      expect(parseHello(JSON.stringify({ ...base, service }))).toEqual({ ok: false, detail: NOT_A_DURABLE_PROGRAM });
+    }
+    expect(parseHello(JSON.stringify({ ...base, service: DURABLE_SERVICE })).ok).toBe(true);
+    // Checked first: a wrong socket with no range at all is still named as a wrong program.
+    expect(parseHello(JSON.stringify({ hello: "world" }))).toEqual({ ok: false, detail: NOT_A_DURABLE_PROGRAM });
   });
 
   test("an error body gives its code and range", () => {

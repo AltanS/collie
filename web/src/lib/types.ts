@@ -159,13 +159,12 @@ export interface AgentView {
   gitHead?: GitHead;
   /**
    * The open asks a person may answer on this pane, as data, oldest first (ADR 0100). Mirrors
-   * `PaneWire.asks` in bridge/types.ts. **Absent on every pane with a screen**, on an older bridge
-   * and on an older crew member, which all read as "no asks as data here". An empty list is a real
-   * answer. Text only, never markup: every string came from a program.
+   * `PaneWire.asks` in bridge/types.ts. Every open ask is listed (the bridge caps at 50); the card
+   * list shows the first five and folds the rest (lib/ask.ts `shownAsks`). **Absent on every pane with
+   * a screen**, on an older bridge and on an older crew member, which all read as "no asks as data
+   * here". An empty list is a real answer. Text only, never markup: every string came from a program.
    */
   asks?: Ask[];
-  /** How many open asks are past the five listed in {@link asks}. Absent when none are. */
-  moreAsks?: number;
   /**
    * The newest turn of a pane that has no screen (ADR 0101). A send or an abort names it, so a stale
    * name is refused instead of landing on a turn the person never saw. Absent on a pane with a
@@ -199,6 +198,8 @@ export interface Ask {
   options: AskOption[];
   reason?: string;
   tool?: AskTool;
+  /** Present when the bridge cut or changed the program's title or reason. Such an ask offers no "Always allow". */
+  cleaned?: true;
 }
 
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */

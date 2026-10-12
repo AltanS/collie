@@ -9,8 +9,10 @@ import {
   DURABLE_SOCKET_OPTION,
   DurableMux,
   durableMuxFactory,
+  FAILURES_TO_UNREACHABLE,
   MIN_SNAPSHOT_GAP_MS,
   STARTING,
+  WRITE_TIMEOUT_MS,
 } from "./adapter.ts";
 import { CAPS } from "./clean.ts";
 import { DURABLE_SOCKET_ENV, DurableSocketClient, SOCKET_NOT_PRIVATE } from "./client.ts";
@@ -325,8 +327,57 @@ describe("version negotiation", () => {
     expect(verdict(await adapter.poll())).toBe("unreachable: unreadable hello: hello is not a JSON object");
     tick();
     program.override = (path) =>
-      path.endsWith("/hello") ? Response.json({ protocol: { min: 1, max: 1 }, ready: true }) : undefined;
+      path.endsWith("/hello") ? Response.json({ service: "collie-durable", protocol: { min: 1, max: 1 }, ready: true }) : undefined;
     expect(verdict(await adapter.poll())).toBe("unreachable: unreadable hello: hello has no usable epoch");
+  });
+});
+
+describe("the service name and the hysteresis", () => {
+  test("a socket whose hello names no durable service is incompatible: not a durable program", async () => {
+    const { adapter, program } = await rig();
+    program.hello.service = undefined;
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable program");
+    expect(paths(program)).toEqual(["/hello"]);
+  });
+
+  test("another program on the socket, answering its own JSON, is named the same way", async () => {
+    const { adapter, program } = await rig();
+    program.override = (path) => (path.endsWith("/hello") ? Response.json({ name: "some-other-daemon", version: "3.1" }) : undefined);
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable program");
+  });
+
+  test("one failed read keeps the last layout; the second in a row is unreachable", async () => {
+    const { adapter, program, tick } = await rig();
+    expect(verdict(await adapter.poll())).toBe("ok");
+    // The program stops answering, but keeps its socket.
+    program.override = () => new Promise<Response>(() => undefined);
+    tick();
+    const first = await adapter.poll();
+    expect(verdict(first)).toBe("ok");
+    expect(first.ok && first.value.panes.length).toBeGreaterThan(0);
+    tick();
+    expect(verdict(await adapter.poll())).toStartWith("unreachable: no answer within");
+    // It answers again: one good read is enough to come back, and the count starts over.
+    program.override = null;
+    tick();
+    expect(verdict(await adapter.poll())).toBe("ok");
+    program.override = () => new Promise<Response>(() => undefined);
+    tick();
+    expect(verdict(await adapter.poll())).toBe("ok");
+  }, 10_000);
+
+  test("a program that answers starting is never held, even after a good read", async () => {
+    const { adapter, program, tick } = await rig();
+    expect(verdict(await adapter.poll())).toBe("ok");
+    program.ready = false;
+    program.override = (path) => (path.endsWith("/snapshot") ? Response.json({ code: "starting" }, { status: 503 }) : undefined);
+    tick();
+    expect(verdict(await adapter.poll())).toBe(`unreachable: ${STARTING}`);
+  });
+
+  test("the write budget is 3 seconds, under the crew's 5 second budget", () => {
+    expect(WRITE_TIMEOUT_MS).toBe(3000);
+    expect(FAILURES_TO_UNREACHABLE).toBe(2);
   });
 });
 
@@ -404,7 +455,7 @@ describe("ready and epoch", () => {
     await adapter.snapshot();
     chmodSync(program.socketPath, 0o666);
     tick();
-    expect(verdict(await adapter.poll())).toBe(`unreachable: ${SOCKET_NOT_PRIVATE}`);
+    expect(verdict(await adapter.poll())).toBe(`unreachable: ${SOCKET_NOT_PRIVATE}: the socket has mode 0666, not 0600`);
     chmodSync(program.socketPath, 0o600);
     tick();
     expect(verdict(await adapter.poll())).toBe("ok");

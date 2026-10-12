@@ -26,15 +26,42 @@ The words MUST, SHOULD and MAY mean what RFC 2119 says.
 | Rule | Value |
 | --- | --- |
 | Socket | One Unix stream socket. No TCP. |
-| Path | The adapter reads it from `COLLIE_DURABLE_SOCKET`. It MUST be absolute and at most 107 bytes (the `sun_path` limit). Unset, relative or too long: the adapter dials nothing and reports `unreachable` with a detail that names the variable. |
+| Path | The adapter reads it from `COLLIE_DURABLE_SOCKET`. It MUST be absolute and at most 103 bytes, the smallest `sun_path` limit of the platforms Collie runs on, less its closing NUL. Unset, relative or too long: the adapter dials nothing and reports `unreachable` with a detail that names the variable. |
 | Program config | The program SHOULD read the same variable to choose where it listens, so one value configures both sides. |
 | Permissions | The program creates the socket with mode `0600`, in a directory with mode `0700`. It removes a stale socket file at the path before it listens, and removes its own on a clean exit. |
-| Who may dial | Only the same user. Before each connect, the adapter checks the path with `lstat`: it MUST be a socket, owned by the adapter's own uid, with no group or other permission bits. Otherwise the adapter does not connect, and reports `unreachable` with detail `socket-not-private`. |
+| Who may dial | Only the same user. Before each connect, the adapter walks the path from `/` down with `lstat` (the rules below). Any failure: the adapter does not connect, and reports `unreachable` with detail `socket-not-private: <check>`, where `<check>` names the part that failed, for example `the folder /run/x has mode 0755, not 0700`. |
 | Authentication | None. No bearer token, no `Authorization` header. The 0600 socket is the gate. |
 | Framing | HTTP/1.1 over the socket. Any `Host` header. Every path starts with `/session/v1`. That prefix is a fixed name, not the version. |
 | Bodies | JSON, UTF-8, `content-type: application/json`. A request body is one JSON object. An empty POST body reads as `{}`. |
 | Version header | `X-Collie-Session: <n>`, a decimal integer. Required on every route except `GET /hello`. |
 | Push | None. The adapter polls (ADR 0073). No WebSocket, no server-sent events. |
+
+### The path walk
+
+A 0600 socket is not private when someone else can swap the folder it sits in. So the adapter checks
+every part of the path, not only the socket:
+
+1. **No symlink anywhere.** Every part of the path, the socket included, is read with `lstat`. A
+   symlink is refused, even one that points to a good place.
+2. **The socket's own folder** MUST be a real folder, owned by the adapter's uid, with mode exactly
+   `0700`.
+3. **Every folder above it** MUST be owned by the adapter's uid or by root, and MUST NOT be writable
+   by group or other. A root-owned folder with the sticky bit, such as `/tmp`, is allowed above the
+   socket's folder, never as that folder.
+4. **The socket** MUST be a socket, owned by the adapter's uid, with no group or other permission
+   bits.
+5. **A platform with no uid** (Windows) fails closed: the adapter never dials.
+
+### What the socket does not protect against
+
+The socket keeps out other users. It does not keep out the same user. Any process that runs as the
+same user can open the socket, read every pane and answer an ask, and that includes a tool the agent
+runs. Collie cannot tell such a process from itself.
+
+The program owns that defence. It SHOULD refuse a caller that is its own descendant (it can read the
+peer's credentials on the socket), or run the agent's tools in a sandbox that cannot reach the
+socket. An `allow-always` option is the grant that needs the most care: one answer from a hostile
+tool would let every later call through without a question.
 
 ## 2. Version negotiation
 
@@ -52,7 +79,10 @@ The words MUST, SHOULD and MAY mean what RFC 2119 says.
    5xx. `hello` with a header outside the range gets the same 409.
 6. A **401** from the program means it still asks for a token, which version 1 does not have. The
    adapter reports it as `incompatible` with detail `program asks for a token`.
-7. A field is additive and optional. A reader MUST ignore a field it does not know. A new required
+7. A `hello` without `service: "collie-durable"` is not a durable program: some other server
+   listens at the path. The adapter calls nothing else and reports `unreachable` with detail
+   `incompatible: not a durable program`.
+8. A field is additive and optional. A reader MUST ignore a field it does not know. A new required
    field, a new meaning for an old field, or a removed field needs a new version.
 
 The program checks in this order: version (409), then `hello`, then ready (503 `starting`), then
@@ -115,6 +145,8 @@ interface ProtocolRange {
 }
 
 interface Hello {
+  /** MUST be exactly "collie-durable". Absent or other: the adapter refuses the program (section 2). */
+  service: "collie-durable";
   protocol: ProtocolRange;
   /** Display text only. Never an address and never an identity. */
   host: { name: string };
@@ -215,6 +247,12 @@ interface Ask {
   reason?: string;
   /** The call itself, when the program wants it drawn. */
   tool?: ToolCall;
+  /**
+   * True when the title or the reason was shortened. The program MAY set it when it cut its own text.
+   * The adapter also sets it when its cleaning changed either (section 6). The phone then says "Text
+   * shortened" and offers no `allow-always` option, because the person cannot see the whole request.
+   */
+  cleaned?: true;
 }
 
 interface Option {
@@ -395,9 +433,14 @@ strings that are already inside the caps; the adapter does not trust that it did
    fields keep `\n` and `\t`. Multi-line fields are item `text`, `ToolCall.output`, `ToolCall.summary`
    and `Ask.reason`. Every other string is single-line and keeps neither.
 2. Remove the direction marks U+200E, U+200F and U+061C, and the direction overrides and isolates
-   U+202A to U+202E and U+2066 to U+2069.
+   U+202A to U+202E and U+2066 to U+2069. Remove the zero-width characters U+200B to U+200D, the
+   word joiner U+2060 and the byte order mark U+FEFF. Remove the tag characters U+E0000 to U+E007F,
+   which can carry a whole invisible sentence.
 3. Cut to the byte cap below, at the last whole code point that leaves room for `…` (3 bytes), and
    append `…`.
+
+When cleaning changes an ask's `title` or `reason`, the adapter marks the ask `cleaned: true`
+(section 4).
 
 The `harness` string is cleaned like the others and stays display text. It may match a name in the
 open harness list, but it never picks a grammar, a parser or a journal adapter.
@@ -539,8 +582,21 @@ abort.
 - The adapter never retries a POST by itself. A POST that times out, drops the connection, or gets
   a 5xx has an **unknown outcome**. The adapter reports it so, and the phone offers "Try again" with
   the same request id (ADR 0091).
-- Timeouts in the adapter: 1000 ms for `hello`, `snapshot` and `events`; 5000 ms for `answer`,
-  `send` and `abort`; 30000 ms for `starter`.
+- **Maybe applied.** A retry after an unknown outcome that gets `too-late` (answer) or `stale`
+  (answer, send, abort) cannot tell "the first try landed" from "something else closed it". The
+  bridge answers the phone `{ "ok": false, "outcome": "maybe-applied" }` with status 200, and the
+  phone says the act may have gone through. It never sends the act a third time.
+- **The bridge's receipt is bound to its payload.** It stores a digest of what the request asked
+  for (pane, ask, revision and option; or pane, turn or ask, and text; or the starter). The same
+  `requestId` with a different digest gets 409 `refused`, reason `request-id-reused`, and nothing
+  reaches the program. Two requests with the same id at once: the second waits for nothing and gets
+  the same 409, so only one POST leaves the bridge. Receipts are kept 7 days and at most 1000 per
+  store, newest first; a pending receipt younger than a day is never pruned. Each store is written
+  to a temporary file and renamed over the old one.
+- Timeouts in the adapter: 1000 ms for `hello`, `snapshot` and `events`; 3000 ms for `answer`,
+  `send` and `abort`; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
+  connect to last byte, and a reply is cut off the moment it passes its byte cap (section 6), so a
+  program that trickles bytes or never stops cannot hold a read.
 
 ### 7.7 Starters
 
@@ -570,6 +626,9 @@ abort.
    epoch and its old cursor, and gets a reset reply. A pane it never read starts at `after=0`.
 8. The adapter calls `hello` again after any failed connect, after a 503, and when it sees a new
    epoch. While the socket is down, it tries once per poll interval and reports `unreachable`.
+   **Hysteresis:** one failed read after a good one keeps the last snapshot for that poll. Two
+   failures in a row flip the peer to `unreachable`. A path that fails the walk (section 1) is
+   `unreachable` at once, with no grace.
 9. Request id receipts SHOULD survive a restart (section 7.6).
 10. The program removes a stale socket file before it listens, so a crash leaves no dead path for
     the next start.
@@ -626,4 +685,10 @@ document. The version number stays 1; the spike's shapes are not supported.
     SHOULD cut its own strings to these caps before it sends them; the adapter cuts again.
 15. **The guard moves out of the wire.** The spike's lead-side guard (push and open caps) is the
     bridge's job now, keyed on `(host, toolCallId)`. The program sends every open ask, up to 50 per
-    pane, oldest first.
+    pane, oldest first. The guard caps pushes only: every open ask reaches the phone.
+16. **`Hello` gains `service: "collie-durable"`** (required). A server at the path that does not
+    say it is refused as `incompatible: not a durable program`. Added before version 1 shipped, so
+    the version stays 1.
+17. **The path cap is 103 bytes** (was 107), and the adapter walks the whole path (section 1).
+18. **`Ask` gains an optional `cleaned`** (section 4), and cleaning also removes zero-width and tag
+    characters (section 6).

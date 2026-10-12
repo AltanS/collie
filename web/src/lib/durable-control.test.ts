@@ -101,6 +101,13 @@ describe("what an answer does to the composer", () => {
     expect(readControl({ outcome: "unknown" })).toMatchObject({ clear: false, keepId: true, note: "unknown" });
   });
 
+  it("maybe-applied keeps the draft, drops the id, reads the pane and says to check the chat", () => {
+    const reading = readControl({ outcome: "maybe-applied" });
+    expect(reading).toMatchObject({ clear: false, keepId: false, reload: true, note: "maybe", detail: "" });
+    expect(t(noteKey(reading, "send"))).toBe("May already be sent. Check the chat before you send again.");
+    expect(t(noteKey(reading, "stop"))).toBe("The stop may already be applied. Check the chat.");
+  });
+
   it("refused keeps the draft and carries the bridge's words", () => {
     expect(readControl({ outcome: "refused", reason: "refused", detail: "No turn named." })).toMatchObject({
       clear: false,
@@ -122,7 +129,9 @@ describe("what an answer does to the composer", () => {
       { outcome: "stale", askIds: [] },
       { outcome: "stale", askIds: [], older: true },
       { outcome: "unknown" },
+      { outcome: "maybe-applied" },
       { outcome: "refused", reason: "refused", detail: "" },
+      { outcome: "refused", reason: "request-id-reused", detail: "" },
     ];
     for (const result of results) {
       for (const kind of ["send", "stop"] as const) {

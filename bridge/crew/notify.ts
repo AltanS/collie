@@ -5,7 +5,7 @@ import {
   type NotifyClock,
   type PushSender,
 } from "../notifications.ts";
-import { AskPush } from "../durable/ask-push.ts";
+import { askFloodMessage, AskPush } from "../durable/ask-push.ts";
 import type { AgentStatus, AgentView, CrewMode, PaneWire } from "../types.ts";
 import type { PeerSnapshotBody } from "./merge.ts";
 import { crewHerdTagFor } from "./tags.ts";
@@ -139,8 +139,19 @@ export class PeerNotifier<H = unknown> {
       entry.coordinator.onTransition(t.pane as AgentView, t.from, t.to);
     }
     for (const id of diff.removed) entry.coordinator.onRemove(id);
-    // SAFETY: as above, `PaneWire` IS `AgentView` minus the two server-only session fields.
-    asks?.observe(host, body.agents, (pane) => entry.coordinator.onTransition(pane as AgentView, pane.status, "blocked"));
+    // The ask guard runs HERE, on the lead, because the lead is the one that pushes for a peer's
+    // panes (§5); the peer's own herd path is muted and runs no guard. A guarded push goes through
+    // the coordinator with the cause `ask`, so it reads "Permission needed in <pane>" and nothing of
+    // the ask itself. When the host's hourly breaker trips, one summary push, then silence.
+    asks?.observe(
+      host,
+      body.agents,
+      // SAFETY: as above, `PaneWire` IS `AgentView` minus the two server-only session fields.
+      (pane) => entry.coordinator.onTransition(pane as AgentView, pane.status, "blocked", "ask"),
+      () => {
+        if (!this.deps.mute.isMuted() && this.deps.isNotifiable("blocked")) this.deps.push.send(askFloodMessage(host, host));
+      },
+    );
   }
 
   /**

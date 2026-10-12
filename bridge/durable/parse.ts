@@ -21,7 +21,7 @@ import type { AnswerReceipt, AnswerState } from "./answer.ts";
 import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
 import type { GuardAsk, GuardEntry } from "./guard.ts";
 
-const STATES: ReadonlySet<string> = new Set(["pending", "taken", "too-late", "stale", "refused"]);
+const STATES: ReadonlySet<string> = new Set(["pending", "unknown", "unsent", "taken", "too-late", "stale", "refused", "maybe-applied"]);
 
 /** The longest note the route accepts, in UTF-16 units; the adapter checks the wire's byte cap. */
 const NOTE_MAX_CHARS = 2048;
@@ -36,6 +36,11 @@ function asRecord(value: JsonValue | undefined): JsonObject | null {
 
 function isText(value: JsonValue | undefined): value is string {
   return typeof value === "string";
+}
+
+/** A payload digest as a receipt keeps it: SHA-256, lowercase hex. A receipt without one is not read. */
+export function isDigest(value: JsonValue | undefined): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
 }
 
 function isTime(value: JsonValue | undefined): value is number {
@@ -59,7 +64,7 @@ export function readAnswerBody(body: JsonValue | undefined): AnswerRequest | nul
 /** The most text one send may carry, in UTF-8 bytes (WIRE.md section 6, `SendRequest.text`). */
 export const SEND_TEXT_MAX_BYTES = 32768;
 
-const CONTROL_STATES: ReadonlySet<string> = new Set(["pending", "ok", "stale", "refused"]);
+const CONTROL_STATES: ReadonlySet<string> = new Set(["pending", "unknown", "unsent", "ok", "stale", "refused", "maybe-applied"]);
 
 function isControlState(value: JsonValue | undefined): value is ControlState {
   return typeof value === "string" && CONTROL_STATES.has(value);
@@ -97,14 +102,13 @@ export function readControlBody(act: ControlAct, body: JsonValue | undefined): C
 export function coerceControlReceipt(raw: JsonValue): ControlReceipt | null {
   const r = asRecord(raw);
   if (r === null) return null;
-  const { requestId, at, paneId, act, target, targetId, steer, textSha256, state, detail, reason, currentTurnId, currentAskIds } = r;
-  if (!isRequestId(requestId) || !isTime(at) || !isText(paneId) || !isText(targetId)) return null;
+  const { requestId, at, paneId, act, target, targetId, steer, digest, state, detail, reason, currentTurnId, currentAskIds } = r;
+  if (!isRequestId(requestId) || !isTime(at) || !isText(paneId) || !isText(targetId) || !isDigest(digest)) return null;
   if (act !== "send" && act !== "abort") return null;
   if (target !== "turn" && target !== "ask") return null;
   if (!isControlState(state)) return null;
-  const receipt: ControlReceipt = { requestId, at, paneId, act, target, targetId, state };
+  const receipt: ControlReceipt = { requestId, at, paneId, act, target, targetId, digest, state };
   if (typeof steer === "boolean") receipt.steer = steer;
-  if (isText(textSha256)) receipt.textSha256 = textSha256;
   if (isText(detail)) receipt.detail = detail;
   if (reason === "unsupported" || reason === "refused") receipt.reason = reason;
   if (isText(currentTurnId)) receipt.currentTurnId = currentTurnId;
@@ -116,11 +120,11 @@ export function coerceControlReceipt(raw: JsonValue): ControlReceipt | null {
 export function coerceAnswerReceipt(raw: JsonValue): AnswerReceipt | null {
   const r = asRecord(raw);
   if (r === null) return null;
-  const { requestId, at, paneId, askId, revision, optionId, state, detail, reason } = r;
+  const { requestId, at, paneId, askId, revision, optionId, digest, state, detail, reason } = r;
   if (!isRequestId(requestId) || !isState(state) || !isTime(at)) return null;
-  if (!isText(paneId) || !isText(askId) || !isText(optionId)) return null;
+  if (!isText(paneId) || !isText(askId) || !isText(optionId) || !isDigest(digest)) return null;
   if (typeof revision !== "number" || !Number.isSafeInteger(revision)) return null;
-  const receipt: AnswerReceipt = { requestId, at, paneId, askId, revision, optionId, state };
+  const receipt: AnswerReceipt = { requestId, at, paneId, askId, revision, optionId, digest, state };
   if (isText(detail)) receipt.detail = detail;
   if (reason === "unsupported" || reason === "refused") receipt.reason = reason;
   return receipt;
@@ -139,16 +143,35 @@ function readGuardEntry(value: JsonValue): GuardEntry | null {
   return entry;
 }
 
-/** The push guard's file, `{ "entries": [...] }`. Anything else is an empty memory; a broken entry is left out. */
-export function readGuardFile(parsed: JsonValue): GuardEntry[] {
-  const list = asRecord(parsed)?.entries;
-  if (!Array.isArray(list)) return [];
-  const out: GuardEntry[] = [];
-  for (const raw of list) {
-    const entry = readGuardEntry(raw);
-    if (entry !== null) out.push(entry);
+/** What the push guard's file holds: its keys, and per host the time its breaker tripped. */
+export interface GuardFile {
+  readonly entries: GuardEntry[];
+  readonly breakers: [string, number][];
+}
+
+/**
+ * The push guard's file, `{ "entries": [...], "breakers": [{ "host", "trippedAt" }] }`. Anything else
+ * is an empty memory; a broken entry is left out.
+ */
+export function readGuardFile(parsed: JsonValue): GuardFile {
+  const root = asRecord(parsed);
+  const list = root?.entries;
+  const entries: GuardEntry[] = [];
+  if (Array.isArray(list)) {
+    for (const raw of list) {
+      const entry = readGuardEntry(raw);
+      if (entry !== null) entries.push(entry);
+    }
   }
-  return out;
+  const breakers: [string, number][] = [];
+  const trips = root?.breakers;
+  if (Array.isArray(trips)) {
+    for (const raw of trips) {
+      const r = asRecord(raw);
+      if (r !== null && isText(r.host) && isTime(r.trippedAt)) breakers.push([r.host, r.trippedAt]);
+    }
+  }
+  return { entries, breakers };
 }
 
 /**

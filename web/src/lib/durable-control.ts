@@ -68,7 +68,7 @@ export interface ControlReading {
   /** Read the pane again: the turn moved, so the phone must show what is current before the next tap. */
   reload: boolean;
   /** Which sentence to say. `refused` and `failed` carry the bridge's own detail. */
-  note: "sent" | "moved" | "older" | "refused" | "unknown";
+  note: "sent" | "moved" | "older" | "refused" | "unknown" | "maybe";
   detail: string;
 }
 
@@ -89,6 +89,10 @@ export function readControl(result: ControlResult): ControlReading {
       return { clear: false, keepId: false, reload: false, note: "refused", detail: result.detail };
     case "unknown":
       return { clear: false, keepId: true, reload: false, note: "unknown", detail: "" };
+    case "maybe-applied":
+      // An earlier try had an unknown outcome and the retry found the turn moved. The first try may have
+      // landed, so the draft stays for the person to check against the chat, and the next send is new.
+      return { clear: false, keepId: false, reload: true, note: "maybe", detail: "" };
   }
 }
 
@@ -126,5 +130,7 @@ export function noteKey(reading: ControlReading, kind: ControlKind): MessageKey 
       return stop ? "durable.composer.stopRefused" : "durable.composer.refused";
     case "unknown":
       return stop ? "durable.composer.stopUnknown" : "durable.composer.unknown";
+    case "maybe":
+      return stop ? "durable.composer.stopMaybe" : "durable.composer.maybe";
   }
 }

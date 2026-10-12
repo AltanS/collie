@@ -114,6 +114,8 @@ describe("pushTitle — the English comes from the catalogue", () => {
       "machine.cpu": "CPU stays high on {machine}",
       "machine.mem": "Memory stays high on {machine}",
       "machine.disk": "Disk stays full on {machine}",
+      "ask.permission": "Permission needed in {pane}",
+      "ask.flood": "A program on {host} is raising many asks",
     });
   });
 
@@ -131,6 +133,8 @@ describe("pushTitle — the English comes from the catalogue", () => {
       "machine.cpu": ["machine"],
       "machine.mem": ["machine"],
       "machine.disk": ["machine"],
+      "ask.permission": ["pane"],
+      "ask.flood": ["host"],
     } satisfies Record<PushTitleCode, string[]>;
     for (const code of PUSH_TITLE_CODE_LIST) expect(slotsOf(PUSH_TITLES[code])).toEqual(filled[code]);
   });

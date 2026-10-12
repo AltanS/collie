@@ -14,8 +14,8 @@
 //
 //   `more`    ask again at once, from `next`;
 //   `reset`   the reply is the program's whole current view, applied by the log as an upsert;
-//   `trimmed` how many older items the reset view left out. The log keeps what it already holds, so
-//             this needs no handling beyond not mistaking the shorter view for a deletion.
+//   `trimmed` how many older items the reset view left out. The log keeps what it already holds, and
+//             it is handed the count, so it can mark a gap it has no rows for.
 //
 // WHAT STOPS A PASS. A program that does not answer, answers 503 or 409, or answers an unreadable
 // body ends the pass: the adapter's own snapshot poll reports the cause. A 404 means the pane left
@@ -34,8 +34,11 @@ export const MAX_ROUNDS_PER_PANE = 20;
 
 /** Where the events go. The bridge's pane log is one; a test supplies its own. */
 export interface DurableEventSink {
-  /** Record these events of one pane. Resolves with how many were new. */
-  apply(paneId: string, events: readonly DurableEvent[]): Promise<number>;
+  /**
+   * Record these events of one pane. Resolves with how many were new. `trimmed` is how many older
+   * items a reset reply left out (0 otherwise), so the log can mark the gap.
+   */
+  apply(paneId: string, events: readonly DurableEvent[], trimmed?: number): Promise<number>;
 }
 
 /** What the reader needs of the adapter: the version spoken, and the layout last read. */
@@ -147,7 +150,7 @@ export class DurableEventReader {
       const parsed = parseEvents(reply.text);
       if (!parsed.ok) throw new DurableUnreachable(`unreadable events: ${parsed.detail}`);
       const events = parsed.value;
-      wrote += await this.sink.apply(paneId, events.events);
+      wrote += await this.sink.apply(paneId, events.events, events.reset ? events.trimmed : 0);
       // The cursor moves only after the sink took the events, so a failed write is read again.
       cursor = { epoch: events.epoch, after: events.next };
       this.cursors.set(paneId, cursor);

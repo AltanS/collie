@@ -388,6 +388,17 @@ live on the lead; notification policy is one crew-wide setting the lead owns; up
 per-machine and is the operator's business on each. A peer's own `/api/*` surface still has them for
 its own operator, when that peer is being used directly.
 
+**Which bridge sends a push for a peer's pane: the lead.** A peer in a crew mutes its own herd push
+path (`herdPushGate`, `bridge/crew/notify.ts`), and the lead derives every alert for a peer's panes
+from the snapshots it sweeps (`PeerNotifier`), then sends it to the subscriptions it holds. So the
+ask push guard ([ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)) runs where
+the push is sent: on the lead, over each swept body, keyed on `(member id, toolCallId)`, with its
+memory in the lead's state dir. A peer runs no guard for its own asks while it is in a crew. The
+guard's hourly breaker counts per member, and its one summary push names the member id. A solo
+collie runs the same guard over its own panes, under host `""`. The push for an ask says only
+"Permission needed in <pane>", where <pane> is the pane's push name, so nothing of the ask crosses
+the push service.
+
 **No upload-read route exists on either surface.** `POST …/upload` stores a file and returns its
 absolute local path (`bridge/server.ts:1090`); nothing serves it back over HTTP today (verified: the
 pane route family `bridge/server.ts:93` has no read action for uploads). If one is ever added, it is a
@@ -1259,13 +1270,13 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **Every session and every pane is host-tagged.** `SessionSummary` gains `host: string` and the pane
   wire shape gains `host: string`, so the phone can address what it renders. Absent on a solo
   snapshot (§11).
-- **A pane may carry `asks` and `moreAsks`** (additive-optional, §7.1, added 2026-10-12,
-  [ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)): the open asks of a pane
-  whose adapter raises them as data, at most five, and how many wait past those. The lead adds no
-  rule for them: the merge keeps a pane whole and only stamps `host`, so a member's asks reach the
-  phone as the member listed them, and a lead that predates the fields passes them through the same
-  way. The lead's push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question
-  is shown and not pushed again.
+- **A pane may carry `asks`** (additive-optional, §7.1, added 2026-10-12,
+  [ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)): every open ask of a pane
+  whose adapter raises them as data, up to the program's 50 per pane. The lead adds no rule for it:
+  the merge keeps a pane whole and only stamps `host`, so a member's asks reach the phone as the
+  member listed them, and a lead that predates the field passes it through the same way. The lead's
+  push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question is shown and
+  not pushed again; it caps pushes, never the list (§5, "Which bridge sends a push").
 - **A pane may carry `turnId`** (additive-optional, §7.1, added 2026-10-12,
   [ADR 0101](./.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md)): the newest turn
   of a pane whose adapter takes guarded controls, which the phone sends back with a send or an abort.

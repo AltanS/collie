@@ -20,6 +20,8 @@ export const PUSH_TITLE_CODES = [
   "machine.cpu",
   "machine.mem",
   "machine.disk",
+  "ask.permission",
+  "ask.flood",
 ] as const;
 
 /** Every code a push title can carry. Derived from the list, so there is exactly one place to edit. */

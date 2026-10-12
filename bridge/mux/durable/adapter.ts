@@ -65,6 +65,7 @@ import {
   DurableSocketClient,
   DurableUnreachable,
   resolveSocketPath,
+  SOCKET_NOT_PRIVATE,
   type DurableReply,
   type DurableTransport,
 } from "./client.ts";
@@ -74,6 +75,7 @@ import {
   askForWire,
   incompatibleDetail,
   negotiateVersion,
+  NOT_A_DURABLE_PROGRAM,
   parseAnswerReply,
   parseControlReply,
   parseHello,
@@ -107,8 +109,17 @@ export const READ_TIMEOUT_MS = 1000;
 /** The budget for a starter (WIRE.md section 7.6). A start may spin up a whole conversation. */
 export const STARTER_TIMEOUT_MS = 30_000;
 
-/** The budget for `answer`, `send` and `abort` (WIRE.md section 7.6). */
-export const WRITE_TIMEOUT_MS = 5000;
+/**
+ * The budget for `answer`, `send` and `abort` (WIRE.md section 7.6). Under the crew's 5 second budget
+ * for a forwarded write, so a lead hears this peer's own "unknown" instead of timing out on its own.
+ */
+export const WRITE_TIMEOUT_MS = 3000;
+
+/**
+ * How many transport failures in a row it takes to call the program unreachable. One dropped read
+ * keeps the last good layout for one interval; the second in a row flips the peer (WIRE.md 8.8).
+ */
+export const FAILURES_TO_UNREACHABLE = 2;
 
 /** The longest note an answer may carry, in bytes (WIRE.md section 6). */
 export const NOTE_MAX_BYTES = 2048;
@@ -207,6 +218,8 @@ export class DurableMux implements MuxAdapter {
   private kept: Held | null = null;
   private last: Reading | null = null;
   private inflight: Promise<MuxOutcome<MuxSnapshot>> | null = null;
+  /** Transport failures in a row: a connect, a timeout or a cut reply. A real answer resets it. */
+  private failures = 0;
   private readonly events: DurableEventReader | null;
 
   /**
@@ -550,12 +563,25 @@ export class DurableMux implements MuxAdapter {
     try {
       if (this.current === null) {
         const greeted = await this.greet();
-        if (!greeted.ok) return greeted;
+        if (!greeted.ok) {
+          this.failures = 0;
+          return greeted;
+        }
       }
-      return await this.readSnapshot();
+      const outcome = await this.readSnapshot();
+      this.failures = 0;
+      return outcome;
     } catch (err) {
       // After any failed connect the next read starts with `hello` again (WIRE.md section 8.8).
       this.current = null;
+      this.failures += 1;
+      // HYSTERESIS. One failure keeps the last good layout for this interval, so a single dropped
+      // read does not flip the peer to unreachable and back. The second failure in a row does. A
+      // program that ANSWERS (starting, incompatible) is never held: that is an answer, not a drop.
+      // Neither is a socket that failed the privacy check: that is a fault to show now.
+      const previous = this.last?.outcome;
+      const transient = !(err instanceof DurableUnreachable && err.detail.startsWith(SOCKET_NOT_PRIVATE));
+      if (transient && this.failures < FAILURES_TO_UNREACHABLE && previous?.ok === true && this.kept !== null) return muxOk(this.kept.mux);
       if (err instanceof DurableUnreachable) return muxUnreachable(err.detail);
       return muxUnreachable(err instanceof Error ? err.message : String(err));
     }
@@ -576,6 +602,11 @@ export class DurableMux implements MuxAdapter {
     if (refused !== null) return refused;
 
     const parsed = parseHello(reply.text);
+    // A socket that answers without the service name is some other program: a wrong path, named so.
+    if (!parsed.ok && parsed.detail === NOT_A_DURABLE_PROGRAM) {
+      this.agreedVersion = null;
+      return muxUnreachable(`incompatible: ${NOT_A_DURABLE_PROGRAM}`);
+    }
     if (!parsed.ok) return muxUnreachable(`unreadable hello: ${parsed.detail}`);
     const hello = parsed.value;
     const version = negotiateVersion(hello.protocol);

@@ -75,7 +75,7 @@ import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
-import { AskPush, LOCAL_ASK_HOST } from "./durable/ask-push.ts";
+import { askFloodMessage, AskPush, LOCAL_ASK_HOST } from "./durable/ask-push.ts";
 import { AskGuardStore } from "./durable/guard.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
@@ -1250,7 +1250,12 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       askPush.observe(
         LOCAL_ASK_HOST,
         s.agents.map((agent) => ({ agent, paneId: agent.paneId, asks: openAsks(agent.paneId) })),
-        ({ agent }) => notifications.onTransition(agent, agent.status, "blocked"),
+        ({ agent }) => notifications.onTransition(agent, agent.status, "blocked", "ask"),
+        // The hourly breaker tripped: one summary, under the same snooze and the same "blocked"
+        // preference as every herd push.
+        () => {
+          if (!snooze.isMuted() && notifyPrefs.isNotifiable("blocked")) void push.send(askFloodMessage(LOCAL_ASK_HOST, hostname()));
+        },
       ),
     );
   }
