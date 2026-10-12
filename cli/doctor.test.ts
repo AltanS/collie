@@ -2532,15 +2532,19 @@ describe("doctor durable", () => {
   const durableRows = (run: JsonRun): [string, string][] =>
     run.raw.filter((f) => f.check.startsWith("durable-")).map((f) => [f.check, f.status]);
 
-  test("a ready program in range gives four ok rows, and the mux line defers to them", async () => {
+  test("a ready program in range gives four ok rows, skips the two https rows, and the mux line defers to them", async () => {
     const fake = await startFake();
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     expect(durableRows(run)).toEqual([
       ["durable-env", "ok"],
       ["durable-socket", "ok"],
+      ["durable-url", "skipped"],
+      ["durable-token", "skipped"],
       ["durable-hello", "ok"],
       ["durable-ready", "ok"],
     ]);
+    expect(run.byCheck.get("durable-env")!.detail).toContain("transport: private socket");
+    expect(run.byCheck.get("durable-url")!.detail).toContain("this peer uses the socket");
     expect(run.byCheck.get("durable-hello")!.detail).toContain("speaks 1..1");
     expect(run.byCheck.get("mux")).toMatchObject({ status: "ok", detail: "durable, see the durable-* lines · set by COLLIE_MUX" });
     expect(run.byCheck.get("beacon-hooks-claude")!.status).toBe("ok");
@@ -2558,6 +2562,8 @@ describe("doctor durable", () => {
       expect(durableRows(run)).toEqual([
         ["durable-env", "error"],
         ["durable-socket", "skipped"],
+        ["durable-url", "skipped"],
+        ["durable-token", "skipped"],
         ["durable-hello", "skipped"],
         ["durable-ready", "skipped"],
       ]);
@@ -2665,6 +2671,8 @@ describe("doctor durable", () => {
     expect(durableRows(run)).toEqual([
       ["durable-env", "ok"],
       ["durable-socket", "ok"],
+      ["durable-url", "skipped"],
+      ["durable-token", "skipped"],
       ["durable-hello", "ok"],
       ["durable-ready", "warn"],
     ]);

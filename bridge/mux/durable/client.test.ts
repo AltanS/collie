@@ -75,7 +75,7 @@ describe("the socket path", () => {
   });
 });
 
-describe("the privacy check (WIRE.md section 1)", () => {
+describe("the privacy check (WIRE.md section 1A)", () => {
   test("a socket of mode 0600 owned by this user may be dialled", async () => {
     const program = await startProgram();
     expect(await socketAccessProblem(program.socketPath)).toBeNull();
@@ -156,7 +156,7 @@ describe("the privacy check (WIRE.md section 1)", () => {
   });
 });
 
-describe("the path walk (WIRE.md section 1)", () => {
+describe("the path walk (WIRE.md section 1A)", () => {
   const ME = 1000;
 
   /** One `lstat` answer: a directory, a socket or a link, with its owner and mode. */

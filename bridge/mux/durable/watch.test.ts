@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { muxOk, muxUnreachable, type MuxOutcome, type MuxSnapshot, type MuxWatchOptions } from "../types.ts";
+import { DURABLE_BUDGETS, type DurableBudget } from "./adapter.ts";
 import { toMuxSnapshot, type DurableSnapshot } from "./protocol.ts";
 import { snapshotFixture } from "./fixture.ts";
 import {
   DurableWatch,
-  IDLE_POLL_MS,
-  WATCHED_POLL_MS,
   type DurablePoller,
+  type PollCadence,
   type WatchClock,
   type WatchTimer,
 } from "./watch.ts";
@@ -54,6 +54,8 @@ function layout(change: (snapshot: DurableSnapshot) => DurableSnapshot = (same) 
 /** A poller the test steers: whatever it holds now is what the next census reads. */
 class ScriptedPoller implements DurablePoller {
   reads = 0;
+  /** The transport row whose cadence the watch reads. The socket's unless a test says otherwise. */
+  budget: DurableBudget = DURABLE_BUDGETS.socket;
   /** The layout the program shows, or the reason it cannot be read. */
   layout: DurableSnapshot | null;
   failure: string | null;
@@ -80,6 +82,10 @@ class ScriptedPoller implements DurablePoller {
 
   held(): DurableSnapshot | null {
     return this.failure === null ? this.layout : null;
+  }
+
+  pollCadence(): PollCadence {
+    return { watchedMs: this.budget.watchedPollMs, idleMs: this.budget.idlePollMs };
   }
 }
 
@@ -206,8 +212,21 @@ describe("the durable watch", () => {
     attention = "watched";
     clock.fire();
     await settle();
-    expect(clock.delays).toEqual([IDLE_POLL_MS, WATCHED_POLL_MS]);
-    expect(WATCHED_POLL_MS).toBeLessThan(IDLE_POLL_MS);
+    expect(clock.delays).toEqual([3000, 1000]);
+  });
+
+  test("over https it polls every 2 s while watched and every 10 s otherwise, because each poll is billed", async () => {
+    const clock = new TestClock();
+    let attention: "watched" | "idle" = "idle";
+    const poller = new ScriptedPoller(layout());
+    poller.budget = DURABLE_BUDGETS.https;
+    watching(poller, clock, [], () => attention);
+    await settle();
+    attention = "watched";
+    clock.fire();
+    await settle();
+    expect(clock.delays).toEqual([10_000, 2000]);
+    for (const row of Object.values(DURABLE_BUDGETS)) expect(row.watchedPollMs).toBeLessThan(row.idlePollMs);
   });
 
   test("close brings it down exactly once, leaves no timer, and a late read changes nothing", async () => {

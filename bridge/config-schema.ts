@@ -393,6 +393,22 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "The Unix socket a durable agent program listens on, when COLLIE_MUX is durable. Absolute, and private to your user (mode 0600).",
   },
   {
+    key: "durable_url",
+    env: "COLLIE_DURABLE_URL",
+    section: "mux",
+    kind: "string",
+    default: "",
+    doc: "The https address of a durable agent program behind TLS, used instead of durable_socket and always with durable_token. Plain http only to 127.0.0.1 or localhost with a port.",
+  },
+  {
+    key: "durable_token",
+    env: "COLLIE_DURABLE_TOKEN",
+    section: "mux",
+    kind: "secret",
+    default: "",
+    doc: "The bearer token sent with every request to durable_url, at least 32 bytes. A file holding it must be mode 600.",
+  },
+  {
     key: "mux_endpoint_tuios",
     env: "COLLIE_MUX_ENDPOINT_TUIOS",
     section: "mux",

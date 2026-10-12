@@ -26,7 +26,10 @@ import { REPLY_CAPS } from "./clean.ts";
 import { DurableUnreachable, type DurableTransport } from "./client.ts";
 import { parseEvents, type DurableEvent, type DurableSnapshot } from "./protocol.ts";
 
-/** The budget for one events read (WIRE.md section 7.6). */
+/**
+ * The budget for one events read over the socket (WIRE.md section 7.6). The adapter passes the
+ * transport's own read budget, so an events read over HTTPS waits as long as a snapshot read there.
+ */
 export const EVENTS_TIMEOUT_MS = 1000;
 
 /** Most `more` rounds one pane takes in one pass. A program that never stops saying `more` does not hold the pass. */
@@ -63,6 +66,7 @@ export class DurableEventReader {
     private readonly transport: DurableTransport,
     private readonly sink: DurableEventSink,
     private readonly view: () => DurableEventView | null,
+    private readonly timeoutMs: number = EVENTS_TIMEOUT_MS,
   ) {}
 
   /**
@@ -133,7 +137,7 @@ export class DurableEventReader {
         path: `/pane/${encodeURIComponent(paneId)}/events?${query}`,
         version,
         ifNoneMatch: null,
-        timeoutMs: EVENTS_TIMEOUT_MS,
+        timeoutMs: this.timeoutMs,
         maxBytes: REPLY_CAPS.events,
       });
       if (reply.status === 404) {

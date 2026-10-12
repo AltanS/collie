@@ -53,6 +53,8 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
 | `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the PATH of the Unix socket a durable program listens on. Absolute, at most 103 bytes, no default |
+| `COLLIE_DURABLE_URL` | `https://collie-durable-member.you.workers.dev` | the address of a durable program behind TLS, instead of the socket. `https://` only, or `http://127.0.0.1:<port>` for `wrangler dev` |
+| `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to that URL. At least 32 bytes, always set with the URL |
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
@@ -160,7 +162,7 @@ Collie does not detect Tern on its own, as it does not detect tuios: name it wit
 
 ### durable notes
 
-> **Experimental.** The socket wire may change in any minor release. The wire is written down in
+> **Experimental.** The wire may change in any minor release. The wire is written down in
 > [`bridge/mux/durable/WIRE.md`](../bridge/mux/durable/WIRE.md), and a program and a Collie that do
 > not share a version get a named `incompatible` instead of a silent mismatch.
 
@@ -176,8 +178,53 @@ COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock   # where the program 
 The program listens on that socket, and Collie dials it. Name the backend with `COLLIE_MUX=durable`:
 Collie does not detect it on its own. The path must be absolute and at most 103 bytes. Collie
 connects only when the socket is yours and has no group or other permission (mode `0600`), because
-there is no token on this wire and a private socket is the whole gate. Run Collie in a peer of its
+the socket carries no token and a private socket is the whole gate. Run Collie in a peer of its
 own beside any Herdr one, since one install mirrors one backend.
+
+#### Two ways to reach a program
+
+```bash
+# a program on this machine, as you
+COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock
+
+# or a program you deployed behind TLS, for example on Cloudflare
+COLLIE_DURABLE_URL=https://collie-durable-member.you.workers.dev
+COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
+```
+
+Set one of the two, never both. A URL without a token, or both set, is a config error: the peer
+starts, names the error in its log, and shows the program as unreachable with that reason.
+
+| | private socket | https with a token |
+| --- | --- | --- |
+| Where the program runs | this machine, as your user | anywhere you deploy it |
+| What keeps others out | the socket is yours, mode `0600` | the token, and only the token |
+| Who can act as your phone | any process of your user | anyone who has the token |
+| How often Collie asks | every 1 s while a phone watches, else every 3 s | every 2 s while a phone watches, else every 10 s |
+
+The URL must start with `https://`. The one exception is `http://127.0.0.1:<port>` or
+`http://localhost:<port>`, with a port, for `wrangler dev` on the same machine. Collie refuses any
+other `http://` address, because the token would cross the network unencrypted.
+
+Make the token 32 random bytes or more, for example with `openssl rand -hex 32`, and give the
+program the same value. Collie sends it with every request and never prints it: `collie doctor`
+says "set, 64 bytes", nothing more. To change it, deploy the new token to the program, set it in the
+peer's `.env`, and run `collie restart`.
+
+> **Caution.** Over https the token is the only gate. Anyone who has it can read every
+> conversation and answer every question, and the host (Cloudflare, for example) sees the text. A
+> program reached this way should offer Allow and Deny only, never an always-allow.
+
+Every poll over https is a billed request: on Cloudflare one poll is one Worker request and one
+Durable Object request, and a "nothing changed" answer counts too. With no phone open the idle poll
+runs every 10 s, plus the bridge's own 12 s safety-net poll, so a peer asks about 16,000 times a
+day. That fits the Workers Paid plan, which is the honest recommendation for a program you poll all
+day. On the Free plan it leaves little room for anything else.
+
+A Worker and a Durable Object that speak this wire, to run under `wrangler dev` first and then
+deploy, are in
+[`examples/durable-member-cloudflare`](../examples/durable-member-cloudflare/README.md). That
+folder lands with the Cloudflare example.
 
 What works:
 
@@ -192,9 +239,9 @@ What does not work:
 - Terminal, and typed keys. A durable pane has no screen to show or type into.
 - New tabs, renaming and closing tabs or workspaces. The program lays out its own conversations.
 - "Show in terminal". No pane is ever reported as focused.
-- Another user's program. The socket must belong to the user that runs Collie.
-- A program on another machine. The socket is local, and TCP is not supported. Run a Collie peer on
-  the machine with the program and join it to the crew.
+- Another user's program on the socket. The socket must belong to the user that runs Collie.
+- A program on another machine over plain TCP. Reach it over https with a token, as above, or run a
+  Collie peer on the machine with the program and join it to the crew.
 
 To try it, run the example program in
 [`examples/durable-member`](../examples/durable-member/README.md). It is a small Pi Durable app with
@@ -227,14 +274,22 @@ with a reason:
 | reason | what it means |
 | --- | --- |
 | `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 103 bytes` | the variable is missing or unusable |
+| `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set` | set the socket, or the URL with its token, not both |
+| `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN` | the URL needs its token |
+| `COLLIE_DURABLE_URL uses plain http to <host>` | use `https://`; plain http is for 127.0.0.1 or localhost only |
+| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32` | make a longer token, and give the program the same one |
+| `token-refused` | the program answered 401 or 403: the two sides hold different tokens |
 | `no socket at <path>` | nothing listens there yet |
 | `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |
-| `connection refused`, `no answer within <n>ms` | a stale socket file, or a program that hangs |
+| `connection refused`, `no answer within <n>ms` | a stale socket file, a program that hangs, or nothing at the URL yet |
+| `tls refused`, `the host name does not resolve` | the URL's certificate or name is wrong |
 | `incompatible: program speaks 2..3, this Collie speaks 1..1` | the version ranges do not meet. Update the older side |
 | `starting` | the program is up and says it is not ready yet. Collie asks again on the next poll |
 
-`collie doctor` checks the same things in four lines, `durable-env`, `durable-socket`,
-`durable-hello` and `durable-ready`, and names the failing check with a fix.
+`collie doctor` checks the same things in six lines, `durable-env`, `durable-socket`,
+`durable-url`, `durable-token`, `durable-hello` and `durable-ready`, and names the failing check
+with a fix. `durable-env` says which way the peer reaches the program, and the lines for the other
+way are skipped with the reason.
 
 ### tuios notes
 
@@ -274,7 +329,7 @@ Some things work differently on tuios:
 
 ```bash
 collie doctor   # the `mux` check names the multiplexer, its endpoint,
-                # and whether it answered (durable: the four `durable-*` checks)
+                # and whether it answered (durable: the six `durable-*` checks)
 
 # `[bridge] mux: tmux · socket /run/user/1000/collie-tmux.sock`, printed at
 # startup; a multiplexer it cannot reach is one warning line more

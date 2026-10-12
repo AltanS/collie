@@ -1,6 +1,7 @@
 // A DURABLE PROGRAM, BEHIND THE CONTRACT: a mux with no screen (ADR 0099, WIRE.md).
 //
-// The program owns its conversations and listens on a private Unix socket. This adapter dials it,
+// The program owns its conversations and listens on a private Unix socket, or behind TLS with a
+// bearer token (ADR 0103; transport.ts picks which). This adapter dials it,
 // polls it, and maps what it reads onto the port: the program's workspaces become spaces, its tabs
 // become tabs, and each conversation becomes a pane. There is no pty and no terminal, so every verb
 // that needs a screen, a key press or a new shell answers the contract's `unsupported`.
@@ -24,7 +25,7 @@
 // version we do, the adapter is `unreachable` with a detail that says why. It never answers an
 // empty census for those cases. A program that is up with no panes is a real, empty snapshot.
 
-import { declareCapabilities } from "../capabilities.ts";
+import { declareCapabilities, type MuxCapabilityDeclaration } from "../capabilities.ts";
 import { namesCurrent, type TurnView } from "../../durable/control.ts";
 import { DurableLogs } from "../../durable/log.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
@@ -62,12 +63,11 @@ import { byteLength, CAPS, isWireId, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
   DurableOutcomeUnknown,
-  DurableSocketClient,
   DurableUnreachable,
-  resolveSocketPath,
   SOCKET_NOT_PRIVATE,
   type DurableReply,
   type DurableTransport,
+  type DurableTransportKind,
 } from "./client.ts";
 import { DurableEventReader, type DurableEventSink } from "./events.ts";
 import { DURABLE_LOGO_SVG } from "./logo.ts";
@@ -90,7 +90,8 @@ import {
   type DurablePane,
   type DurableSnapshot,
 } from "./protocol.ts";
-import { DurableWatch, IDLE_POLL_MS } from "./watch.ts";
+import { buildDurableTransport, chooseDurableTransport, type DurableEnv } from "./transport.ts";
+import { DurableWatch, type PollCadence } from "./watch.ts";
 
 export const DURABLE_MUX = "durable";
 
@@ -103,17 +104,60 @@ export const DURABLE_LOG_DIR_OPTION = "durableLogDir";
 /** The shortest time between two snapshot reads (WIRE.md section 7.1). */
 export const MIN_SNAPSHOT_GAP_MS = 250;
 
-/** The budget for `hello` and `snapshot` (WIRE.md section 7.6). */
+/** The budget for `hello` and `snapshot` over the socket (WIRE.md section 7.6). */
 export const READ_TIMEOUT_MS = 1000;
 
 /** The budget for a starter (WIRE.md section 7.6). A start may spin up a whole conversation. */
 export const STARTER_TIMEOUT_MS = 30_000;
 
 /**
- * The budget for `answer`, `send` and `abort` (WIRE.md section 7.6). Under the crew's 5 second budget
- * for a forwarded write, so a lead hears this peer's own "unknown" instead of timing out on its own.
+ * The budget for `answer`, `send` and `abort` over the socket (WIRE.md section 7.6). Under the crew's
+ * 5 second budget for a forwarded write, so a lead hears this peer's own "unknown" instead of timing
+ * out on its own.
  */
 export const WRITE_TIMEOUT_MS = 3000;
+
+/** How hard the adapter asks one transport: its poll cadence, its read and write budgets, its down-gap. */
+export interface DurableBudget {
+  /** The watch's census while a phone is plainly reading this collie. */
+  readonly watchedPollMs: number;
+  /** The census otherwise: the slowest the watch polls, and the adapter's `topologyLatency` ceiling. */
+  readonly idlePollMs: number;
+  /** `hello`, `snapshot` and `events`. */
+  readonly readTimeoutMs: number;
+  /** `answer`, `send` and `abort`. A starter keeps {@link STARTER_TIMEOUT_MS} on both transports. */
+  readonly writeTimeoutMs: number;
+  /**
+   * The least time between two reads while the program is not answering (the last read ended
+   * `unreachable`). Every caller inside it gets that answer again, so a program that is down, or
+   * that refuses the token, is asked once per this gap, however fast the bridge polls.
+   */
+  readonly downGapMs: number;
+}
+
+/**
+ * THE TWO CADENCES, ONE TABLE (ADR 0103). Each row is what one poll COSTS on that transport.
+ *
+ * socket: a poll is a local request on a Unix socket and costs the program next to nothing. The
+ *   watch runs every 1 s while a phone watches and every 3 s otherwise, a read gets 1000 ms and a
+ *   write 3000 ms (under the crew's 5000 ms forwarded-write budget), and a down program is asked
+ *   again after the 250 ms floor.
+ *
+ * https: EVERY POLL IS A BILLED REQUEST. On Cloudflare one poll is one Worker request and one Durable
+ *   Object request, and a 304 is billed like a 200. At the socket's 1 s that is about 86,400 Durable
+ *   Object requests a day, 86% of the Free plan's 100,000, and about 2.6 million a month, past the
+ *   Paid plan's 1 million. So the watch runs every 2 s while a phone watches and every 10 s
+ *   otherwise (8,640 a day idle, plus the bridge's own 12 s safety-net poll). Reads and writes get
+ *   5000 ms, because a Durable Object that slept wakes cold and the request crosses the internet. A
+ *   program that is down, or refuses the token, is asked once per 10 s, never at the bridge's 1.5 s
+ *   fast poll: refused requests are billed too, and a storm of them can spend a Free day.
+ *
+ * The loopback `http://` of `wrangler dev` takes the https row: it stands in for the deployed program.
+ */
+export const DURABLE_BUDGETS = {
+  socket: { watchedPollMs: 1000, idlePollMs: 3000, readTimeoutMs: READ_TIMEOUT_MS, writeTimeoutMs: WRITE_TIMEOUT_MS, downGapMs: MIN_SNAPSHOT_GAP_MS },
+  https: { watchedPollMs: 2000, idlePollMs: 10_000, readTimeoutMs: 5000, writeTimeoutMs: 5000, downGapMs: 10_000 },
+} satisfies Readonly<Record<DurableTransportKind, DurableBudget>>;
 
 /**
  * How many transport failures in a row it takes to call the program unreachable. One dropped read
@@ -181,22 +225,19 @@ function controlUnsupported(caps: DurableCaps, request: ControlRequest): string 
 const NO_KEYS = "A durable conversation takes no typed keys.";
 const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and conversations.";
 
-export class DurableMux implements MuxAdapter {
-  readonly mux = DURABLE_MUX;
-  readonly logo = DURABLE_LOGO_SVG;
-
-  /**
-   * `agentDetection` and `agentSessionRef` are declared: a durable program reports how each
-   * conversation is doing, every pane names the agent `durable`, and every pane names its
-   * conversation id as the session, which keys the bridge's pane log for the journal. Everything that
-   * needs a screen, a key or a new shell is absent, and the program pushes nothing, so both push
-   * capabilities are absent too.
-   */
-  readonly capabilities = declareCapabilities({
+/**
+ * `agentDetection` and `agentSessionRef` are declared: a durable program reports how each
+ * conversation is doing, every pane names the agent `durable`, and every pane names its conversation
+ * id as the session, which keys the bridge's pane log for the journal. Everything that needs a
+ * screen, a key or a new shell is absent, and the program pushes nothing, so both push capabilities
+ * are absent too. `idlePollMs` is the transport's slowest census: a change the program did not
+ * announce is seen within it.
+ */
+function durableCapabilities(idlePollMs: number): MuxCapabilityDeclaration {
+  return declareCapabilities({
     supports: ["agentDetection", "agentSessionRef"],
     spaces: "many",
-    // The slowest the watch ever polls. A change the program did not announce is seen within it.
-    topologyLatency: { kind: "bounded", ms: IDLE_POLL_MS },
+    topologyLatency: { kind: "bounded", ms: idlePollMs },
     notes: {
       paneGrid: NO_SCREEN,
       gridScrollback: NO_SCREEN,
@@ -211,6 +252,17 @@ export class DurableMux implements MuxAdapter {
       createSpace: NO_STRUCTURE,
     },
   });
+}
+
+export class DurableMux implements MuxAdapter {
+  readonly mux = DURABLE_MUX;
+  readonly logo = DURABLE_LOGO_SVG;
+
+  /** What this adapter declares; its `topologyLatency` is its transport's slowest census. */
+  readonly capabilities: MuxCapabilityDeclaration;
+
+  /** The cadence and budgets of this adapter's transport, one row of {@link DURABLE_BUDGETS}. */
+  readonly budget: DurableBudget;
 
   /** The version `hello` agreed. It rides every later call, `hello` included. Null until agreed. */
   private agreedVersion: number | null = null;
@@ -231,7 +283,14 @@ export class DurableMux implements MuxAdapter {
     private readonly clock: DurableClock = SYSTEM_CLOCK,
     log: DurableEventSink | null = null,
   ) {
-    this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program());
+    this.budget = DURABLE_BUDGETS[transport.kind ?? "socket"];
+    this.capabilities = durableCapabilities(this.budget.idlePollMs);
+    this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program(), this.budget.readTimeoutMs);
+  }
+
+  /** The watch's two cadences, from this transport's row of {@link DURABLE_BUDGETS}. */
+  pollCadence(): PollCadence {
+    return { watchedMs: this.budget.watchedPollMs, idleMs: this.budget.idlePollMs };
   }
 
   // ── The floor ───────────────────────────────────────────────────────────────
@@ -247,25 +306,35 @@ export class DurableMux implements MuxAdapter {
   }
 
   /**
-   * Look now: wait out what is left of the 250 ms floor, then read the snapshot again. After it
-   * resolves, the next `snapshot()` is that fresh read. It never throws: a program that does not
+   * Look now: wait out what is left of the 250 ms floor, then read the snapshot again, even inside a
+   * down-gap. After it resolves, the next `snapshot()` is that fresh read. It never throws: a program that does not
    * answer is one stale interval, and `reachable()` already says so.
    */
   async refresh(): Promise<void> {
     if (this.inflight !== null) await this.inflight;
     const wait = this.gapLeft();
     if (wait > 0) await this.clock.sleep(wait);
-    await this.poll();
+    // A look someone asked for: it passes the down-gap, never the floor or a read in flight.
+    await (this.inflight ?? this.start());
   }
 
   /**
    * One read of the program, as an outcome. At most one read runs at a time, and a second call
    * inside the 250 ms floor answers the first read again instead of asking the program (a failed read
-   * counts: a program that is down is asked once per interval, not once per caller).
+   * counts: a program that is down is asked once per interval, not once per caller). After a read
+   * that ended `unreachable` the floor is the transport's down-gap instead, which is the same 250 ms
+   * on the socket and 10 s over HTTPS, where every refused request is billed.
    */
   poll(): Promise<MuxOutcome<MuxSnapshot>> {
     if (this.inflight !== null) return this.inflight;
-    if (this.last !== null && this.gapLeft() > 0) return Promise.resolve(this.last.outcome);
+    if (this.last !== null && this.gapLeft(this.last.outcome.ok ? MIN_SNAPSHOT_GAP_MS : this.budget.downGapMs) > 0) {
+      return Promise.resolve(this.last.outcome);
+    }
+    return this.start();
+  }
+
+  /** Begin one read and hold it as the one in flight. */
+  private start(): Promise<MuxOutcome<MuxSnapshot>> {
     const run = this.read().finally(() => {
       this.inflight = null;
     });
@@ -419,7 +488,7 @@ export class DurableMux implements MuxAdapter {
         path: `/pane/${encodeURIComponent(paneId)}/answer`,
         version: session.version,
         body,
-        timeoutMs: WRITE_TIMEOUT_MS,
+        timeoutMs: this.budget.writeTimeoutMs,
         maxBytes: REPLY_CAPS.post,
       });
     } catch (err) {
@@ -506,7 +575,7 @@ export class DurableMux implements MuxAdapter {
         path: `/pane/${encodeURIComponent(paneId)}/${request.act}`,
         version: program.session.version,
         body,
-        timeoutMs: WRITE_TIMEOUT_MS,
+        timeoutMs: this.budget.writeTimeoutMs,
         maxBytes: REPLY_CAPS.post,
       });
     } catch (err) {
@@ -547,9 +616,10 @@ export class DurableMux implements MuxAdapter {
     return { kind: "refused", detail: `program answered ${String(reply.status)} ${problem.code}`.trim() };
   }
 
-  private gapLeft(): number {
+  /** What is left of `gapMs` since the last read began. `refresh()` waits out the 250 ms floor only. */
+  private gapLeft(gapMs: number = MIN_SNAPSHOT_GAP_MS): number {
     if (this.last === null) return 0;
-    return Math.max(0, this.last.at + MIN_SNAPSHOT_GAP_MS - this.clock.now());
+    return Math.max(0, this.last.at + gapMs - this.clock.now());
   }
 
   private async read(): Promise<MuxOutcome<MuxSnapshot>> {
@@ -595,7 +665,7 @@ export class DurableMux implements MuxAdapter {
       path: "/hello",
       version: this.agreedVersion,
       ifNoneMatch: null,
-      timeoutMs: READ_TIMEOUT_MS,
+      timeoutMs: this.budget.readTimeoutMs,
       maxBytes: REPLY_CAPS.hello,
     });
     const refused = this.refusalFor(reply);
@@ -636,7 +706,7 @@ export class DurableMux implements MuxAdapter {
       path: "/snapshot",
       version: session.version,
       ifNoneMatch: this.kept?.etag ?? null,
-      timeoutMs: READ_TIMEOUT_MS,
+      timeoutMs: this.budget.readTimeoutMs,
       maxBytes: REPLY_CAPS.snapshot,
     });
     if (reply.status === 304) {
@@ -669,7 +739,8 @@ export class DurableMux implements MuxAdapter {
   private refusalFor(reply: DurableReply): MuxRefusalOutcome | null {
     if (reply.status === 200) return null;
     if (reply.status === 401) {
-      // This wire has no token. A program that asks for one speaks another protocol.
+      // The socket carries no token, so a program that asks for one there speaks another protocol.
+      // Over HTTPS a 401 never reaches here: the client turns it into `token-refused` first.
       this.current = null;
       return muxUnreachable("incompatible: program asks for a token");
     }
@@ -754,31 +825,37 @@ export class DurableMux implements MuxAdapter {
   }
 }
 
-/** The socket path named by the environment, or the line that says what is wrong with it. */
-function describeSocket(configured: string | undefined): string {
-  const resolved = resolveSocketPath(configured);
-  return resolved.ok ? `socket ${resolved.path}` : resolved.detail;
+/**
+ * The adapter for one environment and the target's options. The transport is chosen in one place
+ * (transport.ts): the socket, or the URL with its token. A test's socket option overrides the
+ * environment's socket, as it always did.
+ */
+export function createDurableMux(env: DurableEnv, options: Readonly<Record<string, string | undefined>>): DurableMux {
+  const override = options[DURABLE_SOCKET_OPTION];
+  const choice = chooseDurableTransport(override === undefined ? env : { [DURABLE_SOCKET_ENV]: override });
+  const logDir = options[DURABLE_LOG_DIR_OPTION] ?? "";
+  return new DurableMux(buildDurableTransport(choice).transport, SYSTEM_CLOCK, logDir === "" ? null : new DurableLogs(logDir));
+}
+
+/** The boot line's half that says which transport this peer uses and where it points. Never the token. */
+export function describeDurableTarget(env: DurableEnv): string {
+  return buildDurableTransport(chooseDurableTransport(env)).description;
 }
 
 /**
  * The durable adapter's entry in the mux registry.
  *
- * The socket path is `COLLIE_DURABLE_SOCKET`, read from the process environment when the adapter is
- * built. An unset, relative or over-long path does not stop the bridge: the adapter reports
- * `unreachable` with a detail that names the variable, on every read.
+ * The transport comes from `COLLIE_DURABLE_SOCKET`, or from `COLLIE_DURABLE_URL` and
+ * `COLLIE_DURABLE_TOKEN`, read from the process environment when the adapter is built. A missing,
+ * conflicting or broken setting does not stop the bridge: the boot line names it once, and the
+ * adapter reports `unreachable` with the same line on every read.
  */
 export const durableMuxFactory: MuxAdapterFactory = {
   mux: DURABLE_MUX,
   create(target: MuxTarget) {
-    const configured = target.options[DURABLE_SOCKET_OPTION] ?? process.env[DURABLE_SOCKET_ENV];
-    const logDir = target.options[DURABLE_LOG_DIR_OPTION] ?? "";
-    return new DurableMux(
-      new DurableSocketClient(configured),
-      SYSTEM_CLOCK,
-      logDir === "" ? null : new DurableLogs(logDir),
-    );
+    return createDurableMux(process.env, target.options);
   },
   describeTarget(_endpoint: string) {
-    return describeSocket(process.env[DURABLE_SOCKET_ENV]);
+    return describeDurableTarget(process.env);
   },
 };
