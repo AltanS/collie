@@ -358,6 +358,10 @@ function bashExecutionParts(m: JsonObject): TranscriptPart[] {
  *
  * `image` is in `parts` and IS rendered — pi is the one harness whose pictures reach the phone
  * (#292) — even though those 44 sessions carry none.
+ *
+ * `session_info` (pi 1.1.0, the session's `name`) and Oh My Pi 18.10's `title` and `title_change`
+ * were met by the harness canary on 2026-10-12. All three name the session and draw nothing; the
+ * pane's label comes from the multiplexer, not from here.
  */
 const PI_KNOWN: KnownTypes = {
   rows: [
@@ -371,6 +375,9 @@ const PI_KNOWN: KnownTypes = {
     "usage",
     "label",
     "custom",
+    "session_info",
+    "title",
+    "title_change",
   ],
   roles: ["user", "assistant", "toolResult", "bashExecution", "system"],
   parts: ["text", "thinking", "image", "toolCall"],
