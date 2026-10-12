@@ -1,0 +1,6 @@
+# Local secrets. Wrangler reads one of the two; never commit either.
+.dev.vars
+.env
+# Wrangler's local state: the Durable Object's SQLite file lives here under wrangler dev.
+.wrangler/
+node_modules/

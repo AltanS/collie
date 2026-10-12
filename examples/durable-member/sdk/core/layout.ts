@@ -1,10 +1,10 @@
 // The layout store and the handles a program holds: workspace, tab, pane.
-// No Pi Durable import here. A program (or an adapter) calls these methods; the server reads the store.
+// No Pi Durable import here, and no runtime import: it runs in Bun and in a Cloudflare Worker. A program (or an adapter) calls these methods; the server reads the store.
 // Every id a program passes in is checked against the id rule, and every string is cleaned and cut to
 // its byte cap (WIRE.md section 6) before it is stored, so the wire never carries a string over a cap.
 
-import { randomBytes } from "node:crypto";
-import { Receipts } from "./errors.ts";
+import { randomHex } from "./hash.ts";
+import { type ReceiptStore, Receipts } from "./receipts.ts";
 import { assertId, bytes, CAPS, cut, cwdOf, LIMITS, tsOf } from "./rules.ts";
 import type {
   Answer,
@@ -27,7 +27,7 @@ export const DEFAULT_TAIL = 500;
 export const MAX_TAIL = LIMITS.eventsPerReply;
 
 /** At least 128 bits of randomness, as 32 hex characters. */
-export const mintId = () => randomBytes(16).toString("hex");
+export const mintId = () => randomHex(16);
 
 export class AskClosed extends Error {
   constructor(readonly by: ClosedBy) {
@@ -371,8 +371,14 @@ interface WsRec {
 export class Store {
   /** New and random on every start. 128 bits. */
   readonly epoch = mintId();
-  readonly receipts = new Receipts();
-  constructor(readonly tailLimit = DEFAULT_TAIL) {}
+  readonly receipts: Receipts;
+  /** `receipts`: where finished request ids are kept. Default: in memory, gone with the process. */
+  constructor(
+    readonly tailLimit = DEFAULT_TAIL,
+    receipts?: ReceiptStore,
+  ) {
+    this.receipts = new Receipts(receipts);
+  }
   rev = 1;
   /** False until the program says its layout is complete. A restarting program must not show a half-empty one. */
   ready = false;

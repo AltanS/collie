@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { api, type Dial } from "./client.ts";
-import type { SessionEvent } from "../sdk/types.ts";
+import type { SessionEvent } from "../sdk/core/types.ts";
 
 const made: string[] = [];
 /** Remove every temp dir this file made. Each test file calls it in afterAll. */

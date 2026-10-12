@@ -223,8 +223,7 @@ day. On the Free plan it leaves little room for anything else.
 
 A Worker and a Durable Object that speak this wire, to run under `wrangler dev` first and then
 deploy, are in
-[`examples/durable-member-cloudflare`](../examples/durable-member-cloudflare/README.md). That
-folder lands with the Cloudflare example.
+[`examples/durable-member-cloudflare`](../examples/durable-member-cloudflare/README.md).
 
 What works:
 

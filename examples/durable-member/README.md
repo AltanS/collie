@@ -100,7 +100,7 @@ opens. A real model may not follow the script, so a ticket can take a different 
 
 The socket keeps out other users. The app makes it mode `0600`, in a folder with mode `0700`, both
 owned by you. There is no token and no TCP. Before each connect, Collie checks every folder on the
-path and the socket itself ([`WIRE.md` section 1](../../bridge/mux/durable/WIRE.md#1-transport)).
+path and the socket itself ([`WIRE.md` section 1A](../../bridge/mux/durable/WIRE.md#1a-a-private-socket)).
 
 The socket does not keep out you. Any process that runs as your user can open it, read every
 conversation and answer an ask. That includes a tool the agent runs.
@@ -164,15 +164,19 @@ second program needs it. Copy the folder into your program. It imports nothing f
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - `starters()` lists what the phone can start from the New page.
 
-The SDK cleans every string and cuts it to its byte cap, keeps the request ids so a repeat runs once,
-and runs the descendant check. It accepts connections with `Bun.listen` and serves them with
-`node:http`, because only a `Bun.listen` socket gives the file descriptor that `SO_PEERCRED` needs.
-`Bun.serve({ unix })` shows no peer.
+The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
+`Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids
+so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. It imports no
+runtime module, so the same core serves the
+[Cloudflare example](../durable-member-cloudflare/README.md) from a Durable Object. `sdk/server.ts` is the
+transport for Bun: the private socket and the descendant check. It accepts connections with `Bun.listen`
+and parses them with `node:http`, because only a `Bun.listen` socket gives the file descriptor that
+`SO_PEERCRED` needs. `Bun.serve({ unix })` shows no peer.
 
-`pi-durable/index.ts` is the glue for Pi Durable, and the only file that imports it. It shows a
-conversation as a pane, turns a risky tool call into an ask, and runs a helper conversation as a
-tool. A program on another framework writes its own glue against the same handles. `app.ts` puts the
-two together.
+`pi-durable/index.ts` is the glue for Pi Durable. It shows a conversation as a pane, turns a risky tool
+call into an ask, and runs a helper conversation as a tool. `script.ts` is the scripted model. Together they
+are the only files that import Pi. A program on another framework writes its own glue against the same
+handles. `app.ts` puts the parts together.
 
 ## Test
 
@@ -182,6 +186,7 @@ bun test
 ```
 
 The suite covers the socket rules, the hello, the request ids, the cleaning and the caps, the
-descendant check, a whole ticket, and restarts with real kills. It needs no key and makes no network
+descendant check, a whole ticket, and restarts with real kills. The protocol tests run twice, over the
+socket and straight against the core. It needs no key and makes no network
 call. From the root of collie, `bun test bridge/mux/durable/example.test.ts` starts this app and
 drives it with Collie's own adapter.

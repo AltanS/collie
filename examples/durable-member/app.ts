@@ -11,13 +11,6 @@ import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
-  type FauxResponseFactory,
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxText,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
   type Conversation,
   type ConversationId,
   createRegistry,
@@ -32,6 +25,7 @@ import {
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
 import { PaneRegistry, riskGuard, showConversation, spawnHelperTool } from "./pi-durable/index.ts";
+import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "./script.ts";
 
 export interface AppOptions {
   /** The Unix socket path. Absolute, at most 103 bytes. */
@@ -49,54 +43,6 @@ export interface AppOptions {
   seed?: boolean;
 }
 
-const sleep = (ms: number, signal?: AbortSignal) =>
-  new Promise<void>((done) => {
-    if (ms <= 0 || signal?.aborted) return done();
-    const t = setTimeout(done, ms);
-    signal?.addEventListener("abort", () => (clearTimeout(t), done()), { once: true }); // no throw: the stream sees the abort
-  });
-
-type Msg = { role: string; content: unknown; toolName?: string; isError?: boolean };
-const textOf = (c: unknown) =>
-  typeof c === "string" ? c : (c as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text).join("");
-
-/**
- * The script, read from the transcript, so it holds after a restart too:
- *   ticket -> write_note -> spawn_helper -> final text. A later user input -> a slow text.
- *   A first user message that starts with "HELPER:" is the helper, and it only answers.
- */
-function scripted(messages: Msg[], slowMs: number, helperMs?: number) {
-  const last = messages.at(-1)!;
-  const first = messages.find((m) => m.role === "user");
-  if (first && textOf(first.content).startsWith("HELPER:")) {
-    return { msg: fauxAssistantMessage([fauxText("Probably an expired session cookie after the password reset.")]), slow: false, ms: helperMs };
-  }
-  if (first && textOf(first.content).startsWith("TWO:")) {
-    // Two risky calls in ONE assistant message, then one final text once both results are in.
-    if (last.role !== "toolResult") {
-      const calls = ["first", "second"].map((n) => fauxToolCall("write_note", { note: `Two notes: ${n}` }));
-      return { msg: fauxAssistantMessage(calls, { stopReason: "toolUse" }), slow: false };
-    }
-    const saved = messages.filter((m) => m.role === "toolResult" && !m.isError).length;
-    return { msg: fauxAssistantMessage([fauxText(`Both notes handled, ${saved} saved.`)]), slow: false };
-  }
-  if (last.role === "toolResult" && last.toolName === "write_note") {
-    if (last.isError) return { msg: fauxAssistantMessage([fauxText("The note was not saved. I stop here.")]), slow: false };
-    const call = fauxToolCall("spawn_helper", { task: "HELPER: name the likely cause of the login failure in one sentence." });
-    return { msg: fauxAssistantMessage([call], { stopReason: "toolUse" }), slow: false };
-  }
-  if (last.role === "toolResult" && last.toolName === "spawn_helper") {
-    return { msg: fauxAssistantMessage([fauxText(`Triage done. The helper says: ${textOf(last.content)}`)]), slow: false };
-  }
-  const answered = messages.some((m) => m.role === "assistant" && JSON.stringify(m.content).includes('"type":"text"'));
-  if (last.role === "user" && answered) {
-    const long = "Another thought, in detail. ".repeat(40);
-    return { msg: fauxAssistantMessage([fauxText(long)]), slow: true, slowMs };
-  }
-  const call = fauxToolCall("write_note", { note: "Ticket 412: login failure after password reset." });
-  return { msg: fauxAssistantMessage([call], { stopReason: "toolUse" }), slow: false };
-}
-
 export interface App {
   collie: Collie;
   harness: Harness;
@@ -107,8 +53,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   const stepMs = o.stepMs ?? 400;
   const slowMs = o.slowMs ?? 10_000;
 
-  // The model: faux by default. The factory re-queues itself, because faux answers from a queue
-  // and has no catch-all. Several copies are queued so two parallel calls never find it empty.
+  // The model: faux by default, the scripted one in script.ts. REAL_MODEL is an OpenRouter model id, off by default.
   const models = createModels();
   let model = { provider: "faux", modelId: "faux-1" };
   const real = process.env.REAL_MODEL; // an OpenRouter model id, e.g. google/gemini-3.1-flash-lite. Off by default.
@@ -118,15 +63,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     if (!models.getModel("openrouter", real)) throw new Error(`REAL_MODEL ${real} is not an OpenRouter model id Pi knows`);
     model = { provider: "openrouter", modelId: real };
   } else {
-    const faux = fauxProvider();
-    models.setProvider(faux.provider);
-    const factory: FauxResponseFactory = async (context, options) => {
-      faux.appendResponses([factory]);
-      const step = scripted(context.messages as unknown as Msg[], slowMs, o.helperMs);
-      await sleep(step.slow ? slowMs : (step.ms ?? stepMs), options?.signal);
-      return step.msg;
-    };
-    faux.setResponses(Array.from({ length: 16 }, () => factory));
+    useScriptedModel(models, { stepMs, slowMs, helperMs: o.helperMs });
   }
 
   // Tools and layout.
@@ -180,9 +117,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   }
 
   let tickets = 0;
-  const instructions = real
-    ? "You triage support tickets. For every ticket: first call write_note with a one-sentence note, then call spawn_helper with a task that starts with 'HELPER:' and asks a helper to name the likely cause, then answer in one sentence."
-    : "You triage support tickets.";
+  const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
   const startTriage = (prefix: string) => async () => {
     const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model, instructions } }, ctx);
     const pane = await show(conversation, false);

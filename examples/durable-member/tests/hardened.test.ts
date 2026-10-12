@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, lstatSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { api } from "./client.ts";
-import { Receipts } from "../sdk/errors.ts";
+import { Receipts } from "../sdk/core/receipts.ts";
 import { type AskInput, cut, openCollie, type PaneHandle } from "../sdk/index.ts";
 import { withNarrowUmask } from "../sdk/socket.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";

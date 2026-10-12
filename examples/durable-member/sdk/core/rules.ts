@@ -1,7 +1,7 @@
-// The id rule, the string cleaning and the caps of the wire (WIRE.md sections 6). Pure functions, no I/O.
+// The id rule, the string cleaning and the caps of the wire (WIRE.md sections 6). Pure functions, no I/O, no
+// runtime import: this file runs in Bun and in a Cloudflare Worker.
 
-import { createHash } from "node:crypto";
-import { isAbsolute } from "node:path";
+import { sha256Hex } from "./hash.ts";
 
 /** Bytes per field. UTF-8 bytes, not code points. */
 export const CAPS = {
@@ -44,7 +44,20 @@ export const LIMITS = {
   replyBytes: 8_000_000,
 } as const;
 
-export const bytes = (s: string) => Buffer.byteLength(s, "utf8");
+/** UTF-8 bytes of a string, without encoding it. A lone surrogate counts 3, as its U+FFFD replacement does. */
+export function bytes(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+      n += 4;
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
 
 // The mux id rule (isValidMuxId): control characters, whitespace, `/`, `?` and `#` are out.
 const UNSAFE_ID_CHAR = /[\p{C}\s/?#]/u;
@@ -66,7 +79,7 @@ export function assertId(id: unknown, what: string): string {
 export function safeId(raw: unknown): string {
   const s = String(raw ?? "");
   if (idOk(s)) return s;
-  const hash = createHash("sha256").update(s).digest("hex").slice(0, 16);
+  const hash = sha256Hex(s).slice(0, 16);
   const body = s.replace(/[\p{C}\s/?#]/gu, "_");
   let head = "";
   for (const ch of body) {
@@ -103,10 +116,13 @@ export function cut(text: unknown, max: number, multiline = false): string {
   return `${out}…`;
 }
 
-/** An absolute path inside the cap, else undefined (it reads as absent). */
+/**
+ * An absolute path inside the cap, else undefined (it reads as absent). Absolute is the POSIX rule, a leading
+ * `/`, which is what `node:path` says on Linux, the one system the local example runs on.
+ */
 export function cwdOf(cwd: unknown): string | undefined {
   if (typeof cwd !== "string" || cwd === "" || bytes(cwd) > CAPS.cwd || HAS_CONTROL.test(cwd)) return undefined;
-  return isAbsolute(cwd) ? cwd : undefined;
+  return cwd.startsWith("/") ? cwd : undefined;
 }
 
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;
