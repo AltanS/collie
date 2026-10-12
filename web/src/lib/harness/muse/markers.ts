@@ -109,8 +109,12 @@ export function promptRowText(text: string): string | null {
 
 // A draft continuation: the 2-space-indented wrap rows below the `❯` row. Only
 // ever read as part of the located composer run (see locateTail), never
-// scanned for — dialog rows share the indentation.
-const CONTINUATION_ROW = /^  \S/;
+// scanned for — dialog rows share the indentation. Only the gutter is asserted:
+// the draft's own text may begin with spaces, and `/^  \S/` read an indented
+// line as a torn frame, which lost the composer and refused the send while the
+// draft sat there (harness canary 2026-10-12, Muse 1.4.6; codex/chrome.ts
+// CONTINUATION is the same lesson).
+const CONTINUATION_ROW = /^  \s*\S/;
 
 /** True when the row could continue a draft (2-space indent, non-blank). */
 export function isContinuationRow(text: string): boolean {
