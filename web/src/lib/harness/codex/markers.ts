@@ -224,6 +224,35 @@ function splitPaintedGaps(segments: AnsiSegment[]): AnsiSegment[] {
   return out;
 }
 
+/**
+ * A separator whose leading space arrives in the paint of the field before it, moved back onto the
+ * separator. Once a thread has a title, Codex 0.159.3 paints the status row as `<path> ` in the
+ * path's colour, then `· ` unpainted, then the title (codex--v0159-task-title.txt, harness canary
+ * 2026-10-12). Neither segment was a field or a separator, so the row was refused after the first
+ * turn of every thread: no composer, the unread-dialog card, and every later send refused. As with
+ * `splitPaintedGaps`, a space draws no ink, so its paint is not evidence; the separator keeps its own
+ * paint, and the paint tests below still run on it unchanged.
+ */
+function rejoinSplitSeparators(segments: AnsiSegment[]): AnsiSegment[] {
+  const tail = STATUS_SEPARATOR.slice(1);
+  return segments.map((segment, index) => {
+    const prev = segments[index - 1];
+    if (prev !== undefined && carriesSeparatorSpace(prev) && segment.text.startsWith(tail)) {
+      segment = { ...segment, text: ` ${segment.text}` };
+    }
+    const next = segments[index + 1];
+    if (next !== undefined && carriesSeparatorSpace(segment) && next.text.startsWith(tail)) {
+      segment = { ...segment, text: segment.text.slice(0, -1) };
+    }
+    return segment;
+  });
+}
+
+/** A painted field with exactly one space after its text: the space a separator lost. */
+function carriesSeparatorSpace(segment: AnsiSegment): boolean {
+  return segment.fg !== undefined && /^\S(?:.*\S)? $/u.test(segment.text);
+}
+
 // The busy row's spinner frames: the ten of the dots spinner, the only run of them in the 0.156.1
 // binary (beside its status-surface code). The canary's busy captures hold `⠋` and `⠧`. The starfield
 // draws from eight single-dot glyphs instead (`⠁⠂⠄⠈⠐⠠⡀⢀`, every sparkle in
@@ -292,7 +321,7 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
 
   const folded = foldTrailingPadding(line.segments);
   if (folded === null) return false;
-  const segments = splitPaintedGaps(folded);
+  const segments = splitPaintedGaps(rejoinSplitSeparators(folded));
   if (!isIndentSegment(segments[0]!)) return false;
 
   let fields = 0;

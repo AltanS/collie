@@ -72,6 +72,7 @@ const PINNED = [
   "codex--v0157-idle-50.txt",
   "codex--v0157-idle.txt",
   "codex--v0158-goal-notice.txt",
+  "codex--v0159-task-title.txt",
   "codex--working.txt",
 ];
 
@@ -1156,6 +1157,19 @@ describe("Codex 0.157.1 fullscreen: one key-hint row under the status row", () =
     expect(codexAdapter.extractInputDraft(lines)).toBeNull();
     expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
     expect(stripChrome(lines).map(lineText).join("\n")).toContain("• Working (5m 47s • esc to interrupt)");
+  });
+
+  // Codex 0.159.3, harness canary 2026-10-12: once the thread has a title, the separator's leading
+  // space arrives in the path's paint (`<path> ` then `· `). The row was refused after every first
+  // turn, so each later send was refused as `blocked`.
+  it("a separator whose space carries the field's paint still leaves a status row", () => {
+    const lines = fixtureLines("codex--v0159-task-title.txt");
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const box = locateComposer(lines)!;
+    expect(lineText(lines[box.promptRow]!).trimEnd()).toBe(`› ${PLACEHOLDER}`);
+    expect(lineText(lines[box.statusRow]!).trimEnd()).toBe("  gpt-5.6-sol low · /tmp/collie-canary-project · Generate task title");
+    expect(codexAdapter.extractInputDraft(lines)).toBeNull();
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
   });
 
   describe("the hint row opens no new way in", () => {
