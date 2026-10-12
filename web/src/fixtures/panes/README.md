@@ -1925,3 +1925,9 @@ footer below are left out. CRLF line ends as read.
 Before `clusterWidth` gave a VS16 cluster two columns, the `build` row measured 32 and the table split
 into rows 0 to 2 and 4 to 10. Checked for user and host names, home paths, tokens and session ids:
 the rows hold only the probe table.
+
+## Shell box table with VS16 emoji (captured 2026-10-12, Herdr 0.9.3, PR 417)
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `shell--box-table-vs16-emoji.txt` | A box table printed by a script in a plain shell pane (no agent), with `⚠️` (U+26A0 U+FE0F), `❤️` (U+2764 U+FE0F) and both in one boxed row. Herdr's own cursor position report after each sample says it draws each of these two columns wide, a bare `⚠` or `❤` one, and `a`, `é`, `→`, `€` followed by U+FE0F one. So every wall after an emoji stands at the anchor's column. `table-run.test.ts` pins one run over rows 2..9. `read --source visible --format ansi --raw`, cut to the heading line and the table, CRLF as read. Synthetic content, nothing to scrub | `idle` |

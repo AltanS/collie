@@ -1,0 +1,10 @@
+Status marks in the last release:
+
+┌───────┬──────────────────┬────────────┐
+│ Mark  │ Meaning          │ Action     │
+├───────┼──────────────────┼────────────┤
+│ ⚠️    │ Disk almost full │ Free space │
+│ ❤️    │ Deploy liked     │ Nothing    │
+│ ⚠️ ❤️ │ Both marks       │ Review     │
+│ ok    │ All clear        │ Nothing    │
+└───────┴──────────────────┴────────────┘

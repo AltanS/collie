@@ -151,6 +151,46 @@ const COMBINING_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0xfeff, 0xfeff], // zero-width no-break space / BOM
 ];
 
+// Text-default emoji: the code points that draw ONE column on their own and TWO when U+FE0F (VS16,
+// the emoji variation selector) follows. Herdr 0.9.3 was measured on 2026-10-12 with a cursor
+// position report per sample: U+26A0 U+FE0F and U+2764 U+FE0F each advance the cursor two columns,
+// a bare U+26A0 or U+2764 one, and a base with no emoji form (`a`, `é`, `→`, `€`) stays one column
+// with the selector after it. These are the Emoji=Yes, Emoji_Presentation=No code points of Unicode
+// 17.0 above U+007F, so it is the set that has an emoji variation sequence. The ASCII bases (`#`, `*`,
+// digits) are left out: they widen only inside a keycap, which `clusterWidth` reads by its U+20E3.
+// Sorted ascending, like the other tables, and pinned by the same test.
+const EMOJI_TEXT_DEFAULT_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0xa9, 0xa9], [0xae, 0xae], [0x203c, 0x203c], [0x2049, 0x2049], [0x2122, 0x2122],
+  [0x2139, 0x2139], [0x2194, 0x2199], [0x21a9, 0x21aa], [0x2328, 0x2328], [0x23cf, 0x23cf],
+  [0x23ed, 0x23ef], [0x23f1, 0x23f2], [0x23f8, 0x23fa], [0x24c2, 0x24c2], [0x25aa, 0x25ab],
+  [0x25b6, 0x25b6], [0x25c0, 0x25c0], [0x25fb, 0x25fc], [0x2600, 0x2604], [0x260e, 0x260e],
+  [0x2611, 0x2611], [0x2618, 0x2618], [0x261d, 0x261d], [0x2620, 0x2620], [0x2622, 0x2623],
+  [0x2626, 0x2626], [0x262a, 0x262a], [0x262e, 0x262f], [0x2638, 0x263a], [0x2640, 0x2640],
+  [0x2642, 0x2642], [0x265f, 0x2660], [0x2663, 0x2663], [0x2665, 0x2666], [0x2668, 0x2668],
+  [0x267b, 0x267b], [0x267e, 0x267e], [0x2692, 0x2692], [0x2694, 0x2697], [0x2699, 0x2699],
+  [0x269b, 0x269c], [0x26a0, 0x26a0], [0x26a7, 0x26a7], [0x26b0, 0x26b1], [0x26c8, 0x26c8],
+  [0x26cf, 0x26cf], [0x26d1, 0x26d1], [0x26d3, 0x26d3], [0x26e9, 0x26e9], [0x26f0, 0x26f1],
+  [0x26f4, 0x26f4], [0x26f7, 0x26f9], [0x2702, 0x2702], [0x2708, 0x2709], [0x270c, 0x270d],
+  [0x270f, 0x270f], [0x2712, 0x2712], [0x2714, 0x2714], [0x2716, 0x2716], [0x271d, 0x271d],
+  [0x2721, 0x2721], [0x2733, 0x2734], [0x2744, 0x2744], [0x2747, 0x2747], [0x2763, 0x2764],
+  [0x27a1, 0x27a1], [0x2934, 0x2935], [0x2b05, 0x2b07], [0x3030, 0x3030], [0x303d, 0x303d],
+  [0x3297, 0x3297], [0x3299, 0x3299], [0x1f170, 0x1f171], [0x1f17e, 0x1f17f], [0x1f202, 0x1f202],
+  [0x1f237, 0x1f237], [0x1f321, 0x1f321], [0x1f324, 0x1f32c], [0x1f336, 0x1f336],
+  [0x1f37d, 0x1f37d], [0x1f396, 0x1f397], [0x1f399, 0x1f39b], [0x1f39e, 0x1f39f],
+  [0x1f3cb, 0x1f3ce], [0x1f3d4, 0x1f3df], [0x1f3f3, 0x1f3f3], [0x1f3f5, 0x1f3f5],
+  [0x1f3f7, 0x1f3f7], [0x1f43f, 0x1f43f], [0x1f441, 0x1f441], [0x1f4fd, 0x1f4fd],
+  [0x1f549, 0x1f54a], [0x1f56f, 0x1f570], [0x1f573, 0x1f579], [0x1f587, 0x1f587],
+  [0x1f58a, 0x1f58d], [0x1f590, 0x1f590], [0x1f5a5, 0x1f5a5], [0x1f5a8, 0x1f5a8],
+  [0x1f5b1, 0x1f5b2], [0x1f5bc, 0x1f5bc], [0x1f5c2, 0x1f5c4], [0x1f5d1, 0x1f5d3],
+  [0x1f5dc, 0x1f5de], [0x1f5e1, 0x1f5e1], [0x1f5e3, 0x1f5e3], [0x1f5e8, 0x1f5e8],
+  [0x1f5ef, 0x1f5ef], [0x1f5f3, 0x1f5f3], [0x1f5fa, 0x1f5fa], [0x1f6cb, 0x1f6cb],
+  [0x1f6cd, 0x1f6cf], [0x1f6e0, 0x1f6e5], [0x1f6e9, 0x1f6e9], [0x1f6f0, 0x1f6f0],
+  [0x1f6f3, 0x1f6f3],
+];
+
+const VS16 = 0xfe0f;
+const KEYCAP = 0x20e3;
+
 // Ranges above are sorted ascending by lower bound, so a linear scan can bail the moment `cp` is
 // below the current range's floor — no code point in a later (higher) range could match either.
 function inRanges(cp: number, ranges: ReadonlyArray<readonly [number, number]>): boolean {
@@ -176,16 +216,23 @@ function clusters(text: string): string[] {
 // cluster (café's "é" as e + combining acute, under Intl.Segmenter) contributes nothing extra, and
 // a combining mark that arrives as its own "cluster" (no Segmenter, or a stray mark with no base)
 // correctly resolves to 0 via COMBINING_RANGES rather than falling through to the width-1 default.
+// One exception: a narrow base that VS16 turns into an emoji is two columns (`isEmojiPresentation`).
 function clusterWidth(cluster: string): number {
   const cp = cluster.codePointAt(0);
   if (cp === undefined) return 0;
   if (inRanges(cp, COMBINING_RANGES)) return 0;
   if (inRanges(cp, WIDE_RANGES)) return 2;
-  // VS16 turns a narrow base (⚠, ❤, a keycap digit) into its emoji form, and the TUIs pad that two
-  // columns wide: a Claude Code box table with `⚠️` in a cell put its wall one column right of where
-  // a base-only width had it, and the table split around that row (claude--box-table-vs16-emoji.txt).
-  if (cluster.includes("️")) return 2;
+  if (isEmojiPresentation(cluster, cp)) return 2;
   return 1;
+}
+
+// A cluster the terminal draws as an emoji although its base is narrow: a text-default emoji with
+// VS16 right after it (`⚠️`, `❤️`, `✔️`), or a keycap (`1` VS16 U+20E3). Herdr draws both two
+// columns wide, so the base's own width of one would put every wall to their right a column short.
+function isEmojiPresentation(cluster: string, cp: number): boolean {
+  const next = cluster.codePointAt(cp > 0xffff ? 2 : 1);
+  if (next !== VS16) return false;
+  return inRanges(cp, EMOJI_TEXT_DEFAULT_RANGES) || cluster.codePointAt(cluster.length - 1) === KEYCAP;
 }
 
 /** East-Asian-aware display width: W/F code points count 2 columns, combining marks 0, else 1.
@@ -234,12 +281,12 @@ export function cellsByColumn(text: string): ReadonlyMap<number, string> {
 // "within the measurement's own error". It cannot be built from these tables, because the tables have
 // no notion of a grapheme cluster: `clusterWidth` scores a cluster by its BASE code point, while the
 // width tables a TUI actually links against (wcwidth/wcswidth, go-runewidth, Rust unicode-width) sum
-// a cluster's code points independently. `👨‍💻` is 2 here and 4 there; `👨‍👩‍👧‍👦` is 2 here and 8 there.
-// Every one of those scored as
+// a cluster's code points independently. `👨‍💻` is 2 here and 4 there; `👨‍👩‍👧‍👦` is 2 here and 8 there;
+// a keycap (`1` + VS16 + U+20E3) once short-circuited on its ASCII base (it reads two columns now). Every one of those scored as
 // CERTAIN — the bar read zero exactly where the error was largest — while `🗑`, `▶` and every arrow
 // scored as doubtful and donated slack a comparison had no business spending. A width measured over
 // one string is useful (harness/claude/markers.ts uses it for a border's minimum length, which is a
 // claim about ONE row); a width compared against a width some other renderer chose over DIFFERENT
 // content is not, at any tolerance. See harness/omp/chrome.ts for the failure that bought.
 
-export { WIDE_RANGES, COMBINING_RANGES };
+export { WIDE_RANGES, COMBINING_RANGES, EMOJI_TEXT_DEFAULT_RANGES };

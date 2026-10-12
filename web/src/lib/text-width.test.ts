@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cellsByColumn, displayWidth, widePieces, WIDE_RANGES, COMBINING_RANGES } from "./text-width";
+import { cellsByColumn, displayWidth, widePieces, WIDE_RANGES, COMBINING_RANGES, EMOJI_TEXT_DEFAULT_RANGES } from "./text-width";
 
 describe("widePieces", () => {
   it("cuts each double-width cluster out alone and keeps the narrow runs between them whole", () => {
@@ -49,6 +49,36 @@ describe("displayWidth", () => {
     // every A glyph as narrow (module header). Pinned here so a future table edit that widens it
     // is a deliberate, reviewed change.
     expect(displayWidth("→")).toBe(1);
+  });
+});
+
+describe("displayWidth — VS16 emoji, as Herdr 0.9.3 draws them", () => {
+  // Measured 2026-10-12 with a cursor position report after each sample in a Herdr pane: the cursor
+  // advanced two columns for each emoji sequence below and one for each bare base or non-emoji base.
+  it("counts a text-default emoji followed by VS16 as two columns", () => {
+    expect(displayWidth("\u26a0\ufe0f")).toBe(2); // warning sign
+    expect(displayWidth("\u2764\ufe0f")).toBe(2); // red heart
+    expect(displayWidth("\u2714\ufe0f")).toBe(2);
+    expect(displayWidth("\u2139\ufe0f")).toBe(2);
+    expect(displayWidth("\u00a9\ufe0f")).toBe(2);
+    expect(displayWidth("\u2764\ufe0f\u200d\u{1f525}")).toBe(2); // heart on fire, one cluster
+  });
+
+  it("counts a keycap as two columns", () => {
+    expect(displayWidth("1\ufe0f\u20e3")).toBe(2);
+  });
+
+  it("keeps the bare base, and a base with no emoji form, at one column", () => {
+    expect(displayWidth("\u26a0")).toBe(1);
+    expect(displayWidth("\u2764")).toBe(1);
+    expect(displayWidth("a\ufe0f")).toBe(1);
+    expect(displayWidth("\u00e9\ufe0f")).toBe(1);
+    expect(displayWidth("\u2192\ufe0f")).toBe(1);
+    expect(displayWidth("\u20ac\ufe0f")).toBe(1);
+  });
+
+  it("lays a row out by columns, so the wall after a VS16 emoji stands where the terminal drew it", () => {
+    expect([...cellsByColumn("\u2502 \u26a0\ufe0f \u2502")].map(([column]) => column)).toEqual([0, 1, 2, 4, 5]);
   });
 });
 
@@ -119,12 +149,6 @@ describe("displayWidth — East Asian Width boundary pins", () => {
     expect(displayWidth("🎉🎉🎉")).toBe(6);
   });
 
-  it("VS16 asks for the emoji form, which is two columns; the bare text form stays one", () => {
-    expect(displayWidth("⚠️")).toBe(2); // U+26A0 U+FE0F, as Claude Code 2.1.296 pads it
-    expect(displayWidth("⚠")).toBe(1);
-    expect(displayWidth("1️⃣")).toBe(2);
-  });
-
   it("U+3099/U+309A (combining kana marks) are width 0 despite sitting inside a WIDE range", () => {
     expect(w(0x3099)).toBe(0);
     expect(w(0x309a)).toBe(0);
@@ -152,5 +176,9 @@ describe("WIDE_RANGES / COMBINING_RANGES — table integrity", () => {
 
   it("COMBINING_RANGES is sorted ascending and non-overlapping", () => {
     assertSortedAndNonOverlapping(COMBINING_RANGES);
+  });
+
+  it("EMOJI_TEXT_DEFAULT_RANGES is sorted ascending and non-overlapping", () => {
+    assertSortedAndNonOverlapping(EMOJI_TEXT_DEFAULT_RANGES);
   });
 });

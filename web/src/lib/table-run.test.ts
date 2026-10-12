@@ -390,6 +390,10 @@ describe("tableRuns — the whole pane corpus", () => {
       "omp--v18-rule-idle.txt 2..20",
       "omp--v18-rule-wrapped.txt 2..20",
       "omp--working.txt 2..20",
+      // A box table printed by a shell in a Herdr 0.9.3 pane, with ⚠️ and ❤️ (a text-default emoji
+      // plus U+FE0F) in boxed rows. Herdr draws each one two columns wide, so every wall after them
+      // stands where the anchor's junctions do. Scoring them as one column wrapped the table again.
+      "shell--box-table-vs16-emoji.txt 2..9",
     ]);
   });
 });
