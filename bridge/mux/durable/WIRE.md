@@ -432,7 +432,7 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | Open asks per pane | 50 | the oldest 50 |
 | Options per ask | 6 | the first 6. An ask with none is shown as not answerable. |
 | Starters per snapshot | 50 | the first 50 |
-| Events per reply | 1000 | the program stops early and sets `more` |
+| Events per reply | 1000 (a reset reply: see 7.2) | the program stops early and sets `more` |
 | Items in a reset view | 2000, the newest | the program leaves out the oldest and counts them in `trimmed` |
 | Request body to the program | 65536 bytes | 413 `too-large` |
 | `hello` reply | 16 KiB | the adapter refuses it: `unreachable`, detail `too-large` |
@@ -465,6 +465,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
   `reset: true`, and `events` is this sequence: `reset`; then each item in its latest version, in
   order of first appearance, at most the newest 2000; then each open ask as an `ask` event, oldest
   first; then one `state`; then `synced`. `next` is the pane's current count.
+  A plain reply holds at most 1000 events. A reset reply may hold more: up to the newest 2000
+  items, every open ask, and the `reset`, `state` and `synced` events.
 - A pane the adapter has never read: `after=0` and the current epoch.
 - `reset` means: the cursor numbering started over, and what follows is the program's whole current
   view of this pane. The adapter upserts items by id. Whether an item missing from that view stays

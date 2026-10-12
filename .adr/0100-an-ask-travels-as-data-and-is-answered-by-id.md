@@ -64,8 +64,9 @@ involved.**
    phone shows the new ask. The guard sees the key it already pushed and stays quiet. The old ask
    id answers `too-late`.
 7. **The crew carries it with no version bump.** `CREW_PROTOCOL_VERSION` stays 2. `/answer` joins
-   `FORWARDABLE`, so a lead forwards it to the member that owns the pane. An old lead drops `asks`
-   and shows the pane as `waiting`. An old peer answers 404 to `/answer`, and the phone maps that
+   `FORWARDABLE`, so a lead forwards it to the member that owns the pane. An old lead passes `asks`
+   through unchanged, because the merge spreads the whole pane; it draws nothing from the field and
+   shows the pane as waiting. An old peer answers 404 to `/answer`, and the phone maps that
    to `stale`, as it does for Chat, with a line that says the machine needs an update.
 
 ## Consequences
