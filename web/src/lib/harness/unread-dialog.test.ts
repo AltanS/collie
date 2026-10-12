@@ -244,10 +244,10 @@ const CARD_FIXTURES = {
   grok: {
     // README: checkbox ask (`[ ]`), digit submits — a real dialog, and `blocked` on the reply path
     modals: ["grok--ask-multi.txt", "grok--ask-multi-checked.txt"],
-    // README: a STRUCTURE fixture, "torn frame: square bubble, no composer". Not a live pane state:
-    // it exists to pin that `locateComposer` returns null on a torn buffer. Kept visible here
-    // because ctrl+c is grok's declared key and a torn frame is not a modal.
-    notModals: ["grok--user-bubble.txt"],
+    // grok--user-bubble.txt, the README's torn-frame STRUCTURE fixture, sat here until grok declared
+    // `modalOnScreen` (2026-10-12): a torn frame prints no key-hint footer, so it no longer gets the
+    // card, which would have offered ctrl+c over it.
+    notModals: [],
   },
   muse: {
     // README: the per-question note input, open and typed — real dialogs
@@ -440,5 +440,26 @@ describe("known live-box gaps the card inherits", () => {
 
     expect(museAdapter.composerReady!(lines)).toBe(true);
     expect(cardOf(pass("muse", lines))).toBeNull();
+  });
+});
+
+// Harness canary 2026-10-12 (Codex 0.159.3, Grok Build 1.0.50, Muse 1.4.6): with no positive gate,
+// the card flashed over the shell each agent leaves behind on exit and over the frames it paints
+// before its composer, and on grok it offered ctrl+c to that shell. The text below is what those
+// captures show, with the session ids and the shell prompt replaced.
+describe("the card stays off the shell an agent exits to, and off its first frames", () => {
+  const screen = (...rows: string[]) => splitLines(parseAnsi(rows.join("\n")));
+  const SHELL = "host:project user$ ";
+
+  it.each([
+    ["codex", screen("Token usage: total=245,954 input=245,944 output=10", "To continue this session, run:", "  codex resume 0000-session", SHELL)],
+    ["codex", screen("  >_ OpenAI Codex (v0.159.3)", "", "› Ask Codex to do anything", "", "  ? for shortcuts")],
+    ["grok", screen("Finishing session…", "Resume this session with:", "  grok --resume 0000-session", SHELL)],
+    ["muse", screen("  Muse Code 1.4.6", "❯ Reply with only OK.", "◆ OK", "To continue this session, run muse resume 0000-session", SHELL)],
+    ["muse", screen("  Muse Code 1.4.6")],
+  ])("%s: no card on %#", (agent, lines) => {
+    expect(adapterFor(agent)!.composerReady!(lines)).toBe(false);
+    expect(adapterFor(agent)!.modalOnScreen!(lines)).toBe(false);
+    expect(cardOf(pass(agent, lines))).toBeNull();
   });
 });

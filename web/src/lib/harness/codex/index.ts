@@ -16,7 +16,7 @@
 // (APPROVAL_NOTES.md, TRUST_NOTES.md). The update prompt and the `/model` and `/permissions`
 // pickers are deliberately left to the unread-dialog card.
 
-import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
+import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import {
   composerPrompt,
@@ -72,6 +72,28 @@ export function codexBuildBlocks(lines: StyledLine[]): Block[] {
 
 export { extractStatusLines, extractInputDraft };
 
+// How many of the screen's last non-blank rows may carry a dialog's footer: the same window Claude's
+// `modalOnScreen` reads (claude/index.ts MODAL_HINT_ROWS).
+const MODAL_HINT_ROWS = 6;
+const NAMES_ESC = /\besc(?:ape)?\b/i;
+
+/**
+ * Positive evidence of a Codex dialog for the unread-dialog card (.adr/0053, addendum 2026-09-26):
+ * one of the last rows names Escape, as every Codex dialog footer does (`enter continue · esc quit`,
+ * `enter select · esc back`, `Press enter to confirm or esc to cancel`, codex/markers.ts; the notes
+ * card's `tab or esc to clear notes`). The shell after `/quit` (`codex resume <id>`) and the first
+ * frames before the status row paints (`? for shortcuts` alone) name no key, and the card no longer
+ * flashes over them (harness canary 2026-10-12, Codex 0.159.3; the known gap of 1.13.2).
+ */
+function codexModalOnScreen(lines: StyledLine[]): boolean {
+  const rows: string[] = [];
+  for (let i = lines.length - 1; i >= 0 && rows.length < MODAL_HINT_ROWS; i--) {
+    const text = lineText(lines[i]!);
+    if (text.trim() !== "") rows.push(text);
+  }
+  return rows.some((text) => NAMES_ESC.test(text));
+}
+
 export const codexAdapter: HarnessAdapter = {
   agent: "codex",
   buildBlocks: codexBuildBlocks,
@@ -82,6 +104,7 @@ export const codexAdapter: HarnessAdapter = {
   // `codex/APPROVAL_NOTES.md`: `3. No, and tell Codex what to do differently (esc)` and
   // `Press enter to confirm or esc to cancel`.
   cancelKey: "Escape",
+  modalOnScreen: codexModalOnScreen,
   composerPrompt,
   draftCarriesSend: codexDraftCarriesSend,
 };

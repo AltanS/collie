@@ -64,7 +64,7 @@ import {
   regionReachesTail,
   stripChrome,
 } from "./chrome";
-import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, rstrip } from "./markers";
+import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, locateTail, rstrip } from "./markers";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
@@ -164,6 +164,18 @@ function lift(lines: StyledLine[], startLine: number, region: string, dialog: Bl
  * (AltanS/collie#99). The paste supplement + opacity predicate are what keep long sends verifying
  * once this registration flips the reply path off one-shot.
  */
+/**
+ * Positive evidence that Muse's own TUI owns the tail, for the unread-dialog card (.adr/0053, addendum
+ * 2026-09-26): its bottom rule and statusline are there (`locateTail`). Every Muse dialog keeps them,
+ * the approval that replaces the box and the tasks popup between them included, while the shell after
+ * exit (`muse resume <id>`) and the banner Muse paints before its composer have neither, so the card
+ * no longer flashes over them (harness canary 2026-10-12, Muse 1.4.6). `composerReady` has already
+ * answered false by the time this is asked, so the frame is there and its box does not hold the keys.
+ */
+function museModalOnScreen(lines: StyledLine[]): boolean {
+  return locateTail(lines) !== null;
+}
+
 export const museAdapter: HarnessAdapter = {
   agent: "muse",
   buildBlocks: museBuildBlocks,
@@ -174,6 +186,7 @@ export const museAdapter: HarnessAdapter = {
   // it does not always dismiss the request — which is why the card's caption names the key and never
   // promises "cancel".
   cancelKey: "Escape",
+  modalOnScreen: museModalOnScreen,
   extractInputDraft,
   extractStatusLines,
   composerPrompt,

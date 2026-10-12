@@ -89,20 +89,19 @@ describe("buildBlocks native display pass", () => {
   // un-marked mirror inside the card while the same pane's raw mirror is trimmed and marked.
   it("hands a muse card the decorated, trimmed lines", () => {
     const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
-    // No composer on this screen, so the M34 post-pass answers with the card (.adr/0053).
-    const lines = linesOf(`${gutter}${DARK_BODY}   \n${gutter}${BRIGHT}   `);
-    expect(lines.map(lineText)).toEqual(["  body   ", "  bright   "]);
+    // Muse's frame with no box in it (the approval geometry): no composer, and Muse's own rule and
+    // statusline as the evidence its modal is up, so the M34 post-pass answers with the card
+    // (.adr/0053).
+    const lines = linesOf(`${gutter}${DARK_BODY}   \n${gutter}${BRIGHT}   \n${RULE}\n  muse-spark · max · /tmp`);
+    expect(lines.slice(0, 2).map(lineText)).toEqual(["  body   ", "  bright   "]);
 
     const [block] = buildBlocks(lines, { agent: "muse" });
     expect(block!.kind).toBe("unread-dialog");
     // Trimmed: the grey gutter and the trailing pad are gone from the card's own region.
-    expect(mirrorLines(block!).map(lineText)).toEqual(["body", "bright"]);
+    const region = mirrorLines(block!).slice(0, 2);
+    expect(region.map(lineText)).toEqual(["body", "bright"]);
     // Decorated: the bright foreground is marked for the light-gated property, the body is not.
-    expect(
-      mirrorLines(block!)
-        .flatMap((line) => line.segments)
-        .map((s) => s.lightDarkFg ?? false),
-    ).toEqual([false, true]);
+    expect(region.flatMap((line) => line.segments).map((s) => s.lightDarkFg ?? false)).toEqual([false, true]);
   });
 
   it("leaves an opencode pane to the inverting mirror: no trim, no marks", () => {
