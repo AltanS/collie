@@ -6,12 +6,12 @@
       "verified": "2026-10-12",
       "how": "capture",
       "adapter": true,
-      "evidence": "capture lab run 2026-10-12 on Claude Code 2.1.296, a partial run: AskUserQuestion (single, multiSelect, wizard question and review), /config and /resume captured in a session renamed with /rename and in an unnamed one (web/src/fixtures/panes/claude-lab--*-v2296--*.txt, README § \"Claude Code 2.1.296 closing rule\"); a named session draws one closing rule with the session name under those dialogs and under no other, which claude/closing-rule.ts takes off. The Bash and Edit permission, plan approval, /effort, /model, /status, /tasks, /permissions and /plugin screens were read live in a named session and print no such rule (the permission, plan and /effort screens also in an unnamed one, with the same result); the earlier capture lab run on 2.1.291 (2026-10-06) covers the rest of the corpus: web/src/fixtures/panes/claude-lab--*.txt re-captured at their recorded widths (README § \"Capture lab corpus\"), plus new claude-lab--permission-bash-subagent, permission-dangerous-rm, permission-edit, trust-prompt, idle-fresh-auto-notice, menu-effort-slider--w132 and the -v2291 siblings of the byte-pinned files; findings (slash popups, multi-line draft box, plan-approval at 40 columns, effort scale) are recorded as gaps in claude-lab-corpus.json. No canary ran.",
+      "evidence": "capture lab run 2026-10-12 on Claude Code 2.1.296, a partial run: AskUserQuestion (single, multiSelect, wizard question and review), /config and /resume captured in a session renamed with /rename and in an unnamed one (web/src/fixtures/panes/claude-lab--*-v2296--*.txt, README § \"Claude Code 2.1.296 closing rule\"); a named session draws one closing rule with the session name under those dialogs and under no other, which claude/closing-rule.ts takes off. The Bash and Edit permission, plan approval, /effort, /model, /status, /tasks, /permissions and /plugin screens were read live in a named session and print no such rule (the permission, plan and /effort screens also in an unnamed one, with the same result); the earlier capture lab run on 2.1.291 (2026-10-06) covers the rest of the corpus: web/src/fixtures/panes/claude-lab--*.txt re-captured at their recorded widths (README § \"Capture lab corpus\"), plus new claude-lab--permission-bash-subagent, permission-dangerous-rm, permission-edit, trust-prompt, idle-fresh-auto-notice, menu-effort-slider--w132 and the -v2291 siblings of the byte-pinned files; findings (slash popups, multi-line draft box, plan-approval at 40 columns, effort scale) are recorded as gaps in claude-lab-corpus.json. No screen canary ran; the journal canary did (see the journal block).",
       "journal": {
-        "version": "2.1.285",
-        "verified": "2026-09-30",
+        "version": "2.1.296",
+        "verified": "2026-10-12",
         "how": "canary",
-        "evidence": "canary run 20260930T135314Z: journal kinds asserted, nothing unrecognised"
+        "evidence": "canary run 20261012T200106Z on Claude Code 2.1.296 (Herdr 0.9.3), the sends and journal scenarios only: journal kinds asserted, nothing unrecognised (9 turns, 0 unrecognised rows or content kinds)"
       }
     },
     "codex": {

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **Chat reads Claude Code 2.1.296 sessions as verified.** The harness canary read a real 2.1.296 session with no unrecognised row or content kind, so the journal reader's recorded version moves from 2.1.285 to 2.1.296 and no longer shows as behind.
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed
