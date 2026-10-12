@@ -103,8 +103,8 @@ The app has one defence against that, the descendant check. It refuses an answer
 starter from itself and from any process below it in the process tree, with `403 caller-refused`.
 Reads stay open. To find the caller, the app reads its pid from the socket (`SO_PEERCRED`, through
 `bun:ffi`) and walks the parent links in `/proc`. A caller whose process is gone, or whose chain of
-parents breaks, is refused too. Collie's adapter reports the 403 as a refusal that names the code.
-`WIRE.md` does not list the code yet.
+parents breaks, is refused too. Collie's adapter reports the 403 as a refusal that names the code, and
+never retries it ([`WIRE.md` section 3, error codes](../../bridge/mux/durable/WIRE.md#error-codes)).
 
 The check has holes:
 

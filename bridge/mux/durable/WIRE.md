@@ -61,7 +61,8 @@ runs. Collie cannot tell such a process from itself.
 
 The program owns that defence. It SHOULD refuse a caller that is its own descendant (it can read the
 peer's credentials on the socket), or run the agent's tools in a sandbox that cannot reach the
-socket. An `allow-always` option is the grant that needs the most care: one answer from a hostile
+socket. The descendant check is program-side and optional: the adapter does not run it and cannot
+tell whether a program does. A program that refuses answers 403 `caller-refused` (section 3). An `allow-always` option is the grant that needs the most care: one answer from a hostile
 tool would let every later call through without a question.
 
 ## 2. Version negotiation
@@ -100,10 +101,10 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `GET /hello` | none; version header optional | `Hello` | 409 `incompatible` (header present and out of range) |
 | `GET /snapshot` | optional `If-None-Match: <etag>` | `Snapshot`, with `ETag: "<epoch>-<rev>"`. **304** with the same `ETag` and no body when it matches. | 409 `incompatible`, 503 `starting` |
 | `GET /pane/:id/events?after=N&epoch=E` | `after`: a cursor, integer ≥ 0. `epoch`: the epoch the cursor came from. Both required. | `EventsReply` | 400 `bad-cursor`, 404 `no-such-pane`, 409 `incompatible`, 503 `starting` |
-| `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
-| `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
-| `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
-| `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
+| `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
 
 Any other method or path answers 404 `not-found`.
 
@@ -119,6 +120,7 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
 | 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
 | 401 | (any) | A program that wants a token. Not part of version 1. | `incompatible`, see section 2. |
+| 403 | `caller-refused` | On `answer`, `send`, `abort` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1). Nothing ran. | Refused, with a detail that names the code. Never retried. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
