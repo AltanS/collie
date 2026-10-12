@@ -14,6 +14,14 @@
 // program refuses: a missing or out-of-range version is a 409, `ready: false` is a 503 on every route
 // but `hello`, and an unknown route is a 404.
 //
+// It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
+// whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
+// a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
+// A read inside the tail gets a plain reply, at most `eventsPerReply` events with `more` set when it
+// stopped early. A stale epoch, a cursor older than the tail, or a cursor past the count gets a reset
+// reply: `reset`, then each item in its latest version (the newest `viewItemCap`, the rest counted in
+// `trimmed`), then each open ask, then one `state`, then `synced`.
+//
 // The 250 ms floor between snapshot reads is real in the adapter. The conformance world therefore
 // runs it on `FakeDurableClock`, and every change the world makes moves that clock past the floor, so
 // the next read is a real read. A test of the floor itself uses the clock directly.
@@ -22,12 +30,20 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { JsonObject } from "../../json.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld } from "../conformance.ts";
 import { DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from "./adapter.ts";
 import { DurableSocketClient } from "./client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
-import type { DurablePane, DurableStarter, DurableTab, DurableWorkspace, ProtocolRange } from "./protocol.ts";
+import {
+  parseEvents,
+  type DurablePane,
+  type DurableStarter,
+  type DurableTab,
+  type DurableWorkspace,
+  type ProtocolRange,
+} from "./protocol.ts";
 
 // ── The documents ─────────────────────────────────────────────────────────────
 
@@ -105,9 +121,35 @@ export class FakeDurableClock implements DurableClock {
 
 // ── The program ───────────────────────────────────────────────────────────────
 
+/** One event as a program writes it on the wire: a `type` and what that type carries. */
+export type FakeEvent = JsonObject & { readonly type: string };
+
+/** An event reply as the fake serves it. */
+interface EventsDoc {
+  epoch: string;
+  events: FakeEvent[];
+  next: number;
+  reset?: true;
+  more?: true;
+  trimmed?: number;
+}
+
+/** What the fake keeps of one pane's conversation. */
+interface PaneModel {
+  /** Every event appended in this epoch. A restart empties it. */
+  log: FakeEvent[];
+  /** Each item in its latest version, in order of first appearance. Survives a restart. */
+  items: Map<string, FakeEvent>;
+  asks: Map<string, FakeEvent>;
+  state: string | null;
+}
+
 /** One request the fake saw. */
 export interface FakeRequest {
+  /** The path without the query. */
   readonly path: string;
+  /** The query, with its `?`, or an empty string. */
+  readonly search: string;
   readonly version: string | null;
   readonly ifNoneMatch: string | null;
 }
@@ -138,7 +180,7 @@ export interface ProblemDoc {
   range?: ProtocolRange;
 }
 
-function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc, etag?: string): Response {
+function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc, etag?: string): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (etag !== undefined) headers.set("etag", etag);
   return new Response(JSON.stringify(body), { status, headers });
@@ -159,6 +201,14 @@ export class FakeDurableProgram {
   asksForToken = false;
   override: FakeOverride | null = null;
   readonly requests: FakeRequest[] = [];
+  /** How many of a pane's newest events the program keeps (WIRE.md 7.2 says at most 1000). */
+  tailLimit = 1000;
+  /** Most events in one plain reply. A test lowers it to make the program say `more`. */
+  eventsPerReply = 1000;
+  /** Most items in a reset view. A test lowers it to make the program count `trimmed`. */
+  viewItemCap = 2000;
+
+  private readonly models = new Map<string, PaneModel>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
 
@@ -189,11 +239,45 @@ export class FakeDurableProgram {
     this.listen();
   }
 
-  /** The program restarts: a new epoch, and `rev` starts over. Pane ids stay, as WIRE.md section 8 says. */
+  /**
+   * The program restarts: a new epoch, and `rev` and every event cursor start over. Pane ids and the
+   * conversations stay, as WIRE.md section 8 says.
+   */
   restart(options: { ready: boolean } = { ready: true }): void {
     this.epoch = randomEpoch();
     this.rev = 1;
     this.ready = options.ready;
+    for (const model of this.models.values()) model.log = [];
+  }
+
+  private model(paneId: string): PaneModel {
+    let model = this.models.get(paneId);
+    if (model === undefined) {
+      model = { log: [], items: new Map(), asks: new Map(), state: null };
+      this.models.set(paneId, model);
+    }
+    return model;
+  }
+
+  /** Append one event to a pane: it enters the log, changes the model, and `rev` rises. */
+  appendEvent(paneId: string, event: FakeEvent): void {
+    const model = this.model(paneId);
+    model.log.push(event);
+    // What the event means for the pane's current view is read the way the adapter reads it, so a
+    // malformed event changes nothing here, as it changes nothing in the adapter.
+    const parsed = parseEvents(JSON.stringify({ epoch: this.epoch, next: 0, events: [event] }));
+    const known = parsed.ok ? parsed.value.events[0] : undefined;
+    if (known?.type === "item") model.items.set(known.item.id, event);
+    if (known?.type === "remove") model.items.delete(known.id);
+    if (known?.type === "ask") model.asks.set(known.ask.id, event);
+    if (known?.type === "ask-closed") model.asks.delete(known.askId);
+    if (known?.type === "state") model.state = known.state;
+    this.touch();
+  }
+
+  /** How many events the pane has appended in this epoch: the cursor after the last one. */
+  eventCount(paneId: string): number {
+    return this.model(paneId).log.length;
   }
 
   /** Something a reader could see changed. */
@@ -256,7 +340,7 @@ export class FakeDurableProgram {
     const url = new URL(request.url);
     const version = request.headers.get("x-collie-session");
     const ifNoneMatch = request.headers.get("if-none-match");
-    this.requests.push({ path: url.pathname, version, ifNoneMatch });
+    this.requests.push({ path: url.pathname, search: url.search, version, ifNoneMatch });
 
     const taken = await this.override?.(url.pathname);
     if (taken !== undefined) return taken;
@@ -275,7 +359,49 @@ export class FakeDurableProgram {
       if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { etag } });
       return reply(200, this.currentSnapshot(), etag);
     }
+    const events = /^\/pane\/([^/]+)\/events$/.exec(route);
+    if (request.method === "GET" && events !== null) {
+      return this.eventsReply(decodeURIComponent(events[1] ?? ""), url.searchParams);
+    }
     return reply(404, { code: "not-found" });
+  }
+
+  /** WIRE.md 7.2: a plain read inside the tail, or a reset reply. */
+  private eventsReply(paneId: string, query: URLSearchParams): Response {
+    const afterText = query.get("after");
+    const epoch = query.get("epoch");
+    const after = afterText !== null && /^\d+$/.test(afterText) ? Number(afterText) : null;
+    if (after === null || epoch === null || epoch === "") return reply(400, { code: "bad-cursor" });
+    if (!this.snapshot.panes.some((pane) => pane.id === paneId)) return reply(404, { code: "no-such-pane" });
+
+    const model = this.model(paneId);
+    const count = model.log.length;
+    const tailStart = Math.max(0, count - this.tailLimit);
+    if (epoch === this.epoch && after >= tailStart && after <= count) {
+      const slice = model.log.slice(after, after + this.eventsPerReply);
+      const next = after + slice.length;
+      const doc: EventsDoc = { epoch: this.epoch, events: slice, next };
+      if (next < count) doc.more = true;
+      return reply(200, doc);
+    }
+
+    const items = [...model.items.values()];
+    const shown = items.slice(Math.max(0, items.length - this.viewItemCap));
+    const paneState = this.snapshot.panes.find((pane) => pane.id === paneId)?.state ?? "idle";
+    const doc: EventsDoc = {
+      epoch: this.epoch,
+      events: [
+        { type: "reset" },
+        ...shown,
+        ...model.asks.values(),
+        { type: "state", state: model.state ?? paneState },
+        { type: "synced" },
+      ],
+      next: count,
+      reset: true,
+    };
+    if (shown.length < items.length) doc.trimmed = items.length - shown.length;
+    return reply(200, doc);
   }
 
   /** Stop listening and remove the socket and its directory. Idempotent. */

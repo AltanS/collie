@@ -235,3 +235,68 @@ describe("the durable watch", () => {
     expect(clock.live).toBe(0);
   });
 });
+
+// THE PANE LOG'S SEAM: the events read starts after a census and the census does not wait for it.
+describe("the durable watch and the events read", () => {
+  /** A poller whose events read the test steers. */
+  class EventPoller extends ScriptedPoller {
+    syncs = 0;
+    answers: Promise<readonly string[]> = Promise.resolve([]);
+
+    syncEvents(): Promise<readonly string[]> {
+      this.syncs += 1;
+      return this.answers;
+    }
+  }
+
+  test("an events read starts after each census, and a read that never ends does not hold the next census", async () => {
+    const clock = new TestClock();
+    const poller = new EventPoller(layout());
+    poller.answers = new Promise<readonly string[]>(() => undefined);
+    const { seen } = watching(poller, clock);
+    await settle();
+    expect(poller.syncs).toBe(1);
+    expect(seen.up).toBe(1);
+
+    // The first events read is still pending, and the timer for the next census is armed all the same.
+    expect(clock.live).toBe(1);
+    clock.fire();
+    await settle();
+    expect(poller.reads).toBe(2);
+    expect(poller.syncs).toBe(2);
+  });
+
+  test("a watched pane whose log gained rows is poked, and an unwatched one is not", async () => {
+    const clock = new TestClock();
+    const poller = new EventPoller(layout());
+    poller.answers = Promise.resolve(["conv-01", "conv-03"]);
+    const { seen } = watching(poller, clock, ["conv-01", "conv-02"]);
+    await settle();
+    expect(seen.panes).toEqual(["conv-01"]);
+  });
+
+  test("a failed events read is not the watch's failure", async () => {
+    const clock = new TestClock();
+    const poller = new EventPoller(layout());
+    poller.answers = Promise.reject(new Error("disk full"));
+    const { seen } = watching(poller, clock);
+    await settle();
+    expect(seen).toEqual({ up: 1, down: [], topology: 0, panes: [] });
+    expect(clock.live).toBe(1);
+  });
+
+  test("an answer that arrives after the watch closed pokes nothing", async () => {
+    const clock = new TestClock();
+    const poller = new EventPoller(layout());
+    let finish: (ids: readonly string[]) => void = () => undefined;
+    poller.answers = new Promise<readonly string[]>((resolve) => {
+      finish = resolve;
+    });
+    const { seen, watch } = watching(poller, clock, ["conv-01"]);
+    await settle();
+    watch.close();
+    finish(["conv-01"]);
+    await settle();
+    expect(seen.panes).toEqual([]);
+  });
+});

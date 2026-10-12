@@ -6,15 +6,17 @@
 // that needs a screen, a key press or a new shell answers the contract's `unsupported`.
 //
 // WHAT IS HERE: the hello and ready and epoch rules (WIRE.md sections 2 and 8), the snapshot with
-// its ETag and 304 (section 7.1), the 250 ms floor between two snapshot reads, and the mapping.
-// WHAT IS NOT: a pane's events, answers, sends, aborts and starters. Those are later specs, and they
-// read the clean view this class holds (`program()`, `held()`).
+// its ETag and 304 (section 7.1), the 250 ms floor between two snapshot reads, the mapping, and the
+// events reader that fills the bridge's pane log (`syncEvents()`, events.ts, bridge/durable/log.ts).
+// WHAT IS NOT: answers, sends, aborts and starters. Those are later specs, and they read the clean
+// view this class holds (`program()`, `held()`).
 //
 // NOT READY IS NOT EMPTY. While the program lays out its panes after a start, or when it speaks no
 // version we do, the adapter is `unreachable` with a detail that says why. It never answers an
 // empty census for those cases. A program that is up with no panes is a real, empty snapshot.
 
 import { declareCapabilities } from "../capabilities.ts";
+import { DurableLogs } from "../../durable/log.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxOk,
@@ -48,6 +50,7 @@ import {
   type DurableReply,
   type DurableTransport,
 } from "./client.ts";
+import { DurableEventReader, type DurableEventSink } from "./events.ts";
 import { DURABLE_LOGO_SVG } from "./logo.ts";
 import {
   incompatibleDetail,
@@ -65,6 +68,9 @@ export const DURABLE_MUX = "durable";
 
 /** `MuxTarget.options` key that overrides the socket path. Only tests set it; the bridge reads the variable. */
 export const DURABLE_SOCKET_OPTION = "durableSocket";
+
+/** `MuxTarget.options` key that names the folder of the bridge's pane logs. Empty or absent: no log is kept. */
+export const DURABLE_LOG_DIR_OPTION = "durableLogDir";
 
 /** The shortest time between two snapshot reads (WIRE.md section 7.1). */
 export const MIN_SNAPSHOT_GAP_MS = 250;
@@ -120,12 +126,14 @@ export class DurableMux implements MuxAdapter {
   readonly logo = DURABLE_LOGO_SVG;
 
   /**
-   * Only `agentDetection` is declared: a durable program reports how each conversation is doing, and
-   * every pane names the agent `durable`. Everything that needs a screen, a key or a new shell is
-   * absent, and the program pushes nothing, so both push capabilities are absent too.
+   * `agentDetection` and `agentSessionRef` are declared: a durable program reports how each
+   * conversation is doing, every pane names the agent `durable`, and every pane names its
+   * conversation id as the session, which keys the bridge's pane log for the journal. Everything that
+   * needs a screen, a key or a new shell is absent, and the program pushes nothing, so both push
+   * capabilities are absent too.
    */
   readonly capabilities = declareCapabilities({
-    supports: ["agentDetection"],
+    supports: ["agentDetection", "agentSessionRef"],
     spaces: "many",
     // The slowest the watch ever polls. A change the program did not announce is seen within it.
     topologyLatency: { kind: "bounded", ms: IDLE_POLL_MS },
@@ -150,11 +158,19 @@ export class DurableMux implements MuxAdapter {
   private kept: Held | null = null;
   private last: Reading | null = null;
   private inflight: Promise<MuxOutcome<MuxSnapshot>> | null = null;
+  private readonly events: DurableEventReader | null;
 
+  /**
+   * `log` is where a pane's events go. Without one the adapter reads the layout only, which is what a
+   * test of the layout wants; the bridge always gives it the pane log.
+   */
   constructor(
     private readonly transport: DurableTransport,
     private readonly clock: DurableClock = SYSTEM_CLOCK,
-  ) {}
+    log: DurableEventSink | null = null,
+  ) {
+    this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program());
+  }
 
   // ── The floor ───────────────────────────────────────────────────────────────
 
@@ -208,6 +224,16 @@ export class DurableMux implements MuxAdapter {
    */
   held(): DurableSnapshot | null {
     return this.kept?.snapshot ?? null;
+  }
+
+  /**
+   * Read the events of every pane whose `rev` moved, into the pane log. Resolves with the panes whose
+   * log gained rows, and never rejects: a program that cannot be asked ends the pass, and the next
+   * snapshot read says why. The watch calls it after a census and does not wait for it.
+   */
+  syncEvents(): Promise<readonly string[]> {
+    if (this.events === null) return Promise.resolve([]);
+    return this.events.sync().catch(() => []);
   }
 
   private gapLeft(): number {
@@ -416,7 +442,12 @@ export const durableMuxFactory: MuxAdapterFactory = {
   mux: DURABLE_MUX,
   create(target: MuxTarget) {
     const configured = target.options[DURABLE_SOCKET_OPTION] ?? process.env[DURABLE_SOCKET_ENV];
-    return new DurableMux(new DurableSocketClient(configured));
+    const logDir = target.options[DURABLE_LOG_DIR_OPTION] ?? "";
+    return new DurableMux(
+      new DurableSocketClient(configured),
+      SYSTEM_CLOCK,
+      logDir === "" ? null : new DurableLogs(logDir),
+    );
   },
   describeTarget(_endpoint: string) {
     return describeSocket(process.env[DURABLE_SOCKET_ENV]);

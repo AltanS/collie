@@ -3300,7 +3300,7 @@ async function paneHistory(
  * same bytes (an empty `upserts` and three unmoved positions), so it is a 304 either way, which is
  * the requirement.
  */
-async function paneChat(
+export async function paneChat(
   cfg: Config,
   journals: Record<string, JournalAdapter> | null,
   live: LiveWindows | null,

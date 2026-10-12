@@ -10,10 +10,11 @@
 // stopped answering. A program that is down, not ready, or not speaking our version ends the watch
 // at once, and the caller reconnects on its own backoff (event-poker.ts).
 //
-// SEAM FOR THE PANE LOG (spec 02): the adapter reads a pane's events only when `rev` moved since its
-// last read. That read belongs beside the census below, in `census()`, once `rev` is compared. This
-// version has no events to read, so it fires `onPaneChange` for a watched pane only when the pane's
-// own facts (status, turn, open asks) changed.
+// THE PANE LOG. After each census the watch asks the adapter to read the events of every pane whose
+// `rev` moved (`syncEvents`, events.ts). It does NOT wait for that read: the next census is armed
+// when the snapshot read ends, so a slow or stuck events read never delays the layout. A pane whose
+// log gained rows fires `onPaneChange` when it is watched, as does a change in the pane's own facts
+// (status, turn, open asks).
 
 import type { MuxAttention, MuxOutcome, MuxSnapshot, MuxSubscription, MuxWatchOptions } from "../types.ts";
 import type { DurableSnapshot } from "./protocol.ts";
@@ -47,6 +48,8 @@ export const REAL_WATCH_CLOCK: WatchClock = {
 export interface DurablePoller {
   poll(): Promise<MuxOutcome<MuxSnapshot>>;
   held(): DurableSnapshot | null;
+  /** Read the events of the panes that moved. Absent on a poller that keeps no log. */
+  syncEvents?(): Promise<readonly string[]>;
 }
 
 /** The layout as one string: any added, removed or renamed workspace, tab or pane, or a status change. */
@@ -133,6 +136,27 @@ export class DurableWatch implements MuxSubscription {
     }
     if (layoutMoved) this.options.onTopologyChange();
     for (const paneId of moved) this.options.onPaneChange(paneId);
+    this.startEvents();
+  }
+
+  /** Start an events read and go on. Its answer pokes the watched panes whose log gained rows. */
+  private startEvents(): void {
+    const sync = this.poller.syncEvents?.();
+    if (sync !== undefined) void this.poke(sync);
+  }
+
+  private async poke(sync: Promise<readonly string[]>): Promise<void> {
+    let paneIds: readonly string[];
+    try {
+      paneIds = await sync;
+    } catch {
+      // A failed events read is not the watch's failure: the layout is still being read.
+      return;
+    }
+    if (this.closed) return;
+    for (const paneId of paneIds) {
+      if (this.options.panes.includes(paneId)) this.options.onPaneChange(paneId);
+    }
   }
 
   /** Tear everything down and fire the contract's single `onDown`. Idempotent, by the `closed` gate. */

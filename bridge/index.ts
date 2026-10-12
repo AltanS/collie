@@ -37,6 +37,7 @@ import {
 } from "./owner-only.ts";
 import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
+import { durableLogDir } from "./durable/log.ts";
 import { GitHeads } from "./git-head.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
@@ -48,6 +49,7 @@ import {
   releaseManagedFrontDoor,
   shouldReleaseFrontDoor,
 } from "./front-door.ts";
+import { DURABLE_LOG_DIR_OPTION } from "./mux/durable/adapter.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
 import { deriveConfigRoot } from "./mux/herdr/sessions.ts";
@@ -680,7 +682,9 @@ await activity.load();
 // once, and handed to both the tracker and the server, so the probe and the history route share the
 // adapters' memoised path caches. Null when `COLLIE_TRANSCRIPT` is off: no journal means no probe, and
 // every pane then reads exactly as it did before this feature existed.
-const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
+const journals = cfg.transcript
+  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] })
+  : null;
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
   journals === null
@@ -1132,6 +1136,7 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       [TMUX_BINARY_OPTION]: cfg.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
       [TERN_BINARY_OPTION]: cfg.ternBin,
+      [DURABLE_LOG_DIR_OPTION]: durableLogDir(cfg.stateDir),
     },
   };
   const herdr = withBeaconsIfBlind(createMux(muxRegistry, cfg.mux, target), target);

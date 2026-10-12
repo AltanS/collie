@@ -49,10 +49,10 @@ function paths(program: FakeDurableProgram): string[] {
 }
 
 describe("capabilities", () => {
-  test("a durable program declares agentDetection and nothing that needs a screen, a key or a new shell", async () => {
+  test("a durable program declares agentDetection and agentSessionRef, and nothing that needs a screen, a key or a new shell", async () => {
     const { adapter } = await rig();
     const declared = MUX_CAPABILITIES.filter((capability) => adapter.capabilities.supports[capability]);
-    expect(declared).toEqual(["agentDetection"]);
+    expect(declared).toEqual(["agentDetection", "agentSessionRef"]);
     for (const absent of [
       "paneGrid",
       "gridScrollback",

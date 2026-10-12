@@ -168,6 +168,8 @@ describe("snapshot fixture", () => {
       agent: "durable",
       status: "working",
       terminalTitle: "Plan the week",
+      // The conversation id is the session: it names the bridge's own log of the pane.
+      agentSession: { kind: "id", value: "conv-01" },
     });
     expect(pane?.tabNamed).toBeUndefined();
     expect(pane?.paneLabel).toBeUndefined();

@@ -21,6 +21,11 @@ export const CAPS = {
   toolName: 128,
   toolSummary: 1024,
   toolOutput: 16384,
+  /** Item `text` of a user, reply, thinking or notice item. */
+  itemText: 65536,
+  /** Item `ts`: an ISO 8601 stamp. Over the cap it reads as absent. */
+  itemTs: 40,
+  settledReason: 128,
   /** Not in the table. The ask kind is a short word. */
   askKind: 32,
   /** Not in the table. The pane state is a short word. */
@@ -31,6 +36,10 @@ export const CAPS = {
   openAsksPerPane: 50,
   optionsPerAsk: 6,
   starters: 50,
+  /** Events in one plain events reply. */
+  eventsPerReply: 1000,
+  /** Items in a reset view, the newest. */
+  resetItems: 2000,
 } as const;
 
 /** The reply caps of WIRE.md section 6, in bytes. */

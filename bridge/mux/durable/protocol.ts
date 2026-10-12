@@ -425,6 +425,247 @@ export function parseSnapshot(text: string, startersOpen: boolean): Parsed<Durab
   return good({ rev, epoch, workspaces, tabs, panes, starters });
 }
 
+// ── events ────────────────────────────────────────────────────────────────────
+
+export type ToolStatus = "running" | "done" | "failed" | "denied";
+
+const TOOL_STATUSES: ReadonlySet<string> = new Set(["running", "done", "failed", "denied"]);
+
+function isToolStatus(value: string): value is ToolStatus {
+  return TOOL_STATUSES.has(value);
+}
+
+/** What an item says, by who said it. */
+export type TextKind = "user" | "reply" | "thinking" | "notice";
+
+const TEXT_KINDS: ReadonlySet<string> = new Set(["user", "reply", "thinking", "notice"]);
+
+function isTextKind(value: string): value is TextKind {
+  return TEXT_KINDS.has(value);
+}
+
+/** An item with a known id replaces the earlier one. `ts` is ISO 8601, or absent. */
+export type DurableItem =
+  | { readonly id: string; readonly ts?: string; readonly kind: TextKind; readonly text: string }
+  | {
+      readonly id: string;
+      readonly ts?: string;
+      readonly kind: "tool";
+      readonly tool: DurableToolCall;
+      readonly status: ToolStatus;
+    };
+
+export type ClosedBy = "phone" | "stopped";
+
+export type DurableEvent =
+  | { readonly type: "item"; readonly item: DurableItem }
+  | { readonly type: "remove"; readonly id: string }
+  | { readonly type: "ask"; readonly ask: DurableAsk }
+  | { readonly type: "ask-closed"; readonly askId: string; readonly by: ClosedBy; readonly waitedMs?: number }
+  | { readonly type: "state"; readonly state: string }
+  | {
+      readonly type: "settled";
+      readonly inputId: string;
+      readonly requestId?: string;
+      readonly status: "answered" | "unanswered";
+      readonly reason?: string;
+    }
+  | { readonly type: "reset" }
+  | { readonly type: "synced" };
+
+/** One `events` reply, after the id rule, cleaning and caps. */
+export interface DurableEventsReply {
+  readonly epoch: string;
+  readonly events: readonly DurableEvent[];
+  /** The cursor after the last event sent. */
+  readonly next: number;
+  readonly reset: boolean;
+  readonly more: boolean;
+  readonly trimmed: number;
+}
+
+/** An ISO stamp inside its cap, or undefined. */
+function stampOf(object: JsonObject): string | undefined {
+  const value = object.ts;
+  if (!isText(value)) return undefined;
+  const cleaned = cleanText(value, lineRule(Number.MAX_SAFE_INTEGER));
+  if (cleaned === "" || byteLength(cleaned) > CAPS.itemTs) return undefined;
+  return Number.isNaN(Date.parse(cleaned)) ? undefined : cleaned;
+}
+
+/** An item the wire can carry, or null when its id, kind, tool or status breaks a rule. */
+function readItem(value: Json | undefined): DurableItem | null {
+  if (!isRecord(value)) return null;
+  const id = idOf(value, "id");
+  const kind = value.kind;
+  if (id === null || !isText(kind)) return null;
+  const ts = stampOf(value);
+  if (isTextKind(kind)) {
+    const text = blockOf(value, "text", CAPS.itemText);
+    return text === undefined ? null : { id, ts, kind, text };
+  }
+  if (kind !== "tool") return null;
+  const status = value.status;
+  const tool = readTool(value.tool);
+  if (tool === undefined || !isText(status) || !isToolStatus(status)) return null;
+  return { id, ts, kind, tool, status };
+}
+
+function readEvent(value: Json): DurableEvent | null {
+  if (!isRecord(value)) return null;
+  const type = value.type;
+  if (type === "reset") return { type };
+  if (type === "synced") return { type };
+  if (type === "item") {
+    const item = readItem(value.item);
+    return item === null ? null : { type, item };
+  }
+  if (type === "remove") {
+    const id = idOf(value, "id");
+    return id === null ? null : { type, id };
+  }
+  if (type === "ask") {
+    const ask = readAsk(value.ask ?? null);
+    return ask === null ? null : { type, ask };
+  }
+  if (type === "ask-closed") {
+    const askId = idOf(value, "askId");
+    if (askId === null) return null;
+    const waited = value.waitedMs;
+    return {
+      type,
+      askId,
+      by: value.by === "phone" ? "phone" : "stopped",
+      waitedMs: isCount(waited) ? waited : undefined,
+    };
+  }
+  if (type === "state") {
+    const state = textOf(value, "state", CAPS.state);
+    return state === "" ? null : { type, state };
+  }
+  if (type === "settled") {
+    const inputId = idOf(value, "inputId");
+    const status = value.status;
+    if (inputId === null || (status !== "answered" && status !== "unanswered")) return null;
+    const reason = textOf(value, "reason", CAPS.settledReason);
+    return {
+      type,
+      inputId,
+      requestId: idOf(value, "requestId") ?? undefined,
+      status,
+      reason: reason === "" ? undefined : reason,
+    };
+  }
+  // A reader ignores an event type it does not know (WIRE.md section 4).
+  return null;
+}
+
+// ── the pane log's rows ───────────────────────────────────────────────────────
+
+/** Who closed an ask. `reset` is the bridge's own word: the program's view no longer listed it. */
+export type LogClosedBy = ClosedBy | "reset";
+
+/** One line of the bridge's pane log (bridge/durable/log.ts), after its header line. */
+export type LogRow =
+  | { readonly k: "item"; readonly at: string; readonly item: DurableItem }
+  | { readonly k: "ask"; readonly at: string; readonly ask: DurableAsk }
+  | {
+      readonly k: "ask-closed";
+      readonly at: string;
+      readonly askId: string;
+      readonly by: LogClosedBy;
+      readonly waitedMs?: number;
+    }
+  | { readonly k: "state"; readonly at: string; readonly state: string }
+  | {
+      readonly k: "settled";
+      readonly at: string;
+      readonly inputId: string;
+      readonly requestId?: string;
+      readonly status: "answered" | "unanswered";
+      readonly reason?: string;
+    };
+
+/**
+ * Decode one line of the pane log, or null for a line that is not a row.
+ *
+ * The log is the bridge's own file, but it is read back as untrusted all the same: a torn write, a
+ * hand edit or an older build must cost one row, never the log. The items and asks inside a row go
+ * through the readers the wire uses, so a row that would not have passed the wire does not pass here.
+ */
+export function parseLogRow(line: string): LogRow | null {
+  const root = decode(line);
+  if (!isRecord(root) || !isText(root.at)) return null;
+  const at = root.at;
+  switch (root.k) {
+    case "item": {
+      const item = readItem(root.item);
+      return item === null ? null : { k: "item", at, item };
+    }
+    case "ask": {
+      const ask = readAsk(root.ask ?? null);
+      return ask === null ? null : { k: "ask", at, ask };
+    }
+    case "ask-closed": {
+      const askId = idOf(root, "askId");
+      if (askId === null) return null;
+      const waited = root.waitedMs;
+      const by = root.by === "phone" || root.by === "reset" ? root.by : "stopped";
+      return { k: "ask-closed", at, askId, by, waitedMs: isCount(waited) ? waited : undefined };
+    }
+    case "state": {
+      const state = textOf(root, "state", CAPS.state);
+      return state === "" ? null : { k: "state", at, state };
+    }
+    case "settled": {
+      const inputId = idOf(root, "inputId");
+      const status = root.status;
+      if (inputId === null || (status !== "answered" && status !== "unanswered")) return null;
+      const reason = textOf(root, "reason", CAPS.settledReason);
+      return {
+        k: "settled",
+        at,
+        inputId,
+        requestId: idOf(root, "requestId") ?? undefined,
+        status,
+        reason: reason === "" ? undefined : reason,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Most events a reset reply may carry: the item cap, every open ask, and the three markers. */
+const RESET_EVENTS_MAX = CAPS.resetItems + CAPS.openAsksPerPane + 3;
+
+/**
+ * Decode an `events` reply (WIRE.md sections 4, 6 and 7.2).
+ *
+ * An event of a type this reader does not know, or one that breaks a rule, is dropped alone. A reply
+ * over its event cap is not read at all: the cap is 1000 for a plain reply, and a reset reply may
+ * also carry the whole view (up to 2000 items, the open asks, and the markers), which WIRE.md 7.2
+ * describes without a separate event cap.
+ */
+export function parseEvents(text: string): Parsed<DurableEventsReply> {
+  const root = decode(text);
+  if (!isRecord(root)) return bad("events is not a JSON object");
+  const epoch = idOf(root, "epoch");
+  const next = root.next;
+  if (epoch === null || !isCount(next) || !isList(root.events)) return bad("events has no usable epoch, next or list");
+  const reset = root.reset === true;
+  if (root.events.length > (reset ? RESET_EVENTS_MAX : CAPS.eventsPerReply)) {
+    return bad(`events carries ${String(root.events.length)} events, over its cap`);
+  }
+  const events: DurableEvent[] = [];
+  for (const entry of root.events) {
+    const event = readEvent(entry);
+    if (event !== null) events.push(event);
+  }
+  const trimmed = root.trimmed;
+  return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0 });
+}
+
 // ── The mapping onto the port ─────────────────────────────────────────────────
 
 /**
@@ -508,6 +749,9 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
       agent: DURABLE_AGENT,
       status: statusOf(pane),
       terminalTitle: pane.title === "" ? undefined : pane.title,
+      // The conversation id names the bridge's own log of it, which the `durable` journal adapter
+      // reads (bridge/journal/durable.ts). The ref is server-side only, like every other.
+      agentSession: { kind: "id", value: pane.id },
     });
   }
   return { panes, spaces, tabs };

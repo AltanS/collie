@@ -12,6 +12,7 @@
 
 import { claudeJournal } from "./claude.ts";
 import { codexJournal } from "./codex.ts";
+import { durableJournal } from "./durable.ts";
 import { grokJournal } from "./grok.ts";
 import { hermesJournal } from "./hermes.ts";
 import { museJournal } from "./muse.ts";
@@ -44,6 +45,12 @@ export interface JournalRoots {
   hermes: readonly string[];
   /** Muse's `sessions` directory — `YYYY/MM/DD/<uuid>/session.jsonl` lives under it. */
   muse: readonly string[];
+  /**
+   * The folder of the bridge's own pane logs for a `durable` peer (`bridge/durable/log.ts`). ABSENT
+   * for every caller that has no state dir to name, and the adapter is then not in the registry: it
+   * is not a harness, so `KNOWN_HARNESS_NAMES` (built with no roots) never lists it.
+   */
+  durable?: readonly string[];
 }
 
 /**
@@ -53,7 +60,7 @@ export interface JournalRoots {
  * never drift from the adapter it points at — the same guarantee the frontend registry gives.
  */
 export function buildJournalRegistry(roots: JournalRoots): Record<string, JournalAdapter> {
-  const adapters = [
+  const adapters: JournalAdapter[] = [
     claudeJournal(roots.claude),
     codexJournal(roots.codex),
     piJournal(roots.pi),
@@ -62,6 +69,7 @@ export function buildJournalRegistry(roots: JournalRoots): Record<string, Journa
     hermesJournal(roots.hermes),
     museJournal(roots.muse),
   ];
+  if (roots.durable !== undefined) adapters.push(durableJournal(roots.durable));
   return Object.fromEntries(adapters.map((a) => [a.agent, a]));
 }
 

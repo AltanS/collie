@@ -990,6 +990,10 @@ const STATE_DIR_ENTRIES = [
   // The one-off lines a phone ran on this machine, newest first (ADR 0095). Written by use and by
   // nothing else: absent until the first one-off run that works.
   "commands-recent.json",
+  // The bridge's own log of a durable program's panes (ADR 0099), one file per pane inside this folder.
+  // Written only by a bridge that drives `COLLIE_MUX=durable`: the factory that builds the writer is
+  // never called for Herdr, tmux or zellij, so every other instance never has this folder.
+  "durable",
   // The new-space sheet's folder list (M40/02, #289), and a §11 row RENEGOTIATED ON PURPOSE: it is
   // the one entry here a solo instance's own operator writes through ordinary use, from the phone.
   // Absent until the first space created with a folder or the first star — both are acts, and a
