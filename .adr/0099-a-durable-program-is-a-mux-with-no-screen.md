@@ -62,8 +62,9 @@ adapter in the registry, and the crew is unchanged.**
    gate. It is the same gate as the Tern socket in `$XDG_RUNTIME_DIR`. A program run by a different
    user is out of scope. Because a private socket in a folder someone else can write is not
    private, the adapter checks the whole path before each connect: no symlink, the socket's folder
-   owned by the user with mode 0700, every folder above it owned by the user or root and not open
-   for group or other writes. The path is at most 103 bytes. The hello carries
+   owned by the user with mode 0700, every folder above it a real folder that is not open
+   for group or other writes (its owner is not checked, because a user service with a private
+   `/tmp` sees root's folders as another user). The path is at most 103 bytes. The hello carries
    `service: "collie-durable"`, so a different server at the path is refused by name.
 5. **The wire is host-local, versioned by range, additive-optional, and experimental.** The hello
    message carries the lowest and highest version each side speaks, and the peer uses the highest

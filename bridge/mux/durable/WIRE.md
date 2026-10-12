@@ -45,9 +45,10 @@ every part of the path, not only the socket:
    symlink is refused, even one that points to a good place.
 2. **The socket's own folder** MUST be a real folder, owned by the adapter's uid, with mode exactly
    `0700`.
-3. **Every folder above it** MUST be owned by the adapter's uid or by root, and MUST NOT be writable
-   by group or other. A root-owned folder with the sticky bit, such as `/tmp`, is allowed above the
-   socket's folder, never as that folder.
+3. **Every folder above it** MUST be a real folder (no symlink) and MUST NOT be writable by group or
+   other. Its owner is not checked: under a systemd user service with `PrivateTmp=yes`, root's
+   folders such as `/` and `/run` show up as user 65534. A folder with the sticky bit, such as
+   `/tmp`, is allowed above the socket's folder, never as that folder.
 4. **The socket** MUST be a socket, owned by the adapter's uid, with no group or other permission
    bits.
 5. **A platform with no uid** (Windows) fails closed: the adapter never dials.

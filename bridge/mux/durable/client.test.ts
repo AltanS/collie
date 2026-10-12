@@ -196,7 +196,7 @@ describe("the path walk (WIRE.md section 1)", () => {
     expect(await socketFault("/run/me/d.sock", tree(good()))).toBeNull();
   });
 
-  test("a root-owned sticky folder such as /tmp is allowed above the parent, never as the parent", async () => {
+  test("a sticky folder such as /tmp is allowed above the parent, never as the parent", async () => {
     const above = { "/": entry("dir", 0, 0o755), "/tmp": entry("dir", 0, 0o1777), "/tmp/me": entry("dir", ME, 0o700), "/tmp/me/d.sock": entry("socket", ME, 0o600) };
     expect(await socketFault("/tmp/me/d.sock", tree(above))).toBeNull();
     const parent = { "/": entry("dir", 0, 0o755), "/tmp": entry("dir", 0, 0o1777), "/tmp/d.sock": entry("socket", ME, 0o600) };
@@ -212,13 +212,22 @@ describe("the path walk (WIRE.md section 1)", () => {
     expect(await socketFault("/run/me/d.sock", tree(narrow))).toEqual({ kind: "parent-open-mode", path: "/run/me", mode: 0o500 });
   });
 
-  test("an ancestor of another user, or one others can write to without the sticky root rule, is refused", async () => {
-    const stranger = { ...good(), "/run": entry("dir", 4242, 0o755) };
-    expect(await socketFault("/run/me/d.sock", tree(stranger))).toEqual({ kind: "ancestor-wrong-owner", path: "/run", owner: 4242, uid: ME });
+  test("an ancestor of another user passes when no one else can write to it; the owner is not checked", async () => {
+    // Under `PrivateTmp=yes` the root-owned `/` and `/run` show up as user 65534.
+    const stranger = { ...good(), "/": entry("dir", 65534, 0o755), "/run": entry("dir", 4242, 0o755) };
+    expect(await socketFault("/run/me/d.sock", tree(stranger))).toBeNull();
+  });
+
+  test("an ancestor that group or others can write to is refused unless it is sticky", async () => {
     const writable = { ...good(), "/run": entry("dir", 0, 0o775) };
     expect(await socketFault("/run/me/d.sock", tree(writable))).toEqual({ kind: "ancestor-open-mode", path: "/run", mode: 0o775 });
-    const mineSticky = { ...good(), "/run": entry("dir", ME, 0o1777) };
-    expect(await socketFault("/run/me/d.sock", tree(mineSticky))).toEqual({ kind: "ancestor-open-mode", path: "/run", mode: 0o777 });
+    const open = { ...good(), "/run": entry("dir", 4242, 0o777) };
+    expect(await socketFault("/run/me/d.sock", tree(open))).toEqual({ kind: "ancestor-open-mode", path: "/run", mode: 0o777 });
+    expect(await socketAccessProblem("/run/me/d.sock", tree(open))).toBe(
+      `${SOCKET_NOT_PRIVATE}: /run has mode 0777, so group or others can write to it`,
+    );
+    const sticky = { ...good(), "/run": entry("dir", 4242, 0o1777) };
+    expect(await socketFault("/run/me/d.sock", tree(sticky))).toBeNull();
   });
 
   test("a symlink anywhere in the path is refused, by name", async () => {

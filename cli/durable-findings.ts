@@ -135,12 +135,11 @@ function socketRow(path: string, fault: SocketFault): Finding {
         describeFault(fault),
         `make the program create its socket in a folder of your own with mode 0700 (for example under $XDG_RUNTIME_DIR), or run \`chmod 700 ${fault.path}\``,
       );
-    case "ancestor-wrong-owner":
     case "ancestor-open-mode":
       return bad(
         SOCKET_ROW,
         describeFault(fault),
-        "move the socket under folders only you or root can write to, for example $XDG_RUNTIME_DIR",
+        "move the socket under folders that group and others cannot write to, for example $XDG_RUNTIME_DIR",
       );
     case "no-uid":
       return bad(SOCKET_ROW, "this platform cannot show who owns the socket, so it is never dialled", "run Collie on a platform with Unix user ids");

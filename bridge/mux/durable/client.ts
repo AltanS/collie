@@ -4,8 +4,8 @@
 //
 //  • THE PRIVACY CHECK. Before each connect the whole path is checked with `lstat`, from the root
 //    down: no symlink anywhere, the socket's folder this user's own with mode 0700, every folder above
-//    it this user's or root's and not writable by others (a root-owned sticky folder such as /tmp is
-//    allowed above the parent), and the socket owned by this user with no group or other bit. There
+//    it a real folder that group and others cannot write to (a sticky folder such as /tmp is allowed
+//    above the parent; the owner of those folders is not checked), and the socket owned by this user with no group or other bit. There
 //    is no token on this wire, so a private socket is the whole gate. A path that fails is never
 //    dialled, and the refusal names the check.
 //  • THE BUDGETS. Every call has a time budget and a reply size cap. A reply past the cap is cut off
@@ -144,9 +144,6 @@ const STICKY = 0o1000;
 /** The mode the socket's own directory must have: the owner only. */
 const PRIVATE_DIR_MODE = 0o700;
 
-/** The user id of root. An ancestor directory may belong to root as well as to this user. */
-const ROOT_UID = 0;
-
 /** Which part of the privacy check a path failed. `doctor` names it; the adapter reports it in one line. */
 export type SocketFault =
   | { readonly kind: "missing" }
@@ -156,7 +153,6 @@ export type SocketFault =
   | { readonly kind: "not-a-directory"; readonly path: string }
   | { readonly kind: "parent-wrong-owner"; readonly path: string; readonly owner: number; readonly uid: number }
   | { readonly kind: "parent-open-mode"; readonly path: string; readonly mode: number }
-  | { readonly kind: "ancestor-wrong-owner"; readonly path: string; readonly owner: number; readonly uid: number }
   | { readonly kind: "ancestor-open-mode"; readonly path: string; readonly mode: number }
   | { readonly kind: "not-a-socket" }
   | { readonly kind: "wrong-owner"; readonly owner: number; readonly uid: number }
@@ -194,9 +190,11 @@ function isFault(value: SocketFacts | SocketFault): value is SocketFault {
  *
  * The direct parent is where the program makes the socket, so it must be this user's own, mode 0700:
  * a parent another user can write to lets them swap the socket for their own between this check and
- * the connect. Every other ancestor must belong to this user or to root and be writable by neither
- * group nor others, except a root-owned sticky directory such as `/tmp`, where nobody can rename what
- * they do not own. That exception holds for an ancestor only, never for the parent.
+ * the connect. Every other ancestor must be a real directory that group and others cannot write to,
+ * except a sticky one such as `/tmp`, where nobody can rename what they do not own. Its owner is not
+ * checked: under a systemd user service with `PrivateTmp=yes` the root-owned `/`, `/run` and
+ * `/run/user` show up as user 65534, and a swap needs write access, which this rule already denies.
+ * The sticky exception holds for an ancestor only, never for the parent.
  */
 function directoryFault(path: string, facts: SocketFacts, parent: boolean, uid: number): SocketFault | null {
   if (facts.isSymbolicLink()) return { kind: "symlink", path };
@@ -207,9 +205,7 @@ function directoryFault(path: string, facts: SocketFacts, parent: boolean, uid: 
     if ((mode & 0o777) !== PRIVATE_DIR_MODE) return { kind: "parent-open-mode", path, mode: mode & 0o777 };
     return null;
   }
-  if (facts.uid !== uid && facts.uid !== ROOT_UID) return { kind: "ancestor-wrong-owner", path, owner: facts.uid, uid };
-  const stickyRoot = facts.uid === ROOT_UID && (mode & STICKY) !== 0;
-  if ((mode & GROUP_OR_OTHER_WRITE) !== 0 && !stickyRoot) return { kind: "ancestor-open-mode", path, mode: mode & 0o777 };
+  if ((mode & GROUP_OR_OTHER_WRITE) !== 0 && (mode & STICKY) === 0) return { kind: "ancestor-open-mode", path, mode: mode & 0o777 };
   return null;
 }
 
@@ -263,8 +259,6 @@ export function describeFault(fault: SocketFault): string {
       return `the socket's folder ${fault.path} belongs to user ${String(fault.owner)}, not to ${String(fault.uid)}`;
     case "parent-open-mode":
       return `the socket's folder ${fault.path} has mode ${octal(fault.mode)}, not 0700`;
-    case "ancestor-wrong-owner":
-      return `${fault.path} belongs to user ${String(fault.owner)}, neither ${String(fault.uid)} nor root`;
     case "ancestor-open-mode":
       return `${fault.path} has mode ${octal(fault.mode)}, so group or others can write to it`;
     case "not-a-socket":
