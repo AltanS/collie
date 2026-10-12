@@ -1,12 +1,14 @@
-// HOW THE DURABLE ADAPTER TALKS TO THE PROGRAM: HTTP/1.1 over one Unix socket (WIRE.md section 1).
+// HOW THE DURABLE ADAPTER TALKS TO THE PROGRAM: HTTP/1.1 over one Unix socket (WIRE.md section 1A).
 //
-// This is the only file that opens the socket. Two rules live here and nowhere else:
+// This is the only file that opens the socket. The other transport, HTTPS with a bearer token
+// (WIRE.md section 1B, ADR 0103), is `http-client.ts`; it shares the budgets below. Two rules live
+// here and nowhere else:
 //
 //  • THE PRIVACY CHECK. Before each connect the whole path is checked with `lstat`, from the root
 //    down: no symlink anywhere, the socket's folder this user's own with mode 0700, every folder above
 //    it a real folder that group and others cannot write to (a sticky folder such as /tmp is allowed
 //    above the parent; the owner of those folders is not checked), and the socket owned by this user with no group or other bit. There
-//    is no token on this wire, so a private socket is the whole gate. A path that fails is never
+//    is no token on the socket, so a private socket is the whole gate. A path that fails is never
 //    dialled, and the refusal names the check.
 //  • THE BUDGETS. Every call has a time budget and a reply size cap. A reply past the cap is cut off
 //    while it is still being read, so a program cannot make the bridge hold a huge body.
@@ -29,7 +31,7 @@ export const DURABLE_SOCKET_ENV = "COLLIE_DURABLE_SOCKET";
 export const SOCKET_PATH_MAX_BYTES = 103;
 
 /** Every path starts with this. It is a fixed name, not the version. */
-const ROUTE_PREFIX = "/session/v1";
+export const ROUTE_PREFIX = "/session/v1";
 
 /** The start of the refusal detail for a socket that is not private. The failed check follows it. */
 export const SOCKET_NOT_PRIVATE = "socket-not-private";
@@ -82,11 +84,20 @@ export class DurableOutcomeUnknown extends Error {
 }
 
 /**
+ * Which way a transport reaches the program (ADR 0103). `socket` is the private Unix socket of
+ * WIRE.md section 1A. `https` is TLS with a bearer token, section 1B; the loopback `http://` that
+ * `wrangler dev` serves counts as `https` too, because it stands in for the deployed program.
+ */
+export type DurableTransportKind = "socket" | "https";
+
+/**
  * What the adapter needs from a transport. `get` throws `DurableUnreachable` when it cannot ask.
  * `post` throws `DurableUnreachable` only when nothing was sent (no path, a socket that is not
- * private, a refused connect), and `DurableOutcomeUnknown` when the request may have left.
+ * private, a refused connect, a refused token), and `DurableOutcomeUnknown` when the request may
+ * have left. `kind` picks the adapter's budgets and poll cadence; absent reads as `socket`.
  */
 export interface DurableTransport {
+  readonly kind?: DurableTransportKind;
   get(request: DurableGet): Promise<DurableReply>;
   post(request: DurablePost): Promise<DurableReply>;
 }
@@ -210,7 +221,7 @@ function directoryFault(path: string, facts: SocketFacts, parent: boolean, uid: 
 }
 
 /**
- * Which check this path fails, or null when it may be dialled (WIRE.md section 1).
+ * Which check this path fails, or null when it may be dialled (WIRE.md section 1A).
  *
  * The whole path is checked with `lstat`, from the root down, so no link is ever followed: a symlink
  * anywhere in it is refused. Every ancestor directory passes {@link directoryFault}, and the socket
@@ -284,8 +295,8 @@ export async function socketAccessProblem(path: string, probe: SocketProbe = SYS
 
 // ── The socket client ─────────────────────────────────────────────────────────
 
-/** Read a body into text, stopping as soon as it passes `maxBytes`. */
-async function readCapped(response: Response, maxBytes: number): Promise<string> {
+/** Read a body into text, stopping as soon as it passes `maxBytes`. Shared with `http-client.ts`. */
+export async function readCapped(response: Response, maxBytes: number): Promise<string> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) {
     void response.body?.cancel();
@@ -316,8 +327,8 @@ function neverConnected(err: Error, timedOut: boolean): boolean {
   return code === "ConnectionRefused" || code === "ECONNREFUSED" || code === "ENOENT" || code === "FailedToOpenSocket";
 }
 
-/** One line for a failed connect or read. */
-function describeFailure(err: Error, timeoutMs: number, timedOut: boolean): string {
+/** One line for a failed connect or read. Shared with `http-client.ts`. */
+export function describeFailure(err: Error, timeoutMs: number, timedOut: boolean): string {
   if (timedOut) return `no answer within ${String(timeoutMs)}ms`;
   const code = "code" in err ? err.code : undefined;
   if (code === "ConnectionRefused" || code === "ECONNREFUSED") return "connection refused";
@@ -326,6 +337,8 @@ function describeFailure(err: Error, timeoutMs: number, timedOut: boolean): stri
 
 /** The real transport: the privacy check, then one HTTP request on the Unix socket. */
 export class DurableSocketClient implements DurableTransport {
+  readonly kind = "socket";
+
   constructor(
     private readonly configured: string | undefined,
     private readonly probe: SocketProbe = SYSTEM_PROBE,

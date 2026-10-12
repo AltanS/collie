@@ -6,6 +6,7 @@ import { buildMuxRegistry, createMux, MUX_ADAPTERS } from "../registry.ts";
 import type { MuxOutcome, MuxSnapshot } from "../types.ts";
 import {
   DURABLE_MUX,
+  DURABLE_BUDGETS,
   DURABLE_SOCKET_OPTION,
   DurableMux,
   durableMuxFactory,
@@ -17,7 +18,6 @@ import {
 import { CAPS } from "./clean.ts";
 import { DURABLE_SOCKET_ENV, DurableSocketClient, SOCKET_NOT_PRIVATE } from "./client.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./fixture.ts";
-import { IDLE_POLL_MS } from "./watch.ts";
 
 const programs: FakeDurableProgram[] = [];
 
@@ -74,7 +74,7 @@ describe("capabilities", () => {
 
   test("the topology latency is the slowest the watch polls", async () => {
     const { adapter } = await rig();
-    expect(adapter.capabilities.topologyLatency).toEqual({ kind: "bounded", ms: IDLE_POLL_MS });
+    expect(adapter.capabilities.topologyLatency).toEqual({ kind: "bounded", ms: DURABLE_BUDGETS.socket.idlePollMs });
     expect(adapter.capabilities.spaces).toBe("many");
   });
 
@@ -172,7 +172,7 @@ describe("boots with zero panes", () => {
     const saved = process.env[DURABLE_SOCKET_ENV];
     try {
       process.env[DURABLE_SOCKET_ENV] = "/run/user/1000/durable.sock";
-      expect(durableMuxFactory.describeTarget?.("")).toBe("socket /run/user/1000/durable.sock");
+      expect(durableMuxFactory.describeTarget?.("")).toBe("private socket /run/user/1000/durable.sock");
       process.env[DURABLE_SOCKET_ENV] = "relative.sock";
       expect(durableMuxFactory.describeTarget?.("")).toBe(`${DURABLE_SOCKET_ENV} must be an absolute path`);
       delete process.env[DURABLE_SOCKET_ENV];

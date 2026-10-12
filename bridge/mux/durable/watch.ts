@@ -19,11 +19,17 @@
 import type { MuxAttention, MuxOutcome, MuxSnapshot, MuxSubscription, MuxWatchOptions } from "../types.ts";
 import type { DurableSnapshot } from "./protocol.ts";
 
-/** How often a census runs while a phone is plainly reading this collie. */
-export const WATCHED_POLL_MS = 1000;
-
-/** How often it runs otherwise. This is the slowest it ever runs: the adapter's `topologyLatency` ceiling. */
-export const IDLE_POLL_MS = 3000;
+/**
+ * How often a census runs. The adapter answers it from its transport's row of `DURABLE_BUDGETS`
+ * (adapter.ts), where each cadence sits beside what one poll costs: 1 s and 3 s on the socket, 2 s and
+ * 10 s over HTTPS, where every poll is a billed request.
+ */
+export interface PollCadence {
+  /** While a phone is plainly reading this collie. */
+  readonly watchedMs: number;
+  /** Otherwise. This is the slowest it ever runs: the adapter's `topologyLatency` ceiling. */
+  readonly idleMs: number;
+}
 
 /** A pending timer, as the platform hands one back. */
 export type WatchTimer = ReturnType<typeof setTimeout>;
@@ -47,6 +53,8 @@ export const REAL_WATCH_CLOCK: WatchClock = {
 /** What the watch needs from the adapter: one throttled read, and the clean layout it left behind. */
 export interface DurablePoller {
   poll(): Promise<MuxOutcome<MuxSnapshot>>;
+  /** The two cadences of the poller's transport. */
+  pollCadence(): PollCadence;
   held(): DurableSnapshot | null;
   /** Read the events of the panes that moved. Absent on a poller that keeps no log. */
   syncEvents?(): Promise<readonly string[]>;
@@ -89,7 +97,8 @@ export class DurableWatch implements MuxSubscription {
   /** The delay to the next census, asked each time so attention can arrive or leave under a running watch. */
   private delay(): number {
     const attention: MuxAttention | undefined = this.options.attention?.();
-    return attention === "watched" ? WATCHED_POLL_MS : IDLE_POLL_MS;
+    const cadence = this.poller.pollCadence();
+    return attention === "watched" ? cadence.watchedMs : cadence.idleMs;
   }
 
   private arm(): void {

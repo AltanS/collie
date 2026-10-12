@@ -88,8 +88,8 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
     return 0;
   }
   if (!reachable) {
-    // A durable program has no endpoint key: its socket is COLLIE_DURABLE_SOCKET, which the adapter
-    // reads itself. `snapshot()` throws the adapter's own reason (not set, not private, incompatible).
+    // A durable program has no endpoint key: its socket is COLLIE_DURABLE_SOCKET, or its URL and token
+    // are COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN, which the adapter reads itself. `snapshot()` throws the adapter's own reason (not set, not private, incompatible).
     if (factory.mux === DURABLE_MUX) {
       let why = "it did not answer";
       try {
@@ -97,7 +97,7 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
       } catch (err) {
         why = err instanceof Error ? err.message : String(err);
       }
-      skip(factory.mux, `the durable program is not reachable (${why}); start it, and set COLLIE_DURABLE_SOCKET to its socket path`);
+      skip(factory.mux, `the durable program is not reachable (${why}); start it, and set COLLIE_DURABLE_SOCKET to its socket path, or COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN`);
       return 0;
     }
     skip(factory.mux, `nothing is answering at ${endpoint} — start the multiplexer, or point ${endpointVar(factory.mux)} at it`);
@@ -107,7 +107,7 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
   // The durable wire in one line: `hello` agreed and `ready` (or `reachable()` would have been false),
   // then the panes the snapshot holds. The read-only checks below run on top of it.
   if (factory.mux === DURABLE_MUX) {
-    console.log(`\n── durable via COLLIE_DURABLE_SOCKET: hello ready, snapshot holds ${String((await adapter.snapshot()).panes.length)} pane(s)`);
+    console.log(`\n── durable: hello ready, snapshot holds ${String((await adapter.snapshot()).panes.length)} pane(s)`);
   }
 
   console.log(`\n── ${factory.mux} @ ${endpoint === "" ? "its own default target" : endpoint} — live, running ${MUX_READ_ONLY_CHECKS.length} read-only checks`);

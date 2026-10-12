@@ -240,8 +240,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     frontDoor(deps, mode),
     pairedDevices(deps, mode),
     mux(deps),
-    // A durable program has no binary or listing to ask. Four rows say whether its socket may be
-    // dialled and whether it answers: only when `durable` is the multiplexer this install drives.
+    // A durable program has no binary or listing to ask. Six rows say which transport is configured,
+    // whether its socket or its URL and token may be used, and whether the program answers: only when
+    // `durable` is the multiplexer this install drives.
     ...(chosen.name === DURABLE_MUX ? await durableFindings({ ctx: deps.ctx }) : []),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:

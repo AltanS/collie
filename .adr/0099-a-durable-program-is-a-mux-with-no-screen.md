@@ -3,6 +3,8 @@
 - **Status:** Proposed
 - **Date:** 2026-10-12
 - **Shipped in:** pending
+- **Amended in scope by:** [ADR 0103](./0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md),
+  points 3 and 4: a program the person deployed behind TLS is reached at a URL with a bearer token
 - **Trail:** a durable agent program (Pi Durable) that owns its conversations, has no terminal, and
   wanted a way into the crew · `bridge/mux/types.ts` (`snapshot`, `watch`) ·
   `bridge/mux/capabilities.ts` · `bridge/mux/registry.ts` (`MUX_ADAPTERS`) ·
@@ -59,6 +61,8 @@ adapter in the registry, and the crew is unchanged.**
      `epoch`, and the peer follows.
    - Collie manages no socket directory and no stale socket files. One program per peer is one
      config line.
+
+   ADR 0103 adds a second way to dial: HTTPS to a URL the person deployed the program to.
 4. **There is no token.** A socket with mode 0600, owned by the user who runs the peer, is the
    gate. It is the same gate as the Tern socket in `$XDG_RUNTIME_DIR`. A program run by a different
    user is out of scope. Because a private socket in a folder someone else can write is not
@@ -66,7 +70,8 @@ adapter in the registry, and the crew is unchanged.**
    owned by the user with mode 0700, every folder above it a real folder that is not open
    for group or other writes (its owner is not checked, because a user service with a private
    `/tmp` sees root's folders as another user). The path is at most 103 bytes. The hello carries
-   `service: "collie-durable"`, so a different server at the path is refused by name.
+   `service: "collie-durable"`, so a different server at the path is refused by name. This holds for
+   the socket; ADR 0103 adds a token for a program reached over TLS, where the token is the gate.
 5. **The wire is host-local, versioned by range, additive-optional, and experimental.** The hello
    message carries the lowest and highest version each side speaks, and the peer uses the highest
    both know. A new field is optional, and a reader ignores one it does not know. The wire document

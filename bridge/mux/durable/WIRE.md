@@ -1,27 +1,48 @@
-# The durable socket wire, version 1
+# The durable wire, version 1
 
 > **Experimental.** This wire may change in any minor release of Collie, and so may the version
 > range the `durable` adapter speaks. Nothing outside this repository should depend on it yet. A
 > program and a Collie that do not share a version get a named `incompatible`, so a mismatch is
 > visible, not silent.
 
-This document fixes the protocol between two parties on one machine:
+This document fixes the protocol between two parties:
 
 - **The program.** A durable agent program, for example one built on Pi Durable. It owns its
-  conversations, and it **listens** on a Unix socket.
+  conversations, and it **listens**: on a private Unix socket on the peer's machine, or behind TLS
+  at a URL the person deployed it to (section 1).
 - **The adapter.** The `durable` mux adapter in a Collie peer (`COLLIE_MUX=durable`). It **dials**
-  the socket, and it maps what it reads onto the mux port (`bridge/mux/types.ts`).
+  the program, and it maps what it reads onto the mux port (`bridge/mux/types.ts`).
 
 The decisions behind it are in [ADR 0099](../../../.adr/0099-a-durable-program-is-a-mux-with-no-screen.md)
 (the adapter), [ADR 0100](../../../.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md) (asks),
-[ADR 0101](../../../.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) (send and abort)
-and [ADR 0102](../../../.adr/0102-starters-are-launcher-rows.md) (starters). This file is the wire
+[ADR 0101](../../../.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) (send and abort),
+[ADR 0102](../../../.adr/0102-starters-are-launcher-rows.md) (starters) and
+[ADR 0103](../../../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)
+(the two transports). This file is the wire
 only. What the bridge does with the data after the adapter (the pane log, the push guard, the phone
 routes) is not part of it.
 
 The words MUST, SHOULD and MAY mean what RFC 2119 says.
 
 ## 1. Transport
+
+The wire has two transports. A peer uses exactly one: the private socket (1A), or TLS with a bearer
+token (1B). The bytes on the wire are the same on both: the routes, the bodies, the version header,
+the ETag and every error code. Only how the program is reached, and who may reach it, differ.
+
+| | 1A, a private socket | 1B, TLS with a bearer token |
+| --- | --- | --- | --- |
+| Peer setting | `COLLIE_DURABLE_SOCKET` | `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN` |
+| Where the program runs | the peer's machine, as the same user | anywhere the person deployed it, for example a Cloudflare Worker with a Durable Object |
+| The gate | a socket only this user can open | the token, compared in constant time |
+| Descendant check | program-side, optional | does not exist |
+| Read and write budgets | 1000 ms and 3000 ms | 5000 ms and 5000 ms |
+| Census, watched and idle | 1 s and 3 s | 2 s and 10 s |
+
+Setting both, or a URL without a token, is a config error: the peer starts, names the error once in
+its log, and reports `unreachable` with the same line on every read.
+
+### 1A. A private socket
 
 | Rule | Value |
 | --- | --- |
@@ -30,13 +51,13 @@ The words MUST, SHOULD and MAY mean what RFC 2119 says.
 | Program config | The program SHOULD read the same variable to choose where it listens, so one value configures both sides. |
 | Permissions | The program creates the socket with mode `0600`, in a directory with mode `0700`. It removes a stale socket file at the path before it listens, and removes its own on a clean exit. |
 | Who may dial | Only the same user. Before each connect, the adapter walks the path from `/` down with `lstat` (the rules below). Any failure: the adapter does not connect, and reports `unreachable` with detail `socket-not-private: <check>`, where `<check>` names the part that failed, for example `the folder /run/x has mode 0755, not 0700`. |
-| Authentication | None. No bearer token, no `Authorization` header. The 0600 socket is the gate. |
+| Authentication | None. No bearer token, no `Authorization` header. The 0600 socket is the gate. A token belongs to 1B only. |
 | Framing | HTTP/1.1 over the socket. Any `Host` header. Every path starts with `/session/v1`. That prefix is a fixed name, not the version. |
 | Bodies | JSON, UTF-8, `content-type: application/json`. A request body is one JSON object. An empty POST body reads as `{}`. |
 | Version header | `X-Collie-Session: <n>`, a decimal integer. Required on every route except `GET /hello`. |
 | Push | None. The adapter polls (ADR 0073). No WebSocket, no server-sent events. |
 
-### The path walk
+#### The path walk
 
 A 0600 socket is not private when someone else can swap the folder it sits in. So the adapter checks
 every part of the path, not only the socket:
@@ -53,7 +74,7 @@ every part of the path, not only the socket:
    bits.
 5. **A platform with no uid** (Windows) fails closed: the adapter never dials.
 
-### What the socket does not protect against
+#### What the socket does not protect against
 
 The socket keeps out other users. It does not keep out the same user. Any process that runs as the
 same user can open the socket, read every pane and answer an ask, and that includes a tool the agent
@@ -64,6 +85,40 @@ peer's credentials on the socket), or run the agent's tools in a sandbox that ca
 socket. The descendant check is program-side and optional: the adapter does not run it and cannot
 tell whether a program does. A program that refuses answers 403 `caller-refused` (section 3). An `allow-always` option is the grant that needs the most care: one answer from a hostile
 tool would let every later call through without a question.
+
+### 1B. TLS with a bearer token
+
+For a program the person deployed themselves, behind TLS, and that Collie dials out to. The program
+has a public URL, so the token is the whole gate.
+
+| Rule | Value |
+| --- | --- |
+| Connection | HTTPS. The adapter verifies the certificate as any client does; there is no switch to turn that off. |
+| URL | The adapter reads it from `COLLIE_DURABLE_URL`. It MUST start with `https://`, with one exception: `http://127.0.0.1:<port>` or `http://localhost:<port>`, with a port, for a local test such as `wrangler dev`. Any other `http://` is refused with the reason. At most 2048 bytes. No user name or password, no query, no fragment. An optional path prefix is kept, and the adapter appends `/session/v1/...` to it. |
+| Token | The adapter reads it from `COLLIE_DURABLE_TOKEN`. At least 32 bytes after a trim, printable ASCII with no space. It goes as `Authorization: Bearer <token>` on every request, `hello` included. The adapter never logs it, never shows it in `collie doctor` beyond "set, N bytes", and never puts it in an error. |
+| Program check | The program MUST check the token before anything else: before the version, before `hello`, before `ready`. It MUST compare in constant time. A request without the token, or with another one, gets **401** `{ "code": "unauthorized" }` and nothing else: no range, no epoch, no route. Nothing runs. |
+| Redirects | The adapter follows none. A 3xx is passed up as a status, so the token never reaches another host. |
+| Framing, bodies, version header, push | As in 1A. Any HTTP version the host speaks. |
+| ETag | A proxy that compresses a reply may weaken the ETag to `W/"<epoch>-<rev>"`. The adapter strips `W/` before it sends the tag back, and the program MUST compare `If-None-Match` with any `W/` stripped (section 7.1). |
+| Refusal | A **401** or **403** is `unreachable` with detail `token-refused: the program answered <status>`, on a read or a write. Nothing ran. The hysteresis of section 8.8 applies, and a program that refuses is asked again at most once every 10 s. |
+
+#### What the token does not protect against
+
+- **Anyone who holds the token acts as the phone.** They can read every pane, answer every ask, send
+  text, stop a turn and run a starter. There is nothing else to check: the descendant check of 1A
+  needs the caller's credentials on a local socket, and a TLS connection from the internet has none,
+  so under 1B it does not exist.
+- **The host sees the text.** TLS ends at the host (on Cloudflare, at Cloudflare's edge). Transcripts,
+  tool output and the program's own model key sit with the host.
+- **A token does not expire by itself.** The person rotates it by deploying a new token to the
+  program and setting the same value in the peer's `COLLIE_DURABLE_TOKEN`, then restarting the
+  peer. Until both sides change, the old token works.
+- **A public URL is billed when it is hit.** Requests with a wrong token still reach the host. A
+  program SHOULD refuse them before it wakes any state.
+
+A program reached over 1B SHOULD NOT offer `allow-always`: with the token as the only gate, one
+answer from whoever holds it would let every later call through. The example program keeps Allow and
+Deny only on both transports.
 
 ## 2. Version negotiation
 
@@ -79,8 +134,10 @@ tool would let every later call through without a question.
 5. A call with a missing header (other than `hello`), a non-integer header, or a version outside
    the program's range gets **409** `{ "code": "incompatible", "range": { "min", "max" } }`. Never a
    5xx. `hello` with a header outside the range gets the same 409.
-6. A **401** from the program means it still asks for a token, which version 1 does not have. The
-   adapter reports it as `incompatible` with detail `program asks for a token`.
+6. A **401** over the socket (1A) means the program asks for a token, which the socket does not
+   carry. The adapter reports it as `incompatible` with detail `program asks for a token`. Over TLS
+   (1B) a **401** or **403** means the program refused the token: `unreachable`, detail
+   `token-refused`, before any version check (section 1B).
 7. A `hello` without `service: "collie-durable"` is not a durable program: some other server
    listens at the path. The adapter calls nothing else and reports `unreachable` with detail
    `incompatible: not a durable program`.
@@ -88,7 +145,7 @@ tool would let every later call through without a question.
    field, a new meaning for an old field, or a removed field needs a new version.
 
 The program checks in this order: version (409), then `hello`, then ready (503 `starting`), then
-the route (404).
+the route (404). Over TLS (1B) the token (401) comes before all of them.
 
 ## 3. Routes
 
@@ -119,8 +176,9 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-id` | An id in the body breaks the id rule (section 6). | Same. |
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
 | 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
-| 401 | (any) | A program that wants a token. Not part of version 1. | `incompatible`, see section 2. |
-| 403 | `caller-refused` | On `answer`, `send`, `abort` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 401 | (any) | Over the socket (1A): a program that wants a token, which the socket does not carry. Over TLS (1B): the token is missing or wrong. | 1A: `incompatible`, see section 2. 1B: `unreachable`, detail `token-refused`. |
+| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 403 | (any) | Over TLS (1B): something in front of the program refused the caller, for example an access proxy. | `unreachable`, detail `token-refused`. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
@@ -389,7 +447,7 @@ on `PaneWire` (`idle | working | blocked | done | unknown`).
 | `openAsks` is not empty, whatever `state` says | `blocked` | Asks win. A program that forgets `waiting` still shows as needing a person. |
 | `state: "idle"` | `idle` | The bridge derives `done` from a `working` to `idle` change, as it does for every adapter. The program never sends `done`. |
 | any other `state` string | `unknown` | |
-| Socket missing, connect refused, `socket-not-private`, or a read timed out | none: the adapter is `unreachable` | `reachable()` answers false and `snapshot()` throws, as the Tern adapter does. The crew shows the peer as unreachable. The bridge keeps the last state it logged. |
+| Socket missing, connect refused, `socket-not-private`, `token-refused`, or a read timed out | none: the adapter is `unreachable` | `reachable()` answers false and `snapshot()` throws, as the Tern adapter does. The crew shows the peer as unreachable. The bridge keeps the last state it logged. |
 | `ready: false`, or 503 `starting` | none: `unreachable`, detail `starting` | Never an empty census. |
 | No version overlap, 409 `incompatible`, or 401 | none: `unreachable`, detail `incompatible` | |
 
@@ -494,10 +552,13 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
   renamed; a state change; an ask opened, changed or closed; a new `turnId`; a starter added or
   removed; and every event appended to any pane.
 - The `ETag` is `"<epoch>-<rev>"`. The adapter sends it back in `If-None-Match`. A 304 MUST cost the
-  program next to nothing.
+  program next to nothing. The program MUST compare `If-None-Match` with any `W/` prefix stripped,
+  because a proxy may weaken the tag on the way (section 1B); the adapter strips it too.
 - The adapter reads a pane's events only when `rev` moved since its last read.
-- The adapter waits at least 250 ms between two snapshot reads. It states its slowest interval as
-  its `topologyLatency` ceiling. It declares `pushTopologyEvents` and `pushPaneEvents` false.
+- The adapter waits at least 250 ms between two snapshot reads. Its census runs every 1 s while a
+  phone watches and every 3 s otherwise over the socket, and every 2 s and 10 s over TLS, where each
+  poll is a billed request. It states its slowest interval as its `topologyLatency` ceiling. It
+  declares `pushTopologyEvents` and `pushPaneEvents` false.
 - The snapshot is the truth for layout, state, `turnId` and open asks. Events are the history.
 
 ### 7.2 Events and the cursor
@@ -541,7 +602,7 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
   `bad-body`.
 - `turnId` MUST equal the pane's current `turnId`. `askId` MUST be an open ask on this pane.
   Otherwise: 409 `stale`, with the current `turnId` and `askIds`. Nothing runs.
-- The adapter makes the same check against its latest snapshot before it writes to the socket.
+- The adapter makes the same check against its latest snapshot before it writes to the program.
   The program checks again, because the turn can move in between.
 - `send` with `caps.send` false, or on a pane that takes no text: 409 `not-supported`. `steer: true`
   with `caps.steer` false: 409 `not-supported`.
@@ -578,7 +639,7 @@ abort.
   returns its result.
 - **Answer, send, abort:** the program SHOULD do the same: a repeat returns the first reply with
   `replayed: true` and runs nothing. The bridge receipt is the main guard. This one covers a reply
-  lost on the socket.
+  lost on the way.
 - The same `requestId` on a different route, pane or starter: 409 `request-id-reused`.
 - The program keeps at least the last 500 request ids of its epoch. It SHOULD keep them across a
   restart.
@@ -596,8 +657,10 @@ abort.
   the same 409, so only one POST leaves the bridge. Receipts are kept 7 days and at most 1000 per
   store, newest first; a pending receipt younger than a day is never pruned. Each store is written
   to a temporary file and renamed over the old one.
-- Timeouts in the adapter: 1000 ms for `hello`, `snapshot` and `events`; 3000 ms for `answer`,
-  `send` and `abort`; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
+- Timeouts in the adapter over the socket (1A): 1000 ms for `hello`, `snapshot` and `events`;
+  3000 ms for `answer`, `send` and `abort`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
+  `hello`, `snapshot`, `events`, `answer`, `send` and `abort`, because a program that slept may wake
+  cold; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
   connect to last byte, and a reply is cut off the moment it passes its byte cap (section 6), so a
   program that trickles bytes or never stops cannot hold a read.
 
@@ -628,24 +691,31 @@ abort.
    panes it has until the new snapshot is read. Then it reads each pane's events with the **old**
    epoch and its old cursor, and gets a reset reply. A pane it never read starts at `after=0`.
 8. The adapter calls `hello` again after any failed connect, after a 503, and when it sees a new
-   epoch. While the socket is down, it tries once per poll interval and reports `unreachable`.
+   epoch. While the program is down, it tries once per poll interval and reports `unreachable`.
+   Over TLS (1B) it tries at most once every 10 s while the last read failed, because each try is a
+   billed request.
    **Hysteresis:** one failed read after a good one keeps the last snapshot for that poll. Two
-   failures in a row flip the peer to `unreachable`. A path that fails the walk (section 1) is
+   failures in a row flip the peer to `unreachable`. A refused token (1B) follows the same rule. A path that fails the walk (section 1A) is
    `unreachable` at once, with no grace.
 9. Request id receipts SHOULD survive a restart (section 7.6).
-10. The program removes a stale socket file before it listens, so a crash leaves no dead path for
-    the next start.
+10. Over the socket (1A), the program removes a stale socket file before it listens, so a crash
+    leaves no dead path for the next start.
 
 ## 9. Out of scope in version 1
 
-- **TCP**, or any socket other than a local Unix socket.
-- **Other users.** The program and the peer run as the same user. There is no token and no handshake.
-- **Other machines.** A program on another machine is reached through the Collie on that machine.
-- **Sleeping programs.** A program that is not running, and that the socket would wake. A stopped
-  program is `unreachable`.
+- **Plain TCP.** Over the network the transport is TLS (1B). Plain `http://` is allowed only to
+  127.0.0.1 or localhost, for a local test.
+- **Other users on the socket.** Over 1A the program and the peer run as the same user, with no
+  token and no handshake. Over 1B the token is the only gate, and there is no other handshake: no
+  client certificate, no second factor.
+- **Other machines, except through 1B.** A program the person deployed behind TLS is reached over
+  1B. Any other program on another machine is reached through the Collie on that machine.
+- **Waking a program on purpose.** Over 1A a program that is not running is `unreachable`. Over 1B
+  the host may start the program for a request (a Durable Object does), and the adapter neither
+  knows nor relies on it: a new start is a new epoch (section 8).
 - **Terminals.** No pane grid, no typed keys, no raw text. `caps.terminal` is false.
 - **Push.** No stream from the program. The adapter polls.
-- **More than one program per peer.** One socket path per peer.
+- **More than one program per peer.** One socket path, or one URL, per peer.
 - **Ask kinds other than `permission`**, and free-text answers beyond the optional `note`.
 - **Starters that take input**, such as a folder or a prompt.
 - **Creating, renaming or closing** workspaces, tabs or panes from Collie.
@@ -655,10 +725,12 @@ abort.
 The spike SDK and its stand-in lead spoke a draft of this wire. These changes bring it to this
 document. The version number stays 1; the spike's shapes are not supported.
 
-1. **The bearer token is gone.** No `Authorization` header, no 401, no `DM_TOKEN`. The check order is
-   now version, `hello`, ready, route.
-2. **TCP is gone.** No `tcp:` listen spec. The program listens on a Unix socket only, and SHOULD
-   take its path from `COLLIE_DURABLE_SOCKET`.
+1. **The bearer token is gone from the socket.** No `Authorization` header, no 401, no `DM_TOKEN` on
+   transport 1A. The check order there is version, `hello`, ready, route. A token came back later,
+   for transport 1B only (ADR 0103): TLS required, at least 32 bytes, checked before everything else.
+2. **Plain TCP is gone.** No `tcp:` listen spec. On 1A the program listens on a Unix socket, and
+   SHOULD take its path from `COLLIE_DURABLE_SOCKET`. A program on the network is reached over TLS
+   (1B), never over plain TCP.
 3. **Every id follows the id rule** (1 to 128 bytes, no whitespace or control character, no `/`,
    `?` or `#`). The spike's tab ids are `<workspace>/<tab>`, which breaks it. Use another
    separator, for example `<workspace>:<tab>`.
@@ -692,6 +764,6 @@ document. The version number stays 1; the spike's shapes are not supported.
 16. **`Hello` gains `service: "collie-durable"`** (required). A server at the path that does not
     say it is refused as `incompatible: not a durable program`. Added before version 1 shipped, so
     the version stays 1.
-17. **The path cap is 103 bytes** (was 107), and the adapter walks the whole path (section 1).
+17. **The path cap is 103 bytes** (was 107), and the adapter walks the whole path (section 1A).
 18. **`Ask` gains an optional `cleaned`** (section 4), and cleaning also removes zero-width and tag
     characters (section 6).

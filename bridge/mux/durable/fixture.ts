@@ -28,10 +28,18 @@
 // reply: `reset`, then each item in its latest version (the newest `viewItemCap`, the rest counted in
 // `trimmed`), then each open ask, then one `state`, then `synced`.
 //
+// IT ALSO SERVES OVER HTTP (WIRE.md section 1B, ADR 0103). `startHttp` listens on 127.0.0.1 with
+// `Bun.serve` and checks `Authorization: Bearer <token>` before anything else, as the outer Worker of
+// a deployed program does: wrong or missing, 401 `unauthorized`, and nothing else runs. The compare
+// is constant-time. The fake records only whether the header matched, never the value, so no token
+// reaches a test's output. With `weakEtag` it answers `W/"<epoch>-<rev>"`, as a compressing proxy
+// would, and in both modes it compares `If-None-Match` with any `W/` stripped, as section 7.1 asks.
+//
 // The 250 ms floor between snapshot reads is real in the adapter. The conformance world therefore
 // runs it on `FakeDurableClock`, and every change the world makes moves that clock past the floor, so
 // the next read is a real read. A test of the floor itself uses the clock directly.
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +49,7 @@ import { isRequestId } from "../../worktree-receipts.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld } from "../conformance.ts";
 import { DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from "./adapter.ts";
 import { DurableSocketClient } from "./client.ts";
+import { DurableHttpClient } from "./http-client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
@@ -167,6 +176,8 @@ export interface FakeRequest {
   readonly ifNoneMatch: string | null;
   /** The body of a POST, as text. Null for a GET. */
   readonly body: string | null;
+  /** Whether an `Authorization` header came, and whether it was the bearer token. Never the value. */
+  readonly bearer: "none" | "match" | "other";
 }
 
 /** One answer the fake took and resolved (WIRE.md section 7.3). */
@@ -263,7 +274,7 @@ function reply(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-/** The mode WIRE.md section 1 asks of the socket: the owner only. */
+/** The mode WIRE.md section 1A asks of the socket: the owner only. */
 const PRIVATE_SOCKET_MODE = 0o600;
 
 export class FakeDurableProgram {
@@ -276,6 +287,8 @@ export class FakeDurableProgram {
   range: ProtocolRange = { min: 1, max: 1 };
   /** When true, every route answers 401, as a program that still asks for a token would. */
   asksForToken = false;
+  /** When true, the snapshot's ETag is weak (`W/"..."`), as a proxy that compressed it would send. */
+  weakEtag = false;
   override: FakeOverride | null = null;
   readonly requests: FakeRequest[] = [];
   /** How many of a pane's newest events the program keeps (WIRE.md 7.2 says at most 1000). */
@@ -310,32 +323,67 @@ export class FakeDurableProgram {
   private turnsMinted = 0;
 
   private server: ReturnType<typeof Bun.serve> | null = null;
+  /** The TCP port over HTTP, kept so a dropped listener comes back on the same URL. */
+  private port = 0;
 
   private constructor(
     readonly socketPath: string,
-    private readonly dir: string,
+    private readonly dir: string | null,
+    /** The SHA-256 of the bearer token over HTTP; null on the socket, which takes no token. */
+    private tokenDigest: Buffer | null,
   ) {}
+
+  /** Over HTTP, take another token from now on, as a program redeployed with a new secret does. */
+  rotateToken(token: string): void {
+    if (this.tokenDigest === null) throw new Error("a program on the socket takes no token");
+    this.tokenDigest = digest(token);
+  }
 
   /** Start a program on a fresh socket under the temp directory. */
   static async start(): Promise<FakeDurableProgram> {
     // `mkdtemp` makes the directory mode 0700.
     const dir = mkdtempSync(join(tmpdir(), "collie-durable-"));
-    const program = new FakeDurableProgram(join(dir, "s.sock"), dir);
+    const program = new FakeDurableProgram(join(dir, "s.sock"), dir, null);
     program.listen();
     return program;
   }
 
+  /** Start a program over HTTP on 127.0.0.1, on a free port, that takes only this bearer token. */
+  static async startHttp(token: string): Promise<FakeDurableProgram> {
+    const program = new FakeDurableProgram("", null, digest(token));
+    program.listen();
+    return program;
+  }
+
+  /** The base URL over HTTP. Empty on the socket. */
+  get url(): string {
+    return this.tokenDigest === null ? "" : `http://127.0.0.1:${String(this.port)}`;
+  }
+
   private listen(): void {
+    if (this.tokenDigest !== null) {
+      this.server = Bun.serve({ hostname: "127.0.0.1", port: this.port, fetch: (request) => this.handle(request) });
+      this.port = this.server.port ?? 0;
+      return;
+    }
     this.server = Bun.serve({ unix: this.socketPath, fetch: (request) => this.handle(request) });
     // The listener creates the socket with the process umask. A program must create it private.
     chmodSync(this.socketPath, PRIVATE_SOCKET_MODE);
   }
 
-  /** Stop listening, then listen again on the same path. The state is untouched. */
+  /** Stop listening, then listen again on the same path or port. The state is untouched. */
   async dropConnections(): Promise<void> {
     await this.server?.stop(true);
-    rmSync(this.socketPath, { force: true });
+    if (this.tokenDigest === null) rmSync(this.socketPath, { force: true });
     this.listen();
+  }
+
+  /** How the request's `Authorization` header compares with the token, in constant time. */
+  private bearerOf(request: Request): FakeRequest["bearer"] {
+    const header = request.headers.get("authorization");
+    if (header === null) return "none";
+    if (this.tokenDigest === null || !header.startsWith("Bearer ")) return "other";
+    return timingSafeEqual(digest(header.slice("Bearer ".length)), this.tokenDigest) ? "match" : "other";
   }
 
   /**
@@ -454,6 +502,11 @@ export class FakeDurableProgram {
     return `"${this.epoch}-${String(this.rev)}"`;
   }
 
+  /** The ETag as it goes on the wire: weak when a test plays a compressing proxy. */
+  private sentEtag(): string {
+    return this.weakEtag ? `W/${this.etag()}` : this.etag();
+  }
+
   /** The version check of WIRE.md section 2. A header outside the range is a 409, never a 5xx. */
   private versionProblem(header: string | null, isHello: boolean): Response | null {
     if (header === null) {
@@ -469,8 +522,12 @@ export class FakeDurableProgram {
     const version = request.headers.get("x-collie-session");
     const ifNoneMatch = request.headers.get("if-none-match");
     const body = request.method === "POST" ? await request.text() : null;
-    this.requests.push({ method: request.method, path: url.pathname, search: url.search, version, ifNoneMatch, body });
+    const bearer = this.bearerOf(request);
+    this.requests.push({ method: request.method, path: url.pathname, search: url.search, version, ifNoneMatch, body, bearer });
 
+    // Over HTTP the token comes first, before the version and before any route, so a caller
+    // without it learns nothing (WIRE.md section 1B).
+    if (this.tokenDigest !== null && bearer !== "match") return reply(401, { code: "unauthorized" });
     const taken = await this.override?.(url.pathname);
     if (taken !== undefined) return taken;
 
@@ -484,9 +541,10 @@ export class FakeDurableProgram {
     if (request.method === "GET" && route === "/hello") return reply(200, this.currentHello());
     if (!this.ready) return reply(503, { code: "starting" });
     if (request.method === "GET" && route === "/snapshot") {
-      const etag = this.etag();
-      if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { etag } });
-      return reply(200, this.currentSnapshot(), etag);
+      // A weak `If-None-Match` is the same tag: compare with `W/` stripped (WIRE.md section 7.1).
+      const asked = ifNoneMatch?.startsWith("W/") === true ? ifNoneMatch.slice(2) : ifNoneMatch;
+      if (asked === this.etag()) return new Response(null, { status: 304, headers: { etag: this.sentEtag() } });
+      return reply(200, this.currentSnapshot(), this.sentEtag());
     }
     const events = /^\/pane\/([^/]+)\/events$/.exec(route);
     if (request.method === "GET" && events !== null) {
@@ -694,8 +752,18 @@ export class FakeDurableProgram {
     const server = this.server;
     this.server = null;
     await server?.stop(true);
-    rmSync(this.dir, { recursive: true, force: true });
+    if (this.dir !== null) rmSync(this.dir, { recursive: true, force: true });
   }
+}
+
+/** A token's SHA-256, so two tokens of any length compare in constant time. */
+function digest(token: string): Buffer {
+  return createHash("sha256").update(token).digest();
+}
+
+/** A fresh random token for a test: 32 random bytes as 64 hex characters, never written anywhere. */
+export function testToken(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
 }
 
 // ── The conformance world ─────────────────────────────────────────────────────
@@ -741,4 +809,42 @@ export async function durableWorld(): Promise<MuxConformanceWorld> {
 export const durableConformanceFixture: MuxConformanceFixture = {
   mux: DURABLE_MUX,
   create: durableWorld,
+};
+
+/**
+ * The same world over the second transport: the real adapter over the real HTTP client, with a
+ * bearer token, dialling the fake program on 127.0.0.1 (WIRE.md section 1B). Same program, same
+ * bytes, so the suite proves the adapter does not depend on which transport it has.
+ */
+export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
+  const token = testToken();
+  const program = await FakeDurableProgram.startHttp(token);
+  const clock = new FakeDurableClock();
+  const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
+  const change = (act: () => void): Promise<void> => {
+    act();
+    clock.advance(PAST_THE_FLOOR_MS);
+    return Promise.resolve();
+  };
+  return {
+    adapter,
+    writes: () => [],
+    reconnect: async () => {
+      await program.dropConnections();
+      clock.advance(PAST_THE_FLOOR_MS);
+    },
+    restartMux: () => change(() => program.restart()),
+    renameOutOfBand: (paneId, label) => change(() => program.retitlePane(paneId, label)),
+    setProgramTitle: (paneId, title) => change(() => program.retitlePane(paneId, title)),
+    changePane: (paneId) => change(() => program.setState(paneId, "working")),
+    endPane: (paneId) => change(() => program.removePane(paneId)),
+    pokeTopologyOutOfBand: () => change(() => program.renameTab("ws-notes:research", "renamed in the program")),
+    close: () => program.close(),
+  };
+}
+
+export const durableHttpConformanceFixture: MuxConformanceFixture = {
+  mux: DURABLE_MUX,
+  variant: "https with a bearer token",
+  create: durableHttpWorld,
 };
