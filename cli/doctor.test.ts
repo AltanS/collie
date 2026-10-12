@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 
@@ -12,7 +12,10 @@ import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
 import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
+import { FakeDurableProgram } from "../bridge/mux/durable/fixture.ts";
+import { SYSTEM_PROBE, type SocketProbe } from "../bridge/mux/durable/client.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
+import { durableFindings } from "./durable-findings.ts";
 import type { CliContext } from "./context.ts";
 import {
   cmdDoctor,
@@ -2504,5 +2507,156 @@ describe("stt.whistle-model", () => {
   test("the host engine is Whistle and the model is missing: a warning naming the verb", async () => {
     const { byCheck } = await run(() => undefined, (dir) => ({ [join(dir, "stt.json")]: JSON.stringify({ provider: "whistle" }) }));
     expect(byCheck.get("stt.whistle-model")).toMatchObject({ status: "warn", remedy: "run `collie stt whistle`" });
+  });
+});
+
+// ── doctor durable ───────────────────────────────────────────────────────────
+// The rows read a REAL socket: the fixture program of `bridge/mux/durable/fixture.ts` listens on one,
+// and the privacy check and the client are the adapter's own. Only the owner case needs a stand-in
+// user id, which the section takes through its `probe` seam.
+
+describe("doctor durable", () => {
+  const started: FakeDurableProgram[] = [];
+  const scratch: string[] = [];
+  afterEach(async () => {
+    for (const program of started.splice(0)) await program.close();
+    for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function startFake(): Promise<FakeDurableProgram> {
+    const made = await FakeDurableProgram.start();
+    started.push(made);
+    return made;
+  }
+  const onDurable = (socket: string | undefined) => ({ COLLIE_MUX: "durable", COLLIE_DURABLE_SOCKET: socket });
+  const durableRows = (run: JsonRun): [string, string][] =>
+    run.raw.filter((f) => f.check.startsWith("durable-")).map((f) => [f.check, f.status]);
+
+  test("a ready program in range gives four ok rows, and the mux line defers to them", async () => {
+    const fake = await startFake();
+    const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    expect(durableRows(run)).toEqual([
+      ["durable-env", "ok"],
+      ["durable-socket", "ok"],
+      ["durable-hello", "ok"],
+      ["durable-ready", "ok"],
+    ]);
+    expect(run.byCheck.get("durable-hello")!.detail).toContain("speaks 1..1");
+    expect(run.byCheck.get("mux")).toMatchObject({ status: "ok", detail: "durable, see the durable-* lines · set by COLLIE_MUX" });
+    expect(run.byCheck.get("beacon-hooks-claude")!.status).toBe("ok");
+    expect(fake.requests.every((r) => r.path === "/session/v1/hello")).toBe(true);
+  });
+
+  test("a mux other than durable gets no durable rows", async () => {
+    const run = await findings(harness(null, [], { env: { COLLIE_MUX: "herdr", COLLIE_DURABLE_SOCKET: "/tmp/x.sock" } }));
+    expect(durableRows(run)).toEqual([]);
+  });
+
+  test("an unset or relative variable fails the env row, names the variable and skips the rest", async () => {
+    for (const value of [undefined, "", "relative.sock"]) {
+      const run = await findings(harness(null, [], { env: onDurable(value) }));
+      expect(durableRows(run)).toEqual([
+        ["durable-env", "error"],
+        ["durable-socket", "skipped"],
+        ["durable-hello", "skipped"],
+        ["durable-ready", "skipped"],
+      ]);
+      const row = run.byCheck.get("durable-env")!;
+      expect(row.detail).toContain("COLLIE_DURABLE_SOCKET");
+      expect(row.remedy).toContain("COLLIE_DURABLE_SOCKET");
+      expect(run.code).toBe(EXIT.FAIL);
+    }
+  });
+
+  test("a path with nothing at it fails the socket row and says the program is not running", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-durable-"));
+    scratch.push(dir);
+    const run = await findings(harness(null, [], { env: onDurable(join(dir, "none.sock")) }));
+    const row = run.byCheck.get("durable-socket")!;
+    expect(row.status).toBe("error");
+    expect(row.detail).toContain("nothing is at");
+    expect(row.remedy).toContain("start the program");
+    expect(run.byCheck.get("durable-hello")!.status).toBe("skipped");
+  });
+
+  test("a regular file is refused as not a socket", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-durable-"));
+    scratch.push(dir);
+    const file = join(dir, "plain.sock");
+    writeFileSync(file, "", { mode: 0o600 });
+    const run = await findings(harness(null, [], { env: onDurable(file) }));
+    expect(run.byCheck.get("durable-socket")!.detail).toContain("is not a socket");
+  });
+
+  test("a socket open to the group is refused with its mode and the fix", async () => {
+    const fake = await startFake();
+    chmodSync(fake.socketPath, 0o660);
+    const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    const row = run.byCheck.get("durable-socket")!;
+    expect(row.status).toBe("error");
+    expect(row.detail).toContain("mode 0660");
+    expect(row.detail).toContain("must be 0600");
+    expect(row.remedy).toContain("chmod 600");
+    expect(run.byCheck.get("durable-hello")!.status).toBe("skipped");
+    expect(fake.requests).toEqual([]);
+  });
+
+  test("a socket owned by another user is refused and never dialled", async () => {
+    const fake = await startFake();
+    const probe: SocketProbe = { lstat: SYSTEM_PROBE.lstat, uid: () => (SYSTEM_PROBE.uid() ?? 0) + 1 };
+    const rows = await durableFindings({ ctx: context(onDurable(fake.socketPath)), probe });
+    const row = rows.find((f) => f.check === "durable-socket")!;
+    expect(row.status).toBe("error");
+    expect(row.detail).toContain("not by you");
+    expect(rows.find((f) => f.check === "durable-hello")!.status).toBe("skipped");
+    expect(fake.requests).toEqual([]);
+  });
+
+  test("a program that is down behind a stale socket fails the hello row with the reason", async () => {
+    const fake = await startFake();
+    fake.override = () => new Response("nope", { status: 500 });
+    const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    const row = run.byCheck.get("durable-hello")!;
+    expect(row.status).toBe("error");
+    expect(row.detail).toContain("status 500");
+    expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
+  });
+
+  test("a program whose range does not overlap fails the hello row with both ranges", async () => {
+    const fake = await startFake();
+    fake.range = { min: 2, max: 3 };
+    fake.override = (path) =>
+      path === "/session/v1/hello" ? Response.json({ ...fake.hello, protocol: { min: 2, max: 3 }, epoch: fake.epoch, ready: true }) : undefined;
+    const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    const row = run.byCheck.get("durable-hello")!;
+    expect(row.status).toBe("error");
+    expect(row.detail).toContain("program speaks 2..3, this Collie speaks 1..1");
+    expect(run.byCheck.get("durable-socket")!.status).toBe("ok");
+    expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
+  });
+
+  test("a program that asks for a token, or sends an unreadable hello, fails the hello row", async () => {
+    const fake = await startFake();
+    fake.asksForToken = true;
+    let run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    expect(run.byCheck.get("durable-hello")!.detail).toContain("asks for a token");
+    fake.asksForToken = false;
+    fake.override = (path) => (path === "/session/v1/hello" ? new Response("not json", { status: 200 }) : undefined);
+    run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    expect(run.byCheck.get("durable-hello")!.detail).toContain("unreadable");
+  });
+
+  test("a program that is not ready yet is a warning on the ready row, not a failure", async () => {
+    const fake = await startFake();
+    fake.ready = false;
+    const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
+    expect(durableRows(run)).toEqual([
+      ["durable-env", "ok"],
+      ["durable-socket", "ok"],
+      ["durable-hello", "ok"],
+      ["durable-ready", "warn"],
+    ]);
+    expect(run.byCheck.get("durable-ready")!.remedy).toContain("collie doctor");
+    expect(run.code).toBe(EXIT.OK);
   });
 });

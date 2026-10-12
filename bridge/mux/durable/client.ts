@@ -127,27 +127,46 @@ export const SYSTEM_PROBE: SocketProbe = {
 /** Group and other permission bits. */
 const GROUP_AND_OTHER = 0o077;
 
+/** Which part of the privacy check a path failed. `doctor` names it; the adapter reports one word. */
+export type SocketFault =
+  | { readonly kind: "missing" }
+  | { readonly kind: "unreadable"; readonly message: string }
+  | { readonly kind: "not-a-socket" }
+  | { readonly kind: "no-uid" }
+  | { readonly kind: "wrong-owner"; readonly owner: number; readonly uid: number }
+  | { readonly kind: "open-mode"; readonly mode: number };
+
 /**
- * Why this path may not be dialled, or null when it may (WIRE.md section 1).
+ * Which check this path fails, or null when it may be dialled (WIRE.md section 1).
  *
  * It must be a socket (a symlink is not one, because this is `lstat`), owned by the adapter's own
  * uid, with no group or other bit. A platform with no uid cannot show the owner, so it fails closed.
  * A missing path is a different answer: nothing is listening yet, and that is not a privacy problem.
  */
-export async function socketAccessProblem(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<string | null> {
+export async function socketFault(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<SocketFault | null> {
   let facts: SocketFacts;
   try {
     facts = await probe.lstat(path);
   } catch (err) {
     const code = err instanceof Error && "code" in err ? err.code : undefined;
-    if (code === "ENOENT" || code === "ENOTDIR") return `no socket at ${path}`;
-    return `cannot check ${path}: ${err instanceof Error ? err.message : String(err)}`;
+    if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
+    return { kind: "unreadable", message: err instanceof Error ? err.message : String(err) };
   }
+  if (!facts.isSocket()) return { kind: "not-a-socket" };
   const uid = probe.uid();
-  if (!facts.isSocket() || uid === undefined || facts.uid !== uid || (facts.mode & GROUP_AND_OTHER) !== 0) {
-    return SOCKET_NOT_PRIVATE;
-  }
+  if (uid === undefined) return { kind: "no-uid" };
+  if (facts.uid !== uid) return { kind: "wrong-owner", owner: facts.uid, uid };
+  if ((facts.mode & GROUP_AND_OTHER) !== 0) return { kind: "open-mode", mode: facts.mode & 0o777 };
   return null;
+}
+
+/** Why this path may not be dialled, as the one line the adapter reports, or null when it may. */
+export async function socketAccessProblem(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<string | null> {
+  const fault = await socketFault(path, probe);
+  if (fault === null) return null;
+  if (fault.kind === "missing") return `no socket at ${path}`;
+  if (fault.kind === "unreadable") return `cannot check ${path}: ${fault.message}`;
+  return SOCKET_NOT_PRIVATE;
 }
 
 // ── The socket client ─────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import {
   SOCKET_NOT_PRIVATE,
   SOCKET_PATH_MAX_BYTES,
   socketAccessProblem,
+  socketFault,
   SYSTEM_PROBE,
   type DurableGet,
   type SocketProbe,
@@ -117,6 +118,22 @@ describe("the privacy check (WIRE.md section 1)", () => {
     for (const path of [file, dir, link]) {
       expect(await socketAccessProblem(path)).toBe(SOCKET_NOT_PRIVATE);
     }
+  });
+
+  test("socketFault names the check a path fails", async () => {
+    const program = await startProgram();
+    const dir = mkdtempSync(join(tmpdir(), "collie-durable-client-"));
+    scratch.push(dir);
+    const file = join(dir, "file.sock");
+    writeFileSync(file, "", { mode: 0o600 });
+    const uid = SYSTEM_PROBE.uid() ?? 0;
+    expect(await socketFault(program.socketPath)).toBeNull();
+    expect(await socketFault(join(dir, "none.sock"))).toEqual({ kind: "missing" });
+    expect(await socketFault(file)).toEqual({ kind: "not-a-socket" });
+    expect(await socketFault(program.socketPath, { lstat: SYSTEM_PROBE.lstat, uid: () => undefined })).toEqual({ kind: "no-uid" });
+    expect(await socketFault(program.socketPath, { lstat: SYSTEM_PROBE.lstat, uid: () => uid + 1 })).toEqual({ kind: "wrong-owner", owner: uid, uid: uid + 1 });
+    chmodSync(program.socketPath, 0o640);
+    expect(await socketFault(program.socketPath)).toEqual({ kind: "open-mode", mode: 0o640 });
   });
 
   test("a missing path is not a privacy problem: nothing is listening yet", async () => {
