@@ -327,6 +327,22 @@ indented row straight under the status row as the hint row (`isHintRow` in
 | `codex--v0157-draft-notice.txt` | The two-line draft `Reply with only OK.` / `Second line of the message.`. The hint row holds only the notice, after a run of spaces. The draft reads back | `idle` |
 | `codex--v0157-busy-streaming.txt` | The first turn of a thread mid-stream: the status row ends in the spinner frame `⠋`, the hint row under it | `working` |
 
+## Codex 0.159.3 thread title (captured 2026-10-12, herdr 0.9.0, harness canary)
+
+A `format:ansi` capture from the harness canary's own Herdr session, after the first reply of a
+thread, cut to its last 33 rows. Once a thread has a title, Codex paints the status row as
+`<path> ` in the path's colour, then `· ` unpainted, then the title: the space before the separator
+carries the previous field's paint. Before the reader moved that space back onto the separator
+(`rejoinSplitSeparators` in `lib/harness/codex/markers.ts`), the row was refused, so after the first
+turn of every thread the pane had no composer, showed the unread-dialog card and refused every send.
+The project folder is `/tmp/collie-canary-project`; the model name on the status row is set to
+`gpt-5.6-sol`, as in the other Codex captures, and the bug does not depend on it. No username,
+hostname or session id is on the kept rows.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0159-task-title.txt` | `Reply with only OK.` answered `OK`, the empty composer, and the status row `  gpt-5.6-sol low · /tmp/collie-canary-project · Generate task title`. `composerReady` must be TRUE | `idle` |
+
 ## Codex reporter capture (#294, 2026-09-27, macOS, Herdr 0.9.1, SCRUBBED)
 
 The reporter's `herdr pane read <pane-id> --source recent --lines 200 --format ansi`, taken by
@@ -1540,6 +1556,24 @@ first one's session title is in Russian, left from an earlier test of that sessi
 |---|---|---|
 | `omp--v18-8-ask-single-described.txt` | `Which deploy target should the release use?`: `❯ ○ Staging (Recommended)` with a two-row description, `○ Production` and `○ Skip` with one row each, `○ Other (type your own)`, no padding rows, footer `⏎ select · n note · ↑/↓ move · ⎋ cancel`. Lifts as a `prompt-select` (`omp/ask.ts`), each description on its option | not recorded |
 | `omp--v18-8-ask-single-described-moved.txt` | The same dialog after one `Down`: the pointer on Production. Staging walks `Up` | not recorded |
+
+## OMP 18.10 draft lines under the open prompt (captured 2026-10-12, oh-my-pi `omp` v18.10.1, herdr 0.9.0, harness canary)
+
+Three `format:ansi` captures from the harness canary's own Herdr session, each the whole screen the
+canary saved: omp's welcome panel, the powerline, and the open-ended `╰─` prompt with a draft typed
+into it. OMP 18.10 keeps a draft's first line on the prompt row and paints every later line BELOW
+it, under a three-space gutter; a blank line of the draft is a blank row there. Before the reader
+took those rows as the draft (`openDraftEnd`, `openDraftRowText` in `lib/harness/omp/`), they read
+as autocomplete, so only the first line read back and every multi-line send stalled, and a blank
+line refused the composer. CRLF line ends as read. The project folder is
+`/tmp/collie-canary-project`; the model name on the powerline is set to `GPT-6-Sol`, the same width
+as the one the canary ran. No username, hostname or session id is in any file.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-10-draft-two-lines.txt` | The draft `Reply with only OK.` / `Second line of the message.`: one row under the prompt. The whole draft reads back and `composerPrompt` binds the prompt row | `idle` |
+| `omp--v18-10-draft-blank-line.txt` | `Reply with only OK.`, a blank line, then `A paragraph after a blank line.`: a blank row, then a gutter row | `idle` |
+| `omp--v18-10-draft-indented.txt` | `Reply with only OK.` and two lines indented four more spaces past the gutter | `idle` |
 
 ## Lessons already encoded here (don't re-learn them)
 
