@@ -174,6 +174,28 @@ function text(v: JsonValue | undefined, max: number): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? clamp(v.trim(), max).text : undefined;
 }
 
+/** A question's text exactly as {@link readQuestions} keeps it, so an answer keyed by the raw text can
+ *  be matched to its question. */
+export function questionKey(v: JsonValue | undefined): string | undefined {
+  return text(v, MAX_QUESTION_CHARS);
+}
+
+/**
+ * Chosen labels from a harness's answer value: one label, a list of them, or `{ answers }`. Clamped
+ * and bounded as option labels are, so a picked option's label equals the one on the card.
+ */
+export function answerLabels(v: JsonValue | undefined): string[] {
+  if (Array.isArray(v)) {
+    return v.slice(0, MAX_OPTIONS).flatMap((label) => {
+      const picked = text(label, MAX_LABEL_CHARS);
+      return picked === undefined ? [] : [picked];
+    });
+  }
+  if (isRecord(v)) return Array.isArray(v.answers) ? answerLabels(v.answers) : [];
+  const picked = text(v, MAX_LABEL_CHARS);
+  return picked === undefined ? [] : [picked];
+}
+
 /**
  * Read an input's `questions` list, or `undefined` when it holds nothing a person could answer.
  *

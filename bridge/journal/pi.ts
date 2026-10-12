@@ -50,7 +50,7 @@ import {
 } from "./reduce.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
-import { classifyToolCall, type ToolCall } from "./tool-call.ts";
+import { answerLabels, classifyToolCall, questionKey, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -209,7 +209,13 @@ const PI_EXIT_STATUS = /(?:^|\n)Command exited with code (\d+)\s*$/;
  * only `Successfully wrote N bytes to <path>`, so "the file was new" is not knowable here, and
  * guessing it would claim a creation that may have been an overwrite.
  */
-function enrichCall(call: ToolCall, raw: JsonValue | undefined, text: string, isError: boolean): void {
+function enrichCall(
+  call: ToolCall,
+  raw: JsonValue | undefined,
+  text: string,
+  isError: boolean,
+  questionIds?: ReadonlyMap<string, string>,
+): void {
   const details: JsonObject | undefined =
     raw !== null && raw !== undefined && typeof raw === "object" && !Array.isArray(raw) ? raw : undefined;
   if (call.kind === "edit") {
@@ -230,6 +236,28 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined, text: string, is
     else if (!isError) call.exitCode = 0;
     return;
   }
+  if (call.kind === "question") {
+    // OmO records `details.answers` beside `status: "answered"`, in two shapes (OmO 5.1.30, read off
+    // real rows 2026-10-12): `ask_user_question` keys it by the question's TEXT,
+    // `{ "<question>": "Green" }`, and `request_user_input` by the question's `id` from the call,
+    // `{ "color": { "answers": ["Blue"] } }`. A dismissed call is `status: "cancelled"` with
+    // `answers: {}`, so it fills nothing. Mapped onto question order, the shape opencode's
+    // `metadata.answers` already has.
+    const answers = details?.answers;
+    if (answers === null || answers === undefined || typeof answers !== "object" || Array.isArray(answers)) return;
+    // Keys go through the card's own clamp, so a long or padded question still finds its answer.
+    const byText = new Map<string, JsonValue>();
+    for (const [key, value] of Object.entries(answers)) {
+      const question = questionKey(key);
+      if (question !== undefined && value !== undefined) byText.set(question, value);
+    }
+    const lists = call.questions.map((q) => {
+      const id = questionIds?.get(q.question);
+      return answerLabels(byText.get(q.question) ?? (id === undefined ? undefined : answers[id]));
+    });
+    if (lists.some((list) => list.length > 0)) call.answers = lists;
+    return;
+  }
   if (call.kind === "other") {
     // The one thing an unrecognised pi tool records that a view can draw: the answer a question got.
     // It joins the STRUCTURED summary only — the part's own `summary` is the call's one-line form and
@@ -237,6 +265,22 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined, text: string, is
     const answer = details?.answer;
     if (typeof answer === "string" && answer.trim() !== "") call.summary = `${call.summary} → ${answer}`;
   }
+}
+
+/** A pi call waiting for its result, plus each question's `id` by its text when the call asked any. */
+type PiPending = PendingTool & { questionIds?: ReadonlyMap<string, string> };
+
+/** The `id` of each question a call's input names, keyed by the question's text. */
+function questionIdsOf(input: JsonValue | undefined): Map<string, string> {
+  const ids = new Map<string, string>();
+  if (input === null || input === undefined || typeof input !== "object" || Array.isArray(input)) return ids;
+  if (!Array.isArray(input.questions)) return ids;
+  for (const q of input.questions) {
+    if (q === null || typeof q !== "object" || Array.isArray(q)) continue;
+    const question = questionKey(q.question);
+    if (question !== undefined && typeof q.id === "string") ids.set(question, q.id);
+  }
+  return ids;
 }
 
 /**
@@ -386,7 +430,7 @@ const PI_KNOWN: KnownTypes = {
 export function createPiReducer(): RowReducer {
   // toolCall id → the part awaiting its result and the turn it went out in, so a later `toolResult`
   // row lands on its own call and can name where that call is drawn.
-  const pendingTools = new Map<string, PendingTool>();
+  const pendingTools = new Map<string, PiPending>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(PI_KNOWN);
 
@@ -494,7 +538,7 @@ export function createPiReducer(): RowReducer {
         target.part.result = toolResult(resultText, isError, imageUrl);
         // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
         // the call did, and the only place a patch or an answer ever appears.
-        if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError);
+        if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError, target.questionIds);
         // Both mutations above landed in a turn that went out rows ago. Name it.
         changed.add(target.uuid);
       } else if (resultText.trim() !== "" || imageUrl) {
@@ -566,7 +610,12 @@ export function createPiReducer(): RowReducer {
           // The turn is named here, before it exists, because `uuid` is read off the row above and
           // the part is already the object the turn will carry. `rememberPending` is what keeps an
           // orphan call from growing this map for the life of a session.
-          rememberPending(pendingTools, b.id, { part, uuid });
+          const pending: PiPending = { part, uuid };
+          if (part.call?.kind === "question") {
+            const ids = questionIdsOf(b.arguments);
+            if (ids.size > 0) pending.questionIds = ids;
+          }
+          rememberPending(pendingTools, b.id, pending);
         }
         parts.push(part);
       }
