@@ -1,0 +1,98 @@
+{
+  "rev": 12,
+  "epoch": "e4b1c7a09d3f5e826b7a1c0d94f3e582",
+  "workspaces": [
+    { "id": "ws-notes", "title": "notes", "cwd": "/home/denis/notes" },
+    { "id": "ws-site", "title": "site", "cwd": "/home/denis/site" }
+  ],
+  "tabs": [
+    { "id": "ws-notes:main", "workspaceId": "ws-notes", "title": "main" },
+    { "id": "ws-notes:research", "workspaceId": "ws-notes", "title": "research" },
+    { "id": "ws-site:main", "workspaceId": "ws-site", "title": "main" }
+  ],
+  "panes": [
+    {
+      "id": "conv-01",
+      "workspaceId": "ws-notes",
+      "tabId": "ws-notes:main",
+      "title": "Plan the week",
+      "harness": "pi",
+      "state": "working",
+      "lastActiveAt": 1760262000000,
+      "turnId": "turn-01-a",
+      "openAsks": []
+    },
+    {
+      "id": "conv-02",
+      "workspaceId": "ws-notes",
+      "tabId": "ws-notes:research",
+      "title": "Read the paper",
+      "harness": "pi",
+      "state": "waiting",
+      "lastActiveAt": 1760262060000,
+      "turnId": "turn-02-a",
+      "cwd": "/home/denis/notes/papers",
+      "openAsks": [
+        {
+          "id": "ask-6f1d0c2a8b3e4d57a9c01e2b3d4f5a6c",
+          "kind": "permission",
+          "toolCallId": "call-02-1",
+          "revision": 1,
+          "title": "write_note wants to write /home/denis/notes/summary.txt",
+          "itemId": "item-02-7",
+          "options": [
+            { "id": "allow", "label": "Allow once", "effect": "allow" },
+            { "id": "always", "label": "Always allow", "effect": "allow-always" },
+            { "id": "deny", "label": "Deny", "effect": "deny" }
+          ],
+          "reason": "The summary is the answer to your last question.",
+          "tool": { "kind": "other", "name": "write_note", "summary": "path=/home/denis/notes/summary.txt" }
+        }
+      ]
+    },
+    {
+      "id": "conv-03",
+      "workspaceId": "ws-site",
+      "tabId": "ws-site:main",
+      "title": "Fix the header",
+      "harness": "pi",
+      "state": "idle",
+      "lastActiveAt": 1760258400000,
+      "turnId": "turn-03-c",
+      "openAsks": []
+    },
+    {
+      "id": "conv-04",
+      "workspaceId": "ws-notes",
+      "tabId": "ws-notes:main",
+      "title": "Forgot to say waiting",
+      "harness": "pi",
+      "state": "idle",
+      "lastActiveAt": 1760262120000,
+      "turnId": "turn-04-a",
+      "openAsks": [
+        {
+          "id": "ask-0a9b8c7d6e5f40312a3b4c5d6e7f8091",
+          "kind": "permission",
+          "toolCallId": "call-04-1",
+          "revision": 2,
+          "title": "shell wants to run ls",
+          "itemId": "item-04-2",
+          "options": [{ "id": "allow", "label": "Allow", "effect": "allow" }]
+        }
+      ]
+    },
+    {
+      "id": "conv-05",
+      "workspaceId": "ws-site",
+      "tabId": "ws-site:main",
+      "title": "Sleeping",
+      "harness": "pi",
+      "state": "sleeping",
+      "lastActiveAt": 1760172000000,
+      "turnId": "turn-05-a",
+      "openAsks": []
+    }
+  ],
+  "starters": [{ "id": "notes-new", "label": "New note chat" }]
+}

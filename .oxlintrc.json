@@ -82,6 +82,7 @@
       "files": [
         "**/bridge/mux/herdr/client.ts",
         "**/bridge/mux/tern/protocol.ts",
+        "**/bridge/mux/durable/protocol.ts",
         "**/bridge/mux/zellij/protocol.ts",
         "**/bridge/mux/herdr/machine-list.ts",
         "**/bridge/mux/tuios/client.ts",

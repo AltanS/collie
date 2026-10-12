@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AGENT_ALIASES, KNOWN_HARNESS_NAMES } from "../journal/registry.ts";
 import { registeredAgents } from "../../web/src/lib/harness/registry.ts";
-import { isMuxAgentName, MUX_AGENT_NAMES } from "./agents.ts";
+import { isMuxAgentName, MUX_AGENT_NAMES, MUX_SCREENLESS_AGENT_NAMES } from "./agents.ts";
 import { agentNameProblems } from "./conformance.ts";
 import type { MuxPane } from "./types.ts";
 
@@ -20,6 +20,13 @@ describe("the contract's agent names are the names Collie's readers answer to", 
     expect(isMuxAgentName("shell")).toBe(true);
     for (const name of MUX_AGENT_NAMES) expect(isMuxAgentName(name)).toBe(true);
     for (const name of ["claude-code", "cursor-agent", "gemini-cli", "Claude", ""]) expect(isMuxAgentName(name)).toBe(false);
+  });
+
+  test("a screenless multiplexer's own name is accepted, and is not a reader's name", () => {
+    for (const name of MUX_SCREENLESS_AGENT_NAMES) {
+      expect(isMuxAgentName(name)).toBe(true);
+      expect(MUX_AGENT_NAMES).not.toContain(name);
+    }
   });
 });
 

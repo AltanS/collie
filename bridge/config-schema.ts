@@ -308,7 +308,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: DEFAULT_MUX,
-    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij or tuios.",
+    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij, tuios or durable.",
     configField: "mux",
   },
   {
@@ -383,6 +383,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     default: "",
     doc: "The tern daemon socket to drive. Empty takes the socket tern itself uses.",
     configField: "muxEndpoint",
+  },
+  {
+    key: "durable_socket",
+    env: "COLLIE_DURABLE_SOCKET",
+    section: "mux",
+    kind: "string",
+    default: "",
+    doc: "The Unix socket a durable agent program listens on. Absolute, and private to your user.",
   },
   {
     key: "mux_endpoint_tuios",

@@ -1,0 +1,237 @@
+import { describe, expect, test } from "bun:test";
+
+import { muxOk, muxUnreachable, type MuxOutcome, type MuxSnapshot, type MuxWatchOptions } from "../types.ts";
+import { toMuxSnapshot, type DurableSnapshot } from "./protocol.ts";
+import { snapshotFixture } from "./fixture.ts";
+import {
+  DurableWatch,
+  IDLE_POLL_MS,
+  WATCHED_POLL_MS,
+  type DurablePoller,
+  type WatchClock,
+  type WatchTimer,
+} from "./watch.ts";
+
+// THE WATCH'S LIFECYCLE AND ITS COMPARISONS. The conformance suite proves the watch comes up and
+// goes down once. These prove what it fires, when, and that it leaves no timer behind.
+
+/** A clock that fires on demand and remembers the delay it was asked for. */
+class TestClock implements WatchClock {
+  private readonly armed = new Map<WatchTimer, () => void>();
+  readonly delays: number[] = [];
+
+  setTimeout(fn: () => void, ms: number): WatchTimer {
+    const token = globalThis.setTimeout(() => undefined, 0);
+    globalThis.clearTimeout(token);
+    this.armed.set(token, fn);
+    this.delays.push(ms);
+    return token;
+  }
+
+  clearTimeout(handle: WatchTimer): void {
+    this.armed.delete(handle);
+  }
+
+  get live(): number {
+    return this.armed.size;
+  }
+
+  fire(): void {
+    const [first] = [...this.armed.entries()];
+    if (first === undefined) return;
+    this.armed.delete(first[0]);
+    first[1]();
+  }
+}
+
+const EPOCH = "e4b1c7a09d3f5e826b7a1c0d94f3e582";
+
+function layout(change: (snapshot: DurableSnapshot) => DurableSnapshot = (same) => same): DurableSnapshot {
+  const raw = snapshotFixture();
+  return change({ rev: 1, epoch: EPOCH, ...raw, starters: raw.starters });
+}
+
+/** A poller the test steers: whatever it holds now is what the next census reads. */
+class ScriptedPoller implements DurablePoller {
+  reads = 0;
+  /** The layout the program shows, or the reason it cannot be read. */
+  layout: DurableSnapshot | null;
+  failure: string | null;
+
+  constructor(start: DurableSnapshot | string) {
+    this.layout = start instanceof Object ? start : null;
+    this.failure = start instanceof Object ? null : start;
+  }
+
+  set shown(next: DurableSnapshot) {
+    this.layout = next;
+    this.failure = null;
+  }
+
+  fail(detail: string): void {
+    this.failure = detail;
+  }
+
+  poll(): Promise<MuxOutcome<MuxSnapshot>> {
+    this.reads += 1;
+    if (this.failure !== null || this.layout === null) return Promise.resolve(muxUnreachable(this.failure ?? "no layout"));
+    return Promise.resolve(muxOk(toMuxSnapshot(this.layout)));
+  }
+
+  held(): DurableSnapshot | null {
+    return this.failure === null ? this.layout : null;
+  }
+}
+
+interface Seen {
+  up: number;
+  down: string[];
+  topology: number;
+  panes: string[];
+}
+
+function watching(poller: ScriptedPoller, clock: TestClock, panes: string[] = ["conv-01"], attention?: () => "watched" | "idle") {
+  const seen: Seen = { up: 0, down: [], topology: 0, panes: [] };
+  const options: MuxWatchOptions = {
+    panes,
+    onUp: () => (seen.up += 1),
+    onDown: (reason) => seen.down.push(reason),
+    onTopologyChange: () => (seen.topology += 1),
+    onPaneChange: (paneId) => seen.panes.push(paneId),
+  };
+  if (attention !== undefined) options.attention = attention;
+  return { seen, watch: new DurableWatch(poller, options, clock) };
+}
+
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("the durable watch", () => {
+  test("it comes up after the first good read and fires nothing for the layout it started from", async () => {
+    const clock = new TestClock();
+    const { seen } = watching(new ScriptedPoller(layout()), clock);
+    await settle();
+    expect(seen).toEqual({ up: 1, down: [], topology: 0, panes: [] });
+    expect(clock.live).toBe(1);
+  });
+
+  test("a program that is down ends the watch at once with its detail, and arms no timer", async () => {
+    const clock = new TestClock();
+    const { seen } = watching(new ScriptedPoller("starting"), clock);
+    await settle();
+    expect(seen).toEqual({ up: 0, down: ["starting"], topology: 0, panes: [] });
+    expect(clock.live).toBe(0);
+  });
+
+  test("a program that goes away later ends the watch once", async () => {
+    const clock = new TestClock();
+    const poller = new ScriptedPoller(layout());
+    const { seen } = watching(poller, clock);
+    await settle();
+    poller.fail("no answer within 1000ms");
+    clock.fire();
+    await settle();
+    expect(seen.down).toEqual(["no answer within 1000ms"]);
+    expect(clock.live).toBe(0);
+    clock.fire();
+    await settle();
+    expect(seen.down).toHaveLength(1);
+  });
+
+  test("a renamed tab, an added pane and a changed status each tell the caller to re-read the topology", async () => {
+    const clock = new TestClock();
+    const poller = new ScriptedPoller(layout());
+    const { seen } = watching(poller, clock);
+    await settle();
+
+    poller.shown = layout((snapshot) => ({ ...snapshot, tabs: snapshot.tabs.map((tab) => ({ ...tab, title: `${tab.title}!` })) }));
+    clock.fire();
+    await settle();
+    expect(seen.topology).toBe(1);
+
+    poller.shown = layout((snapshot) => ({ ...snapshot, panes: snapshot.panes.slice(1) }));
+    clock.fire();
+    await settle();
+    expect(seen.topology).toBe(2);
+
+    poller.shown = layout((snapshot) => ({ ...snapshot, panes: snapshot.panes.map((pane) => ({ ...pane, state: "working" })) }));
+    clock.fire();
+    await settle();
+    expect(seen.topology).toBe(3);
+  });
+
+  test("an unchanged read fires nothing", async () => {
+    const clock = new TestClock();
+    const { seen } = watching(new ScriptedPoller(layout()), clock);
+    await settle();
+    clock.fire();
+    await settle();
+    clock.fire();
+    await settle();
+    expect(seen).toEqual({ up: 1, down: [], topology: 0, panes: [] });
+  });
+
+  test("a watched pane fires when its state, its turn or its asks change, and an unwatched pane does not", async () => {
+    const clock = new TestClock();
+    const poller = new ScriptedPoller(layout());
+    const { seen } = watching(poller, clock, ["conv-01", "conv-02"]);
+    await settle();
+
+    poller.shown = layout((snapshot) => ({
+      ...snapshot,
+      panes: snapshot.panes.map((pane) => (pane.id === "conv-01" ? { ...pane, turnId: "turn-01-b" } : pane)),
+    }));
+    clock.fire();
+    await settle();
+    expect(seen.panes).toEqual(["conv-01"]);
+
+    poller.shown = layout((snapshot) => ({
+      ...snapshot,
+      panes: snapshot.panes.map((pane) => {
+        if (pane.id === "conv-01") return { ...pane, turnId: "turn-01-b" };
+        if (pane.id === "conv-02") return { ...pane, openAsks: [] };
+        if (pane.id === "conv-03") return { ...pane, state: "working" };
+        return pane;
+      }),
+    }));
+    clock.fire();
+    await settle();
+    expect(seen.panes).toEqual(["conv-01", "conv-02"]);
+  });
+
+  test("it polls faster while a phone is watching and at the ceiling otherwise", async () => {
+    const clock = new TestClock();
+    let attention: "watched" | "idle" = "idle";
+    watching(new ScriptedPoller(layout()), clock, [], () => attention);
+    await settle();
+    attention = "watched";
+    clock.fire();
+    await settle();
+    expect(clock.delays).toEqual([IDLE_POLL_MS, WATCHED_POLL_MS]);
+    expect(WATCHED_POLL_MS).toBeLessThan(IDLE_POLL_MS);
+  });
+
+  test("close brings it down exactly once, leaves no timer, and a late read changes nothing", async () => {
+    const clock = new TestClock();
+    const poller = new ScriptedPoller(layout());
+    const { seen, watch } = watching(poller, clock);
+    await settle();
+    watch.close();
+    watch.close();
+    expect(seen.down).toEqual(["closed"]);
+    expect(clock.live).toBe(0);
+    const reads = poller.reads;
+    clock.fire();
+    await settle();
+    expect(poller.reads).toBe(reads);
+  });
+
+  test("closing while the first read is still in flight leaves no timer behind", async () => {
+    const clock = new TestClock();
+    const { seen, watch } = watching(new ScriptedPoller(layout()), clock);
+    watch.close();
+    await settle();
+    expect(seen.up).toBe(0);
+    expect(seen.down).toEqual(["closed"]);
+    expect(clock.live).toBe(0);
+  });
+});

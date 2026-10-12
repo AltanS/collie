@@ -118,8 +118,12 @@ export interface MuxConformanceWorld {
    * ({@link MuxPane.focused}), and a fact nothing can move is a fact nothing proves. It is the
    * perturbation behind "the snapshot reports the terminal's focus", which is the half of the focus
    * contract that holds even where `setFocus` is declined.
+   *
+   * OPTIONAL, for one case only: a multiplexer with no terminal at all (a durable program), where
+   * there is nothing for an operator to focus. A world that omits it is held to the opposite
+   * promise instead: no pane is ever reported focused, and `setFocus` answers `unsupported`.
    */
-  focusOutOfBand(paneId: string): Promise<void>;
+  focusOutOfBand?(paneId: string): Promise<void>;
   /**
    * The herd's SHAPE changes and nothing announces it — the operator changed it with their own
    * keyboard.
@@ -1162,9 +1166,23 @@ const focusFollowsTheMultiplexer: MuxWorldCheck = {
           .filter((pane) => pane.focused && pane.spaceId === target.spaceId)
           .map((pane) => pane.paneId);
 
+      // A world with no terminal cannot have its focus moved. It owes the opposite: nothing is ever
+      // focused, and Collie cannot focus anything either.
+      const focusOutOfBand = world.focusOutOfBand?.bind(world);
+      if (focusOutOfBand === undefined) {
+        const focused = (await adapter.snapshot()).panes.filter((pane) => pane.focused);
+        if (focused.length > 0) {
+          problems.push(`the world has no terminal to focus, and the snapshot still focuses ${focused.map((pane) => pane.paneId).join(", ")}`);
+        }
+        if (declares(adapter, "setFocus")) problems.push("the world has no terminal to focus, and setFocus is declared");
+        const moved = await adapter.setFocus(other.paneId);
+        if (moved.ok) problems.push("the world has no terminal to focus, and setFocus SUCCEEDED");
+        return problems;
+      }
+
       // Half one: the OPERATOR moves focus. This holds for every adapter, declared capability or not
       // — reporting focus is on the floor, and only changing it is a capability.
-      await world.focusOutOfBand(target.paneId);
+      await focusOutOfBand(target.paneId);
       if (!(await focusedNow()).includes(target.paneId)) {
         problems.push(`focus moved to "${target.paneId}" in the multiplexer and the snapshot did not report it`);
       }

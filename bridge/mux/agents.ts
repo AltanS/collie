@@ -28,7 +28,17 @@ export const MUX_AGENT_NAMES: readonly string[] = [
 /** The agent name of a pane with no agent. */
 export const MUX_SHELL_AGENT = "shell";
 
+/**
+ * Names a multiplexer may report that NO harness reader answers to, on purpose.
+ *
+ * A durable program has no screen to read and no journal of an agent in a pane, so its panes
+ * report `durable` and reach neither reader: the screen reader falls back to raw and the journal
+ * finds nothing. They are kept out of {@link MUX_AGENT_NAMES} because that list is exactly the
+ * readers' names, and `harness-launch.ts` starts one harness per entry of it.
+ */
+export const MUX_SCREENLESS_AGENT_NAMES: readonly string[] = ["durable"];
+
 /** Whether `agent` is a name the contract accepts on a pane. */
 export function isMuxAgentName(agent: string): boolean {
-  return agent === MUX_SHELL_AGENT || MUX_AGENT_NAMES.includes(agent);
+  return agent === MUX_SHELL_AGENT || MUX_AGENT_NAMES.includes(agent) || MUX_SCREENLESS_AGENT_NAMES.includes(agent);
 }

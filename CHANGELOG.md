@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A peer can mirror a durable agent program.** Set `COLLIE_MUX=durable` and `COLLIE_DURABLE_SOCKET` to the path of the program's private Unix socket, and the peer lists the program's workspaces, tabs and conversations as panes, with working, waiting and idle marks. A conversation has no terminal screen, so it has no typed keys and no new-tab button. While the program starts, or when it speaks a wire version Collie does not, the peer shows it as unreachable with the reason, not as an empty machine. Collie connects only to a socket that only you can use. The socket wire is experimental and may change in any minor release (`bridge/mux/durable/WIRE.md`). Chat and answers for these conversations are not in this change.
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed
