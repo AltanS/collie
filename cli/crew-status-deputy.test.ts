@@ -61,6 +61,7 @@ function marker(over: Partial<CrewRuntimeMarker> = {}): CrewRuntimeMarker {
     pid: 1,
     mode: "peer",
     roster: [],
+    build: null,
     checkpointedAt: T0,
     ...over,
   };

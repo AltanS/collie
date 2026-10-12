@@ -45,6 +45,7 @@ describe("the marker", () => {
       pid: 4242,
       mode: "lead",
       roster: ["peer:nas"],
+      build: null,
       // The boot write IS its own first checkpoint, and a process that has just started holds none
       // of the runtime facts (§18.9).
       checkpointedAt: T0,
@@ -85,6 +86,7 @@ describe("the marker", () => {
       pid: 2,
       mode: "peer",
       roster: [],
+      build: null,
       // One write, at boot — which is exactly what such a marker is.
       checkpointedAt: 100,
       anchoredGeneration: null,

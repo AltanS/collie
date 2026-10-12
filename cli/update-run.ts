@@ -267,7 +267,7 @@ export function healthTimeoutMs(env: Environment): number {
 
 /** What `/api/health` said, flattened — a request that never landed is a failure with a sentence. */
 export type HealthAnswer =
-  /** `version` is null when the door cannot say which build answers (a TLS-only peer's certificate check). */
+  /** `version` is null when the door cannot say which build answers (a TLS-only peer whose bridge predates `build`). */
   | { readonly ok: true; readonly version: string | null; readonly deposed: boolean }
   | { readonly ok: false; readonly reason: string };
 
@@ -286,10 +286,10 @@ export function healthVerdict(answer: HealthAnswer, version: string, commit: str
   if (!answer.ok) return { ok: false, reason: answer.reason };
   const up = aliveVerdict(answer);
   if (!up.ok) return up;
-  // A TLS-only peer cannot say which build it runs. What its answer proves is weaker than the build
-  // check: a bridge of this machine booted after the restart (its runtime marker is newer), is still
-  // alive, and holds the port with this machine's certificate. A build that dies on boot fails one
-  // of the three. It still cannot name the build, and it is all this door can say.
+  // A TLS-only peer names its build through its runtime marker, which a bridge older than the `build`
+  // field does not write. Its answer then proves only that a bridge of this machine booted after the
+  // restart, is still alive, and holds the port with this machine's certificate — weaker than the
+  // build check, and all such a bridge can say.
   if (answer.version === null) return { ok: true };
   if (!answersThisBuild(answer.version, version, commit)) {
     return { ok: false, reason: `the service came back as ${answer.version}, not ${version}` };
@@ -537,7 +537,8 @@ export function updateHealthProbe(net: Net, target: ProbeTarget, boot: BootEvide
  *    command returned (`launchctl bootout` does not wait). The certificate alone cannot tell.
  * 3. The process the marker names is alive. A process that booted and died is not up.
  *
- * It carries no version, because a handshake says none.
+ * A handshake names no build, so the version is the one the marker records. Without it, a restart
+ * that brought the OLD build back up would pass as the update.
  */
 function peerListenerAnswer(
   net: Net,
@@ -563,7 +564,7 @@ function peerListenerAnswer(
     if (boot.alive(marker.pid) === false) {
       return { ok: false, reason: `the bridge that booted at ${new Date(marker.bootedAt).toISOString()} is gone (pid ${marker.pid})` };
     }
-    return { ok: true, version: null, deposed: false };
+    return { ok: true, version: marker.build, deposed: false };
   };
 }
 

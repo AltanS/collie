@@ -4,7 +4,7 @@ import { X509Certificate } from "node:crypto";
 import { STANDBY_VERSION_HEADER } from "../bridge/crew/standby.ts";
 import { leadStore, material, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { fingerprintOfCert } from "../bridge/crew/identity.ts";
-import { markerFor, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
+import { markerFor, NO_RUNTIME_FACTS, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { fakeFiles } from "./fakes.ts";
@@ -172,7 +172,8 @@ function netShowingCertificate(answer: NetCertificate, asked: string[] = []): Ne
 }
 
 // A runtime marker as the bridge leaves it at boot. `markerFor` is the bridge's own constructor.
-const markerAt = (bootedAt: number, pid = 4242): CrewRuntimeMarker => markerFor(peerStore(), bootedAt, pid);
+const markerAt = (bootedAt: number, pid = 4242, build: string | null = null): CrewRuntimeMarker =>
+  markerFor(peerStore(), bootedAt, pid, NO_RUNTIME_FACTS, build);
 
 /** Boot evidence with every part scripted. By default: a live bridge that booted at t=1000, restart at t=900. */
 const evidence = (over: Partial<BootEvidence> = {}): BootEvidence => ({
@@ -194,6 +195,16 @@ describe("update health target: the peer listener's answer", () => {
     const got = await answer(netShowingCertificate({ ok: true, fingerprint256: nodeSpelling }, asked));
     expect(got).toEqual({ ok: true, version: null, deposed: false });
     expect(asked).toEqual(["100.64.0.8:8787"]);
+  });
+
+  test("a bridge that records its build answers with it, so the build check applies again", async () => {
+    const got = await answer(ownCert, evidence({ marker: () => markerAt(1_000, 4242, "1.4.0+ab12cd3") }));
+    expect(got).toEqual({ ok: true, version: "1.4.0+ab12cd3", deposed: false });
+    expect(healthVerdict(got, "1.4.0", "ab12cd3")).toEqual({ ok: true });
+    expect(healthVerdict(got, "1.5.0", "ef45ab6")).toEqual({
+      ok: false,
+      reason: "the service came back as 1.4.0+ab12cd3, not 1.5.0",
+    });
   });
 
   test("a marker written exactly at the restart moment counts as after it", async () => {
@@ -358,11 +369,17 @@ const applyPlan = (): ApplyPlan => ({
  * Effects for a peer whose bridge is a script. `restart` stamps the moment and counts; the bridge
  * "boots" (its marker takes that moment) only when `boots(restartNumber)` says so.
  */
-function peerRun(opts: { certAfter: (restarts: number) => boolean; boots: (restart: number) => boolean }) {
+function peerRun(opts: {
+  certAfter: (restarts: number) => boolean;
+  boots: (restart: number) => boolean;
+  /** The build the bridge booted by that restart records. Null, the default, is a bridge older than the field. */
+  build?: (restart: number) => string | null;
+}) {
   let t = 0;
   let restarts = 0;
   let since = Number.POSITIVE_INFINITY;
   let bootedAt: number | null = null;
+  let build: string | null = null;
   const own = new X509Certificate(OWN_PEM).fingerprint256;
   const net: Net = {
     ...netAnswering({ ok: false, failure: { status: null, message: "no plain HTTP in this case" } }),
@@ -373,14 +390,20 @@ function peerRun(opts: { certAfter: (restarts: number) => boolean; boots: (resta
           : { ok: false, failure: { status: null, message: "connect ECONNREFUSED" } },
       ),
   };
-  const boot = evidence({ marker: () => (bootedAt === null ? null : markerAt(bootedAt)), since: () => since });
+  const boot = evidence({
+    marker: () => (bootedAt === null ? null : markerAt(bootedAt, 4242, build)),
+    since: () => since,
+  });
   // `awaitHealth` polls until `now()` passes the deadline, so the clock advances on every read.
   const effects: ApplyEffects = {
     flip: () => true,
     restart: () => {
       restarts += 1;
       since = t++;
-      if (opts.boots(restarts)) bootedAt = t++;
+      if (opts.boots(restarts)) {
+        bootedAt = t++;
+        build = opts.build?.(restarts) ?? null;
+      }
       return Promise.resolve(true);
     },
     health: updateHealthProbe(net, updateHealthTarget(peerConfig()), boot),
@@ -422,6 +445,21 @@ describe("driveApply: a peer with no plain-HTTP door", () => {
     const out = await driveApply(effects, applyPlan(), run("staging"));
     expect(out.state).toBe("rolled-back");
     expect(restartCount()).toBe(2);
+  });
+
+  test("a restart that brings the OLD build back up is not the update, and rolls back", async () => {
+    // A supervisor still pointed at the version the flip left boots it again. Fresh marker, live pid,
+    // this machine's certificate: everything but the build says the update landed.
+    const { effects, restartCount } = peerRun({ certAfter: () => true, boots: () => true, build: () => "1.3.0+9f8e7d6" });
+    const out = await driveApply(effects, applyPlan(), run("staging"));
+    expect(out.state).toBe("rolled-back");
+    expect(out.reason).toContain("came back as 1.3.0+9f8e7d6, not 1.4.0");
+    expect(restartCount()).toBe(2);
+  });
+
+  test("the new build, recorded, passes the update", async () => {
+    const { effects } = peerRun({ certAfter: () => true, boots: () => true, build: () => "1.4.0+ab12cd3" });
+    expect((await driveApply(effects, applyPlan(), run("staging"))).state).toBe("done");
   });
 
   test("the rollback needs a marker newer than the SECOND restart, not the first", async () => {

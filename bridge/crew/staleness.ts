@@ -103,6 +103,11 @@ export interface CrewRuntimeMarker extends CrewRuntimeFacts {
   /** `<role>:<memberId>` for every ENROLLED member, sorted — the roster this process is serving. */
   readonly roster: readonly string[];
   /**
+   * The build this process runs, as `/api/health` names it, or `null` from a build that predates the
+   * field. A TLS-only peer's update gate reads it, since a handshake names no build.
+   */
+  readonly build: string | null;
+  /**
    * When this marker was last written. Equals `bootedAt` on the boot write.
    *
    * A reader compares it to now: a checkpoint far older than the refresh interval means nothing has
@@ -132,12 +137,14 @@ export function markerFor(
   now: number,
   pid: number,
   facts: CrewRuntimeFacts = NO_RUNTIME_FACTS,
+  build: string | null = null,
 ): CrewRuntimeMarker {
   return {
     bootedAt: now,
     pid,
     mode: deriveMode(enrollmentOf(data)).mode,
     roster: rosterSignature(data),
+    build,
     checkpointedAt: now,
     ...facts,
   };
@@ -146,9 +153,9 @@ export function markerFor(
 /**
  * The same marker, re-stamped with facts the process has learned since it booted.
  *
- * Pure, and it never touches the boot half: `bootedAt`, `pid`, `mode` and `roster` describe what
- * this process WIRED, and a checkpoint that could move them would be a second startup path pretending
- * to be a diagnostic. Only {@link CrewRuntimeFacts} and `checkpointedAt` move.
+ * Pure, and it never touches the boot half: `bootedAt`, `pid`, `mode`, `roster` and `build` describe
+ * what this process WIRED, and a checkpoint that could move them would be a second startup path
+ * pretending to be a diagnostic. Only {@link CrewRuntimeFacts} and `checkpointedAt` move.
  */
 export function checkpointMarker(
   boot: CrewRuntimeMarker,
@@ -229,6 +236,7 @@ export function parseMarker(raw: string | null): CrewRuntimeMarker | null {
     pid: v.pid,
     mode,
     roster,
+    build: typeof v.build === "string" && v.build !== "" ? v.build : null,
     // A marker written before the 2026-08-20 amendment carries none of the fields below. Absent reads
     // as "this process reported nothing", which is exactly true of a build that could not — and the
     // renderer says so rather than inventing a receipt. `checkpointedAt` falls back to the boot

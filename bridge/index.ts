@@ -538,6 +538,14 @@ if (crew.mode !== "solo") console.log(`[crew] mode: ${crew.mode}`);
 // listener that tried to bind it first is what crash-looped in the drill.
 releaseFrontDoor(crew.mode, deposed !== null, "this collie is a peer");
 
+const rootDir = pluginRoot();
+// What this process answers `GET /crew/v1/hello` with (CREW_PROTOCOL.md §5, §7.1). Resolved ONCE,
+// here, by the same rule `collie version` uses (`bridge/version.ts`, shared with `cli/context.ts`)
+// so one machine never reports two different versions — and never per request, since the answer
+// cannot change without a restart. Bare: no `(manifest; web not built)` parenthetical on the wire,
+// or a machine with an unbuilt bundle would read as skewed against every peer including itself.
+const crewVersion = collieVersionBare(rootDir);
+
 // The roster THIS PROCESS wired, left on disk for `collie crew status` to compare the store against
 // (bridge/crew/staleness.ts). A membership change can arrive over the wire — the first enrollment
 // lands in a running lead, a promotion demotes a running lead — and no re-read follows, by design.
@@ -548,8 +556,9 @@ releaseFrontDoor(crew.mode, deposed !== null, "this collie is a peer");
 //
 // Built from the store AS THE GATE LEFT IT, not from the bytes read at line one: a machine that
 // self-healed at boot (§18.11) really did wire a peer's roster, and a marker claiming otherwise
-// would make `crew status` report drift against a store that is perfectly in step.
-const bootMarker = markerFor(trustStore.current(), Date.now(), process.pid);
+// would make `crew status` report drift against a store that is perfectly in step. The build rides
+// along for the update gate, which reaches a TLS-only peer by handshake and learns no build from it.
+const bootMarker = markerFor(trustStore.current(), Date.now(), process.pid, NO_RUNTIME_FACTS, crewVersion);
 if (bootTrust !== null) {
   try {
     await writeFile(crewRuntimePath(cfg.stateDir), formatMarker(bootMarker), { mode: 0o600 });
@@ -741,7 +750,6 @@ const cacheWarden = new CacheWarden({
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a
 // post-pull package.json would mask the very update we detect (same class of bug as the buildId gap).
 // The bridge-source stamp is snapshotted here too, so a rebuilt-but-not-restarted process reads stale.
-const rootDir = pluginRoot();
 const bridgeDir = join(rootDir, "bridge");
 // SAFETY: this is the plugin's OWN package.json, shipped in the same checkout as this file, and
 // `scripts/check-version.sh` gates every build on its `version` being present and agreeing with the
@@ -749,13 +757,6 @@ const bridgeDir = join(rootDir, "bridge");
 const currentVersion = (
   JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as { version: string }
 ).version;
-
-// What this process answers `GET /crew/v1/hello` with (CREW_PROTOCOL.md §5, §7.1). Resolved ONCE,
-// here, by the same rule `collie version` uses (`bridge/version.ts`, shared with `cli/context.ts`)
-// so one machine never reports two different versions — and never per request, since the answer
-// cannot change without a restart. Bare: no `(manifest; web not built)` parenthetical on the wire,
-// or a machine with an unbuilt bundle would read as skewed against every peer including itself.
-const crewVersion = collieVersionBare(rootDir);
 
 const updateStore = new UpdateStateStore(cfg);
 await updateStore.load();
