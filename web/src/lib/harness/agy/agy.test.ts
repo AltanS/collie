@@ -183,6 +183,22 @@ describe("agyAdapter unit & footer safety", () => {
     expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
   });
 
+  // agy 1.3.3, harness canary 2026-10-12: a pasted rule sits behind the draft's gutter. Read as the
+  // box's top rule, it refused the composer while the draft was there.
+  it("a rule inside the draft is draft text, not the box's top rule", () => {
+    const short = "────────────────────";
+    const raw = ["OK", RULE, "> Reply with only OK.", `  ${short}`, "  some text", `  ${short}`, "  end", RULE, "? for shortcuts"].join("\n");
+    const lines = splitLines(parseAnsi(raw));
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractInputDraft!(lines)).toBe(`Reply with only OK. ${short} some text ${short} end`);
+  });
+
+  it("a column-0 rule between the prompt and the box still refuses the composer", () => {
+    const raw = ["> echoed earlier", RULE, "  some text", RULE, "? for shortcuts"].join("\n");
+    const lines = splitLines(parseAnsi(raw));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+  });
+
   // AGY echoes every submitted message as a `> ` transcript row, and paints an answered
   // ask_user_question selection the same way. Without the enclosing box those rows are
   // indistinguishable from a live composer, so an unanchored `>` must never claim one: Collie would

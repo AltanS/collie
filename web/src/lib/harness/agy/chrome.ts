@@ -64,7 +64,11 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
     let walk = 0;
     while (p >= 0 && walk < MAX_DRAFT_LINES) {
       const t = texts[p]!;
-      if (isBoxBorder(t)) return null;
+      // The box's own rules start at column 0 (every capture in the corpus). A rule the operator
+      // typed or pasted sits behind the draft's two-space gutter, so it is draft text; reading it as
+      // the top border refused the composer while that draft sat there (harness canary
+      // 2026-10-12, agy 1.3.3, draft 15-rule).
+      if (isBoxBorder(t) && !/^\s/.test(t)) return null;
       if (PROMPT_REGEX.test(t)) {
         let top = p - 1;
         while (top >= 0 && isBlank(texts[top]!)) top--;
