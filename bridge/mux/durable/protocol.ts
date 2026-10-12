@@ -242,18 +242,38 @@ export function parseHello(text: string): Parsed<DurableHello> {
 /** What an error body says: its code, and the program's range when it sent one. */
 export interface ProblemBody {
   readonly code: string;
+  /** The program's own words, cleaned and cut to 512 bytes. Empty when it sent none. */
+  readonly message: string;
   readonly range: ProtocolRange | null;
 }
 
 /** Decode an error body (`Problem`). A body that is not one reads as code `""`. */
 export function parseProblem(text: string): ProblemBody {
   const root = decode(text);
-  if (!isRecord(root)) return { code: "", range: null };
+  if (!isRecord(root)) return { code: "", message: "", range: null };
   const range = root.range;
   return {
     code: textOf(root, "code", CAPS.askKind),
+    message: textOf(root, "message", CAPS.problemMessage),
     range: isRecord(range) && isCount(range.min) && isCount(range.max) ? { min: range.min, max: range.max } : null,
   };
+}
+
+// ── starter reply ─────────────────────────────────────────────────────────────
+
+/** What a start answered: the new conversation's pane, and whether this was a replay. */
+export interface StarterReply {
+  readonly paneId: string;
+  readonly replayed: boolean;
+}
+
+/** Decode a `StarterReply` (WIRE.md section 4). A reply with no usable pane id is not one. */
+export function parseStarterReply(text: string): Parsed<StarterReply> {
+  const root = decode(text);
+  if (!isRecord(root)) return bad("starter reply is not a JSON object");
+  const paneId = idOf(root, "paneId");
+  if (paneId === null) return bad("starter reply has no usable paneId");
+  return good({ paneId, replayed: root.replayed === true });
 }
 
 // ── snapshot ──────────────────────────────────────────────────────────────────

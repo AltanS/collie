@@ -30,7 +30,8 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { JsonObject } from "../../json.ts";
+import type { JsonObject, JsonValue } from "../../json.ts";
+import { isRequestId } from "../../worktree-receipts.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld } from "../conformance.ts";
 import { DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from "./adapter.ts";
 import { DurableSocketClient } from "./client.ts";
@@ -146,6 +147,7 @@ interface PaneModel {
 
 /** One request the fake saw. */
 export interface FakeRequest {
+  readonly method: string;
   /** The path without the query. */
   readonly path: string;
   /** The query, with its `?`, or an empty string. */
@@ -177,10 +179,24 @@ export interface SnapshotDoc extends FakeSnapshot {
 /** What an error answers. */
 export interface ProblemDoc {
   code: string;
+  message?: string;
   range?: ProtocolRange;
 }
 
-function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc, etag?: string): Response {
+/** What a start answers. */
+export interface StarterReplyDoc {
+  paneId: string;
+  replayed?: true;
+}
+
+/** One start that really ran, as the fake saw it. A replay is not one. */
+export interface FakeStart {
+  readonly starterId: string;
+  readonly requestId: string;
+  readonly paneId: string;
+}
+
+function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc, etag?: string): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (etag !== undefined) headers.set("etag", etag);
   return new Response(JSON.stringify(body), { status, headers });
@@ -209,6 +225,13 @@ export class FakeDurableProgram {
   viewItemCap = 2000;
 
   private readonly models = new Map<string, PaneModel>();
+
+  /** Every start that ran. A repeat of a request id that already succeeded is not added (WIRE.md 7.6). */
+  readonly starts: FakeStart[] = [];
+  /** When set, the next starts fail with 422 `starter-failed` and this message, and store nothing. */
+  starterFailure: string | null = null;
+
+  private readonly startedByRequest = new Map<string, FakeStart>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
 
@@ -340,7 +363,7 @@ export class FakeDurableProgram {
     const url = new URL(request.url);
     const version = request.headers.get("x-collie-session");
     const ifNoneMatch = request.headers.get("if-none-match");
-    this.requests.push({ path: url.pathname, search: url.search, version, ifNoneMatch });
+    this.requests.push({ method: request.method, path: url.pathname, search: url.search, version, ifNoneMatch });
 
     const taken = await this.override?.(url.pathname);
     if (taken !== undefined) return taken;
@@ -363,6 +386,8 @@ export class FakeDurableProgram {
     if (request.method === "GET" && events !== null) {
       return this.eventsReply(decodeURIComponent(events[1] ?? ""), url.searchParams);
     }
+    const starter = /^\/starter\/([^/]+)$/u.exec(route);
+    if (request.method === "POST" && starter !== null) return this.handleStarter(decodeURIComponent(starter[1] ?? ""), request);
     return reply(404, { code: "not-found" });
   }
 
@@ -402,6 +427,56 @@ export class FakeDurableProgram {
     };
     if (shown.length < items.length) doc.trimmed = items.length - shown.length;
     return reply(200, doc);
+  }
+
+  /**
+   * `POST /starter/:id` (WIRE.md sections 3 and 7.6). A repeat of a request id that already succeeded
+   * answers the first pane with `replayed: true` and runs nothing. A failure is 422 and stores
+   * nothing. The same id for another starter is 409 `request-id-reused`.
+   */
+  private async handleStarter(starterId: string, request: Request): Promise<Response> {
+    if (this.hello.caps.starters !== true) return reply(409, { code: "not-supported" });
+    let body: { requestId?: JsonValue } | null;
+    try {
+      body = await request.json();
+    } catch {
+      return reply(400, { code: "bad-json" });
+    }
+    // The tests mint UUIDs, as the phone does.
+    const requestId = body?.requestId;
+    if (!isRequestId(requestId)) return reply(400, { code: "bad-body" });
+    if (!this.snapshot.starters.some((starter) => starter.id === starterId)) return reply(404, { code: "no-such-starter" });
+
+    const earlier = this.startedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.starterId !== starterId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { paneId: earlier.paneId, replayed: true });
+    }
+    if (this.starterFailure !== null) return reply(422, { code: "starter-failed", message: this.starterFailure });
+
+    const paneId = `conv-${String(this.snapshot.panes.length + 1).padStart(2, "0")}-${requestId.slice(0, 8)}`;
+    const workspace = this.snapshot.workspaces[0];
+    const tab = this.snapshot.tabs.find((candidate) => candidate.workspaceId === workspace?.id);
+    if (workspace === undefined || tab === undefined) return reply(422, { code: "starter-failed", message: "no workspace to start in" });
+    this.snapshot.panes = [
+      ...this.snapshot.panes,
+      {
+        id: paneId,
+        workspaceId: workspace.id,
+        tabId: tab.id,
+        title: this.snapshot.starters.find((starter) => starter.id === starterId)?.label ?? starterId,
+        harness: "pi",
+        state: "idle",
+        lastActiveAt: Date.now(),
+        turnId: `turn-${paneId}`,
+        openAsks: [],
+      },
+    ];
+    this.touch();
+    const start: FakeStart = { starterId, requestId, paneId };
+    this.startedByRequest.set(requestId, start);
+    this.starts.push(start);
+    return reply(200, { paneId });
   }
 
   /** Stop listening and remove the socket and its directory. Idempotent. */

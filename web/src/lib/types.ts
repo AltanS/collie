@@ -1608,14 +1608,17 @@ export interface LauncherItem {
   /** `harness:<id>`, `row:<command>` or `shell`. Stable per machine. */
   key: string;
   /** What `startLaunch` sends for it. */
-  start: { harness: string } | { command: string } | { shell: true };
+  start: { harness: string } | { command: string } | { shell: true } | { starter: string };
   group: "agents" | "commands";
   label: string;
   harness?: string;
   command?: string;
   cwd?: string;
-  source: "builtin" | "operator" | "added";
+  /** `program`: a starter the durable program offers (ADR 0102). */
+  source: "builtin" | "operator" | "added" | "program";
   noPrompts: boolean;
+  /** False on a starter: it takes no text, so the page shows no prompt field for it. Absent on every other item. */
+  takesPrompt?: false;
   /** Whether it may start on a new branch: agents and the shell, never a command row. */
   branch: boolean;
   available: boolean;

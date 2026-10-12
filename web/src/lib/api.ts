@@ -1303,6 +1303,8 @@ export type StartWhat =
   | { kind: "row"; command: string }
   | { kind: "harness"; id: string }
   | { kind: "shell" }
+  /** A starter a durable program offers, by its id (ADR 0102). It takes no text and never starts on a branch's folder. */
+  | { kind: "starter"; id: string }
   /** A one-off line the person typed, or took from the machine's history (ADR 0095). Never on a branch. */
   | { kind: "run"; line: string };
 
@@ -1314,6 +1316,7 @@ interface StartLaunchBody {
   command?: string;
   harness?: string;
   shell?: true;
+  starter?: string;
   cwd?: string;
   requestId: string;
 }
@@ -1326,8 +1329,10 @@ export function startLaunch(what: BranchableWhat, opts: { cwd?: string; requestI
   const body: StartLaunchBody = { requestId: opts.requestId };
   if (what.kind === "row") body.command = what.command;
   else if (what.kind === "harness") body.harness = what.id;
+  else if (what.kind === "starter") body.starter = what.id;
   else body.shell = true;
-  if (opts.cwd !== undefined) body.cwd = opts.cwd;
+  // A starter has no folder: the bridge ignores one, so none is sent.
+  if (opts.cwd !== undefined && what.kind !== "starter") body.cwd = opts.cwd;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
 }
 

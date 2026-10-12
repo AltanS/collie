@@ -1025,6 +1025,9 @@ const STATE_DIR_ENTRIES = [
   "pairing-pending.json",
   "push-subscriptions.json",
   "snooze.json",
+  // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
+  // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.
+  "starter-receipts.json",
   // Speech-to-text settings. Absent until the operator runs `collie stt setup`. The bridge writes it
   // in one case only: the Host speech provider card in Settings, which writes Whistle or Codex (after
   // the consent) or removes the file, and only while no key, command or environment names a provider
