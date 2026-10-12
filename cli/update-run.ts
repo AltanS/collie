@@ -432,6 +432,18 @@ export function probeConfigOf(env: Environment, files: Pick<Files, "read">, stat
   };
 }
 
+/**
+ * The update health gate asks where {@link probeTarget} names — except for a crew peer that pins a
+ * lead and binds no standby door. Such a peer's only listener is mutual TLS, so a plain-HTTP probe
+ * can never authenticate: the gate would fail every time and turn a healthy update into a rollback
+ * (`cli/task-scheduler.ts` makes exactly this exception in {@link livenessUrl}). The return here is
+ * `null` for that shape, meaning "verify by the restart, no probe is possible".
+ */
+export function updateHealthTarget(c: ProbeConfig): ProbeTarget | null {
+  if (c.pinsALead && c.standbyPort === null) return null;
+  return probeTarget(c);
+}
+
 /** The health gate's one request, at whichever door {@link probeTarget} named. */
 export function healthProbe(net: Net, target: ProbeTarget): () => Promise<HealthAnswer> {
   if (target.kind === "standby") return standbyAnswer(net, target.url);
@@ -648,6 +660,13 @@ export interface ApplyEffects {
   readonly flip: (dir: string) => boolean;
   readonly restart: () => Promise<boolean>;
   readonly health: () => Promise<HealthAnswer>;
+  /**
+   * True when this instance has no door a plain-HTTP probe could authenticate against — a crew peer
+   * that pins a lead and binds no standby door. `driveApply` then takes the restart itself as the
+   * verification and skips both gates, because every probe would fail the update at rollback. The
+   * Windows launcher skips the same shape (`livenessUrl` in `cli/task-scheduler.ts`).
+   */
+  readonly healthSkipped?: boolean;
   /** Retention, called on success and ONLY on success — never on a run that rolled back. */
   readonly prune: () => void;
   readonly logTail: () => string;
@@ -722,7 +741,9 @@ export async function driveApply(e: ApplyEffects, plan: ApplyPlan, start: Update
   run = reduce(run, { kind: "verify" }, e.now());
   e.write(run);
 
-  const verdict = await awaitHealth(e, (a) => healthVerdict(a, plan.version, plan.commit));
+  const verdict: HealthVerdict = e.healthSkipped
+    ? { ok: true }
+    : await awaitHealth(e, (a) => healthVerdict(a, plan.version, plan.commit));
   if (verdict.ok) {
     run = reduce(run, { kind: "pass" }, e.now());
     e.write(run);

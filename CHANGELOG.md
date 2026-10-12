@@ -7,6 +7,10 @@ where there is content, and every bullet opens with a short bold lead sentence, 
 the GitHub Release page prints. Older versions carry a single flat list. Every entry links to its commit and credits the contributor where there is one. The
 `## [Unreleased]
 
+### Fixed
+
+- **A crew peer with no standby door is no longer rolled back on every update.** A peer that pins a lead and binds no standby port serves only mutual TLS, so the plain-HTTP probe the update health gate sends could never authenticate and the gate read the new version as not up, rolling each update back. That shape of peer is now verified by its restart, the same exception the Windows launcher already makes for a bridge that offers no plain-HTTP check.
+
 ## [1.20.0] - 2026-10-11
 
 ### Added

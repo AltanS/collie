@@ -7,9 +7,13 @@ import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { fakeFiles } from "./fakes.ts";
 import {
   awaitRunRecord,
+  driveApply,
   healthProbe,
   probeConfigOf,
   probeTarget,
+  updateHealthTarget,
+  type ApplyEffects,
+  type ApplyPlan,
   type ProbeConfig,
 } from "./update-run.ts";
 import type { Net, NetProbe } from "./sys.ts";
@@ -67,6 +71,20 @@ describe("probe target", () => {
 
   test("a peer with no standby door is still asked at its front door, so the gate reports the truth", () => {
     expect(probeTarget(config({ pinsALead: true })).kind).toBe("front-door");
+  });
+
+  test("but the update gate skips a peer with no standby door, as the launcher does", () => {
+    expect(updateHealthTarget(config({ pinsALead: true }))).toBeNull();
+  });
+
+  test("the update gate keeps every shape that CAN be asked", () => {
+    expect(updateHealthTarget(config())).toEqual(probeTarget(config()));
+    expect(updateHealthTarget(config({ pinsALead: true, standbyPort: 8799 }))).toEqual(
+      probeTarget(config({ pinsALead: true, standbyPort: 8799 })),
+    );
+    expect(updateHealthTarget(config({ host: "100.64.0.8" }))).toEqual(
+      probeTarget(config({ host: "100.64.0.8" })),
+    );
   });
 
   test("the config is read off this instance's env and its trust store", () => {
@@ -184,5 +202,52 @@ describe("awaitRunRecord", () => {
   test("no record at all is a timeout that says so", async () => {
     const outcome = await awaitRunRecord(() => null, wait);
     expect(outcome.kind === "timeout" && outcome.reason).toContain("no update record was ever written");
+  });
+});
+
+// ── The update health gate's skip for a peer with no plain-HTTP door ─────────
+// A crew peer that pins a lead and binds no standby door serves only mutual TLS. A plain-HTTP probe
+// can never authenticate there, so an update must not roll back on a health check that shape of
+// machine cannot pass. `driveApply` drives that decision through `healthSkipped`.
+
+const applyPlan = (): ApplyPlan => ({
+  to: "v1.4.0",
+  from: "v1.3.0",
+  version: "1.4.0",
+  commit: "ab12cd3",
+  recovery: "collie update --rollback",
+});
+
+const refusedEffects = (over: Partial<ApplyEffects> = {}): ApplyEffects => {
+  // `awaitHealth` polls until `now()` passes the deadline. A fixed clock would spin forever on the
+  // non-skipped runs, so the clock advances one second per poll (the same `pollMs` the loop waits).
+  let t = 0;
+  return {
+    flip: () => true,
+    restart: () => Promise.resolve(true),
+    // An mTLS-only listener refuses an unauthenticated probe: the exact shape that used to send the
+    // update down the rollback path every time.
+    health: () => Promise.resolve({ ok: false, reason: "certificate required" }),
+    prune: () => {},
+    logTail: () => "",
+    now: () => t++,
+    sleep: () => Promise.resolve(),
+    write: () => {},
+    timeoutMs: 30_000,
+    pollMs: 1_000,
+    ...over,
+  };
+};
+
+describe("driveApply: the peer with no plain-HTTP door", () => {
+  test("an mTLS-only peer passes the update on its restart, not on an impossible probe", async () => {
+    const out = await driveApply(refusedEffects({ healthSkipped: true }), applyPlan(), run("staging"));
+    expect(out.state).toBe("done");
+  });
+
+  test("a peer WITH a standby door still gets the gate, and a refused probe rolls back", async () => {
+    const out = await driveApply(refusedEffects({ healthSkipped: false }), applyPlan(), run("staging"));
+    expect(out.state).toBe("stuck");
+    expect(out.reason).toContain("certificate required");
   });
 });

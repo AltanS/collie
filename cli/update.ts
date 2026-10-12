@@ -61,7 +61,7 @@ import {
   HEALTH_TIMEOUT_ENV,
   healthProbe,
   probeConfigOf,
-  probeTarget,
+  updateHealthTarget,
   healthTimeoutMs,
   HANDOFF_CONFIRM_MS,
   idleRun,
@@ -2786,6 +2786,10 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
       ? flipCurrent(deps, layout, dir)
       : flipToStaged(deps, layout, { dir, version: dir.replace(/^v/, ""), complete: true }).ok;
 
+  const probeTargetForUpdate = updateHealthTarget(
+    probeConfigOf(deps.ctx.env, deps.files, deps.ctx.stateDir, deps.ctx.port),
+  );
+
   const run = await driveApply(
     {
       flip: flipTo,
@@ -2795,10 +2799,16 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
       restart: () => Promise.resolve(restartThroughCurrent(deps, layout)),
       // Not "loopback and the front-door port": a wide bind and a peer's TLS-pinned listener are
       // both real, and both make that URL the wrong door (`cli/update-run.ts` → `probeTarget`).
-      health: healthProbe(
-        deps.net,
-        probeTarget(probeConfigOf(deps.ctx.env, deps.files, deps.ctx.stateDir, deps.ctx.port)),
-      ),
+      // A peer that pins a lead and binds no standby door has no plain-HTTP door at all — its only
+      // listener is mutual TLS — so there is no probe this process could authenticate against. For
+      // that shape `updateHealthTarget` is null (the same exception the Windows launcher makes in
+      // `livenessUrl`), `healthSkipped` makes `driveApply` skip a gate no probe could ever pass,
+      // and the update is verified by the restart alone.
+      health:
+        probeTargetForUpdate !== null
+          ? healthProbe(deps.net, probeTargetForUpdate)
+          : () => Promise.resolve({ ok: false, reason: "no door to probe" }),
+      healthSkipped: probeTargetForUpdate === null,
       prune: () => {
         if (a.kind === "binary") collectOldVersions(deps, layout, a.to);
         else pruneVersions(deps, layout);
