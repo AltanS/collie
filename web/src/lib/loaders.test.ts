@@ -219,6 +219,52 @@ describe("paneLoader and the read a row started (lib/pane-prefetch.ts)", () => {
   });
 });
 
+describe("paneLoader for a pane with no screen (paneGrid false)", () => {
+  async function declare(paneGrid: boolean) {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: { paneGrid }, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    const { loadOperatorCommands } = await import("./operator-config");
+    await loadOperatorCommands();
+  }
+
+  it("makes no mirror read and answers an empty, healthy pane", async () => {
+    let reads = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads += 1;
+        return new HttpResponse(null, { status: 502 });
+      }),
+    );
+    await declare(false);
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "c1" }, request: new Request("http://localhost/pane/c1") });
+    expect(reads).toBe(0);
+    expect(data).toMatchObject({ paneId: "c1", text: "", error: false, authError: false, stale: false });
+  });
+
+  it("still reads the mirror of a pane with a screen", async () => {
+    let reads = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads += 1;
+        return HttpResponse.json({ paneId: "w1:p1", text: "screen", truncated: false, revision: 1 });
+      }),
+    );
+    await declare(true);
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: new Request("http://localhost/pane/w1%3Ap1") });
+    expect(reads).toBe(1);
+    expect(data.text).toBe("screen");
+  });
+});
+
 describe("paneLoader", () => {
   it("returns pane text on success", async () => {
     const { paneLoader } = await import("./loaders");

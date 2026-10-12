@@ -30,6 +30,7 @@ import {
   startableAgents,
   summaryKey,
   summaryWhat,
+  takesFolder,
   truncateLine,
   unavailableText,
   whatFor,
@@ -659,5 +660,67 @@ describe("folderShown", () => {
     expect(folderShown("/srv/www", "/home/op")).toBe("/srv/www");
     expect(folderShown("projects", "/home/op")).toBe("~/projects");
     expect(folderShown("./projects/app ", "/home/op")).toBe("~/projects/app");
+  });
+});
+
+// A DURABLE PROGRAM'S STARTERS (ADR 0102): a machine that offers them starts nothing else.
+describe("offerFor: starter rows", () => {
+  const starter = item({
+    key: "starter:review",
+    start: { starter: "review" },
+    group: "agents",
+    label: "Code review",
+    source: "program",
+    takesPrompt: false,
+  });
+  const base = { harnesses: [CLAUDE], loaded: true, rows: [], canWorktree: true };
+
+  it("a durable peer with a starter lists only the starters, no Shell and no built-in agent", () => {
+    const offer = offerFor({ ...base, items: [...ITEMS, starter] });
+    expect(offer.startersOnly).toBe(true);
+    expect(offer.agents.map((a) => [a.key, a.program])).toEqual([["starter:review", true]]);
+    expect(offer.commands).toEqual([]);
+    expect(offer.canRun).toBe(false);
+  });
+
+  it("a screenless machine lists no starter before its list arrives, and not the Shell either", () => {
+    const offer = offerFor({ ...base, screenless: true, loaded: false });
+    expect(offer.startersOnly).toBe(true);
+    expect(offer.agents).toEqual([]);
+    expect(offer.commands).toEqual([]);
+  });
+
+  it("a screenless machine whose program offers none lists nothing", () => {
+    const offer = offerFor({ ...base, screenless: true, items: ITEMS });
+    expect(offer.startersOnly).toBe(true);
+    expect(offer.agents).toEqual([]);
+  });
+
+  it("a screenless machine that refuses writes still lists no Shell", () => {
+    const offer = offerFor({ ...base, screenless: true, refusal: "read only" });
+    expect(offer.commands).toEqual([]);
+    expect(offer.startersOnly).toBe(true);
+  });
+
+  it("an ordinary machine is unchanged", () => {
+    const offer = offerFor({ ...base, items: ITEMS });
+    expect(offer.startersOnly).toBe(false);
+    expect(offer.commands.length).toBeGreaterThan(0);
+  });
+
+  it("opens on the Agent half, whatever the device remembered", () => {
+    const offer = offerFor({ ...base, items: [starter] });
+    expect(defaultKind(offer, true, "shell", null)).toBe("agent");
+  });
+
+  it("a starter takes no folder, and anything else does", () => {
+    expect(takesFolder({ kind: "starter", id: "review" })).toBe(false);
+    expect(takesFolder(null)).toBe(true);
+    expect(takesFolder({ kind: "shell" })).toBe(true);
+  });
+
+  it("the summary names no folder for a starter, with or without a machine", () => {
+    expect(summaryKey({ what: "Code review", folder: "", noFolder: true })).toBe("starter");
+    expect(summaryKey({ what: "Code review", folder: "", noFolder: true, machine: "minibuch" })).toBe("starterMachine");
   });
 });

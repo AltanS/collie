@@ -157,6 +157,48 @@ export interface AgentView {
    * also drops a malformed one from a peer. Text only, never markup: a branch name is the repo's.
    */
   gitHead?: GitHead;
+  /**
+   * The open asks a person may answer on this pane, as data, oldest first (ADR 0100). Mirrors
+   * `PaneWire.asks` in bridge/types.ts. **Absent on every pane with a screen**, on an older bridge
+   * and on an older crew member, which all read as "no asks as data here". An empty list is a real
+   * answer. Text only, never markup: every string came from a program.
+   */
+  asks?: Ask[];
+  /** How many open asks are past the five listed in {@link asks}. Absent when none are. */
+  moreAsks?: number;
+  /**
+   * The newest turn of a pane that has no screen (ADR 0101). A send or an abort names it, so a stale
+   * name is refused instead of landing on a turn the person never saw. Absent on a pane with a
+   * screen. Sent back unchanged, never shown.
+   */
+  turnId?: string;
+}
+
+/** What a person may choose on an ask. Mirrors `AskOption` in bridge/types.ts. */
+export interface AskOption {
+  id: string;
+  label: string;
+  effect: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** The tool call an ask is about. Mirrors `AskTool` in bridge/types.ts. */
+export interface AskTool {
+  name: string;
+  summary: string;
+  output?: string;
+}
+
+/** One open ask, as the card draws it. Mirrors `Ask` in bridge/types.ts; ids are never shown. */
+export interface Ask {
+  id: string;
+  kind: string;
+  toolCallId: string;
+  revision: number;
+  title: string;
+  itemId: string;
+  options: AskOption[];
+  reason?: string;
+  tool?: AskTool;
 }
 
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */

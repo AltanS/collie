@@ -236,6 +236,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The Host speech provider card is the acknowledgement: the chosen row turns selected and the status line names the provider the host answered with. A refusal (another provider set up in a terminal, no model, Codex not signed in, the probe refused) is written inside that card, or inside the consent sheet while it is open, because the reason is about that one choice.",
   },
+  answerAsk: {
+    channel: "inline",
+    why: "The ask card is the acknowledgement: a taken answer closes it, and already answered, changed, may-not-have-arrived (Try again) and refused are written in the card itself, because each is about that one question and must outlast the next tap.",
+  },
 // `satisfies`, not an annotation: the KEYS stay known to the compiler (so a typo'd name is a type
 // error at any reader, rather than a silent `undefined`), while every entry is still checked against
 // the contract above. An open `Record<string, AckEntry>` annotation would throw that evidence away.
