@@ -209,6 +209,18 @@ steps for the second instance are in
 [Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host), and
 [Crew commands](crew.md#how-a-crew-is-wired) says what a peer is.
 
+With a lead older than 1.21.0, the pane is listed but the question is not. The pane shows "needs you"
+with a red dot, and no card appears. Chat shows the tool call as a collapsed step with no Allow or
+Deny. The actions sheet still offers Terminal view, and it stays empty. Update the lead and the card
+and the Chat page work. Nothing crashes before that.
+
+A member's crew name defaults to its host name. A durable peer that shares a host with the lead, or
+with a Herdr peer, would join under the same name, and the host chip could not tell them apart.
+Name it when it joins: `COLLIE_INSTANCE=durable collie crew join <lead-address> --label durable`.
+To rename a peer that already joined, run `collie crew remove <member>` on the lead and
+`collie crew leave` on the peer, then join again with `--label`. (`collie crew rename` names the
+crew, not a member.)
+
 When Collie cannot reach the program, the peer starts anyway and shows the program as unreachable,
 with a reason:
 

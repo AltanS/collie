@@ -98,8 +98,20 @@ adapter in the registry, and the crew is unchanged.**
   opens as Chat. It has no Terminal view, no typed keys and no new-tab button.
 - The mux port gains one adapter and no new concept. If the port cannot express a pane without a
   screen without touching every other adapter, this decision is wrong and the work stops.
-- An old lead that merges a `durable` peer sees ordinary panes. It does not know the optional
-  fields and drops them (see ADR 0100 for what that means for an ask).
+- An old lead, one older than this decision, merges a `durable` peer and lists its panes. Measured
+  on 2026-10-12 against a lead from before this branch. Nothing crashes and nothing is blank, but
+  the page is half right:
+  - The ask is invisible. `asks` and `turnId` pass through the merged snapshot, but the old web
+    bundle draws no card. The only sign is "needs you". The tool call shows as a collapsed "1 other
+    step", with no Allow or Deny. ADR 0100 says what the answer route does.
+  - Terminal view is still offered. It opens empty, and the page polls `GET /api/pane/:id?lines=600`
+    about every two seconds. Each poll gets a 502, "durable read failed". The choice sticks per pane.
+  - The actions sheet footer says "Saved copy. Reconnect to make changes." while the bridge is
+    connected. The composer, Keys, Type, Quick, attach and mic are disabled.
+  - Pane actions are cut to Conversation history, Terminal view, Pane settings and Pin to top.
+    The workspace section has no "+" button. The agent badge is the generic "DU".
+  - The crew page shows the peer as reachable. `crew status` prints the version skew warning.
+  The fix is to update the lead first.
 - A program that cannot be reached shows as unreachable with its last known state, not as a machine
   with nothing in it.
 - Strings from the program are untrusted, as screen text is. The cleaning function is the single
