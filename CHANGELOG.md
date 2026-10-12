@@ -37,6 +37,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program you deployed behind TLS can join the crew too.** Set `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN` instead of `COLLIE_DURABLE_SOCKET`, and the peer reaches a program on Cloudflare, or on any host with a certificate, over the same wire, with the token on every request. The address must be `https://`; plain http works only to 127.0.0.1 or localhost, for `wrangler dev`. The token is at least 32 bytes and never printed: `collie doctor` says it is set and how long it is, and two new lines check the address and the token. A token the program refuses shows the peer as unreachable with the reason `token-refused`, asked again at most every 10 seconds. Because every poll is a billed request there, the peer polls every 2 seconds while a phone watches and every 10 seconds otherwise. Over https the token is the only gate, so anyone who holds it can act as your phone (ADR 0103).
 - **An example puts a durable agent on Cloudflare.** `examples/durable-member-cloudflare` is a Worker with one Durable Object that runs the same Pi Durable ticket triage, keeps its conversations and request ids in the object's SQLite, and serves the durable wire behind a bearer token, refused with a 401 before the object wakes. Three commands run it under `wrangler dev` on your machine with no account, two more deploy it, and a `durable` peer points at either address. Its README says what the token keeps out and what it does not, and what each poll costs on Cloudflare. Its tests run inside the Workers runtime under Node. The local example's SDK now has a core with no Bun or Node import, which both examples share.
 
+### Fixed
+
+- **A commit that touches only example files no longer fails the lint guard.** The pre-commit hook handed `examples/` files to oxlint, which ignores them, so oxlint found nothing to lint and the hook stopped the commit with no finding. The hook now leaves `examples/` out of the list it lints.
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed

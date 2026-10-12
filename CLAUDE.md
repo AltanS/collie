@@ -712,7 +712,9 @@ its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it throug
 `stt.json` names a speech provider.** The two calls are the update check and the Whistle
 model download: one file, fetched on a write device's tap or `collie stt whistle`, from a pinned
 address, and kept only when its sha256 matches a pin in this release
-([ADR 0096](./.adr/0096-speech-can-stay-on-the-phone.md)). Speech-to-text (`bridge/stt/`, CLI
+([ADR 0096](./.adr/0096-speech-can-stay-on-the-phone.md)). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a third, to the program's URL the
+operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting
+nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). Speech-to-text (`bridge/stt/`, CLI
 `cli/stt.ts`) is a registered provider seam, absent until `stt.json` names a provider. Then it may
 hold a provider credential at 0600, open an operator-configured outbound path carrying microphone
 audio, on `codex` spawn a `codex app-server` child, and on `local-cli` spawn the operator's named
