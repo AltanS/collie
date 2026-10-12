@@ -27,7 +27,8 @@ import { DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from 
 import { DurableSocketClient } from "./client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
-import type { DurablePane, DurableStarter, DurableTab, DurableWorkspace, ProtocolRange } from "./protocol.ts";
+import type { DurableAsk, DurablePane, DurableStarter, DurableTab, DurableWorkspace, ProtocolRange } from "./protocol.ts";
+import { parseAnswerPost } from "./protocol.ts";
 
 // ── The documents ─────────────────────────────────────────────────────────────
 
@@ -107,9 +108,21 @@ export class FakeDurableClock implements DurableClock {
 
 /** One request the fake saw. */
 export interface FakeRequest {
+  readonly method: string;
   readonly path: string;
   readonly version: string | null;
   readonly ifNoneMatch: string | null;
+  /** The body of a POST, as text. Null for a GET. */
+  readonly body: string | null;
+}
+
+/** One answer the fake took and resolved (WIRE.md section 7.3). */
+export interface FakeAnswer {
+  readonly paneId: string;
+  readonly askId: string;
+  readonly toolCallId: string;
+  readonly optionId: string;
+  readonly requestId: string;
 }
 
 /** A way for a test to answer a route its own way. Returns nothing to let the fake answer. */
@@ -136,9 +149,18 @@ export interface SnapshotDoc extends FakeSnapshot {
 export interface ProblemDoc {
   code: string;
   range?: ProtocolRange;
+  turnId?: string;
+  askIds?: string[];
+  ask?: DurableAsk;
 }
 
-function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc, etag?: string): Response {
+/** What an answer answers. */
+export interface AnswerDoc {
+  result: "taken" | "too-late";
+  replayed?: true;
+}
+
+function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc | AnswerDoc, etag?: string): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (etag !== undefined) headers.set("etag", etag);
   return new Response(JSON.stringify(body), { status, headers });
@@ -159,6 +181,10 @@ export class FakeDurableProgram {
   asksForToken = false;
   override: FakeOverride | null = null;
   readonly requests: FakeRequest[] = [];
+  /** Every answer the fake resolved, in order. A replay is not a second entry. */
+  readonly answers: FakeAnswer[] = [];
+  /** The first reply per request id, and the pane it was for (WIRE.md section 7.6). */
+  private readonly answered = new Map<string, { paneId: string; reply: AnswerDoc }>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
 
@@ -216,6 +242,33 @@ export class FakeDurableProgram {
     this.touch();
   }
 
+  /** Raise one ask on a pane: the pane waits, and `rev` moves. */
+  raiseAsk(paneId: string, ask: DurableAsk): void {
+    this.snapshot.panes = this.snapshot.panes.map((pane) =>
+      pane.id === paneId ? { ...pane, state: "waiting", openAsks: [...pane.openAsks, ask] } : pane,
+    );
+    this.touch();
+  }
+
+  /** The asks open on a pane right now. */
+  asksOf(paneId: string): readonly DurableAsk[] {
+    return this.snapshot.panes.find((pane) => pane.id === paneId)?.openAsks ?? [];
+  }
+
+  /**
+   * The program restarts and raises every open ask again under a new id, with the same tool call id
+   * and `revision` back at 1 (WIRE.md section 8.4). Its request id memory is lost, as a program that
+   * keeps none would lose it.
+   */
+  restartReasking(): void {
+    this.restart();
+    this.answered.clear();
+    this.snapshot.panes = this.snapshot.panes.map((pane) => ({
+      ...pane,
+      openAsks: pane.openAsks.map((ask) => ({ ...ask, id: `${ask.id}-after-${this.epoch.slice(0, 8)}`, revision: 1 })),
+    }));
+  }
+
   removePane(paneId: string): void {
     this.snapshot.panes = this.snapshot.panes.filter((pane) => pane.id !== paneId);
     this.touch();
@@ -256,7 +309,8 @@ export class FakeDurableProgram {
     const url = new URL(request.url);
     const version = request.headers.get("x-collie-session");
     const ifNoneMatch = request.headers.get("if-none-match");
-    this.requests.push({ path: url.pathname, version, ifNoneMatch });
+    const body = request.method === "POST" ? await request.text() : null;
+    this.requests.push({ method: request.method, path: url.pathname, version, ifNoneMatch, body });
 
     const taken = await this.override?.(url.pathname);
     if (taken !== undefined) return taken;
@@ -275,7 +329,44 @@ export class FakeDurableProgram {
       if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { etag } });
       return reply(200, this.currentSnapshot(), etag);
     }
+    const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
+    if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
     return reply(404, { code: "not-found" });
+  }
+
+  /** `POST /pane/:id/answer`, as WIRE.md section 7.3 says a program answers it. */
+  private answer(paneId: string, text: string): Response {
+    const post = parseAnswerPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null) return reply(400, { code: "bad-body" });
+    const { requestId, askId, revision, optionId } = post;
+    const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return reply(404, { code: "no-such-pane" });
+    const earlier = this.answered.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.paneId !== paneId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ...earlier.reply, replayed: true });
+    }
+    const ask = pane.openAsks.find((open) => open.id === askId);
+    let answer: AnswerDoc;
+    if (ask === undefined) {
+      answer = { result: "too-late" };
+    } else if (ask.revision !== revision) {
+      return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((open) => open.id), ask });
+    } else if (!ask.options.some((option) => option.id === optionId)) {
+      return reply(400, { code: "bad-option" });
+    } else {
+      // Resolved: the ask closes with `by: "phone"`, and the pane waits only while another is open.
+      this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId, requestId });
+      const left = pane.openAsks.filter((open) => open.id !== askId);
+      this.snapshot.panes = this.snapshot.panes.map((candidate) =>
+        candidate.id === paneId ? { ...candidate, openAsks: left, state: left.length > 0 ? "waiting" : "working" } : candidate,
+      );
+      this.touch();
+      answer = { result: "taken" };
+    }
+    this.answered.set(requestId, { paneId, reply: answer });
+    return reply(200, answer);
   }
 
   /** Stop listening and remove the socket and its directory. Idempotent. */

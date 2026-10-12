@@ -115,6 +115,15 @@
       }
     },
     {
+      // Asks as data (ADR 0100): `bridge/durable/parse.ts` is the ONE file under bridge/durable/ that reads an unvalidated field, `beacon/parse.ts`'s pattern. It reads the `POST /api/pane/:id/answer` body, the two state files `answer-receipts.json` and `durable-asks.json`, and the asks on a peer's pane before the push guard keys them. Every `typeof` in it sits inside those readers and IS the parse.
+      "files": [
+        "**/bridge/durable/parse.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
       // Crew protocol handling (/crew/v1/*): payloads arrive from another Collie instance across a machine boundary and are untrusted until parsed. See CREW_PROTOCOL.md.
       "files": [
         "**/bridge/crew/**/*.ts"

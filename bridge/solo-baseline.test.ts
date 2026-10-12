@@ -325,6 +325,11 @@ const PANE_WIRE_KEYS = {
   // own disk. Attached at serialise time like `cache`, and absent here: this baseline builds its body
   // with no reader, so no golden byte moved.
   gitHead: true,
+  // Not crew dimensions: the open asks of a pane whose adapter raises them as data, and the count
+  // past the five listed (ADR 0100). Only the `durable` adapter fills them, so they are absent on
+  // every pane here and no golden byte moved.
+  asks: true,
+  moreAsks: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -437,6 +442,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
   test("PaneWire carries the two address dimensions and nothing else", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "agent",
+      "asks",
       "cache",
       "cwd",
       "focused",
@@ -448,6 +454,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "lastActiveAt",
       "lastSeenAt",
       "model",
+      "moreAsks",
       "paneId",
       "paneLabel",
       "readableLines",
@@ -627,7 +634,9 @@ describe("solo zero-tax — routes", () => {
       // the poll path, forwarded to the owning member and taxing a solo instance with nothing.
       // `files` is the Files view (ADR 0083): one folder or one file under the Changes root, a read
       // gated on an authorised device and forwarded to the owning member like `changes`.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/",
+      // `answer` answers an ask by id (ADR 0100): a write, forwarded to the owning member, and only a
+      // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer))?$/",
       // Which paths exist under the Files root (ADR 0088), asked in one batch for the pane view's
       // links: a read with the Files gate, one `lstat` per path, not forwarded across a crew link.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/exist$/",
@@ -978,6 +987,9 @@ const STATE_DIR_ENTRIES = [
   // never on Linux or macOS, and never on a Windows install whose folders were private already.
   "acl-backups",
   "activity.json",
+  // One receipt per answer to an ask (ADR 0100), written before the answer leaves. Written by use and
+  // by nothing else: absent until the first answer from a phone.
+  "answer-receipts.json",
   "audit.log",
   // Agent beacons (M11/01) — a directory, and one no bridge module ever writes: the bridge only ever
   // READS it, and the emitter that fills it is a CLI verb the operator installs a hook for. An
@@ -990,6 +1002,10 @@ const STATE_DIR_ENTRIES = [
   // The one-off lines a phone ran on this machine, newest first (ADR 0095). Written by use and by
   // nothing else: absent until the first one-off run that works.
   "commands-recent.json",
+  // The push guard's memory for asks that travel as data (ADR 0100), keyed on (host, toolCallId).
+  // Written only when a pane that carries asks opens or closes one: a bridge with no durable pane,
+  // and no peer with one, never writes it.
+  "durable-asks.json",
   // The new-space sheet's folder list (M40/02, #289), and a §11 row RENEGOTIATED ON PURPOSE: it is
   // the one entry here a solo instance's own operator writes through ordinary use, from the phone.
   // Absent until the first space created with a folder or the first star — both are acts, and a

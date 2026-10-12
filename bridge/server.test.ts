@@ -6,6 +6,7 @@ import { encodeStyledRegion, styledRegionLines } from "../web/src/lib/styled-reg
 import {
   afterPaneInput,
   isPaneInput,
+  paneGateLevel,
   blobRoute,
   BLOB_MAX_BYTES,
   sniffBlobType,
@@ -78,6 +79,10 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
+import { answerPane, memoryAnswerReceipts, NO_ANSWERS } from "./durable/answer.ts";
+import { withOpenAsks } from "./durable/pane-asks.ts";
+import { DurableMux } from "./mux/durable/adapter.ts";
+import { DurableSocketClient } from "./mux/durable/client.ts";
 import { PairingStore, sha256Hex, type PairingIo } from "./pairing.ts";
 import { FolderStore, MAX_FAVOURITES, MAX_FOLDER_CHARS } from "./folders.ts";
 import type { SessionRuntime } from "./sessions.ts";
@@ -122,6 +127,7 @@ import {
   type LaunchersResponse,
   type MuxConfig,
   type PaneReadResponse,
+  type PaneWire,
   type SnapshotResponse,
 } from "./types.ts";
 import type { StateEngine } from "./state-engine.ts";
@@ -4579,5 +4585,57 @@ describe("journalRefOf — which session the history and chat routes read", () =
     // history and chat
     expect([...src.matchAll(/await journalRefOf\(adapter, pane, panes\)/g)]).toHaveLength(2);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
+  });
+});
+
+// ── Asks as data, and the answer route (ADR 0100) ────────────────────────────
+describe("asks on the pane wire", () => {
+  const wire: PaneWire = {
+    paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "collie",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "claude",
+    status: "blocked",
+    cwd: "/home/you",
+    focused: false,
+    kind: "agent",
+  };
+
+  test("asks: no existing pane gains one; a Herdr pane comes back as the same object", () => {
+    const herdr = withAgentHints(asMux({}), { hooksInstalled: () => false });
+    expect("openAsks" in herdr).toBe(false);
+    expect(withOpenAsks(wire, herdr)).toBe(wire);
+    expect("asks" in withOpenAsks(wire, herdr)).toBe(false);
+  });
+
+  test("asks: the durable adapter's two ask methods survive the decorator the bridge wraps every adapter in", () => {
+    const durable = withAgentHints(new DurableMux(new DurableSocketClient(undefined)), { hooksInstalled: () => false });
+    expect(durable.openAsks).toBeInstanceOf(Function);
+    expect(durable.answerAsk).toBeInstanceOf(Function);
+    // Nothing read yet: the pane carries no field until the program has been read.
+    expect(withOpenAsks(wire, durable)).toBe(wire);
+  });
+});
+
+describe("the answer route", () => {
+  test("answer: rides the pane grammar as a write that needs a device, is not typed input, and crosses a crew link", () => {
+    expect(paneGateLevel("answer")).toBe("write");
+    expect(isPaneInput("/api/pane/conv-02/answer", "POST")).toBe(false);
+    expect(crewRouteFor("/api/pane/conv-02/answer")).toBe("pane/conv-02/answer");
+  });
+
+  test("answer: a Herdr pane, whose adapter takes no answers, gets the unsupported refusal and nothing is recorded", async () => {
+    const receipts = memoryAnswerReceipts();
+    const audit: AuditEntry[] = [];
+    const reply = await answerPane(
+      "w1:p1",
+      { requestId: "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c", askId: "a", revision: 1, optionId: "allow" },
+      { adapter: asMux({}), receipts, audit: { record: (entry) => audit.push(entry) }, device: "pixel", session: "default" },
+    );
+    expect(reply).toEqual({ status: 409, body: { ok: false, outcome: "refused", reason: "unsupported", detail: NO_ANSWERS } });
+    expect(receipts.get("0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c")).toBeUndefined();
+    expect(audit).toEqual([]);
   });
 });
