@@ -332,6 +332,9 @@ const CODEX_KNOWN: KnownTypes = {
     "turn_context",
     "session_meta",
     "world_state",
+    // Codex 0.159's context compaction (harness canary 2026-10-12): the hand-off text for the next
+    // window and the history it keeps. The turns it summarises stay on screen from their own rows.
+    "compacted",
     // What a `response_item` carries.
     "message",
     "reasoning",

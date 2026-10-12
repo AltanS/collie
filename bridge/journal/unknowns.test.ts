@@ -107,6 +107,7 @@ describe("codex", () => {
     row({ timestamp: "t", type: "token_usage_record", payload: {} }),
     row({ timestamp: "t", type: "turn_context", payload: {} }),
     row({ timestamp: "t", type: "world_state", payload: {} }),
+    row({ timestamp: "t", type: "compacted", payload: { message: "a hand-off summary", replacement_history: [] } }),
     item({ type: "message", role: "user", content: [{ type: "input_text", text: "fix the types" }] }),
     item({ type: "message", role: "assistant", content: [{ type: "output_text", text: "Looking." }] }),
     // Injected system prompts: a role the grammar refuses by name.
