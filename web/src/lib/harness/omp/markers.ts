@@ -246,6 +246,27 @@ export function composerContText(text: string): string | null {
   return m === null ? null : m[1]!;
 }
 
+// OMP 18.10's open-ended prompt keeps the FIRST line of a multi-line draft on the `╰─ ` row and
+// paints every later line UNDER it, behind a three-space gutter that lines up with the draft
+// (harness canary 2026-10-12, omp 18.10.1: drafts 03, 04, 07, 14, 15). An empty line in the draft
+// is a blank row in that run. No capture shows anything else drawn there with this gutter: the slash
+// palette uses `❯ ` or two spaces, and a modal opens a box at column 0.
+const OPEN_DRAFT_GUTTER = "   ";
+const OPEN_DRAFT_ROW = /^ {3,}\S/;
+
+/** The draft text of a row painted under the open-ended prompt (gutter removed, UNTRIMMED), or null. */
+export function openDraftRowText(text: string): string | null {
+  const row = rstrip(text);
+  return OPEN_DRAFT_ROW.test(row) ? row.slice(OPEN_DRAFT_GUTTER.length) : null;
+}
+
+/** The inline suggestion painted after the draft on such a row (same rule as the prompt row's). */
+export function openDraftRowGhost(line: StyledLine): string {
+  const text = openDraftRowText(lineText(line));
+  if (text === null) return "";
+  return draftGhost(line, OPEN_DRAFT_GUTTER.length, OPEN_DRAFT_GUTTER.length + text.length);
+}
+
 // A row that OPENS A BOX at column 0 — the single shape every widget omp can put in front of the
 // composer is built out of. Every one of the fourteen modal captures in this corpus (`/model`,
 // `/settings`, `/resume` and their moved-selection twins; the five Ask-tool screens; the three

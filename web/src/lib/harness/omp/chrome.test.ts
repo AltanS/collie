@@ -108,7 +108,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
   it.each(PINNED)("$fixture locates the box", ({ fixture, top, bottom, suggestEnd }) => {
     const box = locateComposer(fixtureLines(fixture));
     expect(box).not.toBeNull();
-    expect(box!).toEqual({ top, firstDraftRow: top + 1, bottom, suggestEnd });
+    expect(box!).toEqual({ top, firstDraftRow: top + 1, bottom, suggestEnd, draftEnd: bottom + 1 });
   });
 
   it("covers every boxed composer capture in the corpus", () => {
@@ -379,6 +379,58 @@ describe("locateComposer — Unicode anywhere in the box must never produce a nu
 });
 
 describe("locateComposer — OMP 18.1.2's open-ended prompt row", () => {
+  // OMP 18.10.1, harness canary 2026-10-12: a multi-line draft keeps its first line on the prompt
+  // row and paints the rest UNDER it behind a three-space gutter. Read as autocomplete, those rows
+  // were dropped from the draft, so the reply guard never saw the message's tail and every
+  // multi-line send stalled; a blank line in the draft refused the composer outright.
+  describe("OMP 18.10's later draft lines under the prompt row", () => {
+    const status = " π > ⬢ sonnet > ⑂ master ▶───5%────128K─";
+    const composerWith = (...below: string[]) => lines(["transcript", "", status, "╰─ Reply with only OK.", ...below].join("\n"));
+
+    it("reads every later line, a blank line and a pasted rule included", () => {
+      const buffer = composerWith("   ──────────", "   some text", "", "   end");
+      expect(locateComposer(buffer)).toEqual({ top: 2, firstDraftRow: 3, bottom: 3, suggestEnd: 8, draftEnd: 8 });
+      expect(hasComposer(buffer)).toBe(true);
+      expect(extractInputDraft(buffer)).toBe("Reply with only OK. ────────── some text end");
+      expect(extractStatusLines(buffer).map(lineText)).toEqual([status]);
+    });
+
+    it("a blank row straight under the prompt is a blank line of the draft", () => {
+      expect(extractInputDraft(composerWith("", "   A paragraph after a blank line."))).toBe(
+        "Reply with only OK. A paragraph after a blank line.",
+      );
+    });
+
+    it("takes omp's suggestion off the last line only", () => {
+      const ghosted = lines(
+        [status, "╰─ Reply with only OK.", "   \u001b[38;2;229;229;231mend\u001b[38;2;107;114;128mpoint\u001b[0m"].join("\n"),
+      );
+      expect(extractInputDraft(ghosted)).toBe("Reply with only OK. end");
+    });
+
+    it("a box under the prompt still declines, with or without a blank before it", () => {
+      expect(locateComposer(composerWith("", "╭─ Switch Model ──────╮"))).toBeNull();
+      expect(locateComposer(composerWith("   some text", "╭─ Switch Model ──────╮"))).toBeNull();
+    });
+
+    it("a trailing blank run is padding, not a draft line", () => {
+      expect(extractInputDraft(composerWith("   some text", "", ""))).toBe("Reply with only OK. some text");
+    });
+
+    // The bridge matches the binding against NON-blank rows only, so blank lines in the draft must not
+    // count toward its tail window: seven rows under the prompt, four of them text, still bind.
+    it("binds the prompt row when the draft's blank lines are what make it tall", () => {
+      const buffer = composerWith("   a", "", "   b", "", "   c", "", "   d");
+      expect(composerPrompt(buffer)).toBe("╰─ Reply with only OK.");
+    });
+
+    it("takes the unbound write once six later lines hold text, as for a long palette", () => {
+      const rows = ["   1", "   2", "   3", "   4", "   5"];
+      expect(composerPrompt(composerWith(...rows))).toBe("╰─ Reply with only OK.");
+      expect(composerPrompt(composerWith(...rows, "   6"))).toBeNull();
+    });
+  });
+
   it("locates the live two-row shape and re-surfaces its status and draft", () => {
     const status = " idle  GPT-5.6-Sol ────────2%────────1M─";
     const buffer = lines(["transcript", "", status, `╰─ draft-probe${" ".repeat(80)}`].join("\n"));
@@ -388,6 +440,7 @@ describe("locateComposer — OMP 18.1.2's open-ended prompt row", () => {
       firstDraftRow: 3,
       bottom: 3,
       suggestEnd: 4,
+      draftEnd: 4,
     });
     expect(hasComposer(buffer)).toBe(true);
     expect(extractInputDraft(buffer)).toBe("draft-probe");
