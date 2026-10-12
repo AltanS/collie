@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { AskPush } from "../durable/ask-push.ts";
+import { AskGuardStore } from "../durable/guard.ts";
 import type { NotifyClock } from "../notifications.ts";
 import type { PushMessage } from "../push.ts";
 import type { AgentStatus, PaneWire } from "../types.ts";
@@ -298,5 +300,83 @@ describe("herdPushGate", () => {
   test("peer mode mutes the herd path so an alert never arrives twice", () => {
     const gate = herdPushGate("peer", { isMuted: () => false });
     expect(gate.isMuted()).toBe(true);
+  });
+});
+
+// ── Asks as data: the guard decides the push, not the way into blocked (ADR 0100) ──────────
+describe("a peer's pane that carries asks", () => {
+  function guarded() {
+    const clock = new FakeClock();
+    const push = new RecordingPush();
+    let now = 1_000_000;
+    const asks = new AskPush(new AskGuardStore(null), () => now);
+    const peer = new PeerNotifier<number>({
+      clock,
+      push,
+      mute: { isMuted: () => false },
+      delayMs: 5_000,
+      isNotifiable: (s) => s === "blocked" || s === "done",
+      asks,
+    });
+    return { clock, push, peer, tick: (ms: number) => (now += ms) };
+  }
+  const ask = (id: string, toolCallId: string) => ({
+    id,
+    kind: "permission",
+    toolCallId,
+    revision: 1,
+    title: "shell wants to run ls",
+    itemId: "item-1",
+    options: [{ id: "allow", label: "Allow", effect: "allow" as const }],
+  });
+  const blockedPanes = (push: RecordingPush) => push.sent.filter((m) => m.type !== "clear").length;
+
+  test("a new ask pushes once, through the coordinator, and a later poll of the same ask does not", () => {
+    const { clock, push, peer } = guarded();
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [ask("a1", "call-1")] })]));
+    clock.fireAll();
+    expect(blockedPanes(push)).toBe(1);
+    expect(push.sent[0]?.host).toBe("laptop");
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [ask("a1", "call-1")] })]));
+    clock.fireAll();
+    expect(blockedPanes(push)).toBe(1);
+  });
+
+  test("re-ask: a restarted program's same question under a new ask id is shown, not pushed", () => {
+    const { clock, push, peer, tick } = guarded();
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [ask("a1", "call-1")] })]));
+    clock.fireAll();
+    expect(blockedPanes(push)).toBe(1);
+    // The program restarts: the pane leaves, comes back idle, then blocked on the same call.
+    tick(10_000);
+    peer.observe("laptop", body([]));
+    peer.observe("laptop", body([pane("conv-1", "idle", "durable", { asks: [] })]));
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [ask("a2", "call-1")] })]));
+    clock.fireAll();
+    expect(blockedPanes(push)).toBe(1);
+  });
+
+  test("a pane without asks still pushes on its way into blocked, as before", () => {
+    const { clock, push, peer } = guarded();
+    peer.observe("laptop", body([pane("w1:p1", "working")]));
+    peer.observe("laptop", body([pane("w1:p1", "blocked")]));
+    clock.fireAll();
+    expect(blockedPanes(push)).toBe(1);
+  });
+
+  test("a hostile burst on one peer pane buzzes the phone once, not once per ask", () => {
+    const { clock, push, peer } = guarded();
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    const burst = Array.from({ length: 50 }, (_, i) => ask(`a${String(i)}`, `call-${String(i)}`));
+    // Five sweeps as the asks pile up, ten at a time, each sweep re-arming the debounce and firing it.
+    for (let upTo = 10; upTo <= 50; upTo += 10) {
+      peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: burst.slice(0, upTo).slice(0, 5) })]));
+      clock.fireAll();
+    }
+    // The member lists five (the open cap); the guard pushes three of them in the first sweep, which
+    // is one alert for the pane, and nothing after.
+    expect(blockedPanes(push)).toBe(1);
   });
 });

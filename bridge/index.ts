@@ -73,6 +73,9 @@ import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
+import { AnswerReceiptStore } from "./durable/answer.ts";
+import { AskPush, LOCAL_ASK_HOST } from "./durable/ask-push.ts";
+import { AskGuardStore } from "./durable/guard.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
@@ -728,6 +731,18 @@ await launchReceipts.load();
 const starterReceipts = new StarterReceiptStore(cfg.stateDir);
 await starterReceipts.load();
 
+// One receipt per answer to an ask, written before the answer leaves (ADR 0100,
+// bridge/durable/answer.ts). Loading writes nothing: the file appears on the first answer.
+const answerReceipts = new AnswerReceiptStore(cfg.stateDir);
+await answerReceipts.load();
+
+// The push guard for asks that travel as data (ADR 0100, bridge/durable/guard.ts), keyed on
+// (host, toolCallId), one memory for this machine's panes and for every peer's. Loading writes
+// nothing: the file appears when a pane that carries asks first opens one.
+const askGuard = new AskGuardStore(cfg.stateDir);
+askGuard.load();
+const askPush = new AskPush(askGuard);
+
 // The New sheet's last branch choices per repo on this machine (M48, bridge/worktree-choices.ts).
 // Loading writes nothing: the file appears on the first branch create that works.
 const worktreeChoices = new WorktreeChoiceStore(cfg.stateDir);
@@ -1213,8 +1228,26 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs, (status) =>
     notifyPrefs.isNotifiable(status),
   );
-  engine.onTransition((agent, from, to) => notifications.onTransition(agent, from, to));
+  // A pane whose adapter raises asks as data (ADR 0100) does not push on its way into `blocked`: the
+  // ask guard decides, once per ask, after each poll. Every other pane, and every other transition,
+  // reaches the coordinator as before. In peer mode the sink is muted anyway and the lead runs the
+  // guard over the swept body, so a peer runs none and writes no guard file.
+  const openAsks = herdr.openAsks?.bind(herdr);
+  const guarded = openAsks !== undefined && crew.mode !== "peer";
+  engine.onTransition((agent, from, to) => {
+    if (guarded && AskPush.holds({ asks: openAsks(agent.paneId) }, to)) return;
+    notifications.onTransition(agent, from, to);
+  });
   engine.onRemove((paneId) => notifications.onRemove(paneId));
+  if (guarded) {
+    engine.onUpdate((s) =>
+      askPush.observe(
+        LOCAL_ASK_HOST,
+        s.agents.map((agent) => ({ agent, paneId: agent.paneId, asks: openAsks(agent.paneId) })),
+        ({ agent }) => notifications.onTransition(agent, agent.status, "blocked"),
+      ),
+    );
+  }
 
   engine.start();
   poker.start();
@@ -1283,6 +1316,7 @@ const peerNotifier =
         mute: snooze,
         delayMs: cfg.notifyDelayMs,
         isNotifiable: (status) => notifyPrefs.isNotifiable(status),
+        asks: askPush,
       })
     : undefined;
 
@@ -2034,6 +2068,7 @@ const server = startServer({
   worktreeBases,
   launchReceipts,
   starterReceipts,
+  answerReceipts,
   worktreeChoices,
   addedLaunchers,
   recentRuns,

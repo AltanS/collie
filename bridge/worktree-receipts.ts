@@ -180,6 +180,25 @@ export class ReceiptFileStore<R extends { requestId: string }, A> implements Rec
     }
   }
 
+  /**
+   * Store one receipt and say whether it reached disk. For a route that writes its receipt BEFORE it
+   * acts (ADR 0100): a failed write takes the receipt back out, so nothing is promised that a restart
+   * would forget, and the caller sends nothing. `record` stays the call for a route that writes after.
+   */
+  async recordFirst(receipt: R): Promise<boolean> {
+    const earlier = this.get(receipt.requestId);
+    this.receipts = withReceipt(this.receipts, receipt);
+    try {
+      await this.save();
+      return true;
+    } catch (err) {
+      const rest = this.receipts.filter((r) => r !== receipt);
+      this.receipts = earlier === undefined ? rest : withReceipt(rest, earlier);
+      this.warn(`[${this.tag}] could not save ${this.file}: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  }
+
   inflight(requestId: string): Promise<A> | undefined {
     return this.running.get(requestId);
   }

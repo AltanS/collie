@@ -255,6 +255,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/close` | `POST …/close` (`:282`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/rename` | `POST …/rename` (`:283`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/focus` | `POST …/focus` | forwarded — additive-optional (§7.1). Shows the pane on **the peer machine's** terminal; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `POST` | `/crew/v1/pane/:id/answer` | `POST …/answer` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0100). A person's tap answers one open ask of a pane that carries asks as data, by `requestId`, `askId` and `revision`. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The answer receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as "this answer did not land", never as taken |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/crew/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |
@@ -1257,6 +1258,13 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **Every session and every pane is host-tagged.** `SessionSummary` gains `host: string` and the pane
   wire shape gains `host: string`, so the phone can address what it renders. Absent on a solo
   snapshot (§11).
+- **A pane may carry `asks` and `moreAsks`** (additive-optional, §7.1, added 2026-10-12,
+  [ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)): the open asks of a pane
+  whose adapter raises them as data, at most five, and how many wait past those. The lead adds no
+  rule for them: the merge keeps a pane whole and only stamps `host`, so a member's asks reach the
+  phone as the member listed them, and a lead that predates the fields passes them through the same
+  way. The lead's push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question
+  is shown and not pushed again.
 
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then

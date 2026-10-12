@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef } from "../journal/types.ts";
-import type { AgentStatus } from "../types.ts";
+import type { AgentStatus, AnswerRequest, Ask } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -654,6 +654,27 @@ export interface MuxAdapter {
    */
   startStarter?(starterId: string, requestId: string): Promise<MuxStarterOutcome>;
 
+  /**
+   * The open asks of one pane, as data (ADR 0100), oldest first, cleaned. OPTIONAL: only an adapter
+   * whose panes raise asks as data has it (`durable`). `undefined` for a pane that carries no asks
+   * field, which is every pane of every other adapter. It reads the adapter's last listing and asks
+   * nothing new, because `localSnapshot` calls it at serialise time.
+   */
+  openAsks?(paneId: string): readonly Ask[] | undefined;
+
+  /**
+   * Answer one ask by its id (ADR 0100). OPTIONAL, with {@link openAsks}: absent is the refusal the
+   * answer route renders. ONE CALLER: `POST /api/pane/:id/answer`, which runs for a person's tap and
+   * has written its receipt first. Nothing else in the bridge may call it, and an adapter never
+   * answers on its own, not on a restart and not after a timeout.
+   *
+   * A definite answer is a value (`taken`, `too-late`, `stale`). An answer that may or may not have
+   * reached the program is `unknown`, also a value, because the caller keeps its receipt for it. A
+   * refusal says nothing ran: `gone` (no such pane), `refused` (a bad option, a reused request id,
+   * a program that takes no answers) or `unreachable` (nothing was sent).
+   */
+  answerAsk?(paneId: string, answer: AnswerRequest): Promise<MuxOutcome<MuxAnswerResult>>;
+
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
 
@@ -764,13 +785,31 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
  * A decorator spreads this rather than conditionally spreading inline, so a multiplexer that cannot
  * unwrap (tmux) never comes out of a decorator appearing to offer the read: absent stays absent.
  */
-export function muxOptionalMethods(adapter: MuxAdapter): Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter"> {
-  const methods: Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter"> = {};
+export function muxOptionalMethods(
+  adapter: MuxAdapter,
+): Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk"> {
+  const methods: Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk"> = {};
   const readLogicalText = adapter.readLogicalText?.bind(adapter);
   if (readLogicalText !== undefined) methods.readLogicalText = readLogicalText;
   const listStarters = adapter.listStarters?.bind(adapter);
   if (listStarters !== undefined) methods.listStarters = listStarters;
   const startStarter = adapter.startStarter?.bind(adapter);
   if (startStarter !== undefined) methods.startStarter = startStarter;
+  // The two ask methods travel together (ADR 0100): an adapter that lists asks answers them.
+  const openAsks = adapter.openAsks?.bind(adapter);
+  if (openAsks !== undefined) methods.openAsks = openAsks;
+  const answerAsk = adapter.answerAsk?.bind(adapter);
+  if (answerAsk !== undefined) methods.answerAsk = answerAsk;
   return methods;
 }
+
+/**
+ * What a program said to one answer (ADR 0100). `taken` and `too-late` are final. `stale` carries
+ * the ask's current form when the program sent one. `unknown` is an answer that may or may not have
+ * landed: a timeout, a dropped connection or a 5xx after the request left.
+ */
+export type MuxAnswerResult =
+  | { readonly kind: "taken"; readonly replayed: boolean }
+  | { readonly kind: "too-late"; readonly replayed: boolean }
+  | { readonly kind: "stale"; readonly ask: Ask | null }
+  | { readonly kind: "unknown"; readonly detail: string };

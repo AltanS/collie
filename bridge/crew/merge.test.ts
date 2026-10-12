@@ -813,3 +813,56 @@ describe("snapshotPlan — `?h=` says which machine, `?all=1` says how much of i
     expect(NARROW_PLAN.peer("laptop")).toEqual(NARROW_VIEW);
   });
 });
+
+// ── Asks as data cross the merge untouched (ADR 0100) ──────────────────────────
+//
+// `asks` and `moreAsks` are additive-optional on a pane (CREW_PROTOCOL.md §7.1). The lead adds no
+// rule for them: a pane is kept whole and only its `host` is re-stamped, so a member's open asks reach
+// the phone as the member listed them. A pane without the field is a pane from an older member, or
+// from any adapter that has a screen, and it parses exactly as before.
+describe("asks on a peer's pane", () => {
+  const ask = {
+    id: "ask-1",
+    kind: "permission",
+    toolCallId: "call-1",
+    revision: 2,
+    title: "write_note wants to write /tmp/notes.txt",
+    itemId: "item-1",
+    options: [
+      { id: "allow", label: "Allow once", effect: "allow" as const },
+      { id: "deny", label: "Deny", effect: "deny" as const },
+    ],
+    reason: "The summary is the answer.",
+    tool: { name: "write_note", summary: "path=/tmp/notes.txt" },
+  };
+
+  test("the lead's merge passes asks and moreAsks through, and tags the host", () => {
+    const durable = pane({ paneId: "conv-02", agent: "durable", status: "blocked", asks: [ask], moreAsks: 3 });
+    const parsed = parsePeerSnapshot({ sessions: [session({ name: "default" })], agents: [durable], shellPanes: [] });
+    expect(parsed?.agents[0]?.asks).toEqual([ask]);
+    expect(parsed?.agents[0]?.moreAsks).toBe(3);
+
+    const merged = mergeSnapshot(localBody(), {
+      self: { id: "lead", name: "lead" },
+      peers: [contribution({ state: state({ memberId: "laptop" }), body: parsed })],
+      now: NOW,
+    });
+    const fromPeer = merged.agents.find((p) => p.paneId === "conv-02");
+    expect(fromPeer?.host).toBe("laptop");
+    expect(fromPeer?.asks).toEqual([ask]);
+    expect(fromPeer?.moreAsks).toBe(3);
+  });
+
+  test("a pane without asks still parses and merges, and gains no asks key (an old peer)", () => {
+    const old = pane({ paneId: "w1:p1", status: "blocked" });
+    const parsed = parsePeerSnapshot({ sessions: [session({ name: "default" })], agents: [old], shellPanes: [] });
+    expect(parsed?.agents).toHaveLength(1);
+    expect("asks" in (parsed?.agents[0] ?? {})).toBe(false);
+    const merged = mergeSnapshot(localBody(), {
+      self: { id: "lead", name: "lead" },
+      peers: [contribution({ state: state({ memberId: "laptop" }), body: parsed })],
+      now: NOW,
+    });
+    for (const p of merged.agents) expect("asks" in p).toBe(false);
+  });
+});

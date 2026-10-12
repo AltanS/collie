@@ -33,15 +33,7 @@ export const REPLY_TOO_LARGE = "too-large";
 
 /** The program could not be asked. `detail` is the one line the adapter reports. */
 export class DurableUnreachable extends Error {
-  /**
-   * `sent` is true when the request may have left for the program, so a POST that ended this way has
-   * an unknown outcome (WIRE.md section 7.6). It is false when the connect was refused or the path was
-   * never dialled: nothing reached the program. A read does not care.
-   */
-  constructor(
-    readonly detail: string,
-    readonly sent = false,
-  ) {
+  constructor(readonly detail: string) {
     super(detail);
     this.name = "DurableUnreachable";
   }
@@ -63,20 +55,33 @@ export interface DurableGet {
   readonly maxBytes: number;
 }
 
-/** One POST with a JSON body. `path` is the part after `/session/v1`. */
+/** One POST. `body` is the JSON object the route takes; the caller has checked every field. */
 export interface DurablePost {
   readonly path: string;
   readonly version: number;
-  /** One JSON object, already encoded. */
-  readonly body: string;
+  readonly body: object;
   readonly timeoutMs: number;
   readonly maxBytes: number;
 }
 
-/** What the adapter needs from a transport. It throws `DurableUnreachable` when it cannot ask. */
+/**
+ * A POST that may have reached the program, with no answer to say what it did: a timeout, a
+ * dropped connection, or a reply past its cap (WIRE.md section 7.6). Never retried here.
+ */
+export class DurableOutcomeUnknown extends Error {
+  constructor(readonly detail: string) {
+    super(detail);
+    this.name = "DurableOutcomeUnknown";
+  }
+}
+
+/**
+ * What the adapter needs from a transport. `get` throws `DurableUnreachable` when it cannot ask.
+ * `post` throws `DurableUnreachable` only when nothing was sent (no path, a socket that is not
+ * private, a refused connect), and `DurableOutcomeUnknown` when the request may have left.
+ */
 export interface DurableTransport {
   get(request: DurableGet): Promise<DurableReply>;
-  /** A write. The transport never retries it (WIRE.md section 7.6). */
   post(request: DurablePost): Promise<DurableReply>;
 }
 
@@ -172,18 +177,19 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
+/** Whether a failed fetch never reached the program: the connect itself failed. */
+function neverConnected(err: Error, timedOut: boolean): boolean {
+  if (timedOut) return false;
+  const code = "code" in err ? err.code : undefined;
+  return code === "ConnectionRefused" || code === "ECONNREFUSED" || code === "ENOENT" || code === "FailedToOpenSocket";
+}
+
 /** One line for a failed connect or read. */
 function describeFailure(err: Error, timeoutMs: number, timedOut: boolean): string {
   if (timedOut) return `no answer within ${String(timeoutMs)}ms`;
   const code = "code" in err ? err.code : undefined;
   if (code === "ConnectionRefused" || code === "ECONNREFUSED") return "connection refused";
   return err.message === "" ? "connection failed" : err.message;
-}
-
-/** Whether the connect itself was refused, so nothing reached the program. */
-function refusedToConnect(err: Error): boolean {
-  const code = "code" in err ? err.code : undefined;
-  return code === "ConnectionRefused" || code === "ECONNREFUSED" || code === "ENOENT";
 }
 
 /** The real transport: the privacy check, then one HTTP request on the Unix socket. */
@@ -193,32 +199,15 @@ export class DurableSocketClient implements DurableTransport {
     private readonly probe: SocketProbe = SYSTEM_PROBE,
   ) {}
 
-  get(request: DurableGet): Promise<DurableReply> {
-    const headers = new Headers({ accept: "application/json" });
-    if (request.version !== null) headers.set("x-collie-session", String(request.version));
-    if (request.ifNoneMatch !== null) headers.set("if-none-match", request.ifNoneMatch);
-    return this.send("GET", request, headers, undefined);
-  }
-
-  post(request: DurablePost): Promise<DurableReply> {
-    const headers = new Headers({
-      accept: "application/json",
-      "content-type": "application/json",
-      "x-collie-session": String(request.version),
-    });
-    return this.send("POST", request, headers, request.body);
-  }
-
-  private async send(
-    method: "GET" | "POST",
-    request: { readonly path: string; readonly timeoutMs: number; readonly maxBytes: number },
-    headers: Headers,
-    body: string | undefined,
-  ): Promise<DurableReply> {
+  async get(request: DurableGet): Promise<DurableReply> {
     const resolved = resolveSocketPath(this.configured);
     if (!resolved.ok) throw new DurableUnreachable(resolved.detail);
     const problem = await socketAccessProblem(resolved.path, this.probe);
     if (problem !== null) throw new DurableUnreachable(problem);
+
+    const headers = new Headers({ accept: "application/json" });
+    if (request.version !== null) headers.set("x-collie-session", String(request.version));
+    if (request.ifNoneMatch !== null) headers.set("if-none-match", request.ifNoneMatch);
 
     const controller = new AbortController();
     let timedOut = false;
@@ -227,15 +216,69 @@ export class DurableSocketClient implements DurableTransport {
       controller.abort();
     }, request.timeoutMs);
     try {
-      const init: BunFetchRequestInit = { method, unix: resolved.path, headers, signal: controller.signal, redirect: "manual" };
-      if (body !== undefined) init.body = body;
-      const response = await fetch(`http://localhost${ROUTE_PREFIX}${request.path}`, init);
+      const response = await fetch(`http://localhost${ROUTE_PREFIX}${request.path}`, {
+        unix: resolved.path,
+        headers,
+        signal: controller.signal,
+        redirect: "manual",
+      });
       const text = await readCapped(response, request.maxBytes);
       return { status: response.status, etag: response.headers.get("etag"), text };
     } catch (err) {
-      if (err instanceof DurableUnreachable) throw new DurableUnreachable(err.detail, true);
+      if (err instanceof DurableUnreachable) throw err;
       const failure = err instanceof Error ? err : new Error(String(err));
-      throw new DurableUnreachable(describeFailure(failure, request.timeoutMs, timedOut), !refusedToConnect(failure));
+      throw new DurableUnreachable(describeFailure(failure, request.timeoutMs, timedOut));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * One POST. The privacy check runs first, as for a read. Nothing is retried: a POST whose fate is
+   * not known is `DurableOutcomeUnknown`, and the caller decides what the person is told.
+   */
+  async post(request: DurablePost): Promise<DurableReply> {
+    const resolved = resolveSocketPath(this.configured);
+    if (!resolved.ok) throw new DurableUnreachable(resolved.detail);
+    const problem = await socketAccessProblem(resolved.path, this.probe);
+    if (problem !== null) throw new DurableUnreachable(problem);
+
+    const headers = new Headers({
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-collie-session": String(request.version),
+    });
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, request.timeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`http://localhost${ROUTE_PREFIX}${request.path}`, {
+        method: "POST",
+        unix: resolved.path,
+        headers,
+        body: JSON.stringify(request.body),
+        signal: controller.signal,
+        redirect: "manual",
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      const failure = err instanceof Error ? err : new Error(String(err));
+      const detail = describeFailure(failure, request.timeoutMs, timedOut);
+      if (neverConnected(failure, timedOut)) throw new DurableUnreachable(detail);
+      throw new DurableOutcomeUnknown(detail);
+    }
+    try {
+      const text = await readCapped(response, request.maxBytes);
+      return { status: response.status, etag: response.headers.get("etag"), text };
+    } catch (err) {
+      // The program answered, and the answer could not be read whole. Its status alone does not say
+      // what ran, so the outcome is unknown.
+      const detail = err instanceof DurableUnreachable ? err.detail : describeFailure(err instanceof Error ? err : new Error(String(err)), request.timeoutMs, timedOut);
+      throw new DurableOutcomeUnknown(detail);
     } finally {
       clearTimeout(timer);
     }

@@ -8,7 +8,7 @@
 
 import { isAbsolute } from "node:path";
 
-import type { AgentStatus } from "../../types.ts";
+import type { AgentStatus, Ask } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
 import { blockRule, byteLength, CAPS, cleanText, isWireId, lineRule } from "./clean.ts";
 
@@ -70,7 +70,7 @@ export interface DurableToolCall {
   readonly output?: string;
 }
 
-/** An open ask. The adapter reads only its count in this version; later specs draw and answer it. */
+/** An open ask, cleaned. The phone draws it and answers it by id (ADR 0100). */
 export interface DurableAsk {
   readonly id: string;
   readonly kind: string;
@@ -684,6 +684,77 @@ export function parseEvents(text: string): Parsed<DurableEventsReply> {
   }
   const trimmed = root.trimmed;
   return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0 });
+}
+
+// ── answer ────────────────────────────────────────────────────────────────────
+
+/** What a 200 to `POST /pane/:id/answer` said (WIRE.md section 4, `AnswerReply`). */
+export interface DurableAnswerReply {
+  readonly result: "taken" | "too-late";
+  readonly replayed: boolean;
+}
+
+/** Decode an `AnswerReply`, or null when the body is not one. */
+export function parseAnswerReply(text: string): DurableAnswerReply | null {
+  const root = decode(text);
+  if (!isRecord(root)) return null;
+  const result = root.result;
+  if (result !== "taken" && result !== "too-late") return null;
+  return { result, replayed: root.replayed === true };
+}
+
+/** An `AnswerRequest` (WIRE.md section 4) as a program reads it off `POST /pane/:id/answer`. */
+export interface DurableAnswerPost {
+  readonly requestId: string;
+  readonly askId: string;
+  readonly revision: number;
+  readonly optionId: string;
+}
+
+/**
+ * The program's side of the answer body: `"bad-json"`, `null` for a body that is not an answer, or
+ * the fields. The test program reads the adapter's POST with this, so the body the adapter writes
+ * and the body a program reads are checked by one rule.
+ */
+export function parseAnswerPost(text: string): DurableAnswerPost | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const { requestId, askId, revision } = root;
+  const choice = root.answer;
+  const optionId = isRecord(choice) ? choice.optionId : undefined;
+  if (!isText(requestId) || !isText(askId) || !isCount(revision) || !isText(optionId)) return null;
+  return { requestId, askId, revision, optionId };
+}
+
+/**
+ * The ask a 409 `stale` to an answer carries, cleaned like any other (WIRE.md section 7.3), or null
+ * when the body names none or one that breaks a rule.
+ */
+export function parseStaleAsk(text: string): DurableAsk | null {
+  const root = decode(text);
+  if (!isRecord(root)) return null;
+  const ask = root.ask;
+  return ask === undefined ? null : readAsk(ask);
+}
+
+/** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */
+export function askForWire(ask: DurableAsk): Ask {
+  const wire: Ask = {
+    id: ask.id,
+    kind: ask.kind,
+    toolCallId: ask.toolCallId,
+    revision: ask.revision,
+    title: ask.title,
+    itemId: ask.itemId,
+    options: ask.options.map((option) => ({ id: option.id, label: option.label, effect: option.effect })),
+  };
+  if (ask.reason !== undefined) wire.reason = ask.reason;
+  if (ask.tool !== undefined) {
+    wire.tool = { name: ask.tool.name, summary: ask.tool.summary };
+    if (ask.tool.output !== undefined) wire.tool.output = ask.tool.output;
+  }
+  return wire;
 }
 
 // ── The mapping onto the port ─────────────────────────────────────────────────

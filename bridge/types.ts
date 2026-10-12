@@ -206,7 +206,95 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * none: there is no third state to get wrong.
    */
   session?: string;
+  /**
+   * The open asks a person may answer on this pane, as data, oldest first (ADR 0100).
+   *
+   * ONE PRODUCER: only a pane from an adapter that raises asks as data carries the key (the
+   * `durable` adapter, `MuxAdapter.openAsks`). The screen reader never fills it, so every ask has
+   * one owner. Absent on every other pane, and absent from every older bridge, which the phone reads
+   * as "no asks as data here". An empty list is a real answer: this pane takes answers by id and
+   * has none open.
+   *
+   * At most five are listed (`bridge/durable/guard.ts`, the open cap). {@link moreAsks} counts the
+   * rest. A closed ask frees its slot, and the next oldest takes it.
+   */
+  asks?: Ask[];
+  /** How many open asks are past the five listed in {@link asks}. Absent when none are. */
+  moreAsks?: number;
 };
+
+/** What a person may choose on an ask (WIRE.md section 4). */
+export interface AskOption {
+  /** Unique inside its ask. Sent back unchanged as `optionId`. */
+  id: string;
+  label: string;
+  effect: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** The tool call an ask is about, when the program wants it drawn. */
+export interface AskTool {
+  name: string;
+  /** One line: the arguments, shortened. */
+  summary: string;
+  output?: string;
+}
+
+/**
+ * One open ask, as the phone draws it (ADR 0100). Every string was cleaned and capped by the adapter
+ * that read it (WIRE.md section 6), and every id is sent back unchanged, never shown.
+ */
+export interface Ask {
+  /** New after every restart of the program, even for the same tool call. */
+  id: string;
+  /** `permission` is the only kind in this version. A card for another kind is not answerable. */
+  kind: string;
+  /** The program's id for the tool call. The same across a restart; the push guard keys on it. */
+  toolCallId: string;
+  /** Starts at 1 and rises when the program changes this ask in place. Sent back as `revision`. */
+  revision: number;
+  /** One line the card leads with. */
+  title: string;
+  /** The item the card sits under, usually the tool item. */
+  itemId: string;
+  /** At least one, at most six. An ask with none is shown as not answerable. */
+  options: AskOption[];
+  reason?: string;
+  tool?: AskTool;
+}
+
+/**
+ * `POST /api/pane/:id/answer`'s body, as the bridge reads it (ADR 0100). `requestId` is a UUID the
+ * phone mints per tap; a retry of the same tap sends the same one.
+ */
+export interface AnswerRequest {
+  requestId: string;
+  askId: string;
+  /** The revision the phone saw. */
+  revision: number;
+  optionId: string;
+  note?: string;
+}
+
+/**
+ * What `POST /api/pane/:id/answer` answers, one shape for every outcome (ADR 0100).
+ *
+ *  • `taken` (200): the program took the answer and closed the ask.
+ *  • `too-late` (200): the ask is not open any more (answered, stopped, or from before a restart).
+ *  • `stale` (409): the ask changed since the phone read it. `ask` is its current form when the
+ *    program sent one. Nothing ran.
+ *  • `unknown` (504): the answer may or may not have reached the program. The receipt stays, so
+ *    "Try again" with the SAME request id replays rather than answers twice.
+ *  • `refused` (409): nothing ran, and the same request would be refused again. `reason` is the
+ *    mux refusal's word (ADR 0022): `unsupported` when this pane takes no answers at all.
+ *
+ * `replayed: true` marks an answer read off the receipt of an earlier request with this id.
+ */
+export type AnswerResponse =
+  | { ok: true; outcome: "taken"; replayed?: true }
+  | { ok: false; outcome: "too-late"; replayed?: true }
+  | { ok: false; outcome: "stale"; ask?: Ask; replayed?: true }
+  | { ok: false; outcome: "unknown"; detail: string }
+  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused"; detail: string; replayed?: true };
 
 /**
  * Strip a pane down to its wire shape. The one place the session ref leaves the bridge's hands.

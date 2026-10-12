@@ -38,7 +38,9 @@ import { DurableSocketClient } from "./client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
+  parseAnswerPost,
   parseEvents,
+  type DurableAsk,
   type DurablePane,
   type DurableStarter,
   type DurableTab,
@@ -154,6 +156,17 @@ export interface FakeRequest {
   readonly search: string;
   readonly version: string | null;
   readonly ifNoneMatch: string | null;
+  /** The body of a POST, as text. Null for a GET. */
+  readonly body: string | null;
+}
+
+/** One answer the fake took and resolved (WIRE.md section 7.3). */
+export interface FakeAnswer {
+  readonly paneId: string;
+  readonly askId: string;
+  readonly toolCallId: string;
+  readonly optionId: string;
+  readonly requestId: string;
 }
 
 /** A way for a test to answer a route its own way. Returns nothing to let the fake answer. */
@@ -181,6 +194,9 @@ export interface ProblemDoc {
   code: string;
   message?: string;
   range?: ProtocolRange;
+  turnId?: string;
+  askIds?: string[];
+  ask?: DurableAsk;
 }
 
 /** What a start answers. */
@@ -196,7 +212,17 @@ export interface FakeStart {
   readonly paneId: string;
 }
 
-function reply(status: number, body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc, etag?: string): Response {
+/** What an answer answers. */
+export interface AnswerDoc {
+  result: "taken" | "too-late";
+  replayed?: true;
+}
+
+function reply(
+  status: number,
+  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc,
+  etag?: string,
+): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (etag !== undefined) headers.set("etag", etag);
   return new Response(JSON.stringify(body), { status, headers });
@@ -232,6 +258,11 @@ export class FakeDurableProgram {
   starterFailure: string | null = null;
 
   private readonly startedByRequest = new Map<string, FakeStart>();
+
+  /** Every answer the fake resolved, in order. A replay is not a second entry. */
+  readonly answers: FakeAnswer[] = [];
+  /** The first reply per request id, and the pane it was for (WIRE.md section 7.6). */
+  private readonly answered = new Map<string, { paneId: string; reply: AnswerDoc }>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
 
@@ -323,6 +354,33 @@ export class FakeDurableProgram {
     this.touch();
   }
 
+  /** Raise one ask on a pane: the pane waits, and `rev` moves. */
+  raiseAsk(paneId: string, ask: DurableAsk): void {
+    this.snapshot.panes = this.snapshot.panes.map((pane) =>
+      pane.id === paneId ? { ...pane, state: "waiting", openAsks: [...pane.openAsks, ask] } : pane,
+    );
+    this.touch();
+  }
+
+  /** The asks open on a pane right now. */
+  asksOf(paneId: string): readonly DurableAsk[] {
+    return this.snapshot.panes.find((pane) => pane.id === paneId)?.openAsks ?? [];
+  }
+
+  /**
+   * The program restarts and raises every open ask again under a new id, with the same tool call id
+   * and `revision` back at 1 (WIRE.md section 8.4). Its request id memory is lost, as a program that
+   * keeps none would lose it.
+   */
+  restartReasking(): void {
+    this.restart();
+    this.answered.clear();
+    this.snapshot.panes = this.snapshot.panes.map((pane) => ({
+      ...pane,
+      openAsks: pane.openAsks.map((ask) => ({ ...ask, id: `${ask.id}-after-${this.epoch.slice(0, 8)}`, revision: 1 })),
+    }));
+  }
+
   removePane(paneId: string): void {
     this.snapshot.panes = this.snapshot.panes.filter((pane) => pane.id !== paneId);
     this.touch();
@@ -363,7 +421,8 @@ export class FakeDurableProgram {
     const url = new URL(request.url);
     const version = request.headers.get("x-collie-session");
     const ifNoneMatch = request.headers.get("if-none-match");
-    this.requests.push({ method: request.method, path: url.pathname, search: url.search, version, ifNoneMatch });
+    const body = request.method === "POST" ? await request.text() : null;
+    this.requests.push({ method: request.method, path: url.pathname, search: url.search, version, ifNoneMatch, body });
 
     const taken = await this.override?.(url.pathname);
     if (taken !== undefined) return taken;
@@ -387,7 +446,9 @@ export class FakeDurableProgram {
       return this.eventsReply(decodeURIComponent(events[1] ?? ""), url.searchParams);
     }
     const starter = /^\/starter\/([^/]+)$/u.exec(route);
-    if (request.method === "POST" && starter !== null) return this.handleStarter(decodeURIComponent(starter[1] ?? ""), request);
+    if (request.method === "POST" && starter !== null) return this.handleStarter(decodeURIComponent(starter[1] ?? ""), body ?? "");
+    const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
+    if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
     return reply(404, { code: "not-found" });
   }
 
@@ -434,11 +495,11 @@ export class FakeDurableProgram {
    * answers the first pane with `replayed: true` and runs nothing. A failure is 422 and stores
    * nothing. The same id for another starter is 409 `request-id-reused`.
    */
-  private async handleStarter(starterId: string, request: Request): Promise<Response> {
+  private handleStarter(starterId: string, text: string): Response {
     if (this.hello.caps.starters !== true) return reply(409, { code: "not-supported" });
     let body: { requestId?: JsonValue } | null;
     try {
-      body = await request.json();
+      body = JSON.parse(text);
     } catch {
       return reply(400, { code: "bad-json" });
     }
@@ -477,6 +538,41 @@ export class FakeDurableProgram {
     this.startedByRequest.set(requestId, start);
     this.starts.push(start);
     return reply(200, { paneId });
+  }
+
+  /** `POST /pane/:id/answer`, as WIRE.md section 7.3 says a program answers it. */
+  private answer(paneId: string, text: string): Response {
+    const post = parseAnswerPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null) return reply(400, { code: "bad-body" });
+    const { requestId, askId, revision, optionId } = post;
+    const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return reply(404, { code: "no-such-pane" });
+    const earlier = this.answered.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.paneId !== paneId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ...earlier.reply, replayed: true });
+    }
+    const ask = pane.openAsks.find((open) => open.id === askId);
+    let answer: AnswerDoc;
+    if (ask === undefined) {
+      answer = { result: "too-late" };
+    } else if (ask.revision !== revision) {
+      return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((open) => open.id), ask });
+    } else if (!ask.options.some((option) => option.id === optionId)) {
+      return reply(400, { code: "bad-option" });
+    } else {
+      // Resolved: the ask closes with `by: "phone"`, and the pane waits only while another is open.
+      this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId, requestId });
+      const left = pane.openAsks.filter((open) => open.id !== askId);
+      this.snapshot.panes = this.snapshot.panes.map((candidate) =>
+        candidate.id === paneId ? { ...candidate, openAsks: left, state: left.length > 0 ? "waiting" : "working" } : candidate,
+      );
+      this.touch();
+      answer = { result: "taken" };
+    }
+    this.answered.set(requestId, { paneId, reply: answer });
+    return reply(200, answer);
   }
 
   /** Stop listening and remove the socket and its directory. Idempotent. */

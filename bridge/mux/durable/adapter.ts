@@ -8,10 +8,16 @@
 // WHAT IS HERE: the hello and ready and epoch rules (WIRE.md sections 2 and 8), the snapshot with
 // its ETag and 304 (section 7.1), the 250 ms floor between two snapshot reads, the mapping, and the
 // events reader that fills the bridge's pane log (`syncEvents()`, events.ts, bridge/durable/log.ts).
-// AND STARTERS (ADR 0102): `listStarters()` and `startStarter()`, the program's named ways to begin a
+// STARTERS (ADR 0102): `listStarters()` and `startStarter()`, the program's named ways to begin a
 // conversation, run with the phone's request id passed through unchanged.
-// WHAT IS NOT: answers, sends and aborts. Those are later specs, and they read the clean view this
-// class holds (`program()`, `held()`).
+// ASKS: the open ones per pane (`openAsks`) and the one POST that answers one (`answerAsk`, WIRE.md
+// section 7.3, ADR 0100).
+// WHAT IS NOT: sends and aborts. Those are later specs, and they read the clean view this class holds
+// (`program()`, `held()`).
+//
+// A PERSON'S TAP ONLY. `answerAsk` has one caller, the answer route, which runs for a tap and has
+// written its receipt first. Nothing in this class calls it: not a poll, not a restart, not a
+// timeout. A POST whose fate is unknown is reported as unknown and never sent again from here.
 //
 // NOT READY IS NOT EMPTY. While the program lays out its panes after a start, or when it speaks no
 // version we do, the adapter is `unreachable` with a detail that says why. It never answers an
@@ -21,10 +27,13 @@ import { declareCapabilities } from "../capabilities.ts";
 import { DurableLogs } from "../../durable/log.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
+  muxGone,
   muxOk,
+  muxRefused,
   muxUnreachable,
   muxUnsupported,
   type MuxAck,
+  type MuxAnswerResult,
   type MuxAdapter,
   type MuxCreatedPane,
   type MuxGrid,
@@ -45,9 +54,11 @@ import {
   type MuxWorktreeOpened,
   type MuxWorktreeScope,
 } from "../types.ts";
-import { isWireId, REPLY_CAPS } from "./clean.ts";
+import type { AnswerRequest, Ask } from "../../types.ts";
+import { byteLength, isWireId, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
+  DurableOutcomeUnknown,
   DurableSocketClient,
   DurableUnreachable,
   resolveSocketPath,
@@ -57,11 +68,14 @@ import {
 import { DurableEventReader, type DurableEventSink } from "./events.ts";
 import { DURABLE_LOGO_SVG } from "./logo.ts";
 import {
+  askForWire,
   incompatibleDetail,
   negotiateVersion,
+  parseAnswerReply,
   parseHello,
   parseProblem,
   parseSnapshot,
+  parseStaleAsk,
   parseStarterReply,
   toMuxSnapshot,
   type DurableCaps,
@@ -85,6 +99,12 @@ export const READ_TIMEOUT_MS = 1000;
 
 /** The budget for a starter (WIRE.md section 7.6). A start may spin up a whole conversation. */
 export const STARTER_TIMEOUT_MS = 30_000;
+
+/** The budget for `answer`, `send` and `abort` (WIRE.md section 7.6). */
+export const WRITE_TIMEOUT_MS = 5000;
+
+/** The longest note an answer may carry, in bytes (WIRE.md section 6). */
+export const NOTE_MAX_BYTES = 2048;
 
 /** The refusal detail for a program that has not laid out its panes yet. */
 export const STARTING = "starting";
@@ -274,15 +294,17 @@ export class DurableMux implements MuxAdapter {
       reply = await this.transport.post({
         path: `/starter/${encodeURIComponent(starterId)}`,
         version: session.version,
-        body: JSON.stringify({ requestId }),
+        body: { requestId },
         timeoutMs: STARTER_TIMEOUT_MS,
         maxBytes: REPLY_CAPS.post,
       });
     } catch (err) {
+      // A POST that may have left is `unknown` and keeps its receipt, so "Try again" sends the same id.
+      if (err instanceof DurableOutcomeUnknown) return { kind: "unknown", detail: err.detail };
       // After any failed connect the next read starts with `hello` again (WIRE.md section 8.8).
       this.current = null;
       const detail = err instanceof Error ? err.message : String(err);
-      return err instanceof DurableUnreachable && !err.sent ? { kind: "unreachable", detail } : { kind: "unknown", detail };
+      return err instanceof DurableUnreachable ? { kind: "unreachable", detail } : { kind: "unknown", detail };
     }
     return this.starterOutcome(reply);
   }
@@ -318,6 +340,86 @@ export class DurableMux implements MuxAdapter {
       return { kind: "refused", detail: `program answered ${String(reply.status)} ${problem.code}`.trim() };
     }
     return { kind: "unknown", detail: `program answered ${String(reply.status)}` };
+  }
+
+  // ── Asks (ADR 0100, WIRE.md section 7.3) ───────────────────────────────────
+
+  /**
+   * The open asks of one pane, from the last layout read, oldest first. `undefined` when the program
+   * does not raise asks (`caps.asks` false) or the pane is not in the layout, so the pane then carries
+   * no `asks` field at all. Asks nothing of the program: it is called at serialise time.
+   */
+  openAsks(paneId: string): readonly Ask[] | undefined {
+    const program = this.program();
+    if (program === null || !program.session.caps.asks) return undefined;
+    const pane = program.snapshot.panes.find((candidate) => candidate.id === paneId);
+    return pane === undefined ? undefined : pane.openAsks.map(askForWire);
+  }
+
+  /**
+   * Answer one ask (WIRE.md section 7.3). ONE POST, never retried here. The answer route calls this
+   * after it has written its receipt, and only for a person's tap.
+   */
+  async answerAsk(paneId: string, answer: AnswerRequest): Promise<MuxOutcome<MuxAnswerResult>> {
+    // The id rule, checked before anything leaves, so the program never sees a `bad-id` from us.
+    for (const id of [paneId, answer.requestId, answer.askId, answer.optionId]) {
+      if (!isWireId(id)) return muxRefused("An id in the answer breaks the id rule.");
+    }
+    if (!Number.isSafeInteger(answer.revision) || answer.revision < 1) return muxRefused("The revision is not a whole number from 1.");
+    if (answer.note !== undefined && byteLength(answer.note) > NOTE_MAX_BYTES) {
+      return muxRefused(`The note is longer than ${String(NOTE_MAX_BYTES)} bytes.`);
+    }
+    const session = this.current;
+    if (session === null) return muxUnreachable(STARTING);
+    if (!session.caps.asks) return muxRefused("This program takes no answers.");
+
+    const body = {
+      requestId: answer.requestId,
+      askId: answer.askId,
+      revision: answer.revision,
+      answer: answer.note === undefined ? { optionId: answer.optionId } : { optionId: answer.optionId, note: answer.note },
+    };
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.post({
+        path: `/pane/${encodeURIComponent(paneId)}/answer`,
+        version: session.version,
+        body,
+        timeoutMs: WRITE_TIMEOUT_MS,
+        maxBytes: REPLY_CAPS.post,
+      });
+    } catch (err) {
+      if (err instanceof DurableOutcomeUnknown) return muxOk({ kind: "unknown", detail: err.detail });
+      // Nothing was sent. The next read starts with `hello` again (WIRE.md section 8.8).
+      this.current = null;
+      if (err instanceof DurableUnreachable) return muxUnreachable(err.detail);
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    return this.answerOutcome(reply);
+  }
+
+  /** What one reply to an answer means (WIRE.md sections 3 and 7.3). */
+  private answerOutcome(reply: DurableReply): MuxOutcome<MuxAnswerResult> {
+    if (reply.status === 200) {
+      const parsed = parseAnswerReply(reply.text);
+      // A 200 the adapter cannot read may have closed the ask. Its outcome is unknown.
+      if (parsed === null) return muxOk({ kind: "unknown", detail: "unreadable answer reply" });
+      return muxOk({ kind: parsed.result, replayed: parsed.replayed });
+    }
+    if (reply.status >= 500 && reply.status !== 503) {
+      return muxOk({ kind: "unknown", detail: `program answered ${String(reply.status)}` });
+    }
+    const problem = parseProblem(reply.text);
+    if (reply.status === 409 && problem.code === "stale") {
+      const ask = parseStaleAsk(reply.text);
+      return muxOk({ kind: "stale", ask: ask === null ? null : askForWire(ask) });
+    }
+    if (reply.status === 404 && problem.code === "no-such-pane") return muxGone("The conversation is not in the program's layout.");
+    // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
+    if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
+      return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
+    }
+    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   private gapLeft(): number {
