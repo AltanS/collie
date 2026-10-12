@@ -32,7 +32,7 @@ describe("the side panel's signs", () => {
 
   it("does not crop the panel pane while the panel stays above the editor", () => {
     const lines = load("pi--omo-v5130-panel-idle.txt");
-    expect(piView(lines)).toEqual({ lines, cropped: false });
+    expect(piView(lines)).toEqual({ lines, cropped: false, column: null });
     expect(piAdapter.composerPrompt?.(lines)).not.toBeNull();
   });
 
@@ -100,18 +100,39 @@ describe("the side panel's signs", () => {
 });
 
 describe("a cropped screen", () => {
-  it.each(PANEL)("%s binds nothing: the bridge matches whole screen rows", (name) => {
+  it.each(PANEL)("%s binds no composer write: the editor's bound prompt is whole rows", (name) => {
     const lines = load(name);
-    expect(piView(lines).cropped).toBe(true);
+    expect(piView(lines)).toMatchObject({ cropped: true, column: name.includes("picker-tree") ? 93 : 91 });
     expect(piAdapter.composerPrompt?.(lines)).toBeNull();
   });
 
-  it("keeps a question beside the panel raw, with the Escape card, because no tap could bind", () => {
+  it("lifts a question beside the panel, bound to the columns left of it", () => {
     const lines = load("pi--omo-v5130-panel-question.txt");
     expect(piAdapter.modalOnScreen?.(lines)).toBe(true);
     expect(piAdapter.composerReady?.(lines)).toBe(false);
-    expect(piAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
-    expect(buildBlocks(lines, { agent: "pi" }).map((block) => block.kind)).toContain("unread-dialog");
+    const blocks = buildBlocks(lines, { agent: "pi" });
+    expect(blocks.map((block) => block.kind)).toEqual(["raw", "prompt-select"]);
+    const card = blocks[1]!;
+    if (card.kind !== "prompt-select") throw new Error("no card");
+    const model = card.prompt;
+    expect(model.bindColumns).toEqual({ start: 0, end: 91 });
+    expect(model.question).toBe("Pick a color?");
+    // OmO's `1-9 select`: the printed digit alone (.adr/0098, plan b), and the footer's Escape.
+    expect(model.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Red", ["1"]],
+      ["Green", ["2"]],
+      ["Cancel", ["Escape"]],
+    ]);
+    // Nothing of the panel reaches the region, the card's rows, or the question.
+    for (const signed of model.signature.split("\n")) expect(signed.length).toBeLessThanOrEqual(91);
+    expect(model.signature).not.toMatch(/MEMORY|CONTEXT|TOOLS|facts/);
+    for (const line of card.lines) expect(text(line).length).toBeLessThanOrEqual(91);
+  });
+
+  it("binds the same question without a range when no panel is beside it", () => {
+    const blocks = piAdapter.buildBlocks(load("pi--omo-v5130-plain-question.txt"));
+    const card = blocks.find((block) => block.kind === "prompt-select");
+    expect(card?.kind === "prompt-select" ? card.prompt.bindColumns : "none").toBeUndefined();
   });
 
   it("keeps the screen's own rows on the mirror", () => {

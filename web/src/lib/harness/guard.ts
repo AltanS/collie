@@ -12,6 +12,7 @@ import { fetchPane, textBeforeLastSend } from "../api";
 import { describeThrownError } from "../api-error-message";
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
+import type { ColumnRange } from "../column-range";
 import type { Scope } from "../scope";
 
 /**
@@ -38,7 +39,7 @@ export type ActionResult =
  * failure, and no call site has to reason about truthiness to tell the two apart.
  */
 export type GuardOutcome =
-  | { ok: true; region: string; styled?: string }
+  | { ok: true; region: string; styled?: string; columns?: ColumnRange }
   | { ok: false; result: ActionResult };
 
 /** Test seam for the verification polls' pacing. */
@@ -55,6 +56,9 @@ type Detect<M> = (lines: StyledLine[]) => M | null;
 type RegionOf<M> = (model: M) => string;
 /** The canonical styled lines a model binds its write to, for a grammar whose pointer is a style. */
 type StyledOf<M> = (model: M) => string | undefined;
+/** The display columns of each row a model binds its write to, when not the whole row
+ *  (`PromptModel.bindColumns`, lib/column-range.ts). */
+type ColumnsOf<M> = (model: M) => ColumnRange | undefined;
 
 /** One fresh read + re-derivation. Returns the model (null = no dialog on screen). */
 export async function readModel<M>(
@@ -74,7 +78,8 @@ export async function readModel<M>(
  * Returns a {@link GuardOutcome}: `{ ok: false, result }` when the guard refused (`"changed"`) or
  * the read failed, and `{ ok: true, region }` when it passed, carrying the verified region (via
  * `regionOf`) that the caller binds to its write, plus `styled` (via `styledOf`) when the model
- * carries a style-only state the bridge must bind as well (ADR 0080 point 7).
+ * carries a style-only state the bridge must bind as well (ADR 0080 point 7), and `columns` (via
+ * `columnsOf`) when the model was read from a column range of its rows (lib/column-range.ts).
  *
  * The region the caller gets back is the one derived from THIS fresh read, so it describes the pane
  * as of a moment ago, not as of the render the user tapped. That is deliberate: the client guard has
@@ -94,6 +99,7 @@ export async function entryGuard<M>(
   equals: (a: M, b: M) => boolean,
   regionOf: RegionOf<M>,
   styledOf?: StyledOf<M>,
+  columnsOf?: ColumnsOf<M>,
 ): Promise<GuardOutcome> {
   let fresh;
   try {
@@ -117,8 +123,13 @@ export async function entryGuard<M>(
   }
   const region = regionOf(fresh.model);
   const styled = styledOf?.(fresh.model);
-  // Assigned, never conditionally spread: a model with no style-only state binds `region` alone.
-  return styled === undefined ? { ok: true, region } : { ok: true, region, styled };
+  const columns = columnsOf?.(fresh.model);
+  // Assigned, never conditionally spread: a model with no style-only state and no column range binds
+  // `region` alone.
+  const outcome: Extract<GuardOutcome, { ok: true }> = { ok: true, region };
+  if (styled !== undefined) outcome.styled = styled;
+  if (columns !== undefined) outcome.columns = columns;
+  return outcome;
 }
 
 /**

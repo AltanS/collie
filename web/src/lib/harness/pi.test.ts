@@ -35,11 +35,12 @@ describeAdapterConformance(piAdapter, {
 
 describe("pi adapter routing", () => {
   it("lifts every question screen the corpus proves, and no fewer", () => {
-    expect(lifted).toHaveLength(39);
+    expect(lifted).toHaveLength(40);
   });
 
   it.each([
     ["pi--omo-v5130-single-described.txt", "prompt-select"],
+    ["pi--omo-v5130-panel-question.txt", "prompt-select"],
     ["pi--v0871-question-single.txt", "prompt-select"],
     ["pi--v110-questionnaire-submit-ready.txt", "wizard"],
   ])("lifts %s through the public pi dispatch", (name, kind) => {
@@ -61,7 +62,6 @@ describe("pi adapter routing", () => {
     "pi--omo-v5130-picker-tree.txt",
     "pi--omo-v5130-picker-resume.txt",
     "pi--omo-v5130-panel-picker-tree.txt",
-    "pi--omo-v5130-panel-question.txt",
     "pi--v110-stock-picker-resume.txt",
     "pi--v110-stock-picker-tree.txt",
   ])("offers only the printed Escape key on the unmodelled %s", (name) => {

@@ -21,7 +21,8 @@ and the live probes.
 Raw, with the Escape card: every multi-select (`[ ]` rows, or a footer that gives Space a tick or a
 toggle), a pointer on the free-text row, every inline answer editor (`Enter to submit • Esc to go
 back`), an incomplete Submit or Review page (`Unanswered: …`, `Enter goes to the first unanswered`),
-every picker (below), and a question beside OmO's side panel (below).
+every picker (below), and a Submit page beside OmO's side panel (below). A question beside the
+panel lifts, bound to the columns left of it (below).
 
 A dialog quoted in agent prose or a tool result stays prose (`pi--prose-quoted-*`). The tail
 decides: the bottom rule must have one to four status rows under it and nothing else, every one
@@ -133,11 +134,24 @@ every row at W when a rule runs straight into text, or when a row of the frame a
 to W and then carries text. W counts only when it is the run of the tail frame's own bottom rule and
 the sign is a row of that frame: agent output can print a rule straight into text too (a markdown
 heading), and that must not crop the real frame (`panel.test.ts`). Windows ConPTY is not verified. Probed live 2026-10-12 at 125 columns: an idle send, a draft read back
-without panel text, a `/` command. The panel ticks (`elapsed 1m21`), so nothing read from a cropped
-screen is bound: the write is unbound and Enter still waits for the read-back, and a question there
-stays raw with the Escape card, because the bridge matches whole screen rows and would refuse every
-tap. On an 18-row pane a picker pushes the bottom rule off the screen; that screen reads as nothing
-and a send is refused.
+without panel text, a `/` command. The panel ticks (`elapsed 1m21`), so the editor's bound prompt,
+which is whole rows, binds nothing there: the write is unbound and Enter still waits for the
+read-back. On an 18-row pane a picker pushes the bottom rule off the screen; that screen reads as
+nothing and a send is refused.
+
+A question beside the panel lifts and binds to the columns it was read from, 0 to W
+(`PromptModel.bindColumns`, `web/src/lib/column-range.ts`). The phone sends them as
+`expected_columns`, and the bridge cuts every row of its fresh read to the same columns before it
+compares. So the panel's clock does not refuse a tap, and a change in the dialog does, the title's
+countdown included. A Submit page beside the panel has no capture and stays raw. **Probed live
+2026-10-12** with OmO 5.1.30 in fullscreen mode in the tap rig, a 120 by 24 pane, the panel on
+(`side_panel.min_columns: 100`, because the rig's pane is 120 columns wide): the card read
+`Red=1`, `Green=2`, `Cancel=Escape` with columns 0 to 87. The model was read, then the panel
+ticked (`elapsed 1m37` to `1m40`). A whole-row binding of that region was refused (`not_found`),
+and the real `submitPromptOption` with the same stale model sent `2`: OmO recorded `Color: Green`,
+and the audit line carries the columns. A first attempt was refused at entry, correctly, because
+the title's countdown went from `30m` to `29m` between the read and the tap. On a 20-row pane the
+same question lost its bottom rule off the screen and read as nothing, like the picker above.
 
 ## OmO's question banner
 
@@ -155,5 +169,6 @@ Nothing is lost or sent elsewhere, so the banner is left as it is: a ready edito
 - Multi-select on any pi screen. The only evidence for a Space-then-Enter recipe is the PR 397
   extension, and OmO's Enter toggles. It stays raw until a published extension proves the recipe.
 - OmO with several questions, or with an answered question.
-- A question beside OmO's side panel: it needs the bridge to bind to cropped rows.
+- A Submit page or a walked question beside OmO's side panel: no capture. Only OmO's one-question
+  digit card is proven there.
 - A picker taller than the pane, which pushes the bottom rule off the screen.

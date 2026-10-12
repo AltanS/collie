@@ -7,12 +7,13 @@
 //
 // Types + the pure IDENTITY COMPARATOR, no detection and no harness conventions. Claude's reference
 // detector is harness/claude/prompt-select.ts. This module imports nothing at runtime, so
-// `lib/blocks.ts` can re-export it without a cycle. Its one import is the TYPE of a styled segment
-// from `lib/ansi.ts`, a leaf that imports neither blocks.ts nor harness/, so not even a type-level
-// cycle exists: {@link PromptSubjectLine} spells a StyledLine's shape over it instead of importing
-// StyledLine from blocks.ts.
+// `lib/blocks.ts` can re-export it without a cycle. Its two imports are TYPES: a styled segment from
+// `lib/ansi.ts` and a column range from `lib/column-range.ts`, leaves that import neither blocks.ts
+// nor harness/, so not even a type-level cycle exists: {@link PromptSubjectLine} spells a
+// StyledLine's shape over the first instead of importing StyledLine from blocks.ts.
 
 import type { AnsiSegment } from "../ansi";
+import type { ColumnRange } from "../column-range";
 
 /**
  * One row of a dialog's SUBJECT ({@link PromptModel.subject}), styles kept. Structurally a
@@ -166,6 +167,19 @@ export interface PromptModel {
    * walk moves. Absent for every grammar that draws its pointer as a glyph.
    */
   styledSignature?: string;
+  /**
+   * The display columns of the region's rows that {@link signature} was read from, when that is not
+   * the whole row (`lib/column-range.ts`). Set ONLY by a grammar that reads its dialog from part of
+   * each row because something beside it on the same rows moves on its own: Oh My Pi's side panel,
+   * which ticks a clock beside the dialog (harness/pi/panel.ts). The phone sends it as
+   * `expected_columns` beside the region, and the bridge cuts every row of its fresh read to the same
+   * columns before it compares, so a change outside the range does not refuse the tap and a change
+   * inside it does. `signature` (and `styledSignature`) must then hold exactly those columns of each
+   * row. Absent means whole rows, which every other grammar binds: nothing changes for them, and an
+   * older bridge that ignores the field compares whole rows and refuses the tap, which fails closed.
+   * `identityDiff` compares it: a model that gained, lost or moved its range is another reading.
+   */
+  bindColumns?: ColumnRange;
 }
 
 /**
@@ -238,7 +252,8 @@ function firstLineDiff(a: string, b: string): string {
  * `changed` and hid a grammar defect until a live test:
  *
  *   `family` · `question` · `coreSignature` (with the first differing line, both lines cut to 120
- *   characters) · `feedback` · `options.length` · `clampedEnds` · `option[i].label` · `option[i].keys`
+ *   characters) · `feedback` · `options.length` · `clampedEnds` · `bindColumns` · `option[i].label` ·
+ *   `option[i].keys`
  *
  * Pure, and for a person reading a console: the strings are not UI text and are never translated.
  */
@@ -260,6 +275,9 @@ export function identityDiff(a: PromptModel, b: PromptModel): string | null {
   // A declared fact about the list, not a state: a model that gained or lost it is another
   // grammar's reading, and the commit batch the action layer builds from it would differ.
   if (a.clampedEnds !== b.clampedEnds) return "clampedEnds";
+  // The columns the bridge will compare: a range that appeared, vanished or moved means the screen's
+  // layout changed (OmO's side panel came, went or resized), and the binding would be another one.
+  if (!sameBindColumns(a.bindColumns, b.bindColumns)) return "bindColumns";
   // The arrow COUNT of a pointer walk is not compared (ADR 0080): a walk is a claim about where
   // the pointer stands, and the pointer is our own choreography's effect, which `coreSignature`
   // already blanks. `promptsEqual` still compares the byte-faithful `signature`, which carries
@@ -276,6 +294,13 @@ export function identityDiff(a: PromptModel, b: PromptModel): string | null {
     }
   }
   return null;
+}
+
+/** Two optional column ranges: absent equals only absent. Spelled here, not imported from
+ *  `lib/column-range.ts`, so this module keeps importing nothing at runtime. */
+function sameBindColumns(a: ColumnRange | undefined, b: ColumnRange | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.start === b.start && a.end === b.end;
 }
 
 /** Exact keystroke-plan equality — a label can map to a different digit across hidden-row layouts. */

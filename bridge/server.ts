@@ -105,6 +105,7 @@ import {
   type PromptBindingVerdict,
   type StyledOutcome,
 } from "./prompt-binding.ts";
+import { MAX_BIND_COLUMN, type ColumnRange } from "../web/src/lib/column-range.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, selectView, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
@@ -3877,6 +3878,8 @@ export async function replyPane(
   if (!expected.ok) return text("bad expected_prompt", 400);
   const styled = expectedStyled(fields, expected.present);
   if (!styled.ok) return text("bad expected_styled", 400);
+  const columns = expectedColumns(fields, expected.present);
+  if (!columns.ok) return text("bad expected_columns", 400);
   // `text`/`submit` are CHECKED, not assumed. They used only to be declared string/boolean, so a
   // body that lied handed a non-string to `pane.send_text` (herdr refused it one layer down) or
   // made `submit ?? true` follow a truthiness path nobody wrote. A malformed write is refused here,
@@ -3887,7 +3890,7 @@ export async function replyPane(
   const submit = fields.submit ?? true;
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -3958,11 +3961,13 @@ export async function keysPane(
   if (!expected.ok) return text("bad expected_prompt", 400);
   const styled = expectedStyled(fields, expected.present);
   if (!styled.ok) return text("bad expected_styled", 400);
+  const columns = expectedColumns(fields, expected.present);
+  if (!columns.ok) return text("bad expected_columns", 400);
   const keys = Array.isArray(fields.keys) ? fields.keys.filter((k): k is string => typeof k === "string") : [];
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -4038,12 +4043,37 @@ function expectedStyled(body: JsonObject, promptPresent: boolean): ExpectedStyle
   return { ok: true, value };
 }
 
+type ExpectedColumns = { ok: true; value: ColumnRange | undefined } | { ok: false };
+
+/**
+ * The optional `expected_columns` body field: `{ "start": s, "end": e }`, the display columns of each
+ * row of `expected_prompt` (`PromptModel.bindColumns`, web/src/lib/column-range.ts). The fresh read is
+ * cut to those columns before it is compared, so something that moves on its own beside the region
+ * (Oh My Pi's side panel) does not refuse the tap. Like `expected_styled`, it refines
+ * `expected_prompt` and never replaces it, so alone it is malformed, and so is a range that is not
+ * whole numbers with `0 <= start < end <= 4096`. Absent = `{ ok: true, value: undefined }`: whole rows.
+ */
+function expectedColumns(body: JsonObject, promptPresent: boolean): ExpectedColumns {
+  if (!Object.prototype.hasOwnProperty.call(body, "expected_columns")) {
+    return { ok: true, value: undefined };
+  }
+  const range = asJsonRecord(body.expected_columns);
+  if (!promptPresent || range === null) return { ok: false };
+  const { start, end } = range;
+  if (typeof start !== "number" || typeof end !== "number") return { ok: false };
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return { ok: false };
+  if (start < 0 || start >= end || end > MAX_BIND_COLUMN) return { ok: false };
+  // A fresh object: only the two numbers the check reads reach it and the audit line.
+  return { ok: true, value: { start, end } };
+}
+
 type PromptBindingCheck =
   | {
       ok: true;
       // `styled` is present only when the phone sent `expected_styled`: `checked`, or
-      // `skipped_unknown_version` when the text check alone decided (ADR 0080 point 7).
-      audit: { checked: true; passed: true; expected: string; styled?: StyledOutcome };
+      // `skipped_unknown_version` when the text check alone decided (ADR 0080 point 7). `columns` is
+      // present only when the phone sent `expected_columns`.
+      audit: { checked: true; passed: true; expected: string; styled?: StyledOutcome; columns?: ColumnRange };
     }
   | {
       ok: false;
@@ -4056,6 +4086,7 @@ type PromptBindingCheck =
         passed: false;
         expected: string;
         reason: Extract<PromptBindingVerdict, { ok: false }>["reason"] | "read_failed";
+        columns?: ColumnRange;
       };
     };
 
@@ -4086,6 +4117,7 @@ async function checkPromptBinding(
   paneId: string,
   expected: string,
   expectedStyledLines?: string,
+  columns?: ColumnRange,
 ): Promise<PromptBindingCheck> {
   let fresh: MuxGrid;
   try {
@@ -4119,14 +4151,18 @@ async function checkPromptBinding(
   // before the two are compared. The mask is deterministic and the same width, so a prompt with no
   // secret in it compares exactly as before, and one with a secret still matches itself.
   const freshText = cfg.redact ? redactAnsi(fresh.text) : fresh.text;
-  const result = verifyPromptBinding(freshText, expected, expectedStyledLines);
+  // With `expected_columns`, both checks run on the read cut to those columns (verifyPromptBinding).
+  const result = verifyPromptBinding(freshText, expected, expectedStyledLines, columns);
   if (!result.ok) {
-    return {
-      ok: false,
-      ...apiError("prompt_changed"),
-      status: 409,
-      audit: { checked: true, passed: false, expected, reason: result.reason },
+    const refused: Extract<PromptBindingCheck, { ok: false }>["audit"] = {
+      checked: true,
+      passed: false,
+      expected,
+      reason: result.reason,
     };
+    // Assigned, never conditionally spread: a binding without `expected_columns` records no `columns` key.
+    if (columns !== undefined) refused.columns = columns;
+    return { ok: false, ...apiError("prompt_changed"), status: 409, audit: refused };
   }
 
   // This is a mitigation, not a guarantee. The re-read and the send_keys are two separate herdr
@@ -4141,6 +4177,7 @@ async function checkPromptBinding(
   const passed: Extract<PromptBindingCheck, { ok: true }>["audit"] = { checked: true, passed: true, expected };
   // Assigned, never conditionally spread: a bound send without `expected_styled` records no `styled` key.
   if (result.styled !== undefined) passed.styled = result.styled;
+  if (columns !== undefined) passed.columns = columns;
   return { ok: true, audit: passed };
 }
 

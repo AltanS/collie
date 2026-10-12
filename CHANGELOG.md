@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A question beside OmO's side panel now gets its buttons.** Chat lifts OmO's question card when the fullscreen side panel runs beside it, and a tap answers it. Collie checks only the columns the question sits in before it sends the key, so the panel's ticking clock does not refuse the tap, and a change in the question still does. The phone sends those columns to the bridge as a new optional `expected_columns` field beside `expected_prompt`; an older bridge ignores it and refuses the tap. Thanks @welldoingk (#412).
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed
