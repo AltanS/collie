@@ -1,6 +1,6 @@
 # Multiplexers
 
-Collie drives one multiplexer per install: Herdr, tmux, zellij, tuios or tern. Herdr is the default. This
+Collie drives one multiplexer per install: Herdr, tmux, zellij, tuios or tern. A sixth backend, `durable`, is not a multiplexer but a durable agent program with no screen (see [durable notes](#durable-notes)). Herdr is the default. This
 page covers pointing Collie at any of them, what each backend can answer, and the beacons Collie
 uses to detect an agent in a pane.
 
@@ -23,6 +23,7 @@ COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
 COLLIE_MUX=tern collie start
+COLLIE_MUX=durable COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock collie start
 ```
 
 Set the endpoint when the default target is not the one you want:
@@ -41,7 +42,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 
 | variable | value | what it means |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr`, `tern`, `tmux`, `zellij` or `tuios` | which backend this install drives |
+| `COLLIE_MUX` | `herdr`, `tern`, `tmux`, `zellij`, `tuios` or `durable` | which backend this install drives |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `work` | a socket NAME (`tmux -L work`), no `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | empty | tmux's own default server |
@@ -51,6 +52,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
+| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the PATH of the Unix socket a durable program listens on. Absolute, at most 107 bytes, no default |
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
@@ -156,6 +158,67 @@ Tern reports lifecycle events via `tern events`, enabling immediate topology cha
 
 Collie does not detect Tern on its own, as it does not detect tuios: name it with `COLLIE_MUX=tern`. Typed text longer than 128 KiB is refused, because it travels as one command-line argument.
 
+### durable notes
+
+> **Experimental.** The socket wire may change in any minor release. The wire is written down in
+> [`bridge/mux/durable/WIRE.md`](../bridge/mux/durable/WIRE.md), and a program and a Collie that do
+> not share a version get a named `incompatible` instead of a silent mismatch.
+
+`durable` is for a durable agent program: a program that runs agents, keeps their conversations and
+has no screen. Collie shows each of its conversations as a pane that has **Chat and nothing else**.
+There is no Terminal view, because there is no terminal. Two settings turn it on:
+
+```bash
+COLLIE_MUX=durable                                    # which backend this install drives
+COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock   # where the program listens
+```
+
+The program listens on that socket, and Collie dials it. Name the backend with `COLLIE_MUX=durable`:
+Collie does not detect it on its own. The path must be absolute and at most 107 bytes. Collie
+connects only when the socket is yours and has no group or other permission (mode `0600`), because
+there is no token on this wire and a private socket is the whole gate. Run Collie in a peer of its
+own beside any Herdr one, since one install mirrors one backend.
+
+What works:
+
+- The program's conversations in the list, in the merged crew list, and in Chat and History.
+- Questions the program asks, such as a tool that needs a yes or a no. You answer them from the
+  phone, and only a tap answers.
+- Send text, steer a turn that is running, and stop it.
+- The program's starters, as rows on the New page.
+
+What does not work:
+
+- Terminal, and typed keys. A durable pane has no screen to show or type into.
+- New tabs, renaming and closing tabs or workspaces. The program lays out its own conversations.
+- "Show in terminal". No pane is ever reported as focused.
+- Another user's program. The socket must belong to the user that runs Collie.
+- A program on another machine. The socket is local, and TCP is not supported. Run a Collie peer on
+  the machine with the program and join it to the crew.
+
+One Collie serves one backend, so a durable program needs a Collie of its own, even on a host that
+already runs Herdr. A bridge that drives two backends at once is not part of this release. In
+practice you run a second Collie instance on the same host with `COLLIE_MUX=durable`, give it its
+own port and state directory, and join it to the crew with `collie join` like any other peer. The
+steps for the second instance are in
+[Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host), and
+[Crew commands](crew.md#how-a-crew-is-wired) says what a peer is.
+
+When Collie cannot reach the program, the peer starts anyway and shows the program as unreachable,
+with a reason:
+
+| reason | what it means |
+| --- | --- |
+| `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 107 bytes` | the variable is missing or unusable |
+| `no socket at <path>` | nothing listens there yet |
+| `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |
+| `connection refused`, `no answer within <n>ms` | a stale socket file, or a program that hangs |
+| `incompatible: program speaks 2..3, this Collie speaks 1..1` | the version ranges do not meet. Update the older side |
+| `starting` | the program is up and says it is not ready yet. Collie asks again on the next poll |
+
+`collie doctor` checks the same things in four lines, `durable-env`, `durable-socket`,
+`durable-hello` and `durable-ready`, and names the failing check with a fix.
+
 ### tuios notes
 
 tuios reports agents itself, so it needs no beacon hooks:
@@ -194,7 +257,7 @@ Some things work differently on tuios:
 
 ```bash
 collie doctor   # the `mux` check names the multiplexer, its endpoint,
-                # and whether it answered
+                # and whether it answered (durable: the four `durable-*` checks)
 
 # `[bridge] mux: tmux · socket /run/user/1000/collie-tmux.sock`, printed at
 # startup; a multiplexer it cannot reach is one warning line more

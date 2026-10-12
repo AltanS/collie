@@ -233,6 +233,26 @@ Three traps worth naming, the first two found while writing this table:
   (`bridge/state-engine.ts`), which the phone renders quietly instead of as the pane's name. Nothing
   is dropped: a title is never deleted on a guess about who wrote it.
 
+### A multiplexer with no screen
+
+`durable` is the one adapter whose panes have no terminal behind them: a durable agent program owns its
+conversations and draws nothing ([ADR 0099](./.adr/0099-a-durable-program-is-a-mux-with-no-screen.md)).
+The contract names that case instead of bending the rules above for it, and the conformance suite
+holds it to what is written here.
+
+- **Focus.** There is no operator terminal to show a pane, so a world that cannot move focus out of
+  band (it leaves `focusOutOfBand` unset) owes the opposite of the focus rule: no pane is ever
+  reported `focused`, `setFocus` is not declared, and a call to it answers `unsupported`. Every other
+  adapter must supply `focusOutOfBand`, so the half that proves "the snapshot reports the terminal's
+  focus" still runs for all of them.
+- **Agent names.** A pane reports `durable` as its agent. The name is in
+  `MUX_SCREENLESS_AGENT_NAMES` ([`agents.ts`](./bridge/mux/agents.ts)) and not in `MUX_AGENT_NAMES`,
+  because that list is exactly the names the screen and journal readers answer to, and a durable pane
+  reaches neither: the bridge keeps its own log, and the phone shows Chat alone. `isMuxAgentName`
+  accepts both lists, so the name passes the floor without becoming a reader.
+- **The grid.** `paneGrid` is not declared, so the grid read answers `unsupported`, which is the
+  existing rule for a declined grid. Typed keys and new tabs answer the same way.
+
 ### Focus with a terminal and tuios-web attached
 
 **Probed on 2026-10-01 against tuios main (`c24cbc80`), because #321 asked for it.** Two clients

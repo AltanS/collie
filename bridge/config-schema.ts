@@ -390,7 +390,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: "",
-    doc: "The Unix socket a durable agent program listens on. Absolute, and private to your user.",
+    doc: "The Unix socket a durable agent program listens on, when COLLIE_MUX is durable. Absolute, and private to your user (mode 0600).",
   },
   {
     key: "mux_endpoint_tuios",
