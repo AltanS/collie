@@ -74,6 +74,7 @@ import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
+import { ControlReceiptStore } from "./durable/control.ts";
 import { AskPush, LOCAL_ASK_HOST } from "./durable/ask-push.ts";
 import { AskGuardStore } from "./durable/guard.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
@@ -735,6 +736,11 @@ await starterReceipts.load();
 // bridge/durable/answer.ts). Loading writes nothing: the file appears on the first answer.
 const answerReceipts = new AnswerReceiptStore(cfg.stateDir);
 await answerReceipts.load();
+
+// One receipt per send or abort on a durable pane, written before the control leaves (ADR 0101,
+// bridge/durable/control.ts). Loading writes nothing: the file appears on the first control.
+const controlReceipts = new ControlReceiptStore(cfg.stateDir);
+await controlReceipts.load();
 
 // The push guard for asks that travel as data (ADR 0100, bridge/durable/guard.ts), keyed on
 // (host, toolCallId), one memory for this machine's panes and for every peer's. Loading writes
@@ -2069,6 +2075,7 @@ const server = startServer({
   launchReceipts,
   starterReceipts,
   answerReceipts,
+  controlReceipts,
   worktreeChoices,
   addedLaunchers,
   recentRuns,

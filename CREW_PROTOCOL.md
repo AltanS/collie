@@ -256,6 +256,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/rename` | `POST …/rename` (`:283`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/focus` | `POST …/focus` | forwarded — additive-optional (§7.1). Shows the pane on **the peer machine's** terminal; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `POST` | `/crew/v1/pane/:id/answer` | `POST …/answer` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0100). A person's tap answers one open ask of a pane that carries asks as data, by `requestId`, `askId` and `revision`. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The answer receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as "this answer did not land", never as taken |
+| `POST` | `/crew/v1/pane/:id/send\|abort` | `POST …/send`, `POST …/abort` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0101). A send or a stop on a pane that takes guarded controls, by `requestId` and exactly one of `turnId` and `askId`: the turn the phone last showed, or an open ask. A stale name is refused with 409 and the current `turnId` and `askIds`, before anything reaches the program. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates them never calls them, and a peer that predates them answers 404, which the phone reads as stale, never as done |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/crew/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |
@@ -1265,6 +1266,10 @@ prevents (`web/src/lib/api.ts:201-203`).
   phone as the member listed them, and a lead that predates the fields passes them through the same
   way. The lead's push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question
   is shown and not pushed again.
+- **A pane may carry `turnId`** (additive-optional, §7.1, added 2026-10-12,
+  [ADR 0101](./.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md)): the newest turn
+  of a pane whose adapter takes guarded controls, which the phone sends back with a send or an abort.
+  The merge passes it through like `asks`, and a lead that predates it does the same.
 
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then

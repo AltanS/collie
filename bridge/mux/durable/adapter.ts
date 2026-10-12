@@ -12,18 +12,20 @@
 // conversation, run with the phone's request id passed through unchanged.
 // ASKS: the open ones per pane (`openAsks`) and the one POST that answers one (`answerAsk`, WIRE.md
 // section 7.3, ADR 0100).
-// WHAT IS NOT: sends and aborts. Those are later specs, and they read the clean view this class holds
-// (`program()`, `held()`).
+// CONTROLS (ADR 0101): the newest turn per pane (`paneTurn`), and the one POST that sends text to it or
+// stops it (`controlTurn`, WIRE.md section 7.4), after the name the phone sent is checked against the
+// latest listing (`namesCurrent`, bridge/durable/control.ts). A stale name never reaches the socket.
 //
-// A PERSON'S TAP ONLY. `answerAsk` has one caller, the answer route, which runs for a tap and has
-// written its receipt first. Nothing in this class calls it: not a poll, not a restart, not a
-// timeout. A POST whose fate is unknown is reported as unknown and never sent again from here.
+// A PERSON'S TAP ONLY. `answerAsk` and `controlTurn` each have one caller, a route that runs for a
+// tap and has written its receipt first. Nothing in this class calls them: not a poll, not a restart,
+// not a timeout. A POST whose fate is unknown is reported as unknown and never sent again from here.
 //
 // NOT READY IS NOT EMPTY. While the program lays out its panes after a start, or when it speaks no
 // version we do, the adapter is `unreachable` with a detail that says why. It never answers an
 // empty census for those cases. A program that is up with no panes is a real, empty snapshot.
 
 import { declareCapabilities } from "../capabilities.ts";
+import { namesCurrent, type TurnView } from "../../durable/control.ts";
 import { DurableLogs } from "../../durable/log.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
@@ -35,6 +37,7 @@ import {
   type MuxAck,
   type MuxAnswerResult,
   type MuxAdapter,
+  type MuxControlOutcome,
   type MuxCreatedPane,
   type MuxGrid,
   type MuxGridRequest,
@@ -54,8 +57,8 @@ import {
   type MuxWorktreeOpened,
   type MuxWorktreeScope,
 } from "../types.ts";
-import type { AnswerRequest, Ask } from "../../types.ts";
-import { byteLength, isWireId, REPLY_CAPS } from "./clean.ts";
+import type { AnswerRequest, Ask, ControlRequest } from "../../types.ts";
+import { byteLength, CAPS, isWireId, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
   DurableOutcomeUnknown,
@@ -72,13 +75,17 @@ import {
   incompatibleDetail,
   negotiateVersion,
   parseAnswerReply,
+  parseControlReply,
   parseHello,
   parseProblem,
   parseSnapshot,
   parseStaleAsk,
+  parseStaleControl,
   parseStarterReply,
   toMuxSnapshot,
   type DurableCaps,
+  type DurableControlBody,
+  type DurablePane,
   type DurableSnapshot,
 } from "./protocol.ts";
 import { DurableWatch, IDLE_POLL_MS } from "./watch.ts";
@@ -146,6 +153,20 @@ interface Reading {
 }
 
 const NO_SCREEN = "A durable conversation has no terminal screen.";
+const GONE = "The conversation is not in the program's layout.";
+
+/** What is current on a pane, for the control guard: its newest turn and its open asks. */
+function turnView(pane: DurablePane): TurnView {
+  return { turnId: pane.turnId, askIds: pane.openAsks.map((ask) => ask.id) };
+}
+
+/** Why the program cannot take this control, from its caps (WIRE.md section 7.4), or null when it can. */
+function controlUnsupported(caps: DurableCaps, request: ControlRequest): string | null {
+  if (request.act === "abort") return caps.abort ? null : "This program cannot stop a turn from here.";
+  if (!caps.send) return "This program takes no text from here.";
+  if (request.steer && !caps.steer) return "This program cannot steer a running turn.";
+  return null;
+}
 const NO_KEYS = "A durable conversation takes no typed keys.";
 const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and conversations.";
 
@@ -420,6 +441,97 @@ export class DurableMux implements MuxAdapter {
       return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
     }
     return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
+  }
+
+  // ── Controls (ADR 0101, WIRE.md section 7.4) ───────────────────────────────
+
+  /**
+   * The newest turn of one pane, from the last layout read. `undefined` when the pane is not in the
+   * layout or the program is not reachable, so the pane then carries no `turnId` field. Asks nothing
+   * of the program: it is called at serialise time.
+   */
+  paneTurn(paneId: string): string | undefined {
+    return this.program()?.snapshot.panes.find((pane) => pane.id === paneId)?.turnId;
+  }
+
+  /**
+   * Send text to, or stop, the turn the phone named. The route calls this after it has written its
+   * receipt, and only for a person's tap.
+   *
+   * In order: the id rule and the text cap (nothing leaves that the program would answer 400); a
+   * fresh read of the layout, inside the 250 ms floor; the program's caps (`unsupported`); the pane
+   * (`gone`); then the name against the layout (`stale`, WIRE.md section 7.4). Only a current name
+   * reaches the socket, as ONE POST, never retried here.
+   */
+  async controlTurn(paneId: string, request: ControlRequest): Promise<MuxControlOutcome> {
+    for (const id of [paneId, request.requestId, request.target.id]) {
+      if (!isWireId(id)) return { kind: "refused", detail: "An id in the request breaks the id rule." };
+    }
+    if (request.act === "send" && (request.text === "" || byteLength(request.text) > CAPS.sendText)) {
+      return { kind: "refused", detail: `The text must be 1 to ${String(CAPS.sendText)} bytes.` };
+    }
+    const read = await this.poll();
+    const program = read.ok ? this.program() : null;
+    if (program === null) return { kind: "unreachable", detail: read.ok ? STARTING : read.detail };
+    const unsupported = controlUnsupported(program.session.caps, request);
+    if (unsupported !== null) return { kind: "unsupported", detail: unsupported };
+    const pane = program.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return { kind: "gone", detail: GONE };
+    const view = turnView(pane);
+    if (!namesCurrent(request.target, view)) return { kind: "stale", ...view };
+
+    const body: DurableControlBody = { requestId: request.requestId };
+    if (request.act === "send") {
+      body.text = request.text;
+      if (request.steer) body.steer = true;
+    }
+    if (request.target.kind === "turn") body.turnId = request.target.id;
+    else body.askId = request.target.id;
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.post({
+        path: `/pane/${encodeURIComponent(paneId)}/${request.act}`,
+        version: program.session.version,
+        body,
+        timeoutMs: WRITE_TIMEOUT_MS,
+        maxBytes: REPLY_CAPS.post,
+      });
+    } catch (err) {
+      if (err instanceof DurableOutcomeUnknown) return { kind: "unknown", detail: err.detail };
+      // Nothing was sent. The next read starts with `hello` again (WIRE.md section 8.8).
+      this.current = null;
+      return { kind: "unreachable", detail: err instanceof Error ? err.message : String(err) };
+    }
+    return this.controlOutcome(paneId, reply);
+  }
+
+  /** What one reply to a send or abort means (WIRE.md sections 3 and 7.4). */
+  private async controlOutcome(paneId: string, reply: DurableReply): Promise<MuxControlOutcome> {
+    if (reply.status === 200) {
+      const parsed = parseControlReply(reply.text);
+      // A 200 the adapter cannot read may have acted. Its outcome is unknown.
+      if (parsed === null) return { kind: "unknown", detail: "unreadable control reply" };
+      return { kind: "ok", replayed: parsed.replayed };
+    }
+    if (reply.status >= 500 && reply.status !== 503) return { kind: "unknown", detail: `program answered ${String(reply.status)}` };
+    const problem = parseProblem(reply.text);
+    if (reply.status === 409 && problem.code === "stale") {
+      const stale = parseStaleControl(reply.text);
+      if (stale.turnId !== null) return { kind: "stale", turnId: stale.turnId, askIds: stale.askIds };
+      // A stale refusal that names no current turn: read the layout again and take it from there.
+      this.last = null;
+      await this.poll();
+      const pane = this.program()?.snapshot.panes.find((candidate) => candidate.id === paneId);
+      return pane === undefined ? { kind: "gone", detail: GONE } : { kind: "stale", ...turnView(pane) };
+    }
+    if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "The program cannot take this here." };
+    if (reply.status === 404 && problem.code === "no-such-pane") return { kind: "gone", detail: GONE };
+    // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
+    if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
+      const refusal = this.refusalFor(reply);
+      return { kind: "unreachable", detail: refusal?.detail ?? `program answered ${String(reply.status)}` };
+    }
+    return { kind: "refused", detail: `program answered ${String(reply.status)} ${problem.code}`.trim() };
   }
 
   private gapLeft(): number {

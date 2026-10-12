@@ -14,6 +14,12 @@
 // program refuses: a missing or out-of-range version is a 409, `ready: false` is a 503 on every route
 // but `hello`, and an unknown route is a 404.
 //
+// It takes `POST /pane/:id/send` and `/abort` as WIRE.md 7.4 and 7.5 describe them: exactly one of
+// `turnId` and `askId`, a stale name refused with the current turn and asks, the caps checked, a
+// repeat of a request id answered `replayed`. A send to an idle pane starts a new turn; an abort of a
+// running one appends no item, settles the input as unanswered with the reason `aborted`, closes the
+// open asks `by: "stopped"` and leaves the pane idle.
+//
 // It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
 // whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
 // a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
@@ -39,6 +45,7 @@ import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
   parseAnswerPost,
+  parseControlPost,
   parseEvents,
   type DurableAsk,
   type DurablePane,
@@ -169,6 +176,26 @@ export interface FakeAnswer {
   readonly requestId: string;
 }
 
+/** One send the fake took (WIRE.md section 7.4). A replay is not one. */
+export interface FakeSend {
+  readonly paneId: string;
+  readonly requestId: string;
+  readonly text: string;
+  readonly steer: boolean;
+  readonly turnId: string | null;
+  readonly askId: string | null;
+}
+
+/** One abort the fake took (WIRE.md sections 7.4 and 7.5). A replay is not one. */
+export interface FakeAbort {
+  readonly paneId: string;
+  readonly requestId: string;
+  readonly turnId: string | null;
+  readonly askId: string | null;
+  /** Whether something was running, so the abort stopped it. */
+  readonly stopped: boolean;
+}
+
 /** A way for a test to answer a route its own way. Returns nothing to let the fake answer. */
 export type FakeOverride = (path: string) => Response | Promise<Response> | undefined;
 
@@ -218,9 +245,15 @@ export interface AnswerDoc {
   replayed?: true;
 }
 
+/** What a send or an abort answers. */
+export interface ControlDoc {
+  ok: true;
+  replayed?: true;
+}
+
 function reply(
   status: number,
-  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc,
+  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc | ControlDoc,
   etag?: string,
 ): Response {
   const headers = new Headers({ "content-type": "application/json" });
@@ -263,6 +296,16 @@ export class FakeDurableProgram {
   readonly answers: FakeAnswer[] = [];
   /** The first reply per request id, and the pane it was for (WIRE.md section 7.6). */
   private readonly answered = new Map<string, { paneId: string; reply: AnswerDoc }>();
+
+  /** Every send the fake took, in order. A replay is not a second entry. */
+  readonly sends: FakeSend[] = [];
+  /** Every abort the fake took, in order. A replay is not a second entry. */
+  readonly aborts: FakeAbort[] = [];
+  /** The route and pane per request id a send or abort took (WIRE.md section 7.6). */
+  private readonly controlled = new Map<string, { act: "send" | "abort"; paneId: string }>();
+  /** The input running on a pane, from the send that started it. */
+  private readonly running = new Map<string, { inputId: string; requestId: string }>();
+  private turnsMinted = 0;
 
   private server: ReturnType<typeof Bun.serve> | null = null;
 
@@ -375,6 +418,7 @@ export class FakeDurableProgram {
   restartReasking(): void {
     this.restart();
     this.answered.clear();
+    this.controlled.clear();
     this.snapshot.panes = this.snapshot.panes.map((pane) => ({
       ...pane,
       openAsks: pane.openAsks.map((ask) => ({ ...ask, id: `${ask.id}-after-${this.epoch.slice(0, 8)}`, revision: 1 })),
@@ -449,6 +493,11 @@ export class FakeDurableProgram {
     if (request.method === "POST" && starter !== null) return this.handleStarter(decodeURIComponent(starter[1] ?? ""), body ?? "");
     const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
+    const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
+    if (request.method === "POST" && controlRoute !== null) {
+      const act = controlRoute[2] === "send" ? "send" : "abort";
+      return this.control(act, decodeURIComponent(controlRoute[1] ?? ""), body ?? "");
+    }
     return reply(404, { code: "not-found" });
   }
 
@@ -573,6 +622,68 @@ export class FakeDurableProgram {
     }
     this.answered.set(requestId, { paneId, reply: answer });
     return reply(200, answer);
+  }
+
+  /**
+   * `POST /pane/:id/send` and `/abort`, as WIRE.md section 7.4 says a program answers them: the body,
+   * then the pane, then the request id memory, then the caps, then the name.
+   */
+  private control(act: "send" | "abort", paneId: string, text: string): Response {
+    const post = parseControlPost(text, act);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null) return reply(400, { code: "bad-body" });
+    const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return reply(404, { code: "no-such-pane" });
+    const earlier = this.controlled.get(post.requestId);
+    if (earlier !== undefined) {
+      if (earlier.act !== act || earlier.paneId !== paneId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    const caps = this.hello.caps;
+    const able = act === "abort" ? caps.abort === true : caps.send === true && (!post.steer || caps.steer === true);
+    if (!able) return reply(409, { code: "not-supported" });
+    const current = post.turnId !== null ? post.turnId === pane.turnId : pane.openAsks.some((ask) => ask.id === post.askId);
+    if (!current) return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((ask) => ask.id) });
+
+    this.controlled.set(post.requestId, { act, paneId });
+    if (act === "send") this.takeSend(pane, post.requestId, post.text, post.steer, post.turnId, post.askId);
+    else this.takeAbort(pane, post.requestId, post.turnId, post.askId);
+    return reply(200, { ok: true });
+  }
+
+  private updatePane(paneId: string, change: Partial<DurablePane>): void {
+    this.snapshot.panes = this.snapshot.panes.map((pane) => (pane.id === paneId ? { ...pane, ...change } : pane));
+    this.touch();
+  }
+
+  /** A send: an idle pane starts a new turn; a running one takes a steer now, or a follow-up later. */
+  private takeSend(pane: DurablePane, requestId: string, text: string, steer: boolean, turnId: string | null, askId: string | null): void {
+    this.sends.push({ paneId: pane.id, requestId, text, steer, turnId, askId });
+    const busy = pane.state === "working" || pane.state === "waiting";
+    if (busy && !steer) return;
+    this.appendEvent(pane.id, { type: "item", item: { id: `user-${requestId}`, kind: "user", text } });
+    if (busy) return;
+    this.turnsMinted += 1;
+    this.running.set(pane.id, { inputId: `input-${requestId}`, requestId });
+    this.updatePane(pane.id, { turnId: `turn-${pane.id}-${String(this.turnsMinted)}`, state: "working" });
+    this.appendEvent(pane.id, { type: "state", state: "working" });
+  }
+
+  /**
+   * An abort (WIRE.md section 7.5): no item; the running input settles as unanswered with the reason
+   * `aborted`; every open ask closes `by: "stopped"`; the pane goes idle. Nothing running: nothing.
+   */
+  private takeAbort(pane: DurablePane, requestId: string, turnId: string | null, askId: string | null): void {
+    const busy = pane.state === "working" || pane.state === "waiting" || pane.openAsks.length > 0;
+    this.aborts.push({ paneId: pane.id, requestId, turnId, askId, stopped: busy });
+    if (!busy) return;
+    const input = this.running.get(pane.id);
+    this.running.delete(pane.id);
+    const settled: FakeEvent = { type: "settled", inputId: input?.inputId ?? `input-${pane.turnId}`, status: "unanswered", reason: "aborted" };
+    this.appendEvent(pane.id, input === undefined ? settled : { ...settled, requestId: input.requestId });
+    for (const ask of pane.openAsks) this.appendEvent(pane.id, { type: "ask-closed", askId: ask.id, by: "stopped" });
+    this.updatePane(pane.id, { openAsks: [], state: "idle" });
+    this.appendEvent(pane.id, { type: "state", state: "idle" });
   }
 
   /** Stop listening and remove the socket and its directory. Idempotent. */

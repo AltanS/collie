@@ -73,6 +73,10 @@ class StubAdapter implements MuxAdapter {
    *  whose panes have a screen. */
   openAsks?: MuxAdapter["openAsks"];
   answerAsk?: MuxAdapter["answerAsk"];
+  /** The two control methods (ADR 0101), when a case gives them. Absent by default, like every
+   *  adapter whose panes have a screen. */
+  paneTurn?: MuxAdapter["paneTurn"];
+  controlTurn?: MuxAdapter["controlTurn"];
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -273,6 +277,8 @@ describe("a decorator preserves the adapter's whole surface", () => {
     startStarter: true,
     openAsks: true,
     answerAsk: true,
+    paneTurn: true,
+    controlTurn: true,
     typeText: true,
     sendKeys: true,
     renamePane: true,
@@ -312,6 +318,8 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.startStarter = (starterId) => Promise.resolve({ kind: "started", paneId: starterId, replayed: false });
     stub.openAsks = () => [];
     stub.answerAsk = () => Promise.resolve(muxOk({ kind: "taken", replayed: false }));
+    stub.paneTurn = () => "turn-1";
+    stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
     return stub;
   }
 
@@ -343,7 +351,8 @@ describe("a decorator preserves the adapter's whole surface", () => {
     expect("readLogicalText" in decorate(new StubAdapter(), [])).toBe(false);
     expect("readLogicalText" in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     // The ask methods too (ADR 0100): a screen adapter must never come out looking like it answers by id.
-    for (const field of ["openAsks", "answerAsk"]) {
+    // And the control methods (ADR 0101): a screen adapter must never come out refusing `/reply`.
+    for (const field of ["openAsks", "answerAsk", "paneTurn", "controlTurn"]) {
       expect(field in decorate(new StubAdapter(), [])).toBe(false);
       expect(field in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     }

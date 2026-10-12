@@ -8,11 +8,17 @@
 //   • `<stateDir>/durable-asks.json`, the push guard's memory (`readGuardFile`);
 //   • the asks on a peer's pane, which the lead's merge passes through as the member listed them,
 //     before the guard keys them (`keyableAsks`).
+//
+// Guarded controls (ADR 0101) add two more:
+//
+//   • the `POST /api/pane/:id/send` and `/abort` bodies (`readControlBody`);
+//   • `<stateDir>/control-receipts.json`, their receipts (`coerceControlReceipt`).
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import type { AnswerRequest, Ask } from "../types.ts";
+import type { AnswerRequest, Ask, ControlRequest, ControlTarget } from "../types.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import type { AnswerReceipt, AnswerState } from "./answer.ts";
+import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
 import type { GuardAsk, GuardEntry } from "./guard.ts";
 
 const STATES: ReadonlySet<string> = new Set(["pending", "taken", "too-late", "stale", "refused"]);
@@ -48,6 +54,62 @@ export function readAnswerBody(body: JsonValue | undefined): AnswerRequest | nul
   const request: AnswerRequest = { requestId, askId, revision, optionId };
   if (isText(note) && note !== "") request.note = note;
   return request;
+}
+
+/** The most text one send may carry, in UTF-8 bytes (WIRE.md section 6, `SendRequest.text`). */
+export const SEND_TEXT_MAX_BYTES = 32768;
+
+const CONTROL_STATES: ReadonlySet<string> = new Set(["pending", "ok", "stale", "refused"]);
+
+function isControlState(value: JsonValue | undefined): value is ControlState {
+  return typeof value === "string" && CONTROL_STATES.has(value);
+}
+
+/**
+ * What a control names. Exactly one of `turnId` and `askId`, each a non-empty string; both, neither,
+ * or a present field of another type is no name at all. The id rule is the adapter's to check.
+ */
+function readTarget(turnId: JsonValue | undefined, askId: JsonValue | undefined): ControlTarget | null {
+  const namesTurn = turnId !== undefined;
+  if (namesTurn === (askId !== undefined)) return null;
+  if (namesTurn) return isText(turnId) && turnId !== "" ? { kind: "turn", id: turnId } : null;
+  return isText(askId) && askId !== "" ? { kind: "ask", id: askId } : null;
+}
+
+/**
+ * A send or abort body, checked (ADR 0101). Every field is the phone's claim until this says
+ * otherwise. A send carries 1 to {@link SEND_TEXT_MAX_BYTES} bytes of text; an abort ignores any.
+ */
+export function readControlBody(act: ControlAct, body: JsonValue | undefined): ControlRequest | null {
+  const fields = asRecord(body);
+  if (fields === null) return null;
+  const { requestId, turnId, askId, text, steer } = fields;
+  if (!isRequestId(requestId)) return null;
+  const target = readTarget(turnId, askId);
+  if (target === null) return null;
+  if (act === "abort") return { act, requestId, target };
+  if (!isText(text) || text === "" || Buffer.byteLength(text, "utf8") > SEND_TEXT_MAX_BYTES) return null;
+  if (steer !== undefined && typeof steer !== "boolean") return null;
+  return { act, requestId, target, text, steer: steer === true };
+}
+
+/** One control receipt read off disk, or `null` when the entry is not one. */
+export function coerceControlReceipt(raw: JsonValue): ControlReceipt | null {
+  const r = asRecord(raw);
+  if (r === null) return null;
+  const { requestId, at, paneId, act, target, targetId, steer, textSha256, state, detail, reason, currentTurnId, currentAskIds } = r;
+  if (!isRequestId(requestId) || !isTime(at) || !isText(paneId) || !isText(targetId)) return null;
+  if (act !== "send" && act !== "abort") return null;
+  if (target !== "turn" && target !== "ask") return null;
+  if (!isControlState(state)) return null;
+  const receipt: ControlReceipt = { requestId, at, paneId, act, target, targetId, state };
+  if (typeof steer === "boolean") receipt.steer = steer;
+  if (isText(textSha256)) receipt.textSha256 = textSha256;
+  if (isText(detail)) receipt.detail = detail;
+  if (reason === "unsupported" || reason === "refused") receipt.reason = reason;
+  if (isText(currentTurnId)) receipt.currentTurnId = currentTurnId;
+  if (Array.isArray(currentAskIds)) receipt.currentAskIds = currentAskIds.filter(isText);
+  return receipt;
 }
 
 /** One answer receipt read off disk, or `null` when the entry is not one. */

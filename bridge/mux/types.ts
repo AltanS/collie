@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef } from "../journal/types.ts";
-import type { AgentStatus, AnswerRequest, Ask } from "../types.ts";
+import type { AgentStatus, AnswerRequest, Ask, ControlRequest } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -675,6 +675,23 @@ export interface MuxAdapter {
    */
   answerAsk?(paneId: string, answer: AnswerRequest): Promise<MuxOutcome<MuxAnswerResult>>;
 
+  /**
+   * The newest turn id of one pane, from the adapter's last listing (ADR 0101). OPTIONAL, with
+   * {@link controlTurn}: only an adapter whose panes take guarded controls has it (`durable`).
+   * `undefined` for a pane that carries no `turnId` field. Asks nothing new: it is called at
+   * serialise time.
+   */
+  paneTurn?(paneId: string): string | undefined;
+
+  /**
+   * Send text to, or stop, the turn the phone named (ADR 0101). OPTIONAL, with {@link paneTurn}:
+   * absent is the refusal the send and abort routes render, and the reason the reply and keys routes
+   * refuse such a pane. ONE CALLER: `POST /api/pane/:id/send` and `/abort`, which have written their
+   * receipt first. The adapter checks the name against its latest listing before anything leaves
+   * (`bridge/durable/control.ts`), and never retries.
+   */
+  controlTurn?(paneId: string, request: ControlRequest): Promise<MuxControlOutcome>;
+
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
 
@@ -779,6 +796,9 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
   return adapter.logo === undefined ? {} : { logo: adapter.logo };
 }
 
+/** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
+export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn";
+
 /**
  * The OPTIONAL methods, gathered the way {@link muxDataFields} gathers the optional data fields.
  *
@@ -787,8 +807,8 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
  */
 export function muxOptionalMethods(
   adapter: MuxAdapter,
-): Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk"> {
-  const methods: Pick<MuxAdapter, "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk"> = {};
+): Pick<MuxAdapter, MuxOptionalMethod> {
+  const methods: Pick<MuxAdapter, MuxOptionalMethod> = {};
   const readLogicalText = adapter.readLogicalText?.bind(adapter);
   if (readLogicalText !== undefined) methods.readLogicalText = readLogicalText;
   const listStarters = adapter.listStarters?.bind(adapter);
@@ -800,8 +820,29 @@ export function muxOptionalMethods(
   if (openAsks !== undefined) methods.openAsks = openAsks;
   const answerAsk = adapter.answerAsk?.bind(adapter);
   if (answerAsk !== undefined) methods.answerAsk = answerAsk;
+  // The two control methods travel together too (ADR 0101): an adapter that names turns takes controls.
+  const paneTurn = adapter.paneTurn?.bind(adapter);
+  if (paneTurn !== undefined) methods.paneTurn = paneTurn;
+  const controlTurn = adapter.controlTurn?.bind(adapter);
+  if (controlTurn !== undefined) methods.controlTurn = controlTurn;
   return methods;
 }
+
+/**
+ * What a program said to one send or abort (ADR 0101). `ok` is final. `stale` carries what is current
+ * (the pane's newest turn and its open asks), and nothing ran. `unknown` may or may not have landed:
+ * a timeout, a dropped connection or a 5xx after the request left. The rest say nothing ran:
+ * `unsupported` (the program cannot take this act), `refused` (a bad body, a reused request id),
+ * `gone` (no such pane) and `unreachable` (nothing was sent).
+ */
+export type MuxControlOutcome =
+  | { readonly kind: "ok"; readonly replayed: boolean }
+  | { readonly kind: "stale"; readonly turnId: string; readonly askIds: readonly string[] }
+  | { readonly kind: "unknown"; readonly detail: string }
+  | { readonly kind: "unsupported"; readonly detail: string }
+  | { readonly kind: "refused"; readonly detail: string }
+  | { readonly kind: "gone"; readonly detail: string }
+  | { readonly kind: "unreachable"; readonly detail: string };
 
 /**
  * What a program said to one answer (ADR 0100). `taken` and `too-late` are final. `stale` carries

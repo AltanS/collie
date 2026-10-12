@@ -64,7 +64,9 @@ export function crewRouteFor(pathname: string): string | null {
 const FORWARDABLE: readonly RegExp[] = [
   // `answer` (ADR 0100): an answer to an ask by id, a WRITE that reaches the member that owns the
   // pane, where its receipt lives. Additive-optional (§7.1): a member that predates it answers 404.
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer))?$/,
+  // `send` and `abort` (ADR 0101): a control that names the turn the phone saw, a WRITE to the member
+  // that owns the pane, where its receipt lives. Additive-optional the same way.
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/,
   // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
   // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).

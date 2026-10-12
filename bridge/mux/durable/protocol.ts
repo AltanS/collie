@@ -738,6 +738,91 @@ export function parseStaleAsk(text: string): DurableAsk | null {
   return ask === undefined ? null : readAsk(ask);
 }
 
+// ── send and abort ────────────────────────────────────────────────────────────
+
+/** What a 200 to `POST /pane/:id/send` or `/abort` said (WIRE.md section 4, `ControlReply`). */
+export interface DurableControlReply {
+  readonly replayed: boolean;
+}
+
+/** Decode a `ControlReply`, or null when the body is not one. */
+export function parseControlReply(text: string): DurableControlReply | null {
+  const root = decode(text);
+  if (!isRecord(root) || root.ok !== true) return null;
+  return { replayed: root.replayed === true };
+}
+
+/** What a 409 `stale` to a send or abort says is current (WIRE.md section 7.4). */
+export interface DurableStaleControl {
+  /** Null when the program sent none, or one that breaks the id rule. */
+  readonly turnId: string | null;
+  /** The open ask ids it listed, each under the id rule, at most the open ask cap. */
+  readonly askIds: readonly string[];
+}
+
+/** Decode the current turn and ask ids a 409 `stale` carries. */
+export function parseStaleControl(text: string): DurableStaleControl {
+  const root = decode(text);
+  if (!isRecord(root)) return { turnId: null, askIds: [] };
+  const list = root.askIds;
+  const askIds = isList(list) ? list.filter((id): id is string => isText(id) && isWireId(id)).slice(0, CAPS.openAsksPerPane) : [];
+  return { turnId: idOf(root, "turnId"), askIds };
+}
+
+/** The body the adapter writes for a send or an abort (WIRE.md section 4, `SendRequest`, `AbortRequest`). */
+export interface DurableControlBody {
+  requestId: string;
+  /** A send only. */
+  text?: string;
+  /** A send only, and only when true: absent is the wire's default, a follow-up. */
+  steer?: true;
+  /** Exactly one of `turnId` and `askId`. */
+  turnId?: string;
+  askId?: string;
+}
+
+/** A `SendRequest` or `AbortRequest` (WIRE.md section 4) as a program reads it off the socket. */
+export interface DurableControlPost {
+  readonly requestId: string;
+  readonly turnId: string | null;
+  readonly askId: string | null;
+  /** For a send. Empty for an abort. */
+  readonly text: string;
+  readonly steer: boolean;
+}
+
+/**
+ * The program's side of a send or abort body: `"bad-json"`, `null` for a body that breaks WIRE.md
+ * section 7.4 (no request id, both or neither of `turnId` and `askId`, a send with no text or one
+ * over its cap), or the fields. The test program reads the adapter's POST with this, so the body the
+ * adapter writes and the body a program reads are checked by one rule.
+ */
+export function parseControlPost(text: string, act: "send" | "abort"): DurableControlPost | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  // A reader treats `null` as absent (WIRE.md section 4).
+  const field = (key: string): Json | undefined => root[key] ?? undefined;
+  const requestId = field("requestId");
+  const turnId = field("turnId");
+  const askId = field("askId");
+  const steer = field("steer");
+  const body = field("text");
+  if (!isText(requestId)) return null;
+  // Exactly one of the two names, and it is text.
+  if ((turnId === undefined) === (askId === undefined)) return null;
+  if ((turnId !== undefined && !isText(turnId)) || (askId !== undefined && !isText(askId))) return null;
+  if (steer !== undefined && !isFlag(steer)) return null;
+  if (act === "send" && (!isText(body) || body === "" || byteLength(body) > CAPS.sendText)) return null;
+  return {
+    requestId,
+    turnId: isText(turnId) ? turnId : null,
+    askId: isText(askId) ? askId : null,
+    text: act === "send" && isText(body) ? body : "",
+    steer: steer === true,
+  };
+}
+
 /** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */
 export function askForWire(ask: DurableAsk): Ask {
   const wire: Ask = {

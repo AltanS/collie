@@ -865,4 +865,21 @@ describe("asks on a peer's pane", () => {
     });
     for (const p of merged.agents) expect("asks" in p).toBe(false);
   });
+
+  test("the lead's merge passes a pane's turnId through beside its asks (ADR 0101), and an old peer's pane has none", () => {
+    const durable = pane({ paneId: "conv-02", agent: "durable", status: "blocked", asks: [ask], turnId: "turn-02-a" });
+    const old = pane({ paneId: "w1:p1", status: "idle" });
+    const parsed = parsePeerSnapshot({ sessions: [session({ name: "default" })], agents: [durable, old], shellPanes: [] });
+    expect(parsed?.agents[0]?.turnId).toBe("turn-02-a");
+    const merged = mergeSnapshot(localBody(), {
+      self: { id: "lead", name: "lead" },
+      peers: [contribution({ state: state({ memberId: "laptop" }), body: parsed })],
+      now: NOW,
+    });
+    const fromPeer = merged.agents.find((p) => p.paneId === "conv-02");
+    expect(fromPeer?.host).toBe("laptop");
+    expect(fromPeer?.turnId).toBe("turn-02-a");
+    expect(fromPeer?.asks).toEqual([ask]);
+    expect("turnId" in (merged.agents.find((p) => p.paneId === "w1:p1") ?? {})).toBe(false);
+  });
 });

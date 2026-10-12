@@ -330,6 +330,9 @@ const PANE_WIRE_KEYS = {
   // every pane here and no golden byte moved.
   asks: true,
   moreAsks: true,
+  // Not a crew dimension either: the newest turn of a pane whose adapter takes guarded controls
+  // (ADR 0101). Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
+  turnId: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -467,6 +470,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "turnId",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",
@@ -636,7 +640,9 @@ describe("solo zero-tax — routes", () => {
       // gated on an authorised device and forwarded to the owning member like `changes`.
       // `answer` answers an ask by id (ADR 0100): a write, forwarded to the owning member, and only a
       // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer))?$/",
+      // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
+      // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/",
       // Which paths exist under the Files root (ADR 0088), asked in one batch for the pane view's
       // links: a read with the Files gate, one `lstat` per path, not forwarded across a crew link.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/exist$/",
@@ -1002,6 +1008,9 @@ const STATE_DIR_ENTRIES = [
   // The one-off lines a phone ran on this machine, newest first (ADR 0095). Written by use and by
   // nothing else: absent until the first one-off run that works.
   "commands-recent.json",
+  // One receipt per send or abort on a durable pane (ADR 0101), written before the control leaves.
+  // Written by use and by nothing else: absent until the first one from a phone.
+  "control-receipts.json",
   // The bridge's own log of a durable program's panes (ADR 0099), one file per pane inside this folder.
   // Written only by a bridge that drives `COLLIE_MUX=durable`: the factory that builds the writer is
   // never called for Herdr, tmux or zellij, so every other instance never has this folder.

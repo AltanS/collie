@@ -80,7 +80,8 @@ import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
 import { answerPane, memoryAnswerReceipts, NO_ANSWERS } from "./durable/answer.ts";
-import { withOpenAsks } from "./durable/pane-asks.ts";
+import { withOpenAsks, withTurn } from "./durable/pane-asks.ts";
+import { controlPane, memoryControlReceipts, NO_CONTROLS, NO_RAW_INPUT, rawInputRefusal } from "./durable/control.ts";
 import { DurableMux } from "./mux/durable/adapter.ts";
 import { DurableSocketClient } from "./mux/durable/client.ts";
 import { PairingStore, sha256Hex, type PairingIo } from "./pairing.ts";
@@ -4637,5 +4638,68 @@ describe("the answer route", () => {
     expect(reply).toEqual({ status: 409, body: { ok: false, outcome: "refused", reason: "unsupported", detail: NO_ANSWERS } });
     expect(receipts.get("0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c")).toBeUndefined();
     expect(audit).toEqual([]);
+  });
+});
+
+// ── Send and abort name the turn they saw (ADR 0101) ─────────────────────────
+describe("the send and abort routes", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+  const REQUEST_ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
+
+  test("send and abort: ride the pane grammar as writes that need a device, are not typed input, and cross a crew link", () => {
+    for (const action of ["send", "abort"]) {
+      expect(paneGateLevel(action)).toBe("write");
+      expect(isPaneInput(`/api/pane/conv-02/${action}`, "POST")).toBe(false);
+      expect(crewRouteFor(`/api/pane/conv-02/${action}`)).toBe(`pane/conv-02/${action}`);
+    }
+  });
+
+  test("send and abort: a Herdr pane, whose adapter takes no controls, gets the unsupported refusal and nothing is recorded", async () => {
+    const receipts = memoryControlReceipts();
+    const audit: AuditEntry[] = [];
+    const deps = { adapter: asMux({}), receipts, audit: { record: (entry: AuditEntry) => audit.push(entry) }, device: "pixel", session: "default" };
+    const sent = await controlPane("send", "w1:p1", { requestId: REQUEST_ID, text: "go", turnId: "t1" }, deps);
+    const stopped = await controlPane("abort", "w1:p1", { requestId: REQUEST_ID, turnId: "t1" }, deps);
+    for (const reply of [sent, stopped]) {
+      expect(reply).toEqual({ status: 409, body: { ok: false, outcome: "refused", reason: "unsupported", detail: NO_CONTROLS } });
+    }
+    expect(receipts.get(REQUEST_ID)).toBeUndefined();
+    expect(audit).toEqual([]);
+  });
+
+  test("reply and keys: a durable pane refuses both with `unsupported`, a Herdr pane keeps both as they are", () => {
+    const durable = withAgentHints(new DurableMux(new DurableSocketClient(undefined)), { hooksInstalled: () => false });
+    expect(durable.paneTurn).toBeInstanceOf(Function);
+    expect(durable.controlTurn).toBeInstanceOf(Function);
+    expect(rawInputRefusal(durable)).toEqual({ status: 409, body: { ok: false, outcome: "refused", reason: "unsupported", detail: NO_RAW_INPUT } });
+    const herdr = withAgentHints(asMux({}), { hooksInstalled: () => false });
+    expect("controlTurn" in herdr).toBe(false);
+    expect(rawInputRefusal(herdr)).toBeNull();
+    // The refusal sits in front of both raw routes, so neither handler is reached for such a pane.
+    const refusal = src.indexOf("const refusal = rawInputRefusal(herdr);");
+    expect(refusal).toBeGreaterThan(0);
+    expect(refusal).toBeLessThan(src.indexOf("await replyPane(herdr, cfg, paneId, req, audit_, device, session)"));
+    expect(refusal).toBeLessThan(src.indexOf("await keysPane(herdr, cfg, paneId, req, audit_, device, session)"));
+  });
+
+  test("turnId: no existing pane gains one; the durable adapter names none before the program was read", () => {
+    const wire: PaneWire = {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "collie",
+      workspaceNumber: 1,
+      tabId: "w1:t1",
+      agent: "claude",
+      status: "idle",
+      cwd: "/home/you",
+      focused: false,
+      kind: "agent",
+    };
+    const herdr = withAgentHints(asMux({}), { hooksInstalled: () => false });
+    expect(withTurn(wire, herdr)).toBe(wire);
+    const durable = withAgentHints(new DurableMux(new DurableSocketClient(undefined)), { hooksInstalled: () => false });
+    expect(withTurn(wire, durable)).toBe(wire);
+    // The snapshot puts it beside the asks, through the same serialise-time call.
+    expect(src).toContain("withTurn(withOpenAsks(toPaneWire(");
   });
 });

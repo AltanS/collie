@@ -27,6 +27,8 @@ export const CAPS = {
   /** Item `ts`: an ISO 8601 stamp. Over the cap it reads as absent. */
   itemTs: 40,
   settledReason: 128,
+  /** `SendRequest.text`: 1 to this many bytes. The adapter refuses before it sends. */
+  sendText: 32768,
   /** Not in the table. The ask kind is a short word. */
   askKind: 32,
   /** Not in the table. The pane state is a short word. */

@@ -221,6 +221,15 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
   asks?: Ask[];
   /** How many open asks are past the five listed in {@link asks}. Absent when none are. */
   moreAsks?: number;
+  /**
+   * The newest turn of this pane: the one running now, or the last one that ran (ADR 0101).
+   *
+   * ONE PRODUCER, like {@link asks}: only a pane from an adapter that takes guarded controls carries
+   * it (the `durable` adapter, `MuxAdapter.paneTurn`). The phone sends it back unchanged as the
+   * `turnId` of a send or an abort, so the bridge can refuse a control aimed at a turn the person did
+   * not see. Absent on every other pane and from every older bridge.
+   */
+  turnId?: string;
 };
 
 /** What a person may choose on an ask (WIRE.md section 4). */
@@ -293,6 +302,55 @@ export type AnswerResponse =
   | { ok: true; outcome: "taken"; replayed?: true }
   | { ok: false; outcome: "too-late"; replayed?: true }
   | { ok: false; outcome: "stale"; ask?: Ask; replayed?: true }
+  | { ok: false; outcome: "unknown"; detail: string }
+  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused"; detail: string; replayed?: true };
+
+/**
+ * `POST /api/pane/:id/send`'s body (ADR 0101). Exactly one of `turnId` and `askId`: the turn the
+ * phone last showed, or an open ask it answers inside. `requestId` is a UUID the phone mints per
+ * intent; a retry of the same intent sends the same one. `text` is 1 to 32768 UTF-8 bytes.
+ */
+export interface SendRequest {
+  requestId: string;
+  text: string;
+  /** While a turn runs: join it (true) or wait for the next turn (false, the default). */
+  steer?: boolean;
+  turnId?: string;
+  askId?: string;
+}
+
+/** `POST /api/pane/:id/abort`'s body (ADR 0101). Exactly one of `turnId` and `askId`. */
+export interface AbortRequest {
+  requestId: string;
+  turnId?: string;
+  askId?: string;
+}
+
+/** What a control names: the turn the phone saw, or an open ask. Never both, never neither. */
+export type ControlTarget = { readonly kind: "turn"; readonly id: string } | { readonly kind: "ask"; readonly id: string };
+
+/** A send or an abort, as the bridge reads it off the phone's body and hands it to the adapter. */
+export type ControlRequest =
+  | { readonly act: "send"; readonly requestId: string; readonly target: ControlTarget; readonly text: string; readonly steer: boolean }
+  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget };
+
+/**
+ * What `POST /api/pane/:id/send` and `/abort` answer, one shape for both (ADR 0101).
+ *
+ *  • `ok` (200): the program accepted the act. It answers when it took it, not when the turn ends.
+ *  • `stale` (409): the turn named is not the newest one, or the ask is not open. Nothing ran.
+ *    `turnId` and `askIds` are what is current, so the phone can reload and show what changed.
+ *  • `unknown` (504): the act may or may not have reached the program. The receipt stays, so
+ *    "Try again" with the SAME request id replays rather than acts twice.
+ *  • `refused` (409): nothing ran, and the same request would be refused again. `reason` is the
+ *    mux refusal's word (ADR 0022): `unsupported` when this pane or program cannot take the act.
+ *
+ * `replayed: true` marks an outcome read off the receipt of an earlier request with this id, or a
+ * program that said it saw this request id before.
+ */
+export type ControlResponse =
+  | { ok: true; outcome: "ok"; replayed?: true }
+  | { ok: false; outcome: "stale"; turnId: string; askIds: string[]; replayed?: true }
   | { ok: false; outcome: "unknown"; detail: string }
   | { ok: false; outcome: "refused"; reason: "unsupported" | "refused"; detail: string; replayed?: true };
 
