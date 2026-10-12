@@ -63,6 +63,12 @@ Join the peer to your crew like any other machine: `collie crew invite` on the l
 [Crew commands](../../docs/crew.md#two-machines-one-crew). The peer then shows up in the list as a
 machine of its own, beside your Herdr peer. With no crew, pair the phone with this instance directly.
 
+A member's name defaults to the host name. If this host already runs the lead or a Herdr peer, name
+the durable peer so the host chip can tell them apart:
+`COLLIE_INSTANCE=durable collie crew join <lead-address> --label durable`. (`collie crew rename`
+names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows no ask card, only
+"needs you". Update the lead first.
+
 ## What you see on the phone
 
 - **The conversations.** The workspace is "Triage". Tickets are in the tab "Inbox", and the helper a
