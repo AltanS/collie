@@ -793,5 +793,35 @@
     "fixture": "claude-lab--menu-resume-picker-v2296--w82.txt",
     "detector": "prompt-select",
     "region": "  Resume session\n  ╭────────────────────────────────────────────────────────────────────────────╮\n  │ ⌕ Search…                                                                  │\n  ╰────────────────────────────────────────────────────────────────────────────╯\n    project\n\n  ❯ capture lab\n    15 seconds ago · master · 301.8KB\n\n    Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to\n    preview · Ctrl+R to rename · Type to search · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--ask-single-v2296--w40.txt",
+    "detector": "prompt-select",
+    "region": " ▐▛███▛█   Claude Code v2.1.296\n▝▜██████▀  Sonnet 5.5 · Claude Max\n ▝▝   ▝▝   ~/…/m51-02-lab/project\n\n▎ [✻] [✻] [✻] · Share Claude Code and\n▎ earn $10 in usage credits · /passes\n\n❯ Use the AskUserQuestion tool now to   \n  ask exactly one single-choice         \n  question: 'Which colour?' with        \n  options Red and Blue. Do nothing      \n  else.                                 \n────────────────────────────────────────\n ☐ Colour \n\nWhich colour?\n\n❯ 1. Red\n     Red\n  2. Blue\n     Blue\n  3. Type something.\n────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc\nto cancel"
+  },
+  {
+    "fixture": "claude-lab--ask-single-named-v2296--w40.txt",
+    "detector": "prompt-select",
+    "region": " ▐▛███▛█   Claude Code v2.1.296\n▝▜██████▀  Sonnet 5.5 · Claude Max\n ▝▝   ▝▝   ~/…/m51-02-lab/project\n\n▎ [✻] [✻] [✻] · Share Claude Code and\n▎ earn $10 in usage credits · /passes\n\n❯ Use the AskUserQuestion tool now to   \n  ask exactly one single-choice         \n  question: 'Which colour?' with        \n  options Red and Blue. Do nothing      \n  else.                                 \n────────────────────────────────────────\n ☐ Colour \n\nWhich colour?\n\n❯ 1. Red\n     Red\n  2. Blue\n     Blue\n  3. Type something.\n────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc\nto cancel"
+  },
+  {
+    "fixture": "claude-lab--ask-multi-v2296--w40.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Colours  ✔ Submit  →\n\nWhich colours?\n\n❯ 1. [ ] Red\n         Red\n  2. [ ] Green\n         Green\n  3. [ ] Blue\n         Blue\n  4. [ ] Type something\n     Submit\n────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude-lab--ask-multi-named-v2296--w40.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Colours  ✔ Submit  →\n\nWhich colours?\n\n❯ 1. [ ] Red\n         Red\n  2. [ ] Green\n         Green\n  3. [ ] Blue\n         Blue\n  4. [ ] Type something\n     Submit\n────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude-lab--ask-wizard-v2296--w40.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Colour  ☐ Size  ✔ Submit  →\n\nWhich colour?\n\n❯ 1. Red\n     Choose red.\n  2. Blue\n     Choose blue.\n  3. Type something.\n────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to\nnavigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--ask-wizard-named-v2296--w40.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Colour  ☐ Size  ✔ Submit  →\n\nWhich colour?\n\n❯ 1. Red\n     Red\n  2. Blue\n     Blue\n  3. Type something.\n────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to\nnavigate · Esc to cancel"
   }
 ]

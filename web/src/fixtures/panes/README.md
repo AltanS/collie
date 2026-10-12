@@ -1060,6 +1060,9 @@ before and after the change: 608 captures, no reading moved).
 | `claude-lab--ask-single-named-v2296--w82.txt`, `claude-lab--ask-single-v2296--w82.txt` | One question, Red / Blue; rows `Type something.` and `Chat about this`. Lifts `prompt-select` |
 | `claude-lab--ask-multi-named-v2296--w82.txt`, `claude-lab--ask-multi-v2296--w82.txt` | One pick-many question, three checkbox rows and a Submit row. Lifts `multi-select` |
 | `claude-lab--ask-wizard-named-v2296--w82.txt`, `claude-lab--ask-wizard-v2296--w82.txt` | Two questions, first step. Lifts `wizard` |
+| `claude-lab--ask-single-named-v2296--w40.txt`, `claude-lab--ask-single-v2296--w40.txt` | The same single question at 40 columns, footer `Enter to select · ↑/↓ to navigate · Esc` over `to cancel`. Lifts `prompt-select` |
+| `claude-lab--ask-multi-named-v2296--w40.txt`, `claude-lab--ask-multi-v2296--w40.txt` | The same pick-many question at 40 columns, footer wrapped the same way. Lifts `multi-select` |
+| `claude-lab--ask-wizard-named-v2296--w40.txt`, `claude-lab--ask-wizard-v2296--w40.txt` | The same two-question first step at 40 columns, footer `Enter to select · Tab/Arrow keys to` over `navigate · Esc to cancel`. Lifts `wizard` |
 | `claude-lab--ask-wizard-review-named-v2296--w{40,82}.txt`, `claude-lab--ask-wizard-review-v2296--w{40,82}.txt` | The review step with no answer given. Lifts `wizard` (phase `review`) |
 | `claude-lab--menu-config-panel-named-v2296--w{40,82}.txt`, `claude-lab--menu-config-panel-v2296--w{40,82}.txt` | `/config`, footer wrapped over two rows at 40 columns. Lifts `menu` |
 | `claude-lab--menu-resume-picker-named-v2296--w82.txt`, `claude-lab--menu-resume-picker-v2296--w82.txt`, `claude-lab--menu-resume-picker-named-v2296--w40.txt` | `/resume` with one saved session (82) and two (40, no unnamed twin). Lifts `prompt-select` |
@@ -1068,11 +1071,14 @@ before and after the change: 608 captures, no reading moved).
 
 - No fixture of the named permission, plan and `/effort` screens: they were read live and carry no
   rule, and the Bash/Edit/plan reading did not change on 2.1.296.
-- At 40 columns the select footer wraps (`Enter to select · ↑/↓ to navigate · Esc` over `to cancel`).
-  The single-question and pick-many dialogs read as the unread-dialog card in a session of either
-  kind, and the wizard's question step reads as a generic `menu`. That is older than 2.1.296 and the
-  closing rule did not cause it; the pairs are not in the corpus because their `prompt-select`,
-  `multi-select` and `wizard` readings are not what the screen shows.
+- At 40 columns the select footer wraps over two rows (`Enter to select · ↑/↓ to navigate · Esc` over
+  `to cancel`; the wizard's reads `Enter to select · Tab/Arrow keys to` over `navigate · Esc to cancel`).
+  Before the fix for issue 422 the single-question and pick-many dialogs read as the unread-dialog card in a session of
+  either kind, and the wizard's question step read as a generic `menu`, because every grammar anchors on
+  the LAST row being the footer. `classifyFooter` now claims a wrapped group of rows that
+  `readKeyHintFooter` reads as one block and whose joined text names `Enter to select`
+  (`wrappedSelectFooter` in `claude/markers.ts`), and the grammars measure the options to the group's
+  first row (`selectFooterStart`). The 40-column captures of all three are in the table above (issue 422).
 - The auto-mode offer that a fresh config shows once (`Make auto mode your default permission mode?`,
   `Yes, set auto mode as my default permission mode` / `No, keep manual mode`) lifts nothing and gets
   no unread-dialog card either: it names no key and carries no numbered `❯` row, so `modalOnScreen`

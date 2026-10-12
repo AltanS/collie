@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude Code's question dialogs show their buttons at 40 columns.** A narrow pane breaks the footer `Enter to select · ↑/↓ to navigate · Esc to cancel` over two rows, and every question grammar read only the last one, so a single or pick-many question fell to the unread-dialog card with Escape alone and a wizard step showed as a plain menu, in named and unnamed sessions alike. The three grammars now read a footer on two rows as one footer, and only when its words name `Enter to select` (#422).
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed
