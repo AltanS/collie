@@ -12,8 +12,8 @@ afterAll(cleanup);
 
 protocolSuite({
   name: "over the socket",
-  async open({ hostName, caps }) {
-    const collie = await openCollie({ callerCheck: "off", socket: join(tmp(), "run", "s.sock"), hostName, caps });
+  async open({ hostName, caps, onRename }) {
+    const collie = await openCollie({ callerCheck: "off", socket: join(tmp(), "run", "s.sock"), hostName, caps, onRename });
     return { collie, dial: { socket: collie.address, version: 1 } };
   },
 });

@@ -18,6 +18,8 @@ export interface Caps {
   send?: boolean;
   steer?: boolean;
   abort?: boolean;
+  /** It takes a new title for a workspace or a tab (WIRE.md 7.8). */
+  rename?: boolean;
   /** Always false in version 1. */
   terminal?: boolean;
 }
@@ -188,6 +190,13 @@ export interface AbortRequest {
 export interface ControlReply {
   ok: true;
   replayed?: true;
+}
+/** A new title for a workspace or a tab. A pane's title is the conversation's and is not renamed here. */
+export interface RenameRequest {
+  requestId: string;
+  kind: "workspace" | "tab";
+  id: string;
+  title: string;
 }
 export interface StarterRequest {
   requestId: string;

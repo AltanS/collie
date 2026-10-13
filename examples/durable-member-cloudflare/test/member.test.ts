@@ -105,7 +105,7 @@ describe("the wire", () => {
       protocol: { min: 1, max: 1 },
       host: { name: "durable-member-cloudflare" },
       ready: true,
-      caps: { asks: true, starters: true, send: true, steer: true, abort: true, terminal: false },
+      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, terminal: false },
     });
     expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/);
     expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
@@ -174,6 +174,41 @@ describe("the wire", () => {
     expect(s.panes.length).toBe(count + 1);
     expect(s.panes.some((p: { id: string }) => p.id === r.body.paneId)).toBe(true);
     await waitFor("the new ticket's ask", async () => (await paneOf(r.body.paneId)).openAsks.length > 0);
+  });
+});
+
+describe("a rename", () => {
+  const titleOf = async (kind: "workspaces" | "tabs", id: string) => (await snapshot())[kind].find((x: { id: string }) => x.id === id)?.title;
+
+  test("a tab takes a new title, the snapshot shows it and rev rises, and the same request id replays", async () => {
+    const before = await snapshot();
+    const r = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
+    expect([r.status, r.body]).toEqual([200, { ok: true }]);
+    const after = await snapshot();
+    expect(after.tabs.find((t: { id: string }) => t.id === "triage:inbox").title).toBe("Tickets");
+    expect(after.rev).toBeGreaterThan(before.rev);
+    const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
+    expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+    expect((await snapshot()).rev).toBe(after.rev);
+  });
+
+  test("a workspace takes one too; an unknown target is 404 no-such-target, a bad title 400, and the token still guards the route", async () => {
+    expect((await call("POST", "/rename", { body: { requestId: "rename-2", kind: "workspace", id: "triage", title: "Support" } })).status).toBe(200);
+    expect(await titleOf("workspaces", "triage")).toBe("Support");
+    const missing = await call("POST", "/rename", { body: { requestId: "rename-3", kind: "tab", id: "triage:nope", title: "X" } });
+    expect([missing.status, missing.body.code]).toEqual([404, "no-such-target"]);
+    const bad = await call("POST", "/rename", { body: { requestId: "rename-4", kind: "tab", id: "triage:inbox", title: "" } });
+    expect([bad.status, bad.body.code]).toEqual([400, "bad-body"]);
+    expect((await call("POST", "/rename", { token: "wrong", body: { requestId: "rename-5", kind: "tab", id: "triage:inbox", title: "X" } })).status).toBe(401);
+  });
+
+  test.skipIf(!SQLITE)("the names survive a wake of the object, and the receipt still replays", async () => {
+    await abortAllDurableObjects();
+    expect(await titleOf("tabs", "triage:inbox")).toBe("Tickets");
+    expect(await titleOf("workspaces", "triage")).toBe("Support");
+    expect(await titleOf("tabs", "triage:helpers")).toBe("Helpers"); // never renamed: the name in the code
+    const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
+    expect(again.body).toEqual({ ok: true, replayed: true });
   });
 });
 

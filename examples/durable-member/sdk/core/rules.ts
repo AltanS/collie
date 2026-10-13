@@ -125,6 +125,23 @@ export function cwdOf(cwd: unknown): string | undefined {
   return cwd.startsWith("/") ? cwd : undefined;
 }
 
+/** The longest title a rename may carry, in characters (code points). WIRE.md 7.8. */
+export const RENAME_TITLE_MAX = 120;
+
+/**
+ * The title a rename asked for: trimmed, 1 to {@link RENAME_TITLE_MAX} characters, no control character.
+ * A title that fails is undefined (the wire answers 400 `bad-body`). Direction marks and zero-width
+ * characters are not refused; `cut` removes them like it does from every display string, and a title
+ * that is nothing but those reads as empty and is refused too.
+ */
+export function renameTitleOf(title: unknown): string | undefined {
+  if (typeof title !== "string") return undefined;
+  const trimmed = title.trim();
+  if (trimmed === "" || HAS_CONTROL.test(trimmed) || [...trimmed].length > RENAME_TITLE_MAX) return undefined;
+  const clean = cut(trimmed, CAPS.title).trim();
+  return clean === "" ? undefined : clean;
+}
+
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;
 /** ISO 8601 with a zone, at most 40 bytes, else undefined (it reads as absent). */
 export function tsOf(ts: unknown): string | undefined {

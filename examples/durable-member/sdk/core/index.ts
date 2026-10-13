@@ -22,9 +22,10 @@ export {
   type ReceiptRecord,
   Receipts,
   type ReceiptStore,
+  RENAME_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
-export { assertId, bytes, CAPS, cut, idOk, LIMITS, safeId } from "./rules.ts";
+export { assertId, bytes, CAPS, cut, idOk, LIMITS, RENAME_TITLE_MAX, renameTitleOf, safeId } from "./rules.ts";
 export * from "./types.ts";
 
 export interface CoreOptions {
@@ -40,6 +41,12 @@ export interface CoreOptions {
    * a TypeError when the ask is raised or changed, because the token is the only gate. Default true (the socket).
    */
   allowAlways?: boolean;
+  /**
+   * Asked before a workspace or a tab takes a new title from the phone. Return `false` to refuse (the wire answers
+   * 422 `rename-refused`); persist the title here if it should outlive the process. Absent: the title is applied.
+   * Turn the whole thing off with `caps: { rename: false }`.
+   */
+  onRename?: CoreState["onRename"];
 }
 
 export interface CollieCore {
@@ -59,7 +66,8 @@ export function createCore(o: CoreOptions): CollieCore {
   const state: CoreState = {
     store,
     hostName: o.hostName,
-    caps: { asks: true, starters: true, send: true, steer: true, abort: true, ...o.caps, terminal: false },
+    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, ...o.caps, terminal: false },
+    onRename: o.onRename,
   };
   return {
     epoch: store.epoch,

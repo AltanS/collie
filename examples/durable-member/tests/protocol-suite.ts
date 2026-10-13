@@ -3,7 +3,7 @@
 // agree, so the core is the wire and the socket is only its transport.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
-import { type AskInput, type Caps, idOk, type PaneHandle, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
+import { type AskInput, type Caps, type CoreOptions, idOk, type PaneHandle, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
 import { cleanup, waitFor } from "./util.ts";
 
 /** A program with no layout yet, and the dial that reaches it. */
@@ -16,7 +16,7 @@ export interface Opened {
 }
 export interface Transport {
   name: string;
-  open(o: { hostName: string; caps?: Partial<Caps> }): Promise<{ collie: Opened; dial: Dial }>;
+  open(o: { hostName: string; caps?: Partial<Caps>; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
 }
 
 export function protocolSuite(transport: Transport) {
@@ -25,6 +25,9 @@ export function protocolSuite(transport: Transport) {
     let d: Dial;
     let pane: PaneHandle;
     const sent: [string, boolean, string][] = [];
+    /** What the program's `onRename` hook decides, and the renames it was asked about. */
+    let renameVerdict: boolean | Promise<boolean> = true;
+    const asked: unknown[] = [];
     let aborted = 0;
     let starts = 0;
     const post = (path: string, body: unknown) => call(d, "POST", path, body);
@@ -52,7 +55,13 @@ export function protocolSuite(transport: Transport) {
     const paneInfo = async (id: string) => (await api.snapshot(d)).body.panes.find((x) => x.id === id)!;
 
     beforeAll(async () => {
-      ({ collie, dial: d } = await transport.open({ hostName: "t" }));
+      ({ collie, dial: d } = await transport.open({
+        hostName: "t",
+        onRename: (target) => {
+          asked.push(target);
+          return renameVerdict;
+        },
+      }));
       pane = mk("p1");
       pane.onSend((text, o) => void sent.push([text, o.steer, o.requestId]));
       pane.onAbort(() => void aborted++);
@@ -80,7 +89,7 @@ export function protocolSuite(transport: Transport) {
         expect(r.body.host.name).toBe("t");
         expect(r.body.ready).toBe(true);
         expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/); // 128 bits
-        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, terminal: false });
+        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, terminal: false });
       });
       test("409 incompatible with the range, never a 5xx; a header that is not an integer is the same", async () => {
         for (const version of [0, 2, 99]) {
@@ -107,6 +116,7 @@ export function protocolSuite(transport: Transport) {
         expect((await call(t, "GET", "/snapshot")).status).toBe(503);
         expect((await call(t, "GET", "/nothing")).status).toBe(503);
         expect((await call(t, "POST", "/pane/p/send", {})).status).toBe(503);
+        expect((await call(t, "POST", "/rename", {})).status).toBe(503);
         expect((await api.hello(t)).status).toBe(200); // hello answers before ready is looked at
         c.ready();
         expect((await call(t, "GET", "/nothing")).status).toBe(404);
@@ -119,6 +129,7 @@ export function protocolSuite(transport: Transport) {
         expect((await api.answer(d, "nope", "a", "allow")).status).toBe(404);
         expect((await api.start(d, "nope")).status).toBe(404);
         expect((await call(d, "GET", "/what")).status).toBe(404);
+        expect((await call(d, "GET", "/rename")).status).toBe(404); // wrong method
         expect((await call(d, "GET", "/pane/p1/answer")).status).toBe(404); // wrong method
         expect((await call(d, "DELETE", "/snapshot")).status).toBe(404);
         expect((await api.events(d, "nope", 0)).body.code).toBe("no-such-pane");
@@ -127,7 +138,7 @@ export function protocolSuite(transport: Transport) {
       });
       test("a POST body over 64 KiB is 413 too-large, on every POST route", async () => {
         const pad = "x".repeat(70_000);
-        for (const path of ["/pane/p1/answer", "/pane/p1/send", "/pane/p1/abort", "/starter/s1"]) {
+        for (const path of ["/pane/p1/answer", "/pane/p1/send", "/pane/p1/abort", "/starter/s1", "/rename"]) {
           const r = await post(path, { requestId: "big", pad });
           expect([path, r.status, r.body.code]).toEqual([path, 413, "too-large"]);
         }
@@ -623,6 +634,97 @@ export function protocolSuite(transport: Transport) {
         expect((await api.abort(d, "p-abort-ask", { askId: "ask-to-stop" })).body).toEqual({ ok: true });
         expect(stopped).toBe(1);
         p.close();
+      });
+    });
+
+    describe("rename", () => {
+      const snap = async () => (await api.snapshot(d)).body;
+      test("rename a tab: the snapshot shows the title and rev rose; panes keep their own title", async () => {
+        mk("p-rename");
+        const before = await snap();
+        const r = await api.rename(d, "tab", "w:t", "  Renamed tab  ", "rename-tab-1");
+        expect([r.status, r.body]).toEqual([200, { ok: true }]);
+        const after = await snap();
+        expect(after.tabs.find((t) => t.id === "w:t")!.title).toBe("Renamed tab"); // trimmed
+        expect(after.rev).toBeGreaterThan(before.rev);
+        expect(after.panes.find((p) => p.id === "p-rename")!.title).toBe("P-RENAME"); // a pane's title is the conversation's
+        expect(after.workspaces.find((w) => w.id === "w")!.title).toBe("W");
+      });
+      test("rename a workspace", async () => {
+        const before = await snap();
+        expect((await api.rename(d, "workspace", "w", "Renamed workspace")).status).toBe(200);
+        const after = await snap();
+        expect(after.workspaces.find((w) => w.id === "w")!.title).toBe("Renamed workspace");
+        expect(after.rev).toBeGreaterThan(before.rev);
+      });
+      test("a repeat of the request id answers from the receipt, asks the hook once, and does not move rev", async () => {
+        const askedBefore = asked.length;
+        const first = await api.rename(d, "tab", "w:t", "Once", "rename-once");
+        expect(first.body).toEqual({ ok: true });
+        const rev = (await snap()).rev;
+        const again = await api.rename(d, "tab", "w:t", "Once", "rename-once");
+        expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+        expect(asked.length - askedBefore).toBe(1);
+        expect((await snap()).rev).toBe(rev);
+      });
+      test("the same request id for another title or target is 409 request-id-reused", async () => {
+        expect((await api.rename(d, "tab", "w:t", "Same id", "rename-reuse")).status).toBe(200);
+        for (const r of [await api.rename(d, "tab", "w:t", "Another title", "rename-reuse"), await api.rename(d, "workspace", "w", "Same id", "rename-reuse")]) {
+          expect([r.status, r.body.code]).toEqual([409, "request-id-reused"]);
+        }
+      });
+      test("the hook answering false is 422 rename-refused, nothing changes, and the same id may try again", async () => {
+        const title = (await snap()).tabs.find((t) => t.id === "w:t")!.title;
+        renameVerdict = false;
+        const refused = await api.rename(d, "tab", "w:t", "Not allowed", "rename-no");
+        expect([refused.status, refused.body.code]).toEqual([422, "rename-refused"]);
+        expect((await snap()).tabs.find((t) => t.id === "w:t")!.title).toBe(title);
+        renameVerdict = Promise.resolve(true); // a hook may answer late
+        expect((await api.rename(d, "tab", "w:t", "Not allowed", "rename-no")).body).toEqual({ ok: true });
+        expect((await snap()).tabs.find((t) => t.id === "w:t")!.title).toBe("Not allowed");
+        renameVerdict = true;
+      });
+      test("an unknown workspace or tab is 404 no-such-target, and the hook is not asked", async () => {
+        const askedBefore = asked.length;
+        for (const [kind, id] of [["tab", "w:nope"], ["tab", "w"], ["workspace", "w:t"], ["workspace", "nope"]] as const) {
+          const r = await api.rename(d, kind, id, "X");
+          expect([kind, id, r.status, r.body.code]).toEqual([kind, id, 404, "no-such-target"]);
+        }
+        expect(asked.length).toBe(askedBefore);
+      });
+      test("a bad title is 400 bad-body: not a string, empty, blank, over 120 characters, or with a control character", async () => {
+        for (const title of [undefined, null, 7, "", "   ", "x".repeat(121), "a\nb", "a\u0000b", "a\u007fb", "a\u0085b", "\u200b\u200b"]) {
+          const r = await api.rename(d, "tab", "w:t", title);
+          expect([JSON.stringify(title), r.status, r.body.code]).toEqual([JSON.stringify(title), 400, "bad-body"]);
+        }
+        expect((await api.rename(d, "tab", "w:t", "x".repeat(120))).status).toBe(200); // exactly 120 is fine
+        expect((await api.rename(d, "tab", "w:t", "é".repeat(120))).status).toBe(200); // characters, not bytes
+        expect((await api.rename(d, "tab", "w:t", "T")).status).toBe(200);
+      });
+      test("caps.rename false: hello says so and the route is 409 not-supported", async () => {
+        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { rename: false } });
+        c.workspace("w", { title: "W" }).tab("t", { title: "T" });
+        c.ready();
+        expect((await api.hello(t)).body.caps).toMatchObject({ rename: false });
+        const r = await api.rename(t, "tab", "w:t", "X");
+        expect([r.status, r.body.code]).toEqual([409, "not-supported"]);
+        expect((await api.snapshot(t)).body.tabs[0]!.title).toBe("T");
+        await c.close();
+      });
+      test("a bad body is 400: a kind that is neither workspace nor tab, a missing or mistyped field, an id that breaks the rule", async () => {
+        const cases: [unknown, string][] = [
+          [{ requestId: "r", kind: "pane", id: "p1", title: "X" }, "bad-body"],
+          [{ requestId: "r", id: "w", title: "X" }, "bad-body"],
+          [{ requestId: "r", kind: "tab", title: "X" }, "bad-body"],
+          [{ kind: "tab", id: "w:t", title: "X" }, "bad-body"],
+          [{ requestId: "r", kind: "tab", id: 4, title: "X" }, "bad-body"],
+          [{ requestId: "bad id", kind: "tab", id: "w:t", title: "X" }, "bad-id"],
+          [{ requestId: "r", kind: "tab", id: "a b", title: "X" }, "bad-id"],
+        ];
+        for (const [body, code] of cases) {
+          const r = await post("/rename", body);
+          expect([JSON.stringify(body), r.status, r.body.code]).toEqual([JSON.stringify(body), 400, code]);
+        }
       });
     });
 

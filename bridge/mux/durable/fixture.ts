@@ -20,6 +20,10 @@
 // running one appends no item, settles the input as unanswered with the reason `aborted`, closes the
 // open asks `by: "stopped"` and leaves the pane idle.
 //
+// It takes `POST /rename` as WIRE.md 7.8 describes it: a workspace or a tab by kind and id, a title of 1 to
+// 120 characters, the cap checked, a repeat of a request id answered `replayed`, and a refusal (422
+// `rename-refused`) when a test sets `renameRefusal`. A rename changes the title and `rev` rises.
+//
 // It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
 // whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
 // a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
@@ -56,6 +60,7 @@ import {
   parseAnswerPost,
   parseControlPost,
   parseEvents,
+  parseRenamePost,
   type DurableAsk,
   type DurablePane,
   type DurableStarter,
@@ -77,6 +82,7 @@ export interface FakeHello {
     send?: boolean;
     steer?: boolean;
     abort?: boolean;
+    rename?: boolean;
     terminal?: boolean;
   };
 }
@@ -258,6 +264,14 @@ export interface AnswerDoc {
   replayed?: true;
 }
 
+/** One rename the fake took (WIRE.md section 7.8). A replay is not one. */
+export interface FakeRename {
+  readonly requestId: string;
+  readonly kind: "workspace" | "tab";
+  readonly id: string;
+  readonly title: string;
+}
+
 /** What a send or an abort answers. */
 export interface ControlDoc {
   ok: true;
@@ -321,6 +335,12 @@ export class FakeDurableProgram {
   /** The input running on a pane, from the send that started it. */
   private readonly running = new Map<string, { inputId: string; requestId: string }>();
   private turnsMinted = 0;
+
+  /** Every rename the fake took, in order. A replay is not a second entry. */
+  readonly renames: FakeRename[] = [];
+  /** When set, the next renames fail with 422 `rename-refused` and this message, and store nothing. */
+  renameRefusal: string | null = null;
+  private readonly renamedByRequest = new Map<string, FakeRename>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
   /** The TCP port over HTTP, kept so a dropped listener comes back on the same URL. */
@@ -554,6 +574,7 @@ export class FakeDurableProgram {
     if (request.method === "POST" && starter !== null) return this.handleStarter(decodeURIComponent(starter[1] ?? ""), body ?? "");
     const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
+    if (request.method === "POST" && route === "/rename") return this.handleRename(body ?? "");
     const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
     if (request.method === "POST" && controlRoute !== null) {
       const act = controlRoute[2] === "send" ? "send" : "abort";
@@ -648,6 +669,38 @@ export class FakeDurableProgram {
     this.startedByRequest.set(requestId, start);
     this.starts.push(start);
     return reply(200, { paneId });
+  }
+
+  /**
+   * `POST /rename` (WIRE.md section 7.8): the body, then the cap, then the request id memory, then the
+   * target, then the program's say. A failure stores nothing, so the same id may try again.
+   */
+  private handleRename(text: string): Response {
+    const post = parseRenamePost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    // The tests mint UUIDs, as the adapter does.
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, kind, id, title } = post;
+    if (this.hello.caps.rename !== true) return reply(409, { code: "not-supported" });
+
+    const earlier = this.renamedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.kind !== kind || earlier.id !== id || earlier.title !== title) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    const found = kind === "tab" ? this.snapshot.tabs.some((tab) => tab.id === id) : this.snapshot.workspaces.some((workspace) => workspace.id === id);
+    if (!found) return reply(404, { code: "no-such-target" });
+    if (this.renameRefusal !== null) return reply(422, { code: "rename-refused", message: this.renameRefusal });
+
+    if (kind === "tab") this.renameTab(id, title);
+    else {
+      this.snapshot.workspaces = this.snapshot.workspaces.map((workspace) => (workspace.id === id ? { ...workspace, title } : workspace));
+      this.touch();
+    }
+    const rename: FakeRename = { requestId, kind, id, title };
+    this.renamedByRequest.set(requestId, rename);
+    this.renames.push(rename);
+    return reply(200, { ok: true });
   }
 
   /** `POST /pane/:id/answer`, as WIRE.md section 7.3 says a program answers it. */
@@ -787,6 +840,8 @@ const ONE_IDLE_CENSUS_MS = DURABLE_BUDGETS.https.idlePollMs;
  */
 export async function durableWorld(): Promise<MuxConformanceWorld> {
   const program = await FakeDurableProgram.start();
+  // The recorded hello declares no `rename`. This world's program does, so the suite proves it works.
+  program.hello.caps.rename = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
   const change = (act: () => void): Promise<void> => {
@@ -826,6 +881,7 @@ export const durableConformanceFixture: MuxConformanceFixture = {
 export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
   const token = testToken();
   const program = await FakeDurableProgram.startHttp(token);
+  program.hello.caps.rename = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
   const change = (act: () => void): Promise<void> => {

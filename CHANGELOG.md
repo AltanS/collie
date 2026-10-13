@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie doctor` checks a durable program.** Seven `durable-*` rows say how the peer reaches the program, whether the socket or the address and token are sound, whether the program answers and is ready, and name the failing check with a fix. A peer whose lead predates durable panes gets a warning, because that lead shows them without the question card.
 - **Chat pins the prompt a reply answers above the thread.** Scroll down a long run and the prompt it answers stays at the top in two lines; tap it to jump back to it, even when the first page left it out. Thanks @GGGODLIN (#406).
 - **New sheet options for Grok and Antigravity.** Always approve and Continue last for Grok; Skip permission prompts or Plan mode, plus Continue last, for Antigravity. Thanks @GGGODLIN (#430).
+- **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
 
 ### Changed
 

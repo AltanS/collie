@@ -3,7 +3,7 @@
 // (core/, no runtime import); this file adds the private Unix socket and the descendant check (server.ts).
 // No Pi Durable import in sdk/.
 
-import { type CollieCore, createCore } from "./core/index.ts";
+import { type CollieCore, type CoreOptions, createCore } from "./core/index.ts";
 import { startServer } from "./server.ts";
 import type { Caps, Starter } from "./core/types.ts";
 import type { WorkspaceHandle } from "./core/layout.ts";
@@ -23,6 +23,8 @@ export interface OpenOptions {
   caps?: Partial<Caps>;
   /** `descendant` (default) or `off`. See `ServerOptions.callerCheck`. */
   callerCheck?: "descendant" | "off";
+  /** Asked before a workspace or a tab takes a new title from the phone. `false` answers 422. See `CoreOptions.onRename`. */
+  onRename?: CoreOptions["onRename"];
 }
 
 export interface Collie {
@@ -41,7 +43,7 @@ export interface Collie {
 export async function openCollie(o: OpenOptions): Promise<Collie> {
   const socket = o.socket ?? process.env[SOCKET_ENV];
   if (!socket) throw new Error(`openCollie needs a socket path: pass socket or set ${SOCKET_ENV}`);
-  const core = createCore({ hostName: o.hostName, tailLimit: o.tailLimit, caps: o.caps });
+  const core = createCore({ hostName: o.hostName, tailLimit: o.tailLimit, caps: o.caps, onRename: o.onRename });
   const running = await startServer(socket, { core, callerCheck: o.callerCheck });
   return {
     address: running.address,

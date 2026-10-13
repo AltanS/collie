@@ -56,9 +56,23 @@ export class Member extends DurableObject<Env> {
     const { env } = this;
     const sql = this.ctx.storage.sql;
     sql.exec("CREATE TABLE IF NOT EXISTS collie_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, note TEXT NOT NULL)");
+    // A name the phone gave a workspace or a tab (WIRE.md 7.8). The layout below is made again on every start, so the
+    // names are kept here and win over the ones in this file. A key is the wire id: `triage`, or `triage:inbox`.
+    sql.exec("CREATE TABLE IF NOT EXISTS collie_titles (kind TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL, PRIMARY KEY (kind, id))");
+    const renamed = new Map(sql.exec<{ kind: string; id: string; title: string }>("SELECT kind, id, title FROM collie_titles").toArray().map((r) => [`${r.kind}/${r.id}`, r.title]));
+    const titled = (kind: "workspace" | "tab", id: string, fallback: string) => renamed.get(`${kind}/${id}`) ?? fallback;
     // Over TLS the token is the only gate, so this program offers Allow and Deny only: an `allow-always` option is
     // a TypeError when an ask is raised (WIRE.md 1B, ADR 0103).
-    const core = createCore({ hostName: HOST_NAME, receipts: new SqliteReceiptStore(this.ctx.storage), allowAlways: false });
+    const core = createCore({
+      hostName: HOST_NAME,
+      receipts: new SqliteReceiptStore(this.ctx.storage),
+      allowAlways: false,
+      // Keep the new name, so a wake of the object does not give the old one back.
+      onRename: ({ kind, id, title }) => {
+        sql.exec("INSERT OR REPLACE INTO collie_titles (kind, id, title) VALUES (?, ?, ?)", kind, id, title);
+        return true;
+      },
+    });
     this.core = core;
     const stepMs = ms(env.DM_STEP_MS, 400);
 
@@ -76,9 +90,9 @@ export class Member extends DurableObject<Env> {
       useScriptedModel(models, { stepMs, slowMs: ms(env.DM_SLOW_MS, 10_000), helperMs: ms(env.DM_HELPER_MS, stepMs) });
     }
 
-    const ws = core.workspace("triage", { title: "Triage", cwd: "/srv/triage" });
-    const inbox = ws.tab("inbox", { title: "Inbox" });
-    const helpers = ws.tab("helpers", { title: "Helpers" });
+    const ws = core.workspace("triage", { title: titled("workspace", "triage", "Triage"), cwd: "/srv/triage" });
+    const inbox = ws.tab("inbox", { title: titled("tab", "triage:inbox", "Inbox") });
+    const helpers = ws.tab("helpers", { title: titled("tab", "triage:helpers", "Helpers") });
 
     // write_note keeps its line in the object's own SQLite: a Worker has no file to append to.
     const writeNote = defineTool({
