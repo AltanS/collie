@@ -23,10 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Docs
-
-- **A real Pi Durable program ran through the durable wire.** disler's proactive incident demo, 170 lines changed, one approval card on the phone shipped its deploy. Findings and two screenshots in `experiments/real-program-spike/`.
-
 ### Added
 
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
@@ -66,6 +62,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Docs
 
 - **The durable page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The glossary gains Source and Session card, and the Cloudflare example is named as parked.
+- **A real Pi Durable program ran through the durable wire.** disler's proactive incident demo, 170 lines changed, one approval card on the phone shipped its deploy. Findings and two screenshots in `experiments/real-program-spike/`.
 
 ## [1.21.0] - 2026-10-13
 
