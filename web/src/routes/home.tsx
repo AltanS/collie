@@ -41,12 +41,13 @@ import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { newPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { homePath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
+import { programSessionsOnHost } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -184,6 +185,14 @@ export function HomeRoute() {
     () => ambientPanes(data.agents, data.shellPanes, data.scope, data.servers, data.sessions),
     [data.agents, data.shellPanes, data.scope, data.servers, data.sessions],
   );
+  // THE PROGRAM SESSIONS ON THIS MACHINE (M55 spec 02): each is one more space in the Spaces list,
+  // after the terminal spaces, and a tap opens its home, the conversation list. None on a snapshot
+  // with no program session, which leaves the list as it was.
+  const programs = useMemo(
+    () => programSessionsOnHost(data.sessions ?? [], data.scope, data.servers),
+    [data.sessions, data.scope, data.servers],
+  );
+  const openProgram = (name: string) => nav.down(homePath({ host: data.scope.host, session: name }));
 
   // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
   // top / Unpin first, then the writes. The sheet writes with the PANE's scope, for the reason a tap
@@ -359,6 +368,8 @@ export function HomeRoute() {
                 open={spacesOpen}
                 onOpenChange={setSpacesOpen}
                 scope={data.scope}
+                programs={programs}
+                onOpenProgram={openProgram}
               />
             </>
           )}

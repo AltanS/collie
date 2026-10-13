@@ -6,8 +6,9 @@
 // DEV-ONLY, unreachable from the app entry.
 
 import { ConversationList } from "@/components/conversation-list";
+import { SpaceOverview } from "@/components/space-overview";
 import { mergeConversations } from "@/lib/conversation-list";
-import type { AgentView, DurableConversationRow } from "@/lib/types";
+import type { AgentView, DurableConversationRow, SessionSummary, WorkspaceView } from "@/lib/types";
 
 import { TS, homeSolo, type PaneFixture } from "../fixtures";
 import { PaneRouter } from "../harness";
@@ -18,7 +19,7 @@ export const DEF: SectionDef = {
   id: "durable",
   title: "Durable home",
   intent:
-    "On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done.",
+    "A durable program this collie carries is one more space in the dashboard's Spaces list, after the terminal spaces: its name with an Experimental badge, its runtime and where it runs under it, and its state as the shared mark, with Starting or Unreachable said in words. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done.",
 };
 
 const MIN = 60_000;
@@ -90,9 +91,80 @@ function Home({ live, rows }: { live: AgentView[]; rows: DurableConversationRow[
 
 const header = (pane: AgentView): PaneFixture => ({ pane, text: "", revision: 1 });
 
+/** One terminal space, the way the dashboard's Spaces list draws it. */
+const TERMINAL_SPACE: WorkspaceView = {
+  workspaceId: "w1",
+  number: 1,
+  label: "collie",
+  focused: true,
+  activeTabId: "w1:t1",
+  tabCount: 2,
+  paneCount: 3,
+};
+
+function programSession(name: string, over: Partial<SessionSummary>): SessionSummary {
+  return {
+    name,
+    isPrimary: false,
+    reachable: true,
+    agents: 0,
+    working: 0,
+    blocked: 0,
+    kind: "program",
+    mux: "pi-durable",
+    caps: { paneGrid: false },
+    where: "local",
+    state: "ready",
+    experimental: true,
+    ...over,
+  };
+}
+
+/** Two program sessions: one ready, one that does not answer. */
+const PROGRAMS: SessionSummary[] = [
+  programSession("desk", {}),
+  programSession("billing", { mux: "acme-billing", where: "remote", state: "unreachable", reachable: false }),
+];
+
+/** The real Spaces list, open, over one terminal space and the program sessions given. */
+function Spaces({ programs }: { programs: SessionSummary[] }) {
+  return (
+    <div className="mx-auto w-full max-w-[390px] rounded-sm border border-rule bg-background">
+      <SpaceOverview
+        workspaces={[TERMINAL_SPACE]}
+        agents={[]}
+        onOpen={() => {}}
+        onNewSpace={() => {}}
+        open
+        onOpenChange={() => {}}
+        programs={programs}
+        onOpenProgram={() => {}}
+      />
+    </div>
+  );
+}
+
 export function DurableSection() {
   return (
     <Section def={DEF}>
+      <Group title="A program is a space">
+        <Card
+          state="program-spaces"
+          label="One terminal space, then two program spaces: ready and unreachable"
+          reach="open the dashboard of a collie that carries a durable program beside its multiplexer (a source in sources.json)."
+          note="Drawn from fixed session cards. The terminal row is the list's own; each program row is its name, the Experimental badge, and its runtime and place under it."
+        >
+          <Spaces programs={PROGRAMS} />
+        </Card>
+        <Card
+          state="program-spaces-none"
+          label="No program session: the Spaces list as before"
+          reach="open the dashboard of a collie with no source."
+        >
+          <Spaces programs={[]} />
+        </Card>
+      </Group>
+
       <Group title="The conversation list">
         <Card
           state="durable-home"

@@ -570,6 +570,20 @@ export const ja: Dictionary = {
   // TODO wordsmith
   "conversations.empty": "This program has no conversations yet.",
   // TODO wordsmith
+  "session.experimental": "Experimental",
+  // TODO wordsmith
+  "space.program.line": "{mux}, {where}",
+  // TODO wordsmith
+  "space.program.where.local": "local",
+  // TODO wordsmith
+  "space.program.where.remote": "remote",
+  // TODO wordsmith
+  "space.program.state.ready": "Ready",
+  // TODO wordsmith
+  "space.program.state.starting": "Starting",
+  // TODO wordsmith
+  "space.program.state.unreachable": "Unreachable",
+  // TODO wordsmith
   "conversations.unsupported": "This program does not keep a list of its conversations.",
   // TODO wordsmith
   "conversations.unreachable": "The program did not answer. Try again in a moment.",
