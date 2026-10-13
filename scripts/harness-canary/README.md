@@ -1,10 +1,12 @@
 # The harness canary
 
-`bun run canary` starts claude, codex, opencode and pi in a Herdr session of its own, types drafts
+`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp and muse when `--agent`
+names them, in a Herdr session of its own, types drafts
 and a few real sends, and checks with Collie's own code what the phone would read and whether each
 send lands. It then reads the session each agent WROTE, with the bridge's own journal adapter, and
 fails on a row or content type the reader does not recognise. With `--dialogs` it also opens real
-dialogs and sends to a busy agent. Specs: M37/02, M37/03 and M41/05 in the workspace tracker.
+dialogs and sends to a busy agent, and with `--scenario options` it starts each New-sheet option once.
+Specs: M37/02, M37/03 and M41/05 in the workspace tracker.
 
 ```sh
 bun run canary                          # all four agents, the six default scenarios
@@ -48,7 +50,9 @@ too. Point the journal at it with the bridge's own override for that agent, `COL
 
 ## What it checks
 
-Six scenarios per agent. Only `sends` makes model turns: four per agent.
+Six scenarios per agent run by default; the seventh, `options`, runs only when `--scenario` names it, and
+grok, hermes, agy, omp and muse are the five opt-in agents that run only when `--agent` names them. Only
+`sends` makes model turns: four per agent.
 
 | id           | what the canary does                                          | what must hold                                         |
 | ------------ | ------------------------------------------------------------- | ------------------------------------------------------ |
@@ -124,7 +128,8 @@ text. What the phone makes of that screen is judged with Collie's readers only.
 
 `--record` writes an agent into `web/src/lib/harness/verified-versions.json` (spec M37/01) with
 `how: "canary"`, only after a run with no fail in which that agent reached every scenario. It
-refuses when `--readers` points at another checkout, and it never creates the ledger.
+refuses when `--readers` points at another checkout, and it never creates the ledger. An agent started
+through a `--via` launcher is not recorded: its version was read from PATH, not from the launcher.
 
 A passing `journal` scenario also writes the JOURNAL reader's own line, in that entry's `journal`
 block beside the screen reader's (spec M41/05). The two are recorded apart because they drift apart:

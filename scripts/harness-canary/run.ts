@@ -224,24 +224,26 @@ function record(
       log(`--record: ${agent} not recorded (a fail in the run, or a scenario not reached)`);
       continue;
     }
+    // The version was read from PATH, not from the launcher, so a --via run proves nothing about it.
+    if (launchers.has(agent)) {
+      log(`--record: ${agent} not recorded (started through a --via launcher, the version came from PATH)`);
+      continue;
+    }
     const passed = results.filter((r) => r.agent === agent && r.verdict === "pass").map((r) => r.scenario);
-    // A launcher may have pointed the agent at another model, so the record says the run was not
-    // the agent's own default; what was verified is still this version's screen and log.
-    const through = launchers.has(agent) ? ", default scenarios started through a --via launcher" : "";
     const verified = id.slice(0, 4) + "-" + id.slice(4, 6) + "-" + id.slice(6, 8);
     const rec: LedgerRecord = {
       agent,
       version: versions.get(agent)!,
       verified,
       adapter: adapters.get(agent) ?? false,
-      evidence: `canary run ${id}: ${passed.join(", ")} pass${through}`,
+      evidence: `canary run ${id}: ${passed.join(", ")} pass`,
     };
     // The JOURNAL reader's own line, beside the screen reader's, and only when this run judged it:
     // the two readers drift apart on the same agent version (M41/05), so one date cannot speak for
     // both. `withRecord` writes it only where the ledger already has a journal block, which is the
     // agents this build has a journal adapter for.
     if (passed.includes("journal")) {
-      rec.journal = { version: rec.version, verified, evidence: `canary run ${id}: journal kinds asserted, nothing unrecognised${through}` };
+      rec.journal = { version: rec.version, verified, evidence: `canary run ${id}: journal kinds asserted, nothing unrecognised` };
     }
     recordVerified(rec, ledger);
     log(`--record: ${agent} ${versions.get(agent)} written to ${ledger}`);
