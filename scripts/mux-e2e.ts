@@ -36,7 +36,8 @@ const MUXES = ["tmux", "zellij", "tuios"] as const;
 export type Mux = (typeof MUXES)[number];
 
 const SESSION = "collie-e2e";
-const SHELL = "/bin/bash";
+// NixOS has no /bin/bash, so resolve it once from PATH.
+const SHELL = Bun.which("bash") ?? "/bin/sh";
 const READBACK_TIMEOUT_MS = 15_000;
 const STARTUP_TIMEOUT_MS = 20_000;
 const SEND_FLAG = "--send-child";
@@ -96,6 +97,7 @@ type IsolatedEnv = {
   readonly XDG_DATA_HOME: string;
   readonly XDG_CACHE_HOME: string;
   readonly ZELLIJ_SOCKET_DIR: string;
+  readonly TUIOS_SOCKET: string;
 };
 
 function isolatedEnv(root: string): IsolatedEnv {
@@ -117,6 +119,8 @@ function isolatedEnv(root: string): IsolatedEnv {
     LANG: "en_US.UTF-8",
     SHELL,
     ...dirs,
+    // tuios reports a mismatch between this and its runtime dir, so the two must agree; belt and braces for the isolation.
+    TUIOS_SOCKET: join(dirs.XDG_RUNTIME_DIR, "tuios", "tuios.sock"),
   };
 }
 
@@ -272,7 +276,7 @@ async function main(): Promise<void> {
   }
   const failed = results.filter((r) => r.verdict === "fail").length;
   const passed = results.filter((r) => r.verdict === "pass").length;
-  if (passed === 0 && failed === 0) console.log("NOTHING WAS RUN — every multiplexer skipped. This run proves nothing.");
+  if (passed === 0 && failed === 0) console.log("NOTHING WAS RUN, every multiplexer skipped. This run proves nothing.");
   process.exit(failed === 0 ? 0 : 1);
 }
 
