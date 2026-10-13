@@ -56,6 +56,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.
 - **Terminals is about terminals, and Programs holds everything about a program.** The reasons a program shows as unreachable, the two ways to reach one, the older durable-only form and the doctor rows moved to the Programs page, and the durable notes on the Terminals page are one paragraph that links there.
+- **ADR 0104 names the public words and widens its exit.** The docs call a session's place a terminal or a program and keep the word session for one agent conversation, and the homepage block on colliepwa.dev goes with the docs page if the exit fires.
 
 ## [1.21.0] - 2026-10-13
 
