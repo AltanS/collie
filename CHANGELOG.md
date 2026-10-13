@@ -70,6 +70,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **ADR 0104 names the public words and widens its exit.** The docs call a session's place a terminal or a program and keep the word session for one agent conversation, and the homepage block on colliepwa.dev goes with the docs page if the exit fires.
 - **The docs use the word session for one agent conversation only.** Two stray uses for a terminal grouping now name the tool, and the embed list counts seventeen pages.
 - **The changelog says space, program and terminal where it said session.** The 1.22.0 bullets use the words of the Terminology page.
+- **The twelve-line program names one cap.** `hello.ts` says `caps: { asks: true }` and leaves the rest to the SDK's default of false.
 
 ## [1.21.0] - 2026-10-13
 
