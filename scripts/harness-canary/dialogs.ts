@@ -16,6 +16,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CODEX_ARGS } from "./agents/codex";
+import { OPENCODE_ENV } from "./agents/opencode";
 import { launchLine } from "./agents/profile";
 import { Driver, POLL_MS, answeredBelow, wordsOnScreen, type AgentContext, type Screen } from "./scenarios";
 import { failCase, notReachedCase, passCase, type CaseResult } from "./verdict";
@@ -355,7 +356,7 @@ async function opencodeDialogs(ctx: AgentContext): Promise<CaseResult[]> {
   const d = await Driver.open(ctx, "canary-opencode-dialogs", ctx.options.cols, "dialogs");
   const labels = ["Allow once", "Allow always", "Reject"];
   try {
-    if ((await d.launch([], launchLine(ctx.options.cols, `OPENCODE_CONFIG=${config} opencode`))) === null) {
+    if ((await d.launch([], launchLine(ctx.options.cols, `${OPENCODE_ENV} OPENCODE_CONFIG=${config} opencode`))) === null) {
       return unreached(["dialogs"], "OpenCode never came up idle");
     }
 

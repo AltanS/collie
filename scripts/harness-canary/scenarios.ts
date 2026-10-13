@@ -1,4 +1,4 @@
-// The six scenarios, driven against one agent in panes the canary created.
+// The scenarios, driven against one agent in panes the canary created.
 //
 // Two kinds of evidence, kept apart on purpose. WHETHER a screen was reached is judged without
 // Collie: Herdr's own agent state and the screen's plain text (did the typed words appear at all).
@@ -13,7 +13,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { NARROW_COLS, type CanaryOptions } from "./args";
-import type { AgentProfile } from "./agents/profile";
+import { launchLine, type AgentProfile } from "./agents/profile";
+import { buildRecipe, recipeOptions } from "../../bridge/launcher-recipes";
 import { adapterFor } from "../../bridge/journal/registry";
 import type { JournalAdapter } from "../../bridge/journal/types";
 import type { CanarySession } from "./herdr";
@@ -160,7 +161,37 @@ export async function runAgent(ctx: AgentContext): Promise<ScenarioResult[]> {
   }
 
   if (want("start-exit")) results.push(scenarioResult(agent, "start-exit", startExit));
+  if (want("options")) results.push(scenarioResult(agent, "options", await launchOptions(ctx)));
   return results;
+}
+
+/**
+ * Every New-sheet option of this agent, each started alone in a pane of its own with the line the
+ * bridge builds for it (`buildRecipe`), so what is proven is the phone's line, not a hand-typed one.
+ * A pass is the agent up and answering: Herdr names it in the pane and calls it idle, or blocked on a
+ * question it asks before its first turn (a skip-prompts flag may ask to be confirmed). An unknown
+ * flag shows as the shell coming back with no agent, which is a fail. No model turn is made; the
+ * pane is closed, not exited, because a blocked agent has no composer to type `/exit` into.
+ */
+async function launchOptions(ctx: AgentContext): Promise<CaseResult[]> {
+  const agent = ctx.profile.agent;
+  const options = recipeOptions(agent);
+  if (options.length === 0) return [notReachedCase("options", `the New sheet offers no option for ${agent}`)];
+  const cases: CaseResult[] = [];
+  for (const option of options) {
+    const built = buildRecipe(agent, [option.id]);
+    if (!built.ok) {
+      cases.push(failCase(option.id, `the bridge refused its own option: ${built.reason}`));
+      continue;
+    }
+    const d = await Driver.open(ctx, `canary-${agent}-${option.id}`, ctx.options.cols, `option-${option.id}`);
+    try {
+      cases.push(await d.started(option.id, launchLine(ctx.options.cols, built.command)));
+    } finally {
+      d.close();
+    }
+  }
+  return cases;
 }
 
 function notStarted(id: string): CaseResult {
@@ -344,6 +375,36 @@ export class Driver {
     return null;
   }
 
+  /** One `options` case: `command` brings the agent up, idle or asking first. */
+  async started(id: string, command: string): Promise<CaseResult> {
+    this.ctx.session.sendText(this.paneId, command);
+    await Bun.sleep(200);
+    this.ctx.session.sendKeys(this.paneId, ["Enter"]);
+    let previous = "";
+    const deadline = Date.now() + START_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await Bun.sleep(POLL_MS);
+      const s = await this.screen();
+      const answer = this.ctx.profile.startupAnswer(s.texts);
+      if (answer !== null) {
+        this.ctx.session.sendKeys(this.paneId, answer);
+        await Bun.sleep(600);
+        previous = "";
+        continue;
+      }
+      const info = this.ctx.session.paneInfo(this.paneId);
+      const up = info.agent === this.agent && ["idle", "done", "blocked"].includes(info.status);
+      const still = s.text === previous;
+      previous = s.text;
+      if (!up || !still) continue;
+      const file = this.save(`option-${id}`, s);
+      return passCase(id, `${command.replace(/^clear; (stty cols \d+; )?/, "")}: ${info.status} (${file})`);
+    }
+    const file = this.save(`option-${id}-timeout`, await this.screen());
+    const info = this.ctx.session.paneInfo(this.paneId);
+    return failCase(id, `not up after ${START_TIMEOUT_MS / 1000} s, pane agent ${info.agent ?? "none"} ${info.status} (${file})`);
+  }
+
   private windowCase(id: string, samples: number, unreadAt: Screen | null, when: string): CaseResult {
     if (unreadAt === null) return passCase(id, `${samples} samples, no unread card`);
     const file = this.save(`${id}-unread`, unreadAt);
@@ -508,7 +569,7 @@ export class Driver {
   async exit(): Promise<CaseResult> {
     const id = `exit-${this.tag}`;
     this.ctx.session.sendText(this.paneId, this.ctx.profile.exitCommand);
-    await Bun.sleep(400);
+    await Bun.sleep(this.ctx.profile.exitSettleMs ?? 400);
     this.ctx.session.sendKeys(this.paneId, ["Enter"]);
     let samples = 0;
     let unreadAt: Screen | null = null;

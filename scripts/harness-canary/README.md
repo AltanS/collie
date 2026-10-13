@@ -12,12 +12,39 @@ bun run canary --dialogs                # plus dialogs and busy (more model turn
 bun run canary --agent claude,codex     # some agents
 bun run canary --scenario idle,drafts   # some scenarios, no model turns
 bun run canary --keep                   # leave the session up for a look
+bun run canary --agent claude,codex --scenario options   # each New-sheet option, started once
 bun run canary --record                 # write clean agents into the ledger
 bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 ```
 
 Exit 1 means a scenario failed. Captures and `summary.json` go to
 `/tmp/collie-canary/<run-id>/<agent>-<version>/`. They are never copied into `web/src/fixtures/`.
+
+grok, hermes, agy, omp and muse run only when `--agent` names them, because their sends spend each
+vendor's own quota. The `options` scenario is never part of a default run: it starts the agent once
+per option the New sheet offers (`bridge/launcher-recipes.ts`), with the line the bridge builds, and
+passes when Herdr shows the agent up, idle or asking a question first. It makes no model turn.
+
+### Another provider: `--via`
+
+```sh
+COLLIE_GROK_ROOT=/path/to/grok-home/sessions \
+  bun run canary --agent claude,grok --via /path/to/launchers
+```
+
+`--via DIR` starts an agent through `DIR/<agent>` when that file is executable, in place of the
+agent's own command word; the rest of the line stays the canary's. An agent with no launcher there
+starts as usual, and the log line says which. The version is read with the profile's own version
+command on PATH, not through the launcher: a launcher should change the provider and run the same
+installed agent, and the canary does not check that it does.
+
+A launcher is yours to write, outside this repo: it points the agent at another provider and ends
+in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios only;
+`dialogs`, `busy` and `options` start their own lines.
+
+A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `HOME`) moves its log
+too. Point the journal at it with the bridge's own override for that agent, `COLLIE_GROK_ROOT`,
+`COLLIE_PI_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in the canary's environment.
 
 ## What it checks
 

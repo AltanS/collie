@@ -4,7 +4,7 @@
 // AND off the session each agent wrote. Specs M37/02 and M41/05; the how and the traps are in
 // ./README.md.
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,12 @@ import { claude } from "./agents/claude";
 import { codex } from "./agents/codex";
 import { opencode } from "./agents/opencode";
 import { pi } from "./agents/pi";
-import type { AgentProfile } from "./agents/profile";
+import { grok } from "./agents/grok";
+import { hermes } from "./agents/hermes";
+import { agy } from "./agents/agy";
+import { omp } from "./agents/omp";
+import { muse } from "./agents/muse";
+import { launchedThrough, type AgentProfile } from "./agents/profile";
 import { CANARY_SESSION, CanarySession, listSessions } from "./herdr";
 import { canaryJournals } from "./journal";
 import { loadKnownGaps } from "./known-gaps";
@@ -23,9 +28,9 @@ import { loadReaders } from "./readers";
 import { runBusy, runDialogs } from "./dialogs";
 import { runAgent } from "./scenarios";
 import { installTransport } from "./transport";
-import { applyKnownGaps, exitCode, notReachedCase, recordable, renderTable, scenarioResult, type ScenarioResult } from "./verdict";
+import { DEFAULT_SCENARIOS, applyKnownGaps, exitCode, notReachedCase, recordable, renderTable, scenarioResult, type ScenarioResult } from "./verdict";
 
-const PROFILES = { claude, codex, opencode, pi } satisfies Record<CanaryAgent, AgentProfile>;
+const PROFILES = { claude, codex, opencode, pi, grok, hermes, agy, omp, muse } satisfies Record<CanaryAgent, AgentProfile>;
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/[\\/]$/, "");
 
 function log(line: string): void {
@@ -37,6 +42,18 @@ function installedVersion(profile: AgentProfile): string | null {
   try {
     const r = Bun.spawnSync([...profile.versionCommand], { stdout: "pipe", stderr: "pipe", timeout: 5000 });
     return /\d+\.\d+\.\d+/.exec(`${r.stdout.toString()} ${r.stderr.toString()}`)?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** `dir/<agent>` when `--via` named a folder and that file is an executable, else null. */
+function viaLauncher(dir: string | null, agent: string): string | null {
+  if (dir === null) return null;
+  const path = join(dir, agent);
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile() ? path : null;
   } catch {
     return null;
   }
@@ -103,6 +120,7 @@ async function main(options: CanaryOptions): Promise<number> {
   process.on("SIGHUP", () => onSignal("SIGHUP"));
 
   const versions = new Map<string, string>();
+  const launchers = new Map<string, string>();
   const results: ScenarioResult[] = [];
   let audit: readonly string[] = [];
   let adapters = new Map<string, boolean>();
@@ -118,11 +136,18 @@ async function main(options: CanaryOptions): Promise<number> {
     // of the canary has always been this checkout's (README § "Proof against 1.13.1").
     const journals = canaryJournals();
     adapters = new Map(options.agents.map((a) => [a, readers.adapterFor(a) !== undefined]));
+    const usesProfileLaunch = options.scenarios.some((s) => DEFAULT_SCENARIOS.includes(s));
     for (const agent of options.agents) {
-      const profile = PROFILES[agent];
+      // Only the default scenarios start through the profile; `dialogs`, `busy` and `options` type
+      // their own lines, so a launcher is neither used nor credited when none of those run.
+      const launcher = usesProfileLaunch ? viaLauncher(options.via, agent) : null;
+      // The version comes from the profile's own command on PATH, never through the launcher; the
+      // canary does not check that a launcher runs that same binary.
+      const profile = launcher === null ? PROFILES[agent] : launchedThrough(PROFILES[agent], launcher);
+      if (launcher !== null) launchers.set(agent, launcher);
       const version = installedVersion(profile);
       versions.set(agent, version ?? "not installed");
-      log(`${agent} ${version ?? "(not installed)"}${adapters.get(agent) ? "" : ", no adapter: raw mirror, one-step send"}`);
+      log(`${agent} ${version ?? "(not installed)"}${adapters.get(agent) ? "" : ", no adapter: raw mirror, one-step send"}${launcher === null ? (options.via === null ? "" : usesProfileLaunch ? ", own binary: no launcher in --via" : ", --via unused: these scenarios start their own lines") : `, via ${launcher}`}`);
       if (version === null) {
         for (const s of options.scenarios) results.push(scenarioResult(agent, s, [notReachedCase(agent, "not installed")]));
         continue;
@@ -161,6 +186,7 @@ async function main(options: CanaryOptions): Promise<number> {
     readers: options.readers,
     cols: options.cols,
     versions: Object.fromEntries(versions),
+    launchers: Object.fromEntries(launchers),
     results,
     audit,
   };
@@ -176,7 +202,7 @@ async function main(options: CanaryOptions): Promise<number> {
   }
 
   const code = exitCode(results);
-  if (options.record) record(options, id, results, versions, adapters);
+  if (options.record) record(options, id, results, versions, adapters, launchers);
   return code;
 }
 
@@ -186,6 +212,7 @@ function record(
   results: readonly ScenarioResult[],
   versions: ReadonlyMap<string, string>,
   adapters: ReadonlyMap<string, boolean>,
+  launchers: ReadonlyMap<string, string>,
 ): void {
   if (options.readers !== REPO_ROOT) {
     log("--record: skipped, the readers came from another checkout");
@@ -198,20 +225,23 @@ function record(
       continue;
     }
     const passed = results.filter((r) => r.agent === agent && r.verdict === "pass").map((r) => r.scenario);
+    // A launcher may have pointed the agent at another model, so the record says the run was not
+    // the agent's own default; what was verified is still this version's screen and log.
+    const through = launchers.has(agent) ? ", default scenarios started through a --via launcher" : "";
     const verified = id.slice(0, 4) + "-" + id.slice(4, 6) + "-" + id.slice(6, 8);
     const rec: LedgerRecord = {
       agent,
       version: versions.get(agent)!,
       verified,
       adapter: adapters.get(agent) ?? false,
-      evidence: `canary run ${id}: ${passed.join(", ")} pass`,
+      evidence: `canary run ${id}: ${passed.join(", ")} pass${through}`,
     };
     // The JOURNAL reader's own line, beside the screen reader's, and only when this run judged it:
     // the two readers drift apart on the same agent version (M41/05), so one date cannot speak for
     // both. `withRecord` writes it only where the ledger already has a journal block, which is the
     // agents this build has a journal adapter for.
     if (passed.includes("journal")) {
-      rec.journal = { version: rec.version, verified, evidence: `canary run ${id}: journal kinds asserted, nothing unrecognised` };
+      rec.journal = { version: rec.version, verified, evidence: `canary run ${id}: journal kinds asserted, nothing unrecognised${through}` };
     }
     recordVerified(rec, ledger);
     log(`--record: ${agent} ${versions.get(agent)} written to ${ledger}`);

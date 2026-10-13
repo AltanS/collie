@@ -18,7 +18,7 @@ export type Verdict = CaseVerdict | "known-gap";
  * `journal` sits next to `sends` because it reads what those sends wrote: it makes no model turn of
  * its own and it has nothing to read unless `sends` ran in the same pane.
  */
-export const SCENARIOS = ["idle", "drafts", "sends", "journal", "narrow", "start-exit", "dialogs", "busy"] as const;
+export const SCENARIOS = ["idle", "drafts", "sends", "journal", "narrow", "start-exit", "dialogs", "busy", "options"] as const;
 export type ScenarioId = (typeof SCENARIOS)[number];
 
 /** What a run without `--scenario` does: the five screens and sends of M37/02, plus M41/05's read of
@@ -110,12 +110,13 @@ export function exitCode(results: readonly ScenarioResult[]): number {
   return results.some((r) => r.verdict === "fail") ? 1 : 0;
 }
 
-/** Whether a run may be recorded in the ledger for `agent`: no fail anywhere in the run, and every
- *  scenario of this agent reached a verdict. */
+/** Whether a run may be recorded in the ledger for `agent`: no fail anywhere in the run, every
+ *  scenario of this agent reached a verdict, and at least one of them read the screen. `options`
+ *  alone only proves the agent started, so it never vouches for this version's readers. */
 export function recordable(agent: string, results: readonly ScenarioResult[]): boolean {
   if (exitCode(results) !== 0) return false;
   const own = results.filter((r) => r.agent === agent);
-  return own.length > 0 && own.every((r) => r.verdict !== "not-reached");
+  return own.some((r) => r.scenario !== "options") && own.every((r) => r.verdict !== "not-reached");
 }
 
 /** The printed summary: one row per agent and scenario, fixed columns, no colour. */

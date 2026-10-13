@@ -96,6 +96,12 @@ describe("exitCode and recordable", () => {
   test("an agent with no results is not recorded", () => {
     expect(recordable("opencode", [ok])).toBe(false);
   });
+
+  test("an options-only run is not recorded, and options beside a screen scenario does not block one", () => {
+    const launched = scenarioResult("claude", "options", [passCase("skip")]);
+    expect(recordable("claude", [launched])).toBe(false);
+    expect(recordable("claude", [ok, launched])).toBe(true);
+  });
 });
 
 test("renderTable prints one row per result with the gap's reference", () => {
