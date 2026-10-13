@@ -297,7 +297,7 @@ describe("the reducer", () => {
 });
 
 describe("the journal registry", () => {
-  const roots = { claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [] };
+  const roots = { claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [] };
 
   test("durable is registered when a log root is named, under the agent name a durable pane reports", () => {
     const registry = buildJournalRegistry({ ...roots, durable: ["/state/durable"] });
