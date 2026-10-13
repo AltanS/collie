@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chat shows the answer an OmO question got.** The question card fills in from the session log once the person has answered in the terminal. Thanks @welldoingk (#426).
+
 ## [1.20.2] - 2026-10-12
 
 ### Fixed
