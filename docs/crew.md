@@ -224,9 +224,10 @@ actions. The wire itself is specified in [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.m
 
 A peer is one Collie instance, and one Collie instance mirrors one backend. A host that has more than
 one backend therefore runs more than one peer, each with its own port and state directory, and each
-joins the crew on its own. A Herdr session and a durable agent program on the same host are the
+joins the crew on its own. A Herdr and a program on the same host that run as separate instances are the
 example: the Herdr peer and a second peer with `COLLIE_MUX=durable` appear as two machines in the
-list ([durable notes](multiplexers.md#durable-notes)).
+list. One Collie can also carry both, and then no second peer is needed
+([Programs](durable-programs.md#attach-a-program)).
 
 ![Code reaches a member over your own ssh, never over the crew link.](images/crew/crew-ssh-rides.svg)
 

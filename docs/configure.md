@@ -475,7 +475,7 @@ the socket, or the URL with its token, never both.
 
 Both set, or a URL without a token, is a config error: the peer starts and shows the program as
 unreachable with that reason. Over https every poll is a billed request, so Collie polls every 2 s
-while a phone watches and every 10 s otherwise. [Multiplexers](multiplexers.md#two-ways-to-reach-a-program)
+while a phone watches and every 10 s otherwise. [Programs](durable-programs.md#two-ways-to-reach-a-program)
 says what each way keeps out, and what it does not.
 
 ### Starters from a durable program (experimental)
@@ -768,7 +768,7 @@ By default, one Collie instance serves every Herdr session it finds.
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your
 config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serves only the primary
-session. Every discovered session is accessible through the same URL, including private or sandbox
+Herdr session. Every discovered Herdr session is accessible through the same URL, including private or sandbox
 sessions. [Security](security.md) lists this behavior as a sharp edge.
 
 ## Dark mode / light mode

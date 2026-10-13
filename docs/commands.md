@@ -28,7 +28,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
 | **Logs** | `collie logs` | Tail the service log |
 | **Config** | `collie config show` · `collie config check` · `collie config init` | Print every setting with its source, validate the file, or write a commented `config.toml` ([the config file](configure.md#the-config-file)) |
-| **Durable programs** | `collie durable attach` · `collie durable detach` · `collie durable list` | Add a durable program to this Collie as a session, remove it, or list the programs with their state (restart to apply; [Durable programs](durable-programs.md)) |
+| **Durable programs** | `collie durable attach` · `collie durable detach` · `collie durable list` | Add a program to this Collie as a space, remove it, or list the programs with their state (restart to apply; [Durable programs](durable-programs.md)) |
 | **Voice** | `collie stt setup` · `stt test` · `stt status` · `stt off` | Configure / check / disable [voice input](voice-and-push.md#voice-input-optional) |
 | **Push keys** | `collie push-keys` | Generate the VAPID keypair into your `.env` |
 | **Push test** | `collie push-test` | Send one notification to prove it works |

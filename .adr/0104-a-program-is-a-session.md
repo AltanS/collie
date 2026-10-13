@@ -35,6 +35,8 @@ the crew machinery the second Collie needs.
 **A durable program is a session of the Collie that the person already runs. The session is the
 thing, and a pane is one view of it.**
 
+The public docs call a session's place a terminal or a program and keep the word session for one agent conversation; the code name `SessionCard` stays.
+
 1. **Sources.** The programs a Collie shows are listed in `sources.json`, in the instance's config
    folder beside `.env`, mode 0600. Each entry has a `name` (lower case letters, digits and hyphens,
    at most 32, unique, and never the name of a terminal session), a `kind` of `durable`, and exactly
@@ -63,8 +65,8 @@ thing, and a pane is one view of it.**
 
 This is a step, and a step needs a way back. By the 1.24.0 release, one of two things must be true: a
 public repository that speaks the wire exists, or an outside issue or discussion about a durable
-program exists. If neither does, the durable code moves to `experiments/`, and the docs page is
-removed. Sources stay a file and a registry rule, so the move removes an adapter and a verb, not a
+program exists. If neither does, the durable code moves to `experiments/`, the docs page is
+removed, and the homepage block on colliepwa.dev goes with the docs page. Sources stay a file and a registry rule, so the move removes an adapter and a verb, not a
 model.
 
 ## Consequences
