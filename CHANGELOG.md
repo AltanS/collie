@@ -63,6 +63,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.
 
+### Packaging
+
+- **The durable SDK is a package of its own, `@colliepwa/durable-sdk` 0.1.0.** It moved from `examples/durable-member/sdk/` to `packages/durable-sdk/`. One import serves Node and Bun and picks the server at run time, `./node` and `./bun` force one, `./pi` is the Pi Durable entry, and `./core` is the wire without a transport. It has no runtime dependency, and the Pi packages are optional peers. It exports `WIRE_VERSION` and its own `SDK_VERSION`.
+
 ### Docs
 
 - **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.

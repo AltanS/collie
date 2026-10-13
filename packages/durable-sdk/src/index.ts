@@ -1,19 +1,19 @@
-// The SDK for a Bun program. A program calls `openCollie`, lays out workspaces, tabs and panes, and the durable
-// socket wire (version 1) shows them to the Collie that dials it. The layout and the wire are the core
-// (core/, no runtime import); this file adds the private Unix socket and the descendant check (server.ts).
-// A Node program imports `./node/index.ts` instead, and a Pi Durable program adds `./pi/index.ts`.
+// The SDK's one import, `@colliepwa/durable-sdk`, for Node and Bun alike (ADR 0105). `openCollie` picks the server at
+// run time: on Bun the Bun entry (./bun/index.ts), with the descendant check; elsewhere the Node entry
+// (./node/index.ts), which serves the same socket without that check and writes one line at start that says so.
+// The two servers stay two files, and a program that wants one of them imports `./bun` or `./node` instead.
+// A Pi Durable program adds `./pi`; a program with its own transport takes `./core`.
 // No Pi Durable import here or in core/.
 
-import { collieOf, coreOf, type Collie, type OpenOptions, socketOf } from "./open.ts";
-import { startServer } from "./server.ts";
+import type { Collie, OpenOptions } from "./open.ts";
 
 export * from "./core/index.ts";
 export { SOCKET_ENV, type Collie, type OpenOptions } from "./open.ts";
 export { wireListener, type WireListener } from "./http.ts";
 
+/** Open the socket on the runtime this program runs on: the Bun server on Bun, the node:http server elsewhere. */
 export async function openCollie(o: OpenOptions): Promise<Collie> {
-  const socket = socketOf(o, process.env);
-  const core = coreOf(o);
-  const running = await startServer(socket, { core, callerCheck: o.callerCheck });
-  return collieOf(core, running);
+  // Each server loads only on its own runtime, so Node never reads the Bun server's file.
+  const entry = typeof Bun === "undefined" ? await import("./node/index.ts") : await import("./bun/index.ts");
+  return entry.openCollie(o);
 }

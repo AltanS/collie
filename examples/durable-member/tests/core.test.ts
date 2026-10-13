@@ -29,7 +29,7 @@ protocolSuite({
 });
 
 describe("the core alone", () => {
-  test("no file in sdk/core imports a runtime module: no node:, bun, cloudflare: or a package", () => {
+  test("no file in the SDK core imports a runtime module: no node:, bun, cloudflare: or a package", () => {
     const dir = new URL("../../../packages/durable-sdk/src/core/", import.meta.url).pathname;
     for (const f of readdirSync(dir)) {
       const code = readFileSync(join(dir, f), "utf8");

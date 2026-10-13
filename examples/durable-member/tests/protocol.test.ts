@@ -23,7 +23,7 @@ const filesUnder = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(join(dir, e.name)) : [join(dir, e.name)]));
 
 describe("no token", () => {
-  test("there is no 401: an Authorization header is not read, and no code in sdk/ reads a token", async () => {
+  test("there is no 401: an Authorization header is not read, and no code in the SDK reads a token", async () => {
     const c = await openCollie({ callerCheck: "off", socket: join(tmp(), "tok.sock"), hostName: "t" });
     c.ready();
     const d = { socket: c.address, version: 1 };

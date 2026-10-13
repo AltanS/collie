@@ -8,7 +8,10 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["bun"],
-    "lib": ["ESNext"]
+    "lib": ["ESNext"],
+    // The example imports the SDK's source (packages/durable-sdk/src), and the SDK's `./pi` entry imports Pi Durable.
+    // This sends those imports to this folder's install too, so the check sees the one Pi copy the program runs.
+    "paths": { "@earendil-works/*": ["./node_modules/@earendil-works/*"] }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules"]

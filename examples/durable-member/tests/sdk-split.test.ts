@@ -1,5 +1,6 @@
-// The SDK's entries (M55 spec 03): the core and the Bun and Node entries import nothing from Pi, the Pi entry imports
-// nothing from the example, the Node entry runs on Node itself, and the caps a program names are the whole list.
+// The SDK's entries (M55 spec 03, packages/durable-sdk/src since spec 10): the core and the Bun and Node entries import
+// nothing from Pi, the Pi entry imports nothing from the example, the Node entry runs on Node itself, and the caps a
+// program names are the whole list.
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -14,7 +15,7 @@ afterAll(cleanup);
 
 const SDK = new URL("../../../packages/durable-sdk/src/", import.meta.url).pathname;
 
-/** Every .ts file under a folder, as paths relative to sdk/. */
+/** Every .ts file under a folder, as paths relative to src/. */
 function filesOf(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -30,7 +31,7 @@ function importsOf(file: string): string[] {
 }
 
 describe("the SDK split", () => {
-  test("no pi import: no file in sdk/ outside sdk/pi imports Pi Durable or another @earendil-works or @mariozechner package", () => {
+  test("no pi import: no file in src/ outside src/pi imports Pi Durable or another @earendil-works or @mariozechner package", () => {
     const outside = filesOf(SDK).filter((file) => !file.startsWith("pi/"));
     expect(outside).toContain("core/index.ts");
     for (const file of outside) {
@@ -38,7 +39,7 @@ describe("the SDK split", () => {
     }
   });
 
-  test("no pi import from the example either: sdk/pi imports Pi and sdk/ only, never ../../ (the example's script)", () => {
+  test("no pi import from the example either: src/pi imports Pi and src/ only, never ../../ (the example's script)", () => {
     for (const file of filesOf(join(SDK, "pi"))) {
       for (const name of importsOf(file)) expect([file, name]).toEqual([file, expect.stringMatching(/^(@earendil-works\/|\.\.\/core\/|\.\/)/)]);
     }

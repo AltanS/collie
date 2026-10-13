@@ -1,0 +1,26 @@
+{
+  // The package build (`bun run sdk:build` at the repo root): src/*.ts to ESM .js and .d.ts in dist/. The source
+  // imports its own files with a `.ts` extension, so Node and Bun run it as it is; the build rewrites each to `.js`.
+  //
+  // THE PI PEERS COME FROM THE EXAMPLE'S INSTALL (ADR 0105). In this repo the example imports the SDK as source, and
+  // Pi Durable keeps its state in module-level maps, so the example and the SDK's `./pi` entry must load ONE copy of
+  // it: a second copy fails with "Not a Harness". `paths` sends the SDK's Pi imports to examples/durable-member's
+  // pinned install, for this build and for Bun, which reads the nearest tsconfig of each file it runs. A program that
+  // installs the package from npm has one copy anyway: the peers resolve from its own node_modules. Bun's types come
+  // from the root install. This file is not in the package.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "lib": ["ESNext"],
+    "paths": { "@earendil-works/*": ["../../examples/durable-member/node_modules/@earendil-works/*"] }
+  },
+  "include": ["src"]
+}

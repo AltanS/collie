@@ -1,10 +1,11 @@
-// The Pi Durable entry of the SDK (`sdk/pi`). It is the only place in sdk/ that imports Pi Durable, and it imports
-// nothing from the example around it: the words a program shows (questions, notes) come in as options. It uses the
-// SDK's handles and nothing else: a conversation becomes a pane, `watchEvents` becomes events and state, a
-// `beforeTool` hook becomes an ask, send and stop become `submit` and `abort`.
+// The Pi Durable entry of the SDK (`@colliepwa/durable-sdk/pi`). It is the only place in src/ that imports Pi
+// Durable, and it imports nothing from the example around it: the words a program shows (questions, notes) come in as
+// options. It uses the SDK's handles and nothing else: a conversation becomes a pane, `watchEvents` becomes events and
+// state, a `beforeTool` hook becomes an ask, send and stop become `submit` and `abort`.
 //
 // It is written against @earendil-works/pi-durable 1.1.0. Two calls need that line: `entries({ order })` and
-// `scanConversations`; on 1.0.x they do not type-check, so pin 1.1.0 or later.
+// `scanConversations`; on 1.0.x they do not type-check, so pin 1.1.0 or later. The three Pi packages it imports are
+// optional peer dependencies of the package: a program that never imports `./pi` installs none of them.
 // Erasable TypeScript only (no parameter properties, no enums), so Node runs it as it is.
 
 import type { Context } from "@earendil-works/chord";
