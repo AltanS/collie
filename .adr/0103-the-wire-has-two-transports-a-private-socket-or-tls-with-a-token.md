@@ -100,7 +100,11 @@ a program the person deployed themselves.
 - A cold program behind 1B can take longer than 1000 ms to answer. Real cold starts were not
   measured when this was written. A program slower than 5000 ms shows as one dropped read, then as
   `unreachable`, never as an empty machine.
-- The idle peer polls about every 5 to 6 seconds in total: the watch every 10 s plus the bridge's
-  own 12 s safety-net poll. The docs recommend a paid plan for a program polled all day, and say why.
+- An idle peer reads the program once per 10 s in total: 8,640 Durable Object requests a day, plus
+  the Worker requests. Over HTTPS the watch is the only dialer. The bridge's own 12 s safety-net poll
+  is answered from the watch's last good read while it is younger than the watch's cadence, and only
+  the watch and a person's look (`refresh()`) start a read (amended 2026-10-13; the first text said
+  every 5 to 6 seconds, because the safety-net poll dialled too). The docs recommend a paid plan for a
+  program polled all day, and say why.
 - Revisit this decision if a host needs a second header (an access proxy's service token) or a
   push channel. Both are additive to 1B, not changes to the wire.

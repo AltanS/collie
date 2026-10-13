@@ -217,9 +217,9 @@ peer's `.env`, and run `collie restart`.
 
 Every poll over https is a billed request: on Cloudflare one poll is one Worker request and one
 Durable Object request, and a "nothing changed" answer counts too. With no phone open the idle poll
-runs every 10 s, plus the bridge's own 12 s safety-net poll, so a peer asks about 16,000 times a
-day. That fits the Workers Paid plan, which is the honest recommendation for a program you poll all
-day. On the Free plan it leaves little room for anything else.
+runs every 10 s, and the bridge's own safety-net poll reuses its last answer, so a peer asks 8,640
+times a day. That fits the Workers Paid plan, which is the honest recommendation for a program you
+poll all day. On the Free plan it leaves little room for anything else.
 
 A Worker and a Durable Object that speak this wire, to run under `wrangler dev` first and then
 deploy, are in

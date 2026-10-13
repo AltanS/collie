@@ -47,7 +47,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../../json.ts";
 import { isRequestId } from "../../worktree-receipts.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld } from "../conformance.ts";
-import { DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from "./adapter.ts";
+import { DURABLE_BUDGETS, DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from "./adapter.ts";
 import { DurableSocketClient } from "./client.ts";
 import { DurableHttpClient } from "./http-client.ts";
 import recordedHello from "./fixtures/hello.json";
@@ -772,6 +772,13 @@ export function testToken(): string {
 const PAST_THE_FLOOR_MS = MIN_SNAPSHOT_GAP_MS + 50;
 
 /**
+ * Over HTTPS the watch is the only dialer (adapter.ts): a good read is served again until the watch's idle
+ * cadence has passed, which is also the adapter's declared `topologyLatency`. A change the world makes is
+ * therefore seen one idle census later, so the https world moves its clock that far.
+ */
+const ONE_IDLE_CENSUS_MS = DURABLE_BUDGETS.https.idlePollMs;
+
+/**
  * A durable world: the real adapter over the real socket client, dialling a fake program that holds
  * five conversations in two workspaces and three tabs.
  *
@@ -823,7 +830,7 @@ export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
   const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
   const change = (act: () => void): Promise<void> => {
     act();
-    clock.advance(PAST_THE_FLOOR_MS);
+    clock.advance(ONE_IDLE_CENSUS_MS);
     return Promise.resolve();
   };
   return {
@@ -831,7 +838,7 @@ export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
     writes: () => [],
     reconnect: async () => {
       await program.dropConnections();
-      clock.advance(PAST_THE_FLOOR_MS);
+      clock.advance(ONE_IDLE_CENSUS_MS);
     },
     restartMux: () => change(() => program.restart()),
     renameOutOfBand: (paneId, label) => change(() => program.retitlePane(paneId, label)),

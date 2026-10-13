@@ -115,9 +115,10 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 
 - **Every poll is a billed request, twice.** One poll is one Worker request and one Durable Object
   request, and a "nothing changed" answer (304) counts too. Over HTTPS, Collie asks every 2 s while a
-  phone watches the machine, and every 10 s when none does. With the bridge's own safety-net poll, an
-  idle peer asks about 16,000 times a day (about 480,000 a month). While a phone watches, the 2 s poll
-  alone makes 43,200 a day.
+  phone watches the machine, and every 10 s when none does. The bridge's own safety-net poll reuses
+  the last answer, so an idle peer asks once per 10 s: 8,640 Durable Object requests a day (about
+  260,000 a month), plus the same number of Worker requests. While a phone watches, the 2 s poll
+  makes 43,200 a day.
 - **The Durable Object stays in memory while a peer polls.** An idle Durable Object leaves memory after
   10 s with no request, so a peer that polls every 2 s keeps it in memory. Cloudflare bills that time for
   the full 128 MB: 24 hours in memory is about 11,000 GB-s.
