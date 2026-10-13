@@ -78,6 +78,13 @@ export interface CrewRuntimeFacts {
    * every sweep, so a success clears it without anything having to remember to.
    */
   readonly pairingCollision: PairingCollision | null;
+  /**
+   * The release the lead last stated in `X-Crew-Lead-Release` (crew/follow.ts), as this PEER heard it on
+   * the lead's sweep. Absent on a lead, on a solo machine, and on a peer whose lead has stated none
+   * since this process started (a dev or prerelease lead states nothing). `collie doctor` reads it for
+   * the `durable-lead` row (bridge/durable/old-lead.ts, M50 spec 14). An observation like the rest.
+   */
+  readonly leadRelease?: string;
 }
 
 /** One refused sync: when this process was told, and the labels the deputy named. */
@@ -231,7 +238,7 @@ export function parseMarker(raw: string | null): CrewRuntimeMarker | null {
   if (typeof v.bootedAt !== "number" || typeof v.pid !== "number" || roster === null) return null;
   const mode = v.mode;
   if (mode !== "solo" && mode !== "lead" && mode !== "peer") return null;
-  return {
+  const marker: CrewRuntimeMarker = {
     bootedAt: v.bootedAt,
     pid: v.pid,
     mode,
@@ -248,6 +255,8 @@ export function parseMarker(raw: string | null): CrewRuntimeMarker | null {
     deposed: parseDeposed(v.deposed),
     pairingCollision: parsePairingCollision(v.pairingCollision),
   };
+  // Additive (M50 spec 14): a marker from an older build has none, and reads exactly as before.
+  return typeof v.leadRelease === "string" && v.leadRelease !== "" ? { ...marker, leadRelease: v.leadRelease } : marker;
 }
 
 export interface RosterDrift {

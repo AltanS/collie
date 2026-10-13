@@ -288,7 +288,9 @@ with a reason:
 `collie doctor` checks the same things in six lines, `durable-env`, `durable-socket`,
 `durable-url`, `durable-token`, `durable-hello` and `durable-ready`, and names the failing check
 with a fix. `durable-env` says which way the peer reaches the program, and the lines for the other
-way are skipped with the reason.
+way are skipped with the reason. A seventh line, `durable-lead`, warns on a peer whose lead runs a
+release below 1.21.0: that lead shows durable panes without the question card, and its Terminal tab
+polls. The peer also writes that sentence to its log once. Update the lead.
 
 ### tuios notes
 
