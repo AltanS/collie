@@ -38,7 +38,7 @@ import { join } from "node:path";
 import type { AuditEntry } from "../audit.ts";
 import type { JsonValue } from "../json.ts";
 import type { MuxAdapter, MuxAnswerResult, MuxOutcome } from "../mux/types.ts";
-import type { AnswerRequest, AnswerResponse, Ask } from "../types.ts";
+import type { AnswerRequest, AnswerResponse, AnswerValues, Ask } from "../types.ts";
 import {
   DURABLE_RECEIPT_LIMITS,
   digestDiffers,
@@ -83,9 +83,28 @@ export interface AnswerReceipt {
   reason?: "unsupported" | "refused";
 }
 
-/** What one answer asks for, as a digest: the pane, the ask, the revision the phone saw, the option. */
-export function answerDigest(paneId: string, request: Pick<AnswerRequest, "askId" | "revision" | "optionId">): string {
-  return payloadDigest(["answer", paneId, request.askId, request.revision, request.optionId]);
+/** The receipt's `optionId` for an answer: the option for a permission, the options joined for a choice, and nothing for a text or a form (their words stay out of the receipt). */
+export function receiptOptionId(request: AnswerRequest): string {
+  if ("optionId" in request) return request.optionId;
+  return "optionIds" in request ? request.optionIds.join(",") : "";
+}
+
+/** The values of a form as a stable list of `[field id, value]`, so the same form digests the same whatever order the keys came in. */
+function sortedValues(values: AnswerValues): string {
+  return JSON.stringify(Object.keys(values).toSorted().map((key) => [key, values[key]]));
+}
+
+/**
+ * What one answer asks for, as a digest: the pane, the ask, the revision the phone saw, and what was chosen. The
+ * permission digest is the one it always was. A text or a form is hashed, so the digest tells another payload under the
+ * same id apart without the receipt keeping the person's words.
+ */
+export function answerDigest(paneId: string, request: AnswerRequest): string {
+  const head = ["answer", paneId, request.askId, request.revision] as const;
+  if ("optionId" in request) return payloadDigest([...head, request.optionId]);
+  if ("optionIds" in request) return payloadDigest([...head, "optionIds", JSON.stringify(request.optionIds)]);
+  if ("text" in request) return payloadDigest([...head, "text", request.text]);
+  return payloadDigest([...head, "values", sortedValues(request.values)]);
 }
 
 /** A week, the newest thousand, and a pending receipt kept for at least a day (ADR 0100). */
@@ -264,6 +283,13 @@ export function answerPane(paneId: string, body: JsonValue | undefined, deps: An
   return work;
 }
 
+/** What the audit line says was chosen: the option ids, never a person's typed words. */
+function auditChoice(request: AnswerRequest) {
+  if ("optionId" in request) return { optionId: request.optionId };
+  if ("optionIds" in request) return { answer: "optionIds", optionIds: request.optionIds };
+  return { answer: "text" in request ? "text" : "values" };
+}
+
 async function send(
   paneId: string,
   request: AnswerRequest,
@@ -282,7 +308,7 @@ async function send(
       paneId,
       askId: request.askId,
       revision: request.revision,
-      optionId: request.optionId,
+      optionId: receiptOptionId(request),
       digest: answerDigest(paneId, request),
     }),
     state: "pending",
@@ -306,7 +332,7 @@ async function send(
       requestId: request.requestId,
       askId: request.askId,
       revision: request.revision,
-      optionId: request.optionId,
+      ...auditChoice(request),
       outcome: settled.reply.body.outcome,
     },
   });

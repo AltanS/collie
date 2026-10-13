@@ -368,7 +368,7 @@ describe("answer: the receipt store keeps a week, the newest thousand, and every
       askId: "a",
       revision: 1,
       optionId: "o",
-      digest: answerDigest("p", { askId: "a", revision: 1, optionId: "o" }),
+      digest: answerDigest("p", { requestId: uuid(0), askId: "a", revision: 1, optionId: "o" }),
       state,
     });
     await store.record(receipt(0, now - 8 * DAY, "taken"));

@@ -15,7 +15,8 @@
 //   • `<stateDir>/control-receipts.json`, their receipts (`coerceControlReceipt`).
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import type { AnswerRequest, Ask, ControlRequest, ControlTarget } from "../types.ts";
+import { ANSWER_TEXT_BYTES, CAPS } from "../mux/durable/clean.ts";
+import type { AnswerPayload, AnswerRequest, AnswerValues, Ask, ControlRequest, ControlTarget } from "../types.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import type { AnswerReceipt, AnswerState } from "./answer.ts";
 import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
@@ -47,18 +48,85 @@ function isTime(value: JsonValue | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+/** A non-empty string, or null. */
+function nonEmpty(value: JsonValue | undefined): string | null {
+  return isText(value) && value !== "" ? value : null;
+}
+
+/** A text answer: a non-empty string of at most 2000 characters at four bytes each (WIRE.md 7.12). The ask's own `maxLength` is the program's to check. */
+function answerText(value: JsonValue | undefined): string | null {
+  return isText(value) && value !== "" && Buffer.byteLength(value, "utf8") <= ANSWER_TEXT_BYTES ? value : null;
+}
+
+/** A list of 1 to `max` distinct non-empty ids, or null. */
+function idList(value: JsonValue | undefined, max: number): string[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > max) return null;
+  const ids: string[] = [];
+  for (const entry of value) {
+    const id = nonEmpty(entry);
+    if (id === null || ids.includes(id)) return null;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** The values of a form: 1 to 6 fields, each a text (a string), a pick (one id or a list of ids) or a toggle (a boolean). */
+function formValues(value: JsonValue | undefined): AnswerValues | null {
+  const fields = asRecord(value);
+  if (fields === null) return null;
+  const keys = Object.keys(fields);
+  if (keys.length < 1 || keys.length > CAPS.formFields) return null;
+  const values: AnswerValues = {};
+  for (const key of keys) {
+    const entry = fields[key];
+    if (key === "") return null;
+    if (typeof entry === "boolean") values[key] = entry;
+    else if (isText(entry)) {
+      if (Buffer.byteLength(entry, "utf8") > ANSWER_TEXT_BYTES) return null;
+      values[key] = entry;
+    } else {
+      const ids = idList(entry, CAPS.choiceOptions);
+      if (ids === null) return null;
+      values[key] = ids;
+    }
+  }
+  return values;
+}
+
+/** Which of the four answer shapes the body names. Exactly one key: `optionId`, `optionIds`, `text` or `values`. */
+function readPayload(fields: JsonObject): AnswerPayload | null {
+  const { optionId, optionIds, text, values, note } = fields;
+  const named = [optionId, optionIds, text, values].filter((entry) => entry !== undefined).length;
+  if (named !== 1) return null;
+  if (note !== undefined && optionId === undefined) return null;
+  if (optionId !== undefined) {
+    const id = nonEmpty(optionId);
+    if (id === null) return null;
+    if (note !== undefined && (!isText(note) || note.length > NOTE_MAX_CHARS)) return null;
+    return isText(note) && note !== "" ? { optionId: id, note } : { optionId: id };
+  }
+  if (optionIds !== undefined) {
+    const ids = idList(optionIds, CAPS.choiceOptions);
+    return ids === null ? null : { optionIds: ids };
+  }
+  if (text !== undefined) {
+    const line = answerText(text);
+    return line === null ? null : { text: line };
+  }
+  const form = formValues(values);
+  return form === null ? null : { values: form };
+}
+
 /** The answer body, checked. Every field is the phone's claim until this says otherwise. */
 export function readAnswerBody(body: JsonValue | undefined): AnswerRequest | null {
   const fields = asRecord(body);
   if (fields === null) return null;
-  const { requestId, askId, revision, optionId, note } = fields;
+  const { requestId, askId, revision } = fields;
   if (!isRequestId(requestId)) return null;
-  if (!isText(askId) || askId === "" || !isText(optionId) || optionId === "") return null;
+  if (!isText(askId) || askId === "") return null;
   if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 1) return null;
-  if (note !== undefined && (!isText(note) || note.length > NOTE_MAX_CHARS)) return null;
-  const request: AnswerRequest = { requestId, askId, revision, optionId };
-  if (isText(note) && note !== "") request.note = note;
-  return request;
+  const payload = readPayload(fields);
+  return payload === null ? null : { requestId, askId, revision, ...payload };
 }
 
 /** The most text one send may carry, in UTF-8 bytes (WIRE.md section 6, `SendRequest.text`). */

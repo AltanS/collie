@@ -22,6 +22,14 @@ export type { GitHead } from "./git-head.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+/** A small mark next to a pane's title: a count, or a short word. Exactly one key (WIRE.md section 3). */
+export type PaneBadge = { count: number } | { text: string };
+
+/** How far a working pane is: a list of steps, or a percent with an optional label (WIRE.md section 7.10). */
+export type PaneProgress =
+  | { readonly kind: "steps"; readonly steps: readonly { readonly label: string; readonly state: "done" | "running" | "todo" }[] }
+  | { readonly kind: "percent"; readonly value: number; readonly label?: string };
+
 /**
  * A single pane the user might want to monitor or drive. Usually an agent-bearing pane (the
  * triage home), but also a bare **shell** pane (`kind:"shell"`, `agent:"shell"`) once we surface
@@ -115,6 +123,25 @@ export interface AgentView {
    * bridge, which reads exactly as it did before — as "not known to be stale".
    */
   terminalTitleStale?: boolean;
+  /**
+   * One line the program shows under this pane's title (WIRE.md section 3, `Pane.subtitle`). Text only,
+   * trimmed and capped at 120 characters by the adapter that read it.
+   *
+   * ONE PRODUCER, like {@link PaneWire.asks}: only a pane from an adapter whose panes have no screen
+   * carries it (the `durable` adapter). Absent on every other pane and from every older bridge or crew
+   * member, which all read as "no subtitle", so a solo body stays byte-identical.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: a count (an integer, 0 to 9999) or a short word (at most 12
+   * characters). Same producer and same absence rule as {@link subtitle}.
+   */
+  badge?: PaneBadge;
+  /**
+   * How far a working conversation is (WIRE.md section 7.10). Same producer and same absence rule as
+   * {@link subtitle}. The phone draws it only while the pane works or waits.
+   */
+  progress?: PaneProgress;
   /**
    * A finished English sentence about this pane, composed in the bridge and rendered as text the
    * client does not interpret. Absent on almost every pane.
@@ -232,10 +259,24 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
 
 /** What a person may choose on an ask (WIRE.md section 4). */
 export interface AskOption {
-  /** Unique inside its ask. Sent back unchanged as `optionId`. */
+  /** Unique inside its ask. Sent back unchanged as `optionId` (or in `optionIds`, or as a form value). */
   id: string;
   label: string;
-  effect: "allow" | "allow-always" | "deny" | "cancel";
+  /** On a `permission` option only. A `choice` option, and an option of a form field, has none. */
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** One field of a `form` ask (WIRE.md section 7.12). */
+export interface AskField {
+  /** Unique inside its ask. The key of the field's value in the answer. */
+  id: string;
+  label: string;
+  kind: "text" | "choice" | "toggle";
+  required?: true;
+  /** A `choice` field: 1 to 8 options. A pick answers with the option's id. */
+  options?: AskOption[];
+  /** A `text` field: 1 to 2000 characters. */
+  maxLength?: number;
 }
 
 /** The tool call an ask is about, when the program wants it drawn. */
@@ -253,7 +294,10 @@ export interface AskTool {
 export interface Ask {
   /** New after every restart of the program, even for the same tool call. */
   id: string;
-  /** `permission` is the only kind in this version. A card for another kind is not answerable. */
+  /**
+   * `permission`, `choice`, `text` or `form` (WIRE.md section 7.12). A card for any other kind (a program
+   * newer than this build) is not answerable.
+   */
   kind: string;
   /** The program's id for the tool call. The same across a restart; the push guard keys on it. */
   toolCallId: string;
@@ -263,8 +307,19 @@ export interface Ask {
   title: string;
   /** The item the card sits under, usually the tool item. */
   itemId: string;
-  /** At least one, at most six. An ask with none is shown as not answerable. */
+  /**
+   * A `permission` ask: one to six, each with an effect. A `choice` ask: one to eight, none with an effect.
+   * A `text` and a `form` ask: none. An ask that needs options and has none is shown as not answerable.
+   */
   options: AskOption[];
+  /** A `choice` ask only: more than one option may be picked. */
+  multiple?: true;
+  /** A `text` ask only: the hint in the empty field. */
+  placeholder?: string;
+  /** A `text` ask only: 1 to 2000 characters (500 when the program named none). */
+  maxLength?: number;
+  /** A `form` ask only: one to six fields. A form with none is shown as not answerable. */
+  fields?: AskField[];
   reason?: string;
   tool?: AskTool;
   /**
@@ -278,14 +333,28 @@ export interface Ask {
  * `POST /api/pane/:id/answer`'s body, as the bridge reads it (ADR 0100). `requestId` is a UUID the
  * phone mints per tap; a retry of the same tap sends the same one.
  */
-export interface AnswerRequest {
+export type AnswerRequest = AnswerBase & AnswerPayload;
+
+interface AnswerBase {
   requestId: string;
   askId: string;
   /** The revision the phone saw. */
   revision: number;
-  optionId: string;
-  note?: string;
 }
+
+/** What a form answers: a field's id to its value, a string for a text or choice field and a boolean for a toggle. */
+export type AnswerValues = Record<string, string | string[] | boolean>;
+
+/**
+ * What the person chose, by the kind of the ask (WIRE.md section 7.12). Exactly one key names the shape:
+ * `optionId` for a `permission`, `optionIds` for a `choice` (one when it is not `multiple`), `text` for a
+ * `text` ask and `values` for a `form`.
+ */
+export type AnswerPayload =
+  | { optionId: string; note?: string }
+  | { optionIds: string[] }
+  | { text: string }
+  | { values: AnswerValues };
 
 /**
  * What `POST /api/pane/:id/answer` answers, one shape for every outcome (ADR 0100).

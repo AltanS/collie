@@ -17,7 +17,7 @@ describe("REAL_MODEL", () => {
     process.env.REAL_MODEL = "google/gemini-3.1-flash-lite";
     const app = await startApp(opts());
     const snap = (await api.snapshot({ socket: app.collie.address, version: 1 })).body;
-    expect(snap.starters!.map((s) => s.id)).toEqual(["new-triage", "two-notes"]);
+    expect(snap.starters!.map((s) => s.id)).toEqual(["new-triage", "two-notes", "ask-questions"]);
     await app.close();
   });
   test("an id Pi does not know fails at start, before anything listens", async () => {

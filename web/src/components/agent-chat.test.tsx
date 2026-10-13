@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams, useRevalidator } from "react-router";
 
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import type { JsonValue } from "@/lib/json";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
@@ -4127,6 +4128,32 @@ describe("AgentChat header — the branch on the path line", () => {
   });
 });
 
+// A durable program's subtitle takes the header's second line, in the same 12px box (WIRE.md 7.9).
+// SAFETY: the header reads the field through the JSON guard (lib/pane-marks.ts); this hands it a shape a peer could send.
+const wrongSubtitle = (value: JsonValue): AgentView["subtitle"] => value as AgentView["subtitle"];
+
+describe("AgentChat header: the subtitle of a durable pane", () => {
+  const place = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-place"]')!;
+
+  it("shows the subtitle in the second line instead of the workspace, and keeps the line's height", () => {
+    const agent: AgentView = { ...fixtureAgents[0]!, subtitle: "a customer cannot log in" };
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    expect(place(container)).toHaveTextContent("a customer cannot log in");
+    expect(place(container)).not.toHaveTextContent(agent.workspaceLabel);
+    expect(place(container).parentElement).toHaveClass("h-3");
+  });
+
+  it("shows the workspace when the pane has no subtitle, or one that is not text", () => {
+    const { container } = renderChat();
+    expect(place(container)).toHaveTextContent(fixtureAgents[0]!.workspaceLabel);
+    // SAFETY: a crew peer's pane arrives unchecked; the header reads the subtitle through the JSON guard.
+    const wrong: AgentView["subtitle"] = wrongSubtitle(7);
+    const odd: AgentView = { ...fixtureAgents[0]!, subtitle: wrong };
+    const again = renderChat({ agent: odd, agents: [odd, ...fixtureAgents.slice(1)] });
+    expect(place(again.container)).toHaveTextContent(fixtureAgents[0]!.workspaceLabel);
+  });
+});
+
 // The pane's model floats on the mirror's bottom-right corner, in the box the draft notice pins to.
 describe("AgentChat — the model above the belt", () => {
   it("draws the pane's model on the mirror box, under the draft-notice slot", () => {
@@ -4228,5 +4255,35 @@ describe("AgentChat — the model label and a footer that already names it", () 
     });
     expect(await screen.findByText("what changed today?")).toBeInTheDocument();
     expect(tag(container)?.textContent).toContain("Sonnet 4.5");
+  });
+});
+
+describe("AgentChat: the progress row of a durable pane", () => {
+  const row = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-progress"]');
+  const durable = (over: Partial<AgentView>): AgentView => ({ ...fixtureAgents[0]!, ...over });
+
+  it("shows the running step with its place while the pane works", () => {
+    const agent = durable({
+      status: "working",
+      progress: { kind: "steps", steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }] },
+    });
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    expect(row(container)).toHaveTextContent("write a note, 2 of 3");
+    expect(row(container)?.querySelector('[role="progressbar"]')).toHaveAttribute("aria-valuenow", "33");
+  });
+
+  it("shows a percent with its label, and while the pane waits for an answer", () => {
+    const agent = durable({ status: "blocked", progress: { kind: "percent", value: 40, label: "uploading" } });
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    expect(row(container)).toHaveTextContent("uploading");
+    expect(row(container)).toHaveTextContent("40%");
+  });
+
+  it("draws no row on an idle pane, nor on a pane without progress", () => {
+    const idle = durable({ status: "idle", progress: { kind: "percent", value: 40 } });
+    const first = renderChat({ agent: idle, agents: [idle, ...fixtureAgents.slice(1)] });
+    expect(row(first.container)).toBeNull();
+    const second = renderChat();
+    expect(row(second.container)).toBeNull();
   });
 });

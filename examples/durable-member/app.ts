@@ -24,7 +24,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
-import { PaneRegistry, riskGuard, showConversation, spawnHelperTool } from "./pi-durable/index.ts";
+import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "./pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "./script.ts";
 
 export interface AppOptions {
@@ -87,7 +87,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   });
   const triageTools: Extension = defineExtension({
     name: "triage-tools",
-    tools: [writeNote, spawnHelperTool({ panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
+    tools: [writeNote, ...askTools({ panes }), spawnHelperTool({ panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
   });
   const registry = createRegistry();
   registry.install(triageTools);
@@ -98,30 +98,31 @@ export async function startApp(o: AppOptions): Promise<App> {
   harness = await Harness.open(storage, { models, registry, onReport: (e) => console.error("pi-durable report:", e) }, ctx);
 
   // Show every conversation that exists (a restart), BEFORE resume(), so a re-run hook finds its pane.
-  const all: { id: ConversationId; owned: boolean }[] = [];
+  const all: { id: ConversationId; owner?: ConversationId }[] = [];
   let cursor: Cursor | undefined;
   do {
     const at = cursor;
     const page = await harness.commit((tx) => tx.scanConversations({}, 256, at), ctx);
-    for (const c of page.items) all.push({ id: c.id, owned: c.owner !== undefined });
+    for (const c of page.items) all.push({ id: c.id, owner: c.owner?.conversationId });
     cursor = page.next;
   } while (cursor);
   for (const c of all) {
     const conversation = (await harness.conversation(c.id, ctx))!;
-    await show(conversation, c.owned);
+    await show(conversation, c.owner);
   }
 
-  async function show(conversation: Conversation, owned: boolean) {
+  async function show(conversation: Conversation, owner: ConversationId | undefined) {
+    const owned = owner !== undefined;
     const tab = owned ? helpers : inbox;
     const title = `${owned ? "Helper" : "Ticket"} #${conversation.id}`;
-    return showConversation({ tab, title }, harness, conversation, { panes });
+    return showConversation({ tab, title, subtitle: subtitleFor(owner), progress: !owned }, harness, conversation, { panes });
   }
 
   let tickets = 0;
   const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
   const startTriage = (prefix: string) => async () => {
     const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model, instructions } }, ctx);
-    const pane = await show(conversation, false);
+    const pane = await show(conversation, undefined);
     tickets++;
     await conversation.submit({ type: "input", content: `${prefix}Triage ticket ${400 + tickets}: a customer cannot log in.` }, ctx);
     return { paneId: pane.id };
@@ -129,6 +130,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   collie.starters([
     { id: "new-triage", label: "New triage", run: startTriage("") },
     { id: "two-notes", label: "Two notes at once (faux only)", run: startTriage("TWO: ") },
+    { id: "ask-questions", label: "A choice and a line of text (faux only)", run: startTriage("ASK: ") },
   ]);
 
   // A first start opens one ticket, so the phone has something to show and one ask to answer.
@@ -138,7 +140,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   // Continue any run the last process left unfinished, and wait for the asks it raises again: Pi re-runs a
   // waiting hook, which asks under the same id (the SDK derives it from the tool call). Only then is the layout
   // complete, so the first snapshot after a restart carries every open ask.
-  const reRaised = panes.reRaised(risky);
+  const reRaised = panes.reRaised(new Set([...risky, ...ASKING_TOOLS]));
   harness.resume();
   await reRaised;
   collie.ready(); // the layout is complete: only now may Collie see a snapshot

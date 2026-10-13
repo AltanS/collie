@@ -47,6 +47,14 @@ describe("one ticket", () => {
       const x = await pane(d, main);
       return x?.state === "waiting" ? x : undefined;
     });
+    // The ticket's line under the title, and a badge that counts the asks waiting for the phone.
+    expect(p.subtitle).toBe("a customer cannot log in");
+    expect(p.badge).toEqual({ count: 1 });
+    // The ticket's progress: it read the ticket, and the note waits for the phone's yes.
+    expect(p.progress).toEqual({
+      kind: "steps",
+      steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }],
+    });
     expect(p.openAsks[0]).toMatchObject({ kind: "permission", revision: 1, tool: { name: "write_note" }, title: expect.stringContaining("write_note") });
     expect(p.openAsks[0]!.toolCallId).toBe(p.openAsks[0]!.itemId); // the tool item the card sits under
     expect(p.openAsks[0]!.options.map((o) => o.id)).toEqual(["allow", "deny"]);
@@ -62,11 +70,13 @@ describe("one ticket", () => {
     expect(readFileSync(join(dir, "notes.txt"), "utf8")).toContain("Ticket 412");
     const events = await allEvents(d, main);
     expect(events.find((e) => e.type === "ask-closed")).toMatchObject({ askId, by: "phone" });
+    await waitFor("badge cleared", async () => (await pane(d, main))?.badge === undefined);
     expect((await api.answer(d, main, askId, "allow")).body).toEqual({ result: "too-late" });
   });
 
   test("spawn_helper: a second pane in tab helpers; the helper answers and goes idle", async () => {
     helper = await waitFor("helper pane", async () => (await api.snapshot(d)).body.panes.find((x) => x.tabId === "triage:helpers")?.id);
+    expect((await pane(d, helper))?.subtitle).toBe(`helping ticket ${main.replace("conv-", "")}`);
     await waitFor("helper idle", async () => (await pane(d, helper))?.state === "idle");
     const events = await allEvents(d, helper);
     expect(events.some((e) => e.type === "item" && e.item.kind === "reply" && e.item.text.includes("session cookie"))).toBe(true);
@@ -74,10 +84,15 @@ describe("one ticket", () => {
 
   test("the first pane's turn ends: idle, with the helper's words in the answer", async () => {
     await waitFor("main idle", async () => (await pane(d, main))?.state === "idle");
+    expect(await pane(d, main)).not.toHaveProperty("progress"); // the program clears it when the run ends
+    expect(await pane(d, helper)).not.toHaveProperty("progress"); // a helper only answers
     const events = await allEvents(d, main);
-    const last = events.filter((e) => e.type === "item").at(-1)!;
-    expect(last).toMatchObject({ item: { kind: "reply" } });
-    expect((last as any).item.text).toContain("The helper says");
+    const items = events.flatMap((e) => (e.type === "item" ? [e.item] : []));
+    const at = items.findIndex((item) => item.kind === "reply" && item.text.startsWith("Triage done"));
+    const reply = items[at];
+    expect(reply?.kind === "reply" && reply.text).toContain("The helper says");
+    // The ticket then adds a markdown note with a list, a code block and a link to the docs (WIRE.md 7.11).
+    expect(items.slice(at + 1).map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
   });
 
   test("send starts a new turn; a repeat runs nothing; stop aborts it; idle, and the stop is a settled event, not an item", async () => {
@@ -227,5 +242,39 @@ describe("two risky calls in one message", () => {
     expect(closed).toHaveLength(2);
     expect(closed.every((e: any) => e.by === "stopped")).toBe(true);
     expect(await openAsks(d, id)).toEqual([]);
+  });
+});
+
+// A ticket that asks questions: the note (a permission), then which queue (a choice), then one line (a text ask).
+describe("a ticket with questions", () => {
+  test("the choice and the text ask are answered by their own shapes, one after the other, and the reply uses both", async () => {
+    const id = (await api.start(d, "ask-questions")).body.paneId;
+    const permission = await waitFor("the note's ask", async () => (await openAsks(d, id)).find((a) => a.kind === "permission"));
+    expect((await api.answer(d, id, permission.id, "allow")).body).toEqual({ result: "taken" });
+
+    const choice = await waitFor("the choice", async () => (await openAsks(d, id)).find((a) => a.kind === "choice"));
+    expect(choice).toMatchObject({ title: "Which queue?", options: [{ id: "billing" }, { id: "access" }, { id: "other" }] });
+    expect(choice.options.every((o) => !("effect" in o))).toBe(true);
+    expect(choice.toolCallId).toBe(choice.itemId);
+    expect((await pane(d, id))!.state).toBe("waiting");
+    expect((await pane(d, id))!.badge).toEqual({ count: 1 });
+    // The wrong shape for a choice is refused and the ask stays open.
+    expect((await api.answerWith(d, id, choice.id, { text: "billing" })).status).toBe(400);
+    expect((await api.answerWith(d, id, choice.id, { optionIds: ["access"] })).body).toEqual({ result: "taken" });
+    expect((await api.answerWith(d, id, choice.id, { optionIds: ["billing"] })).body).toEqual({ result: "too-late" });
+
+    const text = await waitFor("the text ask", async () => (await openAsks(d, id)).find((a) => a.kind === "text"));
+    expect(text).toMatchObject({ title: "One line for the customer", placeholder: "We are looking into it", maxLength: 280 });
+    expect((await api.answerWith(d, id, text.id, { text: "x".repeat(281) })).body.code).toBe("bad-body");
+    expect((await api.answerWith(d, id, text.id, { text: "We are on it." })).body).toEqual({ result: "taken" });
+
+    const reply = await waitFor("the reply", async () =>
+      (await allEvents(d, id)).find((e) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Questions answered.")),
+    );
+    expect((reply as { item: { text: string } }).item.text).toBe("Questions answered. customer line: We are on it.");
+    expect((await pane(d, id))!.badge).toBeUndefined();
+    const tools = (await allEvents(d, id)).flatMap((e) => (e.type === "item" && e.item.kind === "tool" ? [`${e.item.tool.name}:${e.item.status}`] : []));
+    expect(tools).toContain("ask_queue:done");
+    expect(tools).toContain("ask_customer:done");
   });
 });

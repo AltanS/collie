@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../../json.ts";
 import { logFileName } from "../../durable/log.ts";
 import { DURABLE_LOG_DIR_OPTION, DURABLE_SOCKET_OPTION, DurableMux, durableMuxFactory, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
-import { CAPS } from "./clean.ts";
+import { CAPS, ITEM_RICH_BYTES } from "./clean.ts";
 import type { DurableEventSink } from "./events.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP, type FakeEvent } from "./fixture.ts";
 import { parseEvents, type DurableEvent } from "./protocol.ts";
@@ -58,6 +58,8 @@ afterEach(async () => {
 });
 
 const PANE = "conv-01";
+/** Two bytes a character, so this is over the 32 KiB cap of a rich item. */
+const CAPS_RICH = ITEM_RICH_BYTES;
 
 function item(id: string, text: string, kind = "reply"): FakeEvent {
   return { type: "item", item: { id, kind, text } };
@@ -104,6 +106,26 @@ describe("a plain events read", () => {
     program.appendEvent(PANE, item("i1", "one"));
     await readLayout();
     expect(eventRequests(PANE)).toHaveLength(0);
+  });
+});
+
+describe("dropped items (WIRE.md 7.11)", () => {
+  test("a pane that sends items the reader drops gets one log line per epoch, not one per item or per read", async () => {
+    const { program, sync } = await rig();
+    const said: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => void said.push(args.map(String).join(" "));
+    try {
+      program.appendEvent(PANE, { type: "item", item: { id: "l1", kind: "link", href: "http://example.com/" } });
+      program.appendEvent(PANE, { type: "item", item: { id: "l2", kind: "image", src: "x" } });
+      program.appendEvent(PANE, item("i1", "kept"));
+      await sync();
+      program.appendEvent(PANE, { type: "item", item: { id: "l3", kind: "link", href: "javascript:x" } });
+      await sync();
+    } finally {
+      console.warn = warn;
+    }
+    expect(said.filter((line) => line.includes(PANE) && line.includes("dropped"))).toHaveLength(1);
   });
 });
 
@@ -166,7 +188,7 @@ describe("reset", () => {
     await sync();
     const texts = sink.calls
       .flatMap((call) => call.events)
-      .flatMap((event) => (event.type === "item" && event.item.kind !== "tool" ? [event.item.text] : []));
+      .flatMap((event) => (event.type === "item" && "text" in event.item ? [event.item.text] : []));
     expect(texts).toEqual(["first, edited", "second"]);
   });
 
@@ -346,12 +368,74 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(parsed.ok && parsed.value.events).toEqual([{ type: "item", item: { id: "ok", ts: undefined, kind: "reply", text: "kept" } }]);
   });
 
+  test("markdown, code and link items are read, cleaned and capped (WIRE.md 7.11)", () => {
+    const parsed = parseEvents(
+      body([
+        { type: "item", item: { id: "m1", kind: "markdown", text: `# Title\n\n- one\n- two${String.fromCodePoint(0x202e)}` } },
+        { type: "item", item: { id: "c1", kind: "code", lang: " typescript ", text: "const a = 1;\n" } },
+        { type: "item", item: { id: "l1", kind: "link", href: "https://colliepwa.dev/docs/", label: " The docs " } },
+        { type: "item", item: { id: "l2", kind: "link", href: "https://colliepwa.dev/" } },
+        { type: "item", item: { id: "m2", kind: "markdown", text: "é".repeat(CAPS_RICH) } },
+      ]),
+    );
+    const items = parsed.ok ? parsed.value.events.flatMap((event) => (event.type === "item" ? [event.item] : [])) : [];
+    expect(items.slice(0, 4)).toEqual([
+      { id: "m1", ts: undefined, kind: "markdown", text: "# Title\n\n- one\n- two" },
+      { id: "c1", ts: undefined, kind: "code", lang: "typescript", text: "const a = 1;\n" },
+      { id: "l1", ts: undefined, kind: "link", href: "https://colliepwa.dev/docs/", label: "The docs" },
+      { id: "l2", ts: undefined, kind: "link", href: "https://colliepwa.dev/" },
+    ]);
+    const long = items[4];
+    expect(long?.kind === "markdown" && Buffer.byteLength(long.text)).toBeLessThanOrEqual(ITEM_RICH_BYTES);
+    expect(long?.kind === "markdown" && long.text.endsWith("…")).toBe(true);
+  });
+
+  test("a code language that is not a plain name reads as none and the block stays, a label is cut to 120 characters", () => {
+    const langs = ["", "a".repeat(25), "ts\n```", "c++ x", 7, null];
+    const parsed = parseEvents(
+      body([
+        ...langs.map((lang, index) => ({ type: "item", item: { id: `c${String(index)}`, kind: "code", lang, text: "x" } })),
+        { type: "item", item: { id: "l1", kind: "link", href: "https://example.com/", label: "é".repeat(300) } },
+      ]),
+    );
+    const items = parsed.ok ? parsed.value.events.flatMap((event) => (event.type === "item" ? [event.item] : [])) : [];
+    expect(items.slice(0, langs.length).map((entry) => entry.kind === "code" && entry.lang)).toEqual(langs.map(() => undefined));
+    const link = items.at(-1);
+    expect(link?.kind === "link" && [...(link.label ?? "")].length).toBe(120);
+  });
+
+  test("a link whose target is not https, or breaks the rule, drops the item alone, and the drop is counted", () => {
+    const hrefs = [
+      "http://example.com/",
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "file:///etc/passwd",
+      "//example.com/",
+      "/docs",
+      "https://",
+      "https://user:pw@example.com/",
+      "https://example.com/a b",
+      `https://example.com/${"a".repeat(2100)}`,
+      "https://exa\u200bmple.com/",
+      42,
+      null,
+    ];
+    const parsed = parseEvents(
+      body([
+        ...hrefs.map((href, index) => ({ type: "item", item: { id: `l${String(index)}`, kind: "link", href } })),
+        { type: "item", item: { id: "ok", kind: "reply", text: "kept" } },
+      ]),
+    );
+    expect(parsed.ok && parsed.value.events.map((event) => (event.type === "item" ? event.item.id : event.type))).toEqual(["ok"]);
+    expect(parsed.ok && parsed.value.droppedItems).toBe(hrefs.length);
+  });
+
   test("item text is cleaned of controls and direction marks and cut at its byte cap", () => {
     const parsed = parseEvents(body([{ type: "item", item: { id: "i1", kind: "reply", text: hostileText("evil", CAPS.itemText + 10) } }]));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const event = parsed.value.events[0];
-    if (event?.type !== "item" || event.item.kind === "tool") throw new Error("expected a text item");
+    if (event?.type !== "item" || !("text" in event.item)) throw new Error("expected a text item");
     expect(hasHostileChars(event.item.text)).toBe(false);
     expect(Buffer.byteLength(event.item.text)).toBeLessThanOrEqual(CAPS.itemText);
     expect(event.item.text.endsWith("…")).toBe(true);
@@ -367,7 +451,7 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const [first, second] = parsed.value.events;
-    expect(first?.type === "item" && first.item.kind !== "tool" && first.item.text).toBe("a\nb");
+    expect(first?.type === "item" && "text" in first.item && first.item.text).toBe("a\nb");
     expect(first?.type === "item" && first.item.ts).toBeUndefined();
     expect(second?.type === "item" && second.item.ts).toBeUndefined();
   });

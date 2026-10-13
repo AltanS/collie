@@ -293,6 +293,23 @@ interface Pane {
   sessionId?: string | null;
   /** Absolute. Falls back to the workspace `cwd`, then to "". */
   cwd?: string;
+  /**
+   * One line under the title, so a list of conversations reads at a glance (section 7.9). Trimmed, at
+   * most 120 characters, no control character. A bad value reads as absent.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: `{ count }` (an integer from 0 to 9999) or `{ text }` (at most 12
+   * characters). Exactly one key. A bad value reads as absent (section 7.9).
+   */
+  badge?: { count: number } | { text: string };
+  /**
+   * How far a working conversation is: a list of steps, or a percent (section 7.10). A bad value reads
+   * as absent. The phone draws it only while `state` is `working` or `waiting`.
+   */
+  progress?:
+    | { kind: "steps"; steps: { label: string; state: "done" | "running" | "todo" }[] }
+    | { kind: "percent"; value: number; label?: string };
 }
 
 type PaneState = "working" | "waiting" | "idle";
@@ -310,9 +327,16 @@ interface Ask {
    * call raised again after a restart has the same id. A random one is allowed.
    */
   id: string;
-  /** The only kind in version 1. A reader shows an ask of another kind as not answerable. */
-  kind: "permission";
-  /** The program's id for the tool call. The same across a restart. */
+  /**
+   * What the person is asked (section 7.12). A reader shows an ask of another kind as not answerable.
+   * `permission` is the tool-call question of version 1. `choice`, `text` and `form` are the others.
+   */
+  kind: "permission" | "choice" | "text" | "form";
+  /**
+   * The program's id for what the ask is about. The same across a restart. For a `permission` it is the
+   * tool call. For any other kind it is any id of the program's own that is stable across a restart, such
+   * as the id of the step that asks. The adapter keys its one push per question on it (ADR 0100).
+   */
   toolCallId: string;
   /** Starts at 1. Rises when the program changes this ask in place. */
   revision: number;
@@ -320,8 +344,19 @@ interface Ask {
   title: string;
   /** The item this ask belongs to, usually the tool item. The card sits under it. */
   itemId: string;
-  /** At least one, at most 6. */
+  /**
+   * A `permission`: at least one, at most 6, each with an `effect`. A `choice`: 1 to 8, none with an
+   * `effect`. A `text` and a `form`: none, and the member may be left out.
+   */
   options: Option[];
+  /** A `choice` only: more than one option may be picked. Default false. */
+  multiple?: boolean;
+  /** A `text` only: the hint in the empty field. At most 60 characters. */
+  placeholder?: string;
+  /** A `text` only: the most characters the answer may have, 1 to 2000. Default 500. */
+  maxLength?: number;
+  /** A `form` only: 1 to 6 fields. */
+  fields?: Field[];
   /** Longer text under the title. */
   reason?: string;
   /** The call itself, when the program wants it drawn. */
@@ -338,7 +373,20 @@ interface Option {
   /** Unique inside its ask. */
   id: string;
   label: string;
-  effect: "allow" | "allow-always" | "deny" | "cancel";
+  /** On a `permission` option only. A `choice` option, and an option of a form field, has none. */
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+interface Field {
+  /** Unique inside its ask. The key of the field's value in the answer. */
+  id: string;
+  label: string;
+  kind: "text" | "choice" | "toggle";
+  required?: boolean;
+  /** A `choice` field: 1 to 8 options, none with an `effect`. A pick answers with the option's `id`. */
+  options?: Option[];
+  /** A `text` field: 1 to 2000 characters. Default 500. */
+  maxLength?: number;
 }
 
 // ── items and events ──────────────────────────────────────────────────────────
@@ -356,6 +404,12 @@ type ToolStatus = "running" | "done" | "failed" | "denied";
 /** An item with a known id replaces the earlier one (a tool changes status). Ids are unique per pane. */
 type Item =
   | { id: string; ts?: string; kind: "user" | "reply" | "thinking" | "notice"; text: string }
+  /** Rendered as markdown (section 7.11). */
+  | { id: string; ts?: string; kind: "markdown"; text: string }
+  /** A fenced code block. `lang` is a plain name such as "ts" or "c++". */
+  | { id: string; ts?: string; kind: "code"; lang?: string; text: string }
+  /** A link to an `https://` address. `label` is the words the phone shows for it. */
+  | { id: string; ts?: string; kind: "link"; href: string; label?: string }
   | { id: string; ts?: string; kind: "tool"; tool: ToolCall; status: ToolStatus };
 // `ts`: ISO 8601 with a zone, for example "2026-10-12T09:30:00.000Z".
 
@@ -396,7 +450,15 @@ interface AnswerRequest {
   askId: string;
   /** The revision the phone saw. */
   revision: number;
-  answer: { optionId: string; note?: string };
+  /**
+   * Exactly one shape, by the kind of the ask (section 7.12): `optionId` for a `permission`, `optionIds`
+   * for a `choice` (one id when it is not `multiple`), `text` for a `text` ask, `values` for a `form`.
+   */
+  answer:
+    | { optionId: string; note?: string }
+    | { optionIds: string[] }
+    | { text: string }
+    | { values: Record<string, string | string[] | boolean> };
 }
 
 interface AnswerReply {
@@ -493,6 +555,7 @@ on `PaneWire` (`idle | working | blocked | done | unknown`).
 | `agent` | always `"durable"`. Never the `harness` string. |
 | `status` | the state mapping above |
 | `terminalTitle` | `Pane.title` |
+| `subtitle`, `badge`, `progress` | `Pane.subtitle`, `Pane.badge`, `Pane.progress`, after cleaning (sections 7.9 and 7.10). Left out when absent. |
 | `paneLabel` | never set |
 
 A pane that leaves the snapshot is gone: a call to it answers `gone`. A tab or workspace with no
@@ -554,6 +617,16 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `StarterRow.label` | 128 bytes | cut |
 | `Option.label` | 128 bytes | cut |
 | `Pane.harness` | 64 bytes | cut |
+| `Item.text` of a `markdown` or `code` item | 32768 bytes (32 KiB), same rule as a reply's text | cut |
+| `Item.lang` of a `code` item | 24 characters of letters, digits and `_ + # . -` | absent. The block stays. |
+| `Item.href` of a `link` item | 2048 characters, `https://` only | the item is dropped |
+| `Item.label` of a `link` item | 120 characters (code points), same rule as the subtitle | cut at a whole character with `…`. Nothing left: absent. |
+| `Pane.subtitle` | 120 characters (code points), after cleaning and a trim | cut at a whole character with `…` as the 120th. Nothing left after cleaning: absent. |
+| `Pane.badge.text` | 12 characters, same rule | cut the same way. Nothing left: the badge is absent. |
+| `Pane.badge.count` | an integer from 0 to 9999 | absent (not clamped). |
+| `Pane.progress.steps` | 12 steps | the steps past the 12th are left out |
+| `Step.label`, `Pane.progress.label` | 60 characters (code points), same rule as the subtitle | cut at a whole character with `…`. A step with nothing left makes the progress absent. A percent label with nothing left is left out alone. |
+| `Pane.progress.value` | a number from 0 to 100 | absent (not clamped). |
 | `Workspace.cwd`, `Pane.cwd` | 4096 bytes, absolute | ignored, reads as absent |
 | `Ask.reason` | 2048 bytes | cut |
 | `ToolCall.name` | 128 bytes | cut |
@@ -620,13 +693,15 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 
 - An ask is open from its `ask` event until its `ask-closed` event. While any ask is open, the pane
   state is `waiting`.
-- An answer names `askId`, the `revision` the phone saw, and an `optionId`.
+- An answer names `askId`, the `revision` the phone saw, and what the person chose: an `optionId`, or
+  for the other kinds of ask what section 7.12 says.
   - The ask id is not open on this pane: 200 `{ "result": "too-late" }`. This covers an ask already
     answered, one closed by a stop, and, for a program that mints a random id per raise, every id
     from before a restart.
   - The ask is open and `revision` is not its current one: 409 `stale`, with `ask` in its current
     form.
-  - `optionId` is not one of the options: 400 `bad-option`.
+  - `optionId` is not one of the options: 400 `bad-option`. The same code for an id in `optionIds` or
+    in a choice field of a form that the ask does not offer (section 7.12).
   - Otherwise the program resolves the ask, closes it with `by: "phone"`, and answers
     `{ "result": "taken" }`. The tool then runs or is denied, as the option says.
 - Only an answer on this route closes an ask with `by: "phone"`. The program MUST NOT answer its own
@@ -737,6 +812,88 @@ abort.
   that the adapter declares from `caps.rename`. It has no control for a workspace yet; a program
   MAY still take one on the wire.
 
+### 7.9 Subtitle and badge
+
+- `Pane.subtitle` and `Pane.badge` are optional and additive: a program that sends neither is
+  unchanged, and a reader that does not know them ignores them (section 2, point 8).
+- The adapter cleans them as it cleans a title (section 6), but counts characters, not bytes. A
+  subtitle is trimmed. A value of the wrong type, a `badge` with both `count` and `text` or with
+  neither, a `count` that is not an integer from 0 to 9999, and a string with nothing left after
+  cleaning read as absent. They are never refused, and they never drop the pane.
+- A change of either is a change a reader could see, so `rev` rises (section 7.1). The example SDK
+  raises it only when the value changes.
+- The phone draws the subtitle under the pane's title in the muted text style, and the badge next to
+  the title. They carry no state and no action. A count of 0 is a valid value, and the phone draws it
+  as no mark.
+
+### 7.10 Progress
+
+- `Pane.progress` is optional and additive, like the subtitle and the badge (section 7.9). It is one of
+  two shapes. `{ kind: "steps", steps }` holds 1 to 12 steps, each a `label` and a `state` of `done`,
+  `running` or `todo`. `{ kind: "percent", value, label? }` holds a number from 0 to 100 and an optional
+  label.
+- The adapter cleans the labels as it cleans a subtitle (section 7.9). An unknown `kind`, no steps, a
+  step with an unknown state or with no label left, a `value` outside 0 to 100 and a value that is not a
+  number read as no progress at all, because half a progress would mislead. A `label` of the wrong type
+  on a percent is left out and the percent stays. Progress is never refused, and it never drops the pane.
+- The field is meaningful in any state, and the program owns clearing it. The phone draws it only while
+  the pane is `working` or `waiting`, and draws nothing on an `idle` pane that still carries one.
+- A change of it is a change a reader could see, so `rev` rises (section 7.1). The example SDK raises
+  it only when the value changes.
+- The phone draws a step list as the running step's label with "n of m" (the first `todo` step when none
+  runs, and the last step when all are done), and a percent as a thin bar with its label.
+
+### 7.11 Markdown, code and links in the thread
+
+- An item may have the kind `markdown`, `code` or `link`, beside `user`, `reply`, `thinking`, `notice` and
+  `tool`. All three are optional and additive: a program that sends none is unchanged, and an older
+  adapter drops an item of a kind it does not know (section 2, point 8).
+- `markdown` is text the phone renders as markdown: headings, lists, emphasis, code spans and links. It
+  is the same renderer the phone uses for the log of any other agent, and it draws every string as text,
+  never as markup. `code` is a code block, and `lang` names its language when it has one. `link` is a
+  line with a link in it; the phone shows `label`, or the address when there is no label. A markdown
+  link inside a `markdown` item is a link like any other, and the phone opens only web addresses.
+- Images and files are not items. An item of a kind the adapter does not know is dropped.
+- A `link` whose `href` is not an `https://` address with a host, has a user or a password in it, has a
+  space, a control character or an invisible character in it, or is longer than 2048 characters, is
+  dropped. A `code` item whose `lang` is not a plain name keeps its block and loses the name. The
+  strictness has a reason: the name goes behind a fence in markdown, and the address goes in a link.
+- A dropped item is never an error. The adapter writes one log line for each pane in each epoch that
+  says items were dropped, so a program that sends a bad one can be found without a flood in the log.
+- Chat shows a code item as a fenced block. A line of code that starts with three backticks or three
+  tildes gets an invisible character in front of it, because the markdown reader ends a block at any such
+  line; the code is unchanged to the eye.
+
+### 7.12 More kinds of ask
+
+- `Ask.kind` is `permission`, `choice`, `text` or `form`. Every kind has the same `id`, `toolCallId`,
+  `revision`, `title`, `itemId`, `reason` and `cleaned`, the same id rule, and the same lifecycle: open from
+  its `ask` event to its `ask-closed`, answered once by id and revision, with a request id. The pane is
+  `waiting` while any ask of any kind is open. Nothing else about an ask depends on its kind, so the
+  adapter's push guard keys every kind the same way, one push per `(host, toolCallId)`.
+- A `permission` is unchanged. Its answer is `{ optionId, note? }`, and `allow-always` is an option of a
+  `permission` and of nothing else, because no other kind has an `effect`.
+- A `choice` offers 1 to 8 options and answers `{ optionIds }`: a list of 1 to 8 distinct ids of the ask's
+  options. With `multiple` false the list holds one id; the program answers 400 `bad-body` for more. An id
+  the ask does not offer is 400 `bad-option`.
+- A `text` ask answers `{ text }`: 1 to `maxLength` characters (default 500, at most 2000). The adapter
+  refuses a text over 8000 bytes before it sends, which is 2000 characters at four bytes each. The program
+  checks the ask's own `maxLength` and answers 400 `bad-body` for a text over it or an empty one.
+- A `form` has 1 to 6 fields and answers `{ values }`: an object whose keys are field ids. A `text` field's
+  value is a string of at most its `maxLength`. A `choice` field's value is one option id of that field. A
+  `toggle` field's value is a boolean. A required field must have a value. A key that is no field, a value
+  of the wrong type, a missing required field and a text over its `maxLength` are 400 `bad-body`; a pick
+  the field does not offer is 400 `bad-option`. A list of ids is a legal value on the wire, for a program
+  that builds a multiple choice field; this version's phone sends one id.
+- The adapter cleans every string of an ask (section 6). A `placeholder` and a field `label` read as a
+  title does: a field label is cut at 128 bytes, a placeholder at 60 characters. A `choice` option, a
+  field, a field option or a repeated id that breaks a rule is dropped alone; a `maxLength` that is not a
+  whole number from 1 to 2000 reads as the default. An ask of a kind the adapter does not know is listed
+  and is not answerable.
+- The adapter checks the id rule on every id in an answer, and the byte cap on every text, before it
+  sends. It keeps no answer text: the receipt holds ids and a digest, so the same request id with another
+  text is refused (`request-id-reused`) without the words being stored.
+
 ## 8. Restart and epoch
 
 1. Every start of the program makes a new random `epoch`, at least 128 bits, never reused. `rev`
@@ -837,3 +994,15 @@ document. The version number stays 1; the spike's shapes are not supported.
     characters (section 6).
 19. **`Caps` gains `rename`, and `POST /rename` is a route** (sections 3, 4 and 7.8), with the codes
     `no-such-target` and `rename-refused`. Added before version 1 shipped, so the version stays 1.
+20. **`Pane` gains an optional `subtitle` and `badge`** (sections 4, 6 and 7.9). Added before version 1
+    shipped, so the version stays 1. An older adapter ignores both.
+21. **`Pane` gains an optional `progress`** (sections 4, 6 and 7.10). Added before version 1 shipped, so
+    the version stays 1. An older adapter ignores it.
+22. **`Item` gains the kinds `markdown`, `code` and `link`** (sections 4, 6 and 7.11). Added before
+    version 1 shipped, so the version stays 1. An older adapter drops an item of a kind it does not
+    know.
+23. **`Ask.kind` gains `choice`, `text` and `form`, and `AnswerRequest.answer` gains the shapes
+    `{ optionIds }`, `{ text }` and `{ values }`** (sections 3, 4 and 7.12). `Option.effect` becomes
+    optional (a `permission` still has it), and `Ask` gains `multiple`, `placeholder`, `maxLength` and
+    `fields`. Added before version 1 shipped, so the version stays 1. An older adapter shows an ask of a
+    kind it does not know as not answerable.

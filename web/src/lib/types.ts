@@ -86,6 +86,24 @@ export interface AgentView {
    */
   terminalTitleStale?: boolean;
   /**
+   * One line the program shows under this pane's title (a durable program, WIRE.md 7.9). Mirrors
+   * `AgentView.subtitle` in bridge/types.ts. **Absent on every pane with a screen**, on an older bridge
+   * and on an older crew member. Text only, never markup: read it through `paneSubtitle`
+   * (lib/pane-marks.ts), which drops anything that is not a non-empty string.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: `{ count }` or `{ text }`. Mirrors `AgentView.badge` in
+   * bridge/types.ts, absent in the same cases. Read it through `paneBadge` (lib/pane-marks.ts).
+   */
+  badge?: PaneBadge;
+  /**
+   * How far a working durable conversation is: a step list or a percent (WIRE.md 7.10). Mirrors
+   * `AgentView.progress` in bridge/types.ts, absent in the same cases. Read it through `paneProgress`
+   * (lib/pane-marks.ts), and draw it only while the pane works or waits.
+   */
+  progress?: PaneProgress;
+  /**
    * A finished sentence the bridge composed about this pane, for the operator to read. Absent on
    * almost every pane, and on every bridge older than the version that introduced it.
    *
@@ -177,7 +195,18 @@ export interface AgentView {
 export interface AskOption {
   id: string;
   label: string;
-  effect: "allow" | "allow-always" | "deny" | "cancel";
+  /** A permission option has one. The options of a choice and of a form's choice field have none. */
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** One field of a form ask. Mirrors `AskField` in bridge/types.ts. */
+export interface AskField {
+  id: string;
+  label: string;
+  kind: "text" | "choice" | "toggle";
+  required?: true;
+  options?: AskOption[];
+  maxLength?: number;
 }
 
 /** The tool call an ask is about. Mirrors `AskTool` in bridge/types.ts. */
@@ -196,6 +225,14 @@ export interface Ask {
   title: string;
   itemId: string;
   options: AskOption[];
+  /** A choice ask only: more than one option may be picked. */
+  multiple?: true;
+  /** A text ask only. */
+  placeholder?: string;
+  /** A text ask only: the most characters. Absent reads as 500. */
+  maxLength?: number;
+  /** A form ask only. */
+  fields?: AskField[];
   reason?: string;
   tool?: AskTool;
   /** Present when the bridge cut or changed the program's title or reason. Such an ask offers no "Always allow". */
@@ -2085,4 +2122,12 @@ export type WorktreeCreateResponse =
       replayed?: true;
     }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+/** A small mark next to a pane's title: a count, or a short word. Mirrors `PaneBadge` in bridge/types.ts. */
+export type PaneBadge = { count: number } | { text: string };
+
+/** How far a working pane is: up to 12 steps, or a percent. Mirrors `PaneProgress` in bridge/types.ts. */
+export type PaneProgress =
+  | { kind: "steps"; steps: { label: string; state: "done" | "running" | "todo" }[] }
+  | { kind: "percent"; value: number; label?: string };
+
 

@@ -8,9 +8,35 @@
 
 import { isAbsolute } from "node:path";
 
-import type { AgentStatus, Ask } from "../../types.ts";
+import type { AgentStatus, Ask, AskField } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, renameTitleOf } from "./clean.ts";
+import {
+  ANSWER_TEXT_DEFAULT,
+  ANSWER_TEXT_MAX,
+  BADGE_COUNT_MAX,
+  BADGE_TEXT_MAX,
+  blockRule,
+  byteLength,
+  CAPS,
+  changedByCleaning,
+  cleanText,
+  httpsHrefOf,
+  isWireId,
+  ITEM_RICH_BYTES,
+  langOf,
+  lineRule,
+  LINK_LABEL_MAX,
+  PLACEHOLDER_MAX,
+  PROGRESS_LABEL_MAX,
+  PROGRESS_STEPS_MAX,
+  renameTitleOf,
+  shortLine,
+  SUBTITLE_MAX,
+  type Badge,
+  type Progress,
+  type ProgressStep,
+  type StepState,
+} from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
@@ -68,7 +94,20 @@ export type OptionEffect = "allow" | "allow-always" | "deny" | "cancel";
 export interface DurableOption {
   readonly id: string;
   readonly label: string;
-  readonly effect: OptionEffect;
+  /** Set on a `permission` option, absent on every other kind (WIRE.md 7.12). */
+  readonly effect?: OptionEffect;
+}
+
+/** One field of a `form` ask (WIRE.md 7.12). */
+export interface DurableField {
+  readonly id: string;
+  readonly label: string;
+  readonly kind: "text" | "choice" | "toggle";
+  readonly required?: boolean;
+  /** A `choice` field: 1 to 8 options, none with an effect. */
+  readonly options?: readonly DurableOption[];
+  /** A `text` field: 1 to 2000 characters, 500 when the program named none. */
+  readonly maxLength?: number;
 }
 
 export interface DurableToolCall {
@@ -87,6 +126,14 @@ export interface DurableAsk {
   readonly title: string;
   readonly itemId: string;
   readonly options: readonly DurableOption[];
+  /** A `choice` ask: more than one option may be picked. */
+  readonly multiple?: boolean;
+  /** A `text` ask: the hint in the empty field, at most 60 characters. */
+  readonly placeholder?: string;
+  /** A `text` ask: 1 to 2000 characters, 500 when the program named none. */
+  readonly maxLength?: number;
+  /** A `form` ask: 1 to 6 fields. */
+  readonly fields?: readonly DurableField[];
   readonly reason?: string;
   readonly tool?: DurableToolCall;
   /** True when cleaning cut or changed the title or the reason, so the card says the text was shortened. */
@@ -118,6 +165,12 @@ export interface DurablePane {
   readonly turnId: string;
   readonly openAsks: readonly DurableAsk[];
   readonly cwd?: string;
+  /** One line under the title (WIRE.md section 3). Absent when the program sent none, or a bad one. */
+  readonly subtitle?: string;
+  /** A count or a short mark next to the title. Absent when the program sent none, or a bad one. */
+  readonly badge?: Badge;
+  /** How far a working conversation is (WIRE.md section 7.10). Absent when the program sent none, or a bad one. */
+  readonly progress?: Progress;
 }
 
 export interface DurableStarter {
@@ -215,6 +268,77 @@ function cwdOf(object: JsonObject): string | undefined {
   return isAbsolute(cleaned) ? cleaned : undefined;
 }
 
+/** A pane's subtitle (WIRE.md section 7.9), or undefined when it is absent, not text, or empty once cleaned. */
+function subtitleOf(object: JsonObject): string | undefined {
+  const value = object.subtitle;
+  return isText(value) ? shortLine(value, SUBTITLE_MAX) : undefined;
+}
+
+/**
+ * A pane's badge (WIRE.md section 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to 12
+ * characters. A `null` key reads as absent. Both keys, neither, a count out of range and a text with nothing
+ * left read as no badge, and never drop the pane.
+ */
+function badgeOf(object: JsonObject): Badge | undefined {
+  const value = object.badge;
+  if (!isRecord(value)) return undefined;
+  const count = value.count ?? undefined;
+  const text = value.text ?? undefined;
+  if ((count === undefined) === (text === undefined)) return undefined;
+  if (count !== undefined) return isCount(count) && count <= BADGE_COUNT_MAX ? { count } : undefined;
+  const word = isText(text) ? shortLine(text, BADGE_TEXT_MAX) : undefined;
+  return word === undefined ? undefined : { text: word };
+}
+
+const STEP_STATES: ReadonlySet<string> = new Set(["done", "running", "todo"]);
+
+function isStepState(value: string): value is StepState {
+  return STEP_STATES.has(value);
+}
+
+/** A finite number, for a percent that may carry a fraction. */
+function isNumber(value: Json | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function readStep(value: Json): ProgressStep | null {
+  if (!isRecord(value)) return null;
+  const state = value.state;
+  const text = value.label;
+  if (!isText(state) || !isStepState(state) || !isText(text)) return null;
+  const label = shortLine(text, PROGRESS_LABEL_MAX);
+  return label === undefined ? null : { label, state };
+}
+
+/**
+ * A pane's progress (WIRE.md section 7.10): `{ kind: "steps" }` with 1 to 12 steps, or `{ kind: "percent" }` with
+ * a value from 0 to 100 and an optional label. Steps past the 12th are left out. A step with an unknown state or no
+ * label, a value out of range, an unknown kind and any other shape read as no progress, because half a progress would
+ * mislead. A percent label that is not text is left out alone. Never drops the pane.
+ */
+function progressOf(object: JsonObject): Progress | undefined {
+  const value = object.progress;
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "steps") {
+    if (!isList(value.steps)) return undefined;
+    const steps: ProgressStep[] = [];
+    for (const entry of value.steps.slice(0, PROGRESS_STEPS_MAX)) {
+      const step = readStep(entry);
+      if (step === null) return undefined;
+      steps.push(step);
+    }
+    return steps.length === 0 ? undefined : { kind: "steps", steps };
+  }
+  if (value.kind === "percent") {
+    const percent = value.value;
+    if (!isNumber(percent) || percent < 0 || percent > 100) return undefined;
+    const text = value.label;
+    const label = isText(text) ? shortLine(text, PROGRESS_LABEL_MAX) : undefined;
+    return label === undefined ? { kind: "percent", value: percent } : { kind: "percent", value: percent, label };
+  }
+  return undefined;
+}
+
 // ── hello ─────────────────────────────────────────────────────────────────────
 
 /** Decode a `hello` reply (WIRE.md section 4). */
@@ -305,6 +429,56 @@ function readOption(value: Json): DurableOption | null {
   return { id, label: textOf(value, "label", CAPS.optionLabel), effect };
 }
 
+/** An option of a `choice` ask or field: an id and a label, and no effect. A stray `effect` is ignored. */
+function readPlainOption(value: Json): DurableOption | null {
+  if (!isRecord(value)) return null;
+  const id = idOf(value, "id");
+  return id === null ? null : { id, label: textOf(value, "label", CAPS.optionLabel) };
+}
+
+/** The options of a list, each read by `read`, a repeated id dropped, at most `max`. */
+function readOptions(raw: Json | undefined, read: (entry: Json) => DurableOption | null, max: number): DurableOption[] {
+  const options: DurableOption[] = [];
+  if (!isList(raw)) return options;
+  for (const entry of raw) {
+    const option = read(entry);
+    if (option !== null && !options.some((have) => have.id === option.id)) options.push(option);
+  }
+  return options.slice(0, max);
+}
+
+/** A `maxLength`: a whole number from 1 to 2000, else the default. */
+function maxLengthOf(value: Json | undefined): number {
+  return isCount(value) && value >= 1 && value <= ANSWER_TEXT_MAX ? value : ANSWER_TEXT_DEFAULT;
+}
+
+const FIELD_KINDS: ReadonlySet<string> = new Set(["text", "choice", "toggle"]);
+
+/** One field of a form (WIRE.md 7.12), or null when its id, kind or options break a rule. */
+function readField(value: Json): DurableField | null {
+  if (!isRecord(value)) return null;
+  const id = idOf(value, "id");
+  const kind = value.kind;
+  if (id === null || !isText(kind) || !FIELD_KINDS.has(kind)) return null;
+  const label = textOf(value, "label", CAPS.optionLabel);
+  const required = value.required === true ? true : undefined;
+  if (kind === "text") return { id, label, kind, required, maxLength: maxLengthOf(value.maxLength) };
+  if (kind === "toggle") return { id, label, kind, required };
+  const options = readOptions(value.options, readPlainOption, CAPS.choiceOptions);
+  return options.length === 0 ? null : { id, label, kind: "choice", required, options };
+}
+
+/** The fields of a form: a repeated id and a bad field dropped, at most 6. */
+function readFields(raw: Json | undefined): DurableField[] {
+  const fields: DurableField[] = [];
+  if (!isList(raw)) return fields;
+  for (const entry of raw) {
+    const field = readField(entry);
+    if (field !== null && !fields.some((have) => have.id === field.id)) fields.push(field);
+  }
+  return fields.slice(0, CAPS.formFields);
+}
+
 function readTool(value: Json | undefined): DurableToolCall | undefined {
   if (!isRecord(value)) return undefined;
   const output = blockOf(value, "output", CAPS.toolOutput);
@@ -314,6 +488,17 @@ function readTool(value: Json | undefined): DurableToolCall | undefined {
     summary: blockOf(value, "summary", CAPS.toolSummary) ?? "",
     output,
   };
+}
+
+/** What a `choice`, `text` or `form` ask adds to the base shape (WIRE.md 7.12). Nothing for any other kind. */
+function kindFields(kind: string, value: JsonObject): Pick<DurableAsk, "multiple" | "placeholder" | "maxLength" | "fields"> {
+  if (kind === "choice") return value.multiple === true ? { multiple: true } : {};
+  if (kind === "text") {
+    const hint = isText(value.placeholder) ? shortLine(value.placeholder, PLACEHOLDER_MAX) : undefined;
+    return hint === undefined ? { maxLength: maxLengthOf(value.maxLength) } : { placeholder: hint, maxLength: maxLengthOf(value.maxLength) };
+  }
+  if (kind === "form") return { fields: readFields(value.fields) };
+  return {};
 }
 
 /** An ask whose id, tool call id or item id breaks the rule is dropped. */
@@ -326,14 +511,15 @@ function readAsk(value: Json): DurableAsk | null {
   if (id === null || toolCallId === null || itemId === null) return null;
   if (!isCount(revision) || revision < 1) return null;
 
-  const options: DurableOption[] = [];
-  const raw = value.options;
-  if (isList(raw)) {
-    for (const entry of raw) {
-      const option = readOption(entry);
-      if (option !== null && !options.some((have) => have.id === option.id)) options.push(option);
-    }
-  }
+  const kind = textOf(value, "kind", CAPS.askKind);
+  // A choice ask has plain options (no effect), up to 8. Every other kind reads its options as a permission
+  // does: an id, a label and an effect, up to 6. A `text` and a `form` ask carry none.
+  const options =
+    kind === "choice"
+      ? readOptions(value.options, readPlainOption, CAPS.choiceOptions)
+      : kind === "text" || kind === "form"
+        ? []
+        : readOptions(value.options, readOption, CAPS.optionsPerAsk);
   const reason = blockOf(value, "reason", CAPS.reason);
   const tool = readTool(value.tool);
   const rawTitle = value.title;
@@ -347,14 +533,15 @@ function readAsk(value: Json): DurableAsk | null {
     (isText(rawReason) && changedByCleaning(rawReason, blockRule(CAPS.reason)));
   const ask: DurableAsk = {
     id,
-    kind: textOf(value, "kind", CAPS.askKind),
+    kind,
     toolCallId,
     revision,
     title: textOf(value, "title", CAPS.askTitle),
     itemId,
-    options: options.slice(0, CAPS.optionsPerAsk),
+    options,
     reason,
     tool,
+    ...kindFields(kind, value),
   };
   return cleaned ? { ...ask, cleaned: true } : ask;
 }
@@ -404,6 +591,9 @@ function readPane(
   }
   const lastActiveAt = value.lastActiveAt;
   const cwd = cwdOf(value);
+  const subtitle = subtitleOf(value);
+  const badge = badgeOf(value);
+  const progress = progressOf(value);
   return {
     id,
     workspaceId,
@@ -415,6 +605,9 @@ function readPane(
     turnId,
     openAsks: openAsks.slice(0, CAPS.openAsksPerPane),
     cwd,
+    subtitle,
+    badge,
+    progress,
   };
 }
 
@@ -490,6 +683,10 @@ function isTextKind(value: string): value is TextKind {
 /** An item with a known id replaces the earlier one. `ts` is ISO 8601, or absent. */
 export type DurableItem =
   | { readonly id: string; readonly ts?: string; readonly kind: TextKind; readonly text: string }
+  // The rich kinds (WIRE.md section 7.11): markdown, a code block and a link.
+  | { readonly id: string; readonly ts?: string; readonly kind: "markdown"; readonly text: string }
+  | { readonly id: string; readonly ts?: string; readonly kind: "code"; readonly lang?: string; readonly text: string }
+  | { readonly id: string; readonly ts?: string; readonly kind: "link"; readonly href: string; readonly label?: string }
   | {
       readonly id: string;
       readonly ts?: string;
@@ -525,6 +722,8 @@ export interface DurableEventsReply {
   readonly reset: boolean;
   readonly more: boolean;
   readonly trimmed: number;
+  /** How many `item` events were dropped because the item broke a rule or has a kind this reader does not know. */
+  readonly droppedItems: number;
 }
 
 /** An ISO stamp inside its cap, or undefined. */
@@ -546,6 +745,25 @@ function readItem(value: Json | undefined): DurableItem | null {
   if (isTextKind(kind)) {
     const text = blockOf(value, "text", CAPS.itemText);
     return text === undefined ? null : { id, ts, kind, text };
+  }
+  if (kind === "markdown") {
+    const text = blockOf(value, "text", ITEM_RICH_BYTES);
+    return text === undefined ? null : { id, ts, kind, text };
+  }
+  if (kind === "code") {
+    const text = blockOf(value, "text", ITEM_RICH_BYTES);
+    if (text === undefined) return null;
+    const name = value.lang;
+    const lang = isText(name) ? langOf(name) : undefined;
+    return lang === undefined ? { id, ts, kind, text } : { id, ts, kind, lang, text };
+  }
+  if (kind === "link") {
+    const target = value.href;
+    const href = isText(target) ? httpsHrefOf(target) : undefined;
+    if (href === undefined) return null;
+    const words = value.label;
+    const label = isText(words) ? shortLine(words, LINK_LABEL_MAX) : undefined;
+    return label === undefined ? { id, ts, kind, href } : { id, ts, kind, href, label };
   }
   if (kind !== "tool") return null;
   const status = value.status;
@@ -701,12 +919,14 @@ export function parseEvents(text: string): Parsed<DurableEventsReply> {
     return bad(`events carries ${String(root.events.length)} events, over its cap`);
   }
   const events: DurableEvent[] = [];
+  let droppedItems = 0;
   for (const entry of root.events) {
     const event = readEvent(entry);
     if (event !== null) events.push(event);
+    else if (isRecord(entry) && entry.type === "item") droppedItems += 1;
   }
   const trimmed = root.trimmed;
-  return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0 });
+  return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0, droppedItems });
 }
 
 // ── answer ────────────────────────────────────────────────────────────────────
@@ -731,7 +951,31 @@ export interface DurableAnswerPost {
   readonly requestId: string;
   readonly askId: string;
   readonly revision: number;
-  readonly optionId: string;
+  /** The one shape the body's `answer` member names (WIRE.md 7.12). */
+  readonly answer: DurableAnswerBody;
+}
+
+/** What `answer` holds: an option of a permission, the picks of a choice, a line of text, or a form's values. */
+export type DurableAnswerBody =
+  | { readonly kind: "option"; readonly optionId: string }
+  | { readonly kind: "options"; readonly optionIds: readonly string[] }
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "values"; readonly values: Readonly<Record<string, string | string[] | boolean>> };
+
+function answerBodyOf(choice: Json | undefined): DurableAnswerBody | null {
+  if (!isRecord(choice)) return null;
+  if (isText(choice.optionId)) return { kind: "option", optionId: choice.optionId };
+  if (isList(choice.optionIds) && choice.optionIds.every(isText)) return { kind: "options", optionIds: choice.optionIds.filter(isText) };
+  if (isText(choice.text)) return { kind: "text", text: choice.text };
+  const values = choice.values;
+  if (!isRecord(values)) return null;
+  const out: Record<string, string | string[] | boolean> = {};
+  for (const [key, entry] of Object.entries(values)) {
+    if (isText(entry) || typeof entry === "boolean") out[key] = entry;
+    else if (isList(entry) && entry.every(isText)) out[key] = entry.filter(isText);
+    else return null;
+  }
+  return { kind: "values", values: out };
 }
 
 /**
@@ -744,10 +988,9 @@ export function parseAnswerPost(text: string): DurableAnswerPost | "bad-json" | 
   if (root === undefined) return "bad-json";
   if (!isRecord(root)) return null;
   const { requestId, askId, revision } = root;
-  const choice = root.answer;
-  const optionId = isRecord(choice) ? choice.optionId : undefined;
-  if (!isText(requestId) || !isText(askId) || !isCount(revision) || !isText(optionId)) return null;
-  return { requestId, askId, revision, optionId };
+  const answer = answerBodyOf(root.answer);
+  if (!isText(requestId) || !isText(askId) || !isCount(revision) || answer === null) return null;
+  return { requestId, askId, revision, answer };
 }
 
 /**
@@ -876,6 +1119,14 @@ export function parseRenamePost(text: string): DurableRenameBody | "bad-json" | 
 }
 
 /** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */
+function fieldForWire(field: DurableField): AskField {
+  const wire: AskField = { id: field.id, label: field.label, kind: field.kind };
+  if (field.required === true) wire.required = true;
+  if (field.options !== undefined) wire.options = field.options.map((option) => ({ id: option.id, label: option.label }));
+  if (field.maxLength !== undefined) wire.maxLength = field.maxLength;
+  return wire;
+}
+
 export function askForWire(ask: DurableAsk): Ask {
   const wire: Ask = {
     id: ask.id,
@@ -884,8 +1135,12 @@ export function askForWire(ask: DurableAsk): Ask {
     revision: ask.revision,
     title: ask.title,
     itemId: ask.itemId,
-    options: ask.options.map((option) => ({ id: option.id, label: option.label, effect: option.effect })),
+    options: ask.options.map((option) => (option.effect === undefined ? { id: option.id, label: option.label } : { id: option.id, label: option.label, effect: option.effect })),
   };
+  if (ask.multiple === true) wire.multiple = true;
+  if (ask.placeholder !== undefined) wire.placeholder = ask.placeholder;
+  if (ask.maxLength !== undefined) wire.maxLength = ask.maxLength;
+  if (ask.fields !== undefined) wire.fields = ask.fields.map(fieldForWire);
   if (ask.reason !== undefined) wire.reason = ask.reason;
   if (ask.cleaned === true) wire.cleaned = true;
   if (ask.tool !== undefined) {
@@ -911,6 +1166,8 @@ export function statusOf(pane: Pick<DurablePane, "state" | "openAsks">): AgentSt
 
 /** Every durable pane reports this agent name. The `harness` string is display text only. */
 export const DURABLE_AGENT = "durable";
+
+type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
 
 /**
  * The clean layout as a mux snapshot (WIRE.md section 5).
@@ -964,7 +1221,7 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
     const workspace = workspaceById.get(pane.workspaceId);
     const tab = tabById.get(pane.tabId);
     if (workspace === undefined || tab === undefined) continue;
-    panes.push({
+    const mux: MutableMuxPane = {
       paneId: pane.id,
       spaceId: workspace.id,
       spaceLabel: workspace.title === "" ? workspace.id : workspace.title,
@@ -981,7 +1238,12 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
       // The conversation id names the bridge's own log of it, which the `durable` journal adapter
       // reads (bridge/journal/durable.ts). The ref is server-side only, like every other.
       agentSession: { kind: "id", value: pane.id },
-    });
+    };
+    // Optional pane marks (WIRE.md section 7.9). Assigned only when present, so a pane without them is unchanged.
+    if (pane.subtitle !== undefined) mux.subtitle = pane.subtitle;
+    if (pane.badge !== undefined) mux.badge = pane.badge;
+    if (pane.progress !== undefined) mux.progress = pane.progress;
+    panes.push(mux);
   }
   return { panes, spaces, tabs };
 }

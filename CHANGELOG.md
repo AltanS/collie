@@ -26,6 +26,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
+- **A durable pane shows a subtitle and a badge.** The program sets one line under the title and a count or a short mark next to it, so a list of its conversations reads at a glance.
+- **A durable pane shows its progress.** The program reports steps or a percent, and Chat and the card show how far a working conversation is.
+- **A durable program writes markdown, code and links into Chat.** Lists, headings and emphasis render, a code block keeps its language, and a link opens like any other.
+- **A durable program can ask a choice, a line of text or a short form.** The card shows the options, the field or the form, and one tap sends the answer once.
 
 ### Changed
 

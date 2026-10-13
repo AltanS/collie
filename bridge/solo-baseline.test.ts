@@ -334,6 +334,11 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension either: the newest turn of a pane whose adapter takes guarded controls
   // (ADR 0101). Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
   turnId: true,
+  // Not crew dimensions: a durable program's line under the title and its small mark (WIRE.md 7.9).
+  // Only the `durable` adapter fills them, so they are absent here and no golden byte moved.
+  subtitle: true,
+  badge: true,
+  progress: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -448,6 +453,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "agent",
       "asks",
+      "badge",
       "cache",
       "cwd",
       "focused",
@@ -461,11 +467,13 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "progress",
       "readableLines",
       "session",
       "sessionName",
       "soleTabName",
       "status",
+      "subtitle",
       "tabId",
       "tabLabel",
       "tabPosition",

@@ -22,7 +22,7 @@ import {
   Harness,
 } from "@earendil-works/pi-durable";
 import { type CollieCore, createCore } from "../../durable-member/sdk/core/index.ts";
-import { PaneRegistry, riskGuard, showConversation, spawnHelperTool } from "../../durable-member/pi-durable/index.ts";
+import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "../../durable-member/pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "../../durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
@@ -107,7 +107,7 @@ export class Member extends DurableObject<Env> {
     let harness!: Harness;
     const triageTools: Extension = defineExtension({
       name: "triage-tools",
-      tools: [writeNote, spawnHelperTool({ panes: this.panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
+      tools: [writeNote, ...askTools({ panes: this.panes }), spawnHelperTool({ panes: this.panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
     });
     const registry = createRegistry();
     registry.install(triageTools);
@@ -125,28 +125,34 @@ export class Member extends DurableObject<Env> {
     );
 
     // Show every conversation that exists, BEFORE resume(), so a re-run hook finds its pane.
-    const all: { id: ConversationId; owned: boolean }[] = [];
+    const all: { id: ConversationId; owner?: ConversationId }[] = [];
     let cursor: Cursor | undefined;
     do {
       const at = cursor;
       const page = await harness.commit((tx) => tx.scanConversations({}, 256, at), ctx0);
-      for (const c of page.items) all.push({ id: c.id, owned: c.owner !== undefined });
+      for (const c of page.items) all.push({ id: c.id, owner: c.owner?.conversationId });
       cursor = page.next;
     } while (cursor);
-    const show = (conversation: Conversation, owned: boolean) =>
-      showConversation({ tab: owned ? helpers : inbox, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}` }, harness, conversation, { panes: this.panes });
-    for (const c of all) await show((await harness.conversation(c.id, ctx0))!, c.owned);
+    const show = (conversation: Conversation, owner: ConversationId | undefined) =>
+      showConversation(
+        { tab: owner !== undefined ? helpers : inbox, title: `${owner !== undefined ? "Helper" : "Ticket"} #${conversation.id}`, subtitle: subtitleFor(owner), progress: owner === undefined },
+        harness,
+        conversation,
+        { panes: this.panes },
+      );
+    for (const c of all) await show((await harness.conversation(c.id, ctx0))!, c.owner);
 
     const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
     const startTriage = (prefix: string) => async () => {
       const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model, instructions } }, ctx0);
-      const pane = await show(conversation, false);
+      const pane = await show(conversation, undefined);
       await conversation.submit({ type: "input", content: `${prefix}Triage ticket ${400 + Number(conversation.id)}: a customer cannot log in.` }, ctx0);
       return { paneId: pane.id };
     };
     core.starters([
       { id: "new-triage", label: "New triage", run: startTriage("") },
       { id: "two-notes", label: "Two notes at once (faux only)", run: startTriage("TWO: ") },
+      { id: "ask-questions", label: "A choice and a line of text (faux only)", run: startTriage("ASK: ") },
     ]);
 
     // The first start opens one ticket, so the phone has an ask to answer. Later starts show what storage holds.
@@ -155,7 +161,7 @@ export class Member extends DurableObject<Env> {
     // Continue any run the last start left unfinished, and wait for the asks it raises again (Pi re-runs a
     // waiting hook, which asks under the same id). Only then is the layout complete: the first snapshot after a
     // wake carries every open ask, by contract and not by timing.
-    const reRaised = this.panes.reRaised(risky);
+    const reRaised = this.panes.reRaised(new Set([...risky, ...ASKING_TOOLS]));
     harness.resume();
     await reRaised;
     core.ready(); // the layout is complete: only now may Collie see a snapshot

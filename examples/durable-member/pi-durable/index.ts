@@ -21,7 +21,7 @@ import {
   ToolTask,
   watchEvents,
 } from "@earendil-works/pi-durable";
-import { type Item, type PaneHandle, safeId, type TabHandle } from "../sdk/core/index.ts";
+import { type Item, type PaneHandle, type Progress, type ProgressStep, safeId, type TabHandle } from "../sdk/core/index.ts";
 
 const ctx0 = BACKGROUND_CONTEXT;
 
@@ -122,7 +122,14 @@ export interface PaneLocation {
   paneId?: string;
   /** Absolute. Optional: the pane falls back to its workspace's folder. */
   cwd?: string;
+  /** One line under the title. Set when the pane is first shown. */
+  subtitle?: string;
+  /** Show the three steps of a ticket while its first run works. */
+  progress?: boolean;
 }
+
+/** The line under a pane's title: what the ticket is about, or which ticket the helper helps. */
+export const subtitleFor = (owner: ConversationId | undefined): string => (owner === undefined ? "a customer cannot log in" : `helping ticket ${owner}`);
 
 const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -136,25 +143,70 @@ const textOf = (content: unknown): string =>
         .map((b) => b.text ?? "")
         .join("");
 
+const NEXT_STEPS = "**What to do next**\n\n- Ask the customer to sign in again.\n- Check that the reset mail went out.\n- Close the ticket when they confirm.";
+const REVOKE_COMMAND = "# clear the stale session\nsession-cli revoke --user 412";
+const DOCS_URL = "https://colliepwa.dev/docs/";
+
 /** Pi entries and agent events to the session stream. Whole blocks only: message_update is ignored. */
 class Mapper {
   private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
+  // What the first run has done so far, for the progress steps. A ticket only: a helper just answers.
+  private seen = { user: false, note: false, noted: false, reply: false };
   constructor(
     private pane: PaneHandle,
     private registry: PaneRegistry,
+    private withProgress: boolean,
   ) {}
 
   private item(item: Item) {
     this.pane.event({ type: "item", item });
     if (item.kind === "tool") this.registry.toolStatus(item.id, item.tool.name, item.status);
+    if (item.kind === "user") this.seen.user = true;
+    if (item.kind === "reply") this.seen.reply = true;
+    if (item.kind === "tool" && item.tool.name === "write_note") {
+      this.seen.note = true;
+      if (item.status !== "running") this.seen.noted = true;
+    }
+  }
+
+  /**
+   * What a finished ticket adds under its reply: a markdown note with a list, a code block and a link (WIRE.md 7.11).
+   * The ids come from the reply's, so a replay after a restart writes the same three items again, not three more.
+   */
+  private summary(replyId: string, ts: string) {
+    this.item({ id: safeId(`${replyId}:todo`), ts, kind: "markdown", text: NEXT_STEPS });
+    this.item({ id: safeId(`${replyId}:cmd`), ts, kind: "code", lang: "sh", text: REVOKE_COMMAND });
+    this.item({ id: safeId(`${replyId}:docs`), ts, kind: "link", href: DOCS_URL, label: "Collie docs" });
+  }
+
+  /** The three steps of a ticket as the first run reaches them: read it, write a note, reply. */
+  private steps(): Progress {
+    const { user, note, noted, reply } = this.seen;
+    const state = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
+    return {
+      kind: "steps",
+      steps: [
+        { label: "read the ticket", state: state(user && (note || reply), !user || !note) },
+        { label: "write a note", state: state(noted || reply, note || user) },
+        { label: "reply", state: state(reply, noted) },
+      ],
+    };
+  }
+
+  /** Steps while the first run works. After its reply, or when the pane is idle, none: the program clears them. */
+  private mark(working: boolean) {
+    if (!this.withProgress) return;
+    this.pane.progress(working ? this.steps() : null);
   }
 
   snapshot(s: SnapshotEvent, first: boolean) {
     if (!first) this.pane.event({ type: "reset" });
     this.tools.clear();
+    this.seen = { user: false, note: false, noted: false, reply: false };
     for (const entry of s.entries) this.entry(entry);
     this.pane.event({ type: "synced" });
     this.pane.state(s.run ? "working" : "idle");
+    this.mark(s.run ? !this.seen.reply : false);
   }
 
   apply(e: AgentEvent) {
@@ -163,11 +215,14 @@ class Mapper {
         return this.snapshot(e, false);
       case "run_start":
       case "turn_start":
-        return this.pane.state("working");
+        this.pane.state("working");
+        return this.mark(!this.seen.reply);
       case "run_end":
-        return this.pane.state("idle");
+        this.pane.state("idle");
+        return this.mark(false);
       case "message_end":
-        return this.entry(e.entry);
+        this.entry(e.entry);
+        return this.mark(!this.seen.reply);
       case "submission":
         // An abort appends no entry and no item. The input settles, and the wire says so with `settled`.
         if (e.record.type !== "input" || (e.record.status !== "done" && e.record.status !== "unanswered")) return;
@@ -195,7 +250,10 @@ class Mapper {
     }
     if (m.role === "assistant") {
       (m.content as Block[]).forEach((b, i) => {
-        if (b.type === "text") this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
+        if (b.type === "text") {
+          this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
+          if (this.withProgress && (b.text ?? "").startsWith("Triage done")) this.summary(safeId(`${id}:${i}`), ts);
+        }
         else if (b.type === "thinking") this.item({ id: safeId(`${id}:${i}`), ts, kind: "thinking", text: b.thinking ?? "" });
         else if (b.type === "toolCall") {
           const tool: Extract<Item, { kind: "tool" }> = {
@@ -245,7 +303,8 @@ export async function showConversation(
   if (have) return have;
   const ctx = opts.ctx ?? ctx0;
   const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
-  const mapper = new Mapper(pane, opts.panes);
+  if (loc.subtitle) pane.subtitle(loc.subtitle);
+  const mapper = new Mapper(pane, opts.panes, loc.progress === true);
 
   // The wire's request id goes to Pi Durable as the submission's own dedupe key, so a repeat that
   // reaches Pi after a restart still admits the input once.
@@ -262,6 +321,12 @@ export async function showConversation(
   });
   return pane;
 }
+
+/** The pane's badge counts its open asks, and shows nothing at zero. */
+const markAsks = (pane: PaneHandle) => {
+  const open = pane.openAsks.length;
+  pane.badge(open > 0 ? { count: open } : null);
+};
 
 export interface Risky {
   panes: PaneRegistry;
@@ -295,12 +360,71 @@ export function riskGuard(o: Risky): Extension {
             },
             { signal: ctx.abortSignal },
           );
+          markAsks(pane); // the badge counts the asks that wait for the phone
           o.panes.asked(safeId(call.id)); // the ask is open now: a start waiting for it may go on
-          return (await answer).optionId === "allow" ? undefined : { block: "denied from the phone" };
+          try {
+            return (await answer).optionId === "allow" ? undefined : { block: "denied from the phone" };
+          } finally {
+            markAsks(pane);
+          }
         },
       }),
     ],
   });
+}
+
+/** The names of the tools that ask the phone a question of their own, so a restart waits for their asks too. */
+export const ASKING_TOOLS: ReadonlySet<string> = new Set(["ask_queue", "ask_customer"]);
+
+export const QUEUES = [
+  { id: "billing", label: "Billing" },
+  { id: "access", label: "Access" },
+  { id: "other", label: "Other" },
+];
+
+/**
+ * `ask_queue` (a choice) and `ask_customer` (a text ask): tools whose whole job is a question for the person on the
+ * phone (WIRE.md 7.12). The ask sits under the tool's own item, and `replay: "safe"` means a rerun after a crash asks
+ * again under the same id. The scripted ticket that starts with `ASK:` calls them after its note.
+ */
+export function askTools(o: { panes: PaneRegistry }) {
+  const ask = async <A>(api: { conversationId: ConversationId; callId: string }, raise: (pane: PaneHandle, id: string) => Promise<A>): Promise<A> => {
+    const pane = o.panes.get(api.conversationId);
+    if (!pane) throw new Error("no pane to ask on");
+    const id = safeId(api.callId);
+    const pending = raise(pane, id);
+    markAsks(pane);
+    o.panes.asked(id);
+    try {
+      return await pending;
+    } finally {
+      markAsks(pane);
+    }
+  };
+  const reply = (text: string) => ({ content: [{ type: "text" as const, text }] });
+  const queue = defineTool({
+    name: "ask_queue",
+    description: "Ask the person which queue the ticket goes to.",
+    parameters: Type.Object({}),
+    replay: "safe",
+    execute: async (_args, api) => {
+      const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: "Which queue?", options: QUEUES }));
+      return reply(`queue: ${answer.optionIds.join(", ")}`);
+    },
+  });
+  const customer = defineTool({
+    name: "ask_customer",
+    description: "Ask the person for one line to send to the customer.",
+    parameters: Type.Object({}),
+    replay: "safe",
+    execute: async (_args, api) => {
+      const answer = await ask(api, (pane, id) =>
+        pane.ask({ kind: "text", toolCallId: id, itemId: id, title: "One line for the customer", placeholder: "We are looking into it", maxLength: 280 }),
+      );
+      return reply(`customer line: ${clip(answer.text)}`);
+    },
+  });
+  return [queue, customer];
 }
 
 export interface HelperOptions {
@@ -331,7 +455,10 @@ export function spawnHelperTool(o: HelperOptions) {
       }, ctx);
       const harness = o.harness();
       const conversation = (await harness.conversation(child, ctx))!;
-      await showConversation({ tab: o.tab, title: `Helper #${child}` }, harness, conversation, { panes: o.panes, ctx });
+      await showConversation({ tab: o.tab, title: `Helper #${child}`, subtitle: subtitleFor(api.conversationId) }, harness, conversation, {
+        panes: o.panes,
+        ctx,
+      });
       await api.details({ conversationId: child }, ctx);
       const handle = (await api.conversation(child, ctx))!;
       const request = { type: "input", content: args.task, requestId: `helper:${api.taskId}` } as const;

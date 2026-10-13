@@ -99,7 +99,7 @@ describe("the card as data", () => {
   });
 
   it("an ask of another kind shows its words and no buttons", () => {
-    draw({ ask: { ...ASK, kind: "form" } });
+    draw({ ask: { ...ASK, kind: "dial" } });
     expect(screen.getByText("Run npm test?")).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
@@ -316,5 +316,254 @@ describe("a newer revision from the poll", () => {
     const { rerender } = draw();
     rerender(<AskCard ask={{ ...ASK, revision: 6, title: "Run npm test twice?" }} paneId="w1:p1" />);
     expect(screen.getByText("Run npm test twice?")).toBeInTheDocument();
+  });
+});
+
+// ── More kinds of ask (WIRE.md 7.12) ─────────────────────────────────────────────────────────────
+
+const QUEUES = [
+  { id: "billing", label: "Billing" },
+  { id: "access", label: "Access" },
+  { id: "other", label: "Other" },
+];
+const CHOICE: Ask = { id: "ask-c", kind: "choice", toolCallId: "tc-c", revision: 2, title: "Which queue?", itemId: "item-c", options: QUEUES };
+const TEXT: Ask = { id: "ask-t", kind: "text", toolCallId: "tc-t", revision: 1, title: "One line for the customer", itemId: "item-t", options: [], placeholder: "We are looking into it", maxLength: 20 };
+const FORM: Ask = {
+  id: "ask-f",
+  kind: "form",
+  toolCallId: "tc-f",
+  revision: 3,
+  title: "Open a ticket",
+  itemId: "item-f",
+  options: [],
+  fields: [
+    { id: "summary", label: "Summary", kind: "text", required: true, maxLength: 40 },
+    { id: "queue", label: "Queue", kind: "choice", options: QUEUES },
+    { id: "urgent", label: "Urgent", kind: "toggle" },
+  ],
+};
+const taken = () => HttpResponse.json({ ok: true, outcome: "taken" });
+
+describe("a choice ask", () => {
+  it("draws its options as plain rows, with no effect wording", () => {
+    draw({ ask: CHOICE });
+    expect(screen.getByRole("button", { name: "Billing" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Access" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Allow|Deny/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  });
+
+  it("one tap on a row posts optionIds with that one id, once, and closes on taken", async () => {
+    const seen = stubAnswer(taken);
+    const { container } = draw({ ask: CHOICE });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Access" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]!.body).toMatchObject({ askId: "ask-c", revision: 2, optionIds: ["access"] });
+    expect(seen[0]!.body).not.toHaveProperty("optionId");
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    expect(seen).toHaveLength(1);
+  });
+
+  it("the rows go off while the tap is on its way, so a second tap cannot double up", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let posts = 0;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/answer$/, async () => {
+        posts += 1;
+        await gate;
+        return taken();
+      }),
+    );
+    draw({ ask: CHOICE });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Billing" }));
+    expect(screen.getByRole("button", { name: "Other" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Other" }));
+    release();
+    await waitFor(() => expect(posts).toBe(1));
+  });
+
+  it("with multiple, the rows toggle and nothing posts until Send, which posts the set", async () => {
+    const seen = stubAnswer(taken);
+    draw({ ask: { ...CHOICE, multiple: true } });
+    const user = userEvent.setup();
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Billing" }));
+    await user.click(screen.getByRole("button", { name: "Other" }));
+    await user.click(screen.getByRole("button", { name: "Access" }));
+    await user.click(screen.getByRole("button", { name: "Access" })); // off again
+    expect(screen.getByRole("button", { name: "Billing" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Access" })).toHaveAttribute("aria-pressed", "false");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(seen).toHaveLength(0);
+    await user.click(send);
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]!.body.optionIds).toEqual(["billing", "other"]);
+  });
+
+  it("a choice with no options is not answerable", () => {
+    draw({ ask: { ...CHOICE, options: [] } });
+    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+  });
+
+  it("an unknown outcome keeps the same request id and the same pick for Try again", async () => {
+    let calls = 0;
+    const seen = stubAnswer(() => {
+      calls += 1;
+      return calls === 1 ? HttpResponse.json({ ok: false, outcome: "unknown" }, { status: 504 }) : taken();
+    });
+    draw({ ask: CHOICE });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Other" }));
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]!.body.requestId).toBe(seen[0]!.body.requestId);
+    expect(seen[1]!.body.optionIds).toEqual(["other"]);
+  });
+});
+
+describe("a text ask", () => {
+  it("draws one field with the placeholder and a Send that stays off while the field is empty", () => {
+    draw({ ask: TEXT });
+    expect(screen.getByRole("textbox", { name: "One line for the customer" })).toHaveAttribute("placeholder", "We are looking into it");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByText("0 of 20")).toBeInTheDocument();
+  });
+
+  it("Send posts the trimmed line as text, once", async () => {
+    const seen = stubAnswer(taken);
+    const { container } = draw({ ask: TEXT });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox"), "  On it.  ");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]!.body).toMatchObject({ askId: "ask-t", revision: 1, text: "On it." });
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    expect(seen).toHaveLength(1);
+  });
+
+  it("Enter sends too, but nothing posts without a person pressing it", async () => {
+    const seen = stubAnswer(taken);
+    draw({ ask: TEXT });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox"), "Hello");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(seen).toHaveLength(0);
+    await user.type(screen.getByRole("textbox"), "{Enter}");
+    await waitFor(() => expect(seen).toHaveLength(1));
+  });
+
+  it("a line over maxLength turns Send off and the count red; the default limit is 500", async () => {
+    draw({ ask: TEXT });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox"), "x".repeat(21));
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByText("21 of 20")).toHaveClass("text-destructive");
+  });
+
+  it("with no maxLength the limit is 500", () => {
+    draw({ ask: { ...TEXT, maxLength: undefined } });
+    expect(screen.getByText("0 of 500")).toBeInTheDocument();
+  });
+
+  it("a spaces-only line cannot be sent", async () => {
+    draw({ ask: TEXT });
+    await userEvent.setup().type(screen.getByRole("textbox"), "   ");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("a stale answer shows the new ask with an empty field and asks for a fresh tap", async () => {
+    const newer: Ask = { ...TEXT, revision: 2, title: "One line, politely" };
+    const seen = stubAnswer(() => HttpResponse.json({ ok: false, outcome: "stale", ask: newer }, { status: 409 }));
+    draw({ ask: TEXT });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox"), "Old words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("One line, politely")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    await user.type(screen.getByRole("textbox"), "New words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]!.body).toMatchObject({ revision: 2, text: "New words" });
+  });
+});
+
+describe("a form ask", () => {
+  it("draws each field by its kind under one Send", () => {
+    draw({ ask: FORM });
+    expect(screen.getByRole("textbox", { name: "Summary" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Queue/u })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /Urgent/u })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getAllByRole("button", { name: "Send" })).toHaveLength(1);
+    expect(screen.getByText(/Required/u)).toBeInTheDocument();
+  });
+
+  it("Send stays off until the required field has a value", async () => {
+    draw({ ask: FORM });
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "Summary" }), "Cannot log in");
+    expect(send).toBeEnabled();
+  });
+
+  it("Send posts values: filled fields, the picked option id, and every toggle with its boolean", async () => {
+    const seen = stubAnswer(taken);
+    const { container } = draw({ ask: FORM });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Summary" }), "  Cannot log in ");
+    await user.selectOptions(screen.getByRole("combobox", { name: /Queue/u }), "access");
+    await user.click(screen.getByRole("switch", { name: /Urgent/u }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]!.body).toMatchObject({ askId: "ask-f", revision: 3, values: { summary: "Cannot log in", queue: "access", urgent: true } });
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    expect(seen).toHaveLength(1);
+  });
+
+  it("an untouched optional field is left out, and an untouched toggle goes as false", async () => {
+    const seen = stubAnswer(taken);
+    draw({ ask: FORM });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Summary" }), "Only this");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]!.body.values).toEqual({ summary: "Only this", urgent: false });
+  });
+
+  it("a form with no fields, or a choice field with no options, is not answerable", () => {
+    const { unmount } = draw({ ask: { ...FORM, fields: [] } });
+    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+    unmount();
+    draw({ ask: { ...FORM, fields: [{ id: "q", label: "Queue", kind: "choice", options: [] }] } });
+    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+  });
+
+  it("the controls go off while the tap is on its way", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/answer$/, async () => {
+        await gate;
+        return taken();
+      }),
+    );
+    draw({ ask: FORM });
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Summary" }), "x");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByRole("textbox", { name: "Summary" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Send/u })).toBeDisabled(); // its name carries the spinner's "Sending"
+    release();
+  });
+});
+
+describe("a card of a kind this version cannot answer", () => {
+  it("draws its words and no controls, even with options", () => {
+    draw({ ask: { ...CHOICE, kind: "dial" } });
+    expect(screen.getByText("Which queue?")).toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });

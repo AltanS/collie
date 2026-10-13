@@ -119,6 +119,7 @@ describe("the wire", () => {
     expect(s.starters).toEqual([
       { id: "new-triage", label: "New triage" },
       { id: "two-notes", label: "Two notes at once (faux only)" },
+      { id: "ask-questions", label: "A choice and a line of text (faux only)" },
     ]);
     expect(pane.state).toBe("waiting");
     expect(pane.openAsks[0].options.map((o: { effect: string }) => o.effect)).toEqual(["allow", "deny"]);
@@ -348,5 +349,24 @@ describe("the receipts cap", () => {
       expect(runs).toBe(0);
       expect(DROPPED_KEPT).toBe(10 * RECEIPTS_KEPT);
     });
+  });
+});
+
+describe("more kinds of ask", () => {
+  test("a ticket with questions asks a choice, then a text ask, and each takes its own answer shape", async () => {
+    const r = await call("POST", "/starter/ask-questions", { body: { requestId: "start-ask" } });
+    const id = r.body.paneId;
+    const answer = (askId: string, revision: number, requestId: string, payload: object) =>
+      call("POST", `/pane/${id}/answer`, { body: { requestId, askId, revision, answer: payload } });
+    const note = await waitFor("the note's ask", async () => (await paneOf(id)).openAsks.find((a: { kind: string }) => a.kind === "permission"));
+    await answer(note.id, note.revision, "ask-note", { optionId: "allow" });
+    const choice = await waitFor("the choice", async () => (await paneOf(id)).openAsks.find((a: { kind: string }) => a.kind === "choice"));
+    expect(choice.options.map((o: { id: string }) => o.id)).toEqual(["billing", "access", "other"]);
+    expect((await answer(choice.id, choice.revision, "ask-bad", { text: "billing" })).status).toBe(400);
+    expect((await answer(choice.id, choice.revision, "ask-choice", { optionIds: ["other"] })).body).toEqual({ result: "taken" });
+    const text = await waitFor("the text ask", async () => (await paneOf(id)).openAsks.find((a: { kind: string }) => a.kind === "text"));
+    expect((await answer(text.id, text.revision, "ask-long", { text: "x".repeat(281) })).body.code).toBe("bad-body");
+    expect((await answer(text.id, text.revision, "ask-text", { text: "On it." })).body).toEqual({ result: "taken" });
+    await waitFor("idle", async () => (await paneOf(id)).state === "idle");
   });
 });

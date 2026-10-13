@@ -59,6 +59,8 @@ export class DurableEventReader {
   private readonly cursors = new Map<string, Cursor>();
   /** The `epoch-rev` each pane was last read completely at. */
   private readonly readAt = new Map<string, string>();
+  /** The panes whose dropped items were already said in this epoch, as `epoch/paneId`. One log line each (WIRE.md 7.11). */
+  private readonly dropSaid = new Set<string>();
   private running: Promise<readonly string[]> | null = null;
   private again = false;
 
@@ -124,6 +126,15 @@ export class DurableEventReader {
     return changed;
   }
 
+  /** One line per pane per epoch for items the reader dropped, so a program that sends a bad one is found without a flood. */
+  private sayDropped(paneId: string, epoch: string, dropped: number): void {
+    if (dropped === 0) return;
+    const key = `${epoch}/${paneId}`;
+    if (this.dropSaid.has(key)) return;
+    this.dropSaid.add(key);
+    console.warn(`[durable] pane ${paneId}: dropped ${String(dropped)} item(s) that break a rule or have a kind this build does not know (WIRE.md 7.11)`);
+  }
+
   private async readPane(
     paneId: string,
     version: number,
@@ -154,6 +165,7 @@ export class DurableEventReader {
       const parsed = parseEvents(reply.text);
       if (!parsed.ok) throw new DurableUnreachable(`unreadable events: ${parsed.detail}`);
       const events = parsed.value;
+      this.sayDropped(paneId, events.epoch, events.droppedItems);
       wrote += await this.sink.apply(paneId, events.events, events.reset ? events.trimmed : 0);
       // The cursor moves only after the sink took the events, so a failed write is read again.
       cursor = { epoch: events.epoch, after: events.next };

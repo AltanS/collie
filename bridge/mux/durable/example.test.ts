@@ -143,6 +143,19 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect((await pane(ticket))?.state).toBe("waiting");
   });
 
+  test("example: the ticket's subtitle and badge reach the mux pane, and the helper names its ticket", async () => {
+    const marked = await pane(ticket);
+    expect(marked?.subtitle).toBe("a customer cannot log in");
+    expect(marked?.badge).toEqual({ count: 1 }); // the one ask that waits for the phone
+    const mux = await adapter.snapshot();
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.subtitle).toBe("a customer cannot log in");
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.badge).toEqual({ count: 1 });
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.progress).toEqual({
+      kind: "steps",
+      steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }],
+    });
+  });
+
   test("example: the events reader reads the history, then only what came after its cursor", async () => {
     await adapter.syncEvents();
     const first = recorder.all(ticket);
@@ -160,13 +173,28 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const answer = { requestId: crypto.randomUUID(), askId: ask.id, revision: ask.revision, optionId: "allow" };
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: true } });
+    // The default timings leave the helper a while to answer, so the running step is seen moving to the reply.
+    await until("the reply is the running step", async () => {
+      const progress = (await pane(ticket))?.progress;
+      return progress?.kind === "steps" && progress.steps.map((step) => step.state).join() === "done,done,running" ? true : undefined;
+    });
     await until("the ticket idle", async () => ((await pane(ticket))?.state === "idle" ? true : undefined));
     expect(notes()).toHaveLength(1);
-    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(true);
+    const helper = adapter.program()?.snapshot.panes.find((candidate) => candidate.tabId === "triage:helpers");
+    expect(helper).toBeDefined();
+    expect(helper?.subtitle).toBe(`helping ticket ${ticket.replace("conv-", "")}`);
+    expect((await pane(ticket))?.badge).toBeUndefined(); // the ask is answered: the count is gone
+    expect((await pane(ticket))?.progress).toBeUndefined(); // the run is over: the program cleared it
     await adapter.syncEvents();
     const after = recorder.all(ticket);
     expect(after.some((event) => event.type === "ask-closed" && event.by === "phone")).toBe(true);
     expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.includes("The helper says"))).toBe(true);
+    // The finished ticket adds a markdown note, a code block and a link, and the real adapter reads all three (WIRE.md 7.11).
+    const rich = after.flatMap((event) => (event.type === "item" ? [event.item] : [])).filter((item) => item.kind === "markdown" || item.kind === "code" || item.kind === "link");
+    expect(rich.map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
+    expect(rich[0]?.kind === "markdown" && rich[0].text).toContain("- Ask the customer to sign in again.");
+    expect(rich[1]?.kind === "code" && rich[1].lang).toBe("sh");
+    expect(rich[2]?.kind === "link" && rich[2].href).toBe("https://colliepwa.dev/docs/");
   });
 
   test("example: a send starts a new turn, and a stop ends it with a settled event and no item", async () => {

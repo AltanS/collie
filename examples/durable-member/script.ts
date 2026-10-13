@@ -39,6 +39,7 @@ const textOf = (c: unknown) =>
 /**
  * The script, read from the transcript, so it holds after a restart too:
  *   ticket -> write_note -> spawn_helper -> final text. A later user input -> a slow text.
+ *   A first user message that starts with "ASK:" asks instead: write_note -> ask_queue -> ask_customer -> final text.
  *   A first user message that starts with "HELPER:" is the helper, and it only answers.
  */
 function scripted(messages: Msg[], slowMs: number, helperMs?: number) {
@@ -46,6 +47,15 @@ function scripted(messages: Msg[], slowMs: number, helperMs?: number) {
   const first = messages.find((m) => m.role === "user");
   if (first && textOf(first.content).startsWith("HELPER:")) {
     return { msg: fauxAssistantMessage([fauxText("Probably an expired session cookie after the password reset.")]), slow: false, ms: helperMs };
+  }
+  if (first && textOf(first.content).startsWith("ASK:")) {
+    // A ticket with questions: the note (the permission), then which queue (a choice), then one line for the customer (a text ask).
+    const name = last.role === "toolResult" ? last.toolName : undefined;
+    if (name === "write_note" && last.isError) return { msg: fauxAssistantMessage([fauxText("The note was not saved. I stop here.")]), slow: false };
+    if (name === "write_note") return { msg: fauxAssistantMessage([fauxToolCall("ask_queue", {})], { stopReason: "toolUse" }), slow: false };
+    if (name === "ask_queue") return { msg: fauxAssistantMessage([fauxToolCall("ask_customer", {})], { stopReason: "toolUse" }), slow: false };
+    if (name === "ask_customer") return { msg: fauxAssistantMessage([fauxText(`Questions answered. ${textOf(last.content)}`)]), slow: false };
+    return { msg: fauxAssistantMessage([fauxToolCall("write_note", { note: "Ticket with questions: login failure." })], { stopReason: "toolUse" }), slow: false };
   }
   if (first && textOf(first.content).startsWith("TWO:")) {
     // Two risky calls in ONE assistant message, then one final text once both results are in.

@@ -60,6 +60,7 @@ import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
   parseAnswerPost,
+  type DurableAnswerBody,
   parseControlPost,
   parseEvents,
   parseRenamePost,
@@ -193,7 +194,10 @@ export interface FakeAnswer {
   readonly paneId: string;
   readonly askId: string;
   readonly toolCallId: string;
+  /** The option of a permission, the picks of a choice joined by a comma, and empty for a text or a form. */
   readonly optionId: string;
+  /** What was answered, as the program read it. */
+  readonly answer: DurableAnswerBody;
   readonly requestId: string;
 }
 
@@ -736,7 +740,7 @@ export class FakeDurableProgram {
     const post = parseAnswerPost(text);
     if (post === "bad-json") return reply(400, { code: "bad-json" });
     if (post === null) return reply(400, { code: "bad-body" });
-    const { requestId, askId, revision, optionId } = post;
+    const { requestId, askId, revision } = post;
     const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return reply(404, { code: "no-such-pane" });
     const earlier = this.answered.get(requestId);
@@ -750,11 +754,13 @@ export class FakeDurableProgram {
       answer = { result: "too-late" };
     } else if (ask.revision !== revision) {
       return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((open) => open.id), ask });
-    } else if (!ask.options.some((option) => option.id === optionId)) {
+    } else if (badAnswer(ask, post.answer) === "bad-option") {
       return reply(400, { code: "bad-option" });
+    } else if (badAnswer(ask, post.answer) === "bad-body") {
+      return reply(400, { code: "bad-body" });
     } else {
       // Resolved: the ask closes with `by: "phone"`, and the pane waits only while another is open.
-      this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId, requestId });
+      this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId: optionOf(post.answer), answer: post.answer, requestId });
       const left = pane.openAsks.filter((open) => open.id !== askId);
       this.snapshot.panes = this.snapshot.panes.map((candidate) =>
         candidate.id === paneId ? { ...candidate, openAsks: left, state: left.length > 0 ? "waiting" : "working" } : candidate,
@@ -982,3 +988,51 @@ export const durableHttpConformanceFixture: MuxConformanceFixture = {
   variant: "https with a bearer token",
   create: durableHttpWorld,
 };
+
+// ── What a program checks in an answer (WIRE.md 7.12) ─────────────────────────
+
+/** The `optionId` a recorded answer shows: the option, the picks joined, or empty. */
+function optionOf(answer: DurableAnswerBody): string {
+  if (answer.kind === "option") return answer.optionId;
+  return answer.kind === "options" ? answer.optionIds.join(",") : "";
+}
+
+/**
+ * Whether the answer fits the ask, as a program answers it: `null` when it does, `bad-option` for an id the ask does
+ * not offer, and `bad-body` for the wrong shape, a text over its `maxLength`, or a form that misses a required field.
+ */
+function badAnswer(ask: DurableAsk, answer: DurableAnswerBody): "bad-option" | "bad-body" | null {
+  if (ask.kind === "choice") {
+    if (answer.kind !== "options") return "bad-body";
+    if (!answer.optionIds.every((id) => ask.options.some((option) => option.id === id))) return "bad-option";
+    return answer.optionIds.length === 1 || ask.multiple === true ? null : "bad-body";
+  }
+  if (ask.kind === "text") {
+    if (answer.kind !== "text") return "bad-body";
+    return [...answer.text].length >= 1 && [...answer.text].length <= (ask.maxLength ?? 500) ? null : "bad-body";
+  }
+  if (ask.kind === "form") {
+    if (answer.kind !== "values") return "bad-body";
+    const fields = ask.fields ?? [];
+    for (const key of Object.keys(answer.values)) {
+      if (!fields.some((field) => field.id === key)) return "bad-body";
+    }
+    for (const field of fields) {
+      const value = answer.values[field.id];
+      if (value === undefined) {
+        if (field.required === true) return "bad-body";
+        continue;
+      }
+      if (field.kind === "toggle") {
+        if (value !== true && value !== false) return "bad-body";
+        continue;
+      }
+      if (value === true || value === false || Array.isArray(value)) return "bad-body";
+      if (field.kind === "text" && [...value].length > (field.maxLength ?? 500)) return "bad-body";
+      if (field.kind === "choice" && !(field.options ?? []).some((option) => option.id === value)) return "bad-option";
+    }
+    return null;
+  }
+  if (answer.kind !== "option") return "bad-body";
+  return ask.options.some((option) => option.id === answer.optionId) ? null : "bad-option";
+}
