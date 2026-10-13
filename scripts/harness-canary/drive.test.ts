@@ -12,7 +12,8 @@ import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
 import { lastPointedRow } from "./dialogs";
-import { answeredBelow } from "./scenarios";
+import { answeredBelow, opaqueTokenRead } from "./scenarios";
+import type { Adapter } from "./readers";
 import { DEFAULT_SCENARIOS } from "./verdict";
 
 const ESC = String.fromCodePoint(0x1b);
@@ -172,6 +173,26 @@ describe("drafts and messages", () => {
     expect(JOURNAL_MESSAGE.id).toBe("16-read");
     expect(JOURNAL_MESSAGE.text).toContain("Read the file README.md");
     expect(JOURNAL_MESSAGE.text).not.toMatch(/\brun\b|`|echo/i);
+  });
+});
+
+describe("opaqueTokenRead", () => {
+  const chip = (draft: string) => /^📄 #\d+$/.test(draft);
+  const omp: Adapter = { agent: "omp", extractInputDraft: () => null, draftIsOpaque: chip };
+
+  test("a token with no evidence of its content counts as the draft read back", () => {
+    expect(opaqueTokenRead(omp, "📄 #1")).toBe(true);
+  });
+
+  test("real text, no draft or no adapter is not a token read", () => {
+    expect(opaqueTokenRead(omp, "Reply with only OK.")).toBe(false);
+    expect(opaqueTokenRead(omp, null)).toBe(false);
+    expect(opaqueTokenRead(undefined, "📄 #1")).toBe(false);
+  });
+
+  test("a harness whose token can be matched to the send keeps that stricter check", () => {
+    const matched: Adapter = { ...omp, agent: "claude", draftCarriesSend: () => false };
+    expect(opaqueTokenRead(matched, "📄 #1")).toBe(false);
   });
 });
 

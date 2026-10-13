@@ -215,6 +215,18 @@ export function wordsOnScreen(texts: readonly string[], text: string): boolean {
   return probes(text).some((p) => flat.includes(p));
 }
 
+/**
+ * Whether the adapter read back its own opaque paste token, from a harness whose token says nothing
+ * of what it holds (OMP's `📄 #1`). The typed words can never reach the screen there, and the phone's
+ * contract for such a token is to show it and stand "Take over" down (`draftIsOpaque`), so
+ * recognising it IS the read. A harness that defines `draftCarriesSend` keeps the stricter check:
+ * its token can be matched to this send, and accepting any token would hide a mismatch.
+ */
+export function opaqueTokenRead(adapter: Adapter | undefined, draft: string | null): boolean {
+  if (adapter === undefined || draft === null || adapter.draftCarriesSend !== undefined) return false;
+  return adapter.draftIsOpaque?.(draft) === true;
+}
+
 /** The bullet glyphs an agent puts before its reply row. */
 const REPLY_BULLET = "(?:[⏺•●▣>*-]\\s*)?";
 
@@ -434,7 +446,7 @@ export class Driver {
     let problems: string[] = ["not judged"];
     let landed = false;
     for (;;) {
-      landed = wordsOnScreen(s.texts.slice(-COMPOSER_ROWS), m.text);
+      landed = wordsOnScreen(s.texts.slice(-COMPOSER_ROWS), m.text) || opaqueTokenRead(adapter, s.draft);
       problems = this.draftProblems(s, m.text, adapter);
       if ((landed && problems.length === 0) || Date.now() >= deadline) break;
       await Bun.sleep(POLL_MS);
@@ -444,7 +456,7 @@ export class Driver {
     const result = !landed
       ? notReachedCase(m.id, "the typed words never showed on screen")
       : problems.length === 0
-        ? passCase(m.id)
+        ? passCase(m.id, opaqueTokenRead(adapter, s.draft) ? `read as the opaque token ${JSON.stringify(s.draft)}` : "")
         : failCase(m.id, problems.join(", "));
     const cleared = await this.clearDraft(m.text);
     return { result, cleared };
@@ -459,7 +471,9 @@ export class Driver {
     }
     if (adapter.composerReady && s.composer !== true) problems.push("composer not found");
     const carried =
-      this.ctx.readers.draftCarriesSend(sent, s.draft) || (s.draft !== null && adapter.draftCarriesSend?.(sent, s.draft) === true);
+      this.ctx.readers.draftCarriesSend(sent, s.draft) ||
+      (s.draft !== null && adapter.draftCarriesSend?.(sent, s.draft) === true) ||
+      opaqueTokenRead(adapter, s.draft);
     if (!carried) problems.push(`draft not read back (read ${JSON.stringify(s.draft?.slice(0, 40) ?? null)})`);
     return problems;
   }
