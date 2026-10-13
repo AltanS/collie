@@ -1,8 +1,8 @@
 # 0099: a durable program is a mux with no screen
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-12
-- **Shipped in:** pending
+- **Shipped in:** pending (1.21.0)
 - **Amended in scope by:** [ADR 0103](./0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md),
   points 3 and 4: a program the person deployed behind TLS is reached at a URL with a bearer token
 - **Trail:** a durable agent program (Pi Durable) that owns its conversations, has no terminal, and

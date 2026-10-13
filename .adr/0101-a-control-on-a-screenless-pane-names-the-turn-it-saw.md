@@ -1,8 +1,8 @@
 # 0101: a control on a screenless pane names the turn it saw
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-12
-- **Shipped in:** pending
+- **Shipped in:** pending (1.21.0)
 - **Trail:** a durable agent program (Pi Durable) where a steer can land on the wrong turn ·
   `bridge/server.ts` (the `reply` and `keys` routes, the `prompt_changed` refusal) ·
   `bridge/prompt-binding.ts` · `bridge/launch-receipts.ts` · `bridge/worktree-receipts.ts`
