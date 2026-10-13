@@ -53,6 +53,8 @@ export interface DurableCaps {
   readonly abort: boolean;
   /** It takes a new title for a workspace or a tab (WIRE.md section 7.8). */
   readonly rename: boolean;
+  /** It closes a workspace, a tab or a pane when asked (WIRE.md section 7.9). */
+  readonly close: boolean;
 }
 
 export interface DurableHello {
@@ -248,6 +250,7 @@ export function parseHello(text: string): Parsed<DurableHello> {
       steer: flag("steer"),
       abort: flag("abort"),
       rename: flag("rename"),
+      close: flag("close"),
     },
   });
 }
@@ -873,6 +876,30 @@ export function parseRenamePost(text: string): DurableRenameBody | "bad-json" | 
   const trimmed = renameTitleOf(title);
   if (trimmed === null) return null;
   return { requestId, kind, id, title: trimmed };
+}
+
+/** The body the adapter writes for a close (WIRE.md section 4, `CloseRequest`). */
+export interface DurableCloseBody {
+  requestId: string;
+  kind: "pane" | "tab" | "workspace";
+  id: string;
+}
+
+/**
+ * The program's side of a close body: `"bad-json"`, `null` for a body that breaks WIRE.md section 7.9 (no request
+ * id, a kind that is none of the three words, no id), or the fields. The test program reads the adapter's POST with
+ * this, so the body the adapter writes and the body a program reads are checked by one rule.
+ */
+export function parseClosePost(text: string): DurableCloseBody | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const requestId = root.requestId ?? undefined;
+  const kind = root.kind ?? undefined;
+  const id = root.id ?? undefined;
+  if (!isText(requestId) || !isText(id)) return null;
+  if (kind !== "pane" && kind !== "tab" && kind !== "workspace") return null;
+  return { requestId, kind, id };
 }
 
 /** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */

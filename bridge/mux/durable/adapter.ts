@@ -89,6 +89,7 @@ import {
   type DurableCaps,
   type DurableControlBody,
   type DurablePane,
+  type DurableCloseBody,
   type DurableRenameBody,
   type DurableSnapshot,
 } from "./protocol.ts";
@@ -247,6 +248,21 @@ const RENAME_WORDS = {
   },
 } as const;
 type RenameKind = keyof typeof RENAME_WORDS;
+const NO_CLOSE = "This program does not take a close of a conversation or a tab from here.";
+/** What a close says of the thing it names, per kind: the words of a refusal. */
+const CLOSE_WORDS = {
+  pane: {
+    capability: "closePane",
+    gone: GONE,
+    unknown: "The program did not answer, so the conversation may have been closed. Look at the list before you try again.",
+  },
+  tab: {
+    capability: "closeTab",
+    gone: "The tab is not in the program's layout.",
+    unknown: "The program did not answer, so the tab may have been closed. Look at the tab list before you try again.",
+  },
+} as const;
+type CloseKind = keyof typeof CLOSE_WORDS;
 const NO_KEYS = "A durable conversation takes no typed keys.";
 const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and conversations.";
 
@@ -258,8 +274,8 @@ const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and co
  * are absent too. `idlePollMs` is the transport's slowest census: a change the program did not
  * announce is seen within it.
  *
- * `steerTurn`, `abortTurn`, `starters` and `renameTab` are the PROGRAM'S OWN `caps.steer`, `caps.abort`,
- * `caps.starters` and `caps.rename` from `hello` (WIRE.md section 4), so a program that declares a cap gets the control
+ * `steerTurn`, `abortTurn`, `starters`, `renameTab` and `closePane` are the PROGRAM'S OWN `caps.steer`, `caps.abort`,
+ * `caps.starters`, `caps.rename` and `caps.close` from `hello` (WIRE.md section 4), so a program that declares a cap gets the control
  * on the phone and one that does not gets none. `caps` is null until the first good read; then all
  * four read absent, which is the fail-closed direction.
  */
@@ -271,6 +287,9 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
   // A tab and a workspace are renamed through the program's own `rename` cap (WIRE.md section 7.8), under
   // `renameTab` and `renameSpace`. A pane keeps the title the conversation gives it.
   if (caps?.rename === true) supports.push("renameTab", "renameSpace");
+  // A pane and a tab are closed through the program's own `close` cap (WIRE.md section 7.9). A workspace close is on
+  // the wire too, but the phone has no control for it, so no capability is declared for it.
+  if (caps?.close === true) supports.push("closePane", "closeTab");
   return declareCapabilities({
     supports,
     spaces: "many",
@@ -281,12 +300,12 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
       typeText: NO_KEYS,
       sendKeys: NO_KEYS,
       renamePane: NO_STRUCTURE,
-      closePane: NO_STRUCTURE,
+      closePane: NO_CLOSE,
       setFocus: "There is no terminal to show a conversation in.",
       createTab: NO_STRUCTURE,
       renameTab: NO_RENAME,
       renameSpace: NO_RENAME,
-      closeTab: NO_STRUCTURE,
+      closeTab: NO_CLOSE,
       createSpace: NO_STRUCTURE,
     },
   });
@@ -867,8 +886,9 @@ export class DurableMux implements MuxAdapter {
     return muxUnsupported("renamePane", NO_STRUCTURE);
   }
 
-  async closePane(_paneId: string): Promise<MuxAck> {
-    return muxUnsupported("closePane", NO_STRUCTURE);
+  /** Close a conversation, through the program's `close` cap (WIRE.md section 7.9). See {@link close}. */
+  async closePane(paneId: string): Promise<MuxAck> {
+    return this.close("pane", paneId);
   }
 
   async setFocus(_paneId: string): Promise<MuxAck> {
@@ -957,8 +977,71 @@ export class DurableMux implements MuxAdapter {
     return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
-  async closeTab(_tabId: string): Promise<MuxAck> {
-    return muxUnsupported("closeTab", NO_STRUCTURE);
+  /** Close a tab, and the conversations in it, the same way. */
+  async closeTab(tabId: string): Promise<MuxAck> {
+    return this.close("tab", tabId);
+  }
+
+  /**
+   * In order: the cap of the last good read (`unsupported`, with no socket touched); the id rule; a fresh read of
+   * the layout; the cap again; the target (`gone`). One POST with a fresh request id, never retried: a POST that
+   * may have left and has no answer is a refusal whose detail says the close may have been applied, because an ack
+   * has no room for "unknown".
+   */
+  private async close(kind: CloseKind, id: string): Promise<MuxAck> {
+    const words = CLOSE_WORDS[kind];
+    if (this.kept?.session.caps.close !== true) return muxUnsupported(words.capability, NO_CLOSE);
+    if (!isWireId(id)) return muxRefused("An id in the request breaks the id rule.");
+    const read = await this.poll();
+    const program = read.ok ? this.program() : null;
+    if (program === null) return muxUnreachable(read.ok ? STARTING : read.detail);
+    if (!program.session.caps.close) return muxUnsupported(words.capability, NO_CLOSE);
+    const exists = kind === "pane" ? program.snapshot.panes.some((pane) => pane.id === id) : program.snapshot.tabs.some((tab) => tab.id === id);
+    if (!exists) return muxGone(words.gone);
+
+    const body: DurableCloseBody = { requestId: crypto.randomUUID(), kind, id };
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.post({
+        path: "/close",
+        version: program.session.version,
+        body,
+        timeoutMs: this.budget.writeTimeoutMs,
+        maxBytes: REPLY_CAPS.post,
+      });
+    } catch (err) {
+      if (err instanceof DurableOutcomeUnknown) return muxRefused(`${words.unknown} (${err.detail})`);
+      // Nothing was sent. The next read starts with `hello` again (WIRE.md section 8.8).
+      this.current = null;
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    return this.closeOutcome(kind, reply);
+  }
+
+  /** What one reply to a close means (WIRE.md section 7.9). */
+  private async closeOutcome(kind: CloseKind, reply: DurableReply): Promise<MuxAck> {
+    const words = CLOSE_WORDS[kind];
+    if (reply.status === 200) {
+      // A 200 the adapter cannot read may have acted.
+      if (parseControlReply(reply.text) === null) return muxRefused(`${words.unknown} (unreadable close reply)`);
+      // The target is gone from the next snapshot. Look now, so the census has it.
+      this.last = null;
+      await this.poll();
+      return muxAck();
+    }
+    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${words.unknown} (program answered ${String(reply.status)})`);
+    const problem = parseProblem(reply.text);
+    if (reply.status === 404 && problem.code === "no-such-target") return muxGone(words.gone);
+    if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported(words.capability, NO_CLOSE);
+    if (reply.status === 422 && problem.code === "close-refused") {
+      return muxRefused(problem.message === "" ? "The program did not accept this close." : `The program did not accept this close: ${problem.message}`);
+    }
+    // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
+    if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
+      const refusal = this.refusalFor(reply);
+      return refusal ?? muxUnreachable(`program answered ${String(reply.status)}`);
+    }
+    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   async createSpace(_request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {

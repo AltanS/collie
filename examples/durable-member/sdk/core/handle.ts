@@ -5,12 +5,13 @@
 // four acts (answer, send, abort, starter) and throws 403 `caller-refused`. Reads never call it.
 
 import { BadAnswer, type Pane, type Store } from "./layout.ts";
-import { digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
+import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
 import { assertId, bytes, CAPS, cut, idOk, renameTitleOf } from "./rules.ts";
 import {
   type AnswerReply,
   type AnswerRequest,
   type Caps,
+  type CloseRequest,
   type ControlReply,
   type EventsReply,
   type Hello,
@@ -262,6 +263,28 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         if (!store.rename(kind, id, title)) throw new HttpError(404, "no-such-target");
         return { ok: true };
       }, RENAME_GROUP),
+    );
+  }
+
+  if (method === "POST" && route[0] === "close" && route.length === 1) {
+    call.refuseAct?.();
+    const body = await readBody(request);
+    const requestId = idField(body, "requestId");
+    const { kind } = body as Partial<CloseRequest>;
+    if (kind !== "pane" && kind !== "tab" && kind !== "workspace") throw badBody("kind must be pane, tab or workspace");
+    const id = idField(body, "id");
+    if (!caps.close) throw new HttpError(409, "not-supported");
+    return json(
+      200,
+      await store.receipts.run<ControlReply>(requestId, digestOf({ verb: "close", kind, id }), async () => {
+        const target = store.closeTarget(kind, id);
+        if (!target) throw new HttpError(404, "no-such-target");
+        // Only `false` refuses: a hook that persists the close and returns nothing accepts it.
+        if ((await state.hooks.onClose?.(target, requestId)) === false) throw new HttpError(422, "close-refused");
+        // The target can go while the hook runs. Then there is nothing to close and nothing was changed.
+        if (!store.close(kind, id)) throw new HttpError(404, "no-such-target");
+        return { ok: true };
+      }, CLOSE_GROUP),
     );
   }
 

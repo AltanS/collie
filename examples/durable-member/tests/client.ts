@@ -81,6 +81,7 @@ export const api = {
     return call(d, "POST", `/pane/${enc(pane)}/abort`, { requestId: o.requestId ?? mint(), ...target });
   },
   rename: (d: Dial, kind: string, id: string, title: unknown, requestId: string = mint()) => call(d, "POST", "/rename", { requestId, kind, id, title }),
+  close: (d: Dial, kind: string, id: string, requestId: string = mint()) => call(d, "POST", "/close", { requestId, kind, id }),
   start: (d: Dial, starter: string, requestId: string = mint()) => call(d, "POST", `/starter/${enc(starter)}`, { requestId }),
 };
 

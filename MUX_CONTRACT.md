@@ -267,6 +267,13 @@ holds it to what is written here.
   zellij and tuios have none and never declare it: none of their adapters names a space today. The
   phone draws the Rename row of the space sheet (`POST /api/space/:id/rename`) only for a declared
   `renameSpace`, and reads an unanswered one as absent.
+- **Closing.** `closePane` and `closeTab` are declared from the program's `caps.close` of the last good
+  read. Each posts `POST /close` with `kind: "pane"` or `kind: "tab"` and a request id the adapter mints
+  (WIRE.md section 7.9), once and never retried. A program that declares no `close` answers
+  `unsupported` with no socket touched. The program's 404 `no-such-target` is `gone`, its 422
+  `close-refused` is `refused`, its 409 `not-supported` is `unsupported`, and a POST that may have left
+  without an answer is `refused` with a detail that says the close may have been applied. There is no
+  workspace close capability: the phone has no control for it, so a workspace close stays on the wire.
 
 ### Focus with a terminal and tuios-web attached
 

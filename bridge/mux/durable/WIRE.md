@@ -105,7 +105,7 @@ has a public URL, so the token is the whole gate.
 #### What the token does not protect against
 
 - **Anyone who holds the token acts as the phone.** They can read every pane, answer every ask, send
-  text, stop a turn, rename a workspace or a tab and run a starter. There is nothing else to check: the descendant check of 1A
+  text, stop a turn, rename or close a workspace, a tab or a conversation and run a starter. There is nothing else to check: the descendant check of 1A
   needs the caller's credentials on a local socket, and a TLS connection from the internet has none,
   so under 1B it does not exist.
 - **The host sees the text.** TLS ends at the host (on Cloudflare, at Cloudflare's edge). Transcripts,
@@ -165,6 +165,7 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /rename` | `RenameRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `rename-refused`, 503 `starting` |
+| `POST /close` | `CloseRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `close-refused`, 503 `starting` |
 | `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
 
 Any other method or path answers 404 `not-found`.
@@ -185,11 +186,11 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
 | 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
 | 401 | (any) | Over the socket (1A): a program that wants a token, which the socket does not carry. Over TLS (1B): the token is missing or wrong. | 1A: `incompatible`, see section 2. 1B: `unreachable`, detail `token-refused`. |
-| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `rename` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `rename`, `close` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
 | 403 | (any) | Over TLS (1B): something in front of the program refused the caller, for example an access proxy. | `unreachable`, detail `token-refused`. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
-| 404 | `no-such-target` | The workspace or tab of a `rename` is not in the program's layout. | `gone`. |
+| 404 | `no-such-target` | The workspace, tab or pane of a `rename` or a `close` is not in the program's layout. | `gone`. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
 | 409 | `incompatible` | Version outside the range. Carries `range`. | `unreachable`, detail `incompatible`. Never retried at the same version. |
 | 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current. Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
@@ -197,6 +198,7 @@ Every error body is a `Problem` (section 4).
 | 409 | `not-supported` | The cap for this act is false, or this pane cannot take it (for example no send handler). | Refused. |
 | 413 | `too-large` | The request body is over 64 KiB. | Refused. |
 | 422 | `rename-refused` | The program said no to this title for this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
+| 422 | `close-refused` | The program said no to closing this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `starter-failed` | The starter ran and failed. Carries `message`. Nothing was stored for the request id. | Refused, with the message. The same request id may run again. |
 | 503 | `starting` | `ready` is false. | `unreachable`, detail `starting`. Asks `hello` again on the next poll. |
 | 500 | `internal` | A bug in the program. | A read: `unreachable` for this poll. A POST: outcome unknown (section 7.6). |
@@ -236,6 +238,7 @@ interface Caps {
   steer?: boolean;     // it can steer text into a running turn (needs send)
   abort?: boolean;     // it can stop a running turn
   rename?: boolean;    // it takes a new title for a workspace or a tab (section 7.8)
+  close?: boolean;     // it closes a workspace, a tab or a pane (section 7.9)
   terminal?: boolean;  // MUST be false or absent in version 1. The adapter ignores it.
 }
 
@@ -434,6 +437,14 @@ interface RenameRequest {
   id: string;
   /** Trimmed, 1 to 120 characters, no control character (section 7.8). */
   title: string;
+}
+
+/** Close a workspace, a tab or a pane. What "close" means (archive, delete, end) is the program's call. */
+interface CloseRequest {
+  requestId: string;
+  kind: "pane" | "tab" | "workspace";
+  /** The pane id, the tab id as the snapshot lists it, or the workspace id. */
+  id: string;
 }
 
 interface StarterRequest {
@@ -671,7 +682,7 @@ abort.
   `StarterReply` with `replayed: true` and run nothing. A failed start (422) stores nothing, so the
   same id may run again. A repeat that arrives while the first is still running waits for it and
   returns its result.
-- **Answer, send, abort, rename:** the program SHOULD do the same: a repeat returns the first reply with
+- **Answer, send, abort, rename, close:** the program SHOULD do the same: a repeat returns the first reply with
   `replayed: true` and runs nothing. The bridge receipt is the main guard. This one covers a reply
   lost on the way.
 - The same `requestId` on a different route, pane or starter: 409 `request-id-reused`.
@@ -694,8 +705,8 @@ abort.
   store, newest first; a pending receipt younger than a day is never pruned. Each store is written
   to a temporary file and renamed over the old one.
 - Timeouts in the adapter over the socket (1A): 1000 ms for `hello`, `snapshot` and `events`;
-  3000 ms for `answer`, `send`, `abort` and `rename`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
-  `hello`, `snapshot`, `events`, `answer`, `send`, `abort` and `rename`, because a program that slept may wake
+  3000 ms for `answer`, `send`, `abort`, `rename` and `close`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
+  `hello`, `snapshot`, `events`, `answer`, `send`, `abort`, `rename` and `close`, because a program that slept may wake
   cold; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
   connect to last byte, and a reply is cut off the moment it passes its byte cap (section 6), so a
   program that trickles bytes or never stops cannot hold a read.
@@ -734,6 +745,33 @@ abort.
 - Collie draws the rename control for a tab through its tab capability (`renameTab`) and the one for a
   workspace through its space capability (`renameSpace`). The adapter declares both from `caps.rename`,
   so a program that takes renames gets a Rename row in the tab sheet and in the space sheet.
+
+### 7.9 A close
+
+- `POST /close` carries a `requestId`, a `kind` (`pane`, `tab` or `workspace`) and the `id` of that
+  pane, tab (as the snapshot lists it) or workspace. A `kind` that is none of the three words: 400
+  `bad-body`. An `id` that breaks the id rule: 400 `bad-id`.
+- With `caps.close` false: 409 `not-supported`. An `id` that names no target of that kind: 404
+  `no-such-target`.
+- What "close" means is the program's call: archive the conversation, delete it, end its run. The
+  program does what it means on its side, removes the target and everything inside it from its layout
+  (a tab takes its panes, a workspace takes its tabs and their panes), and raises `rev` (section 7.1).
+  The next snapshot no longer carries them.
+- Every open ask on a pane that goes is closed with `by: "stopped"` (section 7.3), so no ask waits for
+  an answer that cannot come. The pane's events are gone with it: `GET /pane/:id/events` answers 404
+  `no-such-pane`.
+- It answers `{ "ok": true }` once the target is gone. The program MAY refuse: 422 `close-refused`, with
+  a `message` when it has words for the person. Nothing changed. The same `requestId` may try again, as
+  for a failed rename.
+- A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true` and
+  changes nothing (section 7.6). The same `requestId` for another kind or id: 409 `request-id-reused`.
+- The adapter checks the cap and the layout before it posts, and mints a UUID `requestId` for each
+  close. It never retries the POST. A close that times out, drops the connection or gets a 5xx has an
+  unknown outcome, and the phone is told the close may have been applied.
+- Collie draws its usual close controls for a pane (`closePane`) and a tab (`closeTab`). The adapter
+  declares both from `caps.close`. The phone has no control that closes a workspace, so no capability
+  is declared for it: a workspace close is on the wire for a client that sends one, and the phone
+  never does.
 
 ## 8. Restart and epoch
 
@@ -784,7 +822,7 @@ abort.
 - **More than one program per peer.** One socket path, or one URL, per peer.
 - **Ask kinds other than `permission`**, and free-text answers beyond the optional `note`.
 - **Starters that take input**, such as a folder or a prompt.
-- **Creating or closing** workspaces, tabs or panes, and **renaming a pane**, from Collie. Renaming a workspace or a tab is section 7.8.
+- **Creating** workspaces, tabs or panes, and **renaming a pane**, from Collie. Renaming a workspace or a tab is section 7.8, and closing is section 7.9.
 
 ## 10. Changes from the spike
 
@@ -835,3 +873,6 @@ document. The version number stays 1; the spike's shapes are not supported.
     characters (section 6).
 19. **`Caps` gains `rename`, and `POST /rename` is a route** (sections 3, 4 and 7.8), with the codes
     `no-such-target` and `rename-refused`. Added before version 1 shipped, so the version stays 1.
+20. **`Caps` gains `close`, and `POST /close` is a route** (sections 3, 4 and 7.9), with the code
+    `close-refused` (and `no-such-target`, shared with rename). Added before version 1 shipped, so
+    the version stays 1.

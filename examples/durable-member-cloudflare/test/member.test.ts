@@ -105,7 +105,7 @@ describe("the wire", () => {
       protocol: { min: 1, max: 1 },
       host: { name: "durable-member-cloudflare" },
       ready: true,
-      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, terminal: false },
+      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, terminal: false },
     });
     expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/);
     expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
@@ -209,6 +209,35 @@ describe("a rename", () => {
     expect(await titleOf("tabs", "triage:helpers")).toBe("Helpers"); // never renamed: the name in the code
     const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
     expect(again.body).toEqual({ ok: true, replayed: true });
+  });
+});
+
+let closedPane = "";
+describe("a close", () => {
+  test("the phone closes a ticket: it leaves the snapshot, rev rises, a tab is refused, and the same request id replays", async () => {
+    const started = await call("POST", "/starter/new-triage", { body: { requestId: "close-start-1" } });
+    expect(started.status).toBe(200);
+    const paneId: string = started.body.paneId;
+    await waitFor("the new ticket's ask", async () => (await paneOf(paneId))?.openAsks.length > 0);
+    const before = await snapshot();
+    const refused = await call("POST", "/close", { body: { requestId: "close-1", kind: "tab", id: "triage:inbox" } });
+    expect([refused.status, refused.body.code]).toEqual([422, "close-refused"]);
+    const r = await call("POST", "/close", { body: { requestId: "close-2", kind: "pane", id: paneId } });
+    expect([r.status, r.body]).toEqual([200, { ok: true }]);
+    const after = await snapshot();
+    expect(after.panes.some((p: { id: string }) => p.id === paneId)).toBe(false);
+    expect(after.rev).toBeGreaterThan(before.rev);
+    const again = await call("POST", "/close", { body: { requestId: "close-2", kind: "pane", id: paneId } });
+    expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+    const gone = await call("POST", "/close", { body: { requestId: "close-3", kind: "pane", id: paneId } });
+    expect([gone.status, gone.body.code]).toEqual([404, "no-such-target"]);
+    expect((await call("POST", "/close", { token: "wrong", body: { requestId: "close-4", kind: "pane", id: paneId } })).status).toBe(401);
+    closedPane = paneId;
+  });
+
+  test.skipIf(!SQLITE)("a closed ticket stays closed after a wake of the object", async () => {
+    await abortAllDurableObjects();
+    expect((await snapshot()).panes.some((p: { id: string }) => p.id === closedPane)).toBe(false);
   });
 });
 

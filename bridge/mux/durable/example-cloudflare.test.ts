@@ -197,7 +197,7 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     const session = adapter.program()?.session;
     expect(session?.version).toBe(1);
     expect(session?.hostName).toBe("durable-member-cloudflare");
-    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true });
+    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true });
   });
 
   test("cloudflare: the snapshot holds the ticket a first start opens, and it waits on one ask", async () => {

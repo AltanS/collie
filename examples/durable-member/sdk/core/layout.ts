@@ -11,6 +11,7 @@ import type {
   AnswerResult,
   Ask,
   AskInput,
+  CloseTarget,
   ClosedBy,
   Item,
   PaneInfo,
@@ -475,6 +476,38 @@ export class Store {
     this.panes.set(id, pane);
     this.rev++;
     return pane;
+  }
+
+  /**
+   * What a close of this workspace, tab or pane takes with it (WIRE.md 7.9), or undefined when there is no such
+   * target. The panes are listed in layout order.
+   */
+  closeTarget(kind: "pane" | "tab" | "workspace", id: string): CloseTarget | undefined {
+    if (kind === "pane") return this.panes.has(id) ? { kind, id, paneIds: [id] } : undefined;
+    if (kind === "tab") return this.tabs.has(id) ? { kind, id, paneIds: this.paneIdsIn((p) => p.tabId === id) } : undefined;
+    return this.workspaces.has(id) ? { kind, id, paneIds: this.paneIdsIn((p) => p.workspaceId === id) } : undefined;
+  }
+
+  private paneIdsIn(inside: (pane: Pane) => boolean): string[] {
+    return [...this.panes.values()].filter(inside).map((p) => p.id);
+  }
+
+  /**
+   * Take a workspace, a tab or a pane out of the layout, with everything inside it (WIRE.md 7.9). Every open ask
+   * on those panes closes as `stopped`, so nothing is left waiting for an answer that cannot come, and `rev`
+   * rises once the target is gone. False when there is no such target.
+   */
+  close(kind: "pane" | "tab" | "workspace", id: string): boolean {
+    const target = this.closeTarget(kind, id);
+    if (target === undefined) return false;
+    for (const paneId of target.paneIds) this.panes.get(paneId)?.close();
+    if (kind === "tab") this.tabs.delete(id);
+    if (kind === "workspace") {
+      for (const [tabId, tab] of this.tabs) if (tab.workspaceId === id) this.tabs.delete(tabId);
+      this.workspaces.delete(id);
+    }
+    this.rev++;
+    return true;
   }
 
   /**

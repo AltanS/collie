@@ -238,11 +238,14 @@ What works:
 - Renaming a tab or a workspace, from the tab's usual rename control and the Rename row of the space
   sheet (long-press a space chip, or tap the open one). It works when the program declares `rename`;
   the program applies the title or refuses it, and the phone shows the refusal.
+- Closing a conversation or a tab, from the usual close controls. It works when the program declares
+  `close`; the program decides what a close means (archive, delete, end), and the conversation or tab
+  leaves the list. A workspace close is on the wire, but the phone has no control for it.
 
 What does not work:
 
 - Terminal, and typed keys. A durable pane has no screen to show or type into.
-- Making a tab or a workspace by hand, closing them, and renaming a conversation. The program lays out its own conversations.
+- Making a tab or a workspace by hand, closing a workspace, and renaming a conversation. The program lays out its own conversations.
 - "Show in terminal". No pane is ever reported as focused.
 - Another user's program on the socket. The socket must belong to the user that runs Collie.
 - A program on another machine over plain TCP. Reach it over https with a token, as above, or run a

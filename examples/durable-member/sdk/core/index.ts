@@ -22,6 +22,7 @@ export {
   type ReceiptRecord,
   Receipts,
   type ReceiptStore,
+  CLOSE_GROUP,
   RENAME_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
@@ -72,7 +73,7 @@ export function createCore(o: CoreOptions): CollieCore {
   const state: CoreState = {
     store,
     hostName: o.hostName,
-    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, ...o.caps, terminal: false },
+    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, ...o.caps, terminal: false },
     hooks,
   };
   return {

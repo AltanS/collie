@@ -34,7 +34,8 @@ export const RE_RAISE_MS = 5000;
  */
 export class PaneRegistry {
   private panes = new Map<ConversationId, PaneHandle>();
-  private stops: (() => Promise<unknown>)[] = [];
+  /** The stop of each conversation's event stream. */
+  private stops = new Map<ConversationId, () => Promise<unknown>>();
   /** Tool calls shown as running, by item id, with the tool's name. */
   private readonly running = new Map<string, string>();
   /** A start waiting for these call ids: each settles when the call asks or ends. */
@@ -47,7 +48,22 @@ export class PaneRegistry {
   }
   set(id: ConversationId, pane: PaneHandle, stop: () => Promise<unknown>) {
     this.panes.set(id, pane);
-    this.stops.push(stop);
+    this.stops.set(id, stop);
+  }
+  /** The conversation a pane shows, by the pane's id on the wire, or undefined. */
+  conversationOf(paneId: string): ConversationId | undefined {
+    for (const [id, pane] of this.panes) if (pane.id === paneId) return id;
+    return undefined;
+  }
+  /**
+   * Stop showing a conversation: its event stream stops and the registry forgets it, so showing it again makes a
+   * new pane. The pane itself leaves the layout through the SDK (a close from the phone does that after its hook).
+   */
+  async forget(id: ConversationId) {
+    const stop = this.stops.get(id);
+    this.panes.delete(id);
+    this.stops.delete(id);
+    await stop?.().catch(() => {});
   }
   /** The mapper saw a tool call's status. A call that ends no longer holds a start back. */
   toolStatus(callId: string, name: string, status: string) {
@@ -112,7 +128,9 @@ export class PaneRegistry {
 
   /** Stop every event stream. Call before `harness.close()`. */
   async close() {
-    await Promise.all(this.stops.splice(0).map((stop) => stop().catch(() => {})));
+    const stops = [...this.stops.values()];
+    this.stops.clear();
+    await Promise.all(stops.map((stop) => stop().catch(() => {})));
   }
 }
 

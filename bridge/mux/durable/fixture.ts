@@ -24,6 +24,10 @@
 // 120 characters, the cap checked, a repeat of a request id answered `replayed`, and a refusal (422
 // `rename-refused`) when a test sets `renameRefusal`. A rename changes the title and `rev` rises.
 //
+// It takes `POST /close` as WIRE.md 7.9 describes it: a pane, a tab or a workspace by kind and id, the cap checked, a
+// repeat of a request id answered `replayed`, and a refusal (422 `close-refused`) when a test sets `closeRefusal`. A
+// close takes the target and everything inside it out of the layout, and `rev` rises.
+//
 // It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
 // whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
 // a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
@@ -58,6 +62,7 @@ import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
   parseAnswerPost,
+  parseClosePost,
   parseControlPost,
   parseEvents,
   parseRenamePost,
@@ -83,6 +88,7 @@ export interface FakeHello {
     steer?: boolean;
     abort?: boolean;
     rename?: boolean;
+    close?: boolean;
     terminal?: boolean;
   };
 }
@@ -272,6 +278,13 @@ export interface FakeRename {
   readonly title: string;
 }
 
+/** One close the fake took (WIRE.md section 7.9). A replay is not one. */
+export interface FakeClose {
+  readonly requestId: string;
+  readonly kind: "pane" | "tab" | "workspace";
+  readonly id: string;
+}
+
 /** What a send or an abort answers. */
 export interface ControlDoc {
   ok: true;
@@ -341,6 +354,12 @@ export class FakeDurableProgram {
   /** When set, the next renames fail with 422 `rename-refused` and this message, and store nothing. */
   renameRefusal: string | null = null;
   private readonly renamedByRequest = new Map<string, FakeRename>();
+
+  /** Every close the fake took, in order. A replay is not a second entry. */
+  readonly closes: FakeClose[] = [];
+  /** When set, the next closes fail with 422 `close-refused` and this message, and change nothing. */
+  closeRefusal: string | null = null;
+  private readonly closedByRequest = new Map<string, FakeClose>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
   /** The TCP port over HTTP, kept so a dropped listener comes back on the same URL. */
@@ -575,6 +594,7 @@ export class FakeDurableProgram {
     const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
     if (request.method === "POST" && route === "/rename") return this.handleRename(body ?? "");
+    if (request.method === "POST" && route === "/close") return this.handleClose(body ?? "");
     const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
     if (request.method === "POST" && controlRoute !== null) {
       const act = controlRoute[2] === "send" ? "send" : "abort";
@@ -700,6 +720,45 @@ export class FakeDurableProgram {
     const rename: FakeRename = { requestId, kind, id, title };
     this.renamedByRequest.set(requestId, rename);
     this.renames.push(rename);
+    return reply(200, { ok: true });
+  }
+
+  /**
+   * `POST /close` (WIRE.md section 7.9): the body, then the cap, then the request id memory, then the target, then the
+   * program's say. A close takes the target and everything inside it out of the layout, which takes the open asks
+   * of those panes with it. A failure changes nothing, so the same id may try again.
+   */
+  private handleClose(text: string): Response {
+    const post = parseClosePost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, kind, id } = post;
+    if (this.hello.caps.close !== true) return reply(409, { code: "not-supported" });
+
+    const earlier = this.closedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.kind !== kind || earlier.id !== id) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    const found =
+      kind === "pane"
+        ? this.snapshot.panes.some((pane) => pane.id === id)
+        : kind === "tab"
+          ? this.snapshot.tabs.some((tab) => tab.id === id)
+          : this.snapshot.workspaces.some((workspace) => workspace.id === id);
+    if (!found) return reply(404, { code: "no-such-target" });
+    if (this.closeRefusal !== null) return reply(422, { code: "close-refused", message: this.closeRefusal });
+
+    const goneTabs = new Set(
+      kind === "tab" ? [id] : kind === "workspace" ? this.snapshot.tabs.filter((tab) => tab.workspaceId === id).map((tab) => tab.id) : [],
+    );
+    this.snapshot.panes = this.snapshot.panes.filter((pane) => (kind === "pane" ? pane.id !== id : !goneTabs.has(pane.tabId)));
+    this.snapshot.tabs = this.snapshot.tabs.filter((tab) => !goneTabs.has(tab.id));
+    if (kind === "workspace") this.snapshot.workspaces = this.snapshot.workspaces.filter((workspace) => workspace.id !== id);
+    this.touch();
+    const close: FakeClose = { requestId, kind, id };
+    this.closedByRequest.set(requestId, close);
+    this.closes.push(close);
     return reply(200, { ok: true });
   }
 
@@ -842,6 +901,7 @@ export async function durableWorld(): Promise<MuxConformanceWorld> {
   const program = await FakeDurableProgram.start();
   // The recorded hello declares no `rename`. This world's program does, so the suite proves it works.
   program.hello.caps.rename = true;
+  program.hello.caps.close = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
   const change = (act: () => void): Promise<void> => {
@@ -882,6 +942,7 @@ export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
   const token = testToken();
   const program = await FakeDurableProgram.startHttp(token);
   program.hello.caps.rename = true;
+  program.hello.caps.close = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
   const change = (act: () => void): Promise<void> => {

@@ -4,7 +4,7 @@
 // The README lists every environment variable. The model is Pi's faux model, scripted, so no key is
 // needed. REAL_MODEL=<OpenRouter model id> uses a real one through OpenRouter ($OPENROUTER_API_KEY).
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
@@ -26,6 +26,7 @@ import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/n
 import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
 import { PaneRegistry, riskGuard, showConversation, spawnHelperTool } from "./pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "./script.ts";
+import { ClosedStore, TitleStore } from "./state.ts";
 
 export interface AppOptions {
   /** The Unix socket path. Absolute, at most 103 bytes. */
@@ -42,6 +43,8 @@ export interface AppOptions {
    * `titles.json` beside `notesFile`.
    */
   titlesFile?: string;
+  /** Where the conversations the phone closed are kept, as JSON, so a restart does not show them again. Default: `closed.json` beside `notesFile`. */
+  closedFile?: string;
   /** `descendant` (default) or `off`. An in-process test is the program's own caller, so it turns the check off. */
   callerCheck?: "descendant" | "off";
   /** Open one ticket when the storage holds no conversation yet, so a first start has an ask to answer. Default true. */
@@ -52,34 +55,6 @@ export interface App {
   collie: Collie;
   harness: Harness;
   close(): Promise<void>;
-}
-
-/**
- * The names the phone gave, in one small JSON file. Written to a temporary file and renamed over the old one, so a
- * crash leaves the old names whole. A file that cannot be read is treated as no names: a program should start.
- */
-export class TitleStore {
-  private readonly names = new Map<string, string>();
-  constructor(private readonly file: string) {
-    if (!existsSync(file)) return;
-    try {
-      const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
-      for (const [key, value] of Object.entries(parsed)) if (typeof value === "string") this.names.set(key, value);
-    } catch {
-      // An unreadable file is as good as none.
-    }
-  }
-  get(kind: "workspace" | "tab", id: string, fallback: string): string {
-    return this.names.get(`${kind}/${id}`) ?? fallback;
-  }
-  set(kind: "workspace" | "tab", id: string, title: string): void {
-    this.names.set(`${kind}/${id}`, title);
-    mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
-    const temporary = `${this.file}.tmp`;
-    writeFileSync(temporary, JSON.stringify(Object.fromEntries(this.names), null, 2), { mode: 0o600 });
-    renameSync(temporary, this.file);
-  }
 }
 
 export async function startApp(o: AppOptions): Promise<App> {
@@ -105,6 +80,10 @@ export async function startApp(o: AppOptions): Promise<App> {
   // A name the phone gave a workspace or a tab (WIRE.md 7.8). The layout below is made again on every start, so the
   // names are kept in a file and win over the ones in this code. A key is the kind and the wire id: `tab/triage:inbox`.
   const titles = new TitleStore(o.titlesFile ?? join(dirname(notes), "titles.json"));
+  // A conversation the phone closed is archived: it is ended, written down here, and not shown again after a restart.
+  const closed = new ClosedStore(o.closedFile ?? join(dirname(notes), "closed.json"));
+  const panes = new PaneRegistry();
+  let harness!: Harness;
   const collie = await openCollie({
     socket: o.socket,
     hostName: "durable-member",
@@ -115,14 +94,25 @@ export async function startApp(o: AppOptions): Promise<App> {
         titles.set(kind, id, title);
         return true;
       },
+      // The phone closes a conversation: end its run, write it down so a restart skips it, stop showing it. The SDK
+      // then takes the pane out of the layout and closes its open asks as `stopped`. The Inbox and Helpers tabs and
+      // the Triage workspace are this program's own layout, in code, so it refuses to close those (422).
+      onClose: async ({ kind, paneIds }) => {
+        if (kind !== "pane") return false;
+        for (const paneId of paneIds) {
+          const id = panes.conversationOf(paneId);
+          if (id === undefined) continue;
+          await (await harness.conversation(id, ctx))?.abort(ctx).catch(() => {});
+          closed.add(String(id));
+          await panes.forget(id);
+        }
+      },
     },
   });
   const ws = collie.workspace("triage", { title: titles.get("workspace", "triage", "Triage"), cwd: "/srv/triage" });
   const inbox = ws.tab("inbox", { title: titles.get("tab", "triage:inbox", "Inbox") });
   const helpers = ws.tab("helpers", { title: titles.get("tab", "triage:helpers", "Helpers") });
 
-  const panes = new PaneRegistry();
-  let harness!: Harness;
   const writeNote = defineTool({
     name: "write_note",
     description: "Save a note about the ticket.",
@@ -154,6 +144,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     cursor = page.next;
   } while (cursor);
   for (const c of all) {
+    if (closed.has(String(c.id))) continue; // the phone closed it
     const conversation = (await harness.conversation(c.id, ctx))!;
     await show(conversation, c.owned);
   }

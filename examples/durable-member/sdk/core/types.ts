@@ -20,6 +20,8 @@ export interface Caps {
   abort?: boolean;
   /** It takes a new title for a workspace or a tab (WIRE.md 7.8). */
   rename?: boolean;
+  /** It closes a workspace, a tab or a pane when the phone asks (WIRE.md 7.9). */
+  close?: boolean;
   /** Always false in version 1. */
   terminal?: boolean;
 }
@@ -198,6 +200,13 @@ export interface RenameRequest {
   id: string;
   title: string;
 }
+/** Close a workspace, a tab or a pane. What "close" means (archive, delete, end) is the program's call. */
+export interface CloseRequest {
+  requestId: string;
+  kind: "pane" | "tab" | "workspace";
+  /** The pane id, the tab id as the snapshot lists it (`<workspace>:<tab>`), or the workspace id. */
+  id: string;
+}
 export interface StarterRequest {
   requestId: string;
 }
@@ -254,6 +263,14 @@ export interface RenameTarget {
   title: string;
 }
 
+/** The workspace, tab or pane a close names, and every pane that goes with it (the pane itself, or the ones inside). */
+export interface CloseTarget {
+  kind: "pane" | "tab" | "workspace";
+  id: string;
+  /** The ids of the panes this close takes out of the layout, in layout order. For a pane: just its own id. */
+  paneIds: string[];
+}
+
 /**
  * One named place for every act the phone can send. A hook runs only when the act is allowed (its cap is on) and
  * its request id is new; a repeat answers from the receipt and never reaches a hook. A hook that throws makes the
@@ -273,4 +290,12 @@ export interface ProgramHooks {
    * target that does not exist.
    */
   onRename?(target: RenameTarget, requestId: string): Promise<boolean> | boolean;
+  /**
+   * The phone closes a workspace, a tab or a pane (WIRE.md 7.9). Decide what that means on your side (archive it,
+   * delete it, end it) and persist it here, so a restart does not show it again. Return `false` to refuse (422
+   * `close-refused`, nothing changes, the same request id may try again); returning nothing accepts. After an
+   * accepting hook the SDK removes the target and everything inside it from the layout, raises `rev`, and closes
+   * every open ask on those panes as `stopped`. Not called for a target that does not exist.
+   */
+  onClose?(target: CloseTarget, requestId: string): Promise<boolean | void> | boolean | void;
 }

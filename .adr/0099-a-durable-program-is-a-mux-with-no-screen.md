@@ -106,6 +106,15 @@ adapter in the registry, and the crew is unchanged.**
     `POST /api/space/:id/rename`), which only a durable program declares, from the same `caps.rename`.
     The phone draws a Rename row in a new space sheet for it. Added to version 1 before the wire
     shipped, so there is no version 2.
+13. **A close is a cap on the wire.** The same rule as a rename: the program owns its layout, so a
+    conversation or a tab is closed only when the program says it closes one, `caps.close` in the
+    hello and one route, `POST /close`, with a request id and a refusal of its own (422
+    `close-refused`). What a close means (archive, delete, end) is the program's call; it removes the
+    target and what is inside it, and every open ask on those panes closes as `stopped`, so nothing
+    answers itself. The adapter declares the existing `closePane` and `closeTab` from that cap, so the
+    phone draws its usual close controls with no durable special case. A workspace close is on the wire
+    but has no capability, because the phone has no control for it. Added to version 1 before the wire
+    shipped, so there is no version 2.
 
 ## Consequences
 
