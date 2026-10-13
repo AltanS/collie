@@ -26,6 +26,7 @@ import {
   type MuxWorktreeOpenRequest,
   type MuxWorktreeScope,
 } from "../mux/types.ts";
+import type { ForegroundProcess } from "../journal/types.ts";
 
 // THE DECORATOR'S OWN TESTS — the join, the two-way capability lift, and the pass-through.
 //
@@ -77,6 +78,9 @@ class StubAdapter implements MuxAdapter {
    *  adapter whose panes have a screen. */
   paneTurn?: MuxAdapter["paneTurn"];
   controlTurn?: MuxAdapter["controlTurn"];
+  /** The foreground argv, when a case gives it one. Absent by default, like a multiplexer
+   *  without the call — the decorators must carry it without inventing it. */
+  foregroundProcesses?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -279,6 +283,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     answerAsk: true,
     paneTurn: true,
     controlTurn: true,
+    foregroundProcesses: true,
     typeText: true,
     sendKeys: true,
     renamePane: true,
@@ -320,6 +325,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.answerAsk = () => Promise.resolve(muxOk({ kind: "taken", replayed: false }));
     stub.paneTurn = () => "turn-1";
     stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
+    stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
     return stub;
   }
 

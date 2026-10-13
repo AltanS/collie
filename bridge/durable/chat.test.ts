@@ -76,7 +76,7 @@ async function world() {
 
   const chat = async (): Promise<(ChatWindowBody & { available: true }) | { available: false; reason: string }> => {
     const url = new URL(`http://localhost/api/pane/${PANE}/chat`);
-    const res = await paneChat(cfg, journals, live, engine, adapter.capabilities, PANE, url, new Request(url));
+    const res = await paneChat(cfg, journals, live, engine, adapter, PANE, url, new Request(url));
     return res.json();
   };
   return { program, adapter, engine, journals, chat, state };

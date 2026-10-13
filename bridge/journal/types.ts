@@ -171,6 +171,28 @@ export interface TranscriptSource {
 }
 
 /**
+ * One process from a pane's foreground group, as argv. The multiplexer saw it; the adapter
+ * decides what it means. argv only — nothing here names a harness, so the route can pass it
+ * through without knowing which grammar will read it.
+ */
+export interface ForegroundProcess {
+  readonly argv: readonly string[];
+}
+
+/**
+ * What the bridge knows about a pane beyond its folder, handed to {@link JournalAdapter.discover}.
+ * Each hint comes from one method of reaching the pane (the screen, the process list), and an
+ * adapter reads only the ones it needs. Either may be absent: a multiplexer without the call, or a
+ * pane that has no such thing, simply yields no hint.
+ */
+export interface DiscoverHints {
+  /** The pane's visible text, as a thunk read only when asked ({@link PaneScreen}). */
+  screen?: PaneScreen;
+  /** The pane's foreground argv ({@link ForegroundProcess}). */
+  processes?: readonly ForegroundProcess[];
+}
+
+/**
  * One harness's journal support: how to find its log, and how to read its grammar.
  *
  * `agent` is matched against the Herdr snapshot's `agent` string, and it is also the registry key —
@@ -219,12 +241,18 @@ export interface JournalAdapter {
    * never a path: whatever an adapter reads off it must pass the same shape checks and the same
    * `resolve` as a reported ref.
    *
+   * `processes` is the pane's own foreground argv, when the multiplexer can say: several live
+   * sessions may share one `cwd` (two tabs in one workspace), and newest-wins across them shows
+   * every pane the same transcript. An adapter that can read its session out of argv answers
+   * exactly; one that cannot — or a multiplexer that offers none — falls back to the cwd walk.
+   * Absent is always a legal answer to ignore, never an error.
+   *
    * The returned ref is an ordinary id ref: it goes through the same `resolve`, containment and
    * caching as a reported one, so discovery widens WHICH panes answer, never how an answer is
    * read. It must be cheap enough to run per tap (bounded walk, early exit, one screen read),
    * because the chat route calls it on every poll that finds no ref.
    */
-  discover?(cwd: string, screen?: PaneScreen): Promise<AgentSessionRef | null>;
+  discover?(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null>;
   /**
    * Correct a reported ref the multiplexer kept after the harness moved to another session, or
    * return it unchanged.

@@ -400,9 +400,9 @@ describe("discover", () => {
   test("reads the footer off the pane's screen, and nothing without one", async () => {
     const adapter = openclawJournal([stateDir]);
     const screen = stripAnsi(await readFile(join(FIXTURES, "tui-idle-2026.9.8.raw.txt"), "utf8"));
-    expect(await adapter.discover?.("/anywhere", async () => screen)).toEqual(REF);
-    expect(await adapter.discover?.("/anywhere", async () => null)).toBeNull();
+    expect(await adapter.discover?.("/anywhere", { screen: async () => screen })).toEqual(REF);
+    expect(await adapter.discover?.("/anywhere", { screen: async () => null })).toBeNull();
     expect(await adapter.discover?.("/anywhere")).toBeNull();
-    expect(await adapter.discover?.("/anywhere", async () => "$ ls\n")).toBeNull();
+    expect(await adapter.discover?.("/anywhere", { screen: async () => "$ ls\n" })).toBeNull();
   });
 });

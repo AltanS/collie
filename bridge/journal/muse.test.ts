@@ -571,4 +571,91 @@ describe("museJournal discover", () => {
     // The subagent log is newer and matches — and must still lose.
     await expect(adapter.discover?.("/same")).resolves.toEqual({ kind: "id", value: UUID_A });
   });
+
+  test("foreground argv names the pane's own session across a shared cwd", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same")]);
+    const { utimesSync } = await import("node:fs");
+    utimesSync(
+      join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
+      new Date("2026-09-14T00:00:00Z"),
+      new Date("2026-09-14T00:00:00Z"),
+    );
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    // Without argv both panes would read B; with it each reads its own.
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse", "resume", UUID_A] }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+    await expect(
+      adapter.discover?.("/same", {
+        processes: [{ argv: ["/Users/op/.local/bin/muse-bin-1.4.4-R5419.1", "resume", UUID_B] }],
+      }),
+    ).resolves.toEqual({ kind: "id", value: UUID_B });
+  });
+
+  test.each([
+    ["muse", "the bare launcher"],
+    ["/usr/local/bin/muse", "a pathed launcher"],
+    ["muse-bin-1.4.4-R5419.1", "a versioned binary"],
+    ["C:\\tools\\muse.exe", "a Windows path"],
+    ["MUSE-BIN-9.EXE", "an upper-case Windows binary"],
+  ])("argv0 %s reads as Muse (%s)", async (argv0) => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: [argv0, "resume", UUID_A] }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
+
+  const FALLBACKS: { label: string; argvs: string[][] }[] = [
+    { label: "another harness", argvs: [["code", "resume", UUID_A]] },
+    { label: "a lookalike binary", argvs: [["my-muse-wrapper", "resume", UUID_A]] },
+    { label: "resume --last", argvs: [["muse", "resume", "--last"]] },
+    { label: "a fresh muse with no resume", argvs: [["muse"]] },
+    { label: "a malformed id", argvs: [["muse", "resume", "not-a-uuid"]] },
+    { label: "a non-resume subcommand", argvs: [["muse", "export", UUID_A]] },
+    { label: "an empty foreground group", argvs: [] },
+  ];
+  for (const { label, argvs } of FALLBACKS) {
+    test(`falls back to newest-wins on ${label}`, async () => {
+      const root = await fixtureRoot();
+      sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same")]);
+      const { utimesSync } = await import("node:fs");
+      utimesSync(
+        join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
+        new Date("2026-09-14T00:00:00Z"),
+        new Date("2026-09-14T00:00:00Z"),
+      );
+      sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+      const adapter = museJournal([root]);
+      const processes = argvs.map((argv) => ({ argv }));
+      await expect(adapter.discover?.("/same", { processes })).resolves.toEqual({
+        kind: "id",
+        value: UUID_B,
+      });
+    });
+  }
+
+  test("an upper-case uuid from argv is lower-cased", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse", "resume", UUID_A.toUpperCase()] }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
+
+  test("the first argv match wins", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(
+      adapter.discover?.("/same", {
+        processes: [{ argv: ["muse", "resume", UUID_A] }, { argv: ["muse", "resume", UUID_B] }],
+      }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
 });

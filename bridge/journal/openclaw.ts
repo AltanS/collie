@@ -570,6 +570,6 @@ export function openclawJournal(roots: string | readonly string[], open?: OpenDa
     source: new OpenclawTranscriptSource(roots, open),
     parse: parseOpenclawTranscript,
     reducer: createOpenclawReducer,
-    discover: (_cwd, screen) => discoverFromFooter(screen),
+    discover: (_cwd, hints) => discoverFromFooter(hints?.screen),
   };
 }

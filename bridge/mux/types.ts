@@ -25,7 +25,7 @@
 // (ADR 0008). An adapter whose multiplexer will not hand over a rendered screen declines the
 // capability — it does not get a VT parser written for it.
 
-import type { AgentSessionRef } from "../journal/types.ts";
+import type { AgentSessionRef, ForegroundProcess } from "../journal/types.ts";
 import type { AgentStatus, AnswerRequest, Ask, ControlRequest } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
@@ -692,6 +692,17 @@ export interface MuxAdapter {
    */
   controlTurn?(paneId: string, request: ControlRequest): Promise<MuxControlOutcome>;
 
+  /**
+   * The pane's foreground processes, as argv. OPTIONAL by design: a multiplexer without the
+   * call simply yields no hint, exactly as today.
+   *
+   * Read for ONE purpose — telling live sessions apart when several share a folder. A journal
+   * adapter that can read its session out of its own command line (Muse's `resume <uuid>`)
+   * answers the pane's own session from this; without it, discovery can only guess newest,
+   * and every pane in the folder shows the same transcript.
+   */
+  foregroundProcesses?(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>>;
+
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
 
@@ -797,7 +808,7 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
 }
 
 /** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
-export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn";
+export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn" | "foregroundProcesses";
 
 /**
  * The OPTIONAL methods, gathered the way {@link muxDataFields} gathers the optional data fields.
@@ -825,6 +836,8 @@ export function muxOptionalMethods(
   if (paneTurn !== undefined) methods.paneTurn = paneTurn;
   const controlTurn = adapter.controlTurn?.bind(adapter);
   if (controlTurn !== undefined) methods.controlTurn = controlTurn;
+  const foregroundProcesses = adapter.foregroundProcesses?.bind(adapter);
+  if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
   return methods;
 }
 
