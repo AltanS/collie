@@ -839,6 +839,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // Hand-built from a live 82-column observation: a clipped "…ugin:…" command name inside the popup.
     // Before the box was found by its own frame, the clipped row hid the box: draft null, stripped 1.
     { fixture: "autocomplete-slash-clipped", statusRows: 0, draft: "/model", stripped: 32 },
+    // A reply's box table cut out of its screen (table-run.test.ts): no box, nothing to strip.
+    { fixture: "box-table-vs16-emoji", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "done", statusRows: 2, draft: null, stripped: 28 },
     { fixture: "ghost-suggestion", statusRows: 4, draft: null, stripped: 21 },
     { fixture: "ghost-typed-over", statusRows: 4, draft: "hello real draft text", stripped: 21 },

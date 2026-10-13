@@ -499,6 +499,22 @@ describe("a table pans while the mirror around it wraps", () => {
     expect(mirror({ wrap: false }).querySelector("span.overflow-x-auto")).toBeNull();
   });
 
+  it("holds each double-width character of a run to two columns, so a CJK table's walls line up", () => {
+    // The mirror's monospace stack has no CJK face, so an ideograph falls back to a font whose
+    // advance is not two ASCII cells, and every wall after it drifts. Each one in a run sits in a
+    // box exactly 2ch wide instead; prose outside the run keeps its free wrapping.
+    const table = ["┌──────────┬────────┐", "│ 用水位置 │ 建議   │", "├──────────┼────────┤", "│ 廚房     │ 淨水   │", "└──────────┴────────┘"].join("\n");
+    const text = `中文說明\n\n${table}\n`;
+    const { container } = render(<AnsiOutput text={text} />);
+    const pre = container.querySelector("pre")!;
+    const run = pre.querySelector("span.overflow-x-auto")!;
+    const cells = [...run.querySelectorAll('[class~="w-[2ch]"]')];
+
+    expect(cells.map((c) => c.textContent).join("")).toBe("用水位置建議廚房淨水");
+    expect(pre.querySelectorAll('[class~="w-[2ch]"]')).toHaveLength(cells.length);
+    expect(pre.textContent).toBe(text);
+  });
+
   it("leaves the border clip alone: a rule beside a table stays clipped and outside the run", () => {
     // A repeated rule carries no separator at any member row's column offsets, so the run ends at
     // it and the rule keeps the single-row clip it has always had.
