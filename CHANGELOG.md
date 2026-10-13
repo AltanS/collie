@@ -43,6 +43,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A durable pane keeps its question card across one dropped read.** The peer already held the last layout for one interval when a read timed out; now the open asks and the pane state stay with it, so the card does not blink out and back.
 - **A commit that touches only example files no longer fails the lint guard.** The pre-commit hook handed `examples/` files to oxlint, which ignores them, so oxlint found nothing to lint and the hook stopped the commit with no finding. The hook now leaves `examples/` out of the list it lints.
 
 ## [1.20.2] - 2026-10-12
