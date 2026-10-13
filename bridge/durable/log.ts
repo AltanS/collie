@@ -6,7 +6,12 @@
 // the `durable` journal adapter (bridge/journal/durable.ts) reads that file through the journal path
 // every other harness uses. There is no second reader.
 //
-// ONE FILE PER PANE: `<stateDir>/durable/<base64url(key)>.jsonl`. The key is the pane's session id, the
+// ONE FOLDER PER PROGRAM (M55): `<stateDir>/durable/<source>/`, where `<source>` is the program's name in
+// `sources.json` (bridge/sources.ts), or `default` on a durable-only instance. Two programs may use the
+// same conversation id, so their logs never share a folder. Logs written before M55 sat directly in
+// `durable/`; {@link moveFlatLogs} moves them into `durable/default/` once, at boot.
+//
+// ONE FILE PER PANE: `<stateDir>/durable/<source>/<base64url(key)>.jsonl`. The key is the pane's session id, the
 // program's conversation id (WIRE.md 7.16), or the pane id when the program sends none, so it is the same
 // across a restart of the program. Base64url is a name that no id can turn into a path: the file name
 // holds no `/`, no `..` and no case folding.
@@ -97,9 +102,54 @@ export function gapItemId(firstItemId: string): string {
   return `gap-${createHash("sha256").update(firstItemId, "utf8").digest("hex").slice(0, 32)}`;
 }
 
-/** The folder the logs live in, for a state dir. */
+/** The folder every program's log folder lives in, for a state dir. The journal reads under it. */
 export function durableLogDir(stateDir: string): string {
   return join(stateDir, LOG_DIR_NAME);
+}
+
+/**
+ * The folder one program's logs live in: `<stateDir>/durable/<source>/`. `source` is a source name,
+ * which bridge/sources.ts holds to `^[a-z0-9][a-z0-9-]{0,31}$`, so it is one plain folder name.
+ */
+export function sourceLogDir(stateDir: string, source: string): string {
+  return join(durableLogDir(stateDir), source);
+}
+
+/** Whether a name in `durable/` is a pane log or its cursor, the two files a pre-M55 build wrote there. */
+function isFlatLogFile(name: string): boolean {
+  return name.endsWith(".jsonl") || name.endsWith(".cursor.json");
+}
+
+/**
+ * The one-time move to one folder per program (M55): pane logs and cursors that sit directly in
+ * `<stateDir>/durable/` go into `durable/<into>/`, when that folder is not there yet. A durable-only
+ * instance wrote them, so they are its program's, and its program is named `default`. Resolves with
+ * how many files moved; says one line when any did. Never throws: a log that cannot move stays where
+ * it was, and Chat then starts that conversation's history over from the program.
+ */
+export async function moveFlatLogs(stateDir: string, into: string, say: (line: string) => void = (line) => console.log(line)): Promise<number> {
+  const root = durableLogDir(stateDir);
+  const names = await readdir(root).catch((): string[] => []);
+  const flat = names.filter(isFlatLogFile);
+  if (flat.length === 0) return 0;
+  const target = join(root, into);
+  if (names.includes(into)) return 0;
+  try {
+    await mkdir(target, { mode: 0o700 });
+  } catch {
+    return 0;
+  }
+  let moved = 0;
+  for (const name of flat) {
+    try {
+      await rename(join(root, name), join(target, name));
+      moved += 1;
+    } catch {
+      // Left where it was: nothing reads it there any more, and the program still holds its record.
+    }
+  }
+  if (moved > 0) say(`[durable] moved ${String(moved)} pane log file(s) from ${root} into ${target}: each program keeps its own folder now`);
+  return moved;
 }
 
 /** The file name of one pane's log. Injective, and a plain name whatever the id holds. */
@@ -114,6 +164,11 @@ export function cursorFileName(key: string): string {
 
 /** What the adapter's events reader hands the log. */
 export interface PaneEventSink {
+  /**
+   * The file one pane's log is kept in, for the pane's session ref (M55). Two programs may share a
+   * conversation id, so the ref names the file and not the id. Absent: the ref stays the id.
+   */
+  pathOf?(key: string): string;
   /**
    * Record these events of one pane. Resolves with how many rows were written. `trimmed` is the
    * reset reply's count of older items it left out, 0 for a plain reply.
@@ -471,6 +526,11 @@ export class DurableLogs implements PaneEventSink {
     private readonly limits: Limits = DEFAULT_LIMITS,
     private readonly hostMaxBytes: number = HOST_MAX_BYTES,
   ) {}
+
+  /** The file one pane's log is kept in. A plain name inside {@link dir}, whatever the key holds. */
+  pathOf(key: string): string {
+    return join(this.dir, logFileName(key));
+  }
 
   /** The log of one pane. The same instance every time, so its writes stay in order. */
   forPane(paneId: string): PaneLog {

@@ -78,7 +78,7 @@ async function world() {
     const res = await paneChat(cfg, journals, live, engine, adapter, PANE, url, new Request(url));
     return res.json();
   };
-  return { program, adapter, engine, journals, chat, state };
+  return { program, adapter, engine, journals, chat, state, logs };
 }
 
 describe("Chat for a durable pane", () => {
@@ -136,7 +136,7 @@ describe("Chat for a durable pane", () => {
   });
 
   test("a durable pane names its session, so the phone is told it has history, and no other pane is touched", async () => {
-    const { program, engine, journals, chat } = await world();
+    const { program, engine, journals, chat, logs } = await world();
     program.appendEvent(PANE, item("u1", "user", "hi"));
     await until(async () => {
       const got = await chat();
@@ -145,7 +145,8 @@ describe("Chat for a durable pane", () => {
 
     const pane = engine.current().agents.find((candidate) => candidate.paneId === PANE);
     expect(pane?.agent).toBe("durable");
-    expect(pane?.agentSession).toEqual({ kind: "id", value: PANE });
+    // The ref names the log FILE (M55): two programs may share a conversation id, never a log.
+    expect(pane?.agentSession).toEqual({ kind: "path", value: logs.pathOf(PANE) });
     expect(adapterFor(journals, pane?.agent)?.agent).toBe("durable");
     // The session ref stays server-side, and `hasSession` tells the phone it may open History.
     const wire = pane === undefined ? null : toPaneWire(pane, (agent) => adapterFor(journals, agent) !== undefined);

@@ -363,7 +363,10 @@ describe("finding the log", () => {
     const { dir, logs, adapter } = await rig();
     await logs.apply(PANE, [text("u1", "hi", "user")]);
     expect(await adapter.source.resolve(ref)).toBe(join(await realDir(dir), logFileName(PANE)));
-    expect(await adapter.source.resolve({ kind: "path", value: join(dir, logFileName(PANE)) })).toBeNull();
+    // A path ref (M55: the adapter names one program's log file) resolves inside the root, and only a log.
+    expect(await adapter.source.resolve({ kind: "path", value: join(dir, logFileName(PANE)) })).toBe(join(await realDir(dir), logFileName(PANE)));
+    expect(await adapter.source.resolve({ kind: "path", value: join(dir, "..", "elsewhere.jsonl") })).toBeNull();
+    expect(await adapter.source.resolve({ kind: "path", value: join(dir, `${logFileName(PANE)}.cursor.json`) })).toBeNull();
     for (const value of ["../conv-01", "a/b", "has space", "", "x".repeat(200), "conv-99"]) {
       expect(await adapter.source.resolve({ kind: "id", value })).toBeNull();
     }

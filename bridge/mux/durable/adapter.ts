@@ -400,6 +400,8 @@ export class DurableMux implements MuxAdapter {
   /** Transport failures in a row: a connect, a timeout or a cut reply. A real answer resets it. */
   private failures = 0;
   private readonly events: DurableEventReader | null;
+  /** Where a pane's log file is, for its session ref (M55). Null without a log: the ref is then the id. */
+  private readonly logPath: ((key: string) => string) | null;
   /** Over HTTPS every read is billed, so only the watch and `refresh()` start one (see `poll()`). */
   private readonly watchDials: boolean;
   /** The delay the watch armed with its last census: how old a good read `poll()` may serve over HTTPS. */
@@ -418,6 +420,39 @@ export class DurableMux implements MuxAdapter {
     this.watchDials = transport.kind === "https";
     this.watchCadenceMs = this.budget.idlePollMs;
     this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program(), this.budget.readTimeoutMs);
+    this.logPath = log?.pathOf?.bind(log) ?? null;
+  }
+
+  /**
+   * Where this program stands, for its session card (M55): `starting` before the first read and while
+   * the program says it is not ready, `ready` after a good read, `unreachable` after a failed one.
+   */
+  phase(): "starting" | "ready" | "unreachable" {
+    const outcome = this.last?.outcome;
+    if (outcome === undefined) return "starting";
+    if (outcome.ok) return "ready";
+    return outcome.detail === STARTING ? "starting" : "unreachable";
+  }
+
+  /** The program's name from its last good hello, cleaned, or `""` before one (M55's card reads it). */
+  hostName(): string {
+    return this.kept?.session.hostName ?? "";
+  }
+
+  /**
+   * The layout with each pane's session ref naming its log FILE rather than its conversation id, when
+   * this adapter keeps a log (M55). The journal finds the file under the durable folder by that path, so
+   * the same id in two programs reads two logs. Without a log the layout is left as it was read.
+   */
+  private withLogRefs(snapshot: MuxSnapshot): MuxSnapshot {
+    const pathOf = this.logPath;
+    if (pathOf === null) return snapshot;
+    return {
+      ...snapshot,
+      panes: snapshot.panes.map((pane) =>
+        pane.agentSession?.kind === "id" ? { ...pane, agentSession: { kind: "path", value: pathOf(pane.agentSession.value) } } : pane,
+      ),
+    };
   }
 
   /** The watch's two cadences, from this transport's row of {@link DURABLE_BUDGETS}. */
@@ -928,7 +963,7 @@ export class DurableMux implements MuxAdapter {
       snapshot = again.value;
     }
     const kept = this.current ?? session;
-    this.kept = { session: kept, snapshot, mux: toMuxSnapshot(snapshot), etag: reply.etag };
+    this.kept = { session: kept, snapshot, mux: this.withLogRefs(toMuxSnapshot(snapshot)), etag: reply.etag };
     return muxOk(this.kept.mux);
   }
 
