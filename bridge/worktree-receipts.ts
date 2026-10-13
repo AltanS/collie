@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -40,6 +41,46 @@ const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 /** Whether `raw` is a request id the route may key a receipt on. */
 export function isRequestId(raw: JsonValue | undefined): raw is string {
   return typeof raw === "string" && REQUEST_ID.test(raw);
+}
+
+/**
+ * The SHA-256 of what a request asks for, hex. A receipt keeps it beside its request id, so a repeat
+ * of the id with another payload is told apart from a retry of the same one without keeping the
+ * payload itself (a send's text, for one).
+ */
+export function payloadDigest(parts: readonly (string | number | boolean)[]): string {
+  return createHash("sha256").update(JSON.stringify(parts), "utf8").digest("hex");
+}
+
+/**
+ * How long a store keeps its receipts, for a store that keeps more than {@link MAX_RECEIPTS} (the
+ * durable answer, control and starter stores). A receipt older than `maxAgeMs` goes, and past
+ * `maxCount` the oldest go first, but a receipt still `pending` and younger than `pendingGraceMs` is
+ * never let go: its request may still be retried, and without it a retry would act twice.
+ */
+export interface ReceiptRetention<R> {
+  readonly maxCount: number;
+  readonly maxAgeMs: number;
+  readonly pendingGraceMs: number;
+  /** When the receipt was written, epoch ms. */
+  readonly atOf: (receipt: R) => number;
+  /** Whether the request behind the receipt has no final outcome yet. */
+  readonly pending: (receipt: R) => boolean;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The numbers every durable receipt store keeps to: a week, the newest thousand, a day for a pending one. */
+export const DURABLE_RECEIPT_LIMITS = { maxCount: 1000, maxAgeMs: 7 * DAY_MS, pendingGraceMs: DAY_MS } as const;
+
+/** `receipts` pruned by `policy` at `now`, in the order they came. */
+export function retainReceipts<R>(receipts: readonly R[], policy: ReceiptRetention<R>, now: number): R[] {
+  const guarded = (receipt: R): boolean => policy.pending(receipt) && now - policy.atOf(receipt) < policy.pendingGraceMs;
+  const fresh = receipts.filter((receipt) => guarded(receipt) || now - policy.atOf(receipt) <= policy.maxAgeMs);
+  if (fresh.length <= policy.maxCount) return fresh;
+  const droppable = fresh.filter((receipt) => !guarded(receipt)).toSorted((a, b) => policy.atOf(a) - policy.atOf(b));
+  const drop = new Set(droppable.slice(0, fresh.length - policy.maxCount));
+  return fresh.filter((receipt) => !drop.has(receipt));
 }
 
 /** The record inside a parsed JSON value, or null when it is not one (a scalar, an array). */
@@ -93,8 +134,8 @@ function coerceReceipt(raw: JsonValue): WorktreeReceipt | null {
   return { requestId, at, workspaceId, paneId, path, branch, launcherStarted };
 }
 
-/** The receipts a parsed file holds, oldest first, capped, each read by `coerce`. */
-export function coerceReceiptList<R>(raw: JsonValue, coerce: (entry: JsonValue) => R | null): R[] {
+/** The receipts a parsed file holds, oldest first, capped at `cap`, each read by `coerce`. */
+export function coerceReceiptList<R>(raw: JsonValue, coerce: (entry: JsonValue) => R | null, cap: number = MAX_RECEIPTS): R[] {
   const list = asJsonRecord(raw)?.receipts;
   if (!Array.isArray(list)) return [];
   const out: R[] = [];
@@ -102,7 +143,7 @@ export function coerceReceiptList<R>(raw: JsonValue, coerce: (entry: JsonValue) 
     const receipt = coerce(entry);
     if (receipt !== null) out.push(receipt);
   }
-  return out.slice(-MAX_RECEIPTS);
+  return out.slice(-cap);
 }
 
 /** The receipts a file holds, oldest first, capped. Anything that is not a receipt is dropped. */
@@ -110,11 +151,30 @@ export function coerceReceipts(raw: JsonValue): WorktreeReceipt[] {
   return coerceReceiptList(raw, coerceReceipt);
 }
 
-/** `receipts` with `receipt` appended (replacing an entry under the same id), capped oldest-first. */
-export function withReceipt<R extends { requestId: string }>(receipts: readonly R[], receipt: R): R[] {
+/** `receipts` with `receipt` appended (replacing an entry under the same id), capped oldest-first at `cap`. */
+export function withReceipt<R extends { requestId: string }>(receipts: readonly R[], receipt: R, cap: number = MAX_RECEIPTS): R[] {
   const next = receipts.filter((r) => r.requestId !== receipt.requestId);
   next.push(receipt);
-  return next.slice(-MAX_RECEIPTS);
+  return next.slice(-cap);
+}
+
+/**
+ * The payload digest of each request still in flight, keyed on its promise. A second request with
+ * the same id joins the first only when it asks for the same thing; the receipt on disk may not be
+ * written yet, so the digest has to travel with the promise.
+ */
+const inflightDigests = new WeakMap<Promise<unknown>, string>();
+
+/** Tie `digest` to an in-flight `answer`, before it is tracked. Returns `answer`. */
+export function withDigest<A>(answer: Promise<A>, digest: string): Promise<A> {
+  inflightDigests.set(answer, digest);
+  return answer;
+}
+
+/** Whether an in-flight `answer` was asked with a different payload than `digest`. */
+export function digestDiffers(answer: Promise<unknown>, digest: string): boolean {
+  const known = inflightDigests.get(answer);
+  return known !== undefined && known !== digest;
 }
 
 /** The in-flight half, shared by every store: it never touches a file. */
@@ -136,7 +196,8 @@ class Inflight<A> {
 
 /**
  * A file-backed receipt store. Writes are atomic and owner-only (a fresh 0600 temp file renamed over
- * the target) and queued, so two requests finishing together cannot interleave their writes.
+ * the target, so a crash leaves the old file or the new one, never half of one) and queued, so two
+ * requests finishing together cannot interleave their writes.
  */
 export class ReceiptFileStore<R extends { requestId: string }, A> implements ReceiptSurface<R, A> {
   private receipts: R[] = [];
@@ -144,13 +205,18 @@ export class ReceiptFileStore<R extends { requestId: string }, A> implements Rec
   private readonly running = new Inflight<A>();
   private readonly file: string;
 
-  /** `file` is the full path, built by the subclass so each names its own `<stateDir>` entry. */
+  /**
+   * `file` is the full path, built by the subclass so each names its own `<stateDir>` entry. With a
+   * `retention`, the store keeps what it says instead of the newest {@link MAX_RECEIPTS}.
+   */
   constructor(
     private readonly stateDir: string,
     file: string,
     private readonly coerce: (entry: JsonValue) => R | null,
     private readonly warn: (line: string) => void = (line) => console.warn(line),
     private readonly tag = "receipts",
+    private readonly retention: ReceiptRetention<R> | null = null,
+    private readonly now: () => number = Date.now,
   ) {
     this.file = file;
   }
@@ -159,10 +225,21 @@ export class ReceiptFileStore<R extends { requestId: string }, A> implements Rec
   async load(): Promise<void> {
     try {
       // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; `coerce` checks every field.
-      this.receipts = coerceReceiptList((await Bun.file(this.file).json()) as JsonValue, this.coerce);
+      const raw = (await Bun.file(this.file).json()) as JsonValue;
+      this.receipts = this.retention === null ? coerceReceiptList(raw, this.coerce) : this.retain(coerceReceiptList(raw, this.coerce, Number.POSITIVE_INFINITY));
     } catch {
       /* nothing recorded yet, or a file that is not JSON; asking must not create the file */
     }
+  }
+
+  /** The list with `receipt` in it, held to this store's limits. */
+  private including(receipt: R, receipts: readonly R[] = this.receipts): R[] {
+    if (this.retention === null) return withReceipt(receipts, receipt);
+    return this.retain(withReceipt(receipts, receipt, Number.POSITIVE_INFINITY));
+  }
+
+  private retain(receipts: readonly R[]): R[] {
+    return this.retention === null ? [...receipts] : retainReceipts(receipts, this.retention, this.now());
   }
 
   get(requestId: string): R | undefined {
@@ -170,13 +247,32 @@ export class ReceiptFileStore<R extends { requestId: string }, A> implements Rec
   }
 
   async record(receipt: R): Promise<void> {
-    this.receipts = withReceipt(this.receipts, receipt);
+    this.receipts = this.including(receipt);
     try {
       await this.save();
     } catch (err) {
       // The thing exists; the receipt is a convenience for a retry. It stays in memory, so a retry
       // against this process still replays, and reaches disk with the next write that works.
       this.warn(`[${this.tag}] could not save ${this.file}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Store one receipt and say whether it reached disk. For a route that writes its receipt BEFORE it
+   * acts (ADR 0100): a failed write takes the receipt back out, so nothing is promised that a restart
+   * would forget, and the caller sends nothing. `record` stays the call for a route that writes after.
+   */
+  async recordFirst(receipt: R): Promise<boolean> {
+    const earlier = this.get(receipt.requestId);
+    this.receipts = this.including(receipt);
+    try {
+      await this.save();
+      return true;
+    } catch (err) {
+      const rest = this.receipts.filter((r) => r !== receipt);
+      this.receipts = earlier === undefined ? rest : this.including(earlier, rest);
+      this.warn(`[${this.tag}] could not save ${this.file}: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
     }
   }
 

@@ -206,7 +206,166 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * none: there is no third state to get wrong.
    */
   session?: string;
+  /**
+   * The open asks a person may answer on this pane, as data, oldest first (ADR 0100).
+   *
+   * ONE PRODUCER: only a pane from an adapter that raises asks as data carries the key (the
+   * `durable` adapter, `MuxAdapter.openAsks`). The screen reader never fills it, so every ask has
+   * one owner. Absent on every other pane, and absent from every older bridge, which the phone reads
+   * as "no asks as data here". An empty list is a real answer: this pane takes answers by id and
+   * has none open.
+   *
+   * EVERY open ask is listed, up to the adapter's cap of 50 per pane (WIRE.md section 6). The push
+   * guard caps pushes, never this list; the phone draws the first five and opens the rest on a tap.
+   */
+  asks?: Ask[];
+  /**
+   * The newest turn of this pane: the one running now, or the last one that ran (ADR 0101).
+   *
+   * ONE PRODUCER, like {@link asks}: only a pane from an adapter that takes guarded controls carries
+   * it (the `durable` adapter, `MuxAdapter.paneTurn`). The phone sends it back unchanged as the
+   * `turnId` of a send or an abort, so the bridge can refuse a control aimed at a turn the person did
+   * not see. Absent on every other pane and from every older bridge.
+   */
+  turnId?: string;
 };
+
+/** What a person may choose on an ask (WIRE.md section 4). */
+export interface AskOption {
+  /** Unique inside its ask. Sent back unchanged as `optionId`. */
+  id: string;
+  label: string;
+  effect: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** The tool call an ask is about, when the program wants it drawn. */
+export interface AskTool {
+  name: string;
+  /** One line: the arguments, shortened. */
+  summary: string;
+  output?: string;
+}
+
+/**
+ * One open ask, as the phone draws it (ADR 0100). Every string was cleaned and capped by the adapter
+ * that read it (WIRE.md section 6), and every id is sent back unchanged, never shown.
+ */
+export interface Ask {
+  /** New after every restart of the program, even for the same tool call. */
+  id: string;
+  /** `permission` is the only kind in this version. A card for another kind is not answerable. */
+  kind: string;
+  /** The program's id for the tool call. The same across a restart; the push guard keys on it. */
+  toolCallId: string;
+  /** Starts at 1 and rises when the program changes this ask in place. Sent back as `revision`. */
+  revision: number;
+  /** One line the card leads with. */
+  title: string;
+  /** The item the card sits under, usually the tool item. */
+  itemId: string;
+  /** At least one, at most six. An ask with none is shown as not answerable. */
+  options: AskOption[];
+  reason?: string;
+  tool?: AskTool;
+  /**
+   * Present when the adapter's cleaning cut or changed the title or the reason (WIRE.md section 6).
+   * The card says the text was shortened and offers no `allow-always` on such an ask.
+   */
+  cleaned?: true;
+}
+
+/**
+ * `POST /api/pane/:id/answer`'s body, as the bridge reads it (ADR 0100). `requestId` is a UUID the
+ * phone mints per tap; a retry of the same tap sends the same one.
+ */
+export interface AnswerRequest {
+  requestId: string;
+  askId: string;
+  /** The revision the phone saw. */
+  revision: number;
+  optionId: string;
+  note?: string;
+}
+
+/**
+ * What `POST /api/pane/:id/answer` answers, one shape for every outcome (ADR 0100).
+ *
+ *  • `taken` (200): the program took the answer and closed the ask.
+ *  • `too-late` (200): the ask is not open any more (answered, stopped, or from before a restart).
+ *  • `stale` (409): the ask changed since the phone read it. `ask` is its current form when the
+ *    program sent one. Nothing ran.
+ *  • `unknown` (504): the answer may or may not have reached the program. The receipt stays, so
+ *    "Try again" with the SAME request id replays rather than answers twice.
+ *  • `maybe-applied` (200): an earlier try with this request id had an unknown outcome, and this
+ *    retry found the ask closed or changed. The first try may be what closed it, so the phone says
+ *    "may already be applied, check the chat" instead of an error.
+ *  • `refused` (409): nothing ran, and the same request would be refused again. `reason` is the
+ *    mux refusal's word (ADR 0022): `unsupported` when this pane takes no answers at all, or
+ *    `request-id-reused` when this request id was already used for another answer.
+ *
+ * `replayed: true` marks an answer read off the receipt of an earlier request with this id.
+ */
+export type AnswerResponse =
+  | { ok: true; outcome: "taken"; replayed?: true }
+  | { ok: false; outcome: "too-late"; replayed?: true }
+  | { ok: false; outcome: "stale"; ask?: Ask; replayed?: true }
+  | { ok: false; outcome: "unknown"; detail: string }
+  | { ok: false; outcome: "maybe-applied"; replayed?: true }
+  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused" | "request-id-reused"; detail: string; replayed?: true };
+
+/**
+ * `POST /api/pane/:id/send`'s body (ADR 0101). Exactly one of `turnId` and `askId`: the turn the
+ * phone last showed, or an open ask it answers inside. `requestId` is a UUID the phone mints per
+ * intent; a retry of the same intent sends the same one. `text` is 1 to 32768 UTF-8 bytes.
+ */
+export interface SendRequest {
+  requestId: string;
+  text: string;
+  /** While a turn runs: join it (true) or wait for the next turn (false, the default). */
+  steer?: boolean;
+  turnId?: string;
+  askId?: string;
+}
+
+/** `POST /api/pane/:id/abort`'s body (ADR 0101). Exactly one of `turnId` and `askId`. */
+export interface AbortRequest {
+  requestId: string;
+  turnId?: string;
+  askId?: string;
+}
+
+/** What a control names: the turn the phone saw, or an open ask. Never both, never neither. */
+export type ControlTarget = { readonly kind: "turn"; readonly id: string } | { readonly kind: "ask"; readonly id: string };
+
+/** A send or an abort, as the bridge reads it off the phone's body and hands it to the adapter. */
+export type ControlRequest =
+  | { readonly act: "send"; readonly requestId: string; readonly target: ControlTarget; readonly text: string; readonly steer: boolean }
+  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget };
+
+/**
+ * What `POST /api/pane/:id/send` and `/abort` answer, one shape for both (ADR 0101).
+ *
+ *  • `ok` (200): the program accepted the act. It answers when it took it, not when the turn ends.
+ *  • `stale` (409): the turn named is not the newest one, or the ask is not open. Nothing ran.
+ *    `turnId` and `askIds` are what is current, so the phone can reload and show what changed.
+ *  • `unknown` (504): the act may or may not have reached the program. The receipt stays, so
+ *    "Try again" with the SAME request id replays rather than acts twice.
+ *  • `maybe-applied` (200): an earlier try with this request id had an unknown outcome, and this
+ *    retry found the turn moved on. The first try may be what moved it, so the phone says "may
+ *    already be applied, check the chat" instead of an error.
+ *  • `refused` (409): nothing ran, and the same request would be refused again. `reason` is the
+ *    mux refusal's word (ADR 0022): `unsupported` when this pane or program cannot take the act, or
+ *    `request-id-reused` when this request id was already used for another send or stop.
+ *
+ * `replayed: true` marks an outcome read off the receipt of an earlier request with this id, or a
+ * program that said it saw this request id before.
+ */
+export type ControlResponse =
+  | { ok: true; outcome: "ok"; replayed?: true }
+  | { ok: false; outcome: "stale"; turnId: string; askIds: string[]; replayed?: true }
+  | { ok: false; outcome: "unknown"; detail: string }
+  | { ok: false; outcome: "maybe-applied"; replayed?: true }
+  | { ok: false; outcome: "refused"; reason: "unsupported" | "refused" | "request-id-reused"; detail: string; replayed?: true };
 
 /**
  * Strip a pane down to its wire shape. The one place the session ref leaves the bridge's hands.
@@ -310,6 +469,22 @@ export interface TabView {
 export type BridgeStatus = "connected" | "disconnected";
 
 /**
+ * Why the multiplexer refused the last read, when the phone can say it in words (M50 spec 14). Only one
+ * today: a durable program over HTTPS that answered 401 or 403 to the peer's bearer token. Every other
+ * failure stays the plain `disconnected`, which the phone already words.
+ */
+export type MuxFault = "token-refused";
+
+/**
+ * The fault a failed read's message names, or undefined. The durable HTTPS client starts the detail of a
+ * refused token with `token-refused` (bridge/mux/durable/http-client.ts `TOKEN_REFUSED`), and the
+ * adapter throws that detail as the message of a failed `snapshot()`.
+ */
+export function muxFaultOf(message: string): MuxFault | undefined {
+  return message.startsWith("token-refused") ? "token-refused" : undefined;
+}
+
+/**
  * One entry in the snapshot's `sessions` list — a herdr session this bridge fronts. Additive: a
  * single-session deployment reports exactly one (the primary), so nothing about the UI changes.
  */
@@ -355,6 +530,11 @@ export interface DeviceAuth {
 /** GET /api/snapshot — the current herd view. */
 export interface SnapshotResponse {
   bridge: BridgeStatus;
+  /**
+   * Why the multiplexer is down, when the phone can say it (M50 spec 14). Present only while `bridge`
+   * is `disconnected` for that cause, so every other body, and its ETag, is unchanged.
+   */
+  muxFault?: MuxFault;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
   device?: DeviceAuth;
   /** Agent-bearing panes, in place order: space, tab, position in the tab. Never by status (ADR 0063). */
@@ -1478,8 +1658,8 @@ export interface LaunchCheckResponse {
 export interface LauncherItem {
   /** Stable per machine: `harness:<id>`, `row:<command>`, or `shell`. */
   key: string;
-  /** What `POST /api/launch` (and `POST /api/worktree`) names to start it. */
-  start: { harness: string } | { command: string } | { shell: true };
+  /** What `POST /api/launch` (and `POST /api/worktree`) names to start it. A starter is run by `POST /api/launch` alone (ADR 0102). */
+  start: { harness: string } | { command: string } | { shell: true } | { starter: string };
   /** Agents: Collie reads the pane as that harness. Commands: a plain line, no agent status. */
   group: "agents" | "commands";
   label: string;
@@ -1489,9 +1669,16 @@ export interface LauncherItem {
   command?: string;
   /** A row's pinned folder. */
   cwd?: string;
-  source: "builtin" | "operator" | "added";
+  /** `program`: a starter the durable program offers (ADR 0102). */
+  source: "builtin" | "operator" | "added" | "program";
   /** True when the line skips permission prompts: badge it, and confirm once per device. */
   noPrompts: boolean;
+  /**
+   * False on a starter: it takes no text of any kind, so the page shows no prompt field and a launch
+   * body carrying text is refused. Absent on every other item (ADR 0102). This is NOT `noPrompts`,
+   * which marks a line that skips an agent's permission prompts.
+   */
+  takesPrompt?: false;
   /** Whether it may start on a new branch: agents and the shell, never a command row. */
   branch: boolean;
   available: boolean;

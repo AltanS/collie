@@ -462,6 +462,32 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` to turn off every phone-added row on a machine.
 
+### Reaching a durable program (experimental)
+
+A peer that mirrors a durable agent program (`COLLIE_MUX=durable`) reaches it one of two ways. Set
+the socket, or the URL with its token, never both.
+
+| variable | example | what it means |
+| --- | --- | --- |
+| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the program's private Unix socket on this machine. Absolute, at most 103 bytes, mode `0600` |
+| `COLLIE_DURABLE_URL` | `https://collie-durable-member.you.workers.dev` | the address of a program you deployed behind TLS. `https://` only, or `http://127.0.0.1:<port>` for `wrangler dev`. At most 2048 bytes, no query |
+| `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to the URL. At least 32 bytes. A file holding it must be mode 600, and Collie never prints it |
+
+Both set, or a URL without a token, is a config error: the peer starts and shows the program as
+unreachable with that reason. Over https every poll is a billed request, so Collie polls every 2 s
+while a phone watches and every 10 s otherwise. [Multiplexers](multiplexers.md#two-ways-to-reach-a-program)
+says what each way keeps out, and what it does not.
+
+### Starters from a durable program (experimental)
+
+A peer that mirrors a durable agent program (`COLLIE_MUX=durable`) lists the program's starters as
+rows on the New page, in the **Agent** select, on that machine. A starter is a named way to begin a
+conversation, such as a code review. It takes no text: you tap it, and the program decides what to
+start. The new conversation opens as a pane. A tap repeated with the same request id opens
+the same conversation and starts nothing new, and if the program does not answer, **Try again** sends
+the same request id. A program that cannot be reached lists no starters. This is experimental and may
+change in any minor release.
+
 ### One-off commands and their history
 
 A phone can also run a command that is not a launcher, once. Collie opens a shell in the folder you

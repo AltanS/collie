@@ -29,7 +29,8 @@ import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
 import { isLostLatched, type ReadFailureKind, wakeStrikeHolds } from "@/lib/connection-health";
-import { markSavedCopy } from "@/lib/liveness";
+import { markLive as markPaneLive, markSavedCopy } from "@/lib/liveness";
+import { paneGridOf } from "@/lib/mux-capability";
 import { ambientSpaces, findPane } from "@/lib/hosts";
 import {
   loadLastPaneText,
@@ -55,6 +56,7 @@ import {
 import type {
   AgentView,
   BridgeStatus,
+  MuxFault,
   DeviceAuth,
   CrewStatusResponse,
   MachinesResponse,
@@ -106,6 +108,8 @@ function scopeFromRequest(request?: Request): Scope {
 
 export interface HomeData {
   bridge: BridgeStatus | undefined;
+  /** Why the mux is down, when the bridge named it (a refused token). Absent otherwise. */
+  muxFault?: MuxFault;
   /** Per-device authorisation; undefined when the feature is off or not yet known. */
   device: DeviceAuth | undefined;
   agents: AgentView[];
@@ -340,7 +344,7 @@ function toHomeData(
   const agents = holdCacheReadings(holdIn, snap.agents);
   const shells = holdCacheReadings(holdIn, snap.shellPanes ?? []);
   paneCacheHold = new Map([...agents.held, ...shells.held]);
-  return {
+  const home: HomeData = {
     lastSeenAt,
     stale: error && drawnFromSave(lastSeenAt),
     bridge: snap.bridge,
@@ -363,6 +367,9 @@ function toHomeData(
     error,
     authError: error && hasAuthError(scope),
   };
+  // Only while the bridge names why its mux is down (a refused token): every other home has no such key.
+  if (snap.muxFault !== undefined) home.muxFault = snap.muxFault;
+  return home;
 }
 
 // Last-known home for a scope, flagged stale — the cached snapshot if we have one, else an empty
@@ -680,6 +687,29 @@ export async function paneLoader({
   // Fast path: navigating to a pane during a known, escalated outage shows its last-known mirror (or an
   // empty degraded pane if never visited) INSTANTLY — never a 10s hang on a fetch that can't land.
   if (isNavigation && isLostLatched()) return stalePane(paneId, scope, lines);
+
+  // A PANE WITH NO SCREEN HAS NO MIRROR TO READ (ADR 0099 point 9). Its machine answers a mirror read
+  // with a refusal, which this loader would turn into a degraded pane on every poll: the connection
+  // bar flickering, the composer locked for want of text, the saved-copy rules reading an empty
+  // screen as an outage. So no read is made. What the pane IS comes from the snapshot, and its
+  // conversation from the Chat read, so this answers an empty, healthy mirror. The pane counts as live
+  // while the bridge is not known to be lost (lib/liveness.ts), which is what its Chat reads and its
+  // controls ask. Decided by the machine's own declaration, so a bridge that has not said no is read.
+  if (!paneGridOf(scope)) {
+    markPaneLive(paneId, Date.now(), scope);
+    markPollResult(false);
+    return {
+      paneId,
+      scope,
+      text: "",
+      truncated: false,
+      requestedLines: lines,
+      revision: 0,
+      error: false,
+      authError: false,
+      stale: false,
+    };
+  }
 
   try {
     // On a 304 fetchPane returns the cached body, so `read.text` is populated either way; the

@@ -61,6 +61,7 @@ import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
 import { Composer, type ComposerHandle } from "@/components/composer";
+import { DurableComposer } from "@/components/durable-composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
@@ -934,7 +935,22 @@ export function AgentChat({
   // come and did not falls back to the terminal, with the ⋮ row and a muted line saying why. The
   // row never hides, because a control that disappears on some panes is how an operator concludes
   // the app is broken.
-  const chatChosen = dash.prefs.paneView === "chat";
+  //
+  // A PANE WITH NO SCREEN IS CHAT ONLY (ADR 0099 point 9). When the pane's multiplexer cannot hand
+  // over a screen (`paneGrid`), Chat is the only body: the device's standing choice does not apply,
+  // the gate below has no terminal to fall back to, and every offer of the Terminal (the ⋮ row, the
+  // Display dock's View switch) is withdrawn. A link that asked for the terminal of such a pane
+  // lands here, on Chat, because the choice it names does not exist for the pane.
+  //
+  // A CONVERSATION THE PROGRAM DROPPED (decided in spec 05, the smallest honest behaviour). The
+  // program omits it from its snapshot, so it is not in the census and the dashboard does not list
+  // it. This page adds nothing for it: a link to it takes the existing `gone` path below ("Pane
+  // closed", the controls locked, and a step back to the list once connected). No ghost row, no
+  // history kept on the phone, no recovery verb. A dropped conversation that comes back in a later
+  // snapshot is simply a pane again.
+  const paneGrid = useMuxCapability("paneGrid", scope);
+  const gridless = !paneGrid.capable;
+  const chatChosen = gridless || dash.prefs.paneView === "chat";
   // The chat route is asked only where a session exists to read: a pane with none has nothing for
   // it to answer. The poll that already exists moves it (ADR 0073); disabled is free.
   const chatFetch = chatChosen && historyAvailable;
@@ -967,6 +983,7 @@ export function AgentChat({
   const chatHarness =
     !isShell && sessionLog.capable && (Boolean(agent?.hasSession) || hasJournalAdapter(agent?.agent));
   const body = paneBody({
+    grid: !gridless,
     chat: chatChosen && chatHarness,
     session: Boolean(agent?.hasSession),
     journal,
@@ -2297,6 +2314,20 @@ export function AgentChat({
                   // A new pane with nothing to read yet: one line that says how to begin, never the
                   // "no transcript file" reading, which is only true of a pane that should have one.
                   starting={body === "start"}
+                  asks={
+                    agent?.asks === undefined
+                      ? undefined
+                      : {
+                          list: agent.asks,
+                          card: {
+                            paneId,
+                            scope,
+                            disabled: readOnly || hostBlock !== undefined || gone,
+                            offline: savedCopyWrites || connecting,
+                            onSettled: () => revalidator.revalidate(),
+                          },
+                        }
+                  }
                   showToolCalls={dash.prefs.showToolCalls}
                   showCompactions={dash.prefs.showCompactions}
                   fontSize={prefs.chatFontSize}
@@ -2676,6 +2707,41 @@ export function AgentChat({
                   block, a sibling of the composer, so it fills exactly the composer's own box and
                   adds no height (components/voice-takeover.tsx). */}
               <div data-slot="chrome-block" className="relative border-t border-rule bg-chrome">
+                {gridless ? (
+                  // The composer of a pane with no screen: text goes through the send route with the
+                  // turn the phone saw, and a Stop control posts the abort route. The keys bar, the
+                  // Type button and the terminal-draft machinery are not mounted (ADR 0101).
+                  <DurableComposer
+                    paneId={paneId}
+                    scope={scope}
+                    turnId={agent?.turnId}
+                    asks={agent?.asks}
+                    status={agent?.status}
+                    locked={gone || readOnly || hostBlock !== undefined}
+                    lockedWhy={
+                      gone
+                        ? t("composer.placeholder.gone")
+                        : readOnly
+                          ? t("composer.placeholder.readOnly")
+                          : (hostBlock ?? "")
+                    }
+                    offline={savedCopyWrites || connecting}
+                    composing={composing}
+                    display={{
+                      open: drawer === "display",
+                      onToggle: () => setDrawer(drawer === "display" ? null : "display"),
+                    }}
+                    pullHandle={pullHandle}
+                    changesPill={
+                      agent?.cwd
+                        ? { onClick: () => nav.down(filesEntryPath), label: t("chat.changes.label") }
+                        : undefined
+                    }
+                    hand={handOf(prefs)}
+                    onSent={onSent}
+                    onReload={() => revalidator.revalidate()}
+                  />
+                ) : (
                 <Composer
                   ref={composerRef}
                   paneId={paneId}
@@ -2725,6 +2791,7 @@ export function AgentChat({
                   }
                   draftNoticeSlot={draftNoticeSlot}
                 />
+                )}
               </div>
             </div>
           </Collapse>
@@ -2831,6 +2898,7 @@ export function AgentChat({
               showing: chatShown ? "chat" : "terminal",
               onChange: dash.setPaneView,
               note: chatNote,
+              terminalOffered: !gridless,
               showToolCalls: dash.prefs.showToolCalls,
               setShowToolCalls: dash.setShowToolCalls,
               showCompactions: dash.prefs.showCompactions,
@@ -2903,8 +2971,9 @@ export function AgentChat({
           openInRename={renameOnOpen}
           // THE BODY SWITCH. `chatNote` is why this pane keeps the terminal when it does. One
           // standing per-device value, written here and nowhere else.
-          paneView={dash.prefs.paneView}
-          onPaneViewChange={dash.setPaneView}
+          // No Terminal row on a pane with no screen: Chat is its only view.
+          paneView={gridless ? undefined : dash.prefs.paneView}
+          onPaneViewChange={gridless ? undefined : dash.setPaneView}
           paneViewNote={chatNote}
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.

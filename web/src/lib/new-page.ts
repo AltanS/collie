@@ -26,7 +26,7 @@ export type Kind = "agent" | "shell";
  * a row reads as a command, as it did before agent rows.
  */
 export function kindOf(what: StartWhat, offer?: Offer): Kind {
-  if (what.kind === "harness") return "agent";
+  if (what.kind === "harness" || what.kind === "starter") return "agent";
   if (what.kind === "row" && offer?.agents.some((a) => whatKey(a.what) === whatKey(what)) === true) return "agent";
   return "shell";
 }
@@ -34,6 +34,7 @@ export function kindOf(what: StartWhat, offer?: Offer): Kind {
 /** One stable string per choice, for an option value and a React key. */
 export function whatKey(what: StartWhat): string {
   if (what.kind === "harness") return `harness:${what.id}`;
+  if (what.kind === "starter") return `starter:${what.id}`;
   if (what.kind === "row") return `row:${what.command}`;
   if (what.kind === "run") return `run:${what.line}`;
   return "shell";
@@ -45,6 +46,7 @@ export function keyToWhat(key: string | null | undefined): StartWhat | null {
   if (key === "shell") return { kind: "shell" };
   if (key.startsWith("harness:") && key.length > 8) return { kind: "harness", id: key.slice(8) };
   if (key.startsWith("row:") && key.length > 4) return { kind: "row", command: key.slice(4) };
+  if (key.startsWith("starter:") && key.length > 8) return { kind: "starter", id: key.slice(8) };
   if (key.startsWith("run:") && key.length > 4) return { kind: "run", line: key.slice(4) };
   return null;
 }
@@ -123,6 +125,8 @@ export interface OfferItem {
   /** Whether it may start on a new worktree: agents and the shell, never a command row. */
   branch: boolean;
   unavailable: Unavailable | null;
+  /** A starter a durable program offers (ADR 0102): it takes no folder and no text. Absent on every other item. */
+  program?: true;
 }
 
 /** The shell, which every machine can start. Its label is the page's own word (`newPage.shell`). */
@@ -156,6 +160,11 @@ export interface OfferInput {
   recentRuns?: readonly RecentRun[] | null;
   /** The chosen machine's refusal, when it takes no writes. */
   refusal?: string;
+  /**
+   * The chosen machine has no screen (its multiplexer's `paneGrid` is false). A machine like that
+   * starts nothing but its program's starters, even before its list arrives or when the list is empty.
+   */
+  screenless?: boolean;
   /** Worktrees: whether the lead's multiplexer can make one. */
   canWorktree: boolean;
   /** Worktrees: the chosen machine is a crew member, and this is the lead's name. */
@@ -178,6 +187,13 @@ export interface Offer {
   agentsNote: Unavailable | null;
   /** Why the worktree switch is off, or `null` when it may be used. */
   branchBlocked: Unavailable | null;
+  /**
+   * The machine starts only what its program offers (ADR 0102): the built-in agents and the Shell
+   * cannot start where there is no terminal, so they are not listed, and the page draws the starters
+   * alone. True when the machine's list holds a program's starter, or when its multiplexer has no
+   * screen at all (see {@link OfferInput.screenless}); the second covers a program that offers none yet.
+   */
+  startersOnly: boolean;
 }
 
 function reasonOf(reason: NonNullable<LauncherItem["reason"]>): Unavailable {
@@ -194,7 +210,13 @@ function reasonOf(reason: NonNullable<LauncherItem["reason"]>): Unavailable {
 /** One item of `GET /api/launchers` as the page holds it. */
 function fromItem(item: LauncherItem): OfferItem {
   const what: StartWhat =
-    "harness" in item.start ? { kind: "harness", id: item.start.harness } : "command" in item.start ? { kind: "row", command: item.start.command } : { kind: "shell" };
+    "harness" in item.start
+      ? { kind: "harness", id: item.start.harness }
+      : "command" in item.start
+        ? { kind: "row", command: item.start.command }
+        : "starter" in item.start
+          ? { kind: "starter", id: item.start.starter }
+          : { kind: "shell" };
   const out: OfferItem = {
     key: whatKey(what),
     what,
@@ -206,6 +228,7 @@ function fromItem(item: LauncherItem): OfferItem {
   if (item.harness !== undefined) out.harness = item.harness;
   if (item.command !== undefined) out.command = item.command;
   if (item.cwd !== undefined) out.cwd = item.cwd;
+  if (item.source === "program") out.program = true;
   return out;
 }
 
@@ -253,15 +276,17 @@ function fromRow(row: Launcher): OfferItem {
  * builds today's lists from `harnesses` and `launchers`.
  */
 export function offerFor(input: OfferInput): Offer {
+  const screenless = input.screenless === true;
   if (input.refusal !== undefined) {
     return {
       agents: [],
-      commands: [SHELL_ITEM],
+      commands: screenless ? [] : [SHELL_ITEM],
       recent: [],
       canRun: false,
       shellById: false,
       agentsNote: null,
       branchBlocked: { kind: "machine", sentence: input.refusal },
+      startersOnly: screenless,
     };
   }
   const olderCollie = input.loaded && input.harnesses === null;
@@ -271,6 +296,23 @@ export function offerFor(input: OfferInput): Offer {
   // An older Collie cannot be asked for a worktree from a folder either: the route is 1.19.0's.
   else if (olderCollie) branchBlocked = { kind: "olderCollie" };
   const listed = input.items ?? null;
+  // A MACHINE WHOSE PROGRAM OFFERS STARTERS STARTS NOTHING ELSE (ADR 0102). Its built-in agents and its
+  // Shell would need a terminal it does not have, so they are left out rather than listed and refused.
+  // The rows of `source: "program"` say it directly; a screenless multiplexer says it before the list
+  // is in and when the program offers none.
+  const starters = listed === null ? [] : listed.filter((i) => i.source === "program");
+  if (starters.length > 0 || screenless) {
+    return {
+      agents: starters.map(fromItem),
+      commands: [],
+      recent: [],
+      canRun: false,
+      shellById: true,
+      agentsNote: null,
+      branchBlocked,
+      startersOnly: true,
+    };
+  }
   if (listed !== null) {
     const commands = listed.filter((i) => i.group === "commands").map(fromItem);
     return {
@@ -282,6 +324,7 @@ export function offerFor(input: OfferInput): Offer {
       shellById: true,
       agentsNote: null,
       branchBlocked,
+      startersOnly: false,
     };
   }
   return {
@@ -301,7 +344,18 @@ export function offerFor(input: OfferInput): Offer {
     shellById: input.harnesses !== null,
     agentsNote: olderCollie ? { kind: "olderCollie" } : null,
     branchBlocked,
+    startersOnly: false,
   };
+}
+
+/**
+ * Whether a start takes a folder. A starter does not: the program decides where it works, and the
+ * bridge ignores a folder sent with one (ADR 0102). Nothing chosen asks for one, as it always did.
+ * There is no prompt field on this page to hide beside it: a starter's `takesPrompt: false` is
+ * already how the page behaves for every start (text is the pane's, once it exists).
+ */
+export function takesFolder(what: StartWhat | null): boolean {
+  return what?.kind !== "starter";
 }
 
 /** The agents that can start now. */
@@ -392,7 +446,7 @@ export function truncateLine(line: string): string {
 export function whatLabel(what: StartWhat, offer: Offer, shellLabel: string): string {
   if (what.kind === "shell") return shellLabel;
   if (what.kind === "run") return what.line;
-  return itemOf(offer, what)?.label ?? (what.kind === "harness" ? what.id : what.command);
+  return itemOf(offer, what)?.label ?? (what.kind === "row" ? what.command : what.id);
 }
 
 /** The words of one option: its label (a history line is shortened), then "(No prompts)", then the reason it cannot start, each in brackets. */
@@ -420,6 +474,8 @@ export function branchAllowed(offer: Offer, what: StartWhat | null): boolean {
  * Command.
  */
 export function defaultKind(offer: Offer, loaded: boolean, remembered: Kind | null, again: LastStart | null): Kind {
+  // Starters are Agent-select rows. A machine that offers only those has no Command half to open on.
+  if (offer.startersOnly) return "agent";
   if (remembered !== null) return remembered;
   if (again !== null) return kindOf(again.what, offer);
   return loaded && startableAgents(offer).length === 0 ? "shell" : "agent";
@@ -477,10 +533,15 @@ export interface SummaryParts {
   machine?: string;
   /** The new branch and where it starts, when the switch is on. */
   branch?: { name: string; base: string };
+  /** The start takes no folder (a starter): the sentence names no folder. */
+  noFolder?: true;
 }
 
-/** Which of the four summary sentences `parts` needs. */
-export function summaryKey(parts: SummaryParts): "plain" | "machine" | "branch" | "branchMachine" {
+/** Which of the six summary sentences `parts` needs. */
+export function summaryKey(
+  parts: SummaryParts,
+): "plain" | "machine" | "branch" | "branchMachine" | "starter" | "starterMachine" {
+  if (parts.noFolder === true) return parts.machine === undefined ? "starter" : "starterMachine";
   if (parts.branch === undefined) return parts.machine === undefined ? "plain" : "machine";
   return parts.machine === undefined ? "branch" : "branchMachine";
 }
@@ -540,6 +601,7 @@ function parseWhat(raw: JsonValue | undefined): StartWhat | null {
   if (kind === "shell") return { kind: "shell" };
   const id = asJsonString(o?.id);
   if (kind === "harness" && id !== undefined && id !== "") return { kind: "harness", id };
+  if (kind === "starter" && id !== undefined && id !== "") return { kind: "starter", id };
   const command = asJsonString(o?.command);
   if (kind === "row" && command !== undefined && command !== "") return { kind: "row", command };
   const line = asJsonString(o?.line);

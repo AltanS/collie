@@ -28,6 +28,7 @@ import {
   refreshNow,
   removeRecentRun,
   sendKeys,
+  startLaunch,
   sendReply,
   textBeforeLastSend,
   uploadFile,
@@ -1186,6 +1187,16 @@ describe("one-off runs and their history (ADR 0095)", () => {
     expect(calls).toEqual([
       { url: "/api/launch?host=badger", method: "POST", body: { run: "make test", requestId: "id-1", cwd: "~/src/app" } },
       { url: "/api/launch", method: "POST", body: { run: "htop", requestId: "id-2" } },
+    ]);
+  });
+
+  it("startLaunch sends a starter by its id and the request id, and never a folder", async () => {
+    const calls = capture();
+    await startLaunch({ kind: "starter", id: "notes-new" }, { cwd: "~/src/app", requestId: "id-3" }, { host: "badger" });
+    await startLaunch({ kind: "row", command: "htop" }, { cwd: "~/src/app", requestId: "id-4" });
+    expect(calls).toEqual([
+      { url: "/api/launch?host=badger", method: "POST", body: { starter: "notes-new", requestId: "id-3" } },
+      { url: "/api/launch", method: "POST", body: { command: "htop", requestId: "id-4", cwd: "~/src/app" } },
     ]);
   });
 

@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef } from "../journal/types.ts";
-import type { AgentStatus } from "../types.ts";
+import type { AgentStatus, AnswerRequest, Ask, ControlRequest } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -531,6 +531,39 @@ export interface MuxSubscription {
   close(): void;
 }
 
+// ── Starters ──────────────────────────────────────────────────────────────────
+
+/** One named way to begin a conversation, as the program offers it (ADR 0102). Cleaned text. */
+export interface MuxStarter {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * What a program offers to start, and the name it gave its own machine. Empty while it is
+ * unreachable, and `reachable` says which kind of empty it is: a program with nothing to start, or a
+ * program that could not be asked.
+ */
+export interface MuxStarters {
+  readonly hostName: string;
+  readonly starters: readonly MuxStarter[];
+  readonly reachable: boolean;
+}
+
+/**
+ * What a start came to (ADR 0102). The phone treats each kind differently: `started` opens the pane;
+ * `failed` and `refused` show a reason, and the same request id may run again; `unsupported` never
+ * will work; `unreachable` means nothing reached the program; `unknown` means it may have run, so the
+ * caller keeps its receipt and "Try again" sends the same request id.
+ */
+export type MuxStarterOutcome =
+  | { readonly kind: "started"; readonly paneId: string; readonly replayed: boolean }
+  | { readonly kind: "failed"; readonly message: string }
+  | { readonly kind: "unsupported"; readonly detail: string }
+  | { readonly kind: "refused"; readonly detail: string }
+  | { readonly kind: "unreachable"; readonly detail: string }
+  | { readonly kind: "unknown"; readonly detail: string };
+
 // ── The port ──────────────────────────────────────────────────────────────────
 
 /**
@@ -607,6 +640,57 @@ export interface MuxAdapter {
    * (HERDR_API.md → `pane.read`).
    */
   readLogicalText?(paneId: string, lines: number): Promise<MuxOutcome<string>>;
+
+  /**
+   * The named ways this multiplexer can begin a conversation (ADR 0102). OPTIONAL: only a durable
+   * program has starters, and every other adapter simply has none. A program that cannot be reached
+   * lists none, rather than failing.
+   */
+  listStarters?(): Promise<MuxStarters>;
+
+  /**
+   * Run one starter with the phone's request id, passed through unchanged so a repeat is the
+   * program's own replay (ADR 0102). Never retried here: an outcome that may have run is `unknown`.
+   */
+  startStarter?(starterId: string, requestId: string): Promise<MuxStarterOutcome>;
+
+  /**
+   * The open asks of one pane, as data (ADR 0100), oldest first, cleaned. OPTIONAL: only an adapter
+   * whose panes raise asks as data has it (`durable`). `undefined` for a pane that carries no asks
+   * field, which is every pane of every other adapter. It reads the adapter's last listing and asks
+   * nothing new, because `localSnapshot` calls it at serialise time.
+   */
+  openAsks?(paneId: string): readonly Ask[] | undefined;
+
+  /**
+   * Answer one ask by its id (ADR 0100). OPTIONAL, with {@link openAsks}: absent is the refusal the
+   * answer route renders. ONE CALLER: `POST /api/pane/:id/answer`, which runs for a person's tap and
+   * has written its receipt first. Nothing else in the bridge may call it, and an adapter never
+   * answers on its own, not on a restart and not after a timeout.
+   *
+   * A definite answer is a value (`taken`, `too-late`, `stale`). An answer that may or may not have
+   * reached the program is `unknown`, also a value, because the caller keeps its receipt for it. A
+   * refusal says nothing ran: `gone` (no such pane), `refused` (a bad option, a reused request id,
+   * a program that takes no answers) or `unreachable` (nothing was sent).
+   */
+  answerAsk?(paneId: string, answer: AnswerRequest): Promise<MuxOutcome<MuxAnswerResult>>;
+
+  /**
+   * The newest turn id of one pane, from the adapter's last listing (ADR 0101). OPTIONAL, with
+   * {@link controlTurn}: only an adapter whose panes take guarded controls has it (`durable`).
+   * `undefined` for a pane that carries no `turnId` field. Asks nothing new: it is called at
+   * serialise time.
+   */
+  paneTurn?(paneId: string): string | undefined;
+
+  /**
+   * Send text to, or stop, the turn the phone named (ADR 0101). OPTIONAL, with {@link paneTurn}:
+   * absent is the refusal the send and abort routes render, and the reason the reply and keys routes
+   * refuse such a pane. ONE CALLER: `POST /api/pane/:id/send` and `/abort`, which have written their
+   * receipt first. The adapter checks the name against its latest listing before anything leaves
+   * (`bridge/durable/control.ts`), and never retries.
+   */
+  controlTurn?(paneId: string, request: ControlRequest): Promise<MuxControlOutcome>;
 
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
@@ -712,13 +796,61 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
   return adapter.logo === undefined ? {} : { logo: adapter.logo };
 }
 
+/** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
+export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn";
+
 /**
  * The OPTIONAL methods, gathered the way {@link muxDataFields} gathers the optional data fields.
  *
  * A decorator spreads this rather than conditionally spreading inline, so a multiplexer that cannot
  * unwrap (tmux) never comes out of a decorator appearing to offer the read: absent stays absent.
  */
-export function muxOptionalMethods(adapter: MuxAdapter): Pick<MuxAdapter, "readLogicalText"> {
+export function muxOptionalMethods(
+  adapter: MuxAdapter,
+): Pick<MuxAdapter, MuxOptionalMethod> {
+  const methods: Pick<MuxAdapter, MuxOptionalMethod> = {};
   const readLogicalText = adapter.readLogicalText?.bind(adapter);
-  return readLogicalText === undefined ? {} : { readLogicalText };
+  if (readLogicalText !== undefined) methods.readLogicalText = readLogicalText;
+  const listStarters = adapter.listStarters?.bind(adapter);
+  if (listStarters !== undefined) methods.listStarters = listStarters;
+  const startStarter = adapter.startStarter?.bind(adapter);
+  if (startStarter !== undefined) methods.startStarter = startStarter;
+  // The two ask methods travel together (ADR 0100): an adapter that lists asks answers them.
+  const openAsks = adapter.openAsks?.bind(adapter);
+  if (openAsks !== undefined) methods.openAsks = openAsks;
+  const answerAsk = adapter.answerAsk?.bind(adapter);
+  if (answerAsk !== undefined) methods.answerAsk = answerAsk;
+  // The two control methods travel together too (ADR 0101): an adapter that names turns takes controls.
+  const paneTurn = adapter.paneTurn?.bind(adapter);
+  if (paneTurn !== undefined) methods.paneTurn = paneTurn;
+  const controlTurn = adapter.controlTurn?.bind(adapter);
+  if (controlTurn !== undefined) methods.controlTurn = controlTurn;
+  return methods;
 }
+
+/**
+ * What a program said to one send or abort (ADR 0101). `ok` is final. `stale` carries what is current
+ * (the pane's newest turn and its open asks), and nothing ran. `unknown` may or may not have landed:
+ * a timeout, a dropped connection or a 5xx after the request left. The rest say nothing ran:
+ * `unsupported` (the program cannot take this act), `refused` (a bad body, a reused request id),
+ * `gone` (no such pane) and `unreachable` (nothing was sent).
+ */
+export type MuxControlOutcome =
+  | { readonly kind: "ok"; readonly replayed: boolean }
+  | { readonly kind: "stale"; readonly turnId: string; readonly askIds: readonly string[] }
+  | { readonly kind: "unknown"; readonly detail: string }
+  | { readonly kind: "unsupported"; readonly detail: string }
+  | { readonly kind: "refused"; readonly detail: string }
+  | { readonly kind: "gone"; readonly detail: string }
+  | { readonly kind: "unreachable"; readonly detail: string };
+
+/**
+ * What a program said to one answer (ADR 0100). `taken` and `too-late` are final. `stale` carries
+ * the ask's current form when the program sent one. `unknown` is an answer that may or may not have
+ * landed: a timeout, a dropped connection or a 5xx after the request left.
+ */
+export type MuxAnswerResult =
+  | { readonly kind: "taken"; readonly replayed: boolean }
+  | { readonly kind: "too-late"; readonly replayed: boolean }
+  | { readonly kind: "stale"; readonly ask: Ask | null }
+  | { readonly kind: "unknown"; readonly detail: string };

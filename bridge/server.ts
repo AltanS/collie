@@ -30,7 +30,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
-import type { MuxAdapter, MuxAck, MuxGrid, MuxWorktreeCreateRequest } from "./mux/types.ts";
+import type { MuxAdapter, MuxAck, MuxGrid, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
@@ -44,6 +44,10 @@ import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
 import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
+import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
+import { controlPane, memoryControlReceipts, rawInputRefusal, type ControlReceiptSurface } from "./durable/control.ts";
+import { withOpenAsks, withTurn } from "./durable/pane-asks.ts";
 import {
   memoryWorktreeChoices,
   type BaseKind,
@@ -362,7 +366,23 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
 }
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/;
+/**
+ * The pane routes: `GET /api/pane/:id` and its actions. `answer` (ADR 0100) is
+ * `POST /api/pane/:id/answer` with `{ requestId, askId, revision, optionId, note? }`: a person's tap
+ * answers one open ask of a pane whose adapter raises asks as data, once per request id. It answers
+ * `taken` or `too-late` (200), `stale` with the ask as it is now (409), `unknown` (504, the receipt
+ * stays so the same request id may be sent again), or `refused` (409, `unsupported` for a pane whose
+ * adapter takes no answers). See `bridge/durable/answer.ts`.
+ *
+ * `send` and `abort` (ADR 0101) are `POST /api/pane/:id/send` with
+ * `{ requestId, text, steer?, turnId?, askId? }` and `POST /api/pane/:id/abort` with
+ * `{ requestId, turnId?, askId? }`, exactly one of `turnId` and `askId`: the turn the phone last showed,
+ * or an open ask. They answer `ok` (200), `stale` with the current `turnId` and `askIds` (409, nothing
+ * ran), `unknown` (504, the receipt stays so the same request id may be sent again), or `refused`
+ * (409, `unsupported` for a pane or program that cannot take the act). A body that is not one is a
+ * plain 400. Such a pane refuses `reply` and `keys` with `unsupported`. See `bridge/durable/control.ts`.
+ */
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -1078,6 +1098,24 @@ export function startServer(opts: {
    */
   launchReceipts?: LaunchReceiptSurface;
   /**
+   * One receipt per starter run (ADR 0102, `bridge/starter-launch.ts`). Absent means an in-memory
+   * store; `bridge/index.ts` passes the file-backed one, which writes nothing until a starter runs.
+   */
+  starterReceipts?: StarterReceiptSurface;
+
+  /**
+   * One receipt per answer to an ask (ADR 0100, `bridge/durable/answer.ts`), written before the
+   * answer leaves. Absent means an in-memory store; `bridge/index.ts` passes the file-backed one,
+   * which writes nothing until the first answer.
+   */
+  answerReceipts?: AnswerReceiptSurface;
+  /**
+   * One receipt per send or abort on a pane that takes guarded controls (ADR 0101,
+   * `bridge/durable/control.ts`), written before the control leaves. Absent means an in-memory store;
+   * `bridge/index.ts` passes the file-backed one, which writes nothing until the first control.
+   */
+  controlReceipts?: ControlReceiptSurface;
+  /**
    * The launcher rows phones added on this machine (ADR 0094, `bridge/launchers-added.ts`). Absent
    * means an in-memory store; `bridge/index.ts` passes the file-backed one, which writes nothing until
    * the first add.
@@ -1131,6 +1169,9 @@ export function startServer(opts: {
   const worktreeReceipts = opts.worktreeReceipts ?? memoryWorktreeReceipts();
   const worktreeBases = opts.worktreeBases ?? memoryWorktreeBases();
   const launchReceipts = opts.launchReceipts ?? memoryLaunchReceipts();
+  const starterReceipts = opts.starterReceipts ?? memoryStarterReceipts();
+  const answerReceipts = opts.answerReceipts ?? memoryAnswerReceipts();
+  const controlReceipts = opts.controlReceipts ?? memoryControlReceipts();
   const harnesses = opts.harnesses ?? createHarnessProbe();
   const worktreeChoices = opts.worktreeChoices ?? memoryWorktreeChoices();
   const machines = opts.machines;
@@ -1305,7 +1346,7 @@ export function startServer(opts: {
   ): SnapshotResponse | undefined => {
     const rt = registry.get(sessionName);
     if (!rt) return undefined;
-    const { workspaces, tabs, bridge } = rt.engine.current();
+    const { workspaces, tabs, bridge, muxFault } = rt.engine.current();
     // Attach each pane's activity timestamps. Done here rather than in the state engine so the
     // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
     // are read at serialise time, i.e. as fresh as the request. The ledger is keyed by SESSION, so
@@ -1360,7 +1401,10 @@ export function startServer(opts: {
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
       const wired = sources.map((from) => ({
         name: from.name,
-        panes: pick(from).map((p) => toPaneWire(withActivity(from, p), hasJournal, discoversSessions)),
+        // A pane whose adapter raises asks as data carries them, capped at five (ADR 0100), and one
+        // whose adapter names turns carries its newest `turnId` (ADR 0101); every other pane comes
+        // back from `withOpenAsks` and `withTurn` as the same object.
+        panes: pick(from).map((p) => withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr)),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
       // at all, which is the whole backward-compatibility claim (solo-baseline.test.ts).
@@ -1380,6 +1424,8 @@ export function startServer(opts: {
     };
     // Only report device state when the feature is on, so an off deployment sends nothing new.
     if (device !== null) body.device = device;
+    // Only while the mux is down for a cause the phone words (a refused token), like `device`.
+    if (muxFault !== undefined) body.muxFault = muxFault;
     return body;
   };
 
@@ -1499,6 +1545,7 @@ export function startServer(opts: {
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
         harnesses,
         receipts: launchReceipts,
+        starterReceipts,
         folders,
         switches: launcherSources.switches,
         recentRuns,
@@ -1514,7 +1561,8 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return launchersRoute(allowedLaunchers, req.headers.get("accept-encoding"), harnesses, launchersAdding);
+      // A durable program's starters ride the same list (ADR 0102); every other multiplexer has none.
+      return launchersRoute(allowedLaunchers, req.headers.get("accept-encoding"), harnesses, launchersAdding, rt.herdr.listStarters?.bind(rt.herdr));
     }
     // Add, remove or rename a row a phone added (ADR 0094). Writes, on the write gate, and
     // session-scoped for `/api/launchers`' reason: `?host=` reaches THAT machine's own store through
@@ -1727,6 +1775,12 @@ export function startServer(opts: {
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
+      // A pane that takes guarded controls has no screen to type into and no read-back to guard a
+      // send, so it refuses both raw routes and takes `send` and `abort` instead (ADR 0101).
+      if ((action === "reply" || action === "keys") && req.method === "POST") {
+        const refusal = rawInputRefusal(herdr);
+        if (refusal !== null) return json(refusal.body, req.headers.get("accept-encoding"), refusal.status);
+      }
       // A landed input makes the engine hot for a few polls (§ isPaneInput). On a member this runs
       // through the crew dispatch, so the member that owns the pane is the one that goes hot.
       if (action === "reply" && req.method === "POST")
@@ -1737,6 +1791,50 @@ export function startServer(opts: {
       if (action === "close" && req.method === "POST") return closePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "rename" && req.method === "POST") return renamePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "focus" && req.method === "POST") return focusPane(herdr, rt.engine, paneId, req, audit_, device, session);
+      // An answer to an ask, by id, from a person's tap (ADR 0100). The receipt is written before
+      // the answer leaves; on a crew it lives on the member that owns the pane.
+      if (action === "answer" && req.method === "POST") {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `answerPane` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answered = await answerPane(paneId, body, {
+          adapter: herdr,
+          receipts: answerReceipts,
+          audit: audit_,
+          device,
+          session,
+          settled: () => rt.engine.pokeNow(),
+        });
+        return "text" in answered ? text(answered.text, answered.status) : json(answered.body, req.headers.get("accept-encoding"), answered.status);
+      }
+      // A send or an abort that names the turn or ask the phone saw (ADR 0101). The receipt is written
+      // before the control leaves; on a crew it lives on the member that owns the pane.
+      if ((action === "send" || action === "abort") && req.method === "POST") {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `controlPane` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const controlled = await controlPane(action, paneId, body, {
+          adapter: herdr,
+          receipts: controlReceipts,
+          audit: audit_,
+          device,
+          session,
+          // The program took it: the turn moves or stops, so look now and keep looking for a while.
+          settled: () => {
+            rt.engine.noteInput();
+            rt.engine.pokeNow();
+          },
+        });
+        return "text" in controlled ? text(controlled.text, controlled.status) : json(controlled.body, req.headers.get("accept-encoding"), controlled.status);
+      }
       return text("method not allowed", 405);
     }
 
@@ -3300,7 +3398,7 @@ async function paneHistory(
  * same bytes (an empty `upserts` and three unmoved positions), so it is a 304 either way, which is
  * the requirement.
  */
-async function paneChat(
+export async function paneChat(
   cfg: Config,
   journals: Record<string, JournalAdapter> | null,
   live: LiveWindows | null,
@@ -4904,6 +5002,7 @@ export async function launchersRoute(
   acceptEncoding: string | null,
   harnesses?: Pick<HarnessProbe, "list">,
   adding?: { merged: () => Promise<MergedLaunchers>; file: string; recent?: () => Promise<RecentRun[]> },
+  starters?: () => Promise<MuxStarters>,
 ): Promise<Response> {
   const rows = await getLaunchers();
   const body: LaunchersResponse = { launchers: rows, home: homedir() };
@@ -4914,6 +5013,9 @@ export async function launchersRoute(
     const merged = await adding.merged();
     body.adding = addingBody(merged, adding.file);
     body.items = launcherItems(body.harnesses, merged);
+    // ADR 0102: what a durable program offers to start, ahead of the rest of the agents. A program that
+    // cannot be reached lists none, so a failed read is no row, never a failed list.
+    if (starters !== undefined) body.items = [...starterItems(await starters().catch(() => ({ hostName: "", starters: [], reachable: false }))), ...body.items];
     // ADR 0095: the one-off lines run here, listed even while `[phone] run` is off, each then unavailable.
     if (adding.recent !== undefined) body.recentRuns = recentRunsWire(await adding.recent(), merged.switches.run);
   }
@@ -5310,6 +5412,20 @@ export async function launch(
   const ae = req.headers.get("accept-encoding");
   const receipts = deps.receipts ?? memoryLaunchReceipts();
 
+  // A starter (ADR 0102) has its own receipt and never touches the multiplexer's create calls, so it
+  // is handed over before the launch's own receipt and kinds are read.
+  if (isStarterBody(fields)) {
+    return launchStarter(fields, {
+      mux: herdr,
+      receipts: deps.starterReceipts ?? memoryStarterReceipts(),
+      audit,
+      device,
+      session,
+      json: (answer, status) => json(answer, ae, status),
+      text,
+    });
+  }
+
   // The id first: a known one answers without any other field being looked at again.
   const rawId = fields.requestId;
   if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
@@ -5402,6 +5518,8 @@ export interface LaunchDeps {
   harnesses?: Pick<HarnessProbe, "launch">;
   /** Absent: an in-memory store. */
   receipts?: LaunchReceiptSurface;
+  /** The receipts of starter runs (ADR 0102). Absent: an in-memory store. */
+  starterReceipts?: StarterReceiptSurface;
   /** Where a launch into a named folder is recorded as Recent. Absent: nothing is recorded. */
   folders?: Pick<FolderSurface, "recordRecent">;
   /** This machine's home, for a leading `~` in `cwd`. */

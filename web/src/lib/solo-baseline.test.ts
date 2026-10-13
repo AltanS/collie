@@ -61,6 +61,9 @@ const SNAPSHOT_KEYS = {
   ts: true,
   // Present on the type since M5/02, absent from every solo body — see the section header.
   servers: true,
+  // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
+  // 14), so a healthy solo body carries no such key and no golden byte moved.
+  muxFault: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -119,6 +122,10 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: what the checkout holding the pane's folder is on, read off the disk of
   // the machine the pane lives on. An older bridge or peer omits it.
   gitHead: true,
+  // Not crew dimensions: a durable program's open asks and newest turn (ADR 0100, ADR 0101), present
+  // only on a pane with no screen and absent from an older bridge or peer.
+  asks: true,
+  turnId: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -175,6 +182,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "agents",
       "bridge",
       "device",
+      "muxFault",
       "notifications",
       "servers",
       "sessions",
@@ -208,6 +216,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     expect(AGENT_VIEW_KEYS.session).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
       "agent",
+      "asks",
       "cache",
       "cwd",
       "focused",
@@ -231,6 +240,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "turnId",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

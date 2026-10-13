@@ -255,6 +255,8 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/close` | `POST …/close` (`:282`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/rename` | `POST …/rename` (`:283`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/focus` | `POST …/focus` | forwarded — additive-optional (§7.1). Shows the pane on **the peer machine's** terminal; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `POST` | `/crew/v1/pane/:id/answer` | `POST …/answer` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0100). A person's tap answers one open ask of a pane that carries asks as data, by `requestId`, `askId` and `revision`. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The answer receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as "this answer did not land", never as taken |
+| `POST` | `/crew/v1/pane/:id/send\|abort` | `POST …/send`, `POST …/abort` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0101). A send or a stop on a pane that takes guarded controls, by `requestId` and exactly one of `turnId` and `askId`: the turn the phone last showed, or an open ask. A stale name is refused with 409 and the current `turnId` and `askIds`, before anything reaches the program. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates them never calls them, and a peer that predates them answers 404, which the phone reads as stale, never as done |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/crew/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |
@@ -385,6 +387,17 @@ rather than of a herd: `POST /api/subscribe` (`:303`), `POST /api/notifications/
 live on the lead; notification policy is one crew-wide setting the lead owns; update checking is
 per-machine and is the operator's business on each. A peer's own `/api/*` surface still has them for
 its own operator, when that peer is being used directly.
+
+**Which bridge sends a push for a peer's pane: the lead.** A peer in a crew mutes its own herd push
+path (`herdPushGate`, `bridge/crew/notify.ts`), and the lead derives every alert for a peer's panes
+from the snapshots it sweeps (`PeerNotifier`), then sends it to the subscriptions it holds. So the
+ask push guard ([ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)) runs where
+the push is sent: on the lead, over each swept body, keyed on `(member id, toolCallId)`, with its
+memory in the lead's state dir. A peer runs no guard for its own asks while it is in a crew. The
+guard's hourly breaker counts per member, and its one summary push names the member id. A solo
+collie runs the same guard over its own panes, under host `""`. The push for an ask says only
+"Permission needed in <pane>", where <pane> is the pane's push name, so nothing of the ask crosses
+the push service.
 
 **No upload-read route exists on either surface.** `POST …/upload` stores a file and returns its
 absolute local path (`bridge/server.ts:1090`); nothing serves it back over HTTP today (verified: the
@@ -1257,6 +1270,17 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **Every session and every pane is host-tagged.** `SessionSummary` gains `host: string` and the pane
   wire shape gains `host: string`, so the phone can address what it renders. Absent on a solo
   snapshot (§11).
+- **A pane may carry `asks`** (additive-optional, §7.1, added 2026-10-12,
+  [ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)): every open ask of a pane
+  whose adapter raises them as data, up to the program's 50 per pane. The lead adds no rule for it:
+  the merge keeps a pane whole and only stamps `host`, so a member's asks reach the phone as the
+  member listed them, and a lead that predates the field passes it through the same way. The lead's
+  push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question is shown and
+  not pushed again; it caps pushes, never the list (§5, "Which bridge sends a push").
+- **A pane may carry `turnId`** (additive-optional, §7.1, added 2026-10-12,
+  [ADR 0101](./.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md)): the newest turn
+  of a pane whose adapter takes guarded controls, which the phone sends back with a send or an abort.
+  The merge passes it through like `asks`, and a lead that predates it does the same.
 
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then

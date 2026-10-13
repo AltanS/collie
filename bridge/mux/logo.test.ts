@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { DURABLE_LOGO_SVG } from "./durable/logo.ts";
 import { HERDR_LOGO_SVG } from "./herdr/logo.ts";
 import { TERN_LOGO_SVG } from "./tern/logo.ts";
 import { TMUX_LOGO_SVG } from "./tmux/logo.ts";
@@ -24,6 +25,7 @@ const LOGOS: readonly [name: string, svg: string][] = [
   ["tmux", TMUX_LOGO_SVG],
   ["zellij", ZELLIJ_LOGO_SVG],
   ["tuios", TUIOS_LOGO_SVG],
+  ["durable", DURABLE_LOGO_SVG],
 ];
 
 /** Roughly what a `<img>` in a header should ever cost. Not a limit anyone should need to raise. */

@@ -10,6 +10,8 @@ import {
   settingByKey,
   SECTION_DOC,
 } from "./config-schema.ts";
+import { resolveDurableToken, resolveDurableUrl } from "./mux/durable/http-client.ts";
+import { buildDurableTransport, chooseDurableTransport } from "./mux/durable/transport.ts";
 
 // ── THE COMPLETENESS GREP ────────────────────────────────────────────────────
 //
@@ -216,5 +218,93 @@ describe("the lookups", () => {
     // what makes a misplaced key a problem rather than a silent success.
     expect(settingByKey("network", "poll_ms")).toBeUndefined();
     expect(settingByKey("bridge", "poll_ms")).toBeDefined();
+  });
+});
+
+// ── THE DURABLE TRANSPORT PAIR (ADR 0103) ────────────────────────────────────
+//
+// The schema declares the three names; the rule that exactly one transport is configured, and the
+// URL and token rules, live in `bridge/mux/durable/transport.ts` and `http-client.ts`, because this
+// module parses nothing. They are pinned here beside the rows they govern. Every token below is
+// minted at run time and never written down.
+
+describe("the durable transport settings", () => {
+  const token = (): string => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
+
+  test("durable: the socket, the URL and the token are rows in [mux], and the token is a secret", () => {
+    expect(settingByEnv("COLLIE_DURABLE_SOCKET")).toMatchObject({ section: "mux", kind: "string" });
+    expect(settingByEnv("COLLIE_DURABLE_URL")).toMatchObject({ section: "mux", key: "durable_url", kind: "string", default: "" });
+    expect(settingByEnv("COLLIE_DURABLE_TOKEN")).toMatchObject({ section: "mux", key: "durable_token", kind: "secret", default: "" });
+  });
+
+  test("durable: the socket alone, or the URL with its token, is a transport", () => {
+    expect(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock" })).toEqual({ kind: "socket", configured: "/run/user/1000/d.sock" });
+    expect(chooseDurableTransport({})).toEqual({ kind: "socket", configured: undefined });
+    const pair = chooseDurableTransport({ COLLIE_DURABLE_URL: "https://member.example.workers.dev", COLLIE_DURABLE_TOKEN: token() });
+    expect(pair.kind).toBe("https");
+  });
+
+  test("durable: the socket and the URL both set is one clear config error", () => {
+    const both = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() });
+    expect(both).toEqual({
+      kind: "conflict",
+      detail: "COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set; set the socket, or the URL with its token, not both",
+    });
+    const socketAndToken = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_TOKEN: token() });
+    expect(socketAndToken.kind).toBe("conflict");
+  });
+
+  test("durable: a URL without a token, or a token without a URL, is a config error", () => {
+    expect(chooseDurableTransport({ COLLIE_DURABLE_URL: "https://x.example" })).toEqual({
+      kind: "conflict",
+      detail: "COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the program refuses a caller with no token",
+    });
+    expect(chooseDurableTransport({ COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: "   " }).kind).toBe("conflict");
+    expect(chooseDurableTransport({ COLLIE_DURABLE_TOKEN: token() })).toMatchObject({ kind: "conflict" });
+  });
+
+  test("durable: plain http off loopback is refused with the reason", () => {
+    for (const url of ["http://example.com:8801", "http://192.168.1.4:8801", "http://[::1]:8801", "http://127.0.0.2:8801"]) {
+      const resolved = resolveDurableUrl(url);
+      expect(resolved.ok).toBe(false);
+      if (!resolved.ok) expect(resolved.detail).toContain("unencrypted");
+    }
+    expect(resolveDurableUrl("ftp://x.example")).toEqual({ ok: false, detail: "COLLIE_DURABLE_URL must start with https://" });
+  });
+
+  test("durable: loopback http with a port is allowed for wrangler dev, without a port it is refused", () => {
+    expect(resolveDurableUrl("http://127.0.0.1:8801")).toEqual({ ok: true, base: "http://127.0.0.1:8801", loopback: true, bytes: 21 });
+    expect(resolveDurableUrl("http://localhost:8801/")).toMatchObject({ ok: true, base: "http://localhost:8801", loopback: true });
+    expect(resolveDurableUrl("http://127.0.0.1")).toMatchObject({ ok: false });
+    expect(resolveDurableUrl("https://member.example.workers.dev/collie/")).toMatchObject({ ok: true, base: "https://member.example.workers.dev/collie", loopback: false });
+  });
+
+  test("durable: the URL may not carry a user, a query, a fragment, its own /session/v1, or more than 2048 bytes", () => {
+    for (const url of ["https://me:pw@x.example", "https://x.example/?t=1", "https://x.example/#a", "https://x.example/session/v1", `https://x.example/${"a".repeat(2048)}`, "not a url"]) {
+      expect(resolveDurableUrl(url).ok).toBe(false);
+    }
+    const withUser = resolveDurableUrl("https://me:hunter2@x.example");
+    if (!withUser.ok) expect(withUser.detail).not.toContain("hunter2");
+  });
+
+  test("durable: a token under 32 bytes after a trim is refused by its byte count, never by its value", () => {
+    const short = token().slice(0, 31);
+    const refused = resolveDurableToken(`   ${short}   `);
+    expect(refused).toEqual({ ok: false, detail: "COLLIE_DURABLE_TOKEN is 31 bytes; it must be at least 32 bytes, for example 64 hex characters from `openssl rand -hex 32`" });
+    expect(JSON.stringify(refused)).not.toContain(short);
+    const spaced = resolveDurableToken(`${token()} ${token()}`);
+    expect(spaced).toEqual({ ok: false, detail: "COLLIE_DURABLE_TOKEN must be printable ASCII with no spaces" });
+    const good = token();
+    const accepted = resolveDurableToken(`  ${good}\n`);
+    expect(accepted.ok && accepted.bytes).toBe(64);
+    expect(accepted.ok && accepted.reveal()).toBe(good);
+    expect(JSON.stringify(accepted)).not.toContain(good);
+  });
+
+  test("durable: a broken config still builds a transport, and its boot line names the broken rule", () => {
+    const built = buildDurableTransport(chooseDurableTransport({ COLLIE_DURABLE_URL: "http://example.com:1", COLLIE_DURABLE_TOKEN: token() }));
+    expect(built.description).toStartWith("not started: COLLIE_DURABLE_URL uses plain http");
+    const both = buildDurableTransport(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/s", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() }));
+    expect(both.description).toStartWith("not started: COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set");
   });
 });

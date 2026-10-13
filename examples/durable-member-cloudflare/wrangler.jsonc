@@ -1,0 +1,27 @@
+// The Worker and its one Durable Object. `wrangler dev --port 8801 --ip 127.0.0.1` runs it locally;
+// `wrangler deploy` puts it on your account. The token is a secret, never a var: `wrangler secret put
+// COLLIE_TOKEN`, or `.dev.vars` for wrangler dev.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "collie-durable-member",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  // Pi reads its model key from process.env, which nodejs_compat fills from the Worker's bindings.
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [{ "name": "MEMBER", "class_name": "Member" }]
+  },
+  // The SQLite storage backend. Pi Durable's storage adapter needs ctx.storage.sql.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Member"] }],
+  // The Pi glue and the script are shared with ../durable-member and import Pi from there. These
+  // lines make the bundle take Pi from THIS folder, so there is one copy of each package. Two copies
+  // would break Pi's class checks. vitest.config.ts (dedupe) and tsconfig.json (paths) say the same.
+  "alias": {
+    "@earendil-works/pi-durable": "./node_modules/@earendil-works/pi-durable/dist/index.js",
+    "@earendil-works/pi-ai": "./node_modules/@earendil-works/pi-ai/dist/index.js",
+    "@earendil-works/pi-ai/providers/faux": "./node_modules/@earendil-works/pi-ai/dist/providers/faux.js",
+    "@earendil-works/chord": "./node_modules/@earendil-works/chord/dist/index.js",
+    "@earendil-works/chord/context": "./node_modules/@earendil-works/chord/dist/context/index.js"
+  }
+}

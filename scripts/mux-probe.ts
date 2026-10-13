@@ -4,6 +4,7 @@
 //   bun scripts/mux-probe.ts                 # every registered adapter
 //   bun scripts/mux-probe.ts --mux herdr     # just one
 //   COLLIE_MUX_ENDPOINT_TMUX=/tmp/tmux-1000/default bun scripts/mux-probe.ts --mux tmux
+//   COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock bun scripts/mux-probe.ts --mux durable
 //
 // WHY IT EXISTS SEPARATELY FROM `bun test bridge/mux`. The pure layer drives every adapter through a
 // fake transport, which is what lets it run with no multiplexer installed — and is also exactly what
@@ -22,6 +23,7 @@
 
 import { loadConfig } from "../bridge/config.ts";
 import { MUX_READ_ONLY_CHECKS } from "../bridge/mux/conformance.ts";
+import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
 import { HERDR_DIAL_MODE_OPTION } from "../bridge/mux/herdr/adapter.ts";
 import {
   buildMuxRegistry,
@@ -86,11 +88,29 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
     return 0;
   }
   if (!reachable) {
+    // A durable program has no endpoint key: its socket is COLLIE_DURABLE_SOCKET, or its URL and token
+    // are COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN, which the adapter reads itself. `snapshot()` throws the adapter's own reason (not set, not private, incompatible).
+    if (factory.mux === DURABLE_MUX) {
+      let why = "it did not answer";
+      try {
+        await adapter.snapshot();
+      } catch (err) {
+        why = err instanceof Error ? err.message : String(err);
+      }
+      skip(factory.mux, `the durable program is not reachable (${why}); start it, and set COLLIE_DURABLE_SOCKET to its socket path, or COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN`);
+      return 0;
+    }
     skip(factory.mux, `nothing is answering at ${endpoint} — start the multiplexer, or point ${endpointVar(factory.mux)} at it`);
     return 0;
   }
 
-  console.log(`\n── ${factory.mux} @ ${endpoint} — live, running ${MUX_READ_ONLY_CHECKS.length} read-only checks`);
+  // The durable wire in one line: `hello` agreed and `ready` (or `reachable()` would have been false),
+  // then the panes the snapshot holds. The read-only checks below run on top of it.
+  if (factory.mux === DURABLE_MUX) {
+    console.log(`\n── durable: hello ready, snapshot holds ${String((await adapter.snapshot()).panes.length)} pane(s)`);
+  }
+
+  console.log(`\n── ${factory.mux} @ ${endpoint === "" ? "its own default target" : endpoint} — live, running ${MUX_READ_ONLY_CHECKS.length} read-only checks`);
   let failed = 0;
   for (const check of MUX_READ_ONLY_CHECKS) {
     let problems: string[];

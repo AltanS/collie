@@ -33,6 +33,7 @@ import {
   tmuxServerLabel,
 } from "../bridge/mux/tmux/exec.ts";
 import { ZELLIJ_BINARY_OPTION, ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
+import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
 import { TERN_BINARY_OPTION } from "../bridge/mux/tern/adapter.ts";
 import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
 import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
@@ -59,6 +60,7 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
+import { durableFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
@@ -238,6 +240,11 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     frontDoor(deps, mode),
     pairedDevices(deps, mode),
     mux(deps),
+    // A durable program has no binary or listing to ask. Six rows say which transport is configured,
+    // whether its socket or its URL and token may be used, and whether the program answers, and a
+    // seventh whether the lead is new enough to show its panes: only when `durable` is the
+    // multiplexer this install drives.
+    ...(chosen.name === DURABLE_MUX ? await durableFindings({ ctx: deps.ctx, crew: { mode, marker: runtimeMarker } }) : []),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
     // on POSIX the mode bits are checked where the files are read, as before.
@@ -1774,6 +1781,9 @@ function mux(deps: DoctorDeps): Finding {
   }
   if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
   if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
+  // A durable program is asked by the four `durable-*` rows, so this line defers to them as the
+  // Herdr line defers to `herdr-socket`.
+  if (settings.name === DURABLE_MUX) return ok("mux", `${DURABLE_MUX}, see the durable-* lines${originSuffix(settings.origin)}`);
   // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
   // `acl` gives: a check that could not run must never render as one that did.
   return skipped(

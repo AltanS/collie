@@ -15,7 +15,15 @@ import type { ChatStatus } from "./chat-window";
 // written its log, so it is the moment a missing one becomes a fault rather than a wait. Nothing
 // here counts seconds, except one last resort for a pane that works and never sends another event.
 //
+// ── A PANE WITH NO SCREEN IS CHAT ONLY (ADR 0099 point 9) ───────────────────
+// When the multiplexer cannot hand over a screen (`paneGrid` false) there is no terminal to show and
+// none to fall back to. Chat is the only body, whatever the device chose and whatever the log says,
+// so every rule below that ends in `terminal` does not apply (rule 0). The body is `chat` once the
+// pane has a session whose log can be read, and `start` until then: a program's first message, or a
+// log the bridge has not written yet, reads as "send a message to begin" and never as a terminal.
+//
 // ── THE RULE, IN ORDER ───────────────────────────────────────────────────────
+//   0. The pane has no screen → chat when it has a readable session, else start. Nothing below runs.
 //   1. The device chose the terminal, or this harness cannot draw Chat → terminal. So does a server
 //      that said it cannot read at all (`off`): there is no event to wait for.
 //   2. The pane has a session and its log is not known to be missing → chat.
@@ -79,6 +87,12 @@ export type PaneHistory = "fresh" | "unknown";
 export type PaneActivity = "none" | "working" | "blocked" | "ended" | "stalled";
 
 export interface ChatGateInput {
+  /**
+   * The pane has a screen to show (`paneGrid`). Absent reads as true, the fail-open direction of
+   * lib/mux-capability.ts: a bridge that has not said no has not said it has no screen. `false`
+   * makes Chat the only body.
+   */
+  grid?: boolean;
   /** The device chose Chat, and this pane's harness can draw it (a session log on this multiplexer). */
   chat: boolean;
   /** The pane reported an agent session. */
@@ -97,6 +111,7 @@ export interface ChatGateInput {
 export type PaneBody = "chat" | "start" | "terminal";
 
 export function paneBody(input: ChatGateInput): PaneBody {
+  if (input.grid === false) return input.session && input.journal !== "missing" ? "chat" : "start";
   if (!input.chat || input.journal === "off") return "terminal";
   if (input.session && input.journal !== "missing") return "chat";
   if (input.history === "unknown") return "terminal";

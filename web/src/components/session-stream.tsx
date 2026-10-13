@@ -7,9 +7,12 @@ import { Button } from "@/components/ui/button";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
+import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
 import { itemsOf } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
 import { t, type MessageKey } from "@/lib/i18n";
+import type { Ask } from "@/lib/types";
+import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
 import { cn } from "@/lib/utils";
 
@@ -251,6 +254,7 @@ export function SessionStream({
   listRef,
   savedCopy = null,
   onSendQueuedNow,
+  asks,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -287,10 +291,20 @@ export function SessionStream({
    * sent. The keys are handed back so this body never holds a copy of its own.
    */
   onSendQueuedNow?: (keys: readonly string[]) => Promise<boolean>;
+  /**
+   * The open asks of a pane that carries them as data (ADR 0100), and the props every card shares. Each card sits
+   * under the block that shows its item, or at the tail when that item is not on screen. The list holds
+   * every open ask; the first five are drawn and an "N more" button opens the rest (lib/ask.ts
+   * `shownAsks`). Absent on every pane with a screen, which draws none.
+   */
+  asks?: { list: readonly Ask[]; card: Omit<AskCardProps, "ask"> };
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
   const { window, loadOlder, loadingOlder } = feed;
+  // The asks past the first five stay folded until the person opens them (lib/ask.ts `shownAsks`).
+  const [asksOpen, setAsksOpen] = useState(false);
+  const askList = asks === undefined ? undefined : shownAsks(asks.list, asksOpen);
 
   const blocks = useMemo(() => {
     // READ, not merely listed as a dependency, which is what makes it an honest one: `itemsOf`
@@ -422,7 +436,7 @@ export function SessionStream({
         )
       )}
 
-      {blocks.map((group) => (
+      {blocks.map((group, index) => (
         <div key={group[0]!.id} data-block data-n={group.length} className={STREAM_BLOCK}>
           {/* A group of one is an ordinary block, EXCEPT a lone tool call while tool calls are off:
               that one folds too, or "off" would leave every single-step turn drawn in full. */}
@@ -431,8 +445,33 @@ export function SessionStream({
           ) : (
             <ToolGroup items={group} liveOpens={showToolCalls} />
           )}
+          {asks === undefined || askList === undefined ? null : asksAt(blocks, askList.shown, index).map((ask) => <AskCard key={ask.id} ask={ask} {...asks.card} />)}
         </div>
       ))}
+
+      {/* The asks whose item is not on screen: older than the window, or never logged. They stand at
+          the tail, where the next thing the program does will arrive, because an ask is the one block
+          that waits for a person. */}
+      {asks === undefined || askList === undefined ? null : (
+        <>
+          {asksAt(blocks, askList.shown, null).map((ask) => (
+            <div key={ask.id} data-slot="stream-ask" className="my-1">
+              <AskCard ask={ask} {...asks.card} />
+            </div>
+          ))}
+          {asks.list.length > ASKS_SHOWN ? (
+            <button
+              type="button"
+              data-slot="stream-ask-more"
+              aria-expanded={asksOpen}
+              onClick={() => setAsksOpen((open) => !open)}
+              className={EDGE_ROW}
+            >
+              {asksOpen ? t("ask.showFewer") : t("ask.showMore", { count: askList.hidden })}
+            </button>
+          ) : null}
+        </>
+      )}
 
       {/* A turn is running. Last of the thread, because that is where its answer will arrive. Drawn
           only where the window is actually being read: a pane whose journal cannot be read is busy

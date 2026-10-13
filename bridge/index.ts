@@ -37,6 +37,7 @@ import {
 } from "./owner-only.ts";
 import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
+import { durableLogDir } from "./durable/log.ts";
 import { GitHeads } from "./git-head.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
@@ -48,6 +49,7 @@ import {
   releaseManagedFrontDoor,
   shouldReleaseFrontDoor,
 } from "./front-door.ts";
+import { DURABLE_LOG_DIR_OPTION, DURABLE_MUX } from "./mux/durable/adapter.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
 import { deriveConfigRoot } from "./mux/herdr/sessions.ts";
@@ -70,6 +72,12 @@ import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
+import { StarterReceiptStore } from "./starter-launch.ts";
+import { AnswerReceiptStore } from "./durable/answer.ts";
+import { ControlReceiptStore } from "./durable/control.ts";
+import { askFloodMessage, AskPush, LOCAL_ASK_HOST } from "./durable/ask-push.ts";
+import { AskGuardStore } from "./durable/guard.ts";
+import { OldLeadNotice } from "./durable/old-lead.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
@@ -680,7 +688,9 @@ await activity.load();
 // once, and handed to both the tracker and the server, so the probe and the history route share the
 // adapters' memoised path caches. Null when `COLLIE_TRANSCRIPT` is off: no journal means no probe, and
 // every pane then reads exactly as it did before this feature existed.
-const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
+const journals = cfg.transcript
+  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] })
+  : null;
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
   journals === null
@@ -718,6 +728,27 @@ await worktreeBases.load();
 // pane (ADR 0091, bridge/launch-receipts.ts). Loading writes nothing.
 const launchReceipts = new LaunchReceiptStore(cfg.stateDir);
 await launchReceipts.load();
+
+// One receipt per starter run (ADR 0102, bridge/starter-launch.ts). Loading writes nothing.
+const starterReceipts = new StarterReceiptStore(cfg.stateDir);
+await starterReceipts.load();
+
+// One receipt per answer to an ask, written before the answer leaves (ADR 0100,
+// bridge/durable/answer.ts). Loading writes nothing: the file appears on the first answer.
+const answerReceipts = new AnswerReceiptStore(cfg.stateDir);
+await answerReceipts.load();
+
+// One receipt per send or abort on a durable pane, written before the control leaves (ADR 0101,
+// bridge/durable/control.ts). Loading writes nothing: the file appears on the first control.
+const controlReceipts = new ControlReceiptStore(cfg.stateDir);
+await controlReceipts.load();
+
+// The push guard for asks that travel as data (ADR 0100, bridge/durable/guard.ts), keyed on
+// (host, toolCallId), one memory for this machine's panes and for every peer's. Loading writes
+// nothing: the file appears when a pane that carries asks first opens one.
+const askGuard = new AskGuardStore(cfg.stateDir);
+askGuard.load();
+const askPush = new AskPush(askGuard);
 
 // The New sheet's last branch choices per repo on this machine (M48, bridge/worktree-choices.ts).
 // Loading writes nothing: the file appears on the first branch create that works.
@@ -1067,6 +1098,21 @@ const crewFollower =
       })
     : undefined;
 
+/**
+ * A durable peer names a lead too old to show its panes properly (M50 spec 14, bridge/durable/old-lead.ts).
+ * `undefined` on every other machine: a lead, a solo instance, or a peer that drives another mux.
+ */
+const oldLead = crew.mode === "peer" && cfg.mux === DURABLE_MUX ? new OldLeadNotice() : undefined;
+
+/** The lead's two follow headers, handed to whichever of the follower and the old-lead notice exist. */
+const onFollow =
+  crewFollower === undefined && oldLead === undefined
+    ? undefined
+    : (a: { readonly leadRelease: string | null; readonly turn: string | null }): void => {
+        oldLead?.observe(a.leadRelease);
+        crewFollower?.observe(a);
+      };
+
 async function updatePreflightReport(fresh: boolean) {
   if (!canRunUpdate) return null;
   if (fresh && freshPreflightGate.admit()) {
@@ -1132,6 +1178,7 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       [TMUX_BINARY_OPTION]: cfg.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
       [TERN_BINARY_OPTION]: cfg.ternBin,
+      [DURABLE_LOG_DIR_OPTION]: durableLogDir(cfg.stateDir),
     },
   };
   const herdr = withBeaconsIfBlind(createMux(muxRegistry, cfg.mux, target), target);
@@ -1203,8 +1250,31 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs, (status) =>
     notifyPrefs.isNotifiable(status),
   );
-  engine.onTransition((agent, from, to) => notifications.onTransition(agent, from, to));
+  // A pane whose adapter raises asks as data (ADR 0100) does not push on its way into `blocked`: the
+  // ask guard decides, once per ask, after each poll. Every other pane, and every other transition,
+  // reaches the coordinator as before. In peer mode the sink is muted anyway and the lead runs the
+  // guard over the swept body, so a peer runs none and writes no guard file.
+  const openAsks = herdr.openAsks?.bind(herdr);
+  const guarded = openAsks !== undefined && crew.mode !== "peer";
+  engine.onTransition((agent, from, to) => {
+    if (guarded && AskPush.holds({ asks: openAsks(agent.paneId) }, to)) return;
+    notifications.onTransition(agent, from, to);
+  });
   engine.onRemove((paneId) => notifications.onRemove(paneId));
+  if (guarded) {
+    engine.onUpdate((s) =>
+      askPush.observe(
+        LOCAL_ASK_HOST,
+        s.agents.map((agent) => ({ agent, paneId: agent.paneId, asks: openAsks(agent.paneId) })),
+        ({ agent }) => notifications.onTransition(agent, agent.status, "blocked", "ask"),
+        // The hourly breaker tripped: one summary, under the same snooze and the same "blocked"
+        // preference as every herd push.
+        () => {
+          if (!snooze.isMuted() && notifyPrefs.isNotifiable("blocked")) void push.send(askFloodMessage(LOCAL_ASK_HOST, hostname()));
+        },
+      ),
+    );
+  }
 
   engine.start();
   poker.start();
@@ -1273,6 +1343,7 @@ const peerNotifier =
         mute: snooze,
         delayMs: cfg.notifyDelayMs,
         isNotifiable: (status) => notifyPrefs.isNotifiable(status),
+        asks: askPush,
       })
     : undefined;
 
@@ -1400,13 +1471,16 @@ const activatedGeneration =
 
 runtimeFacts = () => {
   const facts = leadContact.facts();
-  return {
+  const held: CrewRuntimeFacts = {
     anchoredGeneration: activatedGeneration,
     leadLastDialledAt: facts.lastDialledAt,
     leadRefusedSecretAt: facts.leadRefusedSecretAt,
     deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
     pairingCollision,
   };
+  // For `collie doctor`'s `durable-lead` row: only a durable peer that has heard its lead state one.
+  const leadRelease = oldLead?.leadRelease() ?? null;
+  return leadRelease === null ? held : { ...held, leadRelease };
 };
 void checkpointRuntime();
 
@@ -2023,6 +2097,9 @@ const server = startServer({
   worktreeReceipts,
   worktreeBases,
   launchReceipts,
+  starterReceipts,
+  answerReceipts,
+  controlReceipts,
   worktreeChoices,
   addedLaunchers,
   recentRuns,
@@ -2066,10 +2143,11 @@ const server = startServer({
             updateRun: () => peerRunWire(readUpdateRun(cfg.stateDir)),
             // ADR 0084: this machine's own last load sample, the one the sampler already holds.
             machineStats: () => machineSampler.latest(),
-            // §20's two REQUEST headers, handed to this peer's own follow. A build with no follower
-            // — a lead, or a checkout with nothing compiled — passes `undefined` and ignores both,
-            // which is a correct peer.
-            onFollow: crewFollower === undefined ? undefined : (a) => crewFollower.observe(a),
+            // §20's two REQUEST headers, handed to this peer's own follow, and the release header to a
+            // durable peer's old-lead notice. A build with neither — a lead, or a checkout with nothing
+            // compiled that drives no durable program — passes `undefined` and ignores both, which is
+            // a correct peer.
+            onFollow,
             onMembershipChange: crewStoreChanged,
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),

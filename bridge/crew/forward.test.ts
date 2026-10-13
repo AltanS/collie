@@ -129,6 +129,27 @@ describe("which routes cross a link", () => {
     expect(crewRouteFor("/api/workspace")).toBe("workspace");
   });
 
+  test("an answer to an ask crosses the link as a write, to the member that owns the pane (ADR 0100)", () => {
+    expect(crewRouteFor("/api/pane/w1:p1/answer")).toBe("pane/w1:p1/answer");
+    expect(apiPathFor("pane/w1:p1/answer")).toBe("/api/pane/w1:p1/answer");
+    expect(forwardKind("pane/w1:p1/answer")).toBe("write");
+    expect(forwardPaneId("pane/conv%2001/answer")).toBe("conv 01");
+    // Nothing hangs under it: an answer is one route, not a family.
+    expect(crewRouteFor("/api/pane/w1:p1/answer/x")).toBeNull();
+  });
+
+  test("a send and an abort cross the link as writes, to the member that owns the pane and its receipt (ADR 0101)", () => {
+    for (const action of ["send", "abort"]) {
+      expect(crewRouteFor(`/api/pane/conv-02/${action}`)).toBe(`pane/conv-02/${action}`);
+      expect(apiPathFor(`pane/conv-02/${action}`)).toBe(`/api/pane/conv-02/${action}`);
+      expect(forwardKind(`pane/conv-02/${action}`)).toBe("write");
+      expect(forwardPaneId(`pane/conv%2002/${action}`)).toBe("conv 02");
+      // The member's control route writes `send` or `abort` (bridge/durable/control.ts), so the lead's line matches.
+      expect(forwardAuditAction(`pane/conv-02/${action}`)).toBe(action);
+      expect(crewRouteFor(`/api/pane/conv-02/${action}/x`)).toBeNull();
+    }
+  });
+
   test("launch and its rows cross the link too — rows must come from the host that runs them", () => {
     expect(crewRouteFor("/api/launch")).toBe("launch");
     expect(crewRouteFor("/api/launchers")).toBe("launchers");
@@ -215,7 +236,7 @@ describe("which routes cross a link", () => {
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
     // `files` with the Files view (ADR 0083).
     expect(paneActions).toEqual([
-      "changes", "chat", "close", "files", "focus", "history", "keys", "rename", "reply", "upload",
+      "abort", "answer", "changes", "chat", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
     ]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
@@ -263,7 +284,7 @@ describe("which routes cross a link", () => {
     // must be attempted against a stale member rather than refused before it is tried (§10.3).
     expect(forwardKind("pane/w1:p1/chat")).toBe("read");
     expect(forwardKind("pane/w1:p1/changes")).toBe("read");
-    for (const action of ["reply", "keys", "upload", "close", "rename"]) {
+    for (const action of ["reply", "keys", "upload", "close", "rename", "answer", "send", "abort"]) {
       expect(forwardKind(`pane/w1:p1/${action}`)).toBe("write");
     }
     expect(forwardKind("tab")).toBe("write");
@@ -282,6 +303,8 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("pane/w1:p1/reply")).toBe("reply");
     expect(forwardAuditAction("pane/w1:p1/keys")).toBe("keys");
     expect(forwardAuditAction("pane/w1:p1/upload")).toBe("upload");
+    // The member's answer route writes `answer` (bridge/durable/answer.ts), so the lead's line matches.
+    expect(forwardAuditAction("pane/w1:p1/answer")).toBe("answer");
     expect(forwardAuditAction("pane/w1:p1/close")).toBe("pane.close");
     expect(forwardAuditAction("pane/w1:p1/rename")).toBe("pane.rename");
     expect(forwardAuditAction("tab")).toBe("tab.create");

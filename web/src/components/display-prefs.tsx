@@ -51,6 +51,11 @@ export interface PaneViewControl {
   onChange: (view: PaneView) => void;
   /** Why THIS pane keeps the terminal, when it must. Set means Chat cannot be chosen here. */
   note?: string;
+  /**
+   * False on a pane with no screen: Chat is its only view, so the View switch is not drawn at all
+   * (ADR 0099 point 9). Absent reads as true, a pane with a terminal to switch to.
+   */
+  terminalOffered?: boolean;
   /** Whether the stream draws the agent's tool calls. Settings → Appearance writes the same value. */
   showToolCalls: boolean;
   setShowToolCalls: (on: boolean) => void;
@@ -218,7 +223,7 @@ export function DisplayPrefsContent({
   const chat = paneView?.showing === "chat";
   return (
     <div className="divide-y divide-border">
-      {paneView && <ViewRow view={paneView} />}
+      {paneView && paneView.terminalOffered !== false && <ViewRow view={paneView} />}
       {chat && paneView ? (
         <>
           <TextSizeRow

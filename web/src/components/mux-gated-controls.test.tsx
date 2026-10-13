@@ -472,3 +472,43 @@ describe("An empty herd — agentDetection", () => {
     await waitFor(() => expect(screen.queryByText(/does not know what an agent is/i)).toBeNull());
   });
 });
+
+// ── A pane with no screen → paneGrid (ADR 0099) ──────────────────────────────
+
+describe("A pane with no screen, paneGrid", () => {
+  const ask = {
+    id: "ask-1",
+    kind: "permission",
+    toolCallId: "c1",
+    revision: 1,
+    title: "Run the tests?",
+    itemId: "nowhere",
+    options: [{ id: "yes", label: "Run them", effect: "allow" as const }],
+  };
+
+  it("is Chat only: the durable composer replaces the terminal one, with no keys and no terminal row", async () => {
+    declares({ paneGrid: false });
+    chat({ turnId: "turn-1", status: "idle" });
+    expect(await screen.findByPlaceholderText("Message this conversation")).toBeEnabled();
+    expect(screen.queryByPlaceholderText(/type a reply/i)).toBeNull();
+    await openPaneMenu();
+    expect(screen.queryByRole("button", { name: /terminal/i })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /terminal/i })).toBeNull();
+  });
+
+  it("draws an ask from the pane's data as a card", async () => {
+    declares({ paneGrid: false });
+    chat({ turnId: "turn-1", asks: [ask] });
+    expect(await screen.findByText("Run the tests?")).toBeInTheDocument();
+    // Not asserted enabled: this harness never stamps liveness, so the pane reads as still connecting
+    // and the buttons are off by design. The enabled card is pinned in ask-card.test.tsx.
+    expect(screen.getByRole("button", { name: /Run them/ })).toBeInTheDocument();
+  });
+
+  it("stays on the terminal composer, with the choice and no cards, where a screen exists", async () => {
+    declares({ paneGrid: true });
+    chat({ asks: [ask] });
+    expect(await screen.findByPlaceholderText(/type a reply/i)).toBeEnabled();
+    expect(screen.queryByPlaceholderText("Message this conversation")).toBeNull();
+  });
+});
