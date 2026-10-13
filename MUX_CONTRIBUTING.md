@@ -151,8 +151,14 @@ cannot drift from it). Anything needing `Bun.serve`/`Bun.connect` is unit-untest
   live pane is somebody's work session. What it adds is what a fake cannot — real escape sequences,
   real id shapes, real timing.
 
-Run both. Then `bun run test` (the whole backend suite) and `SKIP_TESTS=1 bun run build` (lint +
-both typechecks).
+- **Throwaway — opt-in, and it writes.** `bun scripts/mux-e2e.ts` starts its own tmux, zellij and
+  tuios, each under a temporary HOME, XDG dirs and socket dir, runs the live probe against it, then
+  types a command through the adapter and reads its output back. It owns those instances, so it may
+  type; it tears them down and deletes the temporary root, pass or fail. A multiplexer not on `PATH`
+  is skipped, never passed. `--mux <name>` runs one.
+
+Run the pure and live layers, and the throwaway one when you change how an adapter writes. Then
+`bun run test` (the whole backend suite) and `SKIP_TESTS=1 bun run build` (lint + both typechecks).
 
 ## Things that will bite you
 
