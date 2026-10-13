@@ -186,7 +186,8 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
 function noteFor(card: AskCardState, offline: boolean): string | null {
   switch (card.phase) {
     case "late":
-      return t("ask.late");
+      // Not "Already answered": after a wake the same question may come back under the same id.
+      return t("ask.notTaken");
     case "stale":
       return card.older ? t("ask.stale.older") : t("ask.stale");
     case "unknown":

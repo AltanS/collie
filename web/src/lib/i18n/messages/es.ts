@@ -481,6 +481,8 @@ export const es: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
+  // TODO wordsmith
+  "ask.notTaken": "Not taken. The question may show again in a moment.",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -950,6 +952,8 @@ export const es: Dictionary = {
   "connection.connected": "Conectado",
   "connection.reconnecting": "Reconectando…",
   "connection.herdrDown": "Herdr no responde en el host",
+  // TODO wordsmith
+  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
   "connection.offlineCantReach": "Sin conexión: no se puede conectar con Collie",
   "connection.cantReach": "No se puede conectar con Collie",
   "connection.withLastSeen": "{cause}. Última conexión: {time}",

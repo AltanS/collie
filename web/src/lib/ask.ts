@@ -95,7 +95,9 @@ export function optionTone(effect: AskOption["effect"]): "selected" | "default" 
  *  - `idle`: nothing sent. The buttons are live.
  *  - `sending`: a tap is on its way. Every button is off, the tapped one wears a spinner.
  *  - `taken`: the program took the answer. The card closes.
- *  - `late`: someone else answered first. One line, no buttons, gone on the next poll.
+ *  - `late`: the program said `too-late`: the ask was not open when the answer came. Someone else
+ *    answered, the turn stopped, or the program woke and has not raised the question again yet (it
+ *    keeps its id, M50 spec 14). One line, no buttons; the next poll drops the card or shows it again.
  *  - `stale`: the ask changed under the phone. The card shows its new form and asks for a fresh tap.
  *  - `unknown`: the answer may or may not have arrived. "Try again" sends the SAME request id.
  *  - `maybe`: an earlier try had an unknown outcome and the retry found the ask closed or changed, so

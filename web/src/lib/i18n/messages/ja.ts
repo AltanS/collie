@@ -477,6 +477,8 @@ export const ja: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
+  // TODO wordsmith
+  "ask.notTaken": "Not taken. The question may show again in a moment.",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -945,6 +947,8 @@ export const ja: Dictionary = {
   "connection.connected": "接続済み",
   "connection.reconnecting": "再接続中…",
   "connection.herdrDown": "ホスト上のHerdrが停止しています",
+  // TODO wordsmith
+  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
   "connection.offlineCantReach": "オフライン: Collieに接続できません",
   "connection.cantReach": "Collieに接続できません",
   "connection.withLastSeen": "{cause} (最終確認 {time})",

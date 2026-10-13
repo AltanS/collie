@@ -57,6 +57,7 @@ let liveStale = false;
 function renderBanner(
   props: {
     bridge?: "connected" | "disconnected";
+    muxFault?: "token-refused";
     host?: string;
     servers?: ServerSummary[];
     error?: boolean;
@@ -72,6 +73,7 @@ function renderBanner(
     return (
       <ConnectionBanner
         bridge={props.bridge ?? "disconnected"}
+        muxFault={props.muxFault}
         host={props.host}
         error={props.error ?? false}
         authError={props.authError ?? false}
@@ -171,6 +173,30 @@ describe("ConnectionBanner — the single connection surface", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /reload/i })).toBeNull();
     expect(screen.getByRole("button", { name: "Hide this notice" })).toBeInTheDocument();
+  });
+
+  // M50 spec 14: a durable program that refused this peer's token. Waiting does not cure it, so the
+  // amber bar names it at once instead of "Reconnecting…", and red keeps the same sentence.
+  it("names a refused token in amber and in red, and never says Reconnecting or Herdr for it", async () => {
+    const TOKEN = "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.";
+    h.trouble = true;
+    renderBanner({ muxFault: "token-refused" });
+    expect(announced("status")).toHaveTextContent(TOKEN);
+    expect(row()?.className).toMatch(/bg-status-working/);
+    h.lost = true;
+    cfg.reachable = true;
+    act(() => rerenderBanner());
+    await act(async () => {});
+    expect(announced("alert")).toHaveTextContent(TOKEN);
+    expect(announced("alert")).not.toHaveTextContent("Herdr is down");
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("keeps the token sentence off a member view, where the lead's own mux status says nothing", async () => {
+    h.lost = true;
+    renderBanner({ host: "workshop", bridge: "disconnected", muxFault: "token-refused" });
+    await act(async () => {});
+    expect(announced("alert")).not.toHaveTextContent("refused the token");
   });
 
   it("does not infer mux failure from a successful config probe after a failed snapshot", async () => {

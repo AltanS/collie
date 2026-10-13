@@ -61,6 +61,9 @@ const SNAPSHOT_KEYS = {
   ts: true,
   // Present on the type since M5/02, absent from every solo body — see the section header.
   servers: true,
+  // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
+  // 14), so a healthy solo body carries no such key and no golden byte moved.
+  muxFault: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -179,6 +182,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "agents",
       "bridge",
       "device",
+      "muxFault",
       "notifications",
       "servers",
       "sessions",

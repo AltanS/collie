@@ -466,6 +466,8 @@ export const zh: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
+  // TODO wordsmith
+  "ask.notTaken": "Not taken. The question may show again in a moment.",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -934,6 +936,8 @@ export const zh: Dictionary = {
   "connection.connected": "已连接",
   "connection.reconnecting": "正在重新连接…",
   "connection.herdrDown": "主机上的 Herdr 服务已停止",
+  // TODO wordsmith
+  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
   "connection.offlineCantReach": "离线：无法访问 Collie",
   "connection.cantReach": "无法连接至 Collie",
   "connection.withLastSeen": "{cause}，最后在线时间：{time}",

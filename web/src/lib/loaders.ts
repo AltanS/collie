@@ -56,6 +56,7 @@ import {
 import type {
   AgentView,
   BridgeStatus,
+  MuxFault,
   DeviceAuth,
   CrewStatusResponse,
   MachinesResponse,
@@ -107,6 +108,8 @@ function scopeFromRequest(request?: Request): Scope {
 
 export interface HomeData {
   bridge: BridgeStatus | undefined;
+  /** Why the mux is down, when the bridge named it (a refused token). Absent otherwise. */
+  muxFault?: MuxFault;
   /** Per-device authorisation; undefined when the feature is off or not yet known. */
   device: DeviceAuth | undefined;
   agents: AgentView[];
@@ -341,7 +344,7 @@ function toHomeData(
   const agents = holdCacheReadings(holdIn, snap.agents);
   const shells = holdCacheReadings(holdIn, snap.shellPanes ?? []);
   paneCacheHold = new Map([...agents.held, ...shells.held]);
-  return {
+  const home: HomeData = {
     lastSeenAt,
     stale: error && drawnFromSave(lastSeenAt),
     bridge: snap.bridge,
@@ -364,6 +367,9 @@ function toHomeData(
     error,
     authError: error && hasAuthError(scope),
   };
+  // Only while the bridge names why its mux is down (a refused token): every other home has no such key.
+  if (snap.muxFault !== undefined) home.muxFault = snap.muxFault;
+  return home;
 }
 
 // Last-known home for a scope, flagged stale — the cached snapshot if we have one, else an empty

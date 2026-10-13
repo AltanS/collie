@@ -318,6 +318,9 @@ export interface TabView {
 
 export type BridgeStatus = "connected" | "disconnected";
 
+/** Why the multiplexer is down, when the bridge can name it (mirrors MuxFault in bridge/types.ts). */
+export type MuxFault = "token-refused";
+
 /**
  * Per-device authorisation for this client (mirrors DeviceAuth in bridge/types.ts). Present in the
  * snapshot only when the feature is enabled on the bridge; absent = not enforced.
@@ -954,6 +957,8 @@ export interface UpdateStartResponse {
 
 export interface SnapshotResponse {
   bridge: BridgeStatus;
+  /** Present only while `bridge` is `disconnected` for a cause the phone words. Absent on an older bridge. */
+  muxFault?: MuxFault;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
   device?: DeviceAuth;
   agents: AgentView[];
