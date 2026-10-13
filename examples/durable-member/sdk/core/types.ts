@@ -125,6 +125,15 @@ export interface Tab {
 /** A small mark next to a pane's title: a count (an integer, 0 to 9999) or a short word (at most 12 characters). */
 export type Badge = { count: number } | { text: string };
 
+/** One step of a progress list. */
+export interface ProgressStep {
+  label: string;
+  state: "done" | "running" | "todo";
+}
+
+/** How far a working pane is: up to 12 steps, or a percent from 0 to 100 with an optional label (WIRE.md 7.10). */
+export type Progress = { kind: "steps"; steps: ProgressStep[] } | { kind: "percent"; value: number; label?: string };
+
 export interface PaneInfo {
   id: string;
   workspaceId: string;
@@ -144,6 +153,8 @@ export interface PaneInfo {
   subtitle?: string;
   /** A count or a short mark next to the title (WIRE.md 7.9). Absent until the program sets one. */
   badge?: Badge;
+  /** How far a working conversation is (WIRE.md 7.10). Absent until the program sets one. */
+  progress?: Progress;
 }
 
 export interface Snapshot {

@@ -344,6 +344,10 @@ export const zh: Dictionary = {
   "chat.copyOutput.failed": "无法复制输出",
   "chat.paneMenu.aria": "窗格菜单",
   "chat.header.openOverviewAria": "打开 {workspace} 概览{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "{name} 的 Pane 设置",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（Agent 已离线）",

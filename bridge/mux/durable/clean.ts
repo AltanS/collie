@@ -210,3 +210,23 @@ export function shortLine(text: string, maxChars: number): string | undefined {
   if (symbols.length <= maxChars) return cleaned;
   return `${symbols.slice(0, maxChars - 1).join("")}${ELLIPSIS}`;
 }
+
+// ── Progress (WIRE.md section 7.10) ───────────────────────────────────────────
+
+/** The most steps a progress carries. */
+export const PROGRESS_STEPS_MAX = 12;
+
+/** The longest step or percent label, in characters (code points). */
+export const PROGRESS_LABEL_MAX = 60;
+
+export type StepState = "done" | "running" | "todo";
+
+export interface ProgressStep {
+  readonly label: string;
+  readonly state: StepState;
+}
+
+/** How far a working pane is: a list of steps, or a percent. */
+export type Progress =
+  | { readonly kind: "steps"; readonly steps: readonly ProgressStep[] }
+  | { readonly kind: "percent"; readonly value: number; readonly label?: string };

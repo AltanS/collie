@@ -135,7 +135,7 @@ export class Member extends DurableObject<Env> {
     } while (cursor);
     const show = (conversation: Conversation, owner: ConversationId | undefined) =>
       showConversation(
-        { tab: owner !== undefined ? helpers : inbox, title: `${owner !== undefined ? "Helper" : "Ticket"} #${conversation.id}`, subtitle: subtitleFor(owner) },
+        { tab: owner !== undefined ? helpers : inbox, title: `${owner !== undefined ? "Helper" : "Ticket"} #${conversation.id}`, subtitle: subtitleFor(owner), progress: owner === undefined },
         harness,
         conversation,
         { panes: this.panes },

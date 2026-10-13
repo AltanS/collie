@@ -5,7 +5,7 @@
 
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
-import { assertId, badgeOf, bytes, CAPS, cut, cwdOf, LIMITS, subtitleOf, tsOf } from "./rules.ts";
+import { assertId, badgeOf, bytes, CAPS, cut, cwdOf, LIMITS, progressOf, subtitleOf, tsOf } from "./rules.ts";
 import type {
   Answer,
   AnswerResult,
@@ -15,6 +15,7 @@ import type {
   ClosedBy,
   Item,
   PaneInfo,
+  Progress,
   PaneState,
   ProgramEvent,
   SessionEvent,
@@ -144,6 +145,13 @@ export interface PaneHandle {
    * most 12 characters. `null` clears it. A bad count is a RangeError. The revision rises only on a change.
    */
   badge(value: Badge | null): void;
+  /**
+   * How far a working conversation is (WIRE.md 7.10): `{ kind: "steps", steps }` with 1 to 12 steps (more are left
+   * out), or `{ kind: "percent", value, label? }` with a value from 0 to 100. `null` clears it; the program owns
+   * clearing, and the phone draws it only while the pane works or waits. A bad shape is a TypeError or RangeError.
+   * The revision rises only on a change.
+   */
+  progress(value: Progress | null): void;
   event(e: ProgramEvent): void;
   /**
    * Sets the pane to `waiting`, emits `ask`, resolves with the phone's answer. Without an `id`, the ask id comes
@@ -185,6 +193,7 @@ export class Pane implements PaneHandle {
   closed = false;
   private subtitleText: string | undefined;
   private badgeValue: Badge | undefined;
+  private progressValue: Progress | undefined;
   sendFn?: (text: string, o: SendContext) => void | Promise<void>;
   abortFn?: (o: { requestId: string }) => void | Promise<void>;
   /** The state last put in the log. Unset until the first sync, so the log always starts with one. */
@@ -283,6 +292,7 @@ export class Pane implements PaneHandle {
       ...(this.cwd ? { cwd: this.cwd } : {}),
       ...(this.subtitleText === undefined ? {} : { subtitle: this.subtitleText }),
       ...(this.badgeValue === undefined ? {} : { badge: this.badgeValue }),
+      ...(this.progressValue === undefined ? {} : { progress: this.progressValue }),
     };
   }
 
@@ -317,6 +327,14 @@ export class Pane implements PaneHandle {
     const same = next === undefined || this.badgeValue === undefined ? next === this.badgeValue : JSON.stringify(next) === JSON.stringify(this.badgeValue);
     if (same) return;
     this.badgeValue = next;
+    this.store.rev++;
+  }
+
+  progress(value: Progress | null) {
+    const next = value === null ? undefined : progressOf(value);
+    const same = next === undefined || this.progressValue === undefined ? next === this.progressValue : JSON.stringify(next) === JSON.stringify(this.progressValue);
+    if (same) return;
+    this.progressValue = next;
     this.store.rev++;
   }
 

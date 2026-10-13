@@ -1,5 +1,5 @@
 import type { JsonValue } from "./json";
-import { paneBadge, paneSubtitle } from "./pane-marks";
+import { paneBadge, paneProgress, paneSubtitle } from "./pane-marks";
 import type { AgentView } from "./types";
 
 // A crew peer's pane arrives unchecked, so these helpers take any JSON shape for the field.
@@ -25,6 +25,54 @@ describe("pane marks: badge", () => {
   it("reads zero, a fraction, a count out of range and every other shape as no badge", () => {
     for (const value of [{ count: 0 }, { count: 1.5 }, { count: 10000 }, { count: -2 }, { count: "3" }, { text: "" }, { text: 4 }, { count: 2, text: "x" }, {}, null, undefined, 7, "3", []]) {
       expect(badge(value)).toBeNull();
+    }
+  });
+});
+
+const progressOf = (progress: JsonValue | undefined, status: AgentView["status"] = "working") =>
+  // SAFETY: as above, a crew peer's body is not checked on the way here; the helper reads the field through the JSON guards.
+  paneProgress({ progress: progress as AgentView["progress"], status });
+
+describe("pane marks: progress", () => {
+  const steps = (...states: string[]) => ({ kind: "steps", steps: states.map((state, index) => ({ label: `step ${index + 1}`, state })) });
+
+  it("reads a step list as the running step with its place in the list, and the done share as the fill", () => {
+    expect(progressOf(steps("done", "running", "todo"))).toEqual({ kind: "steps", label: "step 2", n: 2, m: 3, value: (1 / 3) * 100 });
+  });
+
+  it("reads the first step still to do when none runs, and the last step when all are done", () => {
+    expect(progressOf(steps("done", "todo", "todo"))).toMatchObject({ label: "step 2", n: 2, m: 3 });
+    expect(progressOf(steps("done", "done"))).toEqual({ kind: "steps", label: "step 2", n: 2, m: 2, value: 100 });
+  });
+
+  it("reads a percent with its label, or without one", () => {
+    expect(progressOf({ kind: "percent", value: 40, label: " uploading " })).toEqual({ kind: "percent", label: "uploading", value: 40 });
+    expect(progressOf({ kind: "percent", value: 0 })).toEqual({ kind: "percent", label: null, value: 0 });
+  });
+
+  it("draws only while the pane works or waits", () => {
+    for (const status of ["idle", "done", "unknown"] as const) expect(progressOf({ kind: "percent", value: 10 }, status)).toBeNull();
+    expect(progressOf({ kind: "percent", value: 10 }, "blocked")).not.toBeNull();
+  });
+
+  it("reads every shape the bridge would not have kept as no progress", () => {
+    for (const value of [
+      undefined,
+      null,
+      "half way",
+      [],
+      {},
+      { kind: "ring", value: 3 },
+      { kind: "percent", value: 101 },
+      { kind: "percent", value: -1 },
+      { kind: "percent", value: "40" },
+      { kind: "steps", steps: [] },
+      { kind: "steps", steps: "a" },
+      steps("paused"),
+      { kind: "steps", steps: [{ state: "done" }] },
+      { kind: "steps", steps: [{ label: " ", state: "done" }] },
+    ]) {
+      expect(progressOf(value)).toBeNull();
     }
   });
 });

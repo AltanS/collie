@@ -355,6 +355,10 @@ export const ja: Dictionary = {
   "chat.copyOutput.failed": "出力をコピーできませんでした",
   "chat.paneMenu.aria": "ペイン操作",
   "chat.header.openOverviewAria": "{workspace} の概要を開く{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "{name} のペイン設定",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（エージェント停止）",

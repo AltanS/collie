@@ -98,6 +98,12 @@ export interface AgentView {
    */
   badge?: PaneBadge;
   /**
+   * How far a working durable conversation is: a step list or a percent (WIRE.md 7.10). Mirrors
+   * `AgentView.progress` in bridge/types.ts, absent in the same cases. Read it through `paneProgress`
+   * (lib/pane-marks.ts), and draw it only while the pane works or waits.
+   */
+  progress?: PaneProgress;
+  /**
    * A finished sentence the bridge composed about this pane, for the operator to read. Absent on
    * almost every pane, and on every bridge older than the version that introduced it.
    *
@@ -2099,5 +2105,10 @@ export type WorktreeCreateResponse =
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 /** A small mark next to a pane's title: a count, or a short word. Mirrors `PaneBadge` in bridge/types.ts. */
 export type PaneBadge = { count: number } | { text: string };
+
+/** How far a working pane is: up to 12 steps, or a percent. Mirrors `PaneProgress` in bridge/types.ts. */
+export type PaneProgress =
+  | { kind: "steps"; steps: { label: string; state: "done" | "running" | "todo" }[] }
+  | { kind: "percent"; value: number; label?: string };
 
 

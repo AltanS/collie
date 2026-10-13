@@ -20,10 +20,15 @@ import {
   cleanText,
   isWireId,
   lineRule,
+  PROGRESS_LABEL_MAX,
+  PROGRESS_STEPS_MAX,
   renameTitleOf,
   shortLine,
   SUBTITLE_MAX,
   type Badge,
+  type Progress,
+  type ProgressStep,
+  type StepState,
 } from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
@@ -136,6 +141,8 @@ export interface DurablePane {
   readonly subtitle?: string;
   /** A count or a short mark next to the title. Absent when the program sent none, or a bad one. */
   readonly badge?: Badge;
+  /** How far a working conversation is (WIRE.md section 7.10). Absent when the program sent none, or a bad one. */
+  readonly progress?: Progress;
 }
 
 export interface DurableStarter {
@@ -253,6 +260,55 @@ function badgeOf(object: JsonObject): Badge | undefined {
   if (count !== undefined) return isCount(count) && count <= BADGE_COUNT_MAX ? { count } : undefined;
   const word = isText(text) ? shortLine(text, BADGE_TEXT_MAX) : undefined;
   return word === undefined ? undefined : { text: word };
+}
+
+const STEP_STATES: ReadonlySet<string> = new Set(["done", "running", "todo"]);
+
+function isStepState(value: string): value is StepState {
+  return STEP_STATES.has(value);
+}
+
+/** A finite number, for a percent that may carry a fraction. */
+function isNumber(value: Json | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function readStep(value: Json): ProgressStep | null {
+  if (!isRecord(value)) return null;
+  const state = value.state;
+  const text = value.label;
+  if (!isText(state) || !isStepState(state) || !isText(text)) return null;
+  const label = shortLine(text, PROGRESS_LABEL_MAX);
+  return label === undefined ? null : { label, state };
+}
+
+/**
+ * A pane's progress (WIRE.md section 7.10): `{ kind: "steps" }` with 1 to 12 steps, or `{ kind: "percent" }` with
+ * a value from 0 to 100 and an optional label. Steps past the 12th are left out. A step with an unknown state or no
+ * label, a value out of range, an unknown kind and any other shape read as no progress, because half a progress would
+ * mislead. A percent label that is not text is left out alone. Never drops the pane.
+ */
+function progressOf(object: JsonObject): Progress | undefined {
+  const value = object.progress;
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "steps") {
+    if (!isList(value.steps)) return undefined;
+    const steps: ProgressStep[] = [];
+    for (const entry of value.steps.slice(0, PROGRESS_STEPS_MAX)) {
+      const step = readStep(entry);
+      if (step === null) return undefined;
+      steps.push(step);
+    }
+    return steps.length === 0 ? undefined : { kind: "steps", steps };
+  }
+  if (value.kind === "percent") {
+    const percent = value.value;
+    if (!isNumber(percent) || percent < 0 || percent > 100) return undefined;
+    const text = value.label;
+    const label = isText(text) ? shortLine(text, PROGRESS_LABEL_MAX) : undefined;
+    return label === undefined ? { kind: "percent", value: percent } : { kind: "percent", value: percent, label };
+  }
+  return undefined;
 }
 
 // ── hello ─────────────────────────────────────────────────────────────────────
@@ -446,6 +502,7 @@ function readPane(
   const cwd = cwdOf(value);
   const subtitle = subtitleOf(value);
   const badge = badgeOf(value);
+  const progress = progressOf(value);
   return {
     id,
     workspaceId,
@@ -459,6 +516,7 @@ function readPane(
     cwd,
     subtitle,
     badge,
+    progress,
   };
 }
 
@@ -1031,6 +1089,7 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
     // Optional pane marks (WIRE.md section 7.9). Assigned only when present, so a pane without them is unchanged.
     if (pane.subtitle !== undefined) mux.subtitle = pane.subtitle;
     if (pane.badge !== undefined) mux.badge = pane.badge;
+    if (pane.progress !== undefined) mux.progress = pane.progress;
     panes.push(mux);
   }
   return { panes, spaces, tabs };

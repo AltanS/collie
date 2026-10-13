@@ -338,6 +338,7 @@ const PANE_WIRE_KEYS = {
   // Only the `durable` adapter fills them, so they are absent here and no golden byte moved.
   subtitle: true,
   badge: true,
+  progress: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -466,6 +467,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "progress",
       "readableLines",
       "session",
       "sessionName",

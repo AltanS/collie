@@ -130,6 +130,7 @@ const AGENT_VIEW_KEYS = {
   // present only on a pane with no screen and absent from an older bridge or peer.
   subtitle: true,
   badge: true,
+  progress: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -235,6 +236,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "model",
       "paneId",
       "paneLabel",
+      "progress",
       "readableLines",
       "session",
       "sessionName",

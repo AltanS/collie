@@ -115,7 +115,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     const owned = owner !== undefined;
     const tab = owned ? helpers : inbox;
     const title = `${owned ? "Helper" : "Ticket"} #${conversation.id}`;
-    return showConversation({ tab, title, subtitle: subtitleFor(owner) }, harness, conversation, { panes });
+    return showConversation({ tab, title, subtitle: subtitleFor(owner), progress: !owned }, harness, conversation, { panes });
   }
 
   let tickets = 0;

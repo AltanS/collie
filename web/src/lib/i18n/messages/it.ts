@@ -291,6 +291,10 @@ export const it: Dictionary = {
   "chat.copyOutput.failed": "Impossibile copiare l'output",
   "chat.paneMenu.aria": "Azioni del riquadro",
   "chat.header.openOverviewAria": "Apri panoramica di {workspace}{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "Impostazioni del riquadro per {name}",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(agent non disponibile)",

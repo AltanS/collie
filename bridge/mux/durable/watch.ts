@@ -70,7 +70,7 @@ function layoutOf(snapshot: MuxSnapshot): string {
   const spaces = snapshot.spaces.map((space) => `${space.spaceId}=${space.label}`).join("|");
   const tabs = snapshot.tabs.map((tab) => `${tab.tabId}=${tab.label}`).join("|");
   const panes = snapshot.panes
-    .map((pane) => `${pane.paneId}=${pane.status}:${pane.terminalTitle ?? ""}:${pane.subtitle ?? ""}:${JSON.stringify(pane.badge ?? null)}`)
+    .map((pane) => `${pane.paneId}=${pane.status}:${pane.terminalTitle ?? ""}:${pane.subtitle ?? ""}:${JSON.stringify(pane.badge ?? null)}:${JSON.stringify(pane.progress ?? null)}`)
     .join("|");
   return `${spaces}//${tabs}//${panes}`;
 }

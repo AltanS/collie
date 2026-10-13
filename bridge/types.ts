@@ -25,6 +25,11 @@ export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 /** A small mark next to a pane's title: a count, or a short word. Exactly one key (WIRE.md section 3). */
 export type PaneBadge = { count: number } | { text: string };
 
+/** How far a working pane is: a list of steps, or a percent with an optional label (WIRE.md section 7.10). */
+export type PaneProgress =
+  | { readonly kind: "steps"; readonly steps: readonly { readonly label: string; readonly state: "done" | "running" | "todo" }[] }
+  | { readonly kind: "percent"; readonly value: number; readonly label?: string };
+
 /**
  * A single pane the user might want to monitor or drive. Usually an agent-bearing pane (the
  * triage home), but also a bare **shell** pane (`kind:"shell"`, `agent:"shell"`) once we surface
@@ -132,6 +137,11 @@ export interface AgentView {
    * characters). Same producer and same absence rule as {@link subtitle}.
    */
   badge?: PaneBadge;
+  /**
+   * How far a working conversation is (WIRE.md section 7.10). Same producer and same absence rule as
+   * {@link subtitle}. The phone draws it only while the pane works or waits.
+   */
+  progress?: PaneProgress;
   /**
    * A finished English sentence about this pane, composed in the bridge and rendered as text the
    * client does not interpret. Absent on almost every pane.

@@ -2,6 +2,7 @@
 // runtime import: this file runs in Bun and in a Cloudflare Worker.
 
 import { sha256Hex } from "./hash.ts";
+import type { Progress, ProgressStep } from "./types.ts";
 
 /** Bytes per field. UTF-8 bytes, not code points. */
 export const CAPS = {
@@ -178,6 +179,44 @@ export function badgeOf(value: { count: number } | { text: string }): { count: n
   }
   const word = shortLine(text, BADGE_TEXT_MAX);
   return word === undefined ? undefined : { text: word };
+}
+
+/** The most steps a progress carries. WIRE.md 7.10. */
+export const PROGRESS_STEPS_MAX = 12;
+/** The longest step or percent label, in characters. */
+export const PROGRESS_LABEL_MAX = 60;
+
+const STEP_STATES: ReadonlySet<string> = new Set(["done", "running", "todo"]);
+
+/**
+ * A pane's progress as the wire carries it (WIRE.md 7.10). Steps past the 12th are left out. A program that passes an
+ * unknown kind, no steps, a step with an unknown state or with no label left, or a value outside 0 to 100 made a
+ * mistake: it is a TypeError or RangeError here, so the wire never carries what the adapter would drop. A percent
+ * label with nothing left after cleaning is left out alone.
+ */
+export function progressOf(value: Progress): Progress {
+  const { kind } = value as { kind?: unknown };
+  if (kind === "steps") {
+    const list = (value as { steps?: unknown }).steps;
+    if (!Array.isArray(list) || list.length === 0) throw new TypeError("a steps progress has at least one step");
+    const steps = list.slice(0, PROGRESS_STEPS_MAX).map((entry: { label?: unknown; state?: unknown }) => {
+      const label = shortLine(entry?.label, PROGRESS_LABEL_MAX);
+      if (label === undefined || typeof entry.state !== "string" || !STEP_STATES.has(entry.state)) {
+        throw new TypeError("a step has a label and a state of done, running or todo");
+      }
+      return { label, state: entry.state as ProgressStep["state"] };
+    });
+    return { kind: "steps", steps };
+  }
+  if (kind === "percent") {
+    const { value: percent, label: text } = value as { value?: unknown; label?: unknown };
+    if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0 || percent > 100) {
+      throw new RangeError("a percent progress has a value from 0 to 100");
+    }
+    const label = text === undefined ? undefined : shortLine(text, PROGRESS_LABEL_MAX);
+    return label === undefined ? { kind: "percent", value: percent } : { kind: "percent", value: percent, label };
+  }
+  throw new TypeError("a progress is steps or percent");
 }
 
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;

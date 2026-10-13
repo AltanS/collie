@@ -150,6 +150,10 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const mux = await adapter.snapshot();
     expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.subtitle).toBe("a customer cannot log in");
     expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.badge).toEqual({ count: 1 });
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.progress).toEqual({
+      kind: "steps",
+      steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }],
+    });
   });
 
   test("example: the events reader reads the history, then only what came after its cursor", async () => {
@@ -169,12 +173,18 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const answer = { requestId: crypto.randomUUID(), askId: ask.id, revision: ask.revision, optionId: "allow" };
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: true } });
+    // The default timings leave the helper a while to answer, so the running step is seen moving to the reply.
+    await until("the reply is the running step", async () => {
+      const progress = (await pane(ticket))?.progress;
+      return progress?.kind === "steps" && progress.steps.map((step) => step.state).join() === "done,done,running" ? true : undefined;
+    });
     await until("the ticket idle", async () => ((await pane(ticket))?.state === "idle" ? true : undefined));
     expect(notes()).toHaveLength(1);
     const helper = adapter.program()?.snapshot.panes.find((candidate) => candidate.tabId === "triage:helpers");
     expect(helper).toBeDefined();
     expect(helper?.subtitle).toBe(`helping ticket ${ticket.replace("conv-", "")}`);
     expect((await pane(ticket))?.badge).toBeUndefined(); // the ask is answered: the count is gone
+    expect((await pane(ticket))?.progress).toBeUndefined(); // the run is over: the program cleared it
     await adapter.syncEvents();
     const after = recorder.all(ticket);
     expect(after.some((event) => event.type === "ask-closed" && event.by === "phone")).toBe(true);

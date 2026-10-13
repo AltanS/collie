@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonValue } from "../../json.ts";
 import { CAPS } from "./clean.ts";
 import { hasHostileChars, helloFixture, hostileText, snapshotFixture, type FakeSnapshot } from "./fixture.ts";
 import {
@@ -289,6 +290,42 @@ describe("snapshot fixture", () => {
       const snapshot = read((raw) => Object.assign(raw.panes[0] ?? {}, extra));
       expect([label, snapshot.panes[0]?.subtitle, snapshot.panes[0]?.badge]).toEqual([label, undefined, undefined]);
       expect(snapshot.panes).toHaveLength(read().panes.length); // the pane itself is kept
+    }
+  });
+
+  test("progress: steps and a percent are read, cleaned and capped", () => {
+    const progressOfPane = (progress: JsonValue) => read((raw) => Object.assign(raw.panes[0] ?? {}, { progress })).panes[0]?.progress;
+    expect(progressOfPane({ kind: "steps", steps: [{ label: " read ", state: "done" }, { label: "write", state: "running" }, { label: "reply", state: "todo" }] })).toEqual({
+      kind: "steps",
+      steps: [{ label: "read", state: "done" }, { label: "write", state: "running" }, { label: "reply", state: "todo" }],
+    });
+    expect(progressOfPane({ kind: "percent", value: 40.5, label: "uploading" })).toEqual({ kind: "percent", value: 40.5, label: "uploading" });
+    expect(progressOfPane({ kind: "percent", value: 0 })).toEqual({ kind: "percent", value: 0 });
+    expect(progressOfPane({ kind: "percent", value: 100, label: 7 })).toEqual({ kind: "percent", value: 100 }); // a bad label is left out alone
+    const many = Array.from({ length: 20 }, (_, index) => ({ label: `step ${index}`, state: "todo" }));
+    const kept = progressOfPane({ kind: "steps", steps: many });
+    expect(kept?.kind === "steps" ? kept.steps : []).toHaveLength(12);
+    const long = progressOfPane({ kind: "percent", value: 5, label: "x".repeat(200) });
+    expect([...(long?.kind === "percent" ? (long.label ?? "") : "")]).toHaveLength(60);
+  });
+
+  test("progress: a bad shape is dropped alone, and never drops the pane", () => {
+    const bads: [string, JsonValue][] = [
+      ["a string", "half way"],
+      ["an unknown kind", { kind: "ring", value: 3 }],
+      ["a value over 100", { kind: "percent", value: 101 }],
+      ["a negative value", { kind: "percent", value: -1 }],
+      ["a text value", { kind: "percent", value: "40" }],
+      ["no steps", { kind: "steps", steps: [] }],
+      ["steps that are not a list", { kind: "steps", steps: "a" }],
+      ["a step with an unknown state", { kind: "steps", steps: [{ label: "a", state: "paused" }] }],
+      ["a step with no label", { kind: "steps", steps: [{ state: "done" }] }],
+      ["a step with a label of nothing", { kind: "steps", steps: [{ label: "\u200b", state: "done" }] }],
+    ];
+    for (const [label, progress] of bads) {
+      const snapshot = read((raw) => Object.assign(raw.panes[0] ?? {}, { progress }));
+      expect([label, snapshot.panes[0]?.progress]).toEqual([label, undefined]);
+      expect(snapshot.panes).toHaveLength(read().panes.length);
     }
   });
 

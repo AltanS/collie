@@ -50,6 +50,11 @@ describe("one ticket", () => {
     // The ticket's line under the title, and a badge that counts the asks waiting for the phone.
     expect(p.subtitle).toBe("a customer cannot log in");
     expect(p.badge).toEqual({ count: 1 });
+    // The ticket's progress: it read the ticket, and the note waits for the phone's yes.
+    expect(p.progress).toEqual({
+      kind: "steps",
+      steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }],
+    });
     expect(p.openAsks[0]).toMatchObject({ kind: "permission", revision: 1, tool: { name: "write_note" }, title: expect.stringContaining("write_note") });
     expect(p.openAsks[0]!.toolCallId).toBe(p.openAsks[0]!.itemId); // the tool item the card sits under
     expect(p.openAsks[0]!.options.map((o) => o.id)).toEqual(["allow", "deny"]);
@@ -79,6 +84,8 @@ describe("one ticket", () => {
 
   test("the first pane's turn ends: idle, with the helper's words in the answer", async () => {
     await waitFor("main idle", async () => (await pane(d, main))?.state === "idle");
+    expect(await pane(d, main)).not.toHaveProperty("progress"); // the program clears it when the run ends
+    expect(await pane(d, helper)).not.toHaveProperty("progress"); // a helper only answers
     const events = await allEvents(d, main);
     const last = events.filter((e) => e.type === "item").at(-1)!;
     expect(last).toMatchObject({ item: { kind: "reply" } });

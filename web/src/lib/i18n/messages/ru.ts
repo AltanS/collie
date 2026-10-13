@@ -295,6 +295,10 @@ export const ru: Dictionary = {
   "chat.copyOutput.failed": "Не удалось скопировать вывод",
   "chat.paneMenu.aria": "Действия с панелью",
   "chat.header.openOverviewAria": "Открыть обзор {workspace}{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "Настройки панели {name}",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(агент недоступен)",

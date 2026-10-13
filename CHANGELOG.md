@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **New sheet options for Grok and Antigravity.** Always approve and Continue last for Grok; Skip permission prompts or Plan mode, plus Continue last, for Antigravity. Thanks @GGGODLIN (#430).
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
 - **A durable pane shows a subtitle and a badge.** The program sets one line under the title and a count or a short mark next to it, so a list of its conversations reads at a glance.
+- **A durable pane shows its progress.** The program reports steps or a percent, and Chat and the card show how far a working conversation is.
 
 ### Changed
 

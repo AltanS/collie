@@ -197,6 +197,13 @@ export interface MuxPane extends MuxIdentity {
    */
   readonly badge?: { readonly count: number } | { readonly text: string };
   /**
+   * How far a working conversation is: a list of steps, or a percent (WIRE.md section 7.10). Same producer as
+   * {@link subtitle}. Meaningful in any state; the phone draws it while the pane works or waits.
+   */
+  readonly progress?:
+    | { readonly kind: "steps"; readonly steps: readonly { readonly label: string; readonly state: "done" | "running" | "todo" }[] }
+    | { readonly kind: "percent"; readonly value: number; readonly label?: string };
+  /**
    * The session the agent in this pane named, when it named one — the journal's key, and the reason
    * `agentSessionRef` is a capability rather than an assumption (bridge/journal/registry.ts).
    *

@@ -343,6 +343,10 @@ export const zhTW: Dictionary = {
   "chat.copyOutput.failed": "無法複製輸出",
   "chat.paneMenu.aria": "窗格選單",
   "chat.header.openOverviewAria": "開啟 {workspace} 總覽{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "{name} 的窗格設定",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（Agent 已離線）",

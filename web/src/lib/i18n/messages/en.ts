@@ -391,6 +391,9 @@ export const en = {
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.
   "chat.paneMenu.aria": "Pane actions",
   "chat.header.openOverviewAria": "Open {workspace} overview{status}",
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "Pane settings for {name}",
   "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(agent gone)",

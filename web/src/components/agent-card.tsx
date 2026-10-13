@@ -10,7 +10,9 @@ import { PaneHint } from "@/components/pane-hint";
 import { PaneBadge } from "@/components/pane-badge";
 import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
-import { paneSubtitle } from "@/lib/pane-marks";
+import { paneProgress, paneSubtitle } from "@/lib/pane-marks";
+import { Progress } from "@/components/ui/progress";
+import { t } from "@/lib/i18n";
 import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
 import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -205,6 +207,9 @@ export function AgentCard({
   // fact that tells them apart); a card has no stated height, so it carries the subtitle on a line of its own.
   const subtitle = paneSubtitle(agent);
   const subtitleInSlot = flat && subtitle !== null;
+  // How far a working durable conversation is (WIRE.md 7.10): a 1px line along the bottom edge, inside the
+  // straight run between the corners. It adds no height, so a row with one is the height of a row without.
+  const progress = paneProgress(agent);
   const hasRest = detailLead !== null || detailTail !== null;
   // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
   // via `tabTitle` (`lib/pane-name.ts`) — or, when the raw label carries no digit at all, nothing:
@@ -252,6 +257,7 @@ export function AgentCard({
           // ListGroup, so its content lands on the same x as a card row's content BY CONSTRUCTION
           // (14 + 1 on both sides) — the hand-computed 15px this replaced was faking exactly that
           // alignment against a group that had no border to supply the 1px.
+          "relative",
           flat
             ? "flex flex-row items-center gap-3 px-3.5 py-2.5"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
@@ -425,6 +431,14 @@ export function AgentCard({
           <span className="sr-only">{stale ? statusLabelPast(agent.status) : statusLabel(agent.status)}</span>
         ) : (
           <StatusBadge status={agent.status} past={stale} />
+        )}
+        {progress !== null && (
+          <Progress
+            value={progress.value}
+            label={t("chat.progress.aria")}
+            size="hairline"
+            className="pointer-events-none absolute inset-x-3.5 bottom-0 w-auto"
+          />
         )}
       </Shell>
     </button>

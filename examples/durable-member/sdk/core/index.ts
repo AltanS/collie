@@ -25,7 +25,25 @@ export {
   RENAME_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
-export { assertId, BADGE_COUNT_MAX, BADGE_TEXT_MAX, badgeOf, bytes, CAPS, cut, idOk, LIMITS, RENAME_TITLE_MAX, renameTitleOf, safeId, SUBTITLE_MAX, subtitleOf } from "./rules.ts";
+export {
+  assertId,
+  BADGE_COUNT_MAX,
+  BADGE_TEXT_MAX,
+  badgeOf,
+  bytes,
+  CAPS,
+  cut,
+  idOk,
+  LIMITS,
+  PROGRESS_LABEL_MAX,
+  PROGRESS_STEPS_MAX,
+  progressOf,
+  RENAME_TITLE_MAX,
+  renameTitleOf,
+  safeId,
+  SUBTITLE_MAX,
+  subtitleOf,
+} from "./rules.ts";
 export * from "./types.ts";
 
 export interface CoreOptions {

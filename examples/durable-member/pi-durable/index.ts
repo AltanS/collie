@@ -21,7 +21,7 @@ import {
   ToolTask,
   watchEvents,
 } from "@earendil-works/pi-durable";
-import { type Item, type PaneHandle, safeId, type TabHandle } from "../sdk/core/index.ts";
+import { type Item, type PaneHandle, type Progress, type ProgressStep, safeId, type TabHandle } from "../sdk/core/index.ts";
 
 const ctx0 = BACKGROUND_CONTEXT;
 
@@ -124,6 +124,8 @@ export interface PaneLocation {
   cwd?: string;
   /** One line under the title. Set when the pane is first shown. */
   subtitle?: string;
+  /** Show the three steps of a ticket while its first run works. */
+  progress?: boolean;
 }
 
 /** The line under a pane's title: what the ticket is about, or which ticket the helper helps. */
@@ -144,22 +146,53 @@ const textOf = (content: unknown): string =>
 /** Pi entries and agent events to the session stream. Whole blocks only: message_update is ignored. */
 class Mapper {
   private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
+  // What the first run has done so far, for the progress steps. A ticket only: a helper just answers.
+  private seen = { user: false, note: false, noted: false, reply: false };
   constructor(
     private pane: PaneHandle,
     private registry: PaneRegistry,
+    private withProgress: boolean,
   ) {}
 
   private item(item: Item) {
     this.pane.event({ type: "item", item });
     if (item.kind === "tool") this.registry.toolStatus(item.id, item.tool.name, item.status);
+    if (item.kind === "user") this.seen.user = true;
+    if (item.kind === "reply") this.seen.reply = true;
+    if (item.kind === "tool" && item.tool.name === "write_note") {
+      this.seen.note = true;
+      if (item.status !== "running") this.seen.noted = true;
+    }
+  }
+
+  /** The three steps of a ticket as the first run reaches them: read it, write a note, reply. */
+  private steps(): Progress {
+    const { user, note, noted, reply } = this.seen;
+    const state = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
+    return {
+      kind: "steps",
+      steps: [
+        { label: "read the ticket", state: state(user && (note || reply), !user || !note) },
+        { label: "write a note", state: state(noted || reply, note || user) },
+        { label: "reply", state: state(reply, noted) },
+      ],
+    };
+  }
+
+  /** Steps while the first run works. After its reply, or when the pane is idle, none: the program clears them. */
+  private mark(working: boolean) {
+    if (!this.withProgress) return;
+    this.pane.progress(working ? this.steps() : null);
   }
 
   snapshot(s: SnapshotEvent, first: boolean) {
     if (!first) this.pane.event({ type: "reset" });
     this.tools.clear();
+    this.seen = { user: false, note: false, noted: false, reply: false };
     for (const entry of s.entries) this.entry(entry);
     this.pane.event({ type: "synced" });
     this.pane.state(s.run ? "working" : "idle");
+    this.mark(s.run ? !this.seen.reply : false);
   }
 
   apply(e: AgentEvent) {
@@ -168,11 +201,14 @@ class Mapper {
         return this.snapshot(e, false);
       case "run_start":
       case "turn_start":
-        return this.pane.state("working");
+        this.pane.state("working");
+        return this.mark(!this.seen.reply);
       case "run_end":
-        return this.pane.state("idle");
+        this.pane.state("idle");
+        return this.mark(false);
       case "message_end":
-        return this.entry(e.entry);
+        this.entry(e.entry);
+        return this.mark(!this.seen.reply);
       case "submission":
         // An abort appends no entry and no item. The input settles, and the wire says so with `settled`.
         if (e.record.type !== "input" || (e.record.status !== "done" && e.record.status !== "unanswered")) return;
@@ -251,7 +287,7 @@ export async function showConversation(
   const ctx = opts.ctx ?? ctx0;
   const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
   if (loc.subtitle) pane.subtitle(loc.subtitle);
-  const mapper = new Mapper(pane, opts.panes);
+  const mapper = new Mapper(pane, opts.panes, loc.progress === true);
 
   // The wire's request id goes to Pi Durable as the submission's own dedupe key, so a repeat that
   // reaches Pi after a restart still admits the input once.

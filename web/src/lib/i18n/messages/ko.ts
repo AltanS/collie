@@ -354,6 +354,10 @@ export const ko: Dictionary = {
   "chat.copyOutput.failed": "출력을 복사할 수 없음",
   "chat.paneMenu.aria": "창 작업",
   "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "{name} 창 설정",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(에이전트 연결 끊김)",

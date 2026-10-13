@@ -291,6 +291,10 @@ export const tr: Dictionary = {
   "chat.copyOutput.failed": "Çıktı kopyalanamadı",
   "chat.paneMenu.aria": "Bölme eylemleri",
   "chat.header.openOverviewAria": "{workspace} genel bakışını aç{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "{name} için bölme ayarları",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(aracı gitti)",

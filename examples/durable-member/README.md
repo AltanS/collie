@@ -81,6 +81,9 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
   tool, and the ticket stops there. Only your tap answers. The app never answers its own ask.
 - **A line under the title, and a badge.** Each ticket says "a customer cannot log in" under its name, and
   a helper says "helping ticket N". A badge next to the ticket's name counts the questions that wait for you.
+- **Progress.** While a ticket works, Chat shows a thin row under the header with the running step ("write a
+  note, 2 of 3") and a bar, and the card gets a one-pixel line along its bottom edge. The three steps are
+  "read the ticket", "write a note" and "reply".
 - **Send, steer and Stop.** Text sent to an idle ticket starts a new turn. The scripted answer to a
   follow-up takes ten seconds, so you have time to steer it or press Stop. Stop ends the turn, and
   Chat shows a short "stopped" note.
@@ -168,6 +171,9 @@ second program needs it. Copy the folder into your program. It imports nothing f
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - `subtitle(text | null)` sets one line under the title (at most 120 characters), and `badge({ count } | { text } | null)`
   a small mark next to it (a count from 0 to 9999, or at most 12 characters). Each raises `rev` only when the value changes.
+- `progress({ kind: "steps", steps } | { kind: "percent", value, label? } | null)` says how far a working
+  conversation is: up to 12 steps (`done`, `running` or `todo`), or a value from 0 to 100. The program clears it
+  when the run ends, and the phone draws it only while the pane works or waits.
 - `starters()` lists what the phone can start from the New page.
 - The phone can give a workspace or a tab a new name (`rename` cap, on by default). The SDK sets the title and
   raises `rev`. Pass `onRename({ kind, id, title })` to `openCollie` to keep the name, or to return `false` and

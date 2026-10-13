@@ -1203,11 +1203,17 @@ describe("StateEngine: subtitle and badge", () => {
     expect(all.find((v) => v.paneId === "conv-02")?.badge).toEqual({ text: "new" });
   });
 
+  test("progress rides onto the view too", async () => {
+    const now = await viewsOf([durablePane({ status: "working", progress: { kind: "percent", value: 30 } })]);
+    expect([...now.agents, ...now.shellPanes][0]?.progress).toEqual({ kind: "percent", value: 30 });
+  });
+
   test("a pane without them gains neither key", async () => {
     const now = await viewsOf([durablePane({})]);
     const view = [...now.agents, ...now.shellPanes][0]!;
     expect("subtitle" in view).toBe(false);
     expect("badge" in view).toBe(false);
+    expect("progress" in view).toBe(false);
   });
 });
 

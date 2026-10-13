@@ -301,6 +301,13 @@ interface Pane {
    * characters). Exactly one key. A bad value reads as absent (section 7.9).
    */
   badge?: { count: number } | { text: string };
+  /**
+   * How far a working conversation is: a list of steps, or a percent (section 7.10). A bad value reads
+   * as absent. The phone draws it only while `state` is `working` or `waiting`.
+   */
+  progress?:
+    | { kind: "steps"; steps: { label: string; state: "done" | "running" | "todo" }[] }
+    | { kind: "percent"; value: number; label?: string };
 }
 
 type PaneState = "working" | "waiting" | "idle";
@@ -501,7 +508,7 @@ on `PaneWire` (`idle | working | blocked | done | unknown`).
 | `agent` | always `"durable"`. Never the `harness` string. |
 | `status` | the state mapping above |
 | `terminalTitle` | `Pane.title` |
-| `subtitle`, `badge` | `Pane.subtitle`, `Pane.badge`, after cleaning (section 7.9). Left out when absent. |
+| `subtitle`, `badge`, `progress` | `Pane.subtitle`, `Pane.badge`, `Pane.progress`, after cleaning (sections 7.9 and 7.10). Left out when absent. |
 | `paneLabel` | never set |
 
 A pane that leaves the snapshot is gone: a call to it answers `gone`. A tab or workspace with no
@@ -566,6 +573,9 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `Pane.subtitle` | 120 characters (code points), after cleaning and a trim | cut at a whole character with `…` as the 120th. Nothing left after cleaning: absent. |
 | `Pane.badge.text` | 12 characters, same rule | cut the same way. Nothing left: the badge is absent. |
 | `Pane.badge.count` | an integer from 0 to 9999 | absent (not clamped). |
+| `Pane.progress.steps` | 12 steps | the steps past the 12th are left out |
+| `Step.label`, `Pane.progress.label` | 60 characters (code points), same rule as the subtitle | cut at a whole character with `…`. A step with nothing left makes the progress absent. A percent label with nothing left is left out alone. |
+| `Pane.progress.value` | a number from 0 to 100 | absent (not clamped). |
 | `Workspace.cwd`, `Pane.cwd` | 4096 bytes, absolute | ignored, reads as absent |
 | `Ask.reason` | 2048 bytes | cut |
 | `ToolCall.name` | 128 bytes | cut |
@@ -763,6 +773,23 @@ abort.
   the title. They carry no state and no action. A count of 0 is a valid value, and the phone draws it
   as no mark.
 
+### 7.10 Progress
+
+- `Pane.progress` is optional and additive, like the subtitle and the badge (section 7.9). It is one of
+  two shapes. `{ kind: "steps", steps }` holds 1 to 12 steps, each a `label` and a `state` of `done`,
+  `running` or `todo`. `{ kind: "percent", value, label? }` holds a number from 0 to 100 and an optional
+  label.
+- The adapter cleans the labels as it cleans a subtitle (section 7.9). An unknown `kind`, no steps, a
+  step with an unknown state or with no label left, a `value` outside 0 to 100 and a value that is not a
+  number read as no progress at all, because half a progress would mislead. A `label` of the wrong type
+  on a percent is left out and the percent stays. Progress is never refused, and it never drops the pane.
+- The field is meaningful in any state, and the program owns clearing it. The phone draws it only while
+  the pane is `working` or `waiting`, and draws nothing on an `idle` pane that still carries one.
+- A change of it is a change a reader could see, so `rev` rises (section 7.1). The example SDK raises
+  it only when the value changes.
+- The phone draws a step list as the running step's label with "n of m" (the first `todo` step when none
+  runs, and the last step when all are done), and a percent as a thin bar with its label.
+
 ## 8. Restart and epoch
 
 1. Every start of the program makes a new random `epoch`, at least 128 bits, never reused. `rev`
@@ -865,3 +892,5 @@ document. The version number stays 1; the spike's shapes are not supported.
     `no-such-target` and `rename-refused`. Added before version 1 shipped, so the version stays 1.
 20. **`Pane` gains an optional `subtitle` and `badge`** (sections 4, 6 and 7.9). Added before version 1
     shipped, so the version stays 1. An older adapter ignores both.
+21. **`Pane` gains an optional `progress`** (sections 4, 6 and 7.10). Added before version 1 shipped, so
+    the version stays 1. An older adapter ignores it.

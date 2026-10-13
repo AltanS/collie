@@ -286,6 +286,7 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // stays absent, so every other pane is byte-identical.
   if (pane.subtitle) view.subtitle = pane.subtitle;
   if (pane.badge) view.badge = pane.badge;
+  if (pane.progress) view.progress = pane.progress;
   // The title is still on the wire; this only says the phone should read it quietly. Set only when
   // true, so every pane that was byte-identical before this field existed still is.
   if (terminalTitleIsStale(pane)) view.terminalTitleStale = true;

@@ -1,4 +1,4 @@
-import { asJsonNumber, asJsonObject, asJsonString } from "@/lib/json";
+import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import type { AgentView } from "@/lib/types";
 
 // A DURABLE PANE'S SUBTITLE AND BADGE, read from a body that may have crossed a crew link.
@@ -28,4 +28,46 @@ export function paneBadge(pane: Pick<AgentView, "badge">): string | null {
   if (badge.count !== undefined && badge.text !== undefined) return null;
   if (count !== undefined) return Number.isInteger(count) && count >= 1 && count <= 9999 ? String(count) : null;
   return text === undefined || text === "" ? null : text;
+}
+
+/** What the progress row and the card's bar draw. `value` is the fill, 0 to 100. */
+export type ProgressReading =
+  | { kind: "steps"; label: string; n: number; m: number; value: number }
+  | { kind: "percent"; label: string | null; value: number };
+
+/**
+ * The pane's progress as something to draw, or null when there is nothing to draw. Only a pane that works
+ * or waits (`working`, `blocked`) shows one: the program owns clearing it, and an idle pane that still
+ * carries one is a pane that finished. A step list reads as the running step, else the first step still to
+ * do, else the last step, with its place in the list. Anything the bridge would not have kept (an unknown
+ * kind, a bad step, a value outside 0 to 100) reads as absent, because a crew peer's body is not checked
+ * on the way here.
+ */
+export function paneProgress(pane: Pick<AgentView, "progress" | "status">): ProgressReading | null {
+  if (pane.status !== "working" && pane.status !== "blocked") return null;
+  const progress = asJsonObject(pane.progress);
+  if (progress === undefined) return null;
+  const kind = asJsonString(progress.kind);
+  if (kind === "percent") {
+    const value = asJsonNumber(progress.value);
+    if (value === undefined || value < 0 || value > 100) return null;
+    const label = asJsonString(progress.label)?.trim();
+    return { kind: "percent", label: label === undefined || label === "" ? null : label, value };
+  }
+  if (kind !== "steps") return null;
+  const list: JsonValue | undefined = progress.steps;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const steps: { label: string; state: string }[] = [];
+  for (const entry of list) {
+    const step = asJsonObject(entry);
+    const label = asJsonString(step?.label)?.trim();
+    const state = asJsonString(step?.state);
+    if (label === undefined || label === "" || (state !== "done" && state !== "running" && state !== "todo")) return null;
+    steps.push({ label, state });
+  }
+  const running = steps.findIndex((step) => step.state === "running");
+  const todo = steps.findIndex((step) => step.state === "todo");
+  const at = running >= 0 ? running : todo >= 0 ? todo : steps.length - 1;
+  const done = steps.filter((step) => step.state === "done").length;
+  return { kind: "steps", label: steps[at]?.label ?? "", n: at + 1, m: steps.length, value: (done / steps.length) * 100 };
 }

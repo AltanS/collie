@@ -687,6 +687,57 @@ export function protocolSuite(transport: Transport) {
       });
     });
 
+    describe("progress", () => {
+      const rev = async () => (await api.snapshot(d)).body.rev;
+      test("a pane starts without progress, and the snapshot carries steps and a percent", async () => {
+        const p = mk("prog");
+        expect(await paneInfo("prog")).not.toHaveProperty("progress");
+        p.progress({ kind: "steps", steps: [{ label: "read", state: "done" }, { label: "write", state: "running" }, { label: "reply", state: "todo" }] });
+        expect((await paneInfo("prog")).progress).toEqual({
+          kind: "steps",
+          steps: [{ label: "read", state: "done" }, { label: "write", state: "running" }, { label: "reply", state: "todo" }],
+        });
+        p.progress({ kind: "percent", value: 40, label: "uploading" });
+        expect((await paneInfo("prog")).progress).toEqual({ kind: "percent", value: 40, label: "uploading" });
+      });
+      test("rev rises only when the value changes, and null clears", async () => {
+        const p = mk("prog2");
+        const before = await rev();
+        p.progress(null); // nothing to clear
+        expect(await rev()).toBe(before);
+        p.progress({ kind: "percent", value: 10 });
+        const first = await rev();
+        expect(first).toBeGreaterThan(before!);
+        p.progress({ kind: "percent", value: 10 });
+        expect(await rev()).toBe(first);
+        p.progress({ kind: "percent", value: 11 });
+        const second = await rev();
+        expect(second).toBeGreaterThan(first!);
+        p.progress(null);
+        expect(await paneInfo("prog2")).not.toHaveProperty("progress");
+        expect(await rev()).toBeGreaterThan(second!);
+      });
+      test("labels are cleaned and cut, steps past the 12th are left out, and a bad shape is refused", async () => {
+        const p = mk("prog3");
+        const many = Array.from({ length: 15 }, (_, i) => ({ label: `step ${i}`, state: "todo" as const }));
+        p.progress({ kind: "steps", steps: many });
+        const steps = ((await paneInfo("prog3")).progress as { steps: { label: string }[] }).steps;
+        expect(steps).toHaveLength(12);
+        p.progress({ kind: "percent", value: 5, label: `a\u200b${"é".repeat(100)}` });
+        const label = ((await paneInfo("prog3")).progress as { label: string }).label;
+        expect([...label]).toHaveLength(60);
+        expect(label.endsWith("…")).toBe(true);
+        p.progress({ kind: "percent", value: 6, label: "\u200b" }); // nothing left of the label: the percent stays
+        expect((await paneInfo("prog3")).progress).toEqual({ kind: "percent", value: 6 });
+        for (const value of [-1, 101, Number.NaN]) expect(() => p.progress({ kind: "percent", value })).toThrow(RangeError);
+        expect(() => p.progress({ kind: "steps", steps: [] })).toThrow(TypeError);
+        expect(() => p.progress({ kind: "steps", steps: [{ label: "a", state: "paused" as never }] })).toThrow(TypeError);
+        expect(() => p.progress({ kind: "steps", steps: [{ label: "\u200b", state: "done" }] })).toThrow(TypeError);
+        expect(() => p.progress({ kind: "ring" } as never)).toThrow(TypeError);
+        expect((await paneInfo("prog3")).progress).toEqual({ kind: "percent", value: 6 }); // a refused value changes nothing
+      });
+    });
+
     describe("rename", () => {
       const snap = async () => (await api.snapshot(d)).body;
       test("rename a tab: the snapshot shows the title and rev rose; panes keep their own title", async () => {

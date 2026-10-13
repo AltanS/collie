@@ -442,3 +442,34 @@ describe("AgentCard: subtitle and badge", () => {
     expect(odd.container.querySelector('[data-slot="agent-row-subtitle"]')).toBeNull();
   });
 });
+
+describe("AgentCard: progress", () => {
+  const bar = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="progress"]');
+
+  it("draws a hairline bar on a working card, filled by the share of steps done", () => {
+    const steps = [
+      { label: "read the ticket", state: "done" as const },
+      { label: "write a note", state: "running" as const },
+      { label: "reply", state: "todo" as const },
+      { label: "close", state: "todo" as const },
+    ];
+    const { container } = render(<AgentCard agent={agent({ status: "working", progress: { kind: "steps", steps } })} onClick={() => {}} />);
+    expect(bar(container)).toHaveAttribute("data-size", "hairline");
+    expect(bar(container)).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("draws a percent, also on a flat row, and adds no line to the row", () => {
+    const { container } = render(
+      <AgentCard agent={agent({ status: "working", progress: { kind: "percent", value: 60 } })} density="row" scope="place" onClick={() => {}} />,
+    );
+    expect(bar(container)).toHaveAttribute("aria-valuenow", "60");
+    expect(container.querySelector('[data-slot="agent-row-subtitle"]')).toBeNull();
+  });
+
+  it("draws no bar on an idle pane that still carries one, nor on a pane without one", () => {
+    const idle = render(<AgentCard agent={agent({ status: "idle", progress: { kind: "percent", value: 60 } })} onClick={() => {}} />);
+    expect(bar(idle.container)).toBeNull();
+    const none = render(<AgentCard agent={agent({ status: "working" })} onClick={() => {}} />);
+    expect(bar(none.container)).toBeNull();
+  });
+});

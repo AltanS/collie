@@ -361,6 +361,10 @@ export const de: Dictionary = {
   "chat.copyOutput.failed": "Ausgabe konnte nicht kopiert werden",
   "chat.paneMenu.aria": "Pane-Aktionen",
   "chat.header.openOverviewAria": "Übersicht für {workspace} öffnen{status}",
+  // TODO wordsmith
+  "chat.progress.aria": "Progress",
+  "chat.progress.step": "{label}, {n} of {m}",
+  "chat.progress.percent": "{value}%",
   "chat.header.openPaneSettingsAria": "Pane-Einstellungen für {name}",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(Agent nicht erreichbar)",

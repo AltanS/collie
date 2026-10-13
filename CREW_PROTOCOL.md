@@ -654,6 +654,14 @@ updated machines, so build skew is the steady state (§7), and this section is t
   changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route,
   no new verb and no new header.
 
+- **A pane gained an optional `progress`** (added 2026-10-13, M53). It comes from a durable program
+  (`bridge/mux/durable/WIRE.md` section 7.10): `{ kind: "steps", steps }` with up to 12 labelled steps,
+  or `{ kind: "percent", value, label? }` with a value from 0 to 100. Additive-optional with the closed
+  reading this section requires: **absent means none**, which the phone renders as nothing, exactly as
+  before the field. An older peer omits it, and an older lead passes it through untouched. Nothing in
+  `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION`
+  stays `2`, no new route, no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading
