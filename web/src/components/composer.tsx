@@ -72,6 +72,12 @@ import { NoEchoNotice } from "@/components/no-echo-notice";
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
   focusInput: () => void;
+  /**
+   * Put `text` in the draft and focus the input — AgentChat's suggestion chips. The slash-command
+   * path, unchanged: an empty draft becomes `text`, any other gets it appended after a space. It
+   * never sends, and it disarms "Type into terminal" rather than typing through it.
+   */
+  insertDraft: (text: string) => void;
 }
 
 interface ComposerProps {
@@ -808,7 +814,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
-  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately }), []);
+  // Rebuilt on every render, never cached: `insertDraft` saves the draft under the CURRENT pane, and
+  // a handle kept from the first render would save it under whichever pane this mounted on.
+  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately, insertDraft: insertCommand }));
 
   useEffect(
     () => () => {

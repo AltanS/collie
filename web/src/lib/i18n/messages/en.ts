@@ -468,6 +468,7 @@ export const en = {
   "chat.stream.queued": "Waiting to send",
   "chat.pin.label": "Your prompt",
   "chat.pin.earlier": "Asked further back · Load older",
+  "chat.suggestions.label": "Suggested",
   "chat.stream.sendNow": "Send now",
   "chat.stream.sendNowAria": "Send now, the waiting messages",
   "chat.stream.loadOlderFailed": "Couldn't load older turns",

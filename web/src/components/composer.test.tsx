@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { ComponentProps } from "react";
+import { createRef, useState } from "react";
+import type { ComponentProps, Ref } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -12,7 +12,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
-import { Composer, TUI_SETTLE_MS } from "./composer";
+import { Composer, TUI_SETTLE_MS, type ComposerHandle } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { type ServerSummary } from "@/lib/types";
@@ -2857,12 +2857,12 @@ describe("Composer — draft persistence", () => {
 
   /** Mounts the composer under a harness that can swap `paneId` IN PLACE (no remount) — the harder
    *  of the two realities the component has to survive. */
-  function renderSwitchable(initialPane: string) {
+  function renderSwitchable(initialPane: string, ref?: Ref<ComposerHandle>) {
     let swap: ((id: string) => void) | null = null;
     function Harness() {
       const [paneId, setPaneId] = useState(initialPane);
       swap = setPaneId;
-      return <Composer {...draftProps({ paneId })} />;
+      return <Composer ref={ref} {...draftProps({ paneId })} />;
     }
     const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
     const view = render(<RouterProvider router={router} />);
@@ -2924,6 +2924,33 @@ describe("Composer — draft persistence", () => {
 
     mount();
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+  });
+
+  // The suggestion chips' door (#433): a draft, never a send.
+  it("insertDraft fills an empty box, appends after a space to a typed one, and keeps the draft", async () => {
+    const user = userEvent.setup();
+    const ref = createRef<ComposerHandle>();
+    renderSwitchable("w1:p1", ref);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    act(() => ref.current?.insertDraft("run the tests"));
+    expect(box).toHaveValue("run the tests");
+
+    await user.clear(box);
+    await user.type(box, "first  ");
+    act(() => ref.current?.insertDraft("then commit"));
+    expect(box).toHaveValue("first then commit");
+    expect(loadDraft(undefined, "w1:p1")).toBe("first then commit");
+  });
+
+  it("insertDraft writes into the pane on screen after an in-place pane swap", () => {
+    const ref = createRef<ComposerHandle>();
+    const { swap } = renderSwitchable("w1:p1", ref);
+
+    swap("w1:p2");
+    act(() => ref.current?.insertDraft("for pane B"));
+    expect(loadDraft(undefined, "w1:p2")).toBe("for pane B");
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
   });
 });
 

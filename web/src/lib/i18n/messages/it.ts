@@ -346,6 +346,7 @@ export const it: Dictionary = {
   "chat.stream.queued": "In attesa di invio",
   "chat.pin.label": "Il tuo messaggio",
   "chat.pin.earlier": "La domanda è più indietro · Carica precedenti",
+  "chat.suggestions.label": "Suggerimenti",
   "chat.stream.sendNow": "Invia ora",
   "chat.stream.sendNowAria": "Invia ora, i messaggi in attesa",
   "chat.stream.loadOlderFailed": "Impossibile caricare i turni precedenti",

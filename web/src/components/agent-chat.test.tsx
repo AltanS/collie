@@ -3431,6 +3431,99 @@ describe("AgentChat — the chat body", () => {
   });
 });
 
+// ── THE AGENT'S SUGGESTED NEXT PROMPTS (#433) ───────────────────────────────────────────────────
+//
+// Chips above the composer, in the Chat body, once the agent has settled. A tap is a draft and never
+// a send: the text lands in the box and no write leaves the phone. The row is a strip named
+// "Suggested" (its word is unpainted on this route, the strips' rule, but it names the row).
+describe("AgentChat — suggested prompts", () => {
+  const SUGGESTIONS = ["run the tests", "Rewrite it"];
+  const settled = (overrides: Partial<AgentView> = {}): AgentView => ({
+    ...fixtureAgents[0]!,
+    hasSession: true,
+    status: "idle",
+    suggestions: SUGGESTIONS,
+    ...overrides,
+  });
+  const strip = () => screen.queryByRole("navigation", { name: "Suggested" });
+
+  /** Every request that is not a read, as `METHOD /path`. */
+  const writes: string[] = [];
+  function logWrites({ request }: { request: Request }) {
+    if (request.method !== "GET") writes.push(`${request.method} ${new URL(request.url).pathname}`);
+  }
+  beforeEach(() => {
+    writes.length = 0;
+    server.events.on("request:start", logWrites);
+  });
+  afterEach(() => server.events.removeListener("request:start", logWrites));
+
+  it.each(["idle", "done"] as const)("draws the chips in the agent's order when it is %s", async (status) => {
+    renderChat({ agent: settled({ status }) });
+    await screen.findByText("what changed today?");
+    const row = await screen.findByRole("navigation", { name: "Suggested" });
+    expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(SUGGESTIONS);
+  });
+
+  it.each(["working", "blocked"] as const)("draws none while the agent is %s", async (status) => {
+    renderChat({ agent: settled({ status }) });
+    await screen.findByText("what changed today?");
+    expect(strip()).toBeNull();
+  });
+
+  it("draws none when the agent suggested nothing", async () => {
+    renderChat({ agent: settled({ suggestions: undefined }) });
+    await screen.findByText("what changed today?");
+    expect(strip()).toBeNull();
+  });
+
+  it("draws none while a dialog owns the keyboard", async () => {
+    renderChat({ agent: settled(), text: MENU_TEXT });
+    await screen.findByText("what changed today?");
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    expect(strip()).toBeNull();
+  });
+
+  it("takes the chips away when the ⋮ row switches the body to the Terminal", async () => {
+    const user = userEvent.setup();
+    renderChat({ agent: settled() });
+    await screen.findByRole("navigation", { name: "Suggested" });
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Terminal view" }));
+
+    expect(await screen.findByText(/recent pane output/)).toBeInTheDocument();
+    await waitFor(() => expect(strip()).toBeNull());
+  });
+
+  it("a tap puts the text in the composer and sends nothing; the chips stay", async () => {
+    const user = userEvent.setup();
+    renderChat({ agent: settled() });
+    await screen.findByText("what changed today?");
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.click(await screen.findByRole("button", { name: "run the tests" }));
+    expect(box).toHaveValue("run the tests");
+    // A second tap appends after a space, as a slash command does, rather than replacing the draft.
+    await user.click(screen.getByRole("button", { name: "Rewrite it" }));
+    expect(box).toHaveValue("run the tests Rewrite it");
+
+    expect(screen.getByRole("button", { name: "run the tests" })).toBeInTheDocument();
+    expect(writes.filter((w) => /\/(reply|keys|send)$/.test(w))).toEqual([]);
+  });
+
+  it("renders a suggestion's markup as the literal text it is", async () => {
+    const user = userEvent.setup();
+    const text = "<b>bold</b> & <img src=x onerror=alert(1)>";
+    renderChat({ agent: settled({ suggestions: [text] }) });
+    await screen.findByText("what changed today?");
+    const chip = await screen.findByRole("button", { name: text });
+    expect(chip.querySelector("b, img")).toBeNull();
+    await user.click(chip);
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue(text);
+  });
+});
+
 // ── "SEND NOW" ON THE WAITING CARD: WHO MAY TAP IT, AND WHAT IT SENDS ───────────────────────────
 //
 // The keys are the bridge's data (`sendQueuedNow` on the chat answer), the write gate is the pane

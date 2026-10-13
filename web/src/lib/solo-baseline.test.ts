@@ -126,6 +126,9 @@ const AGENT_VIEW_KEYS = {
   // only on a pane with no screen and absent from an older bridge or peer.
   asks: true,
   turnId: true,
+  // Not a crew dimension: the next prompts the agent in the pane suggested (#433), read off the
+  // pane's own record and absent when it suggested none. An older bridge or peer omits it.
+  suggestions: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -238,6 +241,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "sessionName",
       "soleTabName",
       "status",
+      "suggestions",
       "tabId",
       "tabLabel",
       "tabPosition",

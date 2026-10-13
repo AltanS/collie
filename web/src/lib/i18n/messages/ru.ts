@@ -350,6 +350,7 @@ export const ru: Dictionary = {
   "chat.stream.queued": "Ожидание отправки",
   "chat.pin.label": "Ваш запрос",
   "chat.pin.earlier": "Запрос был раньше · Загрузить более старые",
+  "chat.suggestions.label": "Подсказки",
   "chat.stream.sendNow": "Отправить сейчас",
   "chat.stream.sendNowAria": "Отправить сейчас, ожидающие сообщения",
   "chat.stream.loadOlderFailed": "Не удалось загрузить предыдущие шаги",

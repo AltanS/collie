@@ -413,6 +413,7 @@ export const ja: Dictionary = {
   "chat.stream.queued": "送信待ち",
   "chat.pin.label": "あなたのプロンプト",
   "chat.pin.earlier": "プロンプトはさらに前です · 過去のログを読み込む",
+  "chat.suggestions.label": "提案",
   "chat.stream.sendNow": "今すぐ送信",
   "chat.stream.sendNowAria": "今すぐ送信、待機中のメッセージ",
   "chat.stream.loadOlderFailed": "過去のやり取りを読み込めませんでした",

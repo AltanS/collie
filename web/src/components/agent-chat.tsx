@@ -75,7 +75,13 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
-import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
+import {
+  CompactStripLabels,
+  LabelledStrip,
+  STRIP_TAP_TARGET,
+  TAB_ROW_SQUARE_TAP_TARGET,
+} from "@/components/ui/labelled-strip";
+import { Button } from "@/components/ui/button";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { MaskedHint } from "@/components/masked-hint";
@@ -1059,6 +1065,23 @@ export function AgentChat({
   // A pane this phone cannot place, or whose read got no answer with nothing kept, is no live pane
   // either.
   const actsDisabledByCache = stale || savedCopyAt !== null || unplaced || noSavedCopy;
+  // THE AGENT'S SUGGESTED NEXT PROMPTS, as chips above the composer (#433). Chat body only, and only
+  // once the agent has settled (idle or done): while it works they would be the last turn's. Only
+  // where a tap can land, too: the composer is mounted and may write, the pane is live, and no
+  // dialog owns the keyboard. A tap fills a draft and never sends; the agent clears them itself
+  // when its next turn starts. The gate lives here because the composer does not know the status.
+  const suggestions = agent?.suggestions ?? [];
+  const suggestionsShown =
+    chatShown &&
+    !gridless &&
+    (agent?.status === "idle" || agent?.status === "done") &&
+    suggestions.length > 0 &&
+    !dialogPresent &&
+    !connecting &&
+    !readOnly &&
+    !gone &&
+    hostBlock === undefined &&
+    !actsDisabledByCache;
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
   // question this side can answer. There are two layers and the split is deliberate: a pane that
   // draws Chat says what it is waiting for in the stream, in its own words, while a pane that keeps
@@ -2707,6 +2730,29 @@ export function AgentChat({
                   block, a sibling of the composer, so it fills exactly the composer's own box and
                   adds no height (components/voice-takeover.tsx). */}
               <div data-slot="chrome-block" className="relative border-t border-rule bg-chrome">
+                {/* The suggestion chips: the first row of the chrome block, above the composer and
+                    outside its box. Agent text, so React text nodes only, cut short with an ellipsis
+                    on the chip; the whole text lands in the draft. In and out through `Collapse`. */}
+                <Collapse open={suggestionsShown}>
+                  {suggestionsShown && (
+                    <LabelledStrip label={t("chat.suggestions.label")}>
+                      {suggestions.map((suggestion, i) => (
+                        <Button
+                          // Index key: the list is the agent's ordered answer, re-read on every poll,
+                          // and two suggestions may say the same thing.
+                          key={i}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn(STRIP_TAP_TARGET, "min-w-11 max-w-64")}
+                          onClick={() => composerRef.current?.insertDraft(suggestion)}
+                        >
+                          <span className="min-w-0 truncate">{suggestion}</span>
+                        </Button>
+                      ))}
+                    </LabelledStrip>
+                  )}
+                </Collapse>
                 {gridless ? (
                   // The composer of a pane with no screen: text goes through the send route with the
                   // turn the phone saw, and a Stop control posts the abort route. The keys bar, the
