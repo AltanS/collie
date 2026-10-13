@@ -49,6 +49,12 @@ export const CAPS = {
   eventsPerReply: 1000,
   /** Items in a reset view, the newest. */
   resetItems: 2000,
+  /** A history cursor, in bytes (WIRE.md 7.16). */
+  historyCursor: 512,
+  /** Rows in one `conversations` page. */
+  conversationsPerPage: 100,
+  /** Items in one page of a conversation's history. */
+  historyItems: 1000,
 } as const;
 
 /** The reply caps of WIRE.md section 6, in bytes. */
@@ -56,6 +62,10 @@ export const REPLY_CAPS = {
   hello: 16 * 1024,
   snapshot: 4 * 1024 * 1024,
   events: 8 * 1024 * 1024,
+  /** A page of the program's conversation list (WIRE.md 7.16): 100 rows. */
+  conversations: 1024 * 1024,
+  /** A page of one conversation's items (WIRE.md 7.16). */
+  conversationItems: 8 * 1024 * 1024,
   post: 16 * 1024,
 } as const;
 

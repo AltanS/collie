@@ -114,6 +114,12 @@ const FORWARDABLE: readonly RegExp[] = [
   // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
   // `BLOB_ROUTE` in bridge/server.ts one-for-one — `forward.test.ts` pins that correspondence.
   /^blobs\/[^/]+$/,
+  // A durable program's own history (M53 spec 11): the program runs on ONE member, so its conversation list,
+  // the items of one and a reopen are asked of that member. The list and the items are reads; a reopen is a
+  // WRITE. Mirrors `DURABLE_CONVERSATIONS_ROUTE` and `DURABLE_CONVERSATION_ROUTE` in bridge/server.ts
+  // one-for-one. Additive-optional (§7.1): a member that predates them answers 404.
+  /^durable\/conversations$/,
+  /^durable\/conversation\/[^/]+\/(?:items|reopen)$/,
 ];
 
 /**
@@ -131,6 +137,8 @@ export function textAnswerOf(route: string): TextAnswer | null {
   if (/^pane\/[^/]+\/chat$/.test(route)) return "chat";
   if (/^(?:pane|workspace)\/[^/]+\/changes$/.test(route)) return "changes";
   if (/^(?:pane|workspace)\/[^/]+\/files$/.test(route)) return "files";
+  // The items of a durable conversation are History's own shape (`entries`), masked the same way.
+  if (/^durable\/conversation\/[^/]+\/items$/.test(route)) return "history";
   return null;
 }
 
@@ -185,6 +193,8 @@ export function forwardKind(route: string): ForwardKind {
   // too: it needs an authorised device on the member (ADR 0083), but it changes nothing, so it is
   // attempted against a stale member and rides the read budget like any other read.
   if (isWorkspaceRead(route)) return "read";
+  // A durable program's list and the items of a conversation change nothing (M53 spec 11); a reopen does.
+  if (route === "durable/conversations" || /^durable\/conversation\/[^/]+\/items$/.test(route)) return "read";
   if (!route.startsWith("pane/")) return "write";
   const action = route.split("/")[2];
   // `changes` is read-only git over the owning member's folder (ADR 0065): a read, like history.
@@ -227,6 +237,7 @@ export function forwardAuditAction(route: string): string | null {
   if (route === "folders" || route === "folders/star") return null; // a read, and a preference
   if (route.startsWith("blobs/")) return null; // a read
   if (isWorkspaceRead(route)) return null; // a read
+  if (route.startsWith("durable/")) return route.endsWith("/reopen") ? "durable.reopen" : null; // the list and the items are reads
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   if (route.startsWith("space/")) return "space.rename";
   const action = route.split("/")[2];

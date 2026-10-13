@@ -641,6 +641,11 @@ describe("solo zero-tax — routes", () => {
       // read-gated like the pane read beside it, so a `?host=` call forwards to the member whose
       // journal named the file (CREW_PROTOCOL.md §9.1).
       "/^\\/api\\/blobs\\/([^/]+)$/",
+      // A durable program's own history (M53 spec 11): its conversation list, and the items or a reopen of one.
+      // Session-scoped like the pane routes: an adapter without the reads answers `unsupported`, and a `?host=`
+      // call forwards to the member the program runs on.
+      "/^\\/api\\/durable\\/conversation\\/([^/]+)\\/(items|reopen)$/",
+      "/^\\/api\\/durable\\/conversations$/",
       // Machines (ADR 0084): one machine's day of minutes, and its alert rules. A lead and a solo
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.

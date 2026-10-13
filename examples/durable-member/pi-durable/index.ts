@@ -10,7 +10,9 @@ import {
   AssistantEntry,
   type Conversation,
   type ConversationId,
+  type ConversationRecord,
   configure,
+  type Cursor,
   defineExtension,
   defineTool,
   type EntryRecord,
@@ -23,7 +25,17 @@ import {
   ToolTask,
   watchEvents,
 } from "@earendil-works/pi-durable";
-import { type Item, type PaneHandle, type Progress, type ProgressStep, safeId, type TabHandle } from "../sdk/core/index.ts";
+import {
+  type ConversationRow,
+  type HistoryProvider,
+  type Item,
+  type PaneHandle,
+  type ProgramEvent,
+  type Progress,
+  type ProgressStep,
+  safeId,
+  type TabHandle,
+} from "../sdk/core/index.ts";
 
 const ctx0 = BACKGROUND_CONTEXT;
 
@@ -156,7 +168,14 @@ export const subtitleFor = (owner: ConversationId | undefined): string => (owner
 /** The one belt action of a ticket. */
 const ESCALATE = { id: "escalate", label: "Escalate", icon: "flag" } as const;
 
-const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
+/** The pane id of a conversation, and the id its history is served under (WIRE.md 7.16). */
+export const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
+
+/** The Pi conversation a pane id names, the inverse of {@link paneIdOf}, or undefined for any other id. */
+export function conversationOfPaneId(paneId: string): ConversationId | undefined {
+  const match = /^conv-(\d{1,15})$/.exec(paneId);
+  return match === null ? undefined : (Number(match[1]) as ConversationId);
+}
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
 
 type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown };
@@ -193,6 +212,9 @@ interface LiveMessage {
 /** The item id of an assistant message's block. The timestamp is known when generation starts, the entry id is not. */
 const messageId = (timestamp: unknown) => safeId(`m${String(timestamp)}`);
 
+/** What the mapper writes to: a pane, or a list of items when it reads a conversation's history back (`piHistory`). */
+export type MapperTarget = Pick<PaneHandle, "event" | "progress" | "state">;
+
 /**
  * Pi entries and agent events to the session stream. A reply grows: `message_update` rewrites its item under one id
  * (at most every {@link PARTIAL_MS}), and the finished entry writes it once more without `partial` (WIRE.md 7.15).
@@ -208,7 +230,7 @@ export class Mapper {
   /** The user items written so far, so a request id that arrives late can be added to one. */
   private readonly users = new Map<string, Extract<Item, { kind: "user" }>>();
   constructor(
-    private pane: PaneHandle,
+    private pane: MapperTarget,
     private registry: PaneRegistry,
     private withProgress: boolean,
     private readonly now: () => number = Date.now,
@@ -257,6 +279,15 @@ export class Mapper {
   private mark(working: boolean) {
     if (!this.withProgress) return;
     this.pane.progress(working ? this.steps() : null);
+  }
+
+  /**
+   * Every entry of a conversation, in order, as items. The history reads it back this way (`piHistory`), from all of
+   * Pi's entries: a reset or a compaction hides older entries from the model, never from the record.
+   */
+  replay(entries: readonly EntryRecord[]) {
+    for (const entry of entries) this.entry(entry);
+    this.finish();
   }
 
   snapshot(s: SnapshotEvent, first: boolean) {
@@ -503,6 +534,126 @@ export async function showConversation(
     mapper.applyAll(events);
   });
   return pane;
+}
+
+// ── History (WIRE.md 7.16) ────────────────────────────────────────────────────────────────────────────────────────────
+
+/** How many Pi entries one read asks for while a conversation's history is mapped. */
+const ENTRY_PAGE = 256;
+
+/** The items of a conversation, as the mapper makes them, each in its latest version, in order of first appearance. */
+class ItemList implements MapperTarget {
+  readonly items = new Map<string, Item>();
+  event(e: ProgramEvent) {
+    if (e.type === "item") this.items.set(e.item.id, e.item);
+  }
+  progress() {}
+  state() {}
+}
+
+/** What the program says about one conversation in its list. The history fills in the rest from Pi's store. */
+export interface ConversationLook {
+  title: string;
+  subtitle?: string;
+  workspaceId?: string;
+  tabId?: string;
+  /** A ticket's reply carries its summary items (markdown, code, link), as on the live pane. */
+  progress?: boolean;
+}
+
+export interface PiHistoryOptions {
+  harness: () => Harness;
+  panes: PaneRegistry;
+  /** The title, subtitle and place of a conversation, from its Pi record (its owner says a helper from a ticket). */
+  describe: (record: ConversationRecord) => ConversationLook;
+  ctx?: Context;
+}
+
+/** A Pi scan cursor as the wire's printable cursor: its JSON, as base64url. */
+function cursorText(cursor: Cursor): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(JSON.stringify(cursor))) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** The inverse of {@link cursorText}, or undefined for a text that is not one. */
+function cursorFrom(text: string): Cursor | undefined {
+  try {
+    const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Cursor) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The history provider for a Pi Durable program (WIRE.md 7.16). Pi keeps every entry of every conversation, so the
+ * record is Pi's own: the list scans Pi's conversations newest first, open and closed, and the items of one are ALL
+ * its entries, mapped by the same {@link Mapper} as the live pane, not only the transcript the model sees now.
+ *
+ * The history id of a conversation is its pane id (`conv-<id>`), which is also the pane's `sessionId`. A conversation
+ * is open while a pane shows it. Each read maps the whole conversation again: simple, and enough for an example. A
+ * program with long conversations keeps the mapped items, or a count, beside its own store.
+ */
+export function piHistory(o: PiHistoryOptions): HistoryProvider {
+  const ctx = o.ctx ?? ctx0;
+  const record = (id: ConversationId) => o.harness().commit((tx) => tx.conversation(id), ctx);
+
+  async function itemsOf(rec: ConversationRecord): Promise<Item[] | undefined> {
+    const conversation = await o.harness().conversation(rec.id, ctx);
+    if (conversation === undefined) return undefined;
+    const list = new ItemList();
+    const mapper = new Mapper(list, new PaneRegistry(), o.describe(rec).progress === true);
+    let cursor: Cursor | undefined;
+    do {
+      const page = await conversation.entries({ order: "ascending" }, ENTRY_PAGE, cursor, ctx);
+      mapper.replay(page.items);
+      cursor = page.next;
+    } while (cursor);
+    return [...list.items.values()];
+  }
+
+  return {
+    async list(after, limit) {
+      const at = after === undefined ? undefined : cursorFrom(after);
+      if (after !== undefined && at === undefined) return { items: [] };
+      const page = await o.harness().commit((tx) => tx.scanConversations({ order: "descending" }, limit, at), ctx);
+      const rows: ConversationRow[] = [];
+      for (const rec of page.items) {
+        const items = (await itemsOf(rec)) ?? [];
+        const look = o.describe(rec);
+        const open = o.panes.has(rec.id);
+        const firstTs = items.find((item) => item.ts !== undefined)?.ts;
+        const lastTs = items.findLast((item) => item.ts !== undefined)?.ts;
+        const row: ConversationRow = {
+          id: paneIdOf(rec.id),
+          title: look.title,
+          startedAt: firstTs ?? new Date().toISOString(),
+          state: open ? "open" : "closed",
+          items: items.length,
+        };
+        if (look.subtitle !== undefined) row.subtitle = look.subtitle;
+        if (look.workspaceId !== undefined) row.workspaceId = look.workspaceId;
+        if (look.tabId !== undefined) row.tabId = look.tabId;
+        if (!open && lastTs !== undefined) row.endedAt = lastTs;
+        rows.push(row);
+      }
+      return page.next === undefined ? { items: rows } : { items: rows, next: cursorText(page.next) };
+    },
+    async items(id, after, limit) {
+      const conversationId = conversationOfPaneId(id);
+      if (conversationId === undefined) return undefined;
+      const rec = await record(conversationId);
+      if (rec === undefined) return undefined;
+      const all = await itemsOf(rec);
+      if (all === undefined) return undefined;
+      // The cursor is a position in the mapped list: Pi appends, and an item that changes keeps its place.
+      const from = after === undefined ? 0 : /^\d{1,9}$/.test(after) ? Number(after) : all.length;
+      const end = Math.min(all.length, from + limit);
+      return end < all.length ? { items: all.slice(from, end), next: String(end) } : { items: all.slice(from, end) };
+    },
+  };
 }
 
 /** The panes whose ticket was escalated: their badge reads "esc" while no question waits. */

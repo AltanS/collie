@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { startApp } from "../app.ts";
 import { TitleStore } from "../state.ts";
 import { api, type Dial } from "./client.ts";
-import { cleanup, firstAsk, tmp, waitFor } from "./util.ts";
+import { cleanup, firstAsk, pane, tmp, waitFor } from "./util.ts";
 
 afterAll(cleanup);
 
@@ -86,5 +86,68 @@ describe("persist: a close survives a restart", () => {
     const d2: Dial = { socket: second.collie.address, version: 1 };
     expect((await api.snapshot(d2)).body.panes).toEqual([]);
     await second.close();
+  });
+});
+
+describe("persist: history keeps a closed conversation, and reopen brings it back (WIRE.md 7.16)", () => {
+  test("history: a closed ticket is listed closed with all its items, across a restart, and reopen shows it again under the same pane id", async () => {
+    const dir = tmp();
+    const storage = join(dir, "store");
+    const start = (socket: string, seed: boolean) =>
+      startApp({ socket: join(dir, socket), storage, stepMs: 0, notesFile: join(dir, "notes.txt"), callerCheck: "off", seed });
+    const first = await start("s.sock", true);
+    const d1: Dial = { socket: first.collie.address, version: 1 };
+    const ticket = (await api.snapshot(d1)).body.panes[0]!.id;
+    expect((await api.hello(d1)).body.caps).toMatchObject({ history: true, reopen: true });
+    // The conversation id the history serves it under is the pane's own id.
+    expect((await pane(d1, ticket))?.sessionId).toBe(ticket);
+    const ask = await waitFor("the ticket asks", () => firstAsk(d1, ticket));
+    expect((await api.answer(d1, ticket, ask.id, "allow")).body).toEqual({ result: "taken" });
+    await waitFor("the ticket and its helper are idle", async () => {
+      const panes = (await api.snapshot(d1)).body.panes;
+      return panes.length === 2 && panes.every((p) => p.state === "idle");
+    });
+    const live = await api.items(d1, ticket);
+    expect(live.status).toBe(200);
+    const kinds = live.body.items.map((item) => item.kind);
+    expect(kinds).toContain("user");
+    expect(kinds).toContain("tool");
+    expect(kinds.slice(-3)).toEqual(["markdown", "code", "link"]);
+
+    expect((await api.close(d1, "pane", ticket)).body).toEqual({ ok: true });
+    const listed = (await api.conversations(d1)).body.items;
+    // Newest first: the helper was made after the ticket.
+    expect(listed.map((row) => [row.title.split(" ")[0], row.state])).toEqual([
+      ["Helper", "open"],
+      ["Ticket", "closed"],
+    ]);
+    const row = listed.find((x) => x.id === ticket)!;
+    expect(row).toMatchObject({ workspaceId: "triage", tabId: "triage:inbox", items: live.body.items.length });
+    expect(row.endedAt).toBeDefined();
+    await first.close();
+
+    // A restart: the ticket is not shown, and the program still serves all of it, from Pi's store.
+    const second = await start("s2.sock", false);
+    const d2: Dial = { socket: second.collie.address, version: 1 };
+    expect((await api.snapshot(d2)).body.panes.map((p) => p.id).includes(ticket)).toBe(false);
+    expect((await api.conversations(d2)).body.items.find((x) => x.id === ticket)?.state).toBe("closed");
+    const after = await api.items(d2, ticket, { limit: 2 });
+    expect(after.body.items.map((item) => item.id)).toEqual(live.body.items.slice(0, 2).map((item) => item.id));
+    expect(after.body.more).toBe(true);
+    const rest = await api.items(d2, ticket, { after: after.body.next });
+    expect(rest.body.items.map((item) => item.id)).toEqual(live.body.items.slice(2).map((item) => item.id));
+
+    // Reopen: the same pane id, off closed.json, and listed open.
+    expect((await api.reopen(d2, ticket)).body).toEqual({ ok: true });
+    expect((await pane(d2, ticket))?.tabId).toBe("triage:inbox");
+    expect(JSON.parse(readFileSync(join(dir, "closed.json"), "utf8"))).toEqual([]);
+    expect((await api.conversations(d2)).body.items.find((x) => x.id === ticket)?.state).toBe("open");
+    expect((await api.reopen(d2, "conv-999")).body.code).toBe("no-such-target");
+    await second.close();
+
+    const third = await start("s3.sock", false);
+    const d3: Dial = { socket: third.collie.address, version: 1 };
+    expect((await api.snapshot(d3)).body.panes.map((p) => p.id).includes(ticket)).toBe(true);
+    await third.close();
   });
 });

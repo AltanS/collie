@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../../json.ts";
-import { DurableLogs, logFileName } from "../../durable/log.ts";
+import { cursorFileName, DurableLogs, logFileName } from "../../durable/log.ts";
 import { parseDurableLog } from "../../journal/durable.ts";
 import { DURABLE_LOG_DIR_OPTION, DURABLE_SOCKET_OPTION, DurableMux, durableMuxFactory, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { CAPS, ITEM_RICH_BYTES } from "./clean.ts";
 import type { DurableEventSink } from "./events.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP, type FakeEvent } from "./fixture.ts";
-import { parseEvents, type DurableEvent } from "./protocol.ts";
+import { parseEvents, parseLogRow, type DurableEvent } from "./protocol.ts";
 
 // THE EVENTS READER against a fake program that serves `GET /pane/:id/events` as WIRE.md 7.2 says.
 
@@ -544,9 +544,11 @@ describe("where the events go", () => {
       await adapter.poll();
       expect(await adapter.syncEvents()).toEqual([PANE]);
       const names = await readdir(join(dir, "durable"));
-      expect(names.toSorted()).toEqual(
+      expect(names.filter((name) => name.endsWith(".jsonl")).toSorted()).toEqual(
         ["conv-01", "conv-02", "conv-03", "conv-04", "conv-05"].map((id) => logFileName(id)).toSorted(),
       );
+      // The cursor is saved beside the log of the pane it moved on; a pane with nothing read keeps none.
+      expect(names.filter((name) => name.endsWith(".cursor.json"))).toEqual([cursorFileName(PANE)]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -592,6 +594,127 @@ describe("a reply that grows, through the reader into the pane log (WIRE.md 7.15
       expect(all[1]?.parts[0]).toEqual({ kind: "text", text: "Hello, world" });
       // Rows for r1: the first poll's version, the second poll's newest, the final. Not six.
       expect(file.split("\n").filter((line) => line.includes('"id":"r1"'))).toHaveLength(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the saved cursor (M53 spec 11, WIRE.md 7.16)", () => {
+  /** A bridge: an adapter with the pane logs of `folder`. A second one on the same folder is a bridge restart. */
+  function bridge(program: FakeDurableProgram, folder: string) {
+    const clock = new FakeDurableClock();
+    const logs = new DurableLogs(folder);
+    const adapter = new DurableMux(program.wire(), clock, logs);
+    const sync = async (): Promise<readonly string[]> => {
+      clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+      await adapter.poll();
+      return adapter.syncEvents();
+    };
+    return { adapter, logs, sync };
+  }
+  const eventReads = (program: FakeDurableProgram, from: number): string[] =>
+    program.requests
+      .slice(from)
+      .filter((request) => request.path.endsWith(`/pane/${PANE}/events`))
+      .map((request) => request.search);
+  /** The item ids the log holds, one per row, in order: a repeat would show twice. */
+  const loggedIds = async (folder: string): Promise<string[]> =>
+    (await readFile(join(folder, logFileName(PANE)), "utf8"))
+      .split("\n")
+      .flatMap((line) => {
+        const row = parseLogRow(line);
+        return row?.k === "item" ? [row.item.id] : [];
+      });
+
+  test("cursor: a bridge restart goes on from the saved cursor: no read from 0, no duplicate row, no gap notice", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    // The program keeps a short tail and a short view, so a read from 0 would be a trimmed reset with a gap.
+    program.tailLimit = 3;
+    program.viewItemCap = 2;
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const first = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      program.appendEvent(PANE, item("i2", "two"));
+      expect(await first.sync()).toContain(PANE);
+      expect(await first.logs.loadCursor(PANE)).toEqual({ epoch: program.epoch, after: 2 });
+
+      // The bridge restarts. The program goes on, and its tail still holds the cursor.
+      program.appendEvent(PANE, item("i3", "three"));
+      program.appendEvent(PANE, item("i4", "four"));
+      const mark = program.requests.length;
+      const second = bridge(program, folder);
+      expect(await second.sync()).toContain(PANE);
+      expect(eventReads(program, mark)).toEqual([`?after=2&epoch=${program.epoch}`]);
+      expect(await loggedIds(folder)).toEqual(["i1", "i2", "i3", "i4"]);
+      expect(await second.logs.loadCursor(PANE)).toEqual({ epoch: program.epoch, after: 4 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cursor: a saved cursor from an old epoch is read with that epoch, and the reset reply writes nothing twice", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const first = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      await first.sync();
+      const old = program.epoch;
+      // The program restarts while the bridge is down: a new epoch, and its cursors start over.
+      program.restart();
+      program.appendEvent(PANE, item("i2", "two"));
+      const mark = program.requests.length;
+      const second = bridge(program, folder);
+      await second.sync();
+      expect(eventReads(program, mark)[0]).toBe(`?after=1&epoch=${old}`);
+      expect(await loggedIds(folder)).toEqual(["i1", "i2"]);
+      expect(await second.logs.loadCursor(PANE)).toEqual({ epoch: program.epoch, after: program.eventCount(PANE) });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cursor: a pane that leaves the layout forgets its saved cursor, so a reopen under the same id reads from 0", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const one = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      await one.sync();
+      expect(await one.logs.loadCursor(PANE)).not.toBeNull();
+      program.removePane(PANE);
+      await one.sync();
+      expect(await one.logs.loadCursor(PANE)).toBeNull();
+      // The log stays: it is the cache Chat reads.
+      expect(await loggedIds(folder)).toEqual(["i1"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cursor: a pane's events go to the log of its sessionId, the key the journal reads", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    program.snapshot.panes = program.snapshot.panes.map((pane) => (pane.id === PANE ? { ...pane, sessionId: "session-1" } : pane));
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const one = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      await one.sync();
+      const names = await readdir(folder);
+      expect(names).toContain(logFileName("session-1"));
+      expect(names).toContain(cursorFileName("session-1"));
+      expect(names).not.toContain(logFileName(PANE));
+      expect(one.adapter.program()?.snapshot.panes.find((pane) => pane.id === PANE)?.sessionId).toBe("session-1");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

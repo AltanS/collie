@@ -6,12 +6,12 @@
 import { type CallInfo, type CoreState, handle } from "./handle.ts";
 import { Store, type WorkspaceHandle } from "./layout.ts";
 import type { ReceiptStore } from "./receipts.ts";
-import type { Caps, ProgramHooks, RenameTarget, Starter } from "./types.ts";
+import type { Caps, HistoryProvider, ProgramHooks, RenameTarget, Starter } from "./types.ts";
 
 export type { CallInfo, CoreState } from "./handle.ts";
 export { handle, hello } from "./handle.ts";
 export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
-export { AskClosed, askIdFor, mintId, Store } from "./layout.ts";
+export { AskClosed, askIdFor, cleanConversationRow, cleanItem, mintId, Store } from "./layout.ts";
 export {
   digestOf,
   type DroppedReceipt,
@@ -24,6 +24,7 @@ export {
   type ReceiptStore,
   CLOSE_GROUP,
   RENAME_GROUP,
+  REOPEN_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
 export {
@@ -38,6 +39,7 @@ export {
   badgeOf,
   bytes,
   CAPS,
+  cursorOk,
   cut,
   hrefOf,
   idOk,
@@ -64,7 +66,10 @@ export interface CoreOptions {
   hostName: string;
   /** How many raw events each pane keeps. At most 1000. Default 500. */
   tailLimit?: number;
-  /** Turn a cap off. Everything the SDK can do is on by default. `terminal` is always false. */
+  /**
+   * Turn a cap off. Everything the SDK can do is on by default, except `history`, which is on once `history()` has a
+   * provider. `terminal` is always false.
+   */
   caps?: Partial<Caps>;
   /** Where finished request ids are kept. Default: in memory. A store that outlives the process keeps them across a restart. */
   receipts?: ReceiptStore;
@@ -88,6 +93,12 @@ export interface CollieCore {
   readonly epoch: string;
   workspace(id: string, o: { title: string; cwd?: string }): WorkspaceHandle;
   starters(list: Starter[]): void;
+  /**
+   * Serve the program's own history (WIRE.md 7.16): every conversation, open and closed, and the items of any of them,
+   * read from the program's store by `provider`. It turns `caps.history` on, unless the options turned it off, and
+   * each pane's `sessionId` becomes its pane id unless the pane named its own.
+   */
+  history(provider: HistoryProvider): void;
   /** Call once the layout is complete (after a restart: after every pane is shown again). Until then every route but hello is 503 `starting`. */
   ready(): void;
   readonly isReady: boolean;
@@ -104,13 +115,18 @@ export function createCore(o: CoreOptions): CollieCore {
   const state: CoreState = {
     store,
     hostName: o.hostName,
-    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, ...o.caps, terminal: false },
+    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: false, reopen: true, ...o.caps, terminal: false },
     hooks,
   };
   return {
     epoch: store.epoch,
     workspace: (id, w) => store.workspace(id, w),
     starters: (list) => store.setStarters(list),
+    history(provider) {
+      store.history = provider;
+      state.caps.history = o.caps?.history !== false;
+      store.rev++;
+    },
     ready() {
       store.ready = true;
       store.rev++;

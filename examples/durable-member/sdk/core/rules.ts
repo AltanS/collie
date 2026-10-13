@@ -27,6 +27,8 @@ export const CAPS = {
   sendText: 32768,
   note: 2048,
   body: 65536,
+  /** A history cursor (WIRE.md 7.16): printable ASCII, no space. */
+  historyCursor: 512,
   /** The smallest `sun_path` limit of the platforms Collie runs on (macOS 104), less the closing NUL. */
   socketPath: 103,
 } as const;
@@ -49,6 +51,10 @@ export const LIMITS = {
   resetItems: 2000,
   /** The program keeps at least this many request ids per epoch. */
   requestIds: 500,
+  /** Conversations per page of `GET /conversations` (WIRE.md 7.16). */
+  conversationsPerPage: 100,
+  /** Items per page of `GET /conversation/:id/items` (WIRE.md 7.16). */
+  historyItems: 1000,
   /** The events reply may not pass 8 MiB. This leaves room for the envelope. */
   replyBytes: 8_000_000,
 } as const;
@@ -74,6 +80,11 @@ const UNSAFE_ID_CHAR = /[\p{C}\s/?#]/u;
 /** 1 to 128 bytes, no control character, no whitespace, none of `/`, `?` or `#`. */
 export function idOk(id: unknown): boolean {
   return typeof id === "string" && id.length > 0 && bytes(id) <= CAPS.id && !UNSAFE_ID_CHAR.test(id);
+}
+
+/** A history cursor: 1 to 512 bytes of printable ASCII with no space (WIRE.md 7.16). */
+export function cursorOk(cursor: unknown): cursor is string {
+  return typeof cursor === "string" && cursor.length > 0 && cursor.length <= CAPS.historyCursor && /^[\x21-\x7e]+$/.test(cursor);
 }
 
 export function assertId(id: unknown, what: string): string {

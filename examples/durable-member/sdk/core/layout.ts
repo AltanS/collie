@@ -38,9 +38,11 @@ import type {
   ChoiceAskInput,
   CloseTarget,
   ClosedBy,
+  ConversationRow,
   Field,
   FormAnswer,
   FormAskInput,
+  HistoryProvider,
   Item,
   Option,
   PaneAction,
@@ -116,6 +118,27 @@ export function cleanItem(item: Item): Item {
     return { ...head, kind: "user", text: cut(item.text, CAPS.text, true), ...(item.requestId === undefined ? {} : { requestId: item.requestId }) };
   }
   return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true), ...partialOf(item) };
+}
+
+/**
+ * One row of the program's conversation list (WIRE.md 7.16), checked and cut to the wire's caps. An id that breaks the
+ * id rule, a start that is not an ISO stamp, an unknown state or an item count that is not a whole number is a
+ * TypeError: the program made a mistake, and the wire never carries what the adapter would drop.
+ */
+export function cleanConversationRow(row: ConversationRow): ConversationRow {
+  assertId(row.id, "conversation id");
+  const startedAt = tsOf(row.startedAt);
+  if (startedAt === undefined) throw new TypeError(`a conversation's startedAt is an ISO 8601 stamp: ${JSON.stringify(row.startedAt)}`);
+  if (row.state !== "open" && row.state !== "closed") throw new TypeError(`a conversation's state is open or closed: ${JSON.stringify(row.state)}`);
+  if (!Number.isSafeInteger(row.items) || row.items < 0) throw new TypeError(`a conversation's item count is a whole number: ${JSON.stringify(row.items)}`);
+  const out: ConversationRow = { id: row.id, title: cut(row.title, CAPS.title), startedAt, state: row.state, items: row.items };
+  const subtitle = row.subtitle === undefined ? undefined : subtitleOf(row.subtitle);
+  if (subtitle !== undefined) out.subtitle = subtitle;
+  if (row.workspaceId !== undefined) out.workspaceId = assertId(row.workspaceId, "conversation workspaceId");
+  if (row.tabId !== undefined) out.tabId = assertId(row.tabId, "conversation tabId");
+  const endedAt = tsOf(row.endedAt);
+  if (endedAt !== undefined) out.endedAt = endedAt;
+  return out;
 }
 
 /** `partial: true` only when the program set exactly that. Anything else reads as a finished text (WIRE.md 7.15). */
@@ -323,6 +346,8 @@ export interface SendContext {
 
 export interface PaneHandle {
   readonly id: string;
+  /** The conversation id the program's history serves this pane under (WIRE.md 7.16), or null. */
+  readonly sessionId: string | null;
   /** The newest turn: the running one, or the last one that ran. */
   readonly turnId: string;
   /** Every open ask, oldest first, at most 50. */
@@ -374,7 +399,12 @@ export interface PaneHandle {
 }
 export interface TabHandle {
   readonly id: string;
-  pane(id: string, o: { title: string; harness: string; cwd?: string }): PaneHandle;
+  /**
+   * `sessionId`: the conversation id the program's history serves this pane under (WIRE.md 7.16). Left out, it is
+   * the pane id once a history provider is set, and null before. Pass `null` when the id does not stay the same
+   * across a restart.
+   */
+  pane(id: string, o: { title: string; harness: string; cwd?: string; sessionId?: string | null }): PaneHandle;
 }
 export interface WorkspaceHandle {
   readonly id: string;
@@ -419,8 +449,16 @@ export class Pane implements PaneHandle {
     readonly harness: string,
     readonly cwd: string | undefined,
     limit = DEFAULT_TAIL,
+    /** The program's own session id, when it passed one. Undefined: the default of {@link sessionId}. */
+    private readonly session?: string | null,
   ) {
     this.limit = Math.min(limit, MAX_TAIL);
+  }
+
+  /** The conversation id of this pane's history: the program's own, else the pane id once history is served, else null. */
+  get sessionId(): string | null {
+    if (this.session !== undefined) return this.session;
+    return this.store.history === undefined ? null : this.id;
   }
 
   private append(e: SessionEvent) {
@@ -498,8 +536,8 @@ export class Pane implements PaneHandle {
       turnId: this.turnId,
       openAsks: this.openAsks,
       ...(this.actionList.length > 0 ? { actions: this.actionList.map((a) => ({ ...a })) } : {}),
-      // Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it.
-      sessionId: null,
+      // The conversation id the program's history serves this pane under (WIRE.md 7.16), or null.
+      sessionId: this.sessionId,
       ...(this.cwd ? { cwd: this.cwd } : {}),
       ...(this.subtitleText === undefined ? {} : { subtitle: this.subtitleText }),
       ...(this.badgeValue === undefined ? {} : { badge: this.badgeValue }),
@@ -703,6 +741,7 @@ export class Pane implements PaneHandle {
     this.closed = true;
     for (const id of [...this.asks.keys()]) this.closeAsk(id, "stopped", new AskClosed("stopped"));
     this.store.panes.delete(this.id);
+    this.store.rememberClosed(this);
     this.store.rev++;
   }
 }
@@ -733,6 +772,13 @@ export class Store {
   }
   /** The program's hooks (`createCore` sets them once). */
   hooks: ProgramHooks = {};
+  /** Where the program's history comes from (WIRE.md 7.16). Unset: `caps.history` is false. */
+  history: HistoryProvider | undefined;
+  /**
+   * The panes closed in this process, by conversation id, newest last, so a reopen without a hook can put the same
+   * pane back. At most {@link LIMITS.panes}. A restart forgets them: the program's own hook reopens those.
+   */
+  readonly closedPanes = new Map<string, Pane>();
   rev = 1;
   /** False until the program says its layout is complete. A restarting program must not show a half-empty one. */
   ready = false;
@@ -771,11 +817,14 @@ export class Store {
   }
 
   /** Idempotent: the same id returns the live pane, so a restarted program can re-attach. */
-  private pane(workspaceId: string, tabId: string, id: string, o: { title: string; harness: string; cwd?: string }): Pane {
+  private pane(workspaceId: string, tabId: string, id: string, o: { title: string; harness: string; cwd?: string; sessionId?: string | null }): Pane {
     assertId(id, "pane id");
+    if (o.sessionId !== undefined && o.sessionId !== null) assertId(o.sessionId, "pane sessionId");
     const have = this.panes.get(id);
     if (have) return have;
-    const pane = new Pane(this, id, tabId, workspaceId, cut(o.title, CAPS.title), cut(o.harness, CAPS.harness), cwdOf(o.cwd), this.tailLimit);
+    const pane = new Pane(this, id, tabId, workspaceId, cut(o.title, CAPS.title), cut(o.harness, CAPS.harness), cwdOf(o.cwd), this.tailLimit, o.sessionId);
+    // A pane shown again is open: it is no longer one a reopen could put back.
+    for (const [key, closed] of this.closedPanes) if (closed.id === id) this.closedPanes.delete(key);
     this.panes.set(id, pane);
     this.rev++;
     return pane;
@@ -826,6 +875,35 @@ export class Store {
       rec.title = next;
       this.rev++;
     }
+    return true;
+  }
+
+  /** Keep a closed pane, so a reopen in this process can put it back (WIRE.md 7.16). */
+  rememberClosed(pane: Pane) {
+    const key = pane.sessionId ?? pane.id;
+    this.closedPanes.delete(key);
+    this.closedPanes.set(key, pane);
+    while (this.closedPanes.size > LIMITS.panes) this.closedPanes.delete(this.closedPanes.keys().next().value!);
+  }
+
+  /** The pane id of a conversation: the open pane that shows it, or the one this process closed for it. */
+  paneOfConversation(id: string): { paneId: string; open: boolean } | undefined {
+    for (const pane of this.panes.values()) if ((pane.sessionId ?? pane.id) === id) return { paneId: pane.id, open: true };
+    const closed = this.closedPanes.get(id);
+    return closed === undefined ? undefined : { paneId: closed.id, open: false };
+  }
+
+  /**
+   * Put back the pane this process closed for a conversation (WIRE.md 7.16): the same pane id, its tail and its
+   * items, in its tab, and `rev` rises. False when there is no such pane, or its tab is gone.
+   */
+  reopen(id: string): boolean {
+    const pane = this.closedPanes.get(id);
+    if (pane === undefined || !this.tabs.has(pane.tabId) || this.panes.has(pane.id)) return false;
+    this.closedPanes.delete(id);
+    pane.closed = false;
+    this.panes.set(pane.id, pane);
+    this.rev++;
     return true;
   }
 

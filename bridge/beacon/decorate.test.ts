@@ -80,6 +80,9 @@ class StubAdapter implements MuxAdapter {
   paneActions?: MuxAdapter["paneActions"];
   controlTurn?: MuxAdapter["controlTurn"];
   renameSpace?: MuxAdapter["renameSpace"];
+  listConversations?: MuxAdapter["listConversations"];
+  conversationItems?: MuxAdapter["conversationItems"];
+  reopenConversation?: MuxAdapter["reopenConversation"];
   /** The foreground argv, when a case gives it one. Absent by default, like a multiplexer
    *  without the call — the decorators must carry it without inventing it. */
   foregroundProcesses?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
@@ -288,6 +291,9 @@ describe("a decorator preserves the adapter's whole surface", () => {
     controlTurn: true,
     foregroundProcesses: true,
     renameSpace: true,
+    listConversations: true,
+    conversationItems: true,
+    reopenConversation: true,
     typeText: true,
     sendKeys: true,
     renamePane: true,
@@ -332,6 +338,9 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
     stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
     stub.renameSpace = () => Promise.resolve(muxAck());
+    stub.listConversations = () => Promise.resolve(muxOk({ items: [] }));
+    stub.conversationItems = () => Promise.resolve(muxOk({ items: [], more: false }));
+    stub.reopenConversation = () => Promise.resolve(muxOk({}));
     return stub;
   }
 
@@ -364,7 +373,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     expect("readLogicalText" in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     // The ask methods too (ADR 0100): a screen adapter must never come out looking like it answers by id.
     // And the control methods (ADR 0101): a screen adapter must never come out refusing `/reply`.
-    for (const field of ["openAsks", "answerAsk", "paneTurn", "paneActions", "controlTurn", "renameSpace"]) {
+    for (const field of ["openAsks", "answerAsk", "paneTurn", "paneActions", "controlTurn", "renameSpace", "listConversations", "conversationItems", "reopenConversation"]) {
       expect(field in decorate(new StubAdapter(), [])).toBe(false);
       expect(field in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     }

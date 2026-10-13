@@ -123,6 +123,16 @@ adapter in the registry, and the crew is unchanged.**
     replay, the same unknown-outcome rule and the same `stale` refusal, and the adapter hands it to
     `controlTurn` as an `action` control. The phone draws the buttons in the durable section of the
     belt, after Steer and Stop. Added to version 1 before the wire shipped, so there is no version 2.
+15. **History is the program's, and the session id is its conversation id (M53 spec 11, 2026-10-13).** A
+    program that keeps its conversations serves them: `caps.history`, `GET /conversations` and
+    `GET /conversation/:id/items`, open and closed, paged by an opaque cursor. `caps.reopen` and
+    `POST /reopen` show a closed one again under the same pane id. `Pane.sessionId` is no longer reserved:
+    it is the conversation id the program serves history under, or null when the program cannot keep it
+    the same across a restart, and the adapter names the pane's session `sessionId ?? pane.id`. The log
+    of point 8 keeps that name and becomes a cache: Chat on a live pane still reads it, the read-only view
+    of a closed conversation reads the program, and the events reader saves its cursor beside the log, so
+    a bridge restart reads nothing twice. The adapter declares `programHistory` and `reopenConversation`
+    from the two caps. Additive, so the version stays 1.
 
 ## Consequences
 

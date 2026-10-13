@@ -1,6 +1,6 @@
 // The small files the Bun example keeps in its data folder, so a restart keeps what the phone did:
 // the names it gave a workspace or a tab (`titles.json`, WIRE.md 7.8) and the conversations it closed
-// (`closed.json`, WIRE.md 7.9). The layout is made again on every start, so these win over the code.
+// (`closed.json`, WIRE.md 7.9, until it reopens one, 7.16). The layout is made again on every start, so these win over the code.
 // Each is written to a temporary file and renamed over the old one, so a crash leaves the old file
 // whole. A file that cannot be read is treated as empty: a program should start.
 
@@ -54,6 +54,11 @@ export class ClosedStore {
   add(id: string): void {
     if (this.ids.has(id)) return;
     this.ids.add(id);
+    writeJson(this.file, [...this.ids]);
+  }
+  /** The phone reopened it (WIRE.md 7.16): show it again on the next start. */
+  delete(id: string): void {
+    if (!this.ids.delete(id)) return;
     writeJson(this.file, [...this.ids]);
   }
 }

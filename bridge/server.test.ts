@@ -41,6 +41,9 @@ import {
   launchersRoute,
   normalizeTabLabel,
   renameSpace,
+  durableConversations,
+  durableConversationItems,
+  reopenConversation,
   hasSplitUrl,
   paneReadResponse,
   paneHistory,
@@ -105,6 +108,11 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnreachable,
+  type MuxConversationItems,
+  type MuxConversationPage,
+  type MuxHistoryPage,
+  type MuxReopened,
   type MuxAck,
   type MuxAdapter,
   type MuxCreatedPane,
@@ -2083,6 +2091,101 @@ describe("renameSpace", () => {
   });
 });
 
+// A durable program's own history (M53 spec 11): the list, the items of one, and a reopen.
+describe("durable history routes", () => {
+  const get = (path: string) => new Request(`http://x${path}`);
+  // A placeholder key, as bridge/redact.test.ts writes one: the mask must hide it, and it is no secret.
+  const KEY = `sk-ant-api03-your-key-here-${"0".repeat(30)}`;
+  const ROW = { id: "conv-1", title: `Ticket ${KEY}`, subtitle: "open", startedAt: "2026-10-13T09:00:00.000Z", state: "open" as const, items: 2, paneId: "conv-1" };
+
+  test("history: conversations passes the page through, keeps next, and masks the program's titles", async () => {
+    const pages: MuxHistoryPage[] = [];
+    const adapter: Pick<MuxAdapter, "listConversations"> = {
+      listConversations: async (page) => (pages.push(page), muxOk<MuxConversationPage>({ items: [ROW], next: "c1" })),
+    };
+    const url = new URL("http://x/api/durable/conversations?after=c0&limit=20");
+    const res = await durableConversations(adapter, url, get(url.pathname + url.search), true);
+    const body = await res.json();
+    expect(pages).toEqual([{ after: "c0", limit: 20 }]);
+    expect(body).toMatchObject({ available: true, next: "c1", items: [{ id: "conv-1", state: "open", paneId: "conv-1", items: 2 }] });
+    expect(body.items[0].title).not.toContain(KEY);
+    // A limit that is not a whole number is not passed on: the program's own default stands.
+    await durableConversations(adapter, new URL("http://x/api/durable/conversations?limit=x"), get("/"), true);
+    expect(pages.at(-1)).toEqual({});
+  });
+
+  test("history: conversations on an adapter without the read, or a refusal, is an ordinary answer", async () => {
+    const none = await durableConversations({}, new URL("http://x/api/durable/conversations"), get("/"), true);
+    expect(await none.json()).toEqual({ available: false, reason: "unsupported" });
+    const down: Pick<MuxAdapter, "listConversations"> = { listConversations: async () => muxUnreachable("program starting") };
+    const res = await durableConversations(down, new URL("http://x/api/durable/conversations"), get("/"), true);
+    expect(await res.json()).toEqual({ available: false, reason: "unreachable", detail: "program starting" });
+  });
+
+  test("history: items become History entries through the durable journal, with more and next", async () => {
+    // The wire's items carry more than the mux names (`text`), so they are built first and passed as they are.
+    const items = [
+      { id: "u1", kind: "user", text: "hello", ts: "2026-10-13T09:00:00.000Z" },
+      { id: "r1", kind: "reply", text: "hi there", ts: "2026-10-13T09:00:01.000Z" },
+    ];
+    const adapter: Pick<MuxAdapter, "conversationItems"> = {
+      conversationItems: async (id) =>
+        id === "conv-1" ? muxOk<MuxConversationItems>({ items, next: "i2", more: true }) : muxGone("The program does not know this conversation."),
+    };
+    const res = await durableConversationItems(adapter, "conv-1", new URL("http://x/api/durable/conversation/conv-1/items"), get("/"), true);
+    const body = await res.json();
+    expect(body).toMatchObject({ available: true, id: "conv-1", next: "i2", more: true });
+    expect(body.entries.map((entry: { uuid: string; role: string }) => [entry.uuid, entry.role])).toEqual([
+      ["u1", "user"],
+      ["r1", "assistant"],
+    ]);
+    const gone = await durableConversationItems(adapter, "nobody", new URL("http://x/"), get("/"), true);
+    expect(await gone.json()).toEqual({ available: false, reason: "gone", detail: "The program does not know this conversation." });
+    expect(await (await durableConversationItems({}, "conv-1", new URL("http://x/"), get("/"), true)).json()).toEqual({ available: false, reason: "unsupported" });
+  });
+
+  test("reopen: one call to the adapter, an audit line, a fresh look, and the pane in the answer", async () => {
+    const calls: string[] = [];
+    const audit: AuditEntry[] = [];
+    const adapter: Pick<MuxAdapter, "reopenConversation" | "refresh"> = {
+      reopenConversation: async (id) => (calls.push(`reopen ${id}`), muxOk<MuxReopened>({ paneId: id })),
+      refresh: async () => void calls.push("refresh"),
+    };
+    const engine = { pokeNow: () => void calls.push("poke") };
+    const run = () => reopenConversation(adapter, engine, "conv-1", new Request("http://x/", { method: "POST" }), { record: (entry: AuditEntry) => void audit.push(entry) }, "pixel", "default");
+    expect(await (await run()).json()).toEqual({ ok: true, paneId: "conv-1" });
+    expect(calls).toEqual(["reopen conv-1", "refresh", "poke"]);
+    expect(audit).toEqual([{ action: "durable.reopen", session: "default", device: "pixel", detail: { id: "conv-1" } }]);
+  });
+
+  test("reopen: a refusal rides durable.reopen_failed with its words, nothing is audited, and no adapter is unsupported", async () => {
+    const audit: AuditEntry[] = [];
+    const record = { record: (entry: AuditEntry) => void audit.push(entry) };
+    const engine = { pokeNow: () => {} };
+    const refused: Pick<MuxAdapter, "reopenConversation" | "refresh"> = { reopenConversation: async () => muxRefused("The program did not bring this conversation back."), refresh: async () => {} };
+    const res = await reopenConversation(refused, engine, "conv-1", new Request("http://x/", { method: "POST" }), record, "pixel", "default");
+    expect(await res.json()).toMatchObject({ ok: false, code: "durable.reopen_failed", detail: { reason: "The program did not bring this conversation back." } });
+    const bare: Pick<MuxAdapter, "reopenConversation" | "refresh"> = { refresh: async () => {} };
+    const none = await reopenConversation(bare, engine, "conv-1", new Request("http://x/", { method: "POST" }), record, "pixel", "default");
+    expect(await none.json()).toMatchObject({ ok: false, code: "durable.reopen_failed" });
+    expect(audit).toEqual([]);
+  });
+
+  test("history: the list and the items are reads, a reopen is a write, all ahead of the pane routes, and all cross a crew link", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const list = src.indexOf("if (DURABLE_CONVERSATIONS_ROUTE.test(pathname)) {");
+    const one = src.indexOf("const conversationMatch = pathname.match(DURABLE_CONVERSATION_ROUTE);");
+    expect(list).toBeGreaterThan(0);
+    expect(src.slice(list, list + 200)).toContain('caller.gate("read")');
+    expect(src.slice(one, one + 300)).toContain('caller.gate(reopen ? "write" : "read")');
+    expect(one).toBeLessThan(src.indexOf("const paneMatch = pathname.match(PANE_ROUTE);"));
+    expect(crewRouteFor("/api/durable/conversations")).toBe("durable/conversations");
+    expect(crewRouteFor("/api/durable/conversation/conv-1/items")).toBe("durable/conversation/conv-1/items");
+    expect(crewRouteFor("/api/durable/conversation/conv-1/reopen")).toBe("durable/conversation/conv-1/reopen");
+    expect(crewRouteFor("/api/durable/conversation/conv-1")).toBeNull();
+  });
+});
+
 // The X-Collie-Build response header is what a no-service-worker client polls to notice a live
 // rebuild (web/src/lib/server-build.ts). withBuildHeader is the pure attach helper; the handlers
 // that call it (snapshot/pane) stay untested by convention (they need Bun.serve + the socket).
@@ -2721,7 +2824,7 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
   test("the real Herdr adapter publishes every capability — nothing changes for its operators", () => {
     const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
     // The controls of a durable program (M51 spec 08, M53 spec 05) are the program's to declare, never Herdr's.
-    const program = new Set(["steerTurn", "abortTurn", "starters", "renameSpace", "programActions"]);
+    const program = new Set(["steerTurn", "abortTurn", "starters", "renameSpace", "programActions", "programHistory", "reopenConversation"]);
     for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(!program.has(cap));
     expect(wire.notes).toEqual({});
   });
@@ -3071,16 +3174,17 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All TWENTY session-scoped route handlers (tab create, workspace create, launch, this host's launcher
+    // All TWENTY-TWO session-scoped route handlers (tab create, workspace create, launch, this host's launcher
     // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
     // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
     // by pane or workspace (ADR 0090), tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
     // branch plan and create from a folder (ADR 0093), and the
     // three writes on a phone's own launcher rows, served by one function (ADR 0094), and the two
     // writes on this machine's one-off command history, served by one function (ADR 0095), and the
-    // read that checks a typed line before it runs (ADR 0095, amendment)) reach
+    // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
+    // conversation list and the items or reopen of one (M53 spec 11)) reach
     // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(20);
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(22);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS

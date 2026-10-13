@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { request } from "node:http";
-import type { Ask, EventsReply, Hello, Problem, Snapshot } from "../sdk/core/types.ts";
+import type { Ask, ConversationItemsReply, ConversationsReply, EventsReply, Hello, Problem, Snapshot } from "../sdk/core/types.ts";
 
 export interface Dial {
   /** The program's Unix socket. */
@@ -90,7 +90,20 @@ export const api = {
     call(d, "POST", `/pane/${enc(pane)}/action`, { requestId: o.requestId ?? mint(), actionId, ...(o.turnId === undefined ? {} : { turnId: o.turnId }) }),
   close: (d: Dial, kind: string, id: string, requestId: string = mint()) => call(d, "POST", "/close", { requestId, kind, id }),
   start: (d: Dial, starter: string, requestId: string = mint()) => call(d, "POST", `/starter/${enc(starter)}`, { requestId }),
+  /** `GET /conversations` (WIRE.md 7.16). */
+  conversations: (d: Dial, o: { after?: string; limit?: number | string } = {}) =>
+    call<ConversationsReply>(d, "GET", `/conversations${query(o)}`),
+  /** `GET /conversation/:id/items` (WIRE.md 7.16). */
+  items: (d: Dial, id: string, o: { after?: string; limit?: number | string } = {}) =>
+    call<ConversationItemsReply>(d, "GET", `/conversation/${enc(id)}/items${query(o)}`),
+  reopen: (d: Dial, id: string, requestId: string = mint()) => call(d, "POST", "/reopen", { requestId, id }),
 };
+
+/** `?after=..&limit=..` with the parts that are set, or "". */
+function query(o: { after?: string; limit?: number | string }): string {
+  const parts = [o.after === undefined ? "" : `after=${enc(o.after)}`, o.limit === undefined ? "" : `limit=${enc(String(o.limit))}`].filter(Boolean);
+  return parts.length === 0 ? "" : `?${parts.join("&")}`;
+}
 
 /** The oldest open ask of a pane. The wire lists them oldest first. */
 export async function oldestAsk(d: Dial, pane: string): Promise<Ask | undefined> {

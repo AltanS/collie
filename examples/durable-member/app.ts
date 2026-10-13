@@ -24,7 +24,17 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
-import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "./pi-durable/index.ts";
+import {
+  ASKING_TOOLS,
+  askTools,
+  conversationOfPaneId,
+  PaneRegistry,
+  piHistory,
+  riskGuard,
+  showConversation,
+  spawnHelperTool,
+  subtitleFor,
+} from "./pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "./script.ts";
 import { ClosedStore, TitleStore } from "./state.ts";
 
@@ -107,6 +117,17 @@ export async function startApp(o: AppOptions): Promise<App> {
           await panes.forget(id);
         }
       },
+      // The phone reopens a closed conversation (WIRE.md 7.16): take it off the closed list and show it again, under
+      // the same pane id. Pi kept every entry, so the pane carries the whole conversation.
+      onReopen: async ({ id }) => {
+        const conversationId = conversationOfPaneId(id);
+        if (conversationId === undefined) return false;
+        const record = await harness.commit((tx) => tx.conversation(conversationId), ctx);
+        const conversation = await harness.conversation(conversationId, ctx);
+        if (record === undefined || conversation === undefined) return false;
+        closed.delete(String(conversationId));
+        await show(conversation, record.owner?.conversationId);
+      },
     },
   });
   const ws = collie.workspace("triage", { title: titles.get("workspace", "triage", "Triage"), cwd: "/srv/triage" });
@@ -130,6 +151,19 @@ export async function startApp(o: AppOptions): Promise<App> {
   registry.install(triageTools);
   const risky = new Set(["write_note"]);
   registry.install(riskGuard({ panes, risky }));
+
+  // The history is Pi's own record (WIRE.md 7.16): every conversation, open and closed, with all its entries.
+  collie.history(
+    piHistory({
+      harness: () => harness,
+      panes,
+      describe: (record) => {
+        const owner = record.owner?.conversationId;
+        const owned = owner !== undefined;
+        return { title: `${owned ? "Helper" : "Ticket"} #${record.id}`, subtitle: subtitleFor(owner), workspaceId: "triage", tabId: owned ? helpers.id : inbox.id, progress: !owned };
+      },
+    }),
+  );
 
   const storage: Storage = o.storage === "memory" ? new MemoryStorage() : await openNodeJsonlStorage(o.storage, ctx);
   harness = await Harness.open(storage, { models, registry, onReport: (e) => console.error("pi-durable report:", e) }, ctx);

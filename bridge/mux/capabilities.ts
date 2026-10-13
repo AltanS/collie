@@ -50,6 +50,8 @@ export const MUX_CAPABILITIES = [
   "abortTurn",
   "starters",
   "programActions",
+  "programHistory",
+  "reopenConversation",
 ] as const;
 
 /** One declarable capability. */
@@ -122,6 +124,10 @@ export const MUX_CAPABILITY_ROUTES = {
     "POST /api/pane/:id/abort (ADR 0101): stop the running turn. Only a durable program can declare it, from its own `caps.abort`; the phone draws the Stop button in the belt when it is declared. Absent ⇒ no Stop button.",
   programActions:
     "POST /api/pane/:id/action (M53 spec 07): run one of the buttons the program lists for a pane (`actions` on the pane, up to four, each with a label and an icon). Only a durable program can declare it, from its own `caps.actions` (WIRE.md section 4); the phone draws the program's buttons in its section of the belt when it is declared. Absent ⇒ no program buttons.",
+  programHistory:
+    "GET /api/durable/conversations and GET /api/durable/conversation/:id/items (M53 spec 11): the program's own list of its conversations, open and closed, and the items of one, served by the program and not by the bridge's log. Only a durable program can declare it, from its own `caps.history` (WIRE.md 7.16); the phone draws the History row in the space sheet and leads the pane sheet's History row to the list when it is declared. Absent ⇒ no list, and History stays per pane.",
+  reopenConversation:
+    "POST /api/durable/conversation/:id/reopen (M53 spec 11): show a closed conversation again, under the same pane id. Only a durable program can declare it, from its own `caps.reopen` (WIRE.md 7.16); the read-only view of a closed conversation draws a Reopen button when it is declared. Absent ⇒ no Reopen button.",
   starters:
     "GET /api/launchers rows of `source: \"program\"` and POST /api/launch with a `starter` (ADR 0102). Only a durable program can declare it, from its own `caps.starters`; the phone then draws the new-tab and new-space buttons and sends them to the New page. Absent ⇒ those buttons stay hidden where `createTab` and `createSpace` are absent.",
 } satisfies Record<MuxCapability, string>;
@@ -235,6 +241,8 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     abortTurn: claimed.has("abortTurn"),
     starters: claimed.has("starters"),
     programActions: claimed.has("programActions"),
+    programHistory: claimed.has("programHistory"),
+    reopenConversation: claimed.has("reopenConversation"),
   } satisfies Record<MuxCapability, boolean>;
   return {
     supports,

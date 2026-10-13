@@ -106,7 +106,7 @@ describe("the wire", () => {
       protocol: { min: 1, max: 1 },
       host: { name: "durable-member-cloudflare" },
       ready: true,
-      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, terminal: false },
+      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: true, reopen: true, terminal: false },
     });
     expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/);
     expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
@@ -262,6 +262,33 @@ describe("a close", () => {
   test.skipIf(!SQLITE)("a closed ticket stays closed after a wake of the object", async () => {
     await abortAllDurableObjects();
     expect((await snapshot()).panes.some((p: { id: string }) => p.id === closedPane)).toBe(false);
+  });
+
+  test("history: the closed ticket is listed closed, its items are served from Pi's store, and reopen brings it back", async () => {
+    const list = await call("GET", "/conversations");
+    expect(list.status).toBe(200);
+    const row = list.body.items.find((x: { id: string }) => x.id === closedPane);
+    expect(row).toMatchObject({ state: "closed", workspaceId: "triage", tabId: "triage:inbox" });
+    expect(row.title).toMatch(/^Ticket #/);
+    const items = await call("GET", `/conversation/${encodeURIComponent(closedPane)}/items`);
+    expect(items.status).toBe(200);
+    expect(items.body.more).toBe(false);
+    expect(items.body.items.length).toBe(row.items);
+    expect(items.body.items.some((item: { kind: string }) => item.kind === "user")).toBe(true);
+    expect((await call("GET", "/conversation/conv-99999/items")).body.code).toBe("no-such-conversation");
+    expect((await call("GET", "/conversations", { token: "wrong" })).status).toBe(401);
+
+    const r = await call("POST", "/reopen", { body: { requestId: "reopen-1", id: closedPane } });
+    expect([r.status, r.body]).toEqual([200, { ok: true }]);
+    expect((await paneOf(closedPane))?.tabId).toBe("triage:inbox");
+    expect((await call("POST", "/reopen", { body: { requestId: "reopen-1", id: closedPane } })).body).toEqual({ ok: true, replayed: true });
+    expect((await call("POST", "/reopen", { body: { requestId: "reopen-2", id: "conv-99999" } })).body.code).toBe("no-such-target");
+    expect((await call("GET", "/conversations")).body.items.find((x: { id: string }) => x.id === closedPane).state).toBe("open");
+  });
+
+  test.skipIf(!SQLITE)("reopen: a reopened ticket stays open after a wake of the object", async () => {
+    await abortAllDurableObjects();
+    expect((await snapshot()).panes.some((p: { id: string }) => p.id === closedPane)).toBe(true);
   });
 });
 

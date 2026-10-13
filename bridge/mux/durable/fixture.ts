@@ -28,6 +28,11 @@
 // repeat of a request id answered `replayed`, and a refusal (422 `close-refused`) when a test sets `closeRefusal`. A
 // close takes the target and everything inside it out of the layout, and `rev` rises.
 //
+// It serves its own history as WIRE.md 7.16 describes it, when `caps.history` is set: `GET /conversations`
+// from the `conversations` a test lists (newest first, paged by `c<n>`) and `GET /conversation/:id/items` from
+// each one's items (paged by `i<n>`). It takes `POST /reopen` when `caps.reopen` is set: a pane it closed comes back
+// under the same id, in its tab, and `rev` rises; a refusal (422 `reopen-refused`) when a test sets `reopenRefusal`.
+//
 // It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
 // whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
 // a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
@@ -70,6 +75,7 @@ import {
   parseControlPost,
   parseEvents,
   parseRenamePost,
+  parseReopenPost,
   type DurableAsk,
   type DurablePane,
   type DurableStarter,
@@ -94,8 +100,22 @@ export interface FakeHello {
     rename?: boolean;
     close?: boolean;
     actions?: boolean;
+    history?: boolean;
+    reopen?: boolean;
     terminal?: boolean;
   };
+}
+
+/** One conversation of the fake's history (WIRE.md 7.16): its row, as served, and its items, oldest first. */
+export interface FakeConversation {
+  row: JsonObject;
+  items: JsonObject[];
+}
+
+/** A reopen the fake took. */
+export interface FakeReopen {
+  readonly requestId: string;
+  readonly id: string;
 }
 
 /** A `snapshot` document as the fake serves it. `rev` and `epoch` come from the fake's state. */
@@ -309,7 +329,7 @@ export interface ControlDoc {
 
 function reply(
   status: number,
-  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc | ControlDoc,
+  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc | ControlDoc | JsonObject,
   etag?: string,
 ): Response {
   const headers = new Headers({ "content-type": "application/json" });
@@ -376,6 +396,16 @@ export class FakeDurableProgram {
   /** When set, the next closes fail with 422 `close-refused` and this message, and change nothing. */
   closeRefusal: string | null = null;
   private readonly closedByRequest = new Map<string, FakeClose>();
+
+  /** The program's history, newest first (WIRE.md 7.16). Served only with `caps.history`. */
+  conversations: FakeConversation[] = [];
+  /** Every reopen the fake took, in order. A replay is not a second entry. */
+  readonly reopens: FakeReopen[] = [];
+  /** When set, the next reopens fail with 422 `reopen-refused` and this message, and change nothing. */
+  reopenRefusal: string | null = null;
+  private readonly reopenedByRequest = new Map<string, FakeReopen>();
+  /** The panes a close took out, by conversation id (`sessionId`, else the pane id), so a reopen can put one back. */
+  private readonly closedPanes = new Map<string, DurablePane>();
 
   /** Every belt action the fake ran, in order. A replay is not a second entry. */
   readonly actionsRun: FakeAction[] = [];
@@ -643,6 +673,10 @@ export class FakeDurableProgram {
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
     if (request.method === "POST" && route === "/rename") return this.handleRename(body ?? "");
     if (request.method === "POST" && route === "/close") return this.handleClose(body ?? "");
+    if (request.method === "GET" && route === "/conversations") return this.conversationsReply(url.searchParams);
+    const itemsRoute = /^\/conversation\/([^/]+)\/items$/.exec(route);
+    if (request.method === "GET" && itemsRoute !== null) return this.itemsReply(decodeURIComponent(itemsRoute[1] ?? ""), url.searchParams);
+    if (request.method === "POST" && route === "/reopen") return this.handleReopen(body ?? "");
     const actionRoute = /^\/pane\/([^/]+)\/action$/.exec(route);
     if (request.method === "POST" && actionRoute !== null) return this.handleAction(decodeURIComponent(actionRoute[1] ?? ""), body ?? "");
     const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
@@ -802,6 +836,9 @@ export class FakeDurableProgram {
     const goneTabs = new Set(
       kind === "tab" ? [id] : kind === "workspace" ? this.snapshot.tabs.filter((tab) => tab.workspaceId === id).map((tab) => tab.id) : [],
     );
+    for (const pane of this.snapshot.panes) {
+      if (kind === "pane" ? pane.id === id : goneTabs.has(pane.tabId)) this.closedPanes.set(pane.sessionId ?? pane.id, { ...pane, openAsks: [] });
+    }
     this.snapshot.panes = this.snapshot.panes.filter((pane) => (kind === "pane" ? pane.id !== id : !goneTabs.has(pane.tabId)));
     this.snapshot.tabs = this.snapshot.tabs.filter((tab) => !goneTabs.has(tab.id));
     if (kind === "workspace") this.snapshot.workspaces = this.snapshot.workspaces.filter((workspace) => workspace.id !== id);
@@ -809,6 +846,66 @@ export class FakeDurableProgram {
     const close: FakeClose = { requestId, kind, id };
     this.closedByRequest.set(requestId, close);
     this.closes.push(close);
+    return reply(200, { ok: true });
+  }
+
+  /** A page of a history route: `after` as `<letter><n>`, `limit` from 1 to `max`. Null for a bad one (400). */
+  private pageOf(query: URLSearchParams, letter: string, max: number): { from: number; limit: number } | null {
+    const after = query.get("after");
+    const limitText = query.get("limit");
+    const from = after === null ? 0 : new RegExp(`^${letter}(\\d+)$`).exec(after)?.[1];
+    if (from === undefined) return null;
+    if (limitText !== null && !/^[1-9]\d*$/.test(limitText)) return null;
+    return { from: Number(from), limit: Math.min(limitText === null ? max : Number(limitText), max) };
+  }
+
+  /** `GET /conversations` (WIRE.md 7.16): the rows newest first, at most 100 a page. */
+  private conversationsReply(query: URLSearchParams): Response {
+    if (this.hello.caps.history !== true) return reply(409, { code: "not-supported" });
+    const page = this.pageOf(query, "c", 100);
+    if (page === null) return reply(400, { code: "bad-cursor" });
+    const end = page.from + page.limit;
+    const doc: JsonObject = { items: this.conversations.slice(page.from, end).map((conversation) => conversation.row) };
+    return reply(200, end < this.conversations.length ? { ...doc, next: `c${String(end)}` } : doc);
+  }
+
+  /** `GET /conversation/:id/items` (WIRE.md 7.16): oldest first, at most 1000 a page. */
+  private itemsReply(id: string, query: URLSearchParams): Response {
+    if (this.hello.caps.history !== true) return reply(409, { code: "not-supported" });
+    const page = this.pageOf(query, "i", 1000);
+    if (page === null) return reply(400, { code: "bad-cursor" });
+    const conversation = this.conversations.find((candidate) => candidate.row.id === id);
+    if (conversation === undefined) return reply(404, { code: "no-such-conversation" });
+    const end = page.from + page.limit;
+    const items = conversation.items.slice(page.from, end);
+    return reply(200, end < conversation.items.length ? { items, next: `i${String(end)}`, more: true } : { items, more: false });
+  }
+
+  /**
+   * `POST /reopen` (WIRE.md 7.16): the body, then the cap, then the request id memory, then the target, then the
+   * program's say. An open conversation answers ok and changes nothing. A pane this fake closed comes back.
+   */
+  private handleReopen(text: string): Response {
+    const post = parseReopenPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, id } = post;
+    if (this.hello.caps.reopen !== true) return reply(409, { code: "not-supported" });
+    const earlier = this.reopenedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.id !== id) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    if (this.snapshot.panes.some((pane) => (pane.sessionId ?? pane.id) === id)) return reply(200, { ok: true });
+    const pane = this.closedPanes.get(id);
+    if (pane === undefined) return reply(404, { code: "no-such-target" });
+    if (this.reopenRefusal !== null) return reply(422, { code: "reopen-refused", message: this.reopenRefusal });
+    this.closedPanes.delete(id);
+    this.snapshot.panes = [...this.snapshot.panes, pane];
+    this.touch();
+    const reopen: FakeReopen = { requestId, id };
+    this.reopenedByRequest.set(requestId, reopen);
+    this.reopens.push(reopen);
     return reply(200, { ok: true });
   }
 

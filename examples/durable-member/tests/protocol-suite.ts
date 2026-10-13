@@ -3,7 +3,20 @@
 // agree, so the core is the wire and the socket is only its transport.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
-import { type AskInput, type Caps, type CoreOptions, idOk, type PaneAction, type PaneHandle, type PermissionAskInput, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
+import {
+  type AskInput,
+  type Caps,
+  type ConversationRow,
+  type CoreOptions,
+  type HistoryProvider,
+  idOk,
+  type Item,
+  type PaneAction,
+  type PaneHandle,
+  type PermissionAskInput,
+  type Starter,
+  type WorkspaceHandle,
+} from "../sdk/core/index.ts";
 import { cleanup, waitFor } from "./util.ts";
 
 /** A program with no layout yet, and the dial that reaches it. */
@@ -11,6 +24,7 @@ export interface Opened {
   readonly epoch: string;
   workspace(id: string, o: { title: string; cwd?: string }): WorkspaceHandle;
   starters(list: Starter[]): void;
+  history(provider: HistoryProvider): void;
   ready(): void;
   close(): Promise<void>;
 }
@@ -31,6 +45,10 @@ export function protocolSuite(transport: Transport) {
     /** What the program's `onClose` hook decides (`undefined` accepts, as a hook that returns nothing does), and what it was asked. */
     let closeVerdict: boolean | undefined | Promise<boolean | undefined> = undefined;
     const closeAsked: unknown[] = [];
+    /** What the program's `onReopen` hook decides (`undefined` accepts), what it was asked, and what it does first. */
+    let reopenVerdict: boolean | undefined = undefined;
+    const reopenAsked: unknown[] = [];
+    let reopenShows: ((id: string) => void) | undefined;
     let aborted = 0;
     let starts = 0;
     const post = (path: string, body: unknown) => call(d, "POST", path, body);
@@ -69,6 +87,11 @@ export function protocolSuite(transport: Transport) {
             closeAsked.push({ ...target, requestId });
             return closeVerdict;
           },
+          onReopen: (target, requestId) => {
+            reopenAsked.push({ ...target, requestId });
+            if (reopenVerdict !== false) reopenShows?.(target.id);
+            return reopenVerdict;
+          },
         },
       }));
       pane = mk("p1");
@@ -98,7 +121,7 @@ export function protocolSuite(transport: Transport) {
         expect(r.body.host.name).toBe("t");
         expect(r.body.ready).toBe(true);
         expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/); // 128 bits
-        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, terminal: false });
+        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: false, reopen: true, terminal: false });
       });
       test("409 incompatible with the range, never a 5xx; a header that is not an integer is the same", async () => {
         for (const version of [0, 2, 99]) {
@@ -1479,6 +1502,165 @@ export function protocolSuite(transport: Transport) {
         const p = mk("gone");
         p.close();
         expect((await api.events(d, "gone", 0)).status).toBe(404);
+      });
+    });
+
+    describe("history and reopen (WIRE.md 7.16)", () => {
+      /** The program's own record: rows newest first, items per conversation, and the cursors it hands out. */
+      const rows: ConversationRow[] = [];
+      const stored = new Map<string, Item[]>();
+      const listCalls: [string | undefined, number][] = [];
+      const itemCalls: [string, string | undefined, number][] = [];
+      const provider: HistoryProvider = {
+        async list(after, limit) {
+          listCalls.push([after, limit]);
+          const from = after === undefined ? 0 : Number(after.slice(1));
+          const page = rows.slice(from, from + limit);
+          return from + limit < rows.length ? { items: page, next: `r${from + limit}` } : { items: page };
+        },
+        async items(id, after, limit) {
+          itemCalls.push([id, after, limit]);
+          const all = stored.get(id);
+          if (all === undefined) return undefined;
+          const from = after === undefined ? 0 : Number(after.slice(1));
+          const page = all.slice(from, from + limit);
+          return from + limit < all.length ? { items: page, next: `i${from + limit}` } : { items: page };
+        },
+      };
+      const row = (id: string, state: "open" | "closed", extra: Partial<ConversationRow> = {}): ConversationRow => ({
+        id,
+        title: `T ${id}`,
+        startedAt: "2026-10-13T09:00:00.000Z",
+        state,
+        items: stored.get(id)?.length ?? 0,
+        ...extra,
+      });
+      const replyItems = (n: number, size = 10): Item[] =>
+        Array.from({ length: n }, (_, i) => ({ id: `it-${i}`, ts: "2026-10-13T09:00:00.000Z", kind: "reply" as const, text: "x".repeat(size) }));
+
+      test("history: both routes are 409 not-supported before the program sets a provider, and hello says history false", async () => {
+        expect((await api.hello(d)).body.caps.history).toBe(false);
+        expect([(await api.conversations(d)).status, (await api.conversations(d)).body.code]).toEqual([409, "not-supported"]);
+        expect((await api.items(d, "p1")).body.code).toBe("not-supported");
+        expect((await paneInfo("p1")).sessionId).toBeNull();
+      });
+      test("history: with a provider, hello says history true and every pane's sessionId is its pane id", async () => {
+        stored.set("h-closed", replyItems(3));
+        stored.set("p1", replyItems(1));
+        rows.push(row("p1", "open"), row("h-closed", "closed", { subtitle: "  done \u0007 ", endedAt: "2026-10-13T10:00:00.000Z", workspaceId: "w", tabId: "w:t" }));
+        collie.history(provider);
+        expect((await api.hello(d)).body.caps.history).toBe(true);
+        expect((await paneInfo("p1")).sessionId).toBe("p1");
+        const own = collie.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("h-own", { title: "own", harness: "x", sessionId: "session-own" });
+        expect((await paneInfo(own.id)).sessionId).toBe("session-own");
+      });
+      test("history: conversations lists the rows newest first, cleaned, open and closed, paged by the program's cursor", async () => {
+        const r = await api.conversations(d);
+        expect(r.status).toBe(200);
+        expect(r.body.items.map((x) => [x.id, x.state, x.items])).toEqual([
+          ["p1", "open", 1],
+          ["h-closed", "closed", 3],
+        ]);
+        expect(r.body.items[1]).toMatchObject({ subtitle: "done", endedAt: "2026-10-13T10:00:00.000Z", workspaceId: "w", tabId: "w:t" });
+        expect(r.body.next).toBeUndefined();
+        const first = await api.conversations(d, { limit: 1 });
+        expect([first.body.items.map((x) => x.id), first.body.next]).toEqual([["p1"], "r1"]);
+        const second = await api.conversations(d, { after: first.body.next, limit: 1 });
+        expect([second.body.items.map((x) => x.id), second.body.next]).toEqual([["h-closed"], undefined]);
+        // The page is at most 100, whatever the caller asks for.
+        await api.conversations(d, { limit: 5000 });
+        expect(listCalls.at(-1)).toEqual([undefined, 100]);
+      });
+      test("history: a bad cursor or limit is 400 bad-cursor", async () => {
+        for (const o of [{ after: "has space" }, { after: "x".repeat(513) }, { limit: 0 }, { limit: "two" }, { limit: -1 }]) {
+          const r = await api.conversations(d, o);
+          expect([JSON.stringify(o).slice(0, 30), r.status, r.body.code]).toEqual([JSON.stringify(o).slice(0, 30), 400, "bad-cursor"]);
+        }
+        expect((await api.items(d, "h-closed", { after: "a b" })).body.code).toBe("bad-cursor");
+      });
+      test("history: items of a closed conversation, oldest first, paged with more and next", async () => {
+        const all = await api.items(d, "h-closed");
+        expect([all.status, all.body.items.map((x) => x.id), all.body.more, all.body.next]).toEqual([200, ["it-0", "it-1", "it-2"], false, undefined]);
+        const first = await api.items(d, "h-closed", { limit: 2 });
+        expect([first.body.items.map((x) => x.id), first.body.more, first.body.next]).toEqual([["it-0", "it-1"], true, "i2"]);
+        const rest = await api.items(d, "h-closed", { after: first.body.next, limit: 2 });
+        expect([rest.body.items.map((x) => x.id), rest.body.more]).toEqual([["it-2"], false]);
+        // An open conversation is served the same way.
+        expect((await api.items(d, "p1")).body.items.map((x) => x.id)).toEqual(["it-0"]);
+      });
+      test("history: an unknown conversation, or an id that breaks the id rule, is 404 no-such-conversation", async () => {
+        expect([(await api.items(d, "nobody")).status, (await api.items(d, "nobody")).body.code]).toEqual([404, "no-such-conversation"]);
+        expect((await api.items(d, "a b")).body.code).toBe("no-such-conversation");
+      });
+      test("history: a page over 8 MiB asks the program again for the items that fit, and its cursor goes on from there", async () => {
+        stored.set("h-big", replyItems(200, 60_000)); // 200 x 60 KB, about 12 MB
+        const r = await api.items(d, "h-big");
+        const kept = r.body.items.length;
+        expect(kept).toBeGreaterThan(100);
+        expect(kept).toBeLessThan(200);
+        expect([r.body.more, r.body.next]).toEqual([true, `i${kept}`]);
+        expect(itemCalls.slice(-2).map(([, , limit]) => limit)).toEqual([1000, kept]);
+      });
+      test("reopen: a pane closed in this process comes back with the same pane id, its items, and rev rose", async () => {
+        const p = mk("h-re");
+        p.event({ type: "item", item: { id: "re-1", kind: "reply", text: "before the close" } });
+        expect((await api.close(d, "pane", "h-re")).body).toEqual({ ok: true });
+        const before = (await api.snapshot(d)).body;
+        expect(before.panes.some((x) => x.id === "h-re")).toBe(false);
+        const r = await api.reopen(d, "h-re", "reopen-1");
+        expect([r.status, r.body]).toEqual([200, { ok: true }]);
+        const after = (await api.snapshot(d)).body;
+        expect(after.panes.some((x) => x.id === "h-re")).toBe(true);
+        expect(after.rev).toBeGreaterThan(before.rev);
+        const events = (await api.events(d, "h-re", 0)).body.events;
+        expect(events.some((e) => e.type === "item" && e.item.id === "re-1")).toBe(true);
+        expect(reopenAsked.at(-1)).toEqual({ id: "h-re", paneId: "h-re", requestId: "reopen-1" });
+        // A repeat answers from the receipt and runs nothing.
+        const asked = reopenAsked.length;
+        expect((await api.reopen(d, "h-re", "reopen-1")).body).toEqual({ ok: true, replayed: true });
+        expect(reopenAsked.length).toBe(asked);
+      });
+      test("reopen: the hook shows a conversation closed before a restart; false is 422 reopen-refused and the id may run again", async () => {
+        reopenVerdict = false;
+        const refused = await api.reopen(d, "h-closed", "reopen-2");
+        expect([refused.status, refused.body.code]).toEqual([422, "reopen-refused"]);
+        expect((await api.snapshot(d)).body.panes.some((x) => x.id === "h-closed")).toBe(false);
+        reopenVerdict = undefined;
+        reopenShows = (id) => void collie.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane(id, { title: id, harness: "x" });
+        try {
+          expect((await api.reopen(d, "h-closed", "reopen-2")).body).toEqual({ ok: true });
+        } finally {
+          reopenShows = undefined;
+        }
+        expect(reopenAsked.at(-1)).toEqual({ id: "h-closed", requestId: "reopen-2" });
+        expect((await api.snapshot(d)).body.panes.some((x) => x.id === "h-closed")).toBe(true);
+      });
+      test("reopen: a hook that shows nothing for a conversation this process never closed is 422 reopen-refused", async () => {
+        stored.set("h-ghost", replyItems(1));
+        const r = await api.reopen(d, "h-ghost");
+        expect([r.status, r.body.code]).toEqual([422, "reopen-refused"]);
+      });
+      test("reopen: an unknown conversation is 404 no-such-target, an open one answers ok and changes nothing", async () => {
+        expect((await api.reopen(d, "nobody")).body.code).toBe("no-such-target");
+        const rev = (await api.snapshot(d)).body.rev;
+        expect((await api.reopen(d, "p1")).body).toEqual({ ok: true });
+        expect((await api.snapshot(d)).body.rev).toBe(rev);
+      });
+      test("reopen: a body without an id is 400, and the same request id for another conversation is request-id-reused", async () => {
+        expect((await post("/reopen", { requestId: "reopen-x" })).body.code).toBe("bad-body");
+        expect((await api.reopen(d, "nobody-else", "reopen-1")).body.code).toBe("request-id-reused");
+      });
+      test("reopen: with caps.reopen false it is 409 not-supported, and so is history with caps.history false", async () => {
+        const off = await transport.open({ hostName: "off", caps: { reopen: false, history: false } });
+        off.collie.history(provider);
+        off.collie.ready();
+        try {
+          expect((await api.hello(off.dial)).body.caps).toMatchObject({ reopen: false, history: false });
+          expect((await api.reopen(off.dial, "p1")).body.code).toBe("not-supported");
+          expect((await api.conversations(off.dial)).body.code).toBe("not-supported");
+        } finally {
+          await off.collie.close();
+        }
       });
     });
   });

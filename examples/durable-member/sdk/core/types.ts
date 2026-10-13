@@ -24,6 +24,10 @@ export interface Caps {
   close?: boolean;
   /** It lists actions on a pane and runs one when the phone taps it (WIRE.md 7.10). */
   actions?: boolean;
+  /** It lists its conversations, open and closed, and serves the items of any of them (WIRE.md 7.16). */
+  history?: boolean;
+  /** It puts a closed conversation back into its layout when the phone asks (WIRE.md 7.16). */
+  reopen?: boolean;
   /** Always false in version 1. */
   terminal?: boolean;
 }
@@ -268,7 +272,10 @@ export interface PaneInfo {
   openAsks: Ask[];
   /** The pane's belt actions, in order. Absent when it has none. */
   actions?: PaneAction[];
-  /** Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it. */
+  /**
+   * The conversation id this pane's history is served under (WIRE.md section 3 and 7.16). Null when the program
+   * cannot keep it the same across a restart.
+   */
   sessionId: string | null;
   cwd?: string;
   /** One line under the title (WIRE.md 7.11). Absent until the program sets one. */
@@ -357,6 +364,60 @@ export interface StarterRequest {
 export interface StarterReply {
   paneId: string;
   replayed?: true;
+}
+
+/** Put a closed conversation back into the layout (WIRE.md 7.16). `id` is the conversation id of the history. */
+export interface ReopenRequest {
+  requestId: string;
+  id: string;
+}
+
+// ── History (WIRE.md 7.16) ────────────────────────────────────────────────────
+
+/** One conversation in the program's list, open or closed. */
+export interface ConversationRow {
+  /** The conversation id: the pane's `sessionId` while it is open. Follows the id rule. */
+  id: string;
+  /** What the program calls the conversation. At most 256 bytes. */
+  title: string;
+  /** One line under the title, at most 120 characters. */
+  subtitle?: string;
+  workspaceId?: string;
+  tabId?: string;
+  /** ISO 8601 with a zone. */
+  startedAt: string;
+  /** ISO 8601 with a zone. A closed conversation MAY carry it. */
+  endedAt?: string;
+  state: "open" | "closed";
+  /** How many items the conversation holds. */
+  items: number;
+}
+
+/** `GET /conversations`: newest first, at most 100 rows. `next` is absent on the last page. */
+export interface ConversationsReply {
+  items: ConversationRow[];
+  next?: string;
+}
+
+/** `GET /conversation/:id/items`: oldest first, at most 1000 items or 8 MiB. `more` is true when `next` leads on. */
+export interface ConversationItemsReply {
+  items: Item[];
+  next?: string;
+  more: boolean;
+}
+
+/**
+ * Where a program's history comes from: its own store, never the SDK's 500-event tail. The SDK pages, cleans and
+ * caps what comes back. A cursor is the provider's own opaque string, at most 512 bytes of printable ASCII.
+ */
+export interface HistoryProvider {
+  /** Conversations, newest first, open and closed. At most `limit` rows. `next` is absent on the last page. */
+  list(after: string | undefined, limit: number): Promise<{ items: ConversationRow[]; next?: string }>;
+  /**
+   * The items of one conversation, oldest first, in their latest version (an item that changed comes once). At most
+   * `limit`. `undefined` when there is no such conversation (404 `no-such-conversation`).
+   */
+  items(id: string, after: string | undefined, limit: number): Promise<{ items: Item[]; next?: string } | undefined>;
 }
 
 export interface Problem {
@@ -457,4 +518,17 @@ export interface ProgramHooks {
    * action the pane does not list, nor for one it lists as `disabled` or `busy`.
    */
   onAction?(pane: PaneRef, action: ActionContext): Promise<boolean | void> | boolean | void;
+  /**
+   * The phone reopens a closed conversation (WIRE.md 7.16). Show it again (for example with the same call that
+   * showed it at start), so its pane is in the layout under the same pane id, and take it off your closed list.
+   * Return `false` to refuse (422 `reopen-refused`, the same request id may try again). Without this hook the SDK
+   * puts back a pane it closed in this process; a conversation closed before a restart needs the hook.
+   */
+  onReopen?(target: ReopenTarget, requestId: string): Promise<boolean | void> | boolean | void;
+}
+
+/** The conversation a reopen names. `paneId` is the pane the SDK closed for it in this process, when it knows one. */
+export interface ReopenTarget {
+  id: string;
+  paneId?: string;
 }

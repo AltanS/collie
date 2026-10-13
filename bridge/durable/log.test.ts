@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { isPrivateFile, privateTestDir } from "../mux/durable/fixture.ts";
 import { HOST } from "../host.ts";
 import { parseLogRow, type DurableAsk, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
-import { DurableLogs, durableLogDir, GAP_NOTICE, gapItemId, HOST_MAX_BYTES, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
+import { cursorFileName, DurableLogs, durableLogDir, GAP_NOTICE, gapItemId, HOST_MAX_BYTES, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
 
 const dirs: string[] = [];
 
@@ -503,6 +503,70 @@ describe("the machine's byte cap", () => {
     // A pane whose log was deleted writes a fresh one on its next event.
     await logs.apply("oldest", big("e"));
     expect(await readdir(folder)).toContain(logFileName("oldest"));
+  });
+  test("cursor: the cap deletes a log's cursor with it, and says each deleted file in one line", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    const logs = new DurableLogs(folder, () => Date.now(), { maxBytes: LOG_MAX_BYTES, keepItems: LOG_KEEP_ITEMS }, 3000);
+    const big = (id: string) => [text(id, "x".repeat(900))];
+    await logs.apply("oldest", big("a"));
+    await logs.saveCursor("oldest", { epoch: "e1", after: 1 });
+    await logs.apply("middle", big("b"));
+    await logs.saveCursor("middle", { epoch: "e1", after: 1 });
+    await utimes(join(folder, logFileName("oldest")), new Date(1_000_000), new Date(1_000_000));
+    await utimes(join(folder, logFileName("middle")), new Date(2_000_000), new Date(2_000_000));
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await logs.apply("newest", big("c"));
+      await logs.apply("newest", big("d"));
+      const left = await readdir(folder);
+      const deleted = ["oldest", "middle"].filter((key) => !left.includes(logFileName(key)));
+      expect(deleted[0]).toBe("oldest");
+      // One line per deleted file, naming it, and nothing else said.
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(lines).toHaveLength(deleted.length);
+      deleted.forEach((key, n) => {
+        expect(lines[n]).toContain(logFileName(key));
+        expect(lines[n]).toContain("deleted the oldest pane log");
+      });
+      // A deleted log's cursor is gone with it; a kept log keeps its own.
+      for (const key of ["oldest", "middle"]) expect(left.includes(cursorFileName(key))).toBe(!deleted.includes(key));
+    } finally {
+      warn.mockRestore();
+    }
+    expect(await logs.loadCursor("oldest")).toBeNull();
+  });
+});
+
+describe("the saved cursor", () => {
+  test("cursor: saved beside the log as a private file, read back, and deleted with null", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    const logs = new DurableLogs(folder);
+    expect(await logs.loadCursor("conv-1")).toBeNull();
+    await logs.saveCursor("conv-1", { epoch: "e1", after: 7 });
+    expect(await logs.loadCursor("conv-1")).toEqual({ epoch: "e1", after: 7 });
+    await logs.saveCursor("conv-1", { epoch: "e2", after: 3 });
+    expect(await logs.loadCursor("conv-1")).toEqual({ epoch: "e2", after: 3 });
+    const names = await readdir(folder);
+    // One file, no temporary left behind, and its name is the log's with another ending.
+    expect(names).toEqual([cursorFileName("conv-1")]);
+    expect(cursorFileName("conv-1").replace(".cursor.json", ".jsonl")).toBe(logFileName("conv-1"));
+    if (HOST.platform !== "win32") expect(isPrivateFile(join(folder, cursorFileName("conv-1")))).toBe(true);
+    await logs.saveCursor("conv-1", null);
+    expect(await readdir(folder)).toEqual([]);
+    await logs.saveCursor("conv-1", null);
+  });
+
+  test("cursor: a torn or foreign cursor file reads as none, so the reader starts at 0", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    await mkdir(folder, { recursive: true });
+    const logs = new DurableLogs(folder);
+    for (const body of ['{"epoch":"e1","aft', "[]", '{"epoch":"","after":1}', '{"epoch":"e1","after":-1}', '{"epoch":"e1","after":1.5}']) {
+      await writeFile(join(folder, cursorFileName("conv-1")), body);
+      expect(await logs.loadCursor("conv-1")).toBeNull();
+    }
   });
 });
 

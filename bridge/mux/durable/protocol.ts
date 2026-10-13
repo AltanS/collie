@@ -87,6 +87,10 @@ export interface DurableCaps {
   readonly close: boolean;
   /** It lists actions on a pane and runs one when asked (WIRE.md section 7.10). */
   readonly actions: boolean;
+  /** It serves its own history: its conversations, open and closed, and their items (WIRE.md section 7.16). */
+  readonly history: boolean;
+  /** It shows a closed conversation again when asked (WIRE.md section 7.16). */
+  readonly reopen: boolean;
 }
 
 export interface DurableHello {
@@ -183,6 +187,11 @@ export interface DurablePane {
   readonly progress?: Progress;
   /** The program's belt buttons for this pane, cleaned: at most 4, label at most 16 characters. Absent when it lists none. */
   readonly actions?: readonly PaneAction[];
+  /**
+   * The conversation id the program serves this pane's history under (WIRE.md section 7.16). Absent when the program
+   * sent null or an id that breaks the rule: the pane id stands in for it.
+   */
+  readonly sessionId?: string;
 }
 
 export interface DurableStarter {
@@ -386,6 +395,8 @@ export function parseHello(text: string): Parsed<DurableHello> {
       rename: flag("rename"),
       close: flag("close"),
       actions: flag("actions"),
+      history: flag("history"),
+      reopen: flag("reopen"),
     },
   });
 }
@@ -642,6 +653,7 @@ function readPane(
   const badge = badgeOf(value);
   const progress = progressOf(value);
   const actions = readActions(value.actions);
+  const sessionId = idOf(value, "sessionId");
   const pane: DurablePane = {
     id,
     workspaceId,
@@ -657,7 +669,8 @@ function readPane(
     badge,
     progress,
   };
-  return actions === undefined ? pane : { ...pane, actions };
+  const named = sessionId === null ? pane : { ...pane, sessionId };
+  return actions === undefined ? named : { ...named, actions };
 }
 
 function readStarter(value: Json): DurableStarter | null {
@@ -997,6 +1010,124 @@ export function parseEvents(text: string): Parsed<DurableEventsReply> {
   return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0, droppedItems });
 }
 
+// ── history (WIRE.md section 7.16) ────────────────────────────────────────────
+
+/** A history cursor: 1 to 512 bytes of printable ASCII, no space. Opaque: only the program reads it. */
+export function isHistoryCursor(value: string): boolean {
+  return value.length > 0 && value.length <= CAPS.historyCursor && /^[\x21-\x7e]+$/.test(value);
+}
+
+/** One conversation in the program's list, cleaned. */
+export interface DurableConversationRow {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly workspaceId?: string;
+  readonly tabId?: string;
+  readonly startedAt: string;
+  readonly endedAt?: string;
+  readonly state: "open" | "closed";
+  readonly items: number;
+}
+
+type MutableConversationRow = { -readonly [K in keyof DurableConversationRow]: DurableConversationRow[K] };
+
+export interface DurableConversations {
+  readonly items: readonly DurableConversationRow[];
+  readonly next?: string;
+}
+
+export interface DurableConversationItems {
+  readonly items: readonly DurableItem[];
+  readonly next?: string;
+  readonly more: boolean;
+  /** How many items were dropped because they broke a rule or have a kind this reader does not know. */
+  readonly droppedItems: number;
+}
+
+/** An ISO stamp field inside its cap, or undefined. */
+function stampField(object: JsonObject, key: string): string | undefined {
+  const value = object[key];
+  return isText(value) ? stampOf({ ts: value }) : undefined;
+}
+
+/** A row needs an id, a start stamp, a known state and a count. Without one of them it is dropped. */
+function readConversationRow(value: Json): DurableConversationRow | null {
+  if (!isRecord(value)) return null;
+  const id = idOf(value, "id");
+  const startedAt = stampField(value, "startedAt");
+  const state = value.state;
+  const items = value.items;
+  if (id === null || startedAt === undefined || (state !== "open" && state !== "closed") || !isCount(items)) return null;
+  const row: MutableConversationRow = {
+    id,
+    title: textOf(value, "title", CAPS.title),
+    startedAt,
+    state,
+    items,
+  };
+  const subtitle = subtitleOf(value);
+  if (subtitle !== undefined) row.subtitle = subtitle;
+  const workspaceId = idOf(value, "workspaceId");
+  if (workspaceId !== null) row.workspaceId = workspaceId;
+  const tabId = idOf(value, "tabId");
+  if (tabId !== null) row.tabId = tabId;
+  const endedAt = stampField(value, "endedAt");
+  if (endedAt !== undefined) row.endedAt = endedAt;
+  return row;
+}
+
+/** The next cursor of a history page: a good one, absent, or a broken reply. */
+function nextCursorOf(root: JsonObject): { ok: true; next?: string } | { ok: false } {
+  const next = root.next;
+  if (next === undefined || next === null) return { ok: true };
+  return isText(next) && isHistoryCursor(next) ? { ok: true, next } : { ok: false };
+}
+
+/**
+ * Decode a `conversations` reply (WIRE.md 7.16). A row that breaks a rule is dropped alone, and the first of each
+ * id is kept, up to 100. A reply without its list, or with a `next` that is not a cursor, is not read at all: a page
+ * that cannot go on must not look like the last one.
+ */
+export function parseConversations(text: string): Parsed<DurableConversations> {
+  const root = decode(text);
+  if (!isRecord(root) || !isList(root.items)) return bad("conversations has no list");
+  if (root.items.length > CAPS.conversationsPerPage) return bad(`conversations carries ${String(root.items.length)} rows, over its cap`);
+  const next = nextCursorOf(root);
+  if (!next.ok) return bad("conversations has a next that is not a cursor");
+  const items = collect(root.items, readConversationRow, CAPS.conversationsPerPage);
+  return good(next.next === undefined ? { items } : { items, next: next.next });
+}
+
+/**
+ * Decode a conversation's `items` reply (WIRE.md 7.16): oldest first, at most 1000. An item that breaks a rule is
+ * dropped alone and counted; a second version of an id replaces the first in place.
+ */
+export function parseConversationItems(text: string): Parsed<DurableConversationItems> {
+  const root = decode(text);
+  if (!isRecord(root) || !isList(root.items)) return bad("items has no list");
+  if (root.items.length > CAPS.historyItems) return bad(`items carries ${String(root.items.length)} items, over its cap`);
+  const next = nextCursorOf(root);
+  if (!next.ok) return bad("items has a next that is not a cursor");
+  const items: DurableItem[] = [];
+  const at = new Map<string, number>();
+  let droppedItems = 0;
+  for (const entry of root.items) {
+    const item = readItem(entry);
+    if (item === null) {
+      droppedItems += 1;
+      continue;
+    }
+    const place = at.get(item.id);
+    if (place === undefined) {
+      at.set(item.id, items.length);
+      items.push(item);
+    } else items[place] = item;
+  }
+  const more = root.more === true && next.next !== undefined;
+  return good(next.next === undefined ? { items, more, droppedItems } : { items, next: next.next, more, droppedItems });
+}
+
 // ── answer ────────────────────────────────────────────────────────────────────
 
 /** What a 200 to `POST /pane/:id/answer` said (WIRE.md section 4, `AnswerReply`). */
@@ -1241,6 +1372,39 @@ export function parseClosePost(text: string): DurableCloseBody | "bad-json" | nu
   return { requestId, kind, id };
 }
 
+/** The body of `POST /reopen` (WIRE.md 7.16). */
+export interface DurableReopenBody {
+  readonly requestId: string;
+  readonly id: string;
+}
+
+/** Decode a `POST /reopen` body, as a program reads it (the test fake does). */
+export function parseReopenPost(text: string): DurableReopenBody | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const requestId = root.requestId ?? undefined;
+  const id = root.id ?? undefined;
+  if (!isText(requestId) || !isText(id) || id === "") return null;
+  return { requestId, id };
+}
+
+/** Where the events reader stopped for one pane log, as the bridge saves it beside the log (bridge/durable/log.ts). */
+export interface SavedCursor {
+  readonly epoch: string;
+  readonly after: number;
+}
+
+/** Decode a saved cursor file, or null for one that is absent, torn or not a cursor: the reader then starts at 0. */
+export function parseSavedCursor(text: string): SavedCursor | null {
+  const root = decode(text);
+  if (!isRecord(root)) return null;
+  const epoch = idOf(root, "epoch");
+  const after = root.after;
+  if (epoch === null || !isCount(after)) return null;
+  return { epoch, after };
+}
+
 /** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */
 function fieldForWire(field: DurableField): AskField {
   const wire: AskField = { id: field.id, label: field.label, kind: field.kind };
@@ -1361,7 +1525,8 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
       terminalTitle: pane.title === "" ? undefined : pane.title,
       // The conversation id names the bridge's own log of it, which the `durable` journal adapter
       // reads (bridge/journal/durable.ts). The ref is server-side only, like every other.
-      agentSession: { kind: "id", value: pane.id },
+      // It is the program's session id when it sends one (WIRE.md 7.16), so the log outlives a pane id.
+      agentSession: { kind: "id", value: pane.sessionId ?? pane.id },
     };
     // Optional pane marks (WIRE.md section 7.11). Assigned only when present, so a pane without them is unchanged.
     if (pane.subtitle !== undefined) mux.subtitle = pane.subtitle;

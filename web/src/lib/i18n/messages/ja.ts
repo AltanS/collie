@@ -540,6 +540,50 @@ export const ja: Dictionary = {
   "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
   // TODO wordsmith
   "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
+  // TODO wordsmith
+  "conversations.title": "Conversations",
+  // TODO wordsmith
+  "conversations.back": "Back",
+  // TODO wordsmith
+  "conversations.state.open": "Open",
+  // TODO wordsmith
+  "conversations.state.closed": "Closed",
+  // TODO wordsmith
+  "conversations.items.one": "{count} item",
+  // TODO wordsmith
+  "conversations.items.other": "{count} items",
+  // TODO wordsmith
+  "conversations.untitled": "Untitled conversation",
+  // TODO wordsmith
+  "conversations.range": "{start} to {end}",
+  // TODO wordsmith
+  "conversations.here": "Shown in this pane",
+  // TODO wordsmith
+  "conversations.loadMore": "Load more",
+  // TODO wordsmith
+  "conversations.loading": "Loading…",
+  // TODO wordsmith
+  "conversations.empty": "This program has no conversations yet.",
+  // TODO wordsmith
+  "conversations.unsupported": "This program does not keep a list of its conversations.",
+  // TODO wordsmith
+  "conversations.unreachable": "The program did not answer. Try again in a moment.",
+  // TODO wordsmith
+  "conversations.loadFailed": "Couldn't load the conversations. Try again.",
+  // TODO wordsmith
+  "conversations.gone": "This conversation no longer exists.",
+  // TODO wordsmith
+  "conversations.noItems": "This conversation has no items yet.",
+  // TODO wordsmith
+  "conversations.loadMoreFailed": "Couldn't load more. Try again.",
+  // TODO wordsmith
+  "conversations.reopen": "Reopen",
+  // TODO wordsmith
+  "conversations.reopening": "Reopening…",
+  // TODO wordsmith
+  "conversations.reopenFailed": "Couldn't reopen the conversation",
+  // TODO wordsmith
+  "space.space.history": "History",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "キャンセル",
   "prompt.feedback.typedAria": "ターミナル内のフィードバック",
@@ -1336,6 +1380,8 @@ export const ja: Dictionary = {
   "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",
   // TODO wordsmith
   "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
+  // TODO wordsmith
+  "apiError.durable.reopen_failed": "The conversation couldn't be reopened: {reason}",
   "apiError.tab.workspace_required": "新規タブのスペースが指定されていません。",
   "apiError.launch.not_allowlisted": "そのコマンドはランチャーに登録されていません",
   "apiError.launch.unknown_harness": "このマシンは {harness} を起動しません。",

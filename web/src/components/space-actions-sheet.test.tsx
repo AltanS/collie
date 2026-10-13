@@ -147,3 +147,41 @@ describe("SpaceActionsSheet: read-only and saved copy replace the action", () =>
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 });
+
+// M53 spec 11: a History row, drawn only when the machine declares `programHistory`. It closes the sheet and
+// then hands the navigation to the route (the sheet itself needs no router).
+describe("SpaceActionsSheet: durable history row follows programHistory", () => {
+  it("draws History when the machine declares programHistory, and closes then acts on a tap", async () => {
+    declares({ programHistory: true });
+    const user = userEvent.setup();
+    const onHistory = vi.fn();
+    const props = renderSheet({ onHistory });
+    const row = await screen.findByRole("button", { name: "History" });
+    await user.click(row);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(onHistory).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(onHistory.mock.invocationCallOrder[0]!);
+  });
+
+  it("draws no History row when programHistory is declared false or never answered", async () => {
+    declares({ programHistory: false, renameSpace: true });
+    renderSheet({ onHistory: vi.fn() });
+    expect(await screen.findByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+  });
+
+  it("draws no History row when the strip gave the sheet nowhere to go", async () => {
+    declares({ programHistory: true, renameSpace: true });
+    renderSheet();
+    expect(await screen.findByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+  });
+
+  it("keeps History beside Rename, and the empty note away, when both are declared", async () => {
+    declares({ programHistory: true, renameSpace: true });
+    renderSheet({ onHistory: vi.fn() });
+    expect(await screen.findByRole("button", { name: "History" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.queryByText("This program offers no actions for a space.")).toBeNull();
+  });
+});

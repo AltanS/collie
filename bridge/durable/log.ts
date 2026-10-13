@@ -6,9 +6,19 @@
 // the `durable` journal adapter (bridge/journal/durable.ts) reads that file through the journal path
 // every other harness uses. There is no second reader.
 //
-// ONE FILE PER PANE: `<stateDir>/durable/<base64url(paneId)>.jsonl`. The pane id is the program's
-// conversation id, so it is the same across a restart of the program. Base64url is a name that no
-// id can turn into a path: the file name holds no `/`, no `..` and no case folding.
+// ONE FILE PER PANE: `<stateDir>/durable/<base64url(key)>.jsonl`. The key is the pane's session id, the
+// program's conversation id (WIRE.md 7.16), or the pane id when the program sends none, so it is the same
+// across a restart of the program. Base64url is a name that no id can turn into a path: the file name
+// holds no `/`, no `..` and no case folding.
+//
+// A CACHE OF THE PROGRAM'S RECORD. A program that declares `history` keeps every conversation itself and
+// serves it (WIRE.md 7.16). This log is then the fast, offline copy Chat reads for a live pane. The read-only
+// view of a closed conversation reads the program, never this log.
+//
+// THE CURSOR BESIDE IT. `<base64url(key)>.cursor.json` holds `{ epoch, after }`, where the events reader
+// stopped (bridge/mux/durable/events.ts). It is written after each batch the log took, to a temporary file
+// renamed over the old one, and read on the first read of a pane after a bridge restart, so the reader goes
+// on where it stopped instead of reading the program's tail again. Older builds ignore it.
 //
 // ROWS, NOT A SNAPSHOT. Every row is one JSON line, written once, never edited. The first line is
 // a header, `{"k":"gen","at":ISO,"id":RANDOM}`, new with the file and new again after a rewrite. It is
@@ -53,13 +63,16 @@
 // id is derived from the first item's, so the same reset twice writes one marker.
 //
 // ONE CAP FOR THE MACHINE. All the logs together stay under {@link HOST_MAX_BYTES} (256 MiB): past
-// it, the conversation logs written longest ago are deleted first, never the one just written.
+// it, the conversation logs written longest ago are deleted first, never the one just written, each with
+// its cursor and one line in the bridge's log that names it.
 
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, chmod, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
-import { type DurableEvent, type DurableItem, type LogRow, parseLogRow } from "../mux/durable/protocol.ts";
+import { type DurableEvent, type DurableItem, type LogRow, parseLogRow, parseSavedCursor, type SavedCursor } from "../mux/durable/protocol.ts";
+
+export type { SavedCursor } from "../mux/durable/protocol.ts";
 
 /** The row kind of the header line. It carries no content. */
 export const GENERATION_ROW = "gen";
@@ -94,6 +107,11 @@ export function logFileName(paneId: string): string {
   return `${Buffer.from(paneId, "utf8").toString("base64url")}.jsonl`;
 }
 
+/** The file name of one log's cursor, beside the log. */
+export function cursorFileName(key: string): string {
+  return `${Buffer.from(key, "utf8").toString("base64url")}.cursor.json`;
+}
+
 /** What the adapter's events reader hands the log. */
 export interface PaneEventSink {
   /**
@@ -101,6 +119,10 @@ export interface PaneEventSink {
    * reset reply's count of older items it left out, 0 for a plain reply.
    */
   apply(paneId: string, events: readonly DurableEvent[], trimmed?: number): Promise<number>;
+  /** The cursor saved beside a log, or null. */
+  loadCursor?(key: string): Promise<SavedCursor | null>;
+  /** Save the cursor beside a log, or delete it with null. */
+  saveCursor?(key: string, cursor: SavedCursor | null): Promise<void>;
 }
 
 interface Limits {
@@ -468,6 +490,31 @@ export class DurableLogs implements PaneEventSink {
     return wrote;
   }
 
+  /** The cursor saved beside a log, or null when there is none or it cannot be read. */
+  async loadCursor(key: string): Promise<SavedCursor | null> {
+    try {
+      return parseSavedCursor(await readFile(join(this.dir, cursorFileName(key)), "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save the cursor beside a log: a fresh temporary file, renamed over the old one, so a crash leaves one whole
+   * cursor or the one before it. Null deletes it. The machine's cap deletes a cursor with its log.
+   */
+  async saveCursor(key: string, cursor: SavedCursor | null): Promise<void> {
+    const path = join(this.dir, cursorFileName(key));
+    if (cursor === null) {
+      await unlink(path).catch(() => undefined);
+      return;
+    }
+    await mkdir(this.dir, { recursive: true, mode: 0o700 });
+    const temp = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temp, JSON.stringify({ epoch: cursor.epoch, after: cursor.after }), { mode: 0o600, flag: "wx" });
+    await rename(temp, path);
+  }
+
   /** Keep the folder under the machine's cap, oldest conversation first, never `writing`. */
   private async hold(writing: PaneLog, grew: number): Promise<void> {
     this.total = this.total === null ? await this.count() : this.total + grew;
@@ -478,7 +525,12 @@ export class DurableLogs implements PaneEventSink {
       if (this.total <= this.hostMaxBytes) break;
       if (file.path === writing.path) continue;
       await unlink(file.path).catch(() => undefined);
+      // Its cursor goes with it: the next read of that conversation starts over and writes a whole log again.
+      await unlink(file.path.replace(/\.jsonl$/, ".cursor.json")).catch(() => undefined);
       this.total -= file.bytes;
+      console.warn(
+        `[durable] deleted the oldest pane log ${basename(file.path)} (${String(file.bytes)} bytes): all logs together passed ${String(this.hostMaxBytes)} bytes`,
+      );
       for (const [paneId, log] of this.logs) {
         if (log.path !== file.path) continue;
         log.forget();

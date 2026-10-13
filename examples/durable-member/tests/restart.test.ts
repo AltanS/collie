@@ -42,7 +42,7 @@ describe("restart with an open ask", () => {
     expect(snap.panes.find((x) => x.id === main)!.state).toBe("waiting");
   });
 
-  test("SIGKILL, start again: same pane id, same history, new epoch", async () => {
+  test("SIGKILL, start again: same pane id, same items, new epoch", async () => {
     await kill("SIGKILL");
     await boot();
     const snap = (await api.snapshot(d)).body;
@@ -79,7 +79,7 @@ describe("restart with an open ask", () => {
     expect(lines).toHaveLength(1);
   });
 
-  test("a second restart with nothing open: both panes come back idle with their history, and no new ticket", async () => {
+  test("a second restart with nothing open: both panes come back idle with their items, and no new ticket", async () => {
     await kill("SIGKILL");
     await boot();
     const snap = (await api.snapshot(d)).body;

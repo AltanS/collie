@@ -200,7 +200,8 @@ second program needs it. Copy the folder into your program. It imports nothing f
 - `starters()` lists what the phone can start from the New page.
 - `hooks` gives each act the phone can send one named place, with a typed payload and the request id:
   `onSend(pane, { text, steer, turnId, requestId })`, `onAbort(pane, { turnId, requestId })` and
-  `onRename({ kind, id, title }, requestId)` and `onClose({ kind, id, paneIds }, requestId)`. Pass `hooks` to `openCollie` or `createCore`. The per-pane
+  `onRename({ kind, id, title }, requestId)`, `onClose({ kind, id, paneIds }, requestId)` and
+  `onReopen({ id, paneId? }, requestId)`. Pass `hooks` to `openCollie` or `createCore`. The per-pane
   handlers (`pane.onSend`, `pane.onAbort`) stay the first choice, and a hook is the fallback for a pane that
   has none: a pane with neither is 409 `not-supported`. Every payload type is exported from `sdk/core/types.ts`.
 - The phone can give a workspace or a tab a new name (`rename` cap, on by default). The SDK sets the title and
@@ -216,6 +217,17 @@ second program needs it. Copy the folder into your program. It imports nothing f
   and everything inside it from the layout, raises `rev`, and closes every open ask on those panes as `stopped`.
   Set `caps: { close: false }` to take no close at all. A repeat of a request id answers from the receipt and runs
   the hook once.
+- `history(provider)` serves the program's own record (WIRE.md 7.16, `history` cap): `provider.list(after, limit)`
+  returns its conversations, open and closed, newest first, and `provider.items(id, after, limit)` the items of
+  one, oldest first, or `undefined` for one it does not know. Each hands back its own cursor as `next`, at most
+  512 bytes of printable ASCII. Once a provider is set, each pane's `sessionId` is its pane id; pass
+  `sessionId` to `tab.pane()` to name another, or `null` when it cannot stay the same across a restart.
+  `pi-durable/index.ts` has `piHistory`, which reads every entry of every Pi conversation and maps it with the
+  same mapper as the live pane, and `app.ts` and the Cloudflare example use it.
+- The phone can bring a closed conversation back (`reopen` cap, on by default). `hooks.onReopen({ id, paneId? },
+  requestId)` shows it again under the same pane id, or returns `false` to refuse with 422. Without a hook the SDK
+  puts back a pane it closed in this process. `app.ts` takes the id off `closed.json` and shows it, and the
+  Cloudflare example deletes it from its archive table. Set `caps: { reopen: false }` to take no reopen.
 
 The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
 `Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids

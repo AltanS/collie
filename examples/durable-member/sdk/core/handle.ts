@@ -4,9 +4,9 @@
 // A server that can tell who calls (the Bun server's descendant check) passes `refuseAct`. It runs before the
 // four acts (answer, send, abort, starter) and throws 403 `caller-refused`. Reads never call it.
 
-import { BadAnswer, type Pane, type Store } from "./layout.ts";
-import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
-import { ANSWER_TEXT_BYTES, assertId, bytes, CAPS, cut, idOk, LIMITS, renameTitleOf } from "./rules.ts";
+import { BadAnswer, cleanConversationRow, cleanItem, type Pane, type Store } from "./layout.ts";
+import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, REOPEN_GROUP, STARTER_GROUP } from "./receipts.ts";
+import { ANSWER_TEXT_BYTES, assertId, bytes, CAPS, cursorOk, cut, idOk, LIMITS, renameTitleOf } from "./rules.ts";
 import {
   type Answer,
   type AnswerReply,
@@ -14,9 +14,12 @@ import {
   type Caps,
   type CloseRequest,
   type ControlReply,
+  type ConversationItemsReply,
+  type ConversationsReply,
   type EventsReply,
   type FormAnswer,
   type Hello,
+  type Item,
   PROTOCOL_RANGE,
   type ProgramHooks,
   type RenameRequest,
@@ -167,6 +170,35 @@ const decode = (s: string): string | undefined => {
     return undefined;
   }
 };
+
+/**
+ * The paging of a history route (WIRE.md 7.16): `after` is the cursor the last page named, or absent for the first
+ * page; `limit` a whole number from 1, cut to `max`, and `max` when absent. Anything else is 400 `bad-cursor`.
+ */
+function pageOf(url: URL, max: number): { after: string | undefined; limit: number } {
+  const after = url.searchParams.get("after");
+  const limitText = url.searchParams.get("limit");
+  if (after !== null && !cursorOk(after)) throw new HttpError(400, "bad-cursor");
+  if (limitText !== null && (!/^\d+$/.test(limitText) || Number(limitText) < 1 || !Number.isSafeInteger(Number(limitText)))) throw new HttpError(400, "bad-cursor");
+  return { after: after ?? undefined, limit: limitText === null ? max : Math.min(Number(limitText), max) };
+}
+
+/** A cursor the program's provider handed back: a printable string the wire can carry, else a bug in the program. */
+function nextOf(next: string | undefined): string | undefined {
+  if (next === undefined) return undefined;
+  if (!cursorOk(next)) throw new TypeError(`a history cursor is 1 to ${CAPS.historyCursor} bytes of printable ASCII: ${JSON.stringify(next)}`);
+  return next;
+}
+
+/** How many of `items` fit in one reply, inside the reply budget. At least one: a cleaned item is far below it. */
+function fitting(items: readonly Item[]): number {
+  let size = 0;
+  for (let i = 0; i < items.length; i++) {
+    size += bytes(JSON.stringify(items[i]));
+    if (i > 0 && size > LIMITS.replyBytes) return i;
+  }
+  return items.length;
+}
 
 /** A proxy that compresses a reply (Cloudflare does) turns a strong ETag weak. The compare ignores the `W/`. */
 const sameTag = (header: string | null, etag: string) => header !== null && header.trim().replace(/^W\//, "") === etag;
@@ -361,6 +393,65 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         if (!store.close(kind, id)) throw new HttpError(404, "no-such-target");
         return { ok: true };
       }, CLOSE_GROUP),
+    );
+  }
+
+  // History (WIRE.md 7.16): the program's own record of its conversations, open and closed. Reads: no descendant
+  // check, no receipt. Without a provider the cap is false and both routes are 409 `not-supported`.
+  if (method === "GET" && route[0] === "conversations" && route.length === 1) {
+    const history = store.history;
+    if (!caps.history || history === undefined) throw new HttpError(409, "not-supported");
+    const { after, limit } = pageOf(url, LIMITS.conversationsPerPage);
+    const page = await history.list(after, limit);
+    const reply: ConversationsReply = { items: page.items.slice(0, limit).map(cleanConversationRow) };
+    const next = nextOf(page.next);
+    if (next !== undefined) reply.next = next;
+    return json(200, reply);
+  }
+
+  if (method === "GET" && route[0] === "conversation" && route.length === 3 && route[2] === "items") {
+    const history = store.history;
+    if (!caps.history || history === undefined) throw new HttpError(409, "not-supported");
+    const id = decode(route[1]!);
+    if (id === undefined || !idOk(id)) return json(404, { code: "no-such-conversation" });
+    const { after, limit } = pageOf(url, LIMITS.historyItems);
+    let page = await history.items(id, after, limit);
+    if (page === undefined) return json(404, { code: "no-such-conversation" });
+    let items = page.items.slice(0, limit).map(cleanItem);
+    // Over the reply budget: ask the provider again for the items that fit, so its own cursor names where to go on.
+    const fit = fitting(items);
+    if (fit < items.length) {
+      page = await history.items(id, after, fit);
+      if (page === undefined) return json(404, { code: "no-such-conversation" });
+      items = page.items.slice(0, fit).map(cleanItem);
+    }
+    const next = nextOf(page.next);
+    const reply: ConversationItemsReply = { items, more: next !== undefined };
+    if (next !== undefined) reply.next = next;
+    return json(200, reply);
+  }
+
+  if (method === "POST" && route[0] === "reopen" && route.length === 1) {
+    call.refuseAct?.();
+    const body = await readBody(request);
+    const requestId = idField(body, "requestId");
+    const id = idField(body, "id");
+    if (!caps.reopen) throw new HttpError(409, "not-supported");
+    return json(
+      200,
+      await store.receipts.run<ControlReply>(requestId, digestOf({ verb: "reopen", id }), async () => {
+        const where = store.paneOfConversation(id);
+        // Open already: there is nothing to put back.
+        if (where?.open === true) return { ok: true };
+        const known = where !== undefined || (store.history !== undefined && (await store.history.items(id, undefined, 1)) !== undefined);
+        if (!known) throw new HttpError(404, "no-such-target");
+        // Only `false` refuses: a hook that shows the conversation again and returns nothing accepts it.
+        if ((await state.hooks.onReopen?.({ id, ...(where === undefined ? {} : { paneId: where.paneId }) }, requestId)) === false) throw new HttpError(422, "reopen-refused");
+        // The SDK's own default: put back the pane it closed in this process, when the hook did not show one.
+        if (store.paneOfConversation(id)?.open !== true) store.reopen(id);
+        if (store.paneOfConversation(id)?.open !== true) throw new HttpError(422, "reopen-refused", { message: "The program did not show the conversation again." });
+        return { ok: true };
+      }, REOPEN_GROUP),
     );
   }
 

@@ -1110,6 +1110,46 @@ export type PaneHistoryResponse =
     };
 
 /**
+ * One conversation of a durable program's own list (M53 spec 11, WIRE.md 7.16). `paneId` is set on an open
+ * conversation that is in the live layout: the pane that shows it.
+ */
+export interface DurableConversationRow {
+  id: string;
+  title: string;
+  subtitle?: string;
+  workspaceId?: string;
+  tabId?: string;
+  startedAt: string;
+  endedAt?: string;
+  state: "open" | "closed";
+  items: number;
+  paneId?: string;
+}
+
+/**
+ * GET /api/durable/conversations?after=&limit=: the program's conversations, newest first, open and closed, at
+ * most 100 a page; `next` absent is the last page. `available: false` is an ordinary answer: a multiplexer with
+ * no program history (`unsupported`), or a program that cannot be asked now (`unreachable`).
+ */
+export type DurableConversationsResponse =
+  | { available: true; items: DurableConversationRow[]; next?: string }
+  | { available: false; reason: "unsupported" | "unreachable"; detail?: string };
+
+/**
+ * GET /api/durable/conversation/:id/items?after=&limit=: one conversation, oldest first, at most 1000 items a
+ * page, read from the program and never from the bridge's log. `more: true` means ask again with `after=next`.
+ * `gone` is a conversation the program does not know.
+ */
+export type DurableConversationItemsResponse =
+  | { available: true; id: string; entries: TranscriptEntry[]; next?: string; more: boolean }
+  | { available: false; reason: "unsupported" | "unreachable" | "gone"; detail?: string };
+
+/** POST /api/durable/conversation/:id/reopen: the pane that shows the conversation again, when the next listing has it. */
+export type ReopenConversationResponse =
+  | { ok: true; paneId?: string }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+
+/**
  * GET /api/pane/:id/chat — the same conversation as `history`, asked the other way round.
  *
  * `history` answers "show me this session" and pays a bounded whole-window read for it. This answers

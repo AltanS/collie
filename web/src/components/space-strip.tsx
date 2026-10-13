@@ -18,6 +18,8 @@ import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 import { useRevealActive } from "@/hooks/use-reveal-active";
 
+const noop = () => {};
+
 interface SpaceStripProps {
   workspaces: WorkspaceView[];
   agents: AgentView[];
@@ -50,6 +52,11 @@ interface SpaceStripProps {
    * set AND the machine declares `renameSpace`; otherwise the chips stay plain tap-to-switch.
    */
   onRenamed?: () => void;
+  /**
+   * Open the program's own list of conversations. A space chip's sheet opens for this too, when the machine
+   * declares `programHistory` (M53 spec 11); the route owns the navigation, so the strip needs no router.
+   */
+  onHistory?: () => void;
 }
 
 // A horizontal strip of spaces (Herdr workspaces) above the home list. In the drill-in (`onBack`
@@ -69,16 +76,19 @@ export function SpaceStrip({
   readOnly,
   savedCopy,
   onRenamed,
+  onHistory,
 }: SpaceStripProps) {
   const [sheetSpace, setSheetSpace] = useState<WorkspaceView | null>(null);
   const newSpace = useMuxCapability("createSpace");
   // A durable program makes no space by hand, but it offers starters, and `onNewSpace` opens the New
   // page, which lists exactly those (route space.tsx). So the "+" is drawn for either (M51 spec 08).
   const startersOpen = useMuxDeclared("starters");
-  // The space sheet has one row, Rename, which a program draws only when it takes renames (M53 spec 05). With no
-  // such declaration, or no callback to revalidate with, a space chip stays a plain switch and opens nothing.
+  // The space sheet has two rows a program draws on its own say: Rename, when it takes renames (M53 spec 05), and
+  // History, when it serves its conversations (spec 11). With neither declared, or no callback to go with it, a
+  // space chip stays a plain switch and opens nothing.
   const renameOpen = useMuxDeclared("renameSpace", scope);
-  const actionsEnabled = renameOpen && onRenamed !== undefined;
+  const historyOpen = useMuxDeclared("programHistory", scope);
+  const actionsEnabled = (renameOpen && onRenamed !== undefined) || (historyOpen && onHistory !== undefined);
   // Whether the multiplexer underneath can hold more than one space AT ALL (bridge/mux/
   // capabilities.ts `spaces`). Not "how many are there right now": one space out of many is a herd
   // the operator is about to add to, while one space out of one is a level their multiplexer does
@@ -174,7 +184,8 @@ export function SpaceStrip({
           scope={scope}
           readOnly={readOnly}
           savedCopy={savedCopy}
-          onRenamed={onRenamed}
+          onRenamed={onRenamed ?? noop}
+          onHistory={onHistory}
         />
       )}
     </>

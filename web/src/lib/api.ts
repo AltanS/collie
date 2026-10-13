@@ -50,6 +50,9 @@ import type {
   FileReadResponse,
   FilesListResponse,
   PaneHistoryResponse,
+  DurableConversationItemsResponse,
+  DurableConversationsResponse,
+  ReopenConversationResponse,
   CrewStatusResponse,
   MachineAlerts,
   MachineHistoryResponse,
@@ -726,6 +729,58 @@ export function fetchHistory(
     signal,
     headers: { "x-collie-seen": "1" },
   });
+}
+
+/** Rows per page of the program's conversation list. The bridge caps a page at 100. */
+export const DURABLE_CONVERSATIONS_PAGE = 100;
+/** Items per page of one conversation. The bridge caps a page at 1000. */
+export const DURABLE_ITEMS_PAGE = 1000;
+
+/**
+ * GET /api/durable/conversations: the conversations a durable program lists, newest first (M53 spec 11).
+ * `after` is the previous page's `next`. `available: false` is an ordinary answer, not a failure.
+ * Like fetchHistory it is a one-shot read on navigation and on a "Load more" tap, never on the poll loop.
+ */
+export function fetchDurableConversations(
+  opts: { after?: string; limit?: number } = {},
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<DurableConversationsResponse> {
+  const q = new URLSearchParams();
+  if (opts.after) q.set("after", opts.after);
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  return req<DurableConversationsResponse>(withScope(`/api/durable/conversations${qs ? `?${qs}` : ""}`, scope), { signal });
+}
+
+/**
+ * GET /api/durable/conversation/:id/items: one conversation's items, oldest first. `more: true` in the
+ * answer means ask again with `after` set to its `next` for the newer items that follow.
+ */
+export function fetchDurableConversationItems(
+  id: string,
+  opts: { after?: string; limit?: number } = {},
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<DurableConversationItemsResponse> {
+  const q = new URLSearchParams();
+  if (opts.after) q.set("after", opts.after);
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  const path = `/api/durable/conversation/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ""}`;
+  return req<DurableConversationItemsResponse>(withScope(path, scope), { signal });
+}
+
+/**
+ * POST /api/durable/conversation/:id/reopen: ask the program to take a closed conversation back (M53 spec
+ * 11). No body. A write, so it goes through the same transport as every other mutation: a refusal that
+ * arrives as a non-2xx status throws an ApiError, and one that arrives as `{ ok: false }` is a value.
+ */
+export function reopenDurableConversation(id: string, scope?: Scope): Promise<ReopenConversationResponse> {
+  return req<ReopenConversationResponse>(
+    withScope(`/api/durable/conversation/${encodeURIComponent(id)}/reopen`, scope),
+    { method: "POST" },
+  );
 }
 
 /**

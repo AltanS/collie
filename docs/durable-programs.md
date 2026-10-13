@@ -114,9 +114,30 @@ cap it leaves out draws nothing. Today the caps are:
 - **rename.** You give a tab or a workspace a new name. The program applies it or refuses it.
 - **close.** You close a conversation or a tab. The program decides what a close means.
 - **actions.** The program puts up to four buttons of its own in the belt, and a tap runs one once.
+- **history.** The program lists its conversations, open and closed, and serves the messages of each.
+- **reopen.** You bring a closed conversation back. The program shows it again or refuses.
 
 A program gets no Terminal view and no typed keys, because it has no screen. It lays out its own tabs
 and workspaces, so you cannot make them by hand, and the phone has no control to close a workspace.
+
+## History
+
+The program keeps the record of its conversations, and Collie lists it. A program that declares
+`history` serves every conversation it keeps, open and closed, newest first, and the messages of any
+of them, page by page.
+
+Open the list from the History row of the space sheet (long-press a space chip, or tap the open one),
+or from the History row of a durable conversation's menu, which puts that conversation at the top.
+Each row shows the title, the line under it, the date, whether it is open or closed, and how many
+items it holds. Tap an open conversation to go to it. Tap a closed one to read it. That view is
+read-only: it has no field to type in and no belt. When the program declares `reopen`, the view has
+a Reopen button, and the program shows the conversation again under the same name.
+
+Collie keeps its own copy of what it read for a live conversation, so Chat opens fast and works
+when the program is slow to answer. That copy is a cache: it keeps the newest 2000 messages or
+8 MiB of each conversation, and 256 MiB for the machine, and deletes the oldest conversation first,
+with one line in Collie's log for each file it deletes. A closed conversation is always read from the
+program, never from the copy. After a restart, Collie goes on reading where it stopped.
 
 ## Why not one Collie for everything
 

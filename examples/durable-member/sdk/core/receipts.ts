@@ -43,7 +43,10 @@ export const RENAME_GROUP = "rename";
 /** A close's receipts share the group `close`. */
 export const CLOSE_GROUP = "close";
 
-/** How many receipts a store keeps per group (per pane, the starters, the renames and the closes), newest first. */
+/** A reopen's receipts share the group `reopen` (WIRE.md 7.16). */
+export const REOPEN_GROUP = "reopen";
+
+/** How many receipts a store keeps per group (per pane, the starters, the renames, the closes and the reopens), newest first. */
 export const RECEIPTS_PER_GROUP = 1000;
 
 /**

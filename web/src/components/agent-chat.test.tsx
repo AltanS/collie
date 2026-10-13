@@ -1298,6 +1298,44 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(router.state.location.pathname).toBe(`/pane/${encodeURIComponent(agent.paneId)}/history`);
   });
 
+  // M53 spec 11: on a machine whose durable program serves its own history, the same row (same label) opens
+  // the program's conversation list with this pane's conversation first, whether or not the pane named a
+  // session. Every other pane keeps the transcript route above.
+  it("durable history: the History row goes to the conversation list on a machine that declares programHistory", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: { programHistory: true }, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const agent = fixtureAgents[0]!;
+    const props: ComponentProps<typeof AgentChat> = {
+      paneId: agent.paneId,
+      agent,
+      agents: [agent],
+      shellPanes: [],
+      tabs: [],
+      text: "recent pane output",
+      onBack: vi.fn(),
+      onSelect: vi.fn(),
+    };
+    const router = createMemoryRouter([
+      { path: "/", element: withHeaderHost(<AgentChat {...props} />) },
+      { path: "/pane/:paneId/history", element: <div>transcript route</div> },
+      { path: "/conversations", element: <div>conversations route</div> },
+    ]);
+    render(<RouterProvider router={router} />);
+    await openPaneMenu(user);
+    await user.click(await screen.findByRole("button", { name: /conversation history/i }));
+    expect(await screen.findByText("conversations route")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/conversations");
+    expect(router.state.location.search).toBe(`?pane=${encodeURIComponent(agent.paneId)}`);
+  });
+
   // THE FIND PATH, end to end, because it is the one that spans three components. The row closes the
   // sheet and opens find in ONE React event: the sheet's focus-restore (aimed at the \u22ee, which the
   // takeover has just removed) must lose to the find bar's own mount focus, or a one-handed operator

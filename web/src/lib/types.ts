@@ -1334,6 +1334,50 @@ export type PaneHistoryResponse =
     };
 
 /**
+ * One conversation of a durable program's own list (GET /api/durable/conversations). Mirrors
+ * `DurableConversationRow` in bridge/durable. `paneId` is set on an open conversation that is in the
+ * live layout: the pane that shows it.
+ */
+export interface DurableConversationRow {
+  id: string;
+  title: string;
+  subtitle?: string;
+  workspaceId?: string;
+  tabId?: string;
+  startedAt: string;
+  endedAt?: string;
+  state: "open" | "closed";
+  items: number;
+  paneId?: string;
+}
+
+/**
+ * GET /api/durable/conversations?after=&limit=. Newest first, at most 100 a page; `next` absent is the
+ * last page. `available: false` is an ordinary answer, drawn as text and never as an error.
+ */
+export type DurableConversationsResponse =
+  | { available: true; items: DurableConversationRow[]; next?: string }
+  | { available: false; reason: "unsupported" | "unreachable"; detail?: string };
+
+/**
+ * GET /api/durable/conversation/:id/items?after=&limit=. Oldest first, at most 1000 a page; `more: true`
+ * means ask again with `after=next` for the NEWER items that follow.
+ */
+export type DurableConversationItemsResponse =
+  | { available: true; id: string; entries: TranscriptEntry[]; next?: string; more: boolean }
+  | { available: false; reason: "unsupported" | "unreachable" | "gone"; detail?: string };
+
+/** POST /api/durable/conversation/:id/reopen. The pane that now shows the conversation, when the program says. */
+export type ReopenConversationResponse =
+  | { ok: true; paneId?: string }
+  | {
+      ok: false;
+      error: string;
+      code?: ApiErrorCode;
+      detail?: ApiErrorDetail;
+    };
+
+/**
  * One turn of a live window, plus WHERE it sits. Mirrors `ChatEntry` in bridge/journal/live.ts.
  *
  * `seq` is assigned once by the bridge and never reassigned, which is what lets a client hold one
@@ -1563,6 +1607,10 @@ export const MUX_CAPABILITIES = [
   "starters",
   "renameSpace",
   "programActions",
+  // The program serves its own conversation list and the items of one (`/api/durable/conversations`),
+  // and takes a reopen of a closed one. Both are read through `muxDeclared`, so they fail closed.
+  "programHistory",
+  "reopenConversation",
 ] as const;
 
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];

@@ -43,8 +43,12 @@ import {
   type MuxCreatedPane,
   type MuxGrid,
   type MuxGridRequest,
+  type MuxConversationItems,
+  type MuxConversationPage,
+  type MuxHistoryPage,
   type MuxOutcome,
   type MuxRefusalOutcome,
+  type MuxReopened,
   type MuxSession,
   type MuxSnapshot,
   type MuxStarterOutcome,
@@ -71,15 +75,18 @@ import {
   type DurableTransport,
   type DurableTransportKind,
 } from "./client.ts";
-import { DurableEventReader, type DurableEventSink } from "./events.ts";
+import { DurableEventReader, type DurableEventSink, logKeyOf } from "./events.ts";
 import { DURABLE_LOGO_SVG } from "./logo.ts";
 import {
   askForWire,
   incompatibleDetail,
+  isHistoryCursor,
   negotiateVersion,
   NOT_A_DURABLE_PROGRAM,
   parseAnswerReply,
   parseControlReply,
+  parseConversationItems,
+  parseConversations,
   parseHello,
   parseProblem,
   parseSnapshot,
@@ -306,6 +313,10 @@ const CLOSE_WORDS = {
   },
 } as const;
 type CloseKind = keyof typeof CLOSE_WORDS;
+const NO_HISTORY = "This program does not serve its history to Collie.";
+const NO_REOPEN = "This program does not bring a closed conversation back from here.";
+const NO_SUCH_CONVERSATION = "The program does not know this conversation.";
+const REOPEN_UNKNOWN = "The program did not answer, so the conversation may have been reopened. Look at the list before you try again.";
 const NO_KEYS = "A durable conversation takes no typed keys.";
 const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and conversations.";
 
@@ -335,6 +346,9 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
   if (caps?.close === true) supports.push("closePane", "closeTab");
   // The belt buttons a program lists for a pane (WIRE.md section 7.10), under `programActions`.
   if (caps?.actions === true) supports.push("programActions");
+  // The program's own history and a reopen of a closed conversation (WIRE.md section 7.16, M53 spec 11).
+  if (caps?.history === true) supports.push("programHistory");
+  if (caps?.reopen === true) supports.push("reopenConversation");
   return declareCapabilities({
     supports,
     spaces: "many",
@@ -349,6 +363,8 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
       setFocus: "There is no terminal to show a conversation in.",
       createTab: NO_STRUCTURE,
       programActions: "This program lists no actions to run from here.",
+      programHistory: NO_HISTORY,
+      reopenConversation: NO_REOPEN,
       renameTab: NO_RENAME,
       renameSpace: NO_RENAME,
       closeTab: NO_CLOSE,
@@ -941,6 +957,122 @@ export class DurableMux implements MuxAdapter {
       return muxUnreachable(STARTING);
     }
     return muxUnreachable(`program answered ${String(reply.status)}`);
+  }
+
+  // ── History (WIRE.md section 7.16, M53 spec 11) ─────────────────────────────
+
+  /**
+   * One page of the program's conversations, newest first, open and closed. A read: in order, the cap of the last
+   * good read (`unsupported`, no socket touched), the cursor rule, a fresh read of `hello` when none is held, then
+   * one GET. An open row names the pane that shows it in the held layout.
+   */
+  async listConversations(page: MuxHistoryPage): Promise<MuxOutcome<MuxConversationPage>> {
+    const reply = await this.historyGet("/conversations", page, REPLY_CAPS.conversations);
+    if (!reply.ok) return reply;
+    const parsed = parseConversations(reply.value.text);
+    if (!parsed.ok) return muxUnreachable(`unreadable conversations: ${parsed.detail}`);
+    const panes = new Map<string, string>();
+    for (const pane of this.kept?.snapshot.panes ?? []) panes.set(logKeyOf(pane), pane.id);
+    const items = parsed.value.items.map((row) => {
+      const paneId = row.state === "open" ? panes.get(row.id) : undefined;
+      return paneId === undefined ? row : { ...row, paneId };
+    });
+    return muxOk(parsed.value.next === undefined ? { items } : { items, next: parsed.value.next });
+  }
+
+  /** One page of one conversation's items, oldest first, from the program. `gone` for one it does not know. */
+  async conversationItems(id: string, page: MuxHistoryPage): Promise<MuxOutcome<MuxConversationItems>> {
+    if (!isWireId(id)) return muxGone(NO_SUCH_CONVERSATION);
+    const reply = await this.historyGet(`/conversation/${encodeURIComponent(id)}/items`, page, REPLY_CAPS.conversationItems);
+    if (!reply.ok) return reply;
+    const parsed = parseConversationItems(reply.value.text);
+    if (!parsed.ok) return muxUnreachable(`unreadable conversation items: ${parsed.detail}`);
+    const { items, next, more } = parsed.value;
+    return muxOk(next === undefined ? { items, more } : { items, next, more });
+  }
+
+  /** The one GET both history reads share, with its refusals. */
+  private async historyGet(path: string, page: MuxHistoryPage, maxBytes: number): Promise<MuxOutcome<DurableReply>> {
+    if (this.kept?.session.caps.history !== true) return muxUnsupported("programHistory", NO_HISTORY);
+    if (page.after !== undefined && !isHistoryCursor(page.after)) return muxRefused("The cursor is not one the program gave.");
+    if (page.limit !== undefined && (!Number.isSafeInteger(page.limit) || page.limit < 1)) return muxRefused("The page size must be a whole number from 1.");
+    const read = await this.poll();
+    const session = this.current ?? this.kept?.session ?? null;
+    if (!read.ok || session === null) return muxUnreachable(read.ok ? STARTING : read.detail);
+    if (!session.caps.history) return muxUnsupported("programHistory", NO_HISTORY);
+    const query = new URLSearchParams();
+    if (page.after !== undefined) query.set("after", page.after);
+    if (page.limit !== undefined) query.set("limit", String(page.limit));
+    const search = query.toString();
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.get({
+        path: search === "" ? path : `${path}?${search}`,
+        version: session.version,
+        ifNoneMatch: null,
+        timeoutMs: this.budget.readTimeoutMs,
+        maxBytes,
+      });
+    } catch (err) {
+      this.current = null;
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    if (reply.status === 200) return muxOk(reply);
+    const problem = parseProblem(reply.text);
+    if (reply.status === 404) return muxGone(NO_SUCH_CONVERSATION);
+    if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported("programHistory", NO_HISTORY);
+    if (reply.status === 400) return muxRefused(`The program did not take the page: ${problem.code === "" ? "400" : problem.code}`);
+    return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
+  }
+
+  /**
+   * Show a closed conversation again (WIRE.md 7.16). In order: the cap of the last good read (`unsupported`, no
+   * socket touched); the id rule; a fresh read; the cap again. One POST with a fresh request id, never retried: a
+   * POST that may have left and has no answer is a refusal whose detail says the conversation may have been
+   * reopened. On success the layout is read again, so the census and the answer have the pane.
+   */
+  async reopenConversation(id: string): Promise<MuxOutcome<MuxReopened>> {
+    if (this.kept?.session.caps.reopen !== true) return muxUnsupported("reopenConversation", NO_REOPEN);
+    if (!isWireId(id)) return muxRefused("An id in the request breaks the id rule.");
+    const read = await this.poll();
+    const program = read.ok ? this.program() : null;
+    if (program === null) return muxUnreachable(read.ok ? STARTING : read.detail);
+    if (!program.session.caps.reopen) return muxUnsupported("reopenConversation", NO_REOPEN);
+
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.post({
+        path: "/reopen",
+        version: program.session.version,
+        body: { requestId: crypto.randomUUID(), id },
+        timeoutMs: this.budget.writeTimeoutMs,
+        maxBytes: REPLY_CAPS.post,
+      });
+    } catch (err) {
+      if (err instanceof DurableOutcomeUnknown) return muxRefused(`${REOPEN_UNKNOWN} (${err.detail})`);
+      // Nothing was sent. The next read starts with `hello` again (WIRE.md section 8.8).
+      this.current = null;
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    if (reply.status === 200) {
+      if (parseControlReply(reply.text) === null) return muxRefused(`${REOPEN_UNKNOWN} (unreadable reopen reply)`);
+      // The pane is in the next snapshot (WIRE.md 7.16). Look now, so the census and the answer have it.
+      this.last = null;
+      await this.poll();
+      const pane = this.kept?.snapshot.panes.find((candidate) => logKeyOf(candidate) === id);
+      return muxOk(pane === undefined ? {} : { paneId: pane.id });
+    }
+    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${REOPEN_UNKNOWN} (program answered ${String(reply.status)})`);
+    const problem = parseProblem(reply.text);
+    if (reply.status === 404 && problem.code === "no-such-target") return muxGone(NO_SUCH_CONVERSATION);
+    if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported("reopenConversation", NO_REOPEN);
+    if (reply.status === 422 && problem.code === "reopen-refused") {
+      return muxRefused(problem.message === "" ? "The program did not bring this conversation back." : `The program did not bring this conversation back: ${problem.message}`);
+    }
+    if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
+      return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
+    }
+    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   // ── What a screenless program cannot do ─────────────────────────────────────

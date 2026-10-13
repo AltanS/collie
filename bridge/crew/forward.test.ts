@@ -14,6 +14,7 @@ import {
   forwardToPeer,
   crewRouteFor,
   proxiedResponse,
+  textAnswerOf,
   type ForwardDeps,
   type ForwardErrorCode,
   type ForwardTransport,
@@ -282,6 +283,28 @@ describe("which routes cross a link", () => {
     expect(crewRouteFor("/api/workspace/w1/files/exist")).toBeNull();
     expect(apiPathFor("pane/w1:p1/files/image")).toBe("/api/pane/w1:p1/files/image");
     expect(apiPathFor("workspace/w1/files/image")).toBe("/api/workspace/w1/files/image");
+    // A durable program's history (M53 spec 11): the list, then one opaque id with `items` or `reopen`.
+    const conversations = server.match(/^const DURABLE_CONVERSATIONS_ROUTE = (.+);$/m)![1]!;
+    const conversation = server.match(/^const DURABLE_CONVERSATION_ROUTE = (.+);$/m)![1]!;
+    expect(conversations).toBe("/^\\/api\\/durable\\/conversations$/");
+    expect(conversation).toBe("/^\\/api\\/durable\\/conversation\\/([^/]+)\\/(items|reopen)$/");
+    expect(crewRouteFor("/api/durable/conversations")).toBe("durable/conversations");
+    for (const action of ["items", "reopen"]) expect(crewRouteFor(`/api/durable/conversation/c1/${action}`)).toBe(`durable/conversation/c1/${action}`);
+    expect(crewRouteFor("/api/durable/conversation/c1/close")).toBeNull();
+    expect(crewRouteFor("/api/durable/conversations/x")).toBeNull();
+    expect(apiPathFor("durable/conversation/c1/items")).toBe("/api/durable/conversation/c1/items");
+  });
+
+  test("history: the program's list and items are reads, a reopen is a write audited as durable.reopen, and the items are masked as History", () => {
+    expect(forwardKind("durable/conversations")).toBe("read");
+    expect(forwardKind("durable/conversation/c1/items")).toBe("read");
+    expect(forwardKind("durable/conversation/c1/reopen")).toBe("write");
+    expect(forwardAuditAction("durable/conversations")).toBeNull();
+    expect(forwardAuditAction("durable/conversation/c1/items")).toBeNull();
+    expect(forwardAuditAction("durable/conversation/c1/reopen")).toBe("durable.reopen");
+    expect(textAnswerOf("durable/conversation/c1/items")).toBe("history");
+    expect(textAnswerOf("durable/conversations")).toBeNull();
+    expect(forwardPaneId("durable/conversation/c1/reopen")).toBeUndefined();
   });
 
   test("read vs write is decided exactly as server.ts decides it — history is a READ", () => {

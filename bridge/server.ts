@@ -31,7 +31,7 @@ import {
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import { muxUnsupported } from "./mux/types.ts";
-import type { MuxAdapter, MuxAck, MuxGrid, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
+import type { MuxAdapter, MuxAck, MuxGrid, MuxHistoryPage, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
@@ -126,6 +126,8 @@ import {
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
+import { parseDurableLog } from "./journal/durable.ts";
+import { redactText } from "./redact.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -213,6 +215,10 @@ import type {
   ChatBody,
   PaneChatResponse,
   PaneHistoryResponse,
+  DurableConversationItemsResponse,
+  DurableConversationRow,
+  DurableConversationsResponse,
+  ReopenConversationResponse,
   PaneReadResponse,
   PaneWire,
   SnapshotResponse,
@@ -421,6 +427,10 @@ const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 // A space supports rename only, and only on an adapter that declares `renameSpace` (a durable program that
 // takes `caps.rename`). `/api/space/<id>/rename` is a new path: the create route is `/api/workspace`.
 const SPACE_ACTION_ROUTE = /^\/api\/space\/([^/]+)\/rename$/;
+// A durable program's own history (M53 spec 11, WIRE.md 7.16): its conversation list, the items of one, and a
+// reopen. Asked of the machine the program runs on; `bridge/crew/forward.ts` mirrors both one-for-one.
+const DURABLE_CONVERSATIONS_ROUTE = /^\/api\/durable\/conversations$/;
+const DURABLE_CONVERSATION_ROUTE = /^\/api\/durable\/conversation\/([^/]+)\/(items|reopen)$/;
 
 /**
  * `GET /api/stt/model/<sha256>` (ADR 0096 Decision 9). The segment is matched as an opaque value and
@@ -1742,6 +1752,33 @@ export function startServer(opts: {
       if (rt instanceof Response) return rt;
       const spaceId = decodeURIComponent(spaceMatch[1]!);
       return renameSpace(rt.herdr, rt.engine, spaceId, req, caller.audit, caller.device(), rt.name);
+    }
+
+    // ── A durable program's history (M53 spec 11): the list, the items of one, a reopen ──
+    if (DURABLE_CONVERSATIONS_ROUTE.test(pathname)) {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      if (req.method !== "GET") return text("method not allowed", 405);
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return durableConversations(rt.herdr, url, req, cfg.redact);
+    }
+    const conversationMatch = pathname.match(DURABLE_CONVERSATION_ROUTE);
+    if (conversationMatch) {
+      const reopen = conversationMatch[2] === "reopen";
+      const denied = caller.gate(reopen ? "write" : "read");
+      if (denied) return denied;
+      if (req.method !== (reopen ? "POST" : "GET")) return text("method not allowed", 405);
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let id: string;
+      try {
+        id = decodeURIComponent(conversationMatch[1]!);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      if (reopen) return reopenConversation(rt.herdr, rt.engine, id, req, caller.audit, caller.device(), rt.name);
+      return durableConversationItems(rt.herdr, id, url, req, cfg.redact);
     }
 
     // ── Per-pane read / send ─────────────────────────────────────────────
@@ -3463,6 +3500,108 @@ export async function paneHistory(
   } catch (err) {
     return text(`transcript read failed: ${errorText(err)}`, 502);
   }
+}
+
+/** The page a durable history route asks for: `after` as sent, `limit` a whole number, else none. */
+function durablePageOf(url: URL): MuxHistoryPage {
+  const page: { -readonly [K in keyof MuxHistoryPage]: MuxHistoryPage[K] } = {};
+  const after = url.searchParams.get("after");
+  if (after !== null && after !== "") page.after = after;
+  const limit = url.searchParams.get("limit");
+  if (limit !== null && /^[1-9]\d{0,5}$/.test(limit)) page.limit = Number(limit);
+  return page;
+}
+
+/**
+ * GET /api/durable/conversations: the program's own list of its conversations, open and closed, newest first
+ * (M53 spec 11, WIRE.md 7.16). The program keeps the record and serves it; the bridge only cleans it and names
+ * the pane of an open one. An adapter without `listConversations` (every multiplexer but a durable program)
+ * answers `unsupported`, an ordinary answer.
+ */
+export async function durableConversations(
+  herdr: Pick<MuxAdapter, "listConversations">,
+  url: URL,
+  req: Request,
+  redact: boolean,
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  if (herdr.listConversations === undefined) {
+    return json({ available: false, reason: "unsupported" } satisfies DurableConversationsResponse, accept);
+  }
+  const read = await herdr.listConversations(durablePageOf(url));
+  if (!read.ok) {
+    const reason = read.reason === "unsupported" ? "unsupported" : "unreachable";
+    return json({ available: false, reason, detail: read.detail } satisfies DurableConversationsResponse, accept);
+  }
+  // A title and a subtitle are the program's words, masked like a pane's title (bridge/redact.ts).
+  const items = read.value.items.map((row): DurableConversationRow => {
+    const out: DurableConversationRow = { ...row, title: redact ? redactText(row.title) : row.title };
+    if (row.subtitle !== undefined) out.subtitle = redact ? redactText(row.subtitle) : row.subtitle;
+    return out;
+  });
+  const body: DurableConversationsResponse = read.value.next === undefined ? { available: true, items } : { available: true, items, next: read.value.next };
+  return json(body, accept);
+}
+
+/**
+ * GET /api/durable/conversation/:id/items: one conversation, oldest first, read from the PROGRAM (M53 spec 11).
+ * The bridge's pane log is a cache for a live pane's Chat; a closed conversation is read here, never from it.
+ * Each item is read by the durable journal's own reducer, as a log row, so it draws exactly as Chat draws it.
+ */
+export async function durableConversationItems(
+  herdr: Pick<MuxAdapter, "conversationItems">,
+  id: string,
+  url: URL,
+  req: Request,
+  redact: boolean,
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  if (herdr.conversationItems === undefined) {
+    return json({ available: false, reason: "unsupported" } satisfies DurableConversationItemsResponse, accept);
+  }
+  const read = await herdr.conversationItems(id, durablePageOf(url));
+  if (!read.ok) {
+    const reason = read.reason === "unsupported" ? "unsupported" : read.reason === "gone" ? "gone" : "unreachable";
+    return json({ available: false, reason, detail: read.detail } satisfies DurableConversationItemsResponse, accept);
+  }
+  // An item without its own stamp takes the start of the epoch, as a log row without one would: never "now",
+  // which would date a closed conversation to the moment it was opened.
+  const rows = read.value.items.map((item) => JSON.stringify({ k: "item", at: item.ts ?? new Date(0).toISOString(), item }));
+  const entries = parseDurableLog(rows.length === 0 ? "" : `${rows.join("\n")}\n`);
+  const page = { entries };
+  const masked = redact ? maskHistoryPage(page) : page;
+  const body: DurableConversationItemsResponse =
+    read.value.next === undefined
+      ? { available: true, id, entries: masked.entries, more: false }
+      : { available: true, id, entries: masked.entries, next: read.value.next, more: read.value.more };
+  return json(body, accept);
+}
+
+/**
+ * POST /api/durable/conversation/:id/reopen: ask the program to show a closed conversation again (M53 spec 11).
+ * No body: the id is in the path, and the adapter mints the request id. One POST, never retried.
+ */
+export async function reopenConversation(
+  herdr: Pick<MuxAdapter, "reopenConversation" | "refresh">,
+  engine: Pick<StateEngine, "pokeNow">,
+  id: string,
+  req: Request,
+  audit: Pick<AuditLog, "record">,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  const reopened =
+    herdr.reopenConversation === undefined
+      ? muxUnsupported("reopenConversation", "This multiplexer keeps no closed conversations to bring back.")
+      : await herdr.reopenConversation(id);
+  if (!reopened.ok) {
+    return json({ ok: false, ...apiError("durable.reopen_failed", { reason: reopened.detail }) } satisfies ReopenConversationResponse, ae);
+  }
+  audit.record({ action: "durable.reopen", session, device, detail: { id } });
+  await settleTopology(herdr, engine);
+  const paneId = reopened.value.paneId;
+  return json((paneId === undefined ? { ok: true } : { ok: true, paneId }) satisfies ReopenConversationResponse, ae);
 }
 
 /**

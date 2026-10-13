@@ -64,7 +64,7 @@ describe("hello", () => {
         hostName: "denis-laptop",
         epoch: EPOCH,
         ready: true,
-        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false, actions: false },
+        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false, actions: false, history: false, reopen: false },
       },
     });
   });
@@ -73,7 +73,7 @@ describe("hello", () => {
     const parsed = parseHello(
       JSON.stringify({ service: "collie-durable", protocol: { min: 1, max: 1 }, host: null, epoch: EPOCH, ready: false, caps: { asks: null, send: true } }),
     );
-    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false, close: false, actions: false });
+    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false, close: false, actions: false, history: false, reopen: false });
     expect(parsed.ok && parsed.value.hostName).toBe("");
   });
 
@@ -242,18 +242,23 @@ describe("snapshot fixture", () => {
     expect(closed.ok && closed.value.starters).toEqual([]);
   });
 
-  // M50 spec 14: wire v1 reserves `sessionId` on every pane for the machine-scoped session id. The adapter reads a
-  // pane with it, null or a string, exactly as one without it, and keeps nothing of it today.
-  test("a pane's reserved sessionId, null or a string, is read and ignored", () => {
+  // M53 spec 11: `sessionId` is the conversation id the program serves the pane's history under (WIRE.md 7.16). Null, or
+  // an id that breaks the rule, reads as absent and the pane id stands in; a good one keys the journal's log.
+  test("history: a pane's sessionId keys its log; null or a bad one reads as absent, and the pane id stands in", () => {
     const plain = toMuxSnapshot(read());
-    for (const sessionId of [null, "s-1"]) {
+    for (const sessionId of [null, "a b", 7]) {
       const snapshot = read((raw) => {
         for (const pane of raw.panes) Object.assign(pane, { sessionId });
       });
-      expect(snapshot.panes.map((pane) => pane.id)).toEqual(read().panes.map((pane) => pane.id));
       expect(snapshot.panes.every((pane) => !("sessionId" in pane))).toBe(true);
       expect(toMuxSnapshot(snapshot)).toEqual(plain);
     }
+    const named = read((raw) => {
+      for (const pane of raw.panes) Object.assign(pane, { sessionId: `s-${pane.id}` });
+    });
+    expect(named.panes.map((pane) => pane.sessionId)).toEqual(read().panes.map((pane) => `s-${pane.id}`));
+    expect(toMuxSnapshot(named).panes.map((pane) => pane.agentSession)).toEqual(read().panes.map((pane) => ({ kind: "id", value: `s-${pane.id}` })));
+    expect(toMuxSnapshot(named).panes.map((pane) => pane.paneId)).toEqual(plain.panes.map((pane) => pane.paneId));
   });
 
   test("a pane's subtitle and badge are read cleaned, mapped onto the mux pane, and left out when absent", () => {

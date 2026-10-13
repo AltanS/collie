@@ -75,6 +75,53 @@ export type MuxOutcome<T> = { readonly ok: true; readonly value: T } | MuxRefusa
 /** A call that succeeds with nothing to say. */
 export type MuxAck = MuxOutcome<void>;
 
+/** Which page of a program's history to read (M53 spec 11): after an opaque cursor, at most `limit`. */
+export interface MuxHistoryPage {
+  readonly after?: string;
+  readonly limit?: number;
+}
+
+/** One conversation in a program's own list (WIRE.md 7.16), cleaned. */
+export interface MuxConversationRow {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly workspaceId?: string;
+  readonly tabId?: string;
+  readonly startedAt: string;
+  readonly endedAt?: string;
+  readonly state: "open" | "closed";
+  readonly items: number;
+  /** The pane that shows an open conversation, when the adapter's last listing has it. */
+  readonly paneId?: string;
+}
+
+/** A reopen the program took: the pane that shows the conversation again, when the next listing has it. */
+export interface MuxReopened {
+  readonly paneId?: string;
+}
+
+export interface MuxConversationPage {
+  readonly items: readonly MuxConversationRow[];
+  readonly next?: string;
+}
+
+/**
+ * One item of a conversation as the program serves it, cleaned by the adapter (WIRE.md 7.16). The shape is the
+ * wire's `Item`; the durable journal reads it the way it reads a pane log row (bridge/journal/durable.ts).
+ */
+export interface MuxConversationItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly ts?: string;
+}
+
+export interface MuxConversationItems {
+  readonly items: readonly MuxConversationItem[];
+  readonly next?: string;
+  readonly more: boolean;
+}
+
 /** Success. */
 export function muxOk<T>(value: T): MuxOutcome<T> {
   return { ok: true, value };
@@ -718,6 +765,26 @@ export interface MuxAdapter {
   controlTurn?(paneId: string, request: ControlRequest): Promise<MuxControlOutcome>;
 
   /**
+   * One page of the program's own list of conversations, open and closed, newest first (M53 spec 11, WIRE.md
+   * 7.16). OPTIONAL, with {@link conversationItems}: only an adapter that declares `programHistory` has it
+   * (`durable`). `after` is the `next` of the page before, opaque. A read: nothing on the program changes.
+   */
+  listConversations?(page: MuxHistoryPage): Promise<MuxOutcome<MuxConversationPage>>;
+
+  /**
+   * One page of one conversation's items, oldest first, open or closed alike (M53 spec 11). `gone` for a
+   * conversation the program does not know. A read, served by the program, never by the bridge's own log.
+   */
+  conversationItems?(id: string, page: MuxHistoryPage): Promise<MuxOutcome<MuxConversationItems>>;
+
+  /**
+   * Ask the program to show a closed conversation again, under the same pane id (M53 spec 11). OPTIONAL: only
+   * an adapter that declares `reopenConversation` has it. One POST with a fresh request id, never retried: an
+   * outcome that may have acted is a refusal that says so, because an ack has no room for "unknown".
+   */
+  reopenConversation?(id: string): Promise<MuxOutcome<MuxReopened>>;
+
+  /**
    * The pane's foreground processes, as argv. OPTIONAL by design: a multiplexer without the
    * call simply yields no hint, exactly as today.
    *
@@ -840,7 +907,20 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
 }
 
 /** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
-export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "paneActions" | "controlTurn" | "foregroundProcesses" | "renameSpace";
+export type MuxOptionalMethod =
+  | "readLogicalText"
+  | "listStarters"
+  | "startStarter"
+  | "openAsks"
+  | "answerAsk"
+  | "paneTurn"
+  | "paneActions"
+  | "controlTurn"
+  | "foregroundProcesses"
+  | "renameSpace"
+  | "listConversations"
+  | "conversationItems"
+  | "reopenConversation";
 
 /**
  * The OPTIONAL methods, gathered the way {@link muxDataFields} gathers the optional data fields.
@@ -874,6 +954,13 @@ export function muxOptionalMethods(
   if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
   const renameSpace = adapter.renameSpace?.bind(adapter);
   if (renameSpace !== undefined) methods.renameSpace = renameSpace;
+  // The program's history (M53 spec 11): the list, the items of one, and a reopen.
+  const listConversations = adapter.listConversations?.bind(adapter);
+  if (listConversations !== undefined) methods.listConversations = listConversations;
+  const conversationItems = adapter.conversationItems?.bind(adapter);
+  if (conversationItems !== undefined) methods.conversationItems = conversationItems;
+  const reopenConversation = adapter.reopenConversation?.bind(adapter);
+  if (reopenConversation !== undefined) methods.reopenConversation = reopenConversation;
   return methods;
 }
 

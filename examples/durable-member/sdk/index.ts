@@ -5,7 +5,7 @@
 
 import { type CollieCore, type CoreOptions, createCore } from "./core/index.ts";
 import { startServer } from "./server.ts";
-import type { Caps, Starter } from "./core/types.ts";
+import type { Caps, HistoryProvider, Starter } from "./core/types.ts";
 import type { WorkspaceHandle } from "./core/layout.ts";
 
 export * from "./core/index.ts";
@@ -37,6 +37,8 @@ export interface Collie {
   readonly core: CollieCore;
   workspace(id: string, o: { title: string; cwd?: string }): WorkspaceHandle;
   starters(list: Starter[]): void;
+  /** Serve the program's own history (WIRE.md 7.16). See `CollieCore.history`. */
+  history(provider: HistoryProvider): void;
   /** Call once the layout is complete (after a restart: after every pane is shown again). Until then the caller gets 503 `starting`. */
   ready(): void;
   close(): Promise<void>;
@@ -53,6 +55,7 @@ export async function openCollie(o: OpenOptions): Promise<Collie> {
     core,
     workspace: (id, w) => core.workspace(id, w),
     starters: (list) => core.starters(list),
+    history: (provider) => core.history(provider),
     ready: () => core.ready(),
     // Stops the server only. Open asks stay open on purpose: a shutdown is not an answer, and the
     // program decides what happens to the work that waits on one.

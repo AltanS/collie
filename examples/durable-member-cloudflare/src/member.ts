@@ -32,7 +32,18 @@ import {
 import { PiHarness, type PiHarnessContext } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { type CollieCore, createCore, type TabHandle } from "../../durable-member/sdk/core/index.ts";
-import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, type Submit, subtitleFor } from "../../durable-member/pi-durable/index.ts";
+import {
+  ASKING_TOOLS,
+  askTools,
+  conversationOfPaneId,
+  PaneRegistry,
+  piHistory,
+  riskGuard,
+  showConversation,
+  spawnHelperTool,
+  type Submit,
+  subtitleFor,
+} from "../../durable-member/pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "../../durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
@@ -135,6 +146,18 @@ export class Member extends DurableObject<Env> {
             await this.panes.forget(id);
           }
         },
+        // The phone reopens a closed conversation (WIRE.md 7.16): off the archive, and shown again under the same pane
+        // id. Pi kept every entry in the object's SQLite, so the pane carries the whole conversation.
+        onReopen: async ({ id }) => {
+          const conversationId = conversationOfPaneId(id);
+          if (conversationId === undefined) return false;
+          const record = await this.pi.commit((tx) => tx.conversation(conversationId), ctx0);
+          const conversation = await this.pi.conversation(conversationId, ctx0);
+          if (record === undefined || conversation === undefined) return false;
+          sql.exec("DELETE FROM collie_closed WHERE id = ?", String(conversationId));
+          closed.delete(String(conversationId));
+          await this.show(conversation, record.owner?.conversationId);
+        },
       },
     });
     this.core = core;
@@ -157,6 +180,20 @@ export class Member extends DurableObject<Env> {
     const ws = core.workspace("triage", { title: titled("workspace", "triage", "Triage"), cwd: "/srv/triage" });
     this.inbox = ws.tab("inbox", { title: titled("tab", "triage:inbox", "Inbox") });
     this.helpers = ws.tab("helpers", { title: titled("tab", "triage:helpers", "Helpers") });
+    // The history is Pi's own record in the object's SQLite (WIRE.md 7.16): every conversation, open and closed.
+    const inboxId = this.inbox.id;
+    const helpersId = this.helpers.id;
+    core.history(
+      piHistory({
+        harness: () => this.pi,
+        panes: this.panes,
+        describe: (record) => {
+          const owner = record.owner?.conversationId;
+          const owned = owner !== undefined;
+          return { title: `${owned ? "Helper" : "Ticket"} #${record.id}`, subtitle: subtitleFor(owner), workspaceId: "triage", tabId: owned ? helpersId : inboxId, progress: !owned };
+        },
+      }),
+    );
 
     // write_note keeps its line in the object's own SQLite: a Worker has no file to append to.
     const writeNote = defineTool({

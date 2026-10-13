@@ -104,7 +104,7 @@ import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { PaneProgressRow } from "@/components/pane-progress";
 import { panesOfTab } from "@/lib/pane-ordinal";
-import { useMuxCapability } from "@/lib/mux-capability";
+import { useMuxCapability, useMuxDeclared } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
@@ -113,7 +113,7 @@ import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { changesPath, conversationsPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
@@ -906,6 +906,10 @@ export function AgentChat({
   // loud. Hiding it is what leaves someone wondering whether Collie is broken.
   const sessionLog = useMuxCapability("agentSessionRef", scope);
   const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
+  // On a machine whose durable program serves its own history (M53 spec 11) the pane menu's History row
+  // opens the program's conversation list, with this pane's conversation first. Asked of the pane's own
+  // machine, and ABSENT until a bridge said yes, so every other pane keeps the per-pane transcript.
+  const programHistory = useMuxDeclared("programHistory", scope);
   // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
   // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so
   // its absence alone cannot say which half failed, and the two want opposite words. On an agent
@@ -2969,7 +2973,13 @@ export function AgentChat({
           // not on screen, so the row would open a bar over a surface with nothing to show —
           // withheld, the way the sheet withholds every row it was given nothing for.
           onFind={display && !chatShown ? openFind : undefined}
-          onHistory={historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
+          onHistory={
+            programHistory
+              ? () => nav.down(conversationsPath(scope, { pane: paneId }))
+              : historyAvailable
+                ? () => nav.down(historyPath(paneId, scope))
+                : undefined
+          }
           // Copy the buffered output — gated on there being output AND a clipboard to write to (absent
           // over plain HTTP), so the row hides where it could only fail, the way find hides with no
           // output. Same read-row family as find and history.

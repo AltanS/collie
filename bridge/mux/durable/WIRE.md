@@ -170,12 +170,16 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `POST /rename` | `RenameRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `rename-refused`, 503 `starting` |
 | `POST /close` | `CloseRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `close-refused`, 503 `starting` |
 | `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
+| `GET /conversations?after=C&limit=N` | `after`: the `next` of the page before, absent for the first page. `limit`: 1 to 100, default and most 100. | `ConversationsReply` | 400 `bad-cursor`, 409 `incompatible`, 409 `not-supported`, 503 `starting` |
+| `GET /conversation/:id/items?after=C&limit=N` | `after` as above. `limit`: 1 to 1000, default and most 1000. | `ConversationItemsReply` | 400 `bad-cursor`, 404 `no-such-conversation`, 409 `incompatible`, 409 `not-supported`, 503 `starting` |
+| `POST /reopen` | `ReopenRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `reopen-refused`, 503 `starting` |
 
 Any other method or path answers 404 `not-found`.
 
-Every pane in a `Snapshot` MAY carry `sessionId: string | null`: it is reserved for the
-machine-scoped session id and is null until a later version defines it. The adapter reads it and
-ignores it today.
+Every pane in a `Snapshot` MAY carry `sessionId: string | null`: the conversation id the program
+serves the pane's history under (section 7.16). A program that cannot keep that id the same across a
+restart sends null. The adapter names the pane's session `sessionId`, or the pane id when it is null,
+absent or breaks the id rule, and the bridge keeps its own log of the pane under that name.
 
 ### Error codes
 
@@ -187,13 +191,14 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-body` | A field is missing, has the wrong type, or is over its cap. `turnId` and `askId` both present, or both absent. | Same. |
 | 400 | `bad-id` | An id in the body breaks the id rule (section 6). | Same. |
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
-| 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
+| 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. On a history route (7.16): `after` is not a cursor the program gave, or `limit` is not a whole number from 1. | Same. |
 | 401 | (any) | Over the socket (1A): a program that wants a token, which the socket does not carry. Over TLS (1B): the token is missing or wrong. | 1A: `incompatible`, see section 2. 1B: `unreachable`, detail `token-refused`. |
-| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `action`, `rename`, `close` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `action`, `rename`, `close`, `reopen` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
 | 403 | (any) | Over TLS (1B): something in front of the program refused the caller, for example an access proxy. | `unreachable`, detail `token-refused`. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
-| 404 | `no-such-target` | The workspace, tab or pane of a `rename` or a `close` is not in the program's layout. | `gone`. |
+| 404 | `no-such-target` | The workspace, tab or pane of a `rename` or a `close` is not in the program's layout. The conversation of a `reopen` is not one the program knows. | `gone`. |
+| 404 | `no-such-conversation` | The conversation of a history read is not one the program knows (section 7.16). | `gone`. |
 | 404 | `no-such-action` | The pane does not list this action (section 7.10). | Refused, with a detail that says the conversation has no such action. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
 | 409 | `incompatible` | Version outside the range. Carries `range`. | `unreachable`, detail `incompatible`. Never retried at the same version. |
@@ -204,6 +209,7 @@ Every error body is a `Problem` (section 4).
 | 422 | `rename-refused` | The program said no to this title for this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `action-refused` | The program said no to running this action now. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `close-refused` | The program said no to closing this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
+| 422 | `reopen-refused` | The program said no to showing this conversation again. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `starter-failed` | The starter ran and failed. Carries `message`. Nothing was stored for the request id. | Refused, with the message. The same request id may run again. |
 | 503 | `starting` | `ready` is false. | `unreachable`, detail `starting`. Asks `hello` again on the next poll. |
 | 500 | `internal` | A bug in the program. | A read: `unreachable` for this poll. A POST: outcome unknown (section 7.6). |
@@ -245,6 +251,8 @@ interface Caps {
   rename?: boolean;    // it takes a new title for a workspace or a tab (section 7.8)
   close?: boolean;     // it closes a workspace, a tab or a pane (section 7.9)
   actions?: boolean;   // it lists actions on a pane and runs one when asked (section 7.10)
+  history?: boolean;   // it serves its conversations, open and closed, and their items (section 7.16)
+  reopen?: boolean;    // it shows a closed conversation again when asked (section 7.16)
   terminal?: boolean;  // MUST be false or absent in version 1. The adapter ignores it.
 }
 
@@ -296,7 +304,10 @@ interface Pane {
   turnId: string;
   /** Every open ask, oldest first. Empty when none. */
   openAsks: Ask[];
-  /** Reserved for the machine-scoped session id (section 3). Null until a later version defines it. */
+  /**
+   * The conversation id the program serves this pane's history under (section 7.16), following the id rule.
+   * Null when the program cannot keep it the same across a restart. Section 3 says how the adapter reads it.
+   */
   sessionId?: string | null;
   /** Absolute. Falls back to the workspace `cwd`, then to "". */
   cwd?: string;
@@ -552,6 +563,13 @@ interface ActionRequest {
   turnId?: string;
 }
 
+/** Show a closed conversation again (section 7.16). */
+interface ReopenRequest {
+  requestId: string;
+  /** A conversation id, as `ConversationRow.id` lists it. */
+  id: string;
+}
+
 interface StarterRequest {
   requestId: string;
 }
@@ -560,6 +578,44 @@ interface StarterReply {
   /** The new conversation's pane. It is in the next snapshot. */
   paneId: string;
   replayed?: true;
+}
+
+// ── history (section 7.16) ────────────────────────────────────────────────────
+
+/** One conversation of the program's own record, open or closed. */
+interface ConversationRow {
+  /** The conversation id: the `sessionId` of the pane that shows it while it is open. */
+  id: string;
+  title: string;
+  /** One line under the title, the same rule as `Pane.subtitle`. */
+  subtitle?: string;
+  /** Where the conversation is shown, or was, when the program places it. */
+  workspaceId?: string;
+  tabId?: string;
+  /** ISO 8601. */
+  startedAt: string;
+  /** ISO 8601. Absent while the conversation is open. */
+  endedAt?: string;
+  /** Open while a pane in the layout shows it. */
+  state: "open" | "closed";
+  /** How many items `GET /conversation/:id/items` serves for it. */
+  items: number;
+}
+
+/** Newest first. `next` absent: the last page. */
+interface ConversationsReply {
+  items: ConversationRow[];
+  /** An opaque cursor: 1 to 512 bytes of printable ASCII, no space. */
+  next?: string;
+}
+
+/** Oldest first. The same `Item` shapes as a pane's events. */
+interface ConversationItemsReply {
+  items: Item[];
+  /** As above. */
+  next?: string;
+  /** True when `next` names a page of newer items. */
+  more: boolean;
 }
 
 // ── errors ────────────────────────────────────────────────────────────────────
@@ -707,12 +763,17 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | Open asks per pane | 50 | the oldest 50 |
 | Options per ask | 6 | the first 6. An ask with none is shown as not answerable. |
 | Starters per snapshot | 50 | the first 50 |
+| Rows per `conversations` page | 100 | the reply is not read |
+| Items per `items` page | 1000 | the reply is not read |
+| A history cursor (`after`, `next`) | 512 bytes of printable ASCII, no space | 400 `bad-cursor`; a reply with one is not read |
 | Events per reply | 1000 (a reset reply: see 7.2) | the program stops early and sets `more` |
 | Items in a reset view | 2000, the newest | the program leaves out the oldest and counts them in `trimmed` |
 | Request body to the program | 65536 bytes | 413 `too-large` |
 | `hello` reply | 16 KiB | the adapter refuses it: `unreachable`, detail `too-large` |
 | `snapshot` reply | 4 MiB | same |
 | `events` reply | 8 MiB | same. The program stops early and sets `more` to stay inside it. |
+| `conversations` reply | 1 MiB | same |
+| `items` reply | 8 MiB | same. The program stops early and names `next` to stay inside it. |
 | Any POST reply | 16 KiB | outcome unknown (section 7.6) |
 
 ## 7. Rules
@@ -1042,6 +1103,38 @@ the same item id, not a new item, and it is not a "stopped" line.
 - Both fields are additive: an older adapter ignores them and draws each version as a finished reply, and
   the final version replaces them all.
 
+### 7.16 History
+
+- History is the program's. A program that keeps its conversations (a Pi Durable program keeps every entry) serves
+  them over two reads, `GET /conversations` and `GET /conversation/:id/items`, and sets `caps.history`. Without the
+  cap both routes answer 409 `not-supported`. The reads change nothing, carry no request id, and need no
+  descendant check.
+- `conversations` lists every conversation the program keeps, open and closed, newest first, at most 100 a page.
+  A conversation is `open` while a pane in the layout shows it; then its id is that pane's `sessionId`. A closed
+  one is one the program closed (section 7.9) or one it no longer shows. `items` counts what the items route serves.
+- `items` serves one conversation, open or closed alike, oldest first, at most 1000 items and 8 MiB a page, in the
+  `Item` shapes of section 4. An ask that was answered or stopped is a `notice` (or the `tool` item it was for). The
+  items are the whole record, not the tail a pane keeps (section 7.2): a reset or a compaction that hides older
+  entries from the model hides none here. A conversation the program does not know: 404 `no-such-conversation`.
+- Both routes page with an opaque cursor. `after` is the `next` the page before named; `next` absent is the last
+  page. A cursor is 1 to 512 bytes of printable ASCII with no space, and only the program reads it. One the program
+  never gave, or a `limit` that is not a whole number from 1: 400 `bad-cursor`. A `limit` over the cap is the cap.
+- `POST /reopen` carries a `requestId` and the `id` of a conversation, and needs `caps.reopen`, else 409
+  `not-supported`. The program shows the conversation again in its layout under the same pane id, raises `rev`,
+  and answers `{ "ok": true }`; the next snapshot carries the pane. An open conversation answers `{ "ok": true }`
+  and changes nothing. One the program does not know: 404 `no-such-target`. The program MAY refuse: 422
+  `reopen-refused`, with a `message`. Nothing changed, and the same `requestId` may try again. A repeat of a
+  `requestId` that succeeded returns the first reply with `replayed: true`; the same `requestId` for another id:
+  409 `request-id-reused`.
+- The adapter declares `programHistory` from `caps.history` and `reopenConversation` from `caps.reopen`, from the
+  last good read, so both fail closed. It reads the history only when the phone asks for it, never on the poll. It
+  mints a UUID `requestId` for each reopen and never retries the POST: an unknown outcome tells the phone the
+  conversation may have been reopened.
+- The bridge's log of a pane (`bridge/durable/log.ts`) is a cache of what it read for a live pane. Chat reads it.
+  The read-only view of a closed conversation reads the program, never the log. The log keeps its caps (the newest
+  2000 items or 8 MiB a pane, 256 MiB for the machine, oldest first, one line in the bridge's log per deleted file),
+  and the events reader saves its cursor beside it, so a bridge restart goes on where it stopped (section 8).
+
 ## 8. Restart and epoch
 
 1. Every start of the program makes a new random `epoch`, at least 128 bits, never reused. `rev`
@@ -1063,6 +1156,8 @@ the same item id, not a new item, and it is not a "stopped" line.
 7. When the adapter sees a new epoch (in `hello` or in `Snapshot.epoch`), it keeps showing the
    panes it has until the new snapshot is read. Then it reads each pane's events with the **old**
    epoch and its old cursor, and gets a reset reply. A pane it never read starts at `after=0`.
+   The bridge saves each pane's cursor beside its log, so after a restart of the BRIDGE the first read
+   goes on from the saved cursor, on the epoch it holds, and reads nothing twice (section 7.16).
 8. The adapter calls `hello` again after any failed connect, after a 503, and when it sees a new
    epoch. While the program is down, it tries once per poll interval and reports `unreachable`.
    Over TLS (1B) it tries at most once every 10 s while the last read failed, because each try is a
@@ -1162,3 +1257,8 @@ document. The version number stays 1; the spike's shapes are not supported.
     optional (a `permission` still has it), and `Ask` gains `multiple`, `placeholder`, `maxLength` and
     `fields`. Added before version 1 shipped, so the version stays 1. An older adapter shows an ask of a
     kind it does not know as not answerable.
+27. **`Caps` gains `history` and `reopen`, `GET /conversations`, `GET /conversation/:id/items` and `POST /reopen`
+    are routes, and `Pane.sessionId` is no longer reserved** (sections 3, 4, 6 and 7.16), with the codes
+    `no-such-conversation` and `reopen-refused`, and `bad-cursor` for a history cursor. The session id is the
+    conversation id the program serves history under, or null. Additive, so the version stays 1: an older
+    adapter ignores both caps and `sessionId`, and an older program never sets them.

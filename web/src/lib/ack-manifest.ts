@@ -104,6 +104,10 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "Same as renameTab, one dimension up again: the sheet is gone and the space strip has not re-rendered yet.",
   },
+  reopenDurableConversation: {
+    channel: "silent",
+    why: "Success moves the screen: the person lands on the reopened pane, or back on the list, which is the acknowledgement. A refusal says why on the status line, and the Reopen button stays pressable for another try.",
+  },
   closeTab: {
     channel: "echo",
     // TWO paths reach this export and they are acknowledged differently, the same way `sendKeys`

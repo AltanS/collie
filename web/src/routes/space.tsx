@@ -15,7 +15,7 @@ import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { prefetchFolders } from "@/lib/folders";
-import { homePath, newPath, spacePath } from "@/lib/nav";
+import { conversationsPath, homePath, newPath, spacePath } from "@/lib/nav";
 import { ambientHost } from "@/lib/hosts";
 import { scopeKey } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
@@ -132,6 +132,7 @@ export function SpaceRoute() {
               readOnly={isReadOnly(data.device) || notPaired}
               savedCopy={data.stale === true}
               onRenamed={() => revalidator.revalidate()}
+              onHistory={() => nav.down(conversationsPath(data.scope))}
             />
             <TabStrip
               workspaceId={selectedWs.workspaceId}

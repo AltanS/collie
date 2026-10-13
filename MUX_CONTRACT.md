@@ -283,6 +283,19 @@ holds it to what is written here.
   `close-refused` is `refused`, its 409 `not-supported` is `unsupported`, and a POST that may have left
   without an answer is `refused` with a detail that says the close may have been applied. There is no
   workspace close capability: the phone has no control for it, so a workspace close stays on the wire.
+- **History and reopen.** `programHistory` is declared from the program's `caps.history` and
+  `reopenConversation` from `caps.reopen` of the last good read, and no other adapter declares either
+  (M53 spec 11, WIRE.md section 7.16). Three optional methods of the port carry them:
+  `listConversations(page)` and `conversationItems(id, page)` are reads of the program's own record, open
+  and closed, paged by an opaque cursor, asked only when the phone opens the list or a conversation;
+  `reopenConversation(id)` posts `POST /reopen` with a request id the adapter mints, once and never
+  retried, and answers the pane that shows the conversation again. A program without the cap answers
+  `unsupported` with no socket touched. The program's 404 is `gone`, its 422 `reopen-refused` is
+  `refused`, a cursor the program never gave is `refused` before anything is sent, and a POST that may
+  have left without an answer is `refused` with a detail that says the conversation may have been
+  reopened. Each pane names its session `sessionId ?? pane.id`, the key of the bridge's own log of it.
+  The phone draws the History row of the space sheet and leads the pane sheet's History row to the list
+  only for a declared `programHistory`, and the Reopen button only for a declared `reopenConversation`.
 
 ### Focus with a terminal and tuios-web attached
 
