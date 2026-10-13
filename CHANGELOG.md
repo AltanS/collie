@@ -44,6 +44,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **A box table with Chinese or Japanese cells pans, and its walls line up.** A double-width character takes two terminal columns but one place in the text, so the walls never matched and the table wrapped into stacked rules on a phone. Walls are now matched by terminal column. An emoji with a variation selector, such as a heart, counts as two columns, as it does in Herdr. Thanks @GGGODLIN (#417).
 - **Claude Code's question dialogs show their buttons at 40 columns.** A narrow pane breaks the footer over two rows, and a single or pick-many question fell to the unread-dialog card with Escape alone. The footer on two rows now reads as one, in named and unnamed sessions alike (#422).
 - **Muse 1.4.7 dialogs lift again.** The pointer moved to a new glyph and multi-question pages gained a progress row; both read as before. Thanks @jpcarranza94 (#424).

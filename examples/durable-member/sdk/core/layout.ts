@@ -94,7 +94,7 @@ export function cleanItem(item: Item): Item {
   const ts = tsOf(item.ts);
   const head = { id: item.id, ...(ts ? { ts } : {}) };
   if (item.kind === "tool") return { ...head, kind: "tool", tool: cleanTool(item.tool), status: item.status };
-  if (item.kind === "markdown") return { ...head, kind: "markdown", text: cut(item.text, CAPS.richText, true) };
+  if (item.kind === "markdown") return { ...head, kind: "markdown", text: cut(item.text, CAPS.richText, true), ...partialOf(item) };
   if (item.kind === "code") {
     const lang = item.lang === undefined ? undefined : langOf(item.lang);
     return { ...head, kind: "code", ...(lang === undefined ? {} : { lang }), text: cut(item.text, CAPS.richText, true) };
@@ -103,8 +103,15 @@ export function cleanItem(item: Item): Item {
     const label = item.label === undefined ? undefined : shortLine(item.label, LINK_LABEL_MAX);
     return { ...head, kind: "link", href: hrefOf(item.href), ...(label === undefined ? {} : { label }) };
   }
-  return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true) };
+  if (item.kind === "user") {
+    if (item.requestId !== undefined) assertId(item.requestId, "item requestId");
+    return { ...head, kind: "user", text: cut(item.text, CAPS.text, true), ...(item.requestId === undefined ? {} : { requestId: item.requestId }) };
+  }
+  return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true), ...partialOf(item) };
 }
+
+/** `partial: true` only when the program set exactly that. Anything else reads as a finished text (WIRE.md 7.13). */
+const partialOf = (item: { partial?: true }): { partial?: true } => (item.partial === true ? { partial: true } : {});
 
 /** An ask as `cleanAsk` takes it: an input with its id and revision set, or an open ask patched. */
 type AskDraft = Pick<Ask, "id" | "revision" | "toolCallId" | "title" | "itemId" | "reason" | "tool" | "cleaned" | "multiple" | "placeholder" | "maxLength" | "fields"> & {

@@ -522,6 +522,12 @@ export const ja: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
+  // TODO wordsmith
+  "durable.composer.sending": "Sending…",
+  "durable.pending.sending": "Sending",
+  "durable.pending.unconfirmed": "Sending, not confirmed",
+  "durable.pending.notSent": "Not sent",
+  "durable.thread.working": "Working",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "キャンセル",
   "prompt.feedback.typedAria": "ターミナル内のフィードバック",

@@ -45,11 +45,18 @@ export interface ToolCall {
 
 export type ToolStatus = "running" | "done" | "failed" | "denied";
 
-/** An item with a known id replaces the earlier one (a tool changes status). Ids are unique per pane. */
+/**
+ * An item with a known id replaces the earlier one (a tool changes status). Ids are unique per pane.
+ *
+ * A reply that grows (WIRE.md 7.13): write the same id again as the text grows, with `partial: true`, and once more
+ * with the final text and no `partial`. A `user` item may carry the `requestId` of the send that made it, so the
+ * phone shows its own line at once and swaps it for this one.
+ */
 export type Item =
-  | { id: string; ts?: string; kind: "user" | "reply" | "thinking" | "notice"; text: string }
+  | { id: string; ts?: string; kind: "user"; text: string; requestId?: string }
+  | { id: string; ts?: string; kind: "reply" | "thinking" | "notice"; text: string; partial?: true }
   /** Rendered as markdown by the phone (WIRE.md 7.11): headings, lists, emphasis, code spans and links. At most 32 KiB. */
-  | { id: string; ts?: string; kind: "markdown"; text: string }
+  | { id: string; ts?: string; kind: "markdown"; text: string; partial?: true }
   /** A fenced code block. `lang` is a plain name such as "ts" or "c++" (at most 24 characters). At most 32 KiB. */
   | { id: string; ts?: string; kind: "code"; lang?: string; text: string }
   /** A link. `href` is an `https://` address (at most 2048 characters). `label` is what the phone shows, at most 120 characters. */

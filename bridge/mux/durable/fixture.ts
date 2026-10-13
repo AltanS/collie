@@ -781,7 +781,7 @@ export class FakeDurableProgram {
     this.sends.push({ paneId: pane.id, requestId, text, steer, turnId, askId });
     const busy = pane.state === "working" || pane.state === "waiting";
     if (busy && !steer) return;
-    this.appendEvent(pane.id, { type: "item", item: { id: `user-${requestId}`, kind: "user", text } });
+    this.appendEvent(pane.id, { type: "item", item: { id: `user-${requestId}`, kind: "user", text, requestId } });
     if (busy) return;
     this.turnsMinted += 1;
     this.running.set(pane.id, { inputId: `input-${requestId}`, requestId });

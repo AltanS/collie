@@ -21,6 +21,11 @@
 //   {"k":"settled","at":ISO,"inputId":...,...}      an input reached its end
 // `at` is when the bridge wrote the row. An item keeps its own `ts` when the program sent one.
 //
+// A REPLY THAT GROWS (WIRE.md 7.13) is one item rewritten under one id, `partial: true` until the last
+// version. Each version is a row, and the reader upserts by id, so Chat and History hold one turn.
+// Versions that arrive in one batch write one row (the last), so the file grows with the polls, not with
+// the program's writes.
+//
 // IDEMPOTENT ON THE ITEM. The adapter re-reads after a bridge restart, a reset, or an epoch change,
 // and a reset replays the whole view. The log therefore remembers the latest version of every item
 // (and the revision of every ask) and writes a row only when something is new. The same event twice
@@ -54,7 +59,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFile, chmod, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { parseLogRow, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
+import { type DurableEvent, type DurableItem, type LogRow, parseLogRow } from "../mux/durable/protocol.ts";
 
 /** The row kind of the header line. It carries no content. */
 export const GENERATION_ROW = "gen";
@@ -120,6 +125,13 @@ interface Index {
   bytes: number;
   /** The file does not end on a newline (a torn last write), so the next append starts one. */
   torn: boolean;
+}
+
+/** The item held as `json` without its `partial` mark, or null when it is not partial (or is no item). */
+function finishedItem(json: string): DurableItem | null {
+  const row = parseLogRow(`{"k":"item","at":"x","item":${json}}`);
+  if (row === null || row.k !== "item" || !("partial" in row.item) || row.item.partial !== true) return null;
+  return { ...row.item, partial: undefined };
 }
 
 /** The header line of a log with a new generation. */
@@ -249,10 +261,19 @@ export class PaneLog {
     // The first item of a trimmed reset view decides whether the log has a gap in front of it.
     let gapCheck = false;
     const listed = new Set<string>();
+    // Items a reset view lists, so a partial one it does not list can be finished at `synced` (below).
+    const listedItems = new Set<string>();
+    // A reply that grows is rewritten under one id again and again (WIRE.md 7.13). When one batch holds
+    // several versions of an item, only the last is news: an earlier one that was still partial is skipped.
+    const lastVersion = new Map<string, number>();
+    events.forEach((event, place) => {
+      if (event.type === "item") lastVersion.set(event.item.id, place);
+    });
 
-    for (const event of events) {
+    for (const [position, event] of events.entries()) {
       switch (event.type) {
         case "item": {
+          if ("partial" in event.item && event.item.partial === true && lastVersion.get(event.item.id) !== position) break;
           if (gapCheck) {
             gapCheck = false;
             const gapId = gapItemId(event.item.id);
@@ -262,6 +283,7 @@ export class PaneLog {
               index.items.set(gapId, { json: JSON.stringify(notice), at });
             }
           }
+          if (resetting) listedItems.add(event.item.id);
           const json = JSON.stringify(event.item);
           const known = index.items.get(event.item.id);
           if (known?.json === json) break;
@@ -306,9 +328,19 @@ export class PaneLog {
           resetting = true;
           gapCheck = trimmed > 0;
           listed.clear();
+          listedItems.clear();
           break;
         case "synced":
           if (resetting) {
+            // A reply the program was still writing when it restarted will never finish. The new view does not list
+            // it, so it is written once more as it stood, without `partial`: no cursor is left on it for good.
+            for (const [id, known] of index.items) {
+              if (listedItems.has(id) || !known.json.includes('"partial":true')) continue;
+              const finished = finishedItem(known.json);
+              if (finished === null) continue;
+              put({ k: "item", at, item: finished });
+              index.items.set(id, { json: JSON.stringify(finished), at: known.at });
+            }
             // The reset view is whole now. An ask it did not list can no longer be answered.
             for (const [askId, known] of index.asks) {
               if (!known.open || listed.has(askId)) continue;

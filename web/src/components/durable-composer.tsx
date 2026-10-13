@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Send, Settings2 } from "lucide-react";
 
 import { ActionsRow, type Hand } from "@/components/actions-row";
@@ -10,6 +10,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { abortPane, apiErrorStatus, sendToPane, type ControlResult } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
+import { addPending, dropNotSent, setPendingState } from "@/lib/durable-pending";
 import {
   controlTarget,
   intentKey,
@@ -23,7 +24,7 @@ import {
   type IntentId,
 } from "@/lib/durable-control";
 import { t } from "@/lib/i18n";
-import type { Scope } from "@/lib/scope";
+import { paneScopeKey, type Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
 import type { AgentStatus, Ask } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,18 @@ import { mintRequestId } from "@/lib/worktree-name";
 // A RETRY IS THE SAME INTENT. After an unknown outcome (a dropped reply, a 504) "send again" carries
 // the SAME request id while the text, the switch and the name are unchanged, so the bridge answers
 // from its receipt and the program is never told twice (lib/durable-control.ts `requestIdFor`).
+//
+// SENDING SHOWS AT ONCE (M53 spec 10). A durable program writes the person's line into the thread only when the
+// next read carries it, a second or two later, so a tap used to look like nothing happened. Now:
+//
+//   * The line goes into the thread the moment Send is tapped, as a PENDING line keyed by the request id of the
+//     send (lib/durable-pending.ts), drawn in the user's well at a lower weight with a small clock. The program's
+//     own `user` item replaces it when it arrives, matched by that request id.
+//   * The words leave the field and the field is HELD, with "Sending…" in it, until the POST returns. A send is one
+//     POST, so the hold is short. It is never a long lock.
+//   * If the send did not land, the words come back to the field and the pending line says why: "Not sent" when the
+//     turn had moved or the program refused, "Sending, not confirmed" when the answer never came (the retry then
+//     carries the same request id, so the program is told once).
 //
 // The belt keeps what is not about a screen: the Display button, the Switch pill and the Changes
 // pill. The Keys, Type and Quick buttons are not drawn, because there is nothing for them to type
@@ -124,6 +137,15 @@ export function DurableComposer({
   const sendIntent = useRef<IntentId | null>(null);
   const stopIntent = useRef<IntentId | null>(null);
 
+  const field = useRef<HTMLTextAreaElement | null>(null);
+  // The field had focus when Send was tapped: it gets it back when the hold ends, so a thumb can go on typing.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (sending || !refocus.current) return;
+    refocus.current = false;
+    field.current?.focus();
+  }, [sending]);
+
   const barItems = useDurableBarItems(scope);
   const target = controlTarget({ turnId, asks });
   const canSteer = steerOffered(status);
@@ -142,6 +164,14 @@ export function DurableComposer({
     if (text === "" || off || sending) return;
     const id = requestIdFor(sendIntent.current, intentKey(text, steerNow, target), mintRequestId);
     sendIntent.current = id;
+    const key = paneScopeKey(scope, paneId);
+    refocus.current = document.activeElement === field.current;
+    // A line that never left is replaced by this try. A retry of the same request id takes its place again.
+    dropNotSent(key);
+    addPending(key, { requestId: id.requestId, text, at: Date.now(), state: "sending" });
+    // The words move to the thread; the field waits for the send. They come back below if the send did not land.
+    setInput("");
+    clearDraft(scope, paneId);
     setSending(true);
     let result: ControlResult | null = null;
     let thrown: { status: number | undefined; message: string } | null = null;
@@ -155,12 +185,17 @@ export function DurableComposer({
     const reading = result !== null ? readControl(result) : readThrown(thrown?.status, thrown?.message ?? "");
     if (!reading.keepId) sendIntent.current = null;
     if (reading.clear) {
-      setInput("");
-      clearDraft(scope, paneId);
+      // The pending line stays: the program's own item takes its place when the next read carries it.
+      setPendingState(key, id.requestId, "sent");
       setSteer(false);
       setJustSent(true);
       setTimeout(() => setJustSent(false), 1500);
       onSent();
+    } else {
+      setInput(text);
+      saveDraft(scope, paneId, text);
+      // The answer never came, or the program may have it: only "send again" can tell. Otherwise nothing ran.
+      setPendingState(key, id.requestId, reading.keepId || reading.note === "maybe" ? "unconfirmed" : "notSent");
     }
     if (reading.reload) onReload();
     setStatus(say(reading, "send"), reading.note === "sent" ? "success" : "error");
@@ -230,6 +265,7 @@ export function DurableComposer({
         )}
       >
         <ChatInput
+          ref={field}
           value={input}
           onChange={(e) => edit(e.target.value)}
           onKeyDown={(e) => {
@@ -238,9 +274,9 @@ export function DurableComposer({
               void send();
             }
           }}
-          placeholder={locked ? lockedWhy : t("durable.composer.placeholder")}
+          placeholder={locked ? lockedWhy : sending ? t("durable.composer.sending") : t("durable.composer.placeholder")}
           className={cn("min-w-0 flex-1 min-h-9 pl-2 py-1.5 font-mono", hand === "left" && "pr-2")}
-          disabled={locked}
+          disabled={locked || sending}
           rows={1}
         />
         <Button

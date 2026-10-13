@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
 
-import { ItemView, ToolGroup, groupRuns } from "@/components/chat-cards";
+import { ItemView, PendingTurn, ToolGroup, groupRuns } from "@/components/chat-cards";
 import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,9 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
-import { itemsOf } from "@/lib/chat-items";
+import { finished, itemsOf } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
+import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { t, type MessageKey } from "@/lib/i18n";
 import type { Ask } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
@@ -74,6 +75,26 @@ const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-i
  * already share. So the row says a turn is running and nothing more, because that is all it knows.
  */
 const LIVE_ROW = "mt-1 flex items-center gap-2 py-2 text-xs font-medium text-muted-foreground";
+
+/**
+ * THE WORKING ROW OF A DURABLE THREAD (M53 spec 10): three dots in the muted ink, where the static "Still working…" line
+ * stands on any other pane. It is drawn while the newest thing in the thread is the person's own line and the program has
+ * not answered yet, and it appears the moment the program accepts a send, before the next read says `working`. The dots
+ * share {@link LIVE_ROW}'s box, so the row going to the static line or to nothing moves no neighbour (DESIGN.md §2). They
+ * dim and brighten in turn (opacity only, `.working-dots` in index.css) and stand still under reduced motion.
+ */
+function WorkingRow() {
+  useLocale();
+  return (
+    <div data-slot="stream-working" role="status" aria-label={t("durable.thread.working")} className={LIVE_ROW}>
+      <span aria-hidden="true" className="working-dots flex h-4 items-center gap-1">
+        <span className="size-1.5 rounded-full bg-current" />
+        <span className="size-1.5 rounded-full bg-current" />
+        <span className="size-1.5 rounded-full bg-current" />
+      </span>
+    </div>
+  );
+}
 
 /**
  * THE QUEUE: what the operator typed while the agent was busy.
@@ -306,6 +327,7 @@ export function SessionStream({
   savedCopy = null,
   onSendQueuedNow,
   asks,
+  durable = false,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -349,6 +371,12 @@ export function SessionStream({
    * `shownAsks`). Absent on every pane with a screen, which draws none.
    */
   asks?: { list: readonly Ask[]; card: Omit<AskCardProps, "ask"> };
+  /**
+   * The pane is a durable conversation: a program with no screen (ADR 0101). Its thread ends with the working row
+   * ({@link WorkingRow}) in place of the static line while the newest thing is the person's own, and a text the program is
+   * still writing carries a cursor. Every other pane draws what it always drew.
+   */
+  durable?: boolean;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -370,8 +398,42 @@ export function SessionStream({
     const entries = window.entries.filter((e) => e.abandoned !== true);
     // Tool calls off folds EVERY run, a lone step included, which is the same treatment the History
     // page gives a turn's steps. One idea, one look, two surfaces.
-    return groupRuns(entries.flatMap((e) => itemsOf(e, showCompactions)), showToolCalls ? 3 : 1);
-  }, [window.entries, showToolCalls, showCompactions, revision]);
+    //
+    // A text the program was still writing (`partial`) keeps its cursor only while the pane works: one that stopped
+    // will not grow, and a cursor left blinking on it would be a lie (WIRE.md 7.13).
+    return groupRuns(
+      entries.flatMap((e) => itemsOf(e, showCompactions).map((item) => (working ? item : finished(item)))),
+      showToolCalls ? 3 : 1,
+    );
+  }, [window.entries, showToolCalls, showCompactions, revision, working]);
+
+  // THE PERSON'S OWN LINES THE PROGRAM HAS NOT WRITTEN BACK YET (lib/durable-pending.ts). Only a durable pane's composer
+  // puts any, so every other pane has none and draws nothing here. A line goes when an item of the program's matches it.
+  const pending = usePending(address);
+  const { open: lines, done: answered } = useMemo(
+    () => unmatched(pending, window.entries, Date.now()),
+    [pending, window.entries],
+  );
+  const answeredKey = answered.join("\n");
+  useEffect(() => {
+    if (answeredKey !== "") dropPending(address, answeredKey.split("\n"));
+  }, [address, answeredKey]);
+  // A line the person just sent snaps the thread to its tail, where it stands.
+  const sentCount = lines.length;
+  const heldCount = useRef(sentCount);
+  useLayoutEffect(() => {
+    if (sentCount > heldCount.current) listRef.current?.scrollToBottom();
+    heldCount.current = sentCount;
+  }, [sentCount, listRef]);
+
+  // What the end of a durable thread says. The newest thing is the person's own when a line of theirs is waiting, or when
+  // the last item is a user turn. A text still growing says it is working by itself, with its cursor.
+  const newest = blocks.at(-1)?.at(-1);
+  const personsNewest = lines.some((line) => line.state !== "notSent") || newest?.kind === "user";
+  const growing = newest !== undefined && "partial" in newest && newest.partial === true;
+  const accepted = lines.some((line) => line.state === "sent");
+  const dotsRow = durable && ((working && personsNewest) || accepted);
+  const staticRow = working && !(durable && (personsNewest || growing));
 
   // A PANE KEEPS ITS PLACE (ADR 0063). Switching modes unmounts this body and switching panes
   // remounts it, so neither the DOM nor the scroller remembers where the reader was — the same gap
@@ -639,10 +701,21 @@ export function SessionStream({
         </>
       )}
 
+      {/* THE LINES THE PERSON SENT THAT THE PROGRAM HAS NOT WRITTEN BACK (durable panes only), after the program's own
+          items and before the working row. Each is replaced in place by the program's item (lib/durable-pending.ts). */}
+      {lines.map((line) => (
+        <div key={line.requestId} data-slot="stream-pending" className={STREAM_BLOCK}>
+          <PendingTurn text={line.text} state={line.state} />
+        </div>
+      ))}
+
+      {/* A durable thread's working row: three dots, while the newest thing is the person's own. */}
+      {dotsRow && <WorkingRow />}
+
       {/* A turn is running. Last of the thread, because that is where its answer will arrive. Drawn
           only where the window is actually being read: a pane whose journal cannot be read is busy
           in the chrome, and saying so HERE would promise a turn this body will never show. */}
-      {working && reading && (
+      {staticRow && reading && (
         <div data-slot="stream-live" className={LIVE_ROW}>
           {/* The same mark a running step wears inside a card (`chat-cards.tsx` § StepStatus), so
               "still going" looks the same wherever the stream says it. UNNAMED: it leads the word,
@@ -682,7 +755,7 @@ export function SessionStream({
           was wrong for one frame. A NEW pane is the exception, because there nothing was expected:
           Codex has no session before its first prompt, and pi writes no log before its first reply.
           A running turn says so on the row above instead, so the two never stand together. */}
-      {empty && explain === null && reading && !working && (
+      {empty && explain === null && reading && !working && lines.length === 0 && (
         <div className="py-16 text-center text-sm text-muted-foreground">{t("chat.stream.empty")}</div>
       )}
     </ChatMessageList>

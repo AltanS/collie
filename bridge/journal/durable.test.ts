@@ -194,6 +194,79 @@ describe("the durable journal adapter: chat shape", () => {
   });
 });
 
+describe("a reply that grows (WIRE.md 7.13): partial and replace", () => {
+  const grown = (id: string, body: string, partial = true): DurableEvent => ({
+    type: "item",
+    item: partial ? { id, kind: "reply", text: body, partial: true } : { id, kind: "reply", text: body },
+  });
+
+  test("a partial reply is a turn with partial set, and the final version replaces it in place: one turn, no flag", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [text("u1", "go", "user"), grown("r1", "Hel")]);
+    let read = await page();
+    expect(read.entries.map((entry) => [entry.uuid, entry.partial])).toEqual([["u1", undefined], ["r1", true]]);
+    await logs.apply(PANE, [grown("r1", "Hello, wor")]);
+    await logs.apply(PANE, [grown("r1", "Hello, world", false)]);
+    read = await page();
+    // ONE turn for the reply however many versions were written: the failure to look for is a second row.
+    expect(read.entries.map((entry) => entry.uuid)).toEqual(["u1", "r1"]);
+    expect(firstText(read.entries[1])).toBe("Hello, world");
+    expect(read.entries[1]).not.toHaveProperty("partial");
+  });
+
+  test("thinking, markdown and notice carry partial too, and code and link never do", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [
+      { type: "item", item: { id: "t", kind: "thinking", text: "hm", partial: true } },
+      { type: "item", item: { id: "m", kind: "markdown", text: "# A", partial: true } },
+      { type: "item", item: { id: "n", kind: "notice", text: "wait", partial: true } },
+    ]);
+    const { entries } = await page();
+    expect(entries.map((entry) => entry.partial)).toEqual([true, true, true]);
+    const code = parseDurableLog('{"k":"item","at":"2026-10-12T08:00:00.000Z","item":{"id":"c","kind":"code","text":"x","partial":true}}\n');
+    expect(code[0]).not.toHaveProperty("partial");
+  });
+
+  test("the live window reports a growing reply as a change at the seq it already had, and the end clears the flag", async () => {
+    const { logs, adapter, store } = await rig();
+    let nowMs = 1_000_000;
+    const live = new LiveWindows(store, () => nowMs);
+    await logs.apply(PANE, [text("u1", "go", "user"), grown("r1", "Hel")]);
+    const params = chatParams(new URL("http://x/api/pane/p/chat"));
+    const first = await live.window(adapter, ref, params);
+    expect(first?.upserts.map((entry) => [entry.uuid, entry.partial])).toEqual([["u1", undefined], ["r1", true]]);
+    const seq = first?.upserts[1]?.seq;
+
+    nowMs += 1000;
+    await logs.apply(PANE, [grown("r1", "Hello, wor")]);
+    const mid = await live.window(adapter, ref, { ...params, after: { gen: first?.gen ?? 0, rev: first?.rev ?? 0 } });
+    expect(mid?.upserts.map((entry) => [entry.uuid, entry.seq, entry.partial])).toEqual([["r1", seq, true]]);
+
+    nowMs += 1000;
+    await logs.apply(PANE, [grown("r1", "Hello, world", false)]);
+    const last = await live.window(adapter, ref, { ...params, after: { gen: mid?.gen ?? 0, rev: mid?.rev ?? 0 } });
+    expect(last?.upserts).toHaveLength(1);
+    expect(last?.upserts[0]).toMatchObject({ uuid: "r1", seq });
+    expect(last?.upserts[0]).not.toHaveProperty("partial");
+    expect(firstText(last?.upserts[0])).toBe("Hello, world");
+  });
+
+  test("a user line carries its request id, and gains it in place when it arrives later", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [text("u1", "hi", "user")]);
+    expect((await page()).entries[0]).not.toHaveProperty("requestId");
+    await logs.apply(PANE, [{ type: "item", item: { id: "u1", kind: "user", text: "hi", requestId: "req-1" } }]);
+    const { entries } = await page();
+    expect(entries.map((entry) => [entry.uuid, entry.requestId])).toEqual([["u1", "req-1"]]);
+  });
+
+  test("a partial flag that is not exactly true in a tampered log reads as a finished text", () => {
+    const row = (flag: string) => `{"k":"item","at":"2026-10-12T08:00:00.000Z","item":{"id":"r1","kind":"reply","text":"x","partial":${flag}}}\n`;
+    expect(parseDurableLog(row("true"))[0]?.partial).toBe(true);
+    for (const flag of ['"yes"', "1", "false", "null"]) expect(parseDurableLog(row(flag))[0]).not.toHaveProperty("partial");
+  });
+});
+
 describe("a stop", () => {
   test("an input that settled unanswered with the reason aborted is a short note, \"stopped\", where it happened", async () => {
     const { logs, page } = await rig();

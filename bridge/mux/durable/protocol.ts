@@ -680,11 +680,24 @@ function isTextKind(value: string): value is TextKind {
   return TEXT_KINDS.has(value);
 }
 
-/** An item with a known id replaces the earlier one. `ts` is ISO 8601, or absent. */
+/**
+ * An item with a known id replaces the earlier one. `ts` is ISO 8601, or absent.
+ *
+ * `requestId` is on a `user` item only: the request id of the send that made it, so the phone can match its own
+ * unsent line to the program's (WIRE.md 7.13). `partial` is on a `reply`, `thinking`, `notice` or `markdown` item
+ * only: the text is still growing, and a later item with the same id replaces it (WIRE.md 7.13).
+ */
 export type DurableItem =
-  | { readonly id: string; readonly ts?: string; readonly kind: TextKind; readonly text: string }
+  | { readonly id: string; readonly ts?: string; readonly kind: "user"; readonly text: string; readonly requestId?: string }
+  | {
+      readonly id: string;
+      readonly ts?: string;
+      readonly kind: Exclude<TextKind, "user">;
+      readonly text: string;
+      readonly partial?: true;
+    }
   // The rich kinds (WIRE.md section 7.11): markdown, a code block and a link.
-  | { readonly id: string; readonly ts?: string; readonly kind: "markdown"; readonly text: string }
+  | { readonly id: string; readonly ts?: string; readonly kind: "markdown"; readonly text: string; readonly partial?: true }
   | { readonly id: string; readonly ts?: string; readonly kind: "code"; readonly lang?: string; readonly text: string }
   | { readonly id: string; readonly ts?: string; readonly kind: "link"; readonly href: string; readonly label?: string }
   | {
@@ -744,11 +757,17 @@ function readItem(value: Json | undefined): DurableItem | null {
   const ts = stampOf(value);
   if (isTextKind(kind)) {
     const text = blockOf(value, "text", CAPS.itemText);
-    return text === undefined ? null : { id, ts, kind, text };
+    if (text === undefined) return null;
+    if (kind === "user") {
+      const requestId = idOf(value, "requestId");
+      return requestId === null ? { id, ts, kind, text } : { id, ts, kind, text, requestId };
+    }
+    return value.partial === true ? { id, ts, kind, text, partial: true } : { id, ts, kind, text };
   }
   if (kind === "markdown") {
     const text = blockOf(value, "text", ITEM_RICH_BYTES);
-    return text === undefined ? null : { id, ts, kind, text };
+    if (text === undefined) return null;
+    return value.partial === true ? { id, ts, kind, text, partial: true } : { id, ts, kind, text };
   }
   if (kind === "code") {
     const text = blockOf(value, "text", ITEM_RICH_BYTES);
