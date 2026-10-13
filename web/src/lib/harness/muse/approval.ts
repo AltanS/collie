@@ -26,6 +26,9 @@
 //     ────… (bottom rule)
 //       <statusline>
 //
+// 1.4.7 paints the pointer as `⟩` and appends a static hint under the options
+// (`Change approval defaults in /permissions`), stepped over by exact match.
+//
 // Everything here is a PURE function over `StyledLine[]`, driven entirely by the fixture corpus
 // (web/src/fixtures/panes/muse--*.txt). It never touches a pane or the network. The tail invariant
 // is the backbone: the options must sit directly above the bottom rule, so an approval that has
@@ -68,6 +71,10 @@ const SUBJECT_FULL_URL = /^\s*full URL:\s+\S/;
 // "N." far up in scrollback history from ever being mistaken for a menu row.
 const OPTION_SCAN_WINDOW = 24;
 
+// The static hint 1.4.7 paints under the options. Matched EXACTLY and stepped over like a blank,
+// so the menu still ends the match; a rewording fails closed to raw.
+const APPROVAL_HINT = "Change approval defaults in /permissions";
+
 /**
  * The full detection result buildBlocks needs: the model PLUS `startLine`, the index of the first
  * option row — the menu region is [`startLine` … tail], which the renderer replaces with buttons.
@@ -93,6 +100,10 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   if (tail === null) return null;
   let last = tail.rule - 1;
   while (last >= 0 && texts[last]!.trim() === "") last--;
+  if (last >= 0 && texts[last]!.trim() === APPROVAL_HINT) {
+    last--;
+    while (last >= 0 && texts[last]!.trim() === "") last--;
+  }
   if (last < 0) return null;
 
   // 2. Numbered option rows in the window above the rule. The menu is the trailing 1,2,…,m run of
@@ -158,7 +169,7 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   const signature = regionSignature(texts, questionAt, lastOpt);
   const coreSignature = texts
     .slice(questionAt, lastOpt + 1)
-    .map((t) => t.replaceAll("›", " "))
+    .map((t) => t.replaceAll("›", " ").replaceAll("⟩", " "))
     .join("\n");
   return {
     model: { question, options, family: "permission", signature, coreSignature },

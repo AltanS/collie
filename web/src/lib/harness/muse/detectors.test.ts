@@ -19,15 +19,24 @@ describe("detector disjointness — each dialog lifts under exactly one grammar"
   const cases: [string, "approval" | "question" | "checkbox" | "trust"][] = [
     ["muse--approval-ls.txt", "approval"],
     ["muse--approval-ls-moved.txt", "approval"],
+    ["muse--approval-ls-147.txt", "approval"],
+    ["muse--approval-date-147.txt", "approval"],
     ["muse--approval-network.txt", "approval"],
     ["muse--approval-network-moved.txt", "approval"],
     ["muse--ask-color.txt", "question"],
     ["muse--ask-color-moved.txt", "question"],
+    ["muse--ask-multi-q1.txt", "question"],
+    ["muse--ask-multi-q2.txt", "question"],
+    ["muse--ask-season.txt", "question"],
     ["muse--ask-toppings.txt", "checkbox"],
     ["muse--ask-toppings-checked.txt", "checkbox"],
     ["muse--ask-toppings-review.txt", "checkbox"],
+    ["muse--ask-toppings-147.txt", "checkbox"],
+    ["muse--ask-toppings-147-moved.txt", "checkbox"],
+    ["muse--ask-multi-review.txt", "checkbox"],
     ["muse--ask-drinks.txt", "checkbox"],
     ["muse--trust-prompt.txt", "trust"],
+    ["muse--trust-prompt-147.txt", "trust"],
     ["muse--tasks-popup-approval.txt", "approval"],
   ];
   it.each(cases)("%s lifts only as %s", (name, kind) => {
@@ -151,6 +160,103 @@ describe("review pointer reporting", () => {
     const moved = raw
       .replace("> Submit answers", "  Submit answers")
       .replace("  Interrupt turn", "> Interrupt turn");
+    expect(moved).not.toBe(raw);
+    const m = detectCheckbox(splitLines(parseAnsi(moved)));
+    expect(m?.phase).toBe("review");
+    if (m?.phase !== "review") return;
+    expect(m.pointer).toBe("cancel");
+  });
+});
+
+describe("1.4.7 pointer + multi-question progress", () => {
+  it("multi q1: lifts as select with digit+Enter keys, progress in the signature", () => {
+    const m = detectQuestion(lines("muse--ask-multi-q1.txt"))!;
+    expect(m.family).toBe("select");
+    expect(m.question).toBe("What is your favorite color?");
+    expect(m.options.map((o) => o.keys)).toEqual([
+      ["1", "Enter"],
+      ["2", "Enter"],
+      ["3", "Enter"],
+      ["4", "Enter"],
+    ]);
+    expect(m.options[3]!.label).toBe("None of the above");
+    expect(m.signature).toContain("1 of 2");
+  });
+
+  it("multi q2: same shape, second page", () => {
+    const m = detectQuestion(lines("muse--ask-multi-q2.txt"))!;
+    expect(m.family).toBe("select");
+    expect(m.question).toBe("What is your favorite pet?");
+    expect(m.options).toHaveLength(4);
+    expect(m.signature).toContain("2 of 2");
+  });
+
+  it("single 1.4.7: lifts with no progress row", () => {
+    const m = detectQuestion(lines("muse--ask-season.txt"))!;
+    expect(m.family).toBe("select");
+    expect(m.question).toBe("What is your favorite season?");
+    expect(m.options).toHaveLength(4);
+    expect(m.signature).not.toMatch(/^\d+ of \d+$/m);
+  });
+
+  it("checkbox 1.4.7: pointer rows across the real moved twin, identity stable", () => {
+    const a = detectCheckbox(lines("muse--ask-toppings-147.txt"))!;
+    const b = detectCheckbox(lines("muse--ask-toppings-147-moved.txt"))!;
+    expect(a.phase).toBe("checkbox");
+    expect(b.phase).toBe("checkbox");
+    if (a.phase !== "checkbox" || b.phase !== "checkbox") return;
+    expect(a.pointer).toBe("option");
+    expect(a.pointerRow).toBe(1);
+    expect(b.pointer).toBe("option");
+    expect(b.pointerRow).toBe(2);
+    expect(a.options).toEqual(b.options);
+    expect(a.signature).toBe(b.signature);
+    expect(a.regionSignature).not.toBe(b.regionSignature);
+  });
+
+  it("review 1.4.7: pointer on submit, summaries in the signature", () => {
+    const m = detectCheckbox(lines("muse--ask-multi-review.txt"))!;
+    expect(m.phase).toBe("review");
+    if (m.phase !== "review") return;
+    expect(m.pointer).toBe("submit");
+    expect(m.cancelLabel).toBe("Interrupt turn");
+    expect(m.signature).toContain("Color: Red");
+    expect(m.signature).toContain("Pet: Cat");
+  });
+
+  it("approval 1.4.7: the ⟩ pointer moves the signature, not the identity", () => {
+    const raw = readFileSync(join(PANES_DIR, "muse--approval-ls-147.txt"), "utf8");
+    // Move the ⟩ from row 1 to row 2 (plain-text surgery on the parsed shape — both strings occur
+    // once in the capture, and the SGR splits pointer from label, so the glyph alone is replaced).
+    const moved = raw.replace("⟩ ", "  ").replace("m  2. ", "m⟩ 2. ");
+    expect(moved).not.toBe(raw);
+    const a = detectApproval(splitLines(parseAnsi(raw)))!;
+    const b = detectApproval(splitLines(parseAnsi(moved)))!;
+    expect(a.options).toEqual(b.options);
+    expect(a.signature).not.toBe(b.signature);
+    expect(a.coreSignature).toBe(b.coreSignature);
+  });
+
+  it("approval 1.4.7: digit-alone keys, the static hint stepped over", () => {
+    const m = detectApproval(lines("muse--approval-ls-147.txt"))!;
+    expect(m.family).toBe("permission");
+    expect(m.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(m.options[0]!.label).toBe("Allow this stage once (y)");
+    expect(m.signature).not.toContain("Change approval defaults");
+  });
+
+  it("trust 1.4.7: digit-alone keys", () => {
+    const m = detectTrust(lines("muse--trust-prompt-147.txt"))!;
+    expect(m.family).toBe("trust");
+    expect(m.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(m.options[0]!.label).toBe("Trust and continue");
+  });
+
+  it("review 1.4.7: reports cancel via a synthetic move", () => {
+    const raw = readFileSync(join(PANES_DIR, "muse--ask-multi-review.txt"), "utf8");
+    const moved = raw
+      .replace("⟩ Submit answers", "  Submit answers")
+      .replace("  Interrupt turn", "⟩ Interrupt turn");
     expect(moved).not.toBe(raw);
     const m = detectCheckbox(splitLines(parseAnsi(moved)));
     expect(m?.phase).toBe("review");

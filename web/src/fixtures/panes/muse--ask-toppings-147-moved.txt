@@ -1,0 +1,47 @@
+
+[0m[1m[38;5;6m/private/tmp/qarepro[0m on [0m[1m[38;5;4m☁️  [0m 
+[0m[1m[38;5;2m❯[0m muse
+Muse Code updated 1.4.4-R5419.1 -> 1.4.7-R6101.1
+
+[0m[38;2;175;177;179m  [0m[1m[38;2;31;35;40mMuse Code[0m[38;2;31;35;40m 1.4.7[0m
+
+[0m[38;2;175;177;179m  [0m[38;2;31;35;40mContributor mode is off, so your content won't be used for product improvement. Turn it on in /settings. See [0m[4m[38;2;205;39;48mTerms of[0m
+[0m[38;2;175;177;179m  [0m[4m[38;2;205;39;48mService[0m[38;2;175;177;179m (https://dev.meta.ai/legal/terms-of-service)[0m[38;2;31;35;40m for more information.[0m
+
+[0m[38;2;205;39;48m[48;2;241;241;241m❯ [0m[38;2;31;35;40m[48;2;241;241;241mUse your question tool to ask me exactly 2 questions in ONE call: (1) favorite color with options Red Green Blue, (2)[0m[48;2;241;241;241m [0m
+[0m[38;2;205;39;48m[48;2;241;241;241m  [0m[38;2;31;35;40m[48;2;241;241;241mfavorite pet with options Cat Dog Fish. Ask now and wait for my answers.[0m[48;2;241;241;241m                                              [0m
+
+[0m[38;2;175;177;179m  [0m[38;2;111;114;118mStructured user input answered — Color: Red; Pet: Cat[0m
+
+[0m[1m[38;2;31;35;40m◆ [0m[38;2;31;35;40mYour answers: favorite color is Red, favorite pet is Cat.[0m
+
+[0m[38;2;175;177;179m◆ Worked for 3m 11s · 6:37 PM · 12/Oct[0m
+
+[0m[38;2;205;39;48m[48;2;241;241;241m❯ [0m[38;2;31;35;40m[48;2;241;241;241mAsk me ONE single question with the question tool: favorite season with options Spring Summer Winter. Ask now and[0m[48;2;241;241;241m     [0m
+[0m[38;2;205;39;48m[48;2;241;241;241m  [0m[38;2;31;35;40m[48;2;241;241;241mwait.[0m[48;2;241;241;241m                                                                                                                 [0m
+
+[0m[38;2;175;177;179m  [0m[38;2;111;114;118mStructured user input answered — Season: Spring[0m
+
+[0m[1m[38;2;31;35;40m◆ [0m[38;2;31;35;40mYour favorite season is Spring.[0m
+
+[0m[38;2;175;177;179m◆ Worked for 1m 29s · 6:39 PM · 12/Oct[0m
+
+[0m[38;2;205;39;48m[48;2;241;241;241m❯ [0m[38;2;31;35;40m[48;2;241;241;241mAsk me ONE multi-select checkbox question with the question tool: pizza toppings with options Cheese Pepperoni[0m[48;2;241;241;241m        [0m
+[0m[38;2;205;39;48m[48;2;241;241;241m  [0m[38;2;31;35;40m[48;2;241;241;241mMushrooms, multiSelect true. Ask now and wait.[0m[48;2;241;241;241m                                                                        [0m
+
+[0m[38;2;52;56;60m◆[0m[38;2;103;106;110m [0m[38;2;154;156;159mR[0m[38;2;175;177;179mequest [0m[38;2;154;156;159mu[0m[38;2;103;106;110ms[0m[38;2;52;56;60me[0m[38;2;31;35;40mr[0m[38;2;52;56;60m [0m[38;2;103;106;110mi[0m[38;2;154;156;159mn[0m[38;2;175;177;179mput Top[0m[38;2;154;156;159mp[0m[38;2;103;106;110mi[0m[38;2;52;56;60mn[0m[38;2;31;35;40mg[0m[38;2;52;56;60ms[0m[38;2;111;114;118m — running[0m[38;2;175;177;179m (6m 32s)[0m               
+
+[0m[38;2;175;177;179m  [0m[1m[38;2;31;35;40mWhich pizza toppings do you like?[0m                                                                                     
+[0m[38;2;175;177;179m  [0m
+[0m[38;2;175;177;179m  [0m[38;2;31;35;40m  1. [ ] Cheese             [0m[2m[38;2;111;114;118mCheese topping.[0m                                                                           
+[0m[38;2;175;177;179m  [0m[1m[38;2;205;39;48m⟩ 2. [ ] Pepperoni          [0m[2m[38;2;111;114;118mPepperoni topping.[0m       
+[0m[38;2;175;177;179m  [0m[38;2;31;35;40m  3. [ ] Mushrooms          [0m[2m[38;2;111;114;118mMushrooms topping.[0m
+[0m[38;2;175;177;179m  [0m[38;2;31;35;40m  4. [ ] None of the above  [0m[2m[38;2;111;114;118mOptionally, add details in notes (tab).[0m
+[0m[38;2;175;177;179m  [0m[38;2;31;35;40m  5. Submit answer (0 checked)[0m
+[0m[38;2;175;177;179m  [0m
+[0m[38;2;175;177;179m  [0m[38;2;111;114;118mEnter to toggle · Submit row to continue · ↑/↓ to move · Tab for an optional note · Esc to interrupt[0m
+
+[0m[38;2;175;177;179m── Voice input (⌥ + v to start) ────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;175;177;179m❯ [0m
+[0m[38;2;175;177;179m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;175;177;179m  [0m[38;2;205;39;48mmuse-wonder-1.0[0m[38;2;111;114;118m · [0m[38;2;205;39;48mxhigh[0m[38;2;111;114;118m · /private/tmp/qarepro · [0m[38;2;130;7;30mYOLO[0m

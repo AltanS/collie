@@ -17,6 +17,10 @@
 //     ────…
 //       <statusline>
 //
+// 1.4.7 paints the pointer as `⟩`; a multi-question dialog adds an `N of M` progress row between
+// the options and the footer, plus a `←/→ to switch question` clause inside the footer (the lead
+// match tolerates it).
+//
 // Everything here is a PURE function over `StyledLine[]`, driven entirely by the fixture corpus
 // (web/src/fixtures/panes/muse--*.txt). It never touches a pane or the network. The tail invariant
 // is the backbone: the footer must sit directly above the tail chrome, so a question that has
@@ -127,7 +131,7 @@ export function detectQuestionRegion(lines: StyledLine[]): QuestionRegion | null
   const signature = regionSignature(texts, hq.questionAt, fi);
   const coreSignature = texts
     .slice(hq.questionAt, fi + 1)
-    .map((t) => t.replaceAll("›", " "))
+    .map((t) => t.replaceAll("›", " ").replaceAll("⟩", " "))
     .join("\n");
   return { model: { question, options, family: "select", signature, coreSignature }, startLine: firstOpt };
 }

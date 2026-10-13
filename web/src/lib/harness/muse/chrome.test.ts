@@ -162,11 +162,20 @@ describe("composerPrompt — the sweep's binding region", () => {
   it("is null exactly where composerReady is false", () => {
     for (const name of [
       "muse--approval-ls.txt",
+      "muse--approval-ls-147.txt",
+      "muse--approval-date-147.txt",
       "muse--approval-network.txt",
       "muse--ask-color.txt",
+      "muse--ask-multi-q1.txt",
+      "muse--ask-multi-q2.txt",
+      "muse--ask-season.txt",
       "muse--ask-toppings.txt",
+      "muse--ask-toppings-147.txt",
+      "muse--ask-toppings-147-moved.txt",
       "muse--ask-toppings-review.txt",
+      "muse--ask-multi-review.txt",
       "muse--trust-prompt.txt",
+      "muse--trust-prompt-147.txt",
       "muse--ask-color-notes-open.txt",
       "muse--tasks-popup-approval.txt",
     ]) {
