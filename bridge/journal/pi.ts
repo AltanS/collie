@@ -362,6 +362,10 @@ function bashExecutionParts(m: JsonObject): TranscriptPart[] {
  * `session_info` (pi 1.1.0, the session's `name`) and Oh My Pi 18.10's `title` and `title_change`
  * were met by the harness canary on 2026-10-12. All three name the session and draw nothing; the
  * pane's label comes from the multiplexer, not from here.
+ *
+ * Oh My Pi 18.10's `service_tier_change` (written at session start when a tier is set) and
+ * `model_usage` (the cost of a call outside the transcript, such as a composer prediction) were
+ * met in a real session on 2026-10-13. Both are bookkeeping and draw nothing.
  */
 const PI_KNOWN: KnownTypes = {
   rows: [
@@ -378,6 +382,8 @@ const PI_KNOWN: KnownTypes = {
     "session_info",
     "title",
     "title_change",
+    "service_tier_change",
+    "model_usage",
   ],
   roles: ["user", "assistant", "toolResult", "bashExecution", "system"],
   parts: ["text", "thinking", "image", "toolCall"],
