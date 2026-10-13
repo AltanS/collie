@@ -131,6 +131,15 @@ function linkMarkdown(item: JsonObject): string | null {
   return `[${label === "" ? linkLabel(href) : label}](${linkDestination(href)})`;
 }
 
+/**
+ * The turn marked `partial` when its item is a text still growing (WIRE.md 7.13). The log is read again here, so the flag
+ * must be exactly `true`.
+ */
+function growing(entry: TranscriptEntry, item: JsonObject): TranscriptEntry {
+  if (item.partial === true) entry.partial = true;
+  return entry;
+}
+
 /** One logged item as a turn, or null when it is not one this adapter can draw. */
 function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
   const id = textOf(item.id);
@@ -150,16 +159,20 @@ function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
   if (text === null) return null;
   const body = clamp(text, MAX_TEXT_CHARS);
   switch (kind) {
-    case "user":
-      return { uuid: id, ts, role: "user", parts: [{ kind: "text", ...body }] };
+    case "user": {
+      const entry: TranscriptEntry = { uuid: id, ts, role: "user", parts: [{ kind: "text", ...body }] };
+      const requestId = textOf(item.requestId);
+      if (requestId !== null && requestId !== "") entry.requestId = requestId;
+      return entry;
+    }
     case "reply":
-      return { uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] };
+      return growing({ uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] }, item);
     case "thinking":
-      return { uuid: id, ts, role: "assistant", parts: [{ kind: "thinking", ...body }] };
+      return growing({ uuid: id, ts, role: "assistant", parts: [{ kind: "thinking", ...body }] }, item);
     case "notice":
-      return { uuid: id, ts, role: "note", parts: [{ kind: "text", ...body }] };
+      return growing({ uuid: id, ts, role: "note", parts: [{ kind: "text", ...body }] }, item);
     case "markdown":
-      return { uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] };
+      return growing({ uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] }, item);
     case "code": {
       // The cut text goes inside the fence, so a long block still closes; the part says it was cut.
       const block = { ...body, text: codeMarkdown(body.text, textOf(item.lang)) };
@@ -212,6 +225,11 @@ export function createDurableReducer(): RowReducer {
       // The item changed. An item that sent no `ts` of its own keeps the moment it first appeared.
       known.role = entry.role;
       known.parts = entry.parts;
+      // The flags follow the latest version: a reply that finished loses `partial`, and a user turn may gain its request id.
+      if (entry.partial === true) known.partial = true;
+      else delete known.partial;
+      if (entry.requestId !== undefined) known.requestId = entry.requestId;
+      else delete known.requestId;
       if (textOf(parsed.item.ts) !== null) known.ts = entry.ts;
       return reduction([], new Set([entry.uuid]));
     }

@@ -401,11 +401,14 @@ interface ToolCall {
 
 type ToolStatus = "running" | "done" | "failed" | "denied";
 
-/** An item with a known id replaces the earlier one (a tool changes status). Ids are unique per pane. */
+/** An item with a known id replaces the earlier one (a tool changes status, a reply grows). Ids are unique per pane. */
 type Item =
-  | { id: string; ts?: string; kind: "user" | "reply" | "thinking" | "notice"; text: string }
+  /** `requestId`: the request id of the send that made this line, when the program knows it (section 7.13). */
+  | { id: string; ts?: string; kind: "user"; text: string; requestId?: string }
+  /** `partial`: the text is still growing, and the same id comes again (section 7.13). */
+  | { id: string; ts?: string; kind: "reply" | "thinking" | "notice"; text: string; partial?: true }
   /** Rendered as markdown (section 7.11). */
-  | { id: string; ts?: string; kind: "markdown"; text: string }
+  | { id: string; ts?: string; kind: "markdown"; text: string; partial?: true }
   /** A fenced code block. `lang` is a plain name such as "ts" or "c++". */
   | { id: string; ts?: string; kind: "code"; lang?: string; text: string }
   /** A link to an `https://` address. `label` is the words the phone shows for it. */
@@ -740,6 +743,10 @@ When `abort` stops a run:
 The adapter MAY draw a `settled` event as a notice line. It MUST NOT wait for an item after an
 abort.
 
+A reply that was growing when the run stopped (section 7.13) stops where it is: the program writes
+that item once more, with the text it had and no `partial`, so the phone drops its cursor. This is
+the same item id, not a new item, and it is not a "stopped" line.
+
 ### 7.6 Request ids
 
 - The phone mints a `requestId` per intent (a UUID). The bridge writes its receipt first, then the
@@ -893,6 +900,32 @@ abort.
 - The adapter checks the id rule on every id in an answer, and the byte cap on every text, before it
   sends. It keeps no answer text: the receipt holds ids and a digest, so the same request id with another
   text is refused (`request-id-reused`) without the words being stored.
+
+### 7.13 A reply that grows, and a line that is sent
+
+- An item of kind `reply`, `thinking`, `notice` or `markdown` MAY carry `partial: true`. It says the text is
+  still growing and the same id will come again. Only the value `true` counts; any other value reads as a
+  finished text. `partial` on a `user`, `code`, `link` or `tool` item is ignored.
+- A program that streams a reply writes the item with `partial: true` each time the text has grown, no more
+  often than every 250 ms, and once more with the final text and no `partial`. Every write is an `item`
+  event with the same `id`, so section 3 applies: the later one replaces the earlier one. The program MUST
+  write the last version before the pane leaves `working`, whether the run ended, failed or was stopped
+  (section 7.5). A reader that finds a `partial` item on a pane that is not `working` MAY draw it as finished.
+- The reader keeps one turn per id. A replacement is an update to the turn that is already there, in the
+  place it already holds, and it is never a new row. The bridge's own pane log writes a row per version
+  that reached it, reads them back by id, and writes one row for the newest of several versions that arrive
+  in one read. A reset view that does not list an item still `partial` in the log finishes that item once,
+  as it stood, without `partial`: a reply the program was writing when it restarted will not be finished.
+- Chat draws a `partial` item with a cursor at its end and no time. The cursor goes when the final version
+  arrives. The cadence of the phone is not changed: a watched pane updates about once a second over the
+  socket and once every two seconds over TLS (section 7.1), so a growing reply moves by that step.
+- A `user` item MAY carry `requestId`: the request id of the `send` that made the line. The phone puts its
+  own line on screen when the person sends, keyed by that id, and swaps it for the program's item when an
+  item with the same `requestId` arrives. A program that does not know the id leaves it out; the phone then
+  matches by the same text within 30 seconds. `requestId` follows the id rule (section 6). A program MAY
+  write the `user` item first and add `requestId` in a later version of the same item.
+- Both fields are additive: an older adapter ignores them and draws each version as a finished reply, and
+  the final version replaces them all.
 
 ## 8. Restart and epoch
 

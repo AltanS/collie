@@ -138,7 +138,7 @@ describe("the wire", () => {
     expect((await call("POST", `/pane/${pane.id}/answer`, { body: { ...body, answer: { optionId: "deny" } } })).body).toEqual({ code: "request-id-reused" });
     const done = await waitFor("the ticket's reply", async () => {
       const r = await events(pane.id, 0, "none");
-      return r.events.some((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Triage done.")) && r;
+      return r.events.some((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.partial !== true && e.item.text.startsWith("Triage done.")) && r;
     });
     expect(done.reset).toBe(true);
     expect((await snapshot()).panes.some((p: any) => p.tabId === "triage:helpers")).toBe(true);
@@ -164,6 +164,28 @@ describe("the wire", () => {
     });
     expect(settled.reason).toBe("aborted");
     await waitFor("idle", async () => (await paneOf(pane.id)).state === "idle");
+  });
+
+  test("a reply grows under one id while the program writes it, and a stop leaves the last version without partial", async () => {
+    const pane = (await snapshot()).panes.find((p: any) => p.tabId === "triage:inbox");
+    const before = await events(pane.id, 0, "none");
+    expect((await call("POST", `/pane/${pane.id}/send`, { body: { requestId: "stream-1", text: "Go on", turnId: pane.turnId } })).body).toEqual({ ok: true });
+    const replies = (list: any[]) => list.filter((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Another thought")).map((e: any) => e.item);
+    const growing = await waitFor("a partial reply", async () => {
+      const r = await events(pane.id, before.next, before.epoch);
+      const partial = replies(r.events).filter((i: any) => i.partial === true);
+      return partial.length >= 2 && partial.at(-1);
+    });
+    const working = await paneOf(pane.id);
+    expect((await call("POST", `/pane/${pane.id}/abort`, { body: { requestId: "stream-stop-1", turnId: working.turnId } })).body).toEqual({ ok: true });
+    await waitFor("idle", async () => (await paneOf(pane.id)).state === "idle");
+    const after = replies((await events(pane.id, before.next, before.epoch)).events);
+    expect(new Set(after.map((i: any) => i.id)).size).toBe(1);
+    expect(after[0].id).toBe(growing.id);
+    expect(after.at(-1)).not.toHaveProperty("partial"); // the cursor goes away
+    expect(after.at(-1).text.length).toBeGreaterThanOrEqual(growing.text.length);
+    const user = (await events(pane.id, 0, "none")).events.find((e: any) => e.type === "item" && e.item.kind === "user" && e.item.text === "Go on");
+    expect(user.item.requestId).toBe("stream-1");
   });
 
   test("a starter opens a new ticket; the same request id replays the same pane and opens nothing", async () => {

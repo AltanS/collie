@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { startApp, type App } from "../app.ts";
 import { api, type Dial, oldestAsk } from "./client.ts";
-import { allEvents, cleanup, firstAsk, openAsks, pane, tmp, waitFor } from "./util.ts";
+import { allEvents, cleanup, firstAsk, latestItems, openAsks, pane, tmp, waitFor } from "./util.ts";
 
 let app: App;
 let d: Dial;
@@ -87,7 +87,7 @@ describe("one ticket", () => {
     expect(await pane(d, main)).not.toHaveProperty("progress"); // the program clears it when the run ends
     expect(await pane(d, helper)).not.toHaveProperty("progress"); // a helper only answers
     const events = await allEvents(d, main);
-    const items = events.flatMap((e) => (e.type === "item" ? [e.item] : []));
+    const items = latestItems(events);
     const at = items.findIndex((item) => item.kind === "reply" && item.text.startsWith("Triage done"));
     const reply = items[at];
     expect(reply?.kind === "reply" && reply.text).toContain("The helper says");

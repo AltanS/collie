@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../../json.ts";
-import { logFileName } from "../../durable/log.ts";
+import { DurableLogs, logFileName } from "../../durable/log.ts";
+import { parseDurableLog } from "../../journal/durable.ts";
 import { DURABLE_LOG_DIR_OPTION, DURABLE_SOCKET_OPTION, DurableMux, durableMuxFactory, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { CAPS, ITEM_RICH_BYTES } from "./clean.ts";
 import type { DurableEventSink } from "./events.ts";
@@ -390,6 +391,36 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(long?.kind === "markdown" && long.text.endsWith("…")).toBe(true);
   });
 
+  test("partial rides on reply, thinking, notice and markdown only, requestId on user only (WIRE.md 7.13)", () => {
+    const parsed = parseEvents(
+      body([
+        { type: "item", item: { id: "r", kind: "reply", text: "Hel", partial: true } },
+        { type: "item", item: { id: "t", kind: "thinking", text: "hm", partial: true } },
+        { type: "item", item: { id: "n", kind: "notice", text: "wait", partial: true } },
+        { type: "item", item: { id: "m", kind: "markdown", text: "# A", partial: true } },
+        { type: "item", item: { id: "f", kind: "reply", text: "done", partial: false } },
+        { type: "item", item: { id: "s", kind: "reply", text: "odd", partial: "true" } },
+        { type: "item", item: { id: "u", kind: "user", text: "hi", requestId: "req-1", partial: true } },
+        { type: "item", item: { id: "u2", kind: "user", text: "hi", requestId: "has space" } },
+        { type: "item", item: { id: "r2", kind: "reply", text: "x", requestId: "req-1" } },
+        { type: "item", item: { id: "c", kind: "code", text: "x", partial: true } },
+      ]),
+    );
+    const items = parsed.ok ? parsed.value.events.flatMap((event) => (event.type === "item" ? [event.item] : [])) : [];
+    expect(items).toEqual([
+      { id: "r", ts: undefined, kind: "reply", text: "Hel", partial: true },
+      { id: "t", ts: undefined, kind: "thinking", text: "hm", partial: true },
+      { id: "n", ts: undefined, kind: "notice", text: "wait", partial: true },
+      { id: "m", ts: undefined, kind: "markdown", text: "# A", partial: true },
+      { id: "f", ts: undefined, kind: "reply", text: "done" },
+      { id: "s", ts: undefined, kind: "reply", text: "odd" },
+      { id: "u", ts: undefined, kind: "user", text: "hi", requestId: "req-1" },
+      { id: "u2", ts: undefined, kind: "user", text: "hi" },
+      { id: "r2", ts: undefined, kind: "reply", text: "x" },
+      { id: "c", ts: undefined, kind: "code", text: "x" },
+    ]);
+  });
+
   test("a code language that is not a plain name reads as none and the block stays, a label is cut to 120 characters", () => {
     const langs = ["", "a".repeat(25), "ts\n```", "c++ x", 7, null];
     const parsed = parseEvents(
@@ -516,6 +547,51 @@ describe("where the events go", () => {
       expect(names.toSorted()).toEqual(
         ["conv-01", "conv-02", "conv-03", "conv-04", "conv-05"].map((id) => logFileName(id)).toSorted(),
       );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a reply that grows, through the reader into the pane log (WIRE.md 7.13)", () => {
+  const grown = (id: string, text: string, partial: boolean): FakeEvent => ({ type: "item", item: partial ? { id, kind: "reply", text, partial: true } : { id, kind: "reply", text } });
+
+  test("an item with a known id replaces the earlier one: the log and the chat hold ONE turn, never a row per version", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-grow-"));
+    try {
+      const clock = new FakeDurableClock();
+      const logs = new DurableLogs(join(dir, "durable"));
+      const adapter = new DurableMux(program.wire(), clock, logs);
+      const sync = async () => {
+        clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+        await adapter.poll();
+        await adapter.syncEvents();
+      };
+      const turns = async () => parseDurableLog(await readFile(join(dir, "durable", logFileName(PANE)), "utf8")).filter((entry) => entry.uuid === "r1");
+
+      program.appendEvent(PANE, { type: "item", item: { id: "u1", kind: "user", text: "go", requestId: "req-1" } });
+      program.appendEvent(PANE, grown("r1", "Hel", true));
+      await sync();
+      expect((await turns()).map((entry) => entry.partial)).toEqual([true]);
+
+      // Three writes by the program between two reads: only the newest is news.
+      program.appendEvent(PANE, grown("r1", "Hello", true));
+      program.appendEvent(PANE, grown("r1", "Hello, wor", true));
+      program.appendEvent(PANE, grown("r1", "Hello, world", true));
+      await sync();
+      program.appendEvent(PANE, grown("r1", "Hello, world", false));
+      await sync();
+
+      const file = await readFile(join(dir, "durable", logFileName(PANE)), "utf8");
+      const all = parseDurableLog(file);
+      expect(all.map((entry) => entry.uuid)).toEqual(["u1", "r1"]); // one turn for the user line, one for the reply
+      expect(all[0]?.requestId).toBe("req-1");
+      expect(all[1]).not.toHaveProperty("partial");
+      expect(all[1]?.parts[0]).toEqual({ kind: "text", text: "Hello, world" });
+      // Rows for r1: the first poll's version, the second poll's newest, the final. Not six.
+      expect(file.split("\n").filter((line) => line.includes('"id":"r1"'))).toHaveLength(3);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

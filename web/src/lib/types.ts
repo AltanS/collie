@@ -1131,6 +1131,13 @@ export interface TranscriptEntry {
    * job (`bridge/journal/types.ts` carries the long reasoning).
    */
   abandoned?: true;
+  /**
+   * The text of this turn is still growing, and the program will rewrite it under the same id. Draw a cursor and
+   * no time until it goes. Absent when false. Only a durable pane sets it (WIRE.md 7.13).
+   */
+  partial?: true;
+  /** The request id of the send that made this user turn. Matches the phone's own unsent line. Durable panes only. */
+  requestId?: string;
 }
 
 /** A file's state against HEAD, staged and unstaged together (ADR 0065). `?` = untracked. */

@@ -2332,6 +2332,9 @@ export function AgentChat({
                   // A new pane with nothing to read yet: one line that says how to begin, never the
                   // "no transcript file" reading, which is only true of a pane that should have one.
                   starting={body === "start"}
+                  // A pane with no screen is a durable conversation: its thread shows the person's line at once,
+                  // a working row while the program thinks, and a cursor on a reply still being written.
+                  durable={gridless}
                   asks={
                     agent?.asks === undefined
                       ? undefined

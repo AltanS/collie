@@ -17,7 +17,9 @@ import {
   type Extension,
   type Harness,
   hook,
+  type MessageChange,
   type SnapshotEvent,
+  type SubmissionRecord,
   ToolTask,
   watchEvents,
 } from "@earendil-works/pi-durable";
@@ -147,22 +149,57 @@ const NEXT_STEPS = "**What to do next**\n\n- Ask the customer to sign in again.\
 const REVOKE_COMMAND = "# clear the stale session\nsession-cli revoke --user 412";
 const DOCS_URL = "https://colliepwa.dev/docs/";
 
-/** Pi entries and agent events to the session stream. Whole blocks only: message_update is ignored. */
-class Mapper {
+/** The least time between two writes of a growing reply (WIRE.md 7.13). */
+export const PARTIAL_MS = 250;
+
+/** A text or thinking block of the answer being written, as far as it has come. */
+type LiveBlock = Block;
+
+/** The assistant message Pi is generating now, and which of its blocks the wire has seen. */
+interface LiveMessage {
+  /** The id every item of this message gets, the one the finished message gets too: its timestamp. */
+  id: string;
+  ts: string;
+  blocks: LiveBlock[];
+  /** Item ids written with `partial: true`, so a message cut off can be written once more without it. */
+  shown: Set<string>;
+  /** When a partial was last written. */
+  lastWrite: number;
+}
+
+/** The item id of an assistant message's block. The timestamp is known when generation starts, the entry id is not. */
+const messageId = (timestamp: unknown) => safeId(`m${String(timestamp)}`);
+
+/**
+ * Pi entries and agent events to the session stream. A reply grows: `message_update` rewrites its item under one id
+ * (at most every {@link PARTIAL_MS}), and the finished entry writes it once more without `partial` (WIRE.md 7.13).
+ */
+export class Mapper {
   private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
   // What the first run has done so far, for the progress steps. A ticket only: a helper just answers.
   private seen = { user: false, note: false, noted: false, reply: false };
+  /** The answer being generated. Absent between answers. */
+  private live: LiveMessage | undefined;
+  /** The send each user entry came from, by item id, as the submissions say. */
+  private readonly requests = new Map<string, string>();
+  /** The user items written so far, so a request id that arrives late can be added to one. */
+  private readonly users = new Map<string, Extract<Item, { kind: "user" }>>();
   constructor(
     private pane: PaneHandle,
     private registry: PaneRegistry,
     private withProgress: boolean,
+    private readonly now: () => number = Date.now,
   ) {}
 
   private item(item: Item) {
     this.pane.event({ type: "item", item });
     if (item.kind === "tool") this.registry.toolStatus(item.id, item.tool.name, item.status);
-    if (item.kind === "user") this.seen.user = true;
-    if (item.kind === "reply") this.seen.reply = true;
+    if (item.kind === "user") {
+      this.seen.user = true;
+      this.users.set(item.id, item);
+    }
+    // A reply that is still growing is not yet the reply the steps wait for.
+    if (item.kind === "reply" && item.partial !== true) this.seen.reply = true;
     if (item.kind === "tool" && item.tool.name === "write_note") {
       this.seen.note = true;
       if (item.status !== "running") this.seen.noted = true;
@@ -201,12 +238,25 @@ class Mapper {
 
   snapshot(s: SnapshotEvent, first: boolean) {
     if (!first) this.pane.event({ type: "reset" });
+    this.live = undefined;
     this.tools.clear();
     this.seen = { user: false, note: false, noted: false, reply: false };
     for (const entry of s.entries) this.entry(entry);
     this.pane.event({ type: "synced" });
     this.pane.state(s.run ? "working" : "idle");
     this.mark(s.run ? !this.seen.reply : false);
+  }
+
+  /**
+   * One batch of events, as Pi delivers them. The submissions of the batch are read first: the record that names a
+   * user entry's request id comes after the entry in the batch, and the item should carry it from its first write.
+   */
+  applyAll(events: readonly AgentEvent[]) {
+    for (const e of events) {
+      if (e.type !== "submission" || e.record.type !== "input" || e.record.entry === undefined || e.record.requestId === undefined) continue;
+      this.requests.set(safeId(`e${e.record.entry}`), safeId(e.record.requestId));
+    }
+    for (const e of events) this.apply(e);
   }
 
   apply(e: AgentEvent) {
@@ -217,13 +267,23 @@ class Mapper {
       case "turn_start":
         this.pane.state("working");
         return this.mark(!this.seen.reply);
+      case "turn_end":
+        return this.finish();
       case "run_end":
+        // A stop can end the run with no entry for what was written so far. Nothing is left growing.
+        this.finish();
         this.pane.state("idle");
         return this.mark(false);
+      case "message_start":
+        return this.start(e.message);
+      case "message_update":
+        return this.update(e.changes);
       case "message_end":
+        this.live = undefined;
         this.entry(e.entry);
         return this.mark(!this.seen.reply);
       case "submission":
+        this.requested(e.record);
         // An abort appends no entry and no item. The input settles, and the wire says so with `settled`.
         if (e.record.type !== "input" || (e.record.status !== "done" && e.record.status !== "unanswered")) return;
         return this.pane.event({
@@ -240,13 +300,93 @@ class Mapper {
     }
   }
 
+  /** An answer begins. The start of one that is already whole is followed by its end, and draws nothing in between. */
+  private start(message: { role: string; timestamp: number; content: unknown }) {
+    this.live = undefined;
+    if (message.role !== "assistant" || !Array.isArray(message.content)) return;
+    const blocks = (message.content as Block[]).map((b) => ({ ...b }));
+    this.live = { id: messageId(message.timestamp), ts: new Date(message.timestamp).toISOString(), blocks, shown: new Set(), lastWrite: 0 };
+  }
+
+  /** The answer grew: take the change, and write it when the last write is old enough. */
+  private update(changes: readonly MessageChange[]) {
+    const live = this.live;
+    if (!live) return;
+    for (const c of changes) {
+      switch (c.type) {
+        case "text_start":
+        case "thinking_start":
+        case "toolcall_start":
+        case "block":
+          live.blocks[c.contentIndex] = { ...c.block };
+          break;
+        case "text_delta": {
+          const b = live.blocks[c.contentIndex];
+          if (b?.type === "text") b.text = (b.text ?? "") + c.delta;
+          break;
+        }
+        case "thinking_delta": {
+          const b = live.blocks[c.contentIndex];
+          if (b?.type === "thinking") b.thinking = (b.thinking ?? "") + c.delta;
+          break;
+        }
+        case "message":
+          live.blocks = (c.message.content as Block[]).map((b) => ({ ...b }));
+          break;
+        case "toolcall_delta":
+          break; // a tool call is shown whole, when its message ends
+      }
+    }
+    if (this.now() - live.lastWrite < PARTIAL_MS) return;
+    live.lastWrite = this.now();
+    live.blocks.forEach((b, i) => {
+      const id = safeId(`${live.id}:${i}`);
+      if (b.type === "text" && (b.text ?? "").trim() !== "") this.grow({ id, ts: live.ts, kind: "reply", text: b.text ?? "", partial: true }, live);
+      else if (b.type === "thinking" && (b.thinking ?? "").trim() !== "") this.grow({ id, ts: live.ts, kind: "thinking", text: b.thinking ?? "", partial: true }, live);
+    });
+  }
+
+  private grow(item: Item, live: LiveMessage) {
+    live.shown.add(item.id);
+    this.item(item);
+  }
+
+  /**
+   * The answer being written is over. Its entry normally follows and writes the final version. Where none does (a
+   * stop that left nothing to keep), what was shown is written once more as it stood, without `partial`, so no
+   * cursor is left blinking on a reply that will not grow (WIRE.md 7.5 and 7.13).
+   */
+  private finish() {
+    const live = this.live;
+    this.live = undefined;
+    if (!live || live.shown.size === 0) return;
+    live.blocks.forEach((b, i) => {
+      const id = safeId(`${live.id}:${i}`);
+      if (!live.shown.has(id)) return;
+      if (b.type === "text") this.item({ id, ts: live.ts, kind: "reply", text: b.text ?? "" });
+      else if (b.type === "thinking") this.item({ id, ts: live.ts, kind: "thinking", text: b.thinking ?? "" });
+    });
+  }
+
+  /** A submission that names its user entry gives that item the request id of the send, even when the item is already written. */
+  private requested(record: SubmissionRecord) {
+    if (record.type !== "input" || record.entry === undefined || record.requestId === undefined) return;
+    const id = safeId(`e${record.entry}`);
+    const requestId = safeId(record.requestId);
+    this.requests.set(id, requestId);
+    const have = this.users.get(id);
+    if (have && have.requestId !== requestId) this.item({ ...have, requestId });
+  }
+
   private entry(e: EntryRecord) {
     const m = e.model?.[0];
     if (!m) return;
     const ts = new Date(m.timestamp).toISOString();
-    const id = safeId(`e${e.id}`);
+    // An answer is named by its timestamp, which is known before it is finished (see `messageId`).
+    const id = m.role === "assistant" ? messageId(m.timestamp) : safeId(`e${e.id}`);
     if (m.role === "user") {
-      return this.item({ id, ts, kind: "user", text: textOf(m.content) });
+      const requestId = this.requests.get(id);
+      return this.item({ id, ts, kind: "user", text: textOf(m.content), ...(requestId === undefined ? {} : { requestId }) });
     }
     if (m.role === "assistant") {
       (m.content as Block[]).forEach((b, i) => {
@@ -317,7 +457,7 @@ export async function showConversation(
   opts.panes.set(conversation.id, pane, () => stream.stop());
   mapper.snapshot(stream.snapshot, true);
   stream.start(async (events) => {
-    for (const e of events) mapper.apply(e);
+    mapper.applyAll(events);
   });
   return pane;
 }

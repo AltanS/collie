@@ -35,6 +35,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
 
+### Fixed
+
+- **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
+
 ## [1.21.0] - 2026-10-13
 
 ### Added

@@ -258,7 +258,13 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect(events).toContainEqual({ type: "settled", inputId: expect.any(String), requestId: sendId, status: "unanswered", reason: "aborted" });
     const sent = events.findIndex((event) => event.type === "item" && event.item.kind === "user" && event.item.text === "one more thing");
     expect(sent).toBeGreaterThan(-1);
-    expect(events.slice(sent + 1).some((event) => event.type === "item" && (event.item.kind === "reply" || event.item.kind === "notice"))).toBe(false);
+    // The stop adds no item of its own: no notice, and no reply except the one that was growing, which ends where it was cut
+    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.13).
+    const after = events.slice(sent + 1).flatMap((event) => (event.type === "item" ? [event.item] : []));
+    expect(after.some((item) => item.kind === "notice")).toBe(false);
+    const replies = after.filter((item) => item.kind === "reply");
+    expect(new Set(replies.map((item) => item.id)).size).toBeLessThanOrEqual(1);
+    expect(replies.length === 0 || !("partial" in (replies.at(-1) ?? {}))).toBe(true);
   });
 
   test("cloudflare: a starter opens a new pane, and a repeat with the same request id opens nothing", async () => {

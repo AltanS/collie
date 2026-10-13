@@ -192,7 +192,7 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 | `REAL_MODEL` | var | not set | An OpenRouter model id. Not set means the scripted model. |
 | `OPENROUTER_API_KEY` | secret | not set | Your OpenRouter key, read only when `REAL_MODEL` is set. |
 | `DM_STEP_MS` | var | `400` | The pause before each scripted answer. |
-| `DM_SLOW_MS` | var | `10000` | How long the scripted answer to a follow-up takes, so Stop has something to stop. |
+| `DM_SLOW_MS` | var | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer streams in chunks. |
 | `DM_HELPER_MS` | var | the value of `DM_STEP_MS` | How long the helper's scripted answer takes. |
 | `DM_STORAGE` | var | `sqlite` | `memory` keeps Pi's conversations in memory. For `npm run test:memory` only. |
 

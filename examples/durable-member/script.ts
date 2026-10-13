@@ -16,10 +16,24 @@ export const INSTRUCTIONS = "You triage support tickets.";
 export const REAL_INSTRUCTIONS =
   "You triage support tickets. For every ticket: first call write_note with a one-sentence note, then call spawn_helper with a task that starts with 'HELPER:' and asks a helper to name the likely cause, then answer in one sentence.";
 
+/**
+ * How fast the scripted model writes, in tokens a second. Every answer is streamed at this rate, so a reply grows on
+ * the phone while it is written and Stop has a moving reply to cut (WIRE.md 7.13). A token is about four characters.
+ */
+export const STREAM_TOKENS_PER_SECOND = 60;
+
+const LONG_UNIT = "Another thought, in detail. ";
+
+/** The slow answer to a follow-up: long enough that streaming it at {@link STREAM_TOKENS_PER_SECOND} takes about `slowMs`. */
+export function longAnswer(slowMs: number): string {
+  const tokens = (STREAM_TOKENS_PER_SECOND * slowMs) / 1000;
+  return LONG_UNIT.repeat(Math.max(2, Math.round((tokens * 4) / LONG_UNIT.length)));
+}
+
 export interface ScriptTiming {
   /** The pause before each scripted answer, so states are visible. */
   stepMs: number;
-  /** The slow answer to a follow-up, long enough to stop it. */
+  /** How long the slow answer to a follow-up takes to write, long enough to stop it. */
   slowMs: number;
   /** The helper's answer. Default: `stepMs`. */
   helperMs?: number;
@@ -76,8 +90,7 @@ function scripted(messages: Msg[], slowMs: number, helperMs?: number) {
   }
   const answered = messages.some((m) => m.role === "assistant" && JSON.stringify(m.content).includes('"type":"text"'));
   if (last.role === "user" && answered) {
-    const long = "Another thought, in detail. ".repeat(40);
-    return { msg: fauxAssistantMessage([fauxText(long)]), slow: true, slowMs };
+    return { msg: fauxAssistantMessage([fauxText(longAnswer(slowMs))]), slow: true };
   }
   const call = fauxToolCall("write_note", { note: "Ticket 412: login failure after password reset." });
   return { msg: fauxAssistantMessage([call], { stopReason: "toolUse" }), slow: false };
@@ -89,12 +102,14 @@ function scripted(messages: Msg[], slowMs: number, helperMs?: number) {
  * empty.
  */
 export function useScriptedModel(models: ReturnType<typeof createModels>, t: ScriptTiming) {
-  const faux = fauxProvider();
+  // The provider writes each answer in chunks at a steady rate, and Pi Durable carries the growing text as it goes.
+  const faux = fauxProvider({ tokensPerSecond: STREAM_TOKENS_PER_SECOND, tokenSize: { min: 3, max: 5 } });
   models.setProvider(faux.provider);
   const factory: FauxResponseFactory = async (context, options) => {
     faux.appendResponses([factory]);
     const step = scripted(context.messages as unknown as Msg[], t.slowMs, t.helperMs);
-    await sleep(step.slow ? t.slowMs : (step.ms ?? t.stepMs), options?.signal);
+    // The slow answer is slow because it is long (see `longAnswer`), not because it waits before the first word.
+    await sleep(step.ms ?? t.stepMs, options?.signal);
     return step.msg;
   };
   faux.setResponses(Array.from({ length: 16 }, () => factory));

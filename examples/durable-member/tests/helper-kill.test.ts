@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { api, type Dial } from "./client.ts";
-import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, pane, tmp, waitFor } from "./util.ts";
+import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, latestItems, pane, tmp, waitFor } from "./util.ts";
 
 const HELPER_MS = 3000;
 const dir = tmp();
@@ -16,7 +16,8 @@ afterAll(async () => {
 });
 
 const helperPanes = async () => (await api.snapshot(d)).body.panes.filter((p) => p.tabId === "triage:helpers");
-const count = (events: Awaited<ReturnType<typeof allEvents>>, kind: string) => events.filter((e) => e.type === "item" && e.item.kind === kind).length;
+// Items, each id once: a reply that grew is several events under one id, and a user line may be written again with its request id.
+const count = (events: Awaited<ReturnType<typeof allEvents>>, kind: string) => latestItems(events).filter((item) => item.kind === kind).length;
 
 describe("kill while the helper answers", () => {
   let main = "";
@@ -56,7 +57,7 @@ describe("kill while the helper answers", () => {
     const mainEvents = await allEvents(d, main);
     const spawns = mainEvents.flatMap((e) => (e.type === "item" && e.item.kind === "tool" && e.item.tool.name === "spawn_helper" ? [e.item.status] : []));
     expect(spawns).toEqual(["running", "done"]); // one call, running then done: the parent got the answer once
-    const replies = mainEvents.flatMap((e) => (e.type === "item" && e.item.kind === "reply" ? [e.item.text] : []));
+    const replies = latestItems(mainEvents).flatMap((item) => (item.kind === "reply" ? [item.text] : []));
     expect(replies).toEqual(["Triage done. The helper says: Probably an expired session cookie after the password reset."]);
     expect(mainEvents.filter((e) => e.type === "state").at(-1)).toMatchObject({ state: "idle" });
     expect(mainEvents.at(-1)).toMatchObject({ type: "settled", status: "answered" }); // the input settles after the run ends

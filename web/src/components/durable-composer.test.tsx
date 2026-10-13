@@ -1,10 +1,17 @@
-import { useState } from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { createRef, useState } from "react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SessionStream } from "@/components/session-stream";
+import type { ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import type { ChatFeed } from "@/hooks/use-chat-window";
+import { EMPTY_CHAT_WINDOW } from "@/lib/chat-window";
+import { __resetPending } from "@/lib/durable-pending";
+import { paneScopeKey } from "@/lib/scope";
+import type { ChatEntry } from "@/lib/types";
 import { server } from "@/test/setup";
 import { loadDraft } from "@/lib/drafts";
 import { asJsonObject, type JsonObject } from "@/lib/json";
@@ -31,7 +38,13 @@ function declares(caps: Partial<Record<MuxCapability, boolean>>): void {
   );
 }
 
+beforeAll(() => {
+  // jsdom doesn't implement scrollTo; the thread's auto-scroll calls it.
+  if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
+});
+
 beforeEach(() => {
+  __resetPending();
   __resetOperatorCommands();
   declares({ steerTurn: true, abortTurn: true });
 });
@@ -400,5 +413,269 @@ describe("the terminal's controls are not here", () => {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
     expect(screen.getByRole("button", { name: "Display settings" })).toBeInTheDocument();
+  });
+});
+
+// ── the thread and the composer together: pending echo, working row, partial rendering (M53 spec 10) ──────────
+
+const BASE = 1_000_000;
+let when = 0;
+
+/** One turn of the thread as the bridge's chat window holds it. `at` is its place. */
+function turn(uuid: string, role: ChatEntry["role"], text: string, over: Partial<ChatEntry> = {}): ChatEntry {
+  when += 1;
+  return { uuid, seq: BASE + when, ts: new Date().toISOString(), role, parts: [{ kind: "text", text }], ...over };
+}
+
+interface Live {
+  setEntries: (entries: ChatEntry[]) => void;
+  setWorking: (working: boolean) => void;
+}
+
+/** The composer and the thread of ONE durable pane, the way the pane view mounts them, with the thread under the test's hand. */
+function drawBoth(initial: ChatEntry[] = [], over: Partial<DurableComposerProps> = {}): { live: Live } & ReturnType<typeof draw> {
+  // SAFETY: both setters are assigned by `Both` on its first render, before any test reads them.
+  const live = {} as Live;
+  const onSent = vi.fn();
+  const onReload = vi.fn();
+  function Both() {
+    const [entries, setEntries] = useState(initial);
+    const [working, setWorking] = useState(false);
+    live.setEntries = setEntries;
+    live.setWorking = setWorking;
+    const feed: ChatFeed = {
+      window: { ...EMPTY_CHAT_WINDOW, status: { kind: "live" }, entries },
+      loadOlder: vi.fn(),
+      loadingOlder: false,
+      asked: 0,
+      answered: 0,
+      tried: false,
+    };
+    return (
+      <>
+        <SessionStream
+          feed={feed}
+          address={paneScopeKey(undefined, "c1")}
+          working={working}
+          showToolCalls
+          showCompactions={false}
+          fontSize={14}
+          listRef={createRef<ChatMessageListHandle>()}
+          durable
+        />
+        <DurableComposer
+          paneId="c1"
+          turnId="turn-7"
+          status={working ? "working" : "idle"}
+          locked={false}
+          lockedWhy=""
+          offline={false}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={onSent}
+          onReload={onReload}
+          {...over}
+        />
+        <Said />
+      </>
+    );
+  }
+  render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Both /> }])} />);
+  return { live, onSent, onReload };
+}
+
+const pendingRows = () => [...document.querySelectorAll<HTMLElement>('[data-slot="pending-turn"]')];
+const working = () => screen.queryByRole("status", { name: "Working" });
+
+/** A POST that waits for the test to let it go. */
+interface Held {
+  release: () => void;
+  seen: Sent[];
+}
+function held(reply: () => Response): Held {
+  const seen: Sent[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((done) => (release = done));
+  server.use(
+    http.post<never, JsonObject>(/\/api\/pane\/[^/]+\/send$/, async ({ request }) => {
+      seen.push(asJsonObject(await request.json()) ?? {});
+      await gate;
+      return reply();
+    }),
+  );
+  return { release, seen };
+}
+
+describe("pending echo", () => {
+  it("pending: the sent line is in the thread at once, the field waits with Sending…, and the program's line replaces it", async () => {
+    const post = held(() => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const { live, onSent } = drawBoth();
+    const user = await type("go left");
+    await user.click(sendButton());
+
+    // At once: before the POST has answered, the line stands in the thread with a clock, and the field is held.
+    await waitFor(() => expect(post.seen).toHaveLength(1));
+    expect(pendingRows()).toHaveLength(1);
+    expect(pendingRows()[0]).toHaveTextContent("go left");
+    expect(pendingRows()[0]).toHaveAttribute("data-pending", "sending");
+    expect(pendingRows()[0]).toHaveClass("opacity-70");
+    const waiting = screen.getByPlaceholderText("Sending…");
+    expect(waiting).toBeDisabled();
+    expect(waiting).toHaveValue("");
+    expect(working()).toBeNull(); // not yet: the program has not taken it
+
+    post.release();
+    // The field is back, and the program has the line: the thread says it is working, before any read says so.
+    await waitFor(() => expect(field()).toBeEnabled());
+    expect(field()).toHaveValue("");
+    expect(onSent).toHaveBeenCalled();
+    expect(pendingRows()[0]).toHaveAttribute("data-pending", "sent");
+    expect(working()).toBeInTheDocument();
+
+    // The program's own line, with the request id of the send, takes its place: one line, not two.
+    act(() => live.setEntries([turn("u1", "user", "go left", { requestId: String(post.seen[0]!.requestId) })]));
+    await waitFor(() => expect(pendingRows()).toHaveLength(0));
+    expect(screen.getAllByText("go left")).toHaveLength(1);
+  });
+
+  it("pending: a program that does not echo the request id is matched by the same text", async () => {
+    const post = held(() => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const { live } = drawBoth();
+    const user = await type("same words");
+    await user.click(sendButton());
+    post.release();
+    await waitFor(() => expect(pendingRows()[0]).toHaveAttribute("data-pending", "sent"));
+    act(() => live.setEntries([turn("u1", "user", "same words")]));
+    await waitFor(() => expect(pendingRows()).toHaveLength(0));
+    expect(screen.getAllByText("same words")).toHaveLength(1);
+  });
+
+  it("pending: another send's request id never matches by text", async () => {
+    const post = held(() => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const { live } = drawBoth();
+    const user = await type("again");
+    await user.click(sendButton());
+    post.release();
+    await waitFor(() => expect(pendingRows()[0]).toHaveAttribute("data-pending", "sent"));
+    act(() => live.setEntries([turn("u0", "user", "again", { requestId: "somebody-else" })]));
+    expect(pendingRows()).toHaveLength(1);
+    expect(screen.getAllByText("again")).toHaveLength(2);
+  });
+
+  it("pending: a stale answer leaves the line as Not sent and the words back in the field, and the next try replaces the line", async () => {
+    const seen = stub("send", (n) =>
+      n === 1 ? HttpResponse.json({ ok: false, outcome: "stale", turnId: "turn-8", askIds: [] }, { status: 409 }) : HttpResponse.json({ ok: true, outcome: "ok" }),
+    );
+    drawBoth();
+    const user = await type("steer left");
+    await user.click(sendButton());
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent(/The conversation moved on/));
+    expect(field()).toHaveValue("steer left");
+    expect(pendingRows()).toHaveLength(1);
+    expect(pendingRows()[0]).toHaveAttribute("data-pending", "notSent");
+    expect(pendingRows()[0]).toHaveTextContent("Not sent");
+    expect(working()).toBeNull();
+
+    await user.click(sendButton());
+    await waitFor(() => expect(seen).toHaveLength(2));
+    await waitFor(() => expect(pendingRows()[0]).toHaveAttribute("data-pending", "sent"));
+    expect(pendingRows()).toHaveLength(1); // the line that never left is gone, this try stands in its place
+  });
+
+  it("pending: an unknown outcome says sending, not confirmed, and the retry keeps one line under the same request id", async () => {
+    const seen = stub("send", (n) =>
+      n === 1 ? HttpResponse.json({ ok: false, outcome: "unknown" }, { status: 504 }) : HttpResponse.json({ ok: true, outcome: "ok" }),
+    );
+    drawBoth();
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(pendingRows()[0]).toHaveAttribute("data-pending", "unconfirmed"));
+    expect(pendingRows()[0]).toHaveTextContent("Sending, not confirmed");
+    expect(field()).toHaveValue("hello");
+    expect(working()).toBeNull();
+
+    await user.click(sendButton());
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]!.requestId).toBe(seen[0]!.requestId);
+    await waitFor(() => expect(pendingRows()[0]).toHaveAttribute("data-pending", "sent"));
+    expect(pendingRows()).toHaveLength(1);
+  });
+
+  it("pending: a refusal keeps the draft and marks the line Not sent", async () => {
+    stub("send", () => HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "Name a turn." }, { status: 409 }));
+    drawBoth();
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(pendingRows()[0]).toHaveAttribute("data-pending", "notSent"));
+    expect(field()).toHaveValue("hello");
+    expect(loadDraft(undefined, "c1")).toBe("hello");
+  });
+});
+
+describe("working row", () => {
+  it("working: three dots end the thread while the newest thing is the person's line and the pane works, and go when a reply grows", async () => {
+    const { live } = drawBoth([turn("u1", "user", "go")]);
+    act(() => live.setWorking(true));
+    expect(working()).toBeInTheDocument();
+    expect(screen.queryByText("Still working…")).toBeNull(); // the dots replace the static line on a durable pane
+    expect(document.querySelectorAll('[data-slot="stream-working"] .working-dots > span')).toHaveLength(3);
+
+    act(() => live.setEntries([turn("u1", "user", "go"), turn("r1", "assistant", "Sure, let me", { partial: true })]));
+    expect(working()).toBeNull(); // the growing reply says it is working by itself
+    expect(screen.queryByText("Still working…")).toBeNull();
+  });
+
+  it("working: a pane that works with a tool step newest keeps the static line, and an idle pane shows no row", async () => {
+    const tool: ChatEntry = turn("t1", "assistant", "", { parts: [{ kind: "tool", name: "write_note", summary: "x", id: "t1" }] });
+    const { live } = drawBoth([turn("u1", "user", "go"), tool]);
+    expect(working()).toBeNull();
+    act(() => live.setWorking(true));
+    expect(working()).toBeNull();
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+  });
+
+  it("working: the dots keep the static row's box, so the swap moves nothing", () => {
+    const { live } = drawBoth([turn("u1", "user", "go")]);
+    act(() => live.setWorking(true));
+    const row = document.querySelector('[data-slot="stream-working"]')!;
+    expect(row.className).toContain("mt-1 flex items-center gap-2 py-2");
+    expect(row.querySelector(".working-dots")!.className).toContain("h-4");
+  });
+});
+
+describe("partial replies", () => {
+  const reply = (text: string, over: Partial<ChatEntry> = {}) => turn("r1", "assistant", text, over);
+  const cursors = () => document.querySelectorAll('[data-partial="true"]');
+
+  it("partial: a reply being written has a cursor, grows in place under one id, and the final version drops the cursor", () => {
+    const { live } = drawBoth([turn("u1", "user", "go"), reply("Hel", { partial: true })]);
+    act(() => live.setWorking(true));
+    expect(cursors()).toHaveLength(1);
+    expect(cursors()[0]).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Hel")).toBeInTheDocument();
+
+    act(() => live.setEntries([turn("u1", "user", "go"), reply("Hello, wor", { partial: true })]));
+    expect(screen.queryByText("Hel")).toBeNull();
+    expect(screen.getAllByText("Hello, wor")).toHaveLength(1); // the same row, longer: never a second one
+    expect(cursors()).toHaveLength(1);
+
+    act(() => live.setEntries([turn("u1", "user", "go"), reply("Hello, world")]));
+    expect(screen.getAllByText("Hello, world")).toHaveLength(1);
+    expect(cursors()).toHaveLength(0);
+    expect(document.querySelectorAll("[data-block]")).toHaveLength(2); // the user line and the reply: replaced, not added
+  });
+
+  it("partial: a reply the pane stopped writing loses its cursor even if the final version never came", () => {
+    const { live } = drawBoth([turn("u1", "user", "go"), reply("Half of", { partial: true })]);
+    act(() => live.setWorking(true));
+    expect(cursors()).toHaveLength(1);
+    act(() => live.setWorking(false));
+    expect(cursors()).toHaveLength(0);
+    expect(screen.getByText("Half of")).toBeInTheDocument();
+  });
+
+  it("partial: a finished reply is drawn exactly as before, with no wrapper marks", () => {
+    drawBoth([reply("All of it")]);
+    expect(screen.getByText("All of it").closest("[data-partial]")).toBeNull();
+    expect(document.querySelector("[aria-busy]")).toBeNull();
   });
 });

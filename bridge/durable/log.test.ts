@@ -189,6 +189,88 @@ describe("append", () => {
   });
 });
 
+describe("a reply that grows (partial and replace)", () => {
+  const grown = (id: string, body: string, partial = true): DurableEvent => ({
+    type: "item",
+    item: partial ? { id, kind: "reply", text: body, partial: true } : { id, kind: "reply", text: body },
+  });
+  /** The latest version of each item in the file, in order of first appearance: what a reader holds. */
+  const held = (list: readonly LogRow[]): Map<string, LogRow> => {
+    const out = new Map<string, LogRow>();
+    for (const row of list) if (row.k === "item") out.set(row.item.id, row);
+    return out;
+  };
+
+  test("each version is a row for the SAME id, and the final one has no partial: one item, not a row per version", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Hel")]);
+    await log.apply([grown("r1", "Hello, wor")]);
+    await log.apply([grown("r1", "Hello, world", false)]);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["r1", "r1", "r1"]);
+    expect([...held(written).keys()]).toEqual(["r1"]);
+    const last = held(written).get("r1");
+    expect(last?.k === "item" && last.item.kind === "reply" && [last.item.text, "partial" in last.item]).toEqual(["Hello, world", false]);
+  });
+
+  test("versions in one batch write one row: only the last is news, so the file grows with the polls and not with the writes", async () => {
+    const { log, path } = await newLog();
+    expect(await log.apply([grown("r1", "H"), grown("r1", "He"), grown("r1", "Hel"), text("other", "x")])).toBe(2);
+    expect(await log.apply([grown("r1", "Hell"), grown("r1", "Hello", false)])).toBe(1);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["r1", "other", "r1"]);
+    const last = held(written).get("r1");
+    expect(last?.k === "item" && "partial" in last.item).toBe(false);
+  });
+
+  test("the same version twice writes once, and a final version identical in text still replaces a partial one", async () => {
+    const { log, path } = await newLog();
+    expect(await log.apply([grown("r1", "Hello")])).toBe(1);
+    expect(await log.apply([grown("r1", "Hello")])).toBe(0);
+    expect(await log.apply([grown("r1", "Hello", false)])).toBe(1);
+    expect(itemIds(await rows(path))).toEqual(["r1", "r1"]);
+  });
+
+  test("a reopened log reads the partial flag back, so a repeat is skipped and a new version still lands", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Hel")]);
+    const again = new PaneLog(path);
+    expect(await again.apply([grown("r1", "Hel")])).toBe(0);
+    expect(await again.apply([grown("r1", "Hello", false)])).toBe(1);
+    expect(itemIds(await rows(path))).toEqual(["r1", "r1"]);
+  });
+
+  test("a reset view that does not list a partial reply finishes it once, as it stood, without partial", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Half of an ans"), text("i2", "two")]);
+    await log.apply([{ type: "reset" }, text("i2", "two"), { type: "synced" }]);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["r1", "i2", "r1"]);
+    const last = held(written).get("r1");
+    expect(last?.k === "item" && last.item.kind === "reply" && [last.item.text, "partial" in last.item]).toEqual(["Half of an ans", false]);
+    // Once only: another reset writes nothing more for it.
+    expect(await log.apply([{ type: "reset" }, text("i2", "two"), { type: "synced" }])).toBe(0);
+  });
+
+  test("a reset view that lists the reply keeps its version, even a partial one", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Half")]);
+    await log.apply([{ type: "reset" }, grown("r1", "Half of it"), { type: "synced" }]);
+    const last = held(await rows(path)).get("r1");
+    expect(last?.k === "item" && last.item.kind === "reply" && [last.item.text, last.item.partial]).toEqual(["Half of it", true]);
+  });
+
+  test("a user line that gains its request id is a replacement of the same id", async () => {
+    const { log, path } = await newLog();
+    await log.apply([text("u1", "hi", "user")]);
+    await log.apply([{ type: "item", item: { id: "u1", kind: "user", text: "hi", requestId: "req-1" } }]);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["u1", "u1"]);
+    const last = held(written).get("u1");
+    expect(last?.k === "item" && last.item.kind === "user" && last.item.requestId).toBe("req-1");
+  });
+});
+
 describe("reset", () => {
   test("a reset view upserts its items, and an item it no longer lists stays in the log", async () => {
     const { log, path } = await newLog();

@@ -87,8 +87,12 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
 - **Markdown, code and a link.** When a ticket ends, a note with a list of next steps, a shell snippet and a
   link to the Collie docs follow the reply. They are three item kinds, `markdown`, `code` and `link`.
 - **Send, steer and Stop.** Text sent to an idle ticket starts a new turn. The scripted answer to a
-  follow-up takes ten seconds, so you have time to steer it or press Stop. Stop ends the turn, and
+  follow-up takes ten seconds to write, so you have time to steer it or press Stop. Stop ends the turn, and
   Chat shows a short "stopped" note.
+- **A reply that grows.** The model writes every answer in chunks, and the pane writes the reply item again under
+  the same id as it grows, with `partial: true`, at most every 250 ms. The last version has no `partial`. Chat draws
+  a cursor at the end while it grows, and Stop cuts the reply where it is. The `user` item carries the `requestId` of
+  the send, so the phone swaps its own pending line for it (WIRE.md 7.13).
 - **Starters on the New page.** "New triage" opens another ticket. "Two notes at once" makes the
   model ask two questions at the same time. "A choice and a line of text" asks after its note
   which queue the ticket goes to (a `choice`, three buttons) and then for one line to send to the
@@ -154,7 +158,7 @@ Every variable is optional.
 | `DM_DATA` | `$XDG_STATE_HOME/durable-member`, else `~/.local/state/durable-member` | The folder for the conversations (`store/`) and the file `write_note` appends to (`notes.txt`). |
 | `DM_CALLER_CHECK` | `descendant` | `off` turns the descendant check off. Needed on any system but Linux. |
 | `DM_STEP_MS` | `400` | The pause before each scripted answer, so you can see the states change. |
-| `DM_SLOW_MS` | `10000` | How long the scripted answer to a follow-up takes, so Stop has something to stop. |
+| `DM_SLOW_MS` | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer is long, and streams in chunks. |
 | `DM_HELPER_MS` | the value of `DM_STEP_MS` | How long the helper's scripted answer takes. |
 | `REAL_MODEL` | not set | An OpenRouter model id. Not set means the scripted model. |
 | `OPENROUTER_API_KEY` | not set | Your OpenRouter key. Pi reads it only when `REAL_MODEL` is set. |
@@ -174,6 +178,9 @@ second program needs it. Copy the folder into your program. It imports nothing f
   panes. Call `ready()` once every pane is shown, so Collie never sees a half-empty layout.
 - A pane takes `event()` for items, `state()` for working and idle, and `ask()`, which resolves with
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
+- An item `{ kind: "reply" | "thinking" | "notice" | "markdown", partial: true }` is text still growing: write the same
+  `id` again as it grows (not faster than every 250 ms), and once more with the final text and no `partial`. A
+  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.13). `pi-durable/index.ts` does both.
 - `subtitle(text | null)` sets one line under the title (at most 120 characters), and `badge({ count } | { text } | null)`
   a small mark next to it (a count from 0 to 9999, or at most 12 characters). Each raises `rev` only when the value changes.
 - `event({ type: "item", item })` also takes `{ kind: "markdown", text }`, `{ kind: "code", lang?, text }` (the
