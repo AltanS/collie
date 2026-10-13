@@ -45,6 +45,30 @@ describe("the package", () => {
   });
 });
 
+describe("the docs quote the package.json", () => {
+  // The name is written once, in the package's package.json; a rename is that edit, and this test names every page
+  // that still says the old one.
+  const pages = ["docs/durable-programs.md", "examples/durable-member/README.md", "packages/durable-sdk/README.md"];
+  for (const page of pages) {
+    test(`${page} installs the package under its dist-tag and imports it by its name`, () => {
+      const text = readFileSync(new URL(`../../../${page}`, import.meta.url), "utf8");
+      expect(text).toContain(`npm install ${pkg.name}@experimental`);
+      expect(text).toContain(`from "${pkg.name}"`);
+    });
+  }
+
+  test("the docs' first program is the example's hello.ts with the npm import, ten lines of code", () => {
+    const hello = readFileSync(new URL("../hello.ts", import.meta.url), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "" && !line.trim().startsWith("//"))
+      .map((line) => (line.startsWith("import ") ? `import { openCollie } from "${pkg.name}";` : line));
+    expect(hello).toHaveLength(10);
+    const docs = readFileSync(new URL("../../../docs/durable-programs.md", import.meta.url), "utf8");
+    const block = /Save this program as `hello\.mjs`\. It is ten lines:\n\n```js\n([\s\S]*?)```/.exec(docs)?.[1] ?? "";
+    expect(block.split("\n").filter((line) => line.trim() !== "")).toEqual(hello);
+  });
+});
+
 describe("the versions", () => {
   test("SDK_VERSION in the source is the package's version, so a program that imports the source reads the same", () => {
     expect(SDK_VERSION).toBe(pkg.version);

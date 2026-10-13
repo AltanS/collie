@@ -6,15 +6,35 @@ The wire carries a version header, so a program can refuse a version it does not
 
 ## Quickstart
 
-You need Linux and Bun 1.4 or later. Run the smallest program from a clone of Collie:
+You need Linux, and Node 22.18 or later or Bun 1.4 or later. Install the SDK in your program's folder:
 
 ```bash
-cd examples/durable-member
-bun install --frozen-lockfile
-bun hello.ts
+npm install @colliepwa/durable-sdk@experimental
+# or
+bun add @colliepwa/durable-sdk@experimental
 ```
 
-It prints `listening /run/user/1000/hello/app.sock` and waits. In a second terminal, attach it to your Collie, then restart so Collie reads the new source:
+The package is experimental. It is published under the npm dist-tag `experimental`, never `latest`, and it follows the exit in [ADR 0104](../.adr/0104-a-program-is-a-session.md): if the durable wire goes, the package is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+
+Save this program as `hello.mjs`. It is ten lines:
+
+```js
+import { openCollie } from "@colliepwa/durable-sdk";
+
+const socket = process.env.COLLIE_DURABLE_SOCKET ?? `${process.env.XDG_RUNTIME_DIR}/hello/app.sock`;
+const collie = await openCollie({ socket, hostName: "hello", caps: { asks: true } });
+const pane = collie.workspace("hello", { title: "Hello" }).tab("main", { title: "Questions" }).pane("deploy", { title: "Deploy", harness: "hello" });
+collie.ready();
+console.log(`listening ${collie.address}`);
+const options = [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }];
+const answer = await pane.ask({ kind: "choice", toolCallId: "deploy-1", itemId: "deploy-1", title: "Deploy to staging?", options });
+console.log(`answer: ${answer.optionIds[0]}`);
+await collie.close();
+```
+
+Run it with `node hello.mjs` or `bun hello.mjs`. It prints `listening /run/user/1000/hello/app.sock` and waits. On Node it first writes one more line: Node cannot read who connects to the program's socket, so any process of your user can answer its question. Bun can, and refuses an answer from the program itself or from a process it started. The same program is `examples/durable-member/hello.ts` in a clone of Collie.
+
+In a second terminal, attach it to your Collie, then restart so Collie reads the new source:
 
 ```bash
 collie durable attach hello --socket /run/user/1000/hello/app.sock

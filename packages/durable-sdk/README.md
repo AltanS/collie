@@ -16,7 +16,8 @@ npm install @colliepwa/durable-sdk@experimental
 bun add @colliepwa/durable-sdk@experimental
 ```
 
-It needs Node 22.18 or later, or Bun 1.4 or later, on Linux or macOS. It has no runtime dependency.
+It needs Node 22.18 or later, or Bun 1.4 or later, on Linux. It has no runtime dependency. On macOS, Node runs it, and
+Bun runs it with `callerCheck: "off"`, because the descendant check needs Linux.
 
 ## A first program
 

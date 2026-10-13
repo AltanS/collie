@@ -229,7 +229,7 @@
       }
     },
     {
-      // The durable SDK (M55 spec 10, ADR 0105) came from `examples/durable-member/sdk/`, which `examples/**` kept out of
+      // The durable SDK (M55 spec 10, ADR 0105) came from the durable example, which `examples/**` kept out of
       // lint: it is written to the wire (WIRE.md), not to this codebase's rules. Moved under `packages/`, it is linted, and
       // these are the rules its source broke on the day it moved, each turned off for `packages/durable-sdk/src/` only.
       // core/ IS the parser of the wire's untrusted JSON (every `typeof`, `unknown` and dictionary type sits in its own

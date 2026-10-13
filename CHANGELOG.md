@@ -52,7 +52,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable examples are a small support desk.** Each ticket carries a customer's name and its topic, the question reads "Save this note to the ticket?" with Save and Don't save, Escalate says so on the line under the name, a look-up is named after its customer and closes once it answered, and the starters are Sign-in problem, Double charge and Address change. The Bun and the Cloudflare example share the same script, and the wire ids are unchanged.
 - **Each durable program keeps its own log folder and its own question guard.** Pane logs move from `durable/` into `durable/<program>/` once at boot, into `default` on a durable-only instance. Chat finds a pane's log by its file, and the push guard keys a question by host, program and tool call, so two programs that use the same ids never read, close or silence each other. A guard file from an older build reads as the `default` program.
 - **A durable program runs beside your terminal mux in one Collie.** List each program in `sources.json` and it appears as its own space on the phone, no second instance and no crew needed.
-- **The durable examples start with a short hello.** `hello.ts` is 12 lines: it opens the socket, asks "Deploy to staging?" with Yes and No, prints the answer and exits. The Bun example runs a real model through OpenRouter or a ChatGPT sign-in when `REAL_MODEL` is set, and the scripted support desk stays as the default and the demo.
+- **The durable examples start with a short hello.** `hello.ts` is 10 lines: it opens the socket, asks "Deploy to staging?" with Yes and No, prints the answer and exits. The Bun example runs a real model through OpenRouter or a ChatGPT sign-in when `REAL_MODEL` is set, and the scripted support desk stays as the default and the demo.
 - **The Cloudflare durable example is parked under `experiments/`.** It moved out of `examples/` and out of CI, with a README banner: experimental, verified on 2026-10-13 with `agents` 0.28.0. Its adapter test runs only when `COLLIE_CLOUDFLARE_EXPERIMENT=1` is set. The Pi packages in both examples stay on the `@earendil-works` scope at 1.1.0.
 - **The phone asks each space what it can do.** A control asks the space it acts in, so a durable program beside a terminal gets only the controls it declares. The snapshot carries the answer for each space, and a bridge without it is asked as before.
 - **A durable program is a space of its own on the phone.** Its name, its runtime and an Experimental mark sit on the row, and one tap opens its conversations. Your terminal spaces look as before.
@@ -70,13 +70,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
-- **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.
+- **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a ten-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.
 - **A real Pi Durable program ran through the durable wire.** disler's proactive incident demo, 170 lines changed, one approval card on the phone shipped its deploy. Findings and two screenshots in `experiments/real-program-spike/`.
 - **Terminals is about terminals, and Programs holds everything about a program.** The reasons a program shows as unreachable, the two ways to reach one, the older durable-only form and the doctor rows moved to the Programs page, and the durable notes on the Terminals page are one paragraph that links there.
 - **ADR 0104 names the public words and widens its exit.** The docs call a session's place a terminal or a program and keep the word session for one agent conversation, and the homepage block on colliepwa.dev goes with the docs page if the exit fires.
 - **The docs use the word session for one agent conversation only.** Two stray uses for a terminal grouping now name the tool, and the embed list counts seventeen pages.
 - **The changelog says space, program and terminal where it said session.** The 1.22.0 bullets use the words of the Terminology page.
-- **The twelve-line program names one cap.** `hello.ts` says `caps: { asks: true }` and leaves the rest to the SDK's default of false.
+- **The ten-line program names one cap.** `hello.ts` says `caps: { asks: true }` and leaves the rest to the SDK's default of false.
+- **The Programs page installs the SDK from npm.** The quickstart runs `npm install @colliepwa/durable-sdk@experimental` and a ten-line program that imports the package, and says that on Node a program cannot read who connects to its socket. ADR 0105 records the package: its name, the `experimental` dist-tag, one import, optional Pi peers, who publishes, and the exit it shares with ADR 0104.
 
 ## [1.21.0] - 2026-10-13
 
