@@ -208,6 +208,7 @@ export function RootLayout() {
                 Reads the same shared-clock signals as the header dog, so the two always agree. */}
             <ConnectionBanner
               bridge={data.bridge}
+              muxFault={data.muxFault}
               host={data.scope.host}
               error={data.error}
               authError={data.authError}

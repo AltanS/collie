@@ -2542,6 +2542,7 @@ describe("doctor durable", () => {
       ["durable-token", "skipped"],
       ["durable-hello", "ok"],
       ["durable-ready", "ok"],
+      ["durable-lead", "skipped"],
     ]);
     expect(run.byCheck.get("durable-env")!.detail).toContain("transport: private socket");
     expect(run.byCheck.get("durable-url")!.detail).toContain("this peer uses the socket");
@@ -2566,6 +2567,7 @@ describe("doctor durable", () => {
         ["durable-token", "skipped"],
         ["durable-hello", "skipped"],
         ["durable-ready", "skipped"],
+        ["durable-lead", "skipped"],
       ]);
       const row = run.byCheck.get("durable-env")!;
       expect(row.detail).toContain("COLLIE_DURABLE_SOCKET");
@@ -2675,6 +2677,7 @@ describe("doctor durable", () => {
       ["durable-token", "skipped"],
       ["durable-hello", "ok"],
       ["durable-ready", "warn"],
+      ["durable-lead", "skipped"],
     ]);
     expect(run.byCheck.get("durable-ready")!.remedy).toContain("collie doctor");
     expect(run.code).toBe(EXIT.OK);

@@ -66,14 +66,24 @@ involved.**
    The push for an ask says "Permission needed in <pane>", where <pane> is the pane's push name,
    never the ask's title, its reason or a command line. The guard runs where the push is sent: a
    solo collie for its own panes, the lead for a peer's panes (CREW_PROTOCOL.md §5).
-6. **A restart re-ask is shown, not pushed.** The same tool call id arrives under a new ask id. The
-   phone shows the new ask. The guard sees the key it already pushed and stays quiet. The old ask
-   id answers `too-late`.
+6. **A restart re-ask is shown, not pushed.** The same tool call id arrives again after a restart.
+   The phone shows the ask. The guard sees the key it already pushed and stays quiet. With a random
+   ask id the old id answers `too-late`; with a derived one (below) it is the same ask, and the
+   answer lands.
 7. **The crew carries it with no version bump.** `CREW_PROTOCOL_VERSION` stays 2. `/answer` joins
    `FORWARDABLE`, so a lead forwards it to the member that owns the pane. An old lead passes `asks`
    through unchanged, because the merge spreads the whole pane; it draws nothing from the field and
    shows the pane as waiting. An old peer answers 404 to `/answer`, and the phone maps that
    to `stale`, as it does for Chat, with a line that says the machine needs an update.
+
+**A program SHOULD derive the ask id from the tool call it stands for (amended 2026-10-13, M50
+spec 14).** The example SDK takes SHA-256 over the pane id, a newline and the tool call id, and keeps
+the first 32 hex characters. A program that raises the same tool call again after a restart then
+raises the same ask id, with revision 1, and it raises every waiting ask before it says `ready`. An
+answer the phone sent across the restart names an id that is open again, so it is `taken` and the
+tool runs once, where a random id made it `too-late` with nothing run. A changed title or set of
+options still raises the revision. The guard of point 5 already keys on `(host, toolCallId)`, so
+it needs no change. WIRE.md section 6 states the rule; a random id stays allowed.
 
 ## Consequences
 

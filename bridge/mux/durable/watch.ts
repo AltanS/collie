@@ -53,6 +53,11 @@ export const REAL_WATCH_CLOCK: WatchClock = {
 /** What the watch needs from the adapter: one throttled read, and the clean layout it left behind. */
 export interface DurablePoller {
   poll(): Promise<MuxOutcome<MuxSnapshot>>;
+  /**
+   * The watch's own read, told the delay the watch arms after it. Over HTTPS the adapter serves that read
+   * to every other caller for that long, so the watch is the only dialer (adapter.ts). Absent: `poll()`.
+   */
+  census?(cadenceMs: number): Promise<MuxOutcome<MuxSnapshot>>;
   /** The two cadences of the poller's transport. */
   pollCadence(): PollCadence;
   held(): DurableSnapshot | null;
@@ -101,21 +106,23 @@ export class DurableWatch implements MuxSubscription {
     return attention === "watched" ? cadence.watchedMs : cadence.idleMs;
   }
 
-  private arm(): void {
+  private arm(delay: number): void {
     if (this.closed) return;
-    this.timer = this.clock.setTimeout(() => void this.census(), this.delay());
+    this.timer = this.clock.setTimeout(() => void this.census(), delay);
   }
 
   /**
    * One census. The watch reports itself up only after the first read succeeds, so a program that
    * is down does not flip health up and straight back down on every retry. Re-entrancy is guarded:
-   * the next timer is armed after this read ends, so a slow read never piles up.
+   * the next timer is armed after this read ends, so a slow read never piles up. The delay is read
+   * once, before the read, so the adapter is told the same delay the watch then arms.
    */
   private async census(): Promise<void> {
     if (this.closed || this.running) return;
     this.running = true;
+    const delay = this.delay();
     try {
-      const outcome = await this.poller.poll();
+      const outcome = await (this.poller.census?.(delay) ?? this.poller.poll());
       if (this.closed) return;
       if (!outcome.ok) {
         this.end(outcome.detail);
@@ -124,7 +131,7 @@ export class DurableWatch implements MuxSubscription {
       this.compare(outcome.value);
     } finally {
       this.running = false;
-      this.arm();
+      this.arm(delay);
     }
   }
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
+import { parseMarker } from "../bridge/crew/staleness.ts";
 import { FakeDurableProgram, testToken } from "../bridge/mux/durable/fixture.ts";
 import { durableFindings } from "./durable-findings.ts";
 import { context } from "./fakes.ts";
@@ -50,6 +51,7 @@ describe("doctor durable over https", () => {
       ["durable-token", "ok"],
       ["durable-hello", "ok"],
       ["durable-ready", "ok"],
+      ["durable-lead", "skipped"],
     ]);
     expect(row(findings, "durable-env").detail).toContain("transport: https with a bearer token");
     expect(row(findings, "durable-socket").detail).toContain("this peer uses COLLIE_DURABLE_URL");
@@ -68,9 +70,10 @@ describe("doctor durable over https", () => {
       ["durable-token", "error"],
       ["durable-hello", "skipped"],
       ["durable-ready", "skipped"],
+      ["durable-lead", "skipped"],
     ]);
     expect(row(findings, "durable-url").detail).toContain("· https ·");
-    expect(row(findings, "durable-token").detail).toBe("COLLIE_DURABLE_TOKEN is 20 bytes; it must be at least 32");
+    expect(row(findings, "durable-token").detail).toBe("COLLIE_DURABLE_TOKEN is 20 bytes; it must be at least 32 bytes, for example 64 hex characters from `openssl rand -hex 32`");
   });
 
   test("plain http off loopback fails the url row with the reason and dials nothing", async () => {
@@ -120,6 +123,7 @@ describe("doctor durable over https", () => {
       ["durable-token", "skipped"],
       ["durable-hello", "skipped"],
       ["durable-ready", "skipped"],
+      ["durable-lead", "skipped"],
     ]);
     expect(row(both, "durable-env").detail).toContain("are both set");
     const half = await durableFindings({ ctx: context(onUrl("https://x.example", undefined)) });
@@ -131,5 +135,41 @@ describe("doctor durable over https", () => {
     expect(row(findings, "durable-url")).toMatchObject({ status: "skipped", detail: "this peer uses the socket, and COLLIE_DURABLE_URL is not set" });
     expect(row(findings, "durable-token")).toMatchObject({ status: "skipped" });
     expect(row(findings, "durable-socket").status).toBe("error");
+  });
+});
+
+// M50 spec 14: a durable peer whose lead is below 1.21.0 names it. The release is the one the running
+// bridge heard in `X-Crew-Lead-Release` and wrote into its runtime marker; doctor reads the marker.
+describe("doctor durable: the lead's release (durable-lead)", () => {
+  // A token that breaks its rule: the six program rows stop before any dial, and the lead row is still read.
+  const quiet = () => context(onUrl("https://member.example.workers.dev", testToken().slice(0, 20)));
+  const BASE = { bootedAt: 1, pid: 2, mode: "peer", roster: [] };
+  const marker = (leadRelease?: string) => parseMarker(JSON.stringify(leadRelease === undefined ? BASE : { ...BASE, leadRelease }));
+
+  test("a peer whose lead is below 1.21.0 warns with the sentence, and says what to do", async () => {
+    const lead = row(await durableFindings({ ctx: quiet(), crew: { mode: "peer", marker: marker("1.20.2") } }), "durable-lead");
+    expect(lead.status).toBe("warn");
+    expect(lead.detail).toBe("the lead is 1.20.2; it shows durable panes without the question card and its Terminal tab polls; update the lead");
+    expect(lead.remedy).toBe("update the lead to 1.21.0 or later");
+  });
+
+  test("a peer whose lead is 1.21.0 or later is ok", async () => {
+    for (const release of ["1.21.0", "1.22.3", "2.0.0"]) {
+      const lead = row(await durableFindings({ ctx: quiet(), crew: { mode: "peer", marker: marker(release) } }), "durable-lead");
+      expect([release, lead.status]).toEqual([release, "ok"]);
+    }
+  });
+
+  test("skipped with the reason: a solo machine, the lead itself, and a lead that stated no release (a dev build)", async () => {
+    const solo = row(await durableFindings({ ctx: quiet() }), "durable-lead");
+    expect([solo.status, solo.detail]).toEqual(["skipped", "this machine is not in a crew, so there is no lead to show its panes"]);
+    const lead = row(await durableFindings({ ctx: quiet(), crew: { mode: "lead", marker: marker() } }), "durable-lead");
+    expect(lead.status).toBe("skipped");
+    expect(lead.detail).toContain("this machine is the lead");
+    for (const read of [marker(), null]) {
+      const dev = row(await durableFindings({ ctx: quiet(), crew: { mode: "peer", marker: read } }), "durable-lead");
+      expect(dev.status).toBe("skipped");
+      expect(dev.detail).toContain("dev build");
+    }
   });
 });

@@ -11,8 +11,19 @@ import type { Caps, Starter } from "./types.ts";
 export type { CallInfo, CoreState } from "./handle.ts";
 export { handle, hello } from "./handle.ts";
 export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
-export { AskClosed, mintId, Store } from "./layout.ts";
-export { digestOf, HttpError, MemoryReceiptStore, type ReceiptRecord, Receipts, type ReceiptStore } from "./receipts.ts";
+export { AskClosed, askIdFor, mintId, Store } from "./layout.ts";
+export {
+  digestOf,
+  type DroppedReceipt,
+  HttpError,
+  isDropped,
+  MemoryReceiptStore,
+  RECEIPTS_PER_GROUP,
+  type ReceiptRecord,
+  Receipts,
+  type ReceiptStore,
+  STARTER_GROUP,
+} from "./receipts.ts";
 export { assertId, bytes, CAPS, cut, idOk, LIMITS, safeId } from "./rules.ts";
 export * from "./types.ts";
 
@@ -24,6 +35,11 @@ export interface CoreOptions {
   caps?: Partial<Caps>;
   /** Where finished request ids are kept. Default: in memory. A store that outlives the process keeps them across a restart. */
   receipts?: ReceiptStore;
+  /**
+   * False for a program behind TLS with a token (WIRE.md 1B): an ask option with effect `allow-always` is then
+   * a TypeError when the ask is raised or changed, because the token is the only gate. Default true (the socket).
+   */
+  allowAlways?: boolean;
 }
 
 export interface CollieCore {
@@ -39,7 +55,7 @@ export interface CollieCore {
 }
 
 export function createCore(o: CoreOptions): CollieCore {
-  const store = new Store(o.tailLimit, o.receipts);
+  const store = new Store(o.tailLimit, o.receipts, o.allowAlways ?? true);
   const state: CoreState = {
     store,
     hostName: o.hostName,

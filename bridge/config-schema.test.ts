@@ -290,7 +290,7 @@ describe("the durable transport settings", () => {
   test("durable: a token under 32 bytes after a trim is refused by its byte count, never by its value", () => {
     const short = token().slice(0, 31);
     const refused = resolveDurableToken(`   ${short}   `);
-    expect(refused).toEqual({ ok: false, detail: "COLLIE_DURABLE_TOKEN is 31 bytes; it must be at least 32" });
+    expect(refused).toEqual({ ok: false, detail: "COLLIE_DURABLE_TOKEN is 31 bytes; it must be at least 32 bytes, for example 64 hex characters from `openssl rand -hex 32`" });
     expect(JSON.stringify(refused)).not.toContain(short);
     const spaced = resolveDurableToken(`${token()} ${token()}`);
     expect(spaced).toEqual({ ok: false, detail: "COLLIE_DURABLE_TOKEN must be printable ASCII with no spaces" });

@@ -217,9 +217,9 @@ peer's `.env`, and run `collie restart`.
 
 Every poll over https is a billed request: on Cloudflare one poll is one Worker request and one
 Durable Object request, and a "nothing changed" answer counts too. With no phone open the idle poll
-runs every 10 s, plus the bridge's own 12 s safety-net poll, so a peer asks about 16,000 times a
-day. That fits the Workers Paid plan, which is the honest recommendation for a program you poll all
-day. On the Free plan it leaves little room for anything else.
+runs every 10 s, and the bridge's own safety-net poll reuses its last answer, so a peer asks 8,640
+times a day. That fits the Workers Paid plan, which is the honest recommendation for a program you
+poll all day. On the Free plan it leaves little room for anything else.
 
 A Worker and a Durable Object that speak this wire, to run under `wrangler dev` first and then
 deploy, are in
@@ -276,7 +276,7 @@ with a reason:
 | `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set` | set the socket, or the URL with its token, not both |
 | `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN` | the URL needs its token |
 | `COLLIE_DURABLE_URL uses plain http to <host>` | use `https://`; plain http is for 127.0.0.1 or localhost only |
-| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32` | make a longer token, and give the program the same one |
+| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32 bytes, for example 64 hex characters from openssl rand -hex 32` | make a longer token, and give the program the same one |
 | `token-refused` | the program answered 401 or 403: the two sides hold different tokens |
 | `no socket at <path>` | nothing listens there yet |
 | `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |
@@ -288,7 +288,9 @@ with a reason:
 `collie doctor` checks the same things in six lines, `durable-env`, `durable-socket`,
 `durable-url`, `durable-token`, `durable-hello` and `durable-ready`, and names the failing check
 with a fix. `durable-env` says which way the peer reaches the program, and the lines for the other
-way are skipped with the reason.
+way are skipped with the reason. A seventh line, `durable-lead`, warns on a peer whose lead runs a
+release below 1.21.0: that lead shows durable panes without the question card, and its Terminal tab
+polls. The peer also writes that sentence to its log once. Update the lead.
 
 ### tuios notes
 

@@ -47,6 +47,9 @@ export const URL_MAX_BYTES = 2048;
 /** The shortest token, in bytes after trimming: 32 random bytes is the floor the docs ask for. */
 export const TOKEN_MIN_BYTES = 32;
 
+/** The token rule, as the config error and the docs state it (M50 spec 14). */
+export const TOKEN_RULE = `it must be at least ${String(TOKEN_MIN_BYTES)} bytes, for example 64 hex characters from \`openssl rand -hex 32\``;
+
 /** The longest token, in bytes. A header past this is a mistake, not a token. */
 export const TOKEN_MAX_BYTES = 4096;
 
@@ -134,7 +137,7 @@ export function resolveDurableToken(configured: string | undefined): DurableToke
   if (!TOKEN_CHARS.test(token)) return { ok: false, detail: `${DURABLE_TOKEN_ENV} must be printable ASCII with no spaces` };
   const bytes = byteLength(token);
   if (bytes < TOKEN_MIN_BYTES) {
-    return { ok: false, detail: `${DURABLE_TOKEN_ENV} is ${String(bytes)} bytes; it must be at least ${String(TOKEN_MIN_BYTES)}` };
+    return { ok: false, detail: `${DURABLE_TOKEN_ENV} is ${String(bytes)} bytes; ${TOKEN_RULE}` };
   }
   if (bytes > TOKEN_MAX_BYTES) return { ok: false, detail: `${DURABLE_TOKEN_ENV} is longer than ${String(TOKEN_MAX_BYTES)} bytes` };
   return { ok: true, bytes, reveal: () => token };

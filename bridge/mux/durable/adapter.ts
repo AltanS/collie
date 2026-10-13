@@ -147,10 +147,13 @@ export interface DurableBudget {
  *   Object request, and a 304 is billed like a 200. At the socket's 1 s that is about 86,400 Durable
  *   Object requests a day, 86% of the Free plan's 100,000, and about 2.6 million a month, past the
  *   Paid plan's 1 million. So the watch runs every 2 s while a phone watches and every 10 s
- *   otherwise (8,640 a day idle, plus the bridge's own 12 s safety-net poll). Reads and writes get
- *   5000 ms, because a Durable Object that slept wakes cold and the request crosses the internet. A
- *   program that is down, or refuses the token, is asked once per 10 s, never at the bridge's 1.5 s
- *   fast poll: refused requests are billed too, and a storm of them can spend a Free day.
+ *   otherwise, and THE WATCH IS THE ONLY DIALER: the bridge's own 12 s safety-net poll is served the
+ *   watch's last good read (`poll()`), so an idle peer reads once per 10 s in total, 8,640 Durable
+ *   Object requests a day. Only the watch (`census()`) and `refresh()`, a person's look, start a read.
+ *   Reads and writes get 5000 ms, because a Durable Object that slept wakes cold and the request
+ *   crosses the internet. A program that is down, or refuses the token, is asked once per 10 s, never
+ *   at the bridge's 1.5 s fast poll: refused requests are billed too, and a storm of them can spend a
+ *   Free day.
  *
  * The loopback `http://` of `wrangler dev` takes the https row: it stands in for the deployed program.
  */
@@ -203,7 +206,10 @@ interface Held {
 }
 
 interface Reading {
+  /** When the read began: the 250 ms floor and the down-gap count from here. */
   readonly at: number;
+  /** When it ended: over HTTPS, the age `poll()` serves it to counts from here. */
+  readonly endedAt: number;
   readonly outcome: MuxOutcome<MuxSnapshot>;
 }
 
@@ -273,6 +279,10 @@ export class DurableMux implements MuxAdapter {
   /** Transport failures in a row: a connect, a timeout or a cut reply. A real answer resets it. */
   private failures = 0;
   private readonly events: DurableEventReader | null;
+  /** Over HTTPS every read is billed, so only the watch and `refresh()` start one (see `poll()`). */
+  private readonly watchDials: boolean;
+  /** The delay the watch armed with its last census: how old a good read `poll()` may serve over HTTPS. */
+  private watchCadenceMs: number;
 
   /**
    * `log` is where a pane's events go. Without one the adapter reads the layout only, which is what a
@@ -284,6 +294,8 @@ export class DurableMux implements MuxAdapter {
     log: DurableEventSink | null = null,
   ) {
     this.budget = DURABLE_BUDGETS[transport.kind ?? "socket"];
+    this.watchDials = transport.kind === "https";
+    this.watchCadenceMs = this.budget.idlePollMs;
     this.capabilities = durableCapabilities(this.budget.idlePollMs);
     this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program(), this.budget.readTimeoutMs);
   }
@@ -319,13 +331,40 @@ export class DurableMux implements MuxAdapter {
   }
 
   /**
+   * One read of the program, as an outcome: what `snapshot()`, `reachable()` and the bridge's own poll
+   * ask for.
+   *
+   * Over the socket it is {@link census} without the cadence. OVER HTTPS THE WATCH IS THE ONLY DIALER:
+   * a good read younger than the watch's cadence (2 s watched, 10 s idle, counted from the end of the
+   * read) is served again, so the bridge's 12 s safety-net poll adds no billed request between two
+   * census reads. Past that age, or after a read that failed, it reads as `census` does.
+   */
+  poll(): Promise<MuxOutcome<MuxSnapshot>> {
+    if (this.inflight !== null) return this.inflight;
+    const last = this.last;
+    if (this.watchDials && last !== null && last.outcome.ok && this.clock.now() - last.endedAt < this.watchCadenceMs) {
+      return Promise.resolve(last.outcome);
+    }
+    return this.throttled();
+  }
+
+  /**
+   * The watch's own read (watch.ts). `cadenceMs` is the delay the watch arms after it, which over HTTPS is
+   * how long `poll()` serves this read to everyone else.
+   */
+  census(cadenceMs: number): Promise<MuxOutcome<MuxSnapshot>> {
+    this.watchCadenceMs = cadenceMs;
+    return this.throttled();
+  }
+
+  /**
    * One read of the program, as an outcome. At most one read runs at a time, and a second call
    * inside the 250 ms floor answers the first read again instead of asking the program (a failed read
    * counts: a program that is down is asked once per interval, not once per caller). After a read
    * that ended `unreachable` the floor is the transport's down-gap instead, which is the same 250 ms
    * on the socket and 10 s over HTTPS, where every refused request is billed.
    */
-  poll(): Promise<MuxOutcome<MuxSnapshot>> {
+  private throttled(): Promise<MuxOutcome<MuxSnapshot>> {
     if (this.inflight !== null) return this.inflight;
     if (this.last !== null && this.gapLeft(this.last.outcome.ok ? MIN_SNAPSHOT_GAP_MS : this.budget.downGapMs) > 0) {
       return Promise.resolve(this.last.outcome);
@@ -625,7 +664,7 @@ export class DurableMux implements MuxAdapter {
   private async read(): Promise<MuxOutcome<MuxSnapshot>> {
     const at = this.clock.now();
     const outcome = await this.readOnce();
-    this.last = { at, outcome };
+    this.last = { at, endedAt: this.clock.now(), outcome };
     return outcome;
   }
 

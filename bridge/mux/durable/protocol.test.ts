@@ -240,6 +240,20 @@ describe("snapshot fixture", () => {
     expect(closed.ok && closed.value.starters).toEqual([]);
   });
 
+  // M50 spec 14: wire v1 reserves `sessionId` on every pane for the machine-scoped session id. The adapter reads a
+  // pane with it, null or a string, exactly as one without it, and keeps nothing of it today.
+  test("a pane's reserved sessionId, null or a string, is read and ignored", () => {
+    const plain = toMuxSnapshot(read());
+    for (const sessionId of [null, "s-1"]) {
+      const snapshot = read((raw) => {
+        for (const pane of raw.panes) Object.assign(pane, { sessionId });
+      });
+      expect(snapshot.panes.map((pane) => pane.id)).toEqual(read().panes.map((pane) => pane.id));
+      expect(snapshot.panes.every((pane) => !("sessionId" in pane))).toBe(true);
+      expect(toMuxSnapshot(snapshot)).toEqual(plain);
+    }
+  });
+
   test("a snapshot without rev, epoch or its lists is not a snapshot", () => {
     for (const text of [
       "not json",

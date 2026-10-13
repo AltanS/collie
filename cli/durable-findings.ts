@@ -34,6 +34,9 @@ import {
   SPEAKS,
   type DurableHello,
 } from "../bridge/mux/durable/protocol.ts";
+import type { CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
+import { DURABLE_LEAD_MINIMUM, leadIsOld, oldLeadSentence } from "../bridge/durable/old-lead.ts";
+import type { CrewMode } from "../bridge/types.ts";
 import type { CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
 
@@ -59,6 +62,11 @@ export interface DurableDeps {
   readonly ctx: CliContext;
   /** `lstat` and the user id. The verb passes the system's; a test can pass its own. */
   readonly probe?: SocketProbe;
+  /**
+   * This machine's crew mode and the running bridge's marker, for the `durable-lead` row. Absent reads
+   * as solo: the row is then skipped with that reason.
+   */
+  readonly crew?: { readonly mode: CrewMode; readonly marker: CrewRuntimeMarker | null };
 }
 
 const ENV_ROW = "durable-env";
@@ -67,14 +75,42 @@ const URL_ROW = "durable-url";
 const TOKEN_ROW = "durable-token";
 const HELLO_ROW = "durable-hello";
 const READY_ROW = "durable-ready";
+const LEAD_ROW = "durable-lead";
 
 const FIRST = "fix the row above first";
 
 /** Why the two HTTPS rows are skipped on a socket peer. */
 const ON_SOCKET = `this peer uses the socket, and ${DURABLE_URL_ENV} is not set`;
 
-/** The six rows, in order. */
+/** The six rows, in order, then `durable-lead`. */
 export async function durableFindings(deps: DurableDeps): Promise<Finding[]> {
+  return [...(await programFindings(deps)), leadRow(deps.crew)];
+}
+
+/**
+ * Whether the lead can show this peer's durable panes: the release it stated (M50 spec 14). A lead below
+ * {@link DURABLE_LEAD_MINIMUM} shows them without the question card, and its Terminal tab polls. The
+ * release comes from the running bridge's marker, which hears it on the lead's sweep
+ * (bridge/durable/old-lead.ts).
+ */
+function leadRow(crew: DurableDeps["crew"]): Finding {
+  const mode = crew?.mode ?? "solo";
+  if (mode === "solo") return skipped(LEAD_ROW, "this machine is not in a crew, so there is no lead to show its panes", "nothing to do");
+  if (mode === "lead") return skipped(LEAD_ROW, "this machine is the lead, and it shows its own durable panes", "nothing to do");
+  const release = crew?.marker?.leadRelease;
+  if (release === undefined) {
+    return skipped(
+      LEAD_ROW,
+      "the lead has stated no release: it runs a dev build, it is updating, or it has not called since the bridge started",
+      "nothing to do",
+    );
+  }
+  if (leadIsOld(release)) return warn(LEAD_ROW, oldLeadSentence(release), `update the lead to ${DURABLE_LEAD_MINIMUM} or later`);
+  return ok(LEAD_ROW, `the lead is ${release}, which shows the question card`);
+}
+
+/** The six rows about the program, in order. */
+async function programFindings(deps: DurableDeps): Promise<Finding[]> {
   const dotenv = join(deps.ctx.configDir, ".env");
   const choice = chooseDurableTransport(deps.ctx.env);
   if (choice.kind === "conflict") {

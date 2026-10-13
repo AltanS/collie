@@ -49,7 +49,7 @@ import {
   releaseManagedFrontDoor,
   shouldReleaseFrontDoor,
 } from "./front-door.ts";
-import { DURABLE_LOG_DIR_OPTION } from "./mux/durable/adapter.ts";
+import { DURABLE_LOG_DIR_OPTION, DURABLE_MUX } from "./mux/durable/adapter.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
 import { deriveConfigRoot } from "./mux/herdr/sessions.ts";
@@ -77,6 +77,7 @@ import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
 import { askFloodMessage, AskPush, LOCAL_ASK_HOST } from "./durable/ask-push.ts";
 import { AskGuardStore } from "./durable/guard.ts";
+import { OldLeadNotice } from "./durable/old-lead.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
@@ -1097,6 +1098,21 @@ const crewFollower =
       })
     : undefined;
 
+/**
+ * A durable peer names a lead too old to show its panes properly (M50 spec 14, bridge/durable/old-lead.ts).
+ * `undefined` on every other machine: a lead, a solo instance, or a peer that drives another mux.
+ */
+const oldLead = crew.mode === "peer" && cfg.mux === DURABLE_MUX ? new OldLeadNotice() : undefined;
+
+/** The lead's two follow headers, handed to whichever of the follower and the old-lead notice exist. */
+const onFollow =
+  crewFollower === undefined && oldLead === undefined
+    ? undefined
+    : (a: { readonly leadRelease: string | null; readonly turn: string | null }): void => {
+        oldLead?.observe(a.leadRelease);
+        crewFollower?.observe(a);
+      };
+
 async function updatePreflightReport(fresh: boolean) {
   if (!canRunUpdate) return null;
   if (fresh && freshPreflightGate.admit()) {
@@ -1455,13 +1471,16 @@ const activatedGeneration =
 
 runtimeFacts = () => {
   const facts = leadContact.facts();
-  return {
+  const held: CrewRuntimeFacts = {
     anchoredGeneration: activatedGeneration,
     leadLastDialledAt: facts.lastDialledAt,
     leadRefusedSecretAt: facts.leadRefusedSecretAt,
     deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
     pairingCollision,
   };
+  // For `collie doctor`'s `durable-lead` row: only a durable peer that has heard its lead state one.
+  const leadRelease = oldLead?.leadRelease() ?? null;
+  return leadRelease === null ? held : { ...held, leadRelease };
 };
 void checkpointRuntime();
 
@@ -2124,10 +2143,11 @@ const server = startServer({
             updateRun: () => peerRunWire(readUpdateRun(cfg.stateDir)),
             // ADR 0084: this machine's own last load sample, the one the sampler already holds.
             machineStats: () => machineSampler.latest(),
-            // §20's two REQUEST headers, handed to this peer's own follow. A build with no follower
-            // — a lead, or a checkout with nothing compiled — passes `undefined` and ignores both,
-            // which is a correct peer.
-            onFollow: crewFollower === undefined ? undefined : (a) => crewFollower.observe(a),
+            // §20's two REQUEST headers, handed to this peer's own follow, and the release header to a
+            // durable peer's old-lead notice. A build with neither — a lead, or a checkout with nothing
+            // compiled that drives no durable program — passes `undefined` and ignores both, which is
+            // a correct peer.
+            onFollow,
             onMembershipChange: crewStoreChanged,
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),

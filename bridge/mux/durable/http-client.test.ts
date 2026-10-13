@@ -5,9 +5,10 @@ import type { MuxOutcome, MuxSnapshot } from "../types.ts";
 import { createDurableMux, DURABLE_BUDGETS, describeDurableTarget, DurableMux, MIN_SNAPSHOT_GAP_MS, STARTER_TIMEOUT_MS } from "./adapter.ts";
 import { DurableOutcomeUnknown, DurableSocketClient, DurableUnreachable, type DurableGet, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
 import type { DurableEventSink } from "./events.ts";
-import { FakeDurableClock, FakeDurableProgram, testToken } from "./fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, helloFixture, snapshotFixture, testToken } from "./fixture.ts";
 import { DURABLE_TOKEN_ENV, DURABLE_URL_ENV, DurableHttpClient, strongEtag, TOKEN_REFUSED } from "./http-client.ts";
 import type { DurableEvent } from "./protocol.ts";
+import { DurableWatch, type WatchClock, type WatchTimer } from "./watch.ts";
 
 // THE SECOND TRANSPORT (WIRE.md section 1B, ADR 0103): the same wire over HTTP with a bearer token,
 // against the fake program served by `Bun.serve` on 127.0.0.1. Every token here is minted at run
@@ -167,9 +168,11 @@ describe("the http transport: a refused token", () => {
     const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
     expect((await adapter.poll()).ok).toBe(true);
     program.rotateToken(testToken());
-    clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+    // Each read one idle census apart: over https the watch is the only dialer, so a poll inside the
+    // cadence would be served the last good read and never reach the program.
+    clock.advance(DURABLE_BUDGETS.https.idlePollMs);
     expect((await adapter.poll()).ok).toBe(true);
-    clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+    clock.advance(DURABLE_BUDGETS.https.idlePollMs);
     expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the program answered 401`);
   });
 
@@ -210,7 +213,7 @@ describe("the http transport: the ETag", () => {
     const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
     expect((await adapter.poll()).ok).toBe(true);
     clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
-    expect((await adapter.poll()).ok).toBe(true);
+    await adapter.refresh(); // a look: past the floor it reads, as the watch's census does
     const snapshots = program.requests.filter((request) => request.path.endsWith("/snapshot"));
     expect(snapshots.map((request) => request.ifNoneMatch)).toEqual([null, `"${program.epoch}-${String(program.rev)}"`]);
   });
@@ -399,5 +402,146 @@ describe("the http transport: secrecy", () => {
     expect(captured.length).toBeGreaterThan(5);
     expect(text).toContain("bearer token (64 bytes)");
     expect(text).not.toContain(token);
+  });
+});
+
+// THE WATCH IS THE ONLY DIALER OVER HTTPS (M50 spec 14, decision 3). Every read there is a billed
+// request, and the bridge polls the adapter on its own 12 s safety net beside the watch's census. On a
+// fake clock, with the watch and the bridge's poll interleaved, the program must see one read per
+// census and nothing from the bridge. `refresh()`, a person's look, still reads at once.
+
+/** The bridge's relaxed safety-net poll (`COLLIE_POLL_IDLE_MS`, bridge/config.ts). */
+const BRIDGE_POLL_MS = 12_000;
+
+const BILLED_EPOCH = "b1f0c2d3e4a5968778695a4b3c2d1e0f";
+
+/** An https program in memory. It answers at once and notes the fake clock's time of every snapshot read. */
+class BilledProgram implements DurableTransport {
+  readonly reads: number[] = [];
+  constructor(
+    private readonly clock: FakeDurableClock,
+    readonly kind: "https" | "socket" = "https",
+  ) {}
+  get(request: DurableGet): Promise<DurableReply> {
+    if (request.path === "/hello") {
+      const doc = { ...helloFixture(), service: "collie-durable", protocol: { min: 1, max: 1 }, epoch: BILLED_EPOCH, ready: true };
+      return Promise.resolve({ status: 200, etag: null, text: JSON.stringify(doc) });
+    }
+    this.reads.push(this.clock.now());
+    const etag = `"${BILLED_EPOCH}-1"`;
+    if (request.ifNoneMatch === etag) return Promise.resolve({ status: 304, etag, text: "" });
+    return Promise.resolve({ status: 200, etag, text: JSON.stringify({ rev: 1, epoch: BILLED_EPOCH, ...snapshotFixture() }) });
+  }
+  post(_request: DurablePost): Promise<DurableReply> {
+    return Promise.reject(new DurableUnreachable("no writes here"));
+  }
+}
+
+/** The watch's one timer, on the fake clock: due times, fired when the clock reaches them. */
+class FakeTimers implements WatchClock {
+  private readonly due = new Map<WatchTimer, { readonly at: number; readonly fn: () => void }>();
+  constructor(private readonly clock: FakeDurableClock) {}
+  setTimeout(fn: () => void, ms: number): WatchTimer {
+    const token = globalThis.setTimeout(() => undefined, 0);
+    globalThis.clearTimeout(token);
+    this.due.set(token, { at: this.clock.now() + ms, fn });
+    return token;
+  }
+  clearTimeout(handle: WatchTimer): void {
+    this.due.delete(handle);
+  }
+  next(): number {
+    return Math.min(...[...this.due.values()].map((timer) => timer.at));
+  }
+  fireDue(): void {
+    for (const [handle, timer] of this.due) {
+      if (timer.at > this.clock.now()) continue;
+      this.due.delete(handle);
+      timer.fn();
+    }
+  }
+}
+
+const settled = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Run the watch and the bridge's 12 s poll side by side for `seconds` of fake time. Answers the time of
+ * each snapshot read the program saw, counted from the first census, and how often the bridge polled.
+ */
+async function interleave(attention: "watched" | "idle", seconds: number, kind: "https" | "socket" = "https"): Promise<{ reads: number[]; bridgePolls: number }> {
+  const clock = new FakeDurableClock();
+  const program = new BilledProgram(clock, kind);
+  const adapter = new DurableMux(program, clock);
+  const timers = new FakeTimers(clock);
+  const noop = (): void => undefined;
+  const watch = new DurableWatch(adapter, { panes: [], onUp: noop, onDown: noop, onTopologyChange: noop, onPaneChange: noop, attention: () => attention }, timers);
+  await settled();
+  const start = clock.now();
+  const end = start + seconds * 1000;
+  let bridgeAt = start + BRIDGE_POLL_MS;
+  let bridgePolls = 0;
+  for (;;) {
+    const watchAt = timers.next();
+    const at = Math.min(watchAt, bridgeAt);
+    if (at > end) break;
+    clock.advance(at - clock.now());
+    if (at === watchAt) {
+      timers.fireDue();
+    } else {
+      expect((await adapter.poll()).ok).toBe(true);
+      bridgeAt += BRIDGE_POLL_MS;
+      bridgePolls += 1;
+    }
+    await settled();
+  }
+  watch.close();
+  return { reads: program.reads.map((time) => time - start), bridgePolls };
+}
+
+/** The gaps between two reads in a row. */
+const gaps = (reads: readonly number[]): number[] => reads.slice(1).map((time, i) => time - (reads[i] ?? 0));
+
+describe("the http transport: the watch is the only dialer", () => {
+  test("dialer: idle, with the bridge's 12 s poll and the 10 s watch interleaved, the program sees one read per 10 s", async () => {
+    const { reads, bridgePolls } = await interleave("idle", 120);
+    expect(bridgePolls).toBe(10);
+    expect(reads).toHaveLength(13); // at 0, 10, 20 ... 120 s
+    expect(new Set(gaps(reads))).toEqual(new Set([DURABLE_BUDGETS.https.idlePollMs]));
+    // A day of it: 8,640 Durable Object requests, as ADR 0103 and the README say.
+    expect((24 * 60 * 60 * 1000) / DURABLE_BUDGETS.https.idlePollMs).toBe(8640);
+  });
+
+  test("dialer: watched, the program sees one read per 2 s, and the bridge's poll adds none", async () => {
+    const { reads, bridgePolls } = await interleave("watched", 60);
+    expect(bridgePolls).toBe(5);
+    expect(reads).toHaveLength(31); // at 0, 2, 4 ... 60 s
+    expect(new Set(gaps(reads))).toEqual(new Set([DURABLE_BUDGETS.https.watchedPollMs]));
+  });
+
+  test("dialer: one read per census, and a refresh() still reads at once past the floor", async () => {
+    const clock = new FakeDurableClock();
+    const program = new BilledProgram(clock);
+    const adapter = new DurableMux(program, clock);
+    expect((await adapter.census(DURABLE_BUDGETS.https.idlePollMs)).ok).toBe(true);
+    clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+    await adapter.poll(); // the bridge's poll, inside the cadence: served, not read
+    expect(program.reads).toHaveLength(1);
+    await adapter.refresh(); // a person's look: read now
+    expect(program.reads).toHaveLength(2);
+    await adapter.poll(); // and served again after it
+    expect(program.reads).toHaveLength(2);
+    clock.advance(DURABLE_BUDGETS.https.idlePollMs);
+    await adapter.poll(); // no watch read for a whole cadence: the poll reads, so nothing goes stale for good
+    expect(program.reads).toHaveLength(3);
+  });
+
+  test("dialer: over the socket nothing changes, and the bridge's own poll reads past the floor (one read each)", async () => {
+    const clock = new FakeDurableClock();
+    const program = new BilledProgram(clock, "socket");
+    const adapter = new DurableMux(program, clock);
+    expect((await adapter.poll()).ok).toBe(true);
+    clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+    expect((await adapter.poll()).ok).toBe(true);
+    expect(program.reads).toHaveLength(2);
   });
 });

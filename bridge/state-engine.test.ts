@@ -416,6 +416,20 @@ describe("StateEngine — snapshot shaping", () => {
     herdr.sessionSnapshot = () => Promise.reject(new Error("socket down"));
     await poll();
     expect(engine.current().bridge).toBe("disconnected");
+    expect(engine.current().muxFault).toBeUndefined();
+  });
+
+  test("names a refused token while the mux is down for it, and drops the name on the next good read", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    const good = herdr.sessionSnapshot.bind(herdr);
+    herdr.sessionSnapshot = () => Promise.reject(new Error("token-refused: the program answered 401"));
+    await poll();
+    expect([engine.current().bridge, engine.current().muxFault]).toEqual(["disconnected", "token-refused"]);
+    herdr.sessionSnapshot = good;
+    await poll();
+    expect(engine.current().bridge).toBe("connected");
+    expect("muxFault" in engine.current()).toBe(false);
   });
 });
 

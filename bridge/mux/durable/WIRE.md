@@ -112,13 +112,16 @@ has a public URL, so the token is the whole gate.
   tool output and the program's own model key sit with the host.
 - **A token does not expire by itself.** The person rotates it by deploying a new token to the
   program and setting the same value in the peer's `COLLIE_DURABLE_TOKEN`, then restarting the
-  peer. Until both sides change, the old token works.
+  peer. A program MAY take a second token while a rotation runs, so the peer keeps working while it
+  moves: the Cloudflare example takes `COLLIE_TOKEN` and, while it is set, `COLLIE_TOKEN_NEXT`, and
+  compares both in constant time.
 - **A public URL is billed when it is hit.** Requests with a wrong token still reach the host. A
   program SHOULD refuse them before it wakes any state.
 
 A program reached over 1B SHOULD NOT offer `allow-always`: with the token as the only gate, one
 answer from whoever holds it would let every later call through. The example program keeps Allow and
-Deny only on both transports.
+Deny only on both transports, and the Cloudflare example refuses the option outright: an ask that
+carries it is a `TypeError` when the program raises it.
 
 ## 2. Version negotiation
 
@@ -164,6 +167,10 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
 
 Any other method or path answers 404 `not-found`.
+
+Every pane in a `Snapshot` MAY carry `sessionId: string | null`: it is reserved for the
+machine-scoped session id and is null until a later version defines it. The adapter reads it and
+ignores it today.
 
 ### Error codes
 
@@ -276,6 +283,8 @@ interface Pane {
   turnId: string;
   /** Every open ask, oldest first. Empty when none. */
   openAsks: Ask[];
+  /** Reserved for the machine-scoped session id (section 3). Null until a later version defines it. */
+  sessionId?: string | null;
   /** Absolute. Falls back to the workspace `cwd`, then to "". */
   cwd?: string;
 }
@@ -290,7 +299,10 @@ interface StarterRow {
 // ── asks ──────────────────────────────────────────────────────────────────────
 
 interface Ask {
-  /** Random, at least 128 bits. A new one after every restart, even for the same tool call. */
+  /**
+   * At least 128 bits. SHOULD be derived from the pane and the tool call (section 6), so the same tool
+   * call raised again after a restart has the same id. A random one is allowed.
+   */
   id: string;
   /** The only kind in version 1. A reader shows an ask of another kind as not answerable. */
   kind: "permission";
@@ -485,6 +497,13 @@ cut.
 - A request whose id breaks the rule gets 400 `bad-id` from the program. The adapter checks first
   and never sends one.
 
+### Ask ids
+
+A program SHOULD derive the ask id from the tool call it stands for, so an answer that crosses a
+restart lands; the bridge's guard already keys on the tool call id (ADR 0100). The example SDK takes
+SHA-256 over `<paneId>\n<toolCallId>` and keeps the first 32 hex characters. A program that mints a
+random id per raise is still correct, and an answer to an id from before its restart is `too-late`.
+
 ### Cleaning
 
 The adapter cleans every display string before anything else reads it. The program SHOULD send
@@ -587,7 +606,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
   state is `waiting`.
 - An answer names `askId`, the `revision` the phone saw, and an `optionId`.
   - The ask id is not open on this pane: 200 `{ "result": "too-late" }`. This covers an ask already
-    answered, one closed by a stop, and every id from before a restart.
+    answered, one closed by a stop, and, for a program that mints a random id per raise, every id
+    from before a restart.
   - The ask is open and `revision` is not its current one: 409 `stale`, with `ask` in its current
     form.
   - `optionId` is not one of the options: 400 `bad-option`.
@@ -642,7 +662,9 @@ abort.
   lost on the way.
 - The same `requestId` on a different route, pane or starter: 409 `request-id-reused`.
 - The program keeps at least the last 500 request ids of its epoch. It SHOULD keep them across a
-  restart.
+  restart. A program that caps its memory MAY answer a repeat of an id it dropped with a 5xx, so the
+  outcome stays unknown and nothing runs twice. The examples keep the newest 1000 per pane, the
+  starters as one group, and answer a dropped id with 500 `receipt-dropped`.
 - The adapter never retries a POST by itself. A POST that times out, drops the connection, or gets
   a 5xx has an **unknown outcome**. The adapter reports it so, and the phone offers "Try again" with
   the same request id (ADR 0091).
@@ -682,10 +704,13 @@ abort.
    layout as ready.
 3. Pane ids stay the same across a restart, because a pane id is the conversation id. Workspace
    and tab ids SHOULD stay the same.
-4. Ask ids change across a restart. The `toolCallId` of a re-raised ask stays the same, and its
-   `revision` starts at 1 again. The bridge treats a new ask id with a known `(host, toolCallId)` as
-   the same question: shown, not pushed again (ADR 0100).
-5. An answer to an ask id from before the restart gets `too-late`.
+4. A program that derives its ask ids (section 6) raises the same ask id again after a restart; one
+   that mints them at random raises a new one. Either way the `toolCallId` of a re-raised ask stays
+   the same, and its `revision` starts at 1 again. The bridge treats a new ask id with a known
+   `(host, toolCallId)` as the same question: shown, not pushed again (ADR 0100).
+5. An answer to an ask id that is not open after the restart gets `too-late`. With derived ids an
+   answer sent across the restart names the re-raised ask, which point 2 opens before `ready`, so it
+   is taken and the tool runs once.
 6. `turnId` MAY change across a restart. A control that names an old one gets 409 `stale`.
 7. When the adapter sees a new epoch (in `hello` or in `Snapshot.epoch`), it keeps showing the
    panes it has until the new snapshot is read. Then it reads each pane's events with the **old**

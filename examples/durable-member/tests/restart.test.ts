@@ -1,6 +1,7 @@
 // A restart for real: app.ts as a child process on real JSONL storage, killed with SIGKILL while an
 // ask is open, then started again on the same storage and socket.
 import { afterAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { api, type Dial } from "./client.ts";
 import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, pane, tmp, waitFor } from "./util.ts";
@@ -52,28 +53,28 @@ describe("restart with an open ask", () => {
     expect(events.some((e) => e.type === "synced")).toBe(true);
   });
 
-  test("the open ask: Pi re-runs the hook, so the pane asks again with a NEW id; the old id is too-late", async () => {
-    const p = await waitFor("a new ask", () => firstAsk(d, main));
-    expect(p.id).not.toBe(oldAsk);
+  test("after the wake the open ask has the same id: Pi re-runs the hook before the app is ready", async () => {
+    // No wait: the first snapshot the restarted app serves carries the ask, by contract (WIRE.md 8.2).
+    const p = (await pane(d, main))!.openAsks[0]!;
+    expect(p.id).toBe(oldAsk); // derived from the pane and the tool call, so the same across the restart
     // The tool call id is stored in the transcript, so it survives the kill. The bridge keys its push
     // guard on it, so the same question is shown again but not pushed twice.
-    expect(p.toolCallId).toBeTruthy();
     expect(p.toolCallId).toBe(oldToolCall);
     expect(p.itemId).toBe(oldToolCall);
     expect(p.revision).toBe(1); // starts at 1 again
     expect((await pane(d, main))!.state).toBe("waiting");
-    expect((await api.answer(d, main, oldAsk, "allow")).body).toEqual({ result: "too-late" });
     // the old cursor means nothing after a restart: the server says so and sends the whole log
     const stale = (await api.events(d, main, oldNext, oldEpoch)).body;
     expect(stale.reset).toBe(true);
   });
 
-  test("the new ask works: allow, and the run finishes with its helper pane", async () => {
-    const open = (await pane(d, main))!.openAsks[0]!;
-    expect((await api.answer(d, main, open.id, "allow")).body).toEqual({ result: "taken" });
+  test("an answer to the id listed before the restart lands: taken, and the tool ran once (same id)", async () => {
+    expect((await api.answer(d, main, oldAsk, "allow", { revision: 1 })).body).toEqual({ result: "taken" });
     await waitFor("idle", async () => (await pane(d, main))?.state === "idle");
     const helper = (await api.snapshot(d)).body.panes.find((x) => x.tabId === "triage:helpers");
     expect(helper).toBeTruthy();
+    const lines = readFileSync(join(dir, "notes.txt"), "utf8").split("\n").filter(Boolean);
+    expect(lines).toHaveLength(1);
   });
 
   test("a second restart with nothing open: both panes come back idle with their history, and no new ticket", async () => {
@@ -87,7 +88,7 @@ describe("restart with an open ask", () => {
     expect(events.at(-2)).toMatchObject({ type: "synced" });
   });
 
-  test("a polite SIGTERM with an open ask is no answer: nothing is denied, the ask comes back after the restart", async () => {
+  test("a polite SIGTERM with an open ask is no answer: nothing is denied, the ask comes back after the restart with the same id", async () => {
     const id = (await api.start(d, "new-triage")).body.paneId;
     const first = await waitFor("ask", () => firstAsk(d, id));
     const t0 = Date.now();
@@ -98,7 +99,7 @@ describe("restart with an open ask", () => {
     const statuses = events.flatMap((e) => (e.type === "item" && e.item.kind === "tool" ? [e.item.status] : []));
     expect(statuses).toEqual(["running"]); // no "denied": shutdown did not decide for the human
     const again = await waitFor("ask again", () => firstAsk(d, id));
-    expect(again.id).not.toBe(first.id);
+    expect(again.id).toBe(first.id); // the same id after the restart
   });
 
   test("requestId goes to Pi Durable: after a restart the program's own memory is gone, and Pi still admits the input once", async () => {

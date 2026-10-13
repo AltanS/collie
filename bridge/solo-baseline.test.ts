@@ -262,6 +262,9 @@ const SNAPSHOT_KEYS = {
   ts: true,
   // Present on the type since M4/04, absent from every solo body — see the section header.
   servers: true,
+  // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
+  // 14), so a healthy solo body carries no such key and no golden byte moved.
+  muxFault: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -407,11 +410,12 @@ const TAB_KEYS = {
 } satisfies Record<keyof TabView, true>;
 
 describe("solo zero-tax — wire shapes carry no crew dimension", () => {
-  test("SnapshotResponse carries `servers` as OPTIONAL and nothing else new", () => {
+  test("SnapshotResponse carries `servers` as OPTIONAL and nothing else new (and `muxFault`, absent while healthy)", () => {
     expect(Object.keys(SNAPSHOT_KEYS).toSorted()).toEqual([
       "agents",
       "bridge",
       "device",
+      "muxFault",
       "notifications",
       "servers",
       "sessions",

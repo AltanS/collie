@@ -3,6 +3,7 @@ import { useRevalidator } from "react-router";
 import {
   CheckCircle2,
   CloudOff,
+  KeyRound,
   Loader2,
   LogIn,
   Plug,
@@ -26,7 +27,7 @@ import { isConnecting } from "@/lib/connection";
 import { clockTime, savedAtLabel } from "@/lib/format";
 import { writeRefusal } from "@/lib/host-health";
 import * as api from "@/lib/api";
-import type { BridgeStatus } from "@/lib/types";
+import type { BridgeStatus, MuxFault } from "@/lib/types";
 import { mounted } from "@/lib/base-path";
 import { usePairing } from "@/lib/pairing";
 import { t } from "@/lib/i18n";
@@ -35,6 +36,11 @@ import { useLocale } from "@/hooks/use-locale";
 interface ConnectionBannerProps {
   /** Herdr link from the last snapshot (undefined before the first successful poll). */
   bridge: BridgeStatus | undefined;
+  /**
+   * Why the mux is down, when the bridge named it (M50 spec 14): a durable program that refused this
+   * machine's token. Read only beside a `disconnected` bridge that belongs to the machine on screen.
+   */
+  muxFault?: MuxFault | undefined;
   /** The machine being viewed. The snapshot's bridge field still belongs to the lead. */
   host?: string;
   /** The last snapshot fetch failed (stale data on screen). */
@@ -112,14 +118,14 @@ export const GREEN_MS = 1_800;
 // a failing read goes from nothing straight to the saved-copy strip, and a slow read (a stall) moves
 // only the header dog. Every red variant reserves the height of the tallest one, so a change of
 // sentence does not move the page.
-export function ConnectionBanner({ bridge, host, error, authError, lastSeenAt, stale = false }: ConnectionBannerProps) {
+export function ConnectionBanner({ bridge, muxFault, host, error, authError, lastSeenAt, stale = false }: ConnectionBannerProps) {
   const { refused: notPaired } = usePairing();
   if (authError) return <AuthErrorBanner />;
   // Refused for want of pairing (ADR 0086: reads need the token). The bridge answered, so this is not
   // an outage, and the pairing strip on the route names the remedy. No connection strip at all.
   if (notPaired && error) return null;
   return (
-    <ConnectionStateBanner bridge={bridge} host={host} error={error} lastSeenAt={lastSeenAt} stale={stale} />
+    <ConnectionStateBanner bridge={bridge} muxFault={muxFault} host={host} error={error} lastSeenAt={lastSeenAt} stale={stale} />
   );
 }
 
@@ -185,6 +191,7 @@ function AuthErrorBanner() {
 
 function ConnectionStateBanner({
   bridge,
+  muxFault,
   host,
   error,
   lastSeenAt,
@@ -310,7 +317,10 @@ function ConnectionStateBanner({
   // that member is down, and the sentence for it exists (`connection.stale.*`, the one the pane
   // notice and a refused write use). Read only to NAME the cause; it feeds no clock and no latch.
   const memberFault = host !== undefined && host !== lead ? writeRefusal(memberHealth) : undefined;
-  const view = resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt, stale);
+  // A refused token is named as soon as the bar shows, amber or red: it is not a blip that waiting
+  // cures, and "reconnecting" would promise that it is.
+  const tokenRefused = muxDisconnected && muxFault === "token-refused";
+  const view = tokenRefused ? tokenRefusedView(tone) : resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt, stale);
   // The ✕ is red's alone, so it is spread in rather than passed as `undefined`: the primitive types a
   // dismiss control and its label as a pair, and an `undefined` for one is not that.
   const dismissProps = tone === "red" ? { onDismiss, dismissLabel: t("connection.dismiss.aria") } : {};
@@ -373,6 +383,21 @@ function ConnectionStateBanner({
       </Notice>
     </StripSlot>
   );
+}
+
+// A durable program refused this machine's bearer token (M50 spec 14). The fix is on this machine, in
+// its `.env`, so the sentence names the variable. Green still says "Connected" once the token works.
+function tokenRefusedView(tone: Tone) {
+  if (tone === "green") {
+    return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success", saved: false, hint: undefined } as const;
+  }
+  return {
+    copy: t("connection.tokenRefused"),
+    Icon: KeyRound,
+    tone: tone === "amber" ? "caution" : "danger",
+    saved: false,
+    hint: undefined,
+  } as const;
 }
 
 // A config response proves HTTP reachability. Only a fresh, lead-scoped snapshot can also prove

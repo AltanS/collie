@@ -5,7 +5,7 @@
 // four acts (answer, send, abort, starter) and throws 403 `caller-refused`. Reads never call it.
 
 import { BadAnswer, type Pane, type Store } from "./layout.ts";
-import { digestOf, HttpError } from "./receipts.ts";
+import { digestOf, HttpError, STARTER_GROUP } from "./receipts.ts";
 import { assertId, bytes, CAPS, cut, idOk } from "./rules.ts";
 import {
   type AnswerReply,
@@ -177,7 +177,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
     const body = await readBody(request);
     const requestId = idField(body, "requestId");
     // The receipt is bound to the payload: the same id with another pane, ask, revision, option, note, turn or text is 409.
-    const once = <T extends object>(payload: object, act: () => Promise<T>) => store.receipts.run(requestId, digestOf({ verb, pane: pane.id, ...payload }), act);
+    const once = <T extends object>(payload: object, act: () => Promise<T>) => store.receipts.run(requestId, digestOf({ verb, pane: pane.id, ...payload }), act, pane.id);
 
     if (verb === "answer") {
       const askId = idField(body, "askId");
@@ -191,7 +191,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         200,
         await once<AnswerReply>({ askId, revision, optionId, note: typeof note === "string" ? note : null }, async () => {
           const open = pane.asks.get(askId);
-          if (!open) return { result: "too-late" }; // answered, stopped, or from before a restart
+          if (!open) return { result: "too-late" }; // answered or stopped (a re-raised ask keeps its id across a restart)
           if (open.ask.revision !== revision) throw stale(pane, { ask: open.ask });
           try {
             const given = typeof note === "string" ? { optionId, note } : { optionId };
@@ -253,7 +253,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         } catch (e) {
           throw new HttpError(422, "starter-failed", { message: cut(e instanceof Error ? e.message : String(e), CAPS.message) });
         }
-      }),
+      }, STARTER_GROUP),
     );
   }
 

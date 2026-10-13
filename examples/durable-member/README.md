@@ -18,7 +18,9 @@ bun run app
 ```
 
 The app prints the socket it listens on, for example
-`listening /run/user/1000/durable-member/app.sock`. It needs no key and no settings.
+`listening /run/user/1000/durable-member/app.sock`. It needs no key and no settings. Without a real model
+it says so on the next line: "Using the scripted model. Set REAL_MODEL and OPENROUTER_API_KEY for a real
+one." See [A real model](#a-real-model).
 
 On the first start the app opens one ticket. The scripted model asks to run `write_note`, and the
 ticket waits for your answer. The app keeps its conversations in `~/.local/state/durable-member/`, so
@@ -166,7 +168,8 @@ second program needs it. Copy the folder into your program. It imports nothing f
 
 The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
 `Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids
-so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. It imports no
+so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. The store keeps
+the newest 1000 per pane; a repeat of an older id gets a 500, an unknown outcome, and runs nothing. It imports no
 runtime module, so the same core serves the
 [Cloudflare example](../durable-member-cloudflare/README.md) from a Durable Object. `sdk/server.ts` is the
 transport for Bun: the private socket and the descendant check. It accepts connections with `Bun.listen`

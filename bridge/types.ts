@@ -469,6 +469,22 @@ export interface TabView {
 export type BridgeStatus = "connected" | "disconnected";
 
 /**
+ * Why the multiplexer refused the last read, when the phone can say it in words (M50 spec 14). Only one
+ * today: a durable program over HTTPS that answered 401 or 403 to the peer's bearer token. Every other
+ * failure stays the plain `disconnected`, which the phone already words.
+ */
+export type MuxFault = "token-refused";
+
+/**
+ * The fault a failed read's message names, or undefined. The durable HTTPS client starts the detail of a
+ * refused token with `token-refused` (bridge/mux/durable/http-client.ts `TOKEN_REFUSED`), and the
+ * adapter throws that detail as the message of a failed `snapshot()`.
+ */
+export function muxFaultOf(message: string): MuxFault | undefined {
+  return message.startsWith("token-refused") ? "token-refused" : undefined;
+}
+
+/**
  * One entry in the snapshot's `sessions` list — a herdr session this bridge fronts. Additive: a
  * single-session deployment reports exactly one (the primary), so nothing about the UI changes.
  */
@@ -514,6 +530,11 @@ export interface DeviceAuth {
 /** GET /api/snapshot — the current herd view. */
 export interface SnapshotResponse {
   bridge: BridgeStatus;
+  /**
+   * Why the multiplexer is down, when the phone can say it (M50 spec 14). Present only while `bridge`
+   * is `disconnected` for that cause, so every other body, and its ETag, is unchanged.
+   */
+  muxFault?: MuxFault;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
   device?: DeviceAuth;
   /** Agent-bearing panes, in place order: space, tab, position in the tab. Never by status (ADR 0063). */

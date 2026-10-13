@@ -1,9 +1,11 @@
 // The program: the same ticket triage as ../durable-member/app.ts, in one Durable Object. Pi Durable keeps the
 // conversations in the object's SQLite (storage.ts), the SDK core serves Collie's wire (core.handle), and the
-// request ids go to a `collie_receipts` table, so a retry after a restart still runs once.
+// request ids go to a `collie_receipts` table, so a retry after a restart still runs once. The newest 1000 per pane
+// are kept (receipts.ts).
 //
 // The constructor runs on every start of the object: after a deploy, an eviction or a hibernation. Each start is
-// a new epoch, so Collie reads every pane again and the asks get new ids (WIRE.md section 8).
+// a new epoch, so Collie reads every pane again (WIRE.md section 8). An ask that waited is raised again before
+// the object says it is ready, under the same id, so a tap the phone sent across the wake lands.
 
 import { DurableObject } from "cloudflare:workers";
 import { BACKGROUND_CONTEXT as ctx0 } from "@earendil-works/chord/context";
@@ -54,7 +56,9 @@ export class Member extends DurableObject<Env> {
     const { env } = this;
     const sql = this.ctx.storage.sql;
     sql.exec("CREATE TABLE IF NOT EXISTS collie_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, note TEXT NOT NULL)");
-    const core = createCore({ hostName: HOST_NAME, receipts: new SqliteReceiptStore(sql) });
+    // Over TLS the token is the only gate, so this program offers Allow and Deny only: an `allow-always` option is
+    // a TypeError when an ask is raised (WIRE.md 1B, ADR 0103).
+    const core = createCore({ hostName: HOST_NAME, receipts: new SqliteReceiptStore(this.ctx.storage), allowAlways: false });
     this.core = core;
     const stepMs = ms(env.DM_STEP_MS, 400);
 
@@ -93,7 +97,8 @@ export class Member extends DurableObject<Env> {
     });
     const registry = createRegistry();
     registry.install(triageTools);
-    registry.install(riskGuard({ panes: this.panes, risky: new Set(["write_note"]) }));
+    const risky = new Set(["write_note"]);
+    registry.install(riskGuard({ panes: this.panes, risky }));
 
     // contextRetentionMs 0: Pi keeps no idle-context timer. With nodejs_compat a Worker's timers look like Node's,
     // so Pi would keep one for 10 minutes after every run, and a pending timer keeps a Durable Object in memory,
@@ -133,7 +138,12 @@ export class Member extends DurableObject<Env> {
     // The first start opens one ticket, so the phone has an ask to answer. Later starts show what storage holds.
     if (all.length === 0) await startTriage("")();
 
+    // Continue any run the last start left unfinished, and wait for the asks it raises again (Pi re-runs a
+    // waiting hook, which asks under the same id). Only then is the layout complete: the first snapshot after a
+    // wake carries every open ask, by contract and not by timing.
+    const reRaised = this.panes.reRaised(risky);
+    harness.resume();
+    await reRaised;
     core.ready(); // the layout is complete: only now may Collie see a snapshot
-    harness.resume(); // continue any run the last start left unfinished; a waiting ask is raised again
   }
 }

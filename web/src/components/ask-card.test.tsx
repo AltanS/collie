@@ -149,11 +149,12 @@ describe("a tap", () => {
     release();
   });
 
-  it("too late says already answered, with no buttons, and asks the pane to be read again", async () => {
+  it("too late says not taken and that the question may come back, with no buttons, and asks the pane to be read again", async () => {
     stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late" }));
     const { onSettled } = draw();
     await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
-    expect(await screen.findByText(/Already answered/)).toBeInTheDocument();
+    expect(await screen.findByText("Not taken. The question may show again in a moment.")).toBeInTheDocument();
+    expect(screen.queryByText(/Already answered/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
     expect(onSettled).toHaveBeenCalled();
   });
