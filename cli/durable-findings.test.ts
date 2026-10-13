@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { parseMarker } from "../bridge/crew/staleness.ts";
 import { FakeDurableProgram, testToken } from "../bridge/mux/durable/fixture.ts";
-import { durableFindings } from "./durable-findings.ts";
+import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { context } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
 
@@ -205,5 +208,78 @@ describe("doctor durable: the lead's release (durable-lead)", () => {
       expect(dev.status).toBe("skipped");
       expect(dev.detail).toContain("dev build");
     }
+  });
+});
+
+// ── M55: one block per program in sources.json ───────────────────────────────
+
+describe("doctor sources", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function configDir(sources: readonly Record<string, string>[], mode = 0o600): string {
+    const dir = mkdtempSync(join(tmpdir(), "collie-doctor-sources-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "sources.json"), JSON.stringify(sources), { mode });
+    return dir;
+  }
+
+  test("no sources.json: no rows", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-doctor-sources-"));
+    dirs.push(dir);
+    expect(await sourcesFindings({ ctx: context({}, { configDir: dir }) })).toEqual([]);
+  });
+
+  test("one row for the file, then one block of six rows per program, each named for it, and never the token", async () => {
+    const token = testToken();
+    const program = await startHttp(token);
+    const dir = configDir([
+      { name: "cloud", kind: "durable", url: program.url, token },
+      { name: "desk", kind: "durable", socket: "/nonexistent/durable/desk.sock" },
+    ]);
+    const findings = await sourcesFindings({ ctx: context({}, { configDir: dir }), platform: "linux", mode: () => 0o600 });
+    expect(rows(findings)).toEqual([
+      ["sources", "ok"],
+      ["durable-env:cloud", "ok"],
+      ["durable-socket:cloud", "skipped"],
+      ["durable-url:cloud", "ok"],
+      ["durable-token:cloud", "ok"],
+      ["durable-hello:cloud", "ok"],
+      ["durable-ready:cloud", "ok"],
+      ["durable-env:desk", "ok"],
+      ["durable-socket:desk", "error"],
+      ["durable-url:desk", "skipped"],
+      ["durable-token:desk", "skipped"],
+      ["durable-hello:desk", "skipped"],
+      ["durable-ready:desk", "skipped"],
+    ]);
+    expect(row(findings, "sources").detail).toBe(`2 programs in ${join(dir, "sources.json")}, mode 0600`);
+    expect(row(findings, "durable-env:desk").detail).toBe("transport: private socket · socket=/nonexistent/durable/desk.sock");
+    expect(row(findings, "durable-socket:desk").remedy).toContain('"socket" of "desk"');
+    expect(row(findings, "durable-url:desk").detail).toBe('this program uses a socket, and "url" of "desk" is not set');
+    expect(printed(findings)).not.toContain(token);
+  });
+
+  test("a file group or others can read is an error, because it may hold a token", async () => {
+    const dir = configDir([{ name: "desk", kind: "durable", socket: "/nonexistent/d.sock" }]);
+    const file = row(await sourcesFindings({ ctx: context({}, { configDir: dir }), platform: "linux", mode: () => 0o644 }), "sources");
+    expect(file.status).toBe("error");
+    expect(file.detail).toContain("mode 0644");
+    expect(file.remedy).toBe(`run \`chmod 600 ${join(dir, "sources.json")}\``);
+  });
+
+  test("a bad file is one error row naming the entry and the field", async () => {
+    const dir = configDir([{ name: "desk", kind: "durable", socket: "/s", url: "https://x.example", token: testToken() }]);
+    const findings = await sourcesFindings({ ctx: context({}, { configDir: dir }) });
+    expect(rows(findings)).toEqual([["sources", "error"]]);
+    expect(row(findings, "sources").detail).toContain('entry "desk": set "socket" or "url", not both');
+  });
+
+  test("the lead row follows the blocks when the verb asks for it", async () => {
+    const dir = configDir([{ name: "desk", kind: "durable", socket: "/nonexistent/d.sock" }]);
+    const findings = await sourcesFindings({ ctx: context({}, { configDir: dir }), platform: "linux", mode: () => 0o600, crew: { mode: "solo", marker: null } });
+    expect(findings.at(-1)?.check).toBe("durable-lead");
   });
 });

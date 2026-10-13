@@ -25,7 +25,7 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
-import { loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
+import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
 import {
   aclRepairAllowed,
@@ -37,7 +37,7 @@ import {
 } from "./owner-only.ts";
 import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
-import { durableLogDir } from "./durable/log.ts";
+import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
 import { GitHeads } from "./git-head.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
@@ -49,7 +49,7 @@ import {
   releaseManagedFrontDoor,
   shouldReleaseFrontDoor,
 } from "./front-door.ts";
-import { DURABLE_LOG_DIR_OPTION, DURABLE_MUX } from "./mux/durable/adapter.ts";
+import { createDurableMux, describeDurableTarget, DURABLE_LOG_DIR_OPTION, DURABLE_MUX } from "./mux/durable/adapter.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
 import { deriveConfigRoot } from "./mux/herdr/sessions.ts";
@@ -175,10 +175,14 @@ import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { buildId, startServer } from "./server.ts";
 import {
+  DEFAULT_SESSION_NAME,
   herdTagFor,
   SessionRegistry,
+  sessionNameFor,
+  type ProgramProbe,
   type SessionFactory,
 } from "./sessions.ts";
+import { ENV_SOURCE_NAME, planPrograms, readSources, sourcesPath, sourceTransportEnv, type DurableSource, type ProgramPlan } from "./sources.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import {
@@ -244,6 +248,35 @@ try {
   console.error(`[bridge] FATAL: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
+
+// The durable programs this Collie runs beside its terminal mux (M55, bridge/sources.ts): each entry of
+// `sources.json` is one more session. A missing file is none, and nothing below changes; a file that is
+// there and wrong stops the bridge here with the entry and the field named, because a listed program
+// that is silently skipped is a phone that never shows it. `COLLIE_MUX=durable` (the old env form) makes
+// its one program, `default`, the primary session.
+let programs: ProgramPlan;
+try {
+  const listed = readSources(resolveConfigDir());
+  // The file can carry a bearer token, so it is held owner-only like `.env`: tightened, never refused.
+  if (listed.length > 0) {
+    const held = holdPrivateFile(sourcesPath(resolveConfigDir()), aclRepair);
+    if (held.warning !== null) console.warn(held.warning);
+  }
+  programs = planPrograms({
+    durableOnly: cfg.mux === DURABLE_MUX,
+    env: process.env,
+    sources: listed,
+    primaryName: sessionNameFor(cfg.socketPath, deriveConfigRoot(cfg.socketPath)),
+  });
+} catch (err) {
+  console.error(`[bridge] FATAL: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+/** Whether this Collie runs any durable program, as the primary or beside it. */
+const runsPrograms = programs.primary !== undefined || programs.others.length > 0;
+// One folder per program since M55: logs a durable-only build wrote directly under `durable/` were its
+// one program's, which is `default`. Once, at boot, before any adapter opens a log.
+await moveFlatLogs(cfg.stateDir, ENV_SOURCE_NAME);
 
 // The crew mode, resolved BEFORE anything is wired, because a peer wires fewer things than a lead
 // (CREW_PROTOCOL.md §3) and a mode discovered halfway through startup would already have opened
@@ -1100,9 +1133,10 @@ const crewFollower =
 
 /**
  * A durable peer names a lead too old to show its panes properly (M50 spec 14, bridge/durable/old-lead.ts).
- * `undefined` on every other machine: a lead, a solo instance, or a peer that drives another mux.
+ * Any peer that runs a durable program counts, as the primary or as a source beside its terminal mux
+ * (M55). `undefined` on every other machine: a lead, a solo instance, or a peer that runs no program.
  */
-const oldLead = crew.mode === "peer" && cfg.mux === DURABLE_MUX ? new OldLeadNotice() : undefined;
+const oldLead = crew.mode === "peer" && runsPrograms ? new OldLeadNotice() : undefined;
 
 /** The lead's two follow headers, handed to whichever of the follower and the old-lead notice exist. */
 const onFollow =
@@ -1133,6 +1167,10 @@ const muxRegistry = buildMuxRegistry();
 // silent — the log named one only when it could not be reached — so `collie logs` could not answer
 // the first question a tmux or zellij operator asks (docs/multiplexers.md → "Did it work?").
 console.log(`[bridge] mux: ${describeMux(muxRegistry, cfg.mux, cfg.muxEndpoint)}`);
+// And each program beside it, one line each, from the source's own settings. Never the token.
+for (const source of programs.others) {
+  console.log(`[bridge] program "${source.name}": ${DURABLE_MUX}, ${describeDurableTarget(sourceTransportEnv(source))}`);
+}
 
 // Are the agent's own hooks installed (M11/02)? Probed through `cli/hooks.ts`'s definition of
 // "installed", cached for a few seconds, and shared by every session: it is a property of this HOST,
@@ -1169,8 +1207,20 @@ function withBeaconsIfBlind(adapter: MuxAdapter, target: MuxTarget): MuxAdapter 
 // (config.ts). Both per-adapter knobs ride the target's OPAQUE options — which local dialer opens a
 // filesystem-path endpoint is Herdr's question, where the tmux binary is, is tmux's, and the registry
 // reads neither key.
-const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
-  const target = {
+//
+// A PROGRAM SESSION (M55) is the one other branch: its adapter is the durable one, built from its own
+// source entry (bridge/sources.ts) and never from `process.env`, with its log in its own folder,
+// `<stateDir>/durable/<source>/`. Everything after the adapter is the same wiring for both.
+/** One session's adapter, the target it was built for, and, for a program, what its card reads. */
+interface BuiltAdapter {
+  readonly adapter: MuxAdapter;
+  readonly target: MuxTarget;
+  readonly probe?: ProgramProbe;
+}
+
+/** The adapter for one terminal session, exactly as every session was built before programs. */
+function terminalAdapter(socketPath: string): BuiltAdapter {
+  const target: MuxTarget = {
     endpoint: cfg.mux === DEFAULT_MUX ? socketPath : cfg.muxEndpoint,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     options: {
@@ -1178,10 +1228,23 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       [TMUX_BINARY_OPTION]: cfg.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
       [TERN_BINARY_OPTION]: cfg.ternBin,
-      [DURABLE_LOG_DIR_OPTION]: durableLogDir(cfg.stateDir),
     },
   };
-  const herdr = withBeaconsIfBlind(createMux(muxRegistry, cfg.mux, target), target);
+  return { adapter: createMux(muxRegistry, cfg.mux, target), target };
+}
+
+/** The adapter for one program, and what its session card reads off it. */
+function programAdapter(source: DurableSource): BuiltAdapter {
+  const logDir = sourceLogDir(cfg.stateDir, source.name);
+  const target: MuxTarget = { endpoint: "", timeoutMs: DEFAULT_TIMEOUT_MS, options: { [DURABLE_LOG_DIR_OPTION]: logDir } };
+  const program = createDurableMux(sourceTransportEnv(source), target.options);
+  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName() } };
+}
+
+const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
+  const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
+  const target = built.target;
+  const herdr = withBeaconsIfBlind(built.adapter, target);
   const engine = new StateEngine(herdr, cfg.pollMs);
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
@@ -1270,21 +1333,28 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
         // The hourly breaker tripped: one summary, under the same snooze and the same "blocked"
         // preference as every herd push.
         () => {
-          if (!snooze.isMuted() && notifyPrefs.isNotifiable("blocked")) void push.send(askFloodMessage(LOCAL_ASK_HOST, hostname()));
+          const named = name === DEFAULT_SESSION_NAME ? hostname() : `${hostname()} (${name})`;
+          if (!snooze.isMuted() && notifyPrefs.isNotifiable("blocked")) void push.send(askFloodMessage(LOCAL_ASK_HOST, named, name));
         },
+        // Each session is its own scope in the guard (M55): two programs may share a tool call id.
+        name,
       ),
     );
   }
 
   engine.start();
   poker.start();
-  return { herdr, engine, poker, notifications };
+  return built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
 };
 
 const registry = new SessionRegistry({
   configRoot: deriveConfigRoot(cfg.socketPath),
   primarySocketPath: cfg.socketPath,
   factory: makeSession,
+  // The programs (M55). A durable-only instance's one program is the primary; every other source is a
+  // session beside it, kept for the life of the process. Both are empty on an instance with no program.
+  primarySource: programs.primary,
+  sources: programs.others,
   // The OPERATOR's switch, and nothing else. Whether this multiplexer has other instances on this
   // machine to front is the adapter's own `listSessions` declaration, asked by `registry.refresh()`.
   // An adapter that keeps no such list refuses the call and the registry pins to the primary. This

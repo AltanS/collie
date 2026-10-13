@@ -146,6 +146,20 @@ adapter `COLLIE_MUX` names and no other, and the Herdr adapter is the only thing
 tmux or zellij collie — the
 [walkthrough](./docs/multiplexers.md#pointing-collie-at-a-multiplexer) starts one without it.
 
+### Sessions and sources
+
+A collie runs one terminal multiplexer as its primary session, plus the other sessions that adapter
+reports through `listSessions`. Since M55 it may also run durable programs beside it: each entry of
+`sources.json` (in the config dir next to `.env`, mode 0600) is one more session, named by the entry,
+built by the same factory with the durable adapter, and kept for the life of the process. Only
+discovered terminal sessions come and go with `refresh()`. A program is never the primary, except on a
+durable-only collie (`COLLIE_MUX=durable` with the old `COLLIE_DURABLE_*` variables), where its one
+program is the primary session named `default`. A pane's address stays (host, session, paneId), so two
+programs may use the same conversation id. On a collie that runs a program, every entry of the
+snapshot's `sessions` carries a card (kind, mux, caps, where, state, experimental), and
+`/api/config?session=<name>` answers that session's capabilities; with no program, both are what they
+were. The adapter reads its socket, URL and token from the source entry, never from the environment.
+
 ### What a space and a tab ARE, per multiplexer
 
 The contract's nouns are space → tab → pane. Each adapter says which of its own levels those are, and

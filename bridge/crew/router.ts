@@ -64,7 +64,7 @@ import type { TrustedMember, TrustStore, TrustStoreData, Warrant } from "./trust
 import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
 import { selectView, type SnapshotView } from "../sessions.ts";
-import type { MuxConfig, SnapshotResponse } from "../types.ts";
+import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 
 // The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
 // literal at all**: a solo instance's route table is asserted, by reading server.ts's source, to be
@@ -98,6 +98,14 @@ export const CREW_SNAPSHOT_PATH = "/crew/v1/snapshot";
  * reading the phone gives it today, which is the lead's own block applied to every pane.
  */
 export const CREW_MUX_FIELD = "mux";
+
+/**
+ * The OPTIONAL field a `hello` answer carries this machine's session cards on (M55, §5's amendment of
+ * 2026-10-13): one card per session, so a lead can answer `/api/config?host=&session=` for a program
+ * session. Sent only by a machine that runs a durable program. **Absent means "use the member's `mux`
+ * block for every session"**, which is what every lead read before the field existed.
+ */
+export const CREW_SESSIONS_FIELD = "sessions";
 
 /**
  * The lead's REQUEST for a fresh preflight on the snapshot it is about to read (§19).
@@ -279,12 +287,17 @@ export type ApiDispatch = (req: Request, url: URL, from: string) => Promise<Resp
  */
 export type MuxSource = () => MuxConfig | null;
 
+/** This collie's session cards, for `hello` (M55), or `null` on a machine that runs no program. */
+export type SessionCardSource = () => SessionCard[] | null;
+
 /** What this collie exposes to an admitted lead. Absent ⇒ that half of §5's table simply 404s. */
 export interface CrewSurface {
   readonly snapshot?: SnapshotSource;
   readonly dispatch?: ApiDispatch;
   /** This collie's own capability declaration, for `hello`. See {@link MuxSource}. */
   readonly mux?: MuxSource;
+  /** This collie's session cards, for `hello`. See {@link SessionCardSource}. */
+  readonly sessions?: SessionCardSource;
 }
 
 /**
@@ -328,6 +341,8 @@ export interface CrewRouterDeps {
   readonly dispatch?: ApiDispatch;
   /** Absent ⇒ `hello` carries no capability block, which reads as "use the lead's" (M22/03). */
   readonly mux?: MuxSource;
+  /** Absent, or answering null ⇒ `hello` carries no session cards (M55). */
+  readonly sessions?: SessionCardSource;
   /**
    * Whether the listener this handler is mounted on was built pin-enforcing
    * (`bridge/crew/transport.ts`). **Defaults to `false`, which admits nothing but a signed request.**
@@ -567,6 +582,8 @@ type HelloBody = {
   pairingCollision?: string[];
   /** This peer's own capability declaration (§7.1's amendment of 2026-09-08). See {@link CREW_MUX_FIELD}. */
   mux?: MuxConfig;
+  /** This peer's session cards (M55, 2026-10-13). See {@link CREW_SESSIONS_FIELD}. */
+  sessions?: SessionCard[];
 };
 
 /**
@@ -949,6 +966,11 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // the header already renders as text alone.
       const declared = deps.mux?.() ?? null;
       if (declared !== null) hello.mux = portableMuxBlock(declared);
+      // M55: one card per session, only from a machine that runs a durable program, so a terminal-only
+      // peer's `hello` is byte for byte what it was. A card carries no path and no secret: a name, a
+      // kind, a multiplexer name, the capability answers and two states.
+      const cards = deps.sessions?.() ?? null;
+      if (cards !== null && cards.length > 0) hello.sessions = cards;
       return new Response(JSON.stringify(hello), {
         status: 200,
         headers: crewResponseHeaders(verdict.self),

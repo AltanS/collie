@@ -10,6 +10,7 @@ import {
 import {
   LEAD_CONFLICT,
   CREW_MUX_FIELD,
+  CREW_SESSIONS_FIELD,
   CREW_PREFIX,
   PAIRING_LABEL_COLLISION,
   PREFLIGHT_FRESH,
@@ -20,7 +21,7 @@ import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from 
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
-import type { MuxConfig } from "../types.ts";
+import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
 import { parseCollisionReport, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
@@ -469,6 +470,12 @@ export interface HelloResult {
    * reads as `null`, which is the same "said nothing" the absent field carries.
    */
   readonly mux: MuxConfig | null;
+  /**
+   * That member's session cards (M55). Sent only by a machine that runs a durable program, and set
+   * here only when it was. **Absent means "the `mux` block answers for every session"**, the reading
+   * every lead had before. Parsed like {@link mux}: bounded, and a card that is not whole is left out.
+   */
+  readonly sessions?: readonly SessionCard[];
 }
 
 export interface PeerClientDeps {
@@ -650,19 +657,20 @@ export class PeerClient {
     // than `snapshot` because it changes only when the far side's bridge restarts, and the snapshot
     // is polled every 1500 ms (§10.1).
     const mux = parseMuxReport(outcome.value);
-    return {
-      ...outcome,
-      value: {
-        protocol,
-        member,
-        version,
-        warrantGeneration,
-        warrantActiveGeneration,
-        pairingDigest,
-        pairingCollision,
-        mux,
-      },
+    // M55's optional cards, read the same absent-means-the-block's way.
+    const sessions = parseSessionCards(outcome.value);
+    const value: HelloResult = {
+      protocol,
+      member,
+      version,
+      warrantGeneration,
+      warrantActiveGeneration,
+      pairingDigest,
+      pairingCollision,
+      mux,
     };
+    // Assigned only when sent, so a member that sends none reads exactly as it did before M55.
+    return { ...outcome, value: sessions === null ? value : { ...value, sessions } };
   }
 
   /**
@@ -1364,6 +1372,44 @@ export function parseMuxReport(value: JsonValue): MuxConfig | null {
     wire.topologyLatency = { kind: "bounded", ms: latency.ms };
   }
   return wire;
+}
+
+/** The most session cards one member's hello may carry. */
+const SESSION_CARDS_MAX = 64;
+
+const SESSION_STATES: ReadonlySet<string> = new Set<SessionState>(["ready", "starting", "unreachable"]);
+
+/**
+ * One member's session cards off a `hello` answer, or `null` when it sent none (M55).
+ *
+ * Bounded and re-checked like {@link parseMuxReport}, because the lead republishes a card's answers on
+ * `/api/config?host=&session=`. A card missing a field, or with one of the wrong shape, is left out;
+ * unknown capability keys are kept, for `parseMuxReport`'s reason.
+ */
+export function parseSessionCards(value: JsonValue): SessionCard[] | null {
+  const list = asRecord(value)?.[CREW_SESSIONS_FIELD];
+  if (!Array.isArray(list)) return null;
+  const cards: SessionCard[] = [];
+  for (const raw of list.slice(0, SESSION_CARDS_MAX)) {
+    const card = asRecord(raw);
+    if (card === null) continue;
+    const { name, kind, mux, where, state, experimental } = card;
+    if (typeof name !== "string" || name === "" || name.length > MUX_NAME_MAX) continue;
+    if (kind !== "terminal" && kind !== "program") continue;
+    if (typeof mux !== "string" || mux === "" || mux.length > MUX_NAME_MAX) continue;
+    if (where !== "local" && where !== "remote") continue;
+    if (typeof state !== "string" || !SESSION_STATES.has(state)) continue;
+    if (typeof experimental !== "boolean") continue;
+    const declared = asRecord(card.caps);
+    if (declared === null) continue;
+    const caps: Record<string, boolean> = {};
+    for (const [key, answer] of Object.entries(declared).slice(0, MUX_ROWS_MAX)) {
+      if (typeof answer === "boolean") caps[key] = answer;
+    }
+    // SAFETY: `state` was checked against the three values of SessionState one line up.
+    cards.push({ name, kind, mux, caps, where, state: state as SessionState, experimental });
+  }
+  return cards;
 }
 
 /**

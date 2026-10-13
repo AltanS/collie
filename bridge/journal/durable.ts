@@ -4,10 +4,12 @@
 // `TranscriptSource` seam, the same row reducer, the same byte-cursor live read as the harnesses that
 // write a JSONL file. There is no second reader path.
 //
-// SHAPE OF THE SOURCE: `<stateDir>/durable/<base64url(paneId)>.jsonl`, one JSON row per line
-// (`k` is `gen`, `item`, `ask`, `ask-closed`, `state` or `settled`; see the log's header). The ref is the
-// pane's conversation id (`{ kind: "id" }`), which the durable mux adapter puts on every pane, so the
-// ordinary session lookup in `paneChat` and `paneHistory` finds it. The id is never a path: it is
+// SHAPE OF THE SOURCE: `<stateDir>/durable/<source>/<base64url(paneId)>.jsonl`, one JSON row per line
+// (`k` is `gen`, `item`, `ask`, `ask-closed`, `state` or `settled`; see the log's header). Since M55 one
+// Collie may run several programs, and two of them may use the same conversation id, so the durable
+// mux adapter puts the log FILE on every pane (`{ kind: "path" }`), and the ordinary session lookup in
+// `paneChat` and `paneHistory` resolves it like any harness's path: only inside a root, by realpath.
+// An id ref (`{ kind: "id" }`, what a log kept directly under a root answers) still resolves: the id is
 // checked against the wire's id rule, and the file name is derived from it by the log's own function.
 //
 // WHAT IS DRAWN, from the item kinds of WIRE.md section 4:
@@ -34,7 +36,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { logFileName } from "../durable/log.ts";
 import { httpsHrefOf, isWireId, langOf } from "../mux/durable/clean.ts";
 import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
-import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, containedRealpathIn, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import {
   createUnknownCounter,
   type KnownTypes,
@@ -273,7 +275,9 @@ export class DurableTranscriptSource implements TranscriptSource {
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
-    if (ref.kind !== "id" || !isWireId(ref.value)) return null;
+    // A path names one program's log of one conversation: a `.jsonl` file, really inside a root.
+    if (ref.kind === "path") return ref.value.endsWith(".jsonl") ? containedRealpathIn(ref.value, this.roots) : null;
+    if (!isWireId(ref.value)) return null;
     for (const root of this.roots) {
       const candidate = join(root, logFileName(ref.value));
       if (!(await exists(candidate))) continue;

@@ -13,6 +13,8 @@ import {
   bridgeConfigBody,
   muxConfigBody,
   muxLogoResponse,
+  sessionConfigMux,
+  sessionMuxWire,
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
@@ -2648,6 +2650,43 @@ describe("bridgeConfigBody — the masking switch is reported, and omitted when 
   });
 });
 
+// M55: `/api/config?session=<name>` answers that session's capabilities. No `session` is the primary's
+// body, byte for byte as before; an unknown name is the route's 404.
+describe("/api/config?session= answers that session's capabilities (M55)", () => {
+  const herdr = { mux: "herdr", capabilities: declareCapabilities({ supports: ["typeText", "sendKeys"], topologyLatency: { kind: "push" } }), logo: "<svg/>" };
+  const program = { mux: "durable", capabilities: declareCapabilities({ supports: ["steerTurn"], topologyLatency: { kind: "bounded", ms: 10_000 } }), logo: "<svg/>" };
+
+  test("no session, or the primary named: the route builds the body it always built", () => {
+    expect(sessionConfigMux({ name: "default", isPrimary: true, herdr }, undefined)).toBeUndefined();
+    expect(sessionConfigMux({ name: "default", isPrimary: true, herdr }, "default")).toBeUndefined();
+  });
+
+  test("a program session answers its own declaration, with its mark under its own name", () => {
+    const wire = sessionConfigMux({ name: "desk", isPrimary: false, herdr: program }, "desk");
+    expect(wire).toEqual({ ...muxConfigBody(program), logoUrl: `${MUX_LOGO_PATH}?session=desk` });
+    if (wire === undefined || wire === "unknown") throw new Error("expected a block");
+    expect(wire.capabilities.steerTurn).toBe(true);
+    expect(wire.capabilities.typeText).toBe(false);
+    expect(wire.name).toBe("durable");
+  });
+
+  test("an unknown named session is the route's 404; no session and no runtime is the primary's absence", () => {
+    expect(sessionConfigMux(undefined, "nope")).toBe("unknown");
+    expect(sessionConfigMux(undefined, undefined)).toBeUndefined();
+  });
+
+  test("a session with no mark publishes no logoUrl, and a name is encoded into the query", () => {
+    expect("logoUrl" in sessionMuxWire({ name: "desk", herdr: { ...program, logo: undefined } })).toBe(false);
+    expect(sessionMuxWire({ name: "a-b", herdr: program }).logoUrl).toBe(`${MUX_LOGO_PATH}?session=a-b`);
+  });
+
+  test("the route asks the helper, and the logo route reads the same `?session=`", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    expect(src).toContain("const localMux = host.kind === \"local\" ? sessionConfigMux(activeMux, sessionName) : null;");
+    expect(src).toContain('const logo = registry.get(url.searchParams.get("session") ?? undefined)?.herdr.logo;');
+  });
+});
+
 // ADR 0096: the Whistle block rides `/api/config` right after `stt`, and is absent on a peer's own
 // answer. The routes are lead-local and gated like `/api/stt`; the handler lives inside Bun.serve, so
 // the gate levels and the crew wiring are asserted on the source and through the pure pieces.
@@ -3204,9 +3243,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // §10.1). It runs after the forward has answered and writes nothing. A NINTH would be a route
     // reaching past the gate.
     expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(8);
-    // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
-    // are its own business and reach the lead over the crew API, never out of this registry.
-    expect(src).toContain("const activeMux = registry.get();");
+    // The mux read is a read of a LOCAL session (the primary unless `?session=` names one, M55), never
+    // `?host=`, because a peer's capabilities are its own business and reach the lead over the crew
+    // API, never out of this registry.
+    expect(src).toContain("const activeMux = registry.get(sessionName);");
     // An unknown or ill-formed host is a 404, mirroring unknownSession() (§4)… The words now come
     // from the error catalogue (bridge/error-codes.ts), so what this pins is the SELECTION — that
     // both host shapes still name themselves in the refusal, and both still land on `host.unknown`.

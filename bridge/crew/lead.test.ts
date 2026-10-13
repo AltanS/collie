@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SnapshotView } from "../sessions.ts";
-import type { MuxConfig, SnapshotResponse } from "../types.ts";
+import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import type { PeerPreflight } from "../update-action.ts";
 import { member, muxCaps, neverProxy } from "./fixtures.ts";
 import { NARROW_PLAN, snapshotPlan, SWEEP_VIEW, type PeerSnapshotWire } from "./merge.ts";
@@ -1534,6 +1534,33 @@ describe("a member's capability block rides `hello` and is answered per host (M2
     await h.lead.sweep();
     await Bun.sleep(5);
     expect(asked).toBe(1);
+  });
+
+  test("a member's session cards answer `&session=` from the card it named (M55)", async () => {
+    const cards: SessionCard[] = [
+      { name: "default", kind: "terminal", mux: "reference", caps: { createSpace: true }, where: "local", state: "ready", experimental: false },
+      { name: "desk", kind: "program", mux: "Support desk", caps: { steerTurn: true, createSpace: false }, where: "local", state: "ready", experimental: true },
+    ];
+    const carded: PeerOutcome<{ version: string | null; mux: MuxConfig | null; sessions: SessionCard[] }> = {
+      ok: true,
+      value: { version: "1.22.0", mux: block({ unsupportedKeys: ["PageUp"] }), sessions: cards },
+      status: 200,
+      member: "laptop",
+      receivedAt: NOW,
+      date: null,
+    };
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(carded) });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    const desk = h.lead.sessionMuxFor("laptop", "desk");
+    expect(desk?.name).toBe("Support desk");
+    expect({ ...desk?.capabilities }).toEqual({ steerTurn: true, createSpace: false });
+    expect([desk?.unsupportedKeys, desk?.notes]).toEqual([[], {}]);
+    // The card whose multiplexer is the block's own keeps the block's key spellings and notes.
+    expect(h.lead.sessionMuxFor("laptop", "default")?.unsupportedKeys).toEqual(["PageUp"]);
+    // No such card: null, and the route answers with the member's block.
+    expect(h.lead.sessionMuxFor("laptop", "nope")).toBeNull();
+    expect(h.lead.sessionMuxFor("nobody", "desk")).toBeNull();
   });
 
   test("a member that has said nothing answers `null`, which the route reads as the lead's", async () => {

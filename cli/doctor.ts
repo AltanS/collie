@@ -60,7 +60,7 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
-import { durableFindings } from "./durable-findings.ts";
+import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
@@ -245,6 +245,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // seventh whether the lead is new enough to show its panes: only when `durable` is the
     // multiplexer this install drives.
     ...(chosen.name === DURABLE_MUX ? await durableFindings({ ctx: deps.ctx, crew: { mode, marker: runtimeMarker } }) : []),
+    // The programs in `sources.json` (M55): one row for the file, then one block per program, each row
+    // named `<row>:<program>`. Nothing when there is no file. The `durable-lead` row comes once: with
+    // the env form's rows above on a durable-only install, after these blocks otherwise.
+    ...(await sourcesFindings({ ctx: deps.ctx, crew: chosen.name === DURABLE_MUX ? undefined : { mode, marker: runtimeMarker } })),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
     // on POSIX the mode bits are checked where the files are read, as before.

@@ -47,6 +47,11 @@ export interface DurableEventSink {
    * many older items a reset reply left out (0 otherwise), so the log can mark the gap.
    */
   apply(key: string, events: readonly DurableEvent[], trimmed?: number): Promise<number>;
+  /**
+   * The file a log key is kept in (M55). When the sink has one, a pane's session ref names that file,
+   * so two programs that share a conversation id never share a log. Absent: the ref is the key.
+   */
+  pathOf?(key: string): string;
   /** The cursor saved for a log key, or null. A sink without it starts every pane at 0 after a restart. */
   loadCursor?(key: string): Promise<DurableCursor | null>;
   /** Save the cursor for a log key, or forget it with null. Called after `apply` took the events. */

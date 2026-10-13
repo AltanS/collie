@@ -248,7 +248,7 @@ describe("the memory on disk", () => {
     const saved: { entries: GuardEntry[]; breakers: unknown[] } = JSON.parse(readFileSync(file, "utf8"));
     expect(saved.breakers).toEqual([]);
     expect(saved.entries).toHaveLength(1);
-    expect(Object.keys(saved.entries[0] ?? {}).toSorted()).toEqual(["askId", "firstSeenAt", "host", "paneId", "pushedAt", "toolCallId"]);
+    expect(Object.keys(saved.entries[0] ?? {}).toSorted()).toEqual(["askId", "firstSeenAt", "host", "paneId", "pushedAt", "session", "toolCallId"]);
   });
 
   test("a broken file is an empty memory, and is not trusted", () => {

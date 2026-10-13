@@ -343,6 +343,25 @@ describe("a peer's pane that carries asks", () => {
     expect(blockedPanes(push)).toBe(1);
   });
 
+  test("two programs on one member that use the same tool call id each push once (M55: the session is in the key)", () => {
+    const { clock, push, peer } = guarded();
+    const desk = { session: "desk" };
+    const cloud = { session: "cloud" };
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { ...desk, asks: [] }), pane("conv-2", "working", "durable", { ...cloud, asks: [] })]));
+    peer.observe(
+      "laptop",
+      body([
+        pane("conv-1", "blocked", "durable", { ...desk, asks: [ask("a1", "call-1")] }),
+        pane("conv-2", "blocked", "durable", { ...cloud, asks: [ask("a1", "call-1")] }),
+      ]),
+    );
+    clock.fireAll();
+    // The guard let both through: the host's summary counts two blocked panes. Keyed by host and
+    // tool call alone, the second would have read as known and been shown quietly.
+    const sent = push.sent.filter((m) => m.type !== "clear");
+    expect(sent.at(-1)).toMatchObject({ titleCode: "herd.blocked", titleDetail: { count: 2 } });
+  });
+
   test("re-ask: a restarted program's same question under a new ask id is shown, not pushed", () => {
     const { clock, push, peer, tick } = guarded();
     peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));

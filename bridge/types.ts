@@ -626,6 +626,29 @@ export interface SessionSummary {
   host?: string;
 }
 
+/** Whether a session answers (M55): a program says `starting` until it is ready. */
+export type SessionState = "ready" | "starting" | "unreachable";
+
+/**
+ * One session's card (M55, the shared contract). Carried on every entry of the snapshot's `sessions`
+ * on an instance that runs a durable program (`sources.json`), and on the crew `hello` as
+ * `sessions`. An instance with no program carries none, so its bytes are what they were.
+ */
+export interface SessionCard {
+  name: string;
+  kind: "terminal" | "program";
+  /** herdr, tmux, zellij, tuios, tern, or the program's hello `host.name` cleaned, else "durable". */
+  mux: string;
+  /** The capability set of this session, the same shape `/api/config` answers today. */
+  caps: Record<string, boolean>;
+  where: "local" | "remote";
+  state: SessionState;
+  experimental: boolean;
+}
+
+/** One entry of the snapshot's `sessions`: the summary, with the card when the instance runs a program. */
+export type SessionEntry = SessionSummary | (SessionSummary & SessionCard);
+
 /**
  * Per-device authorisation state for the requesting client (see `deviceAuth()` in server.ts).
  * Reported in the snapshot so the UI can show a read-only state. Optional on the wire so an older
@@ -663,7 +686,7 @@ export interface SnapshotResponse {
    * Every herdr session this bridge fronts (primary first, then alphabetical). Always present; a
    * single-session deployment lists just the primary, so the switcher UI can stay hidden.
    */
-  sessions: SessionSummary[];
+  sessions: SessionEntry[];
   /**
    * Every member of the crew, the lead's own entry included (CREW_PROTOCOL.md §9.2).
    *

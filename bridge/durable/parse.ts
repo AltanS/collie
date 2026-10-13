@@ -20,7 +20,7 @@ import type { AnswerPayload, AnswerRequest, AnswerValues, Ask, AskPushText, Cont
 import { isRequestId } from "../worktree-receipts.ts";
 import type { AnswerReceipt, AnswerState } from "./answer.ts";
 import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
-import type { GuardAsk, GuardEntry } from "./guard.ts";
+import { DEFAULT_GUARD_SESSION, type GuardAsk, type GuardEntry } from "./guard.ts";
 
 const STATES: ReadonlySet<string> = new Set(["pending", "unknown", "unsent", "taken", "too-late", "stale", "refused", "maybe-applied"]);
 
@@ -209,20 +209,23 @@ export function coerceAnswerReceipt(raw: JsonValue): AnswerReceipt | null {
 function readGuardEntry(value: JsonValue): GuardEntry | null {
   const r = asRecord(value);
   if (r === null) return null;
-  const { host, toolCallId, paneId, askId, firstSeenAt, pushedAt, closedAt } = r;
+  const { host, session, toolCallId, paneId, askId, firstSeenAt, pushedAt, closedAt } = r;
   if (!isText(host) || !isText(toolCallId) || toolCallId === "" || !isText(paneId) || !isText(askId)) return null;
   if (!isTime(firstSeenAt)) return null;
   if ((pushedAt !== undefined && !isTime(pushedAt)) || (closedAt !== undefined && !isTime(closedAt))) return null;
-  let entry: GuardEntry = { host, toolCallId, paneId, askId, firstSeenAt };
+  if (session !== undefined && !isText(session)) return null;
+  // An entry from before M55 has no session: it was a durable-only instance's one program, `default`.
+  let entry: GuardEntry = { host, session: session ?? DEFAULT_GUARD_SESSION, toolCallId, paneId, askId, firstSeenAt };
   if (isTime(pushedAt)) entry = { ...entry, pushedAt };
   if (isTime(closedAt)) entry = { ...entry, closedAt };
   return entry;
 }
 
-/** What the push guard's file holds: its keys, and per host the time its breaker tripped. */
+/** What the push guard's file holds: its keys, and per (host, session) the time its breaker tripped. */
 export interface GuardFile {
   readonly entries: GuardEntry[];
-  readonly breakers: [string, number][];
+  /** `[host, session, trippedAt]`. A breaker from before M55 has no session and reads as `default`. */
+  readonly breakers: [string, string, number][];
 }
 
 /**
@@ -239,12 +242,14 @@ export function readGuardFile(parsed: JsonValue): GuardFile {
       if (entry !== null) entries.push(entry);
     }
   }
-  const breakers: [string, number][] = [];
+  const breakers: [string, string, number][] = [];
   const trips = root?.breakers;
   if (Array.isArray(trips)) {
     for (const raw of trips) {
       const r = asRecord(raw);
-      if (r !== null && isText(r.host) && isTime(r.trippedAt)) breakers.push([r.host, r.trippedAt]);
+      if (r === null || !isText(r.host) || !isTime(r.trippedAt)) continue;
+      if (r.session !== undefined && !isText(r.session)) continue;
+      breakers.push([r.host, isText(r.session) ? r.session : DEFAULT_GUARD_SESSION, r.trippedAt]);
     }
   }
   return { entries, breakers };
