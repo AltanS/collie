@@ -15,6 +15,10 @@
 //   reply      an assistant turn
 //   thinking   an assistant turn with a thinking part
 //   notice     a note (machine text that still belongs on screen)
+//   markdown   an assistant turn whose text part Chat renders as markdown, as it does for any harness
+//   code       an assistant turn whose text part is one fenced code block, with its language after the fence
+//   link       an assistant turn whose text part is one markdown link line (WIRE.md 7.11). There is no
+//              block kind for a link, and none is needed: the markdown renderer opens it like any other
 //   tool       a tool part, with its status as the result: running has none, done has the output,
 //              failed is an error, denied is a refusal (not an error)
 //   settled    a short note, "stopped", for an input that ended `unanswered` with the reason
@@ -28,7 +32,7 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { logFileName } from "../durable/log.ts";
-import { isWireId } from "../mux/durable/clean.ts";
+import { httpsHrefOf, isWireId, langOf } from "../mux/durable/clean.ts";
 import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
 import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import {
@@ -90,6 +94,43 @@ function toolPartOf(id: string, tool: JsonObject, status: string): ToolPart {
   return part;
 }
 
+const ZERO_WIDTH_SPACE = "\u200b";
+
+/**
+ * The markdown of one code item: a fenced block, its language after the opening fence when it has one.
+ *
+ * Chat's markdown reader ends a fenced block at ANY line that starts with three backticks or three tildes, whatever
+ * the opening fence was, so a longer fence would not hold the text in. A line of the program's code that starts like a
+ * fence gets a zero-width space in front of it instead. It is not whitespace to the reader, so it no longer closes the
+ * block, and it draws nothing.
+ */
+function codeMarkdown(text: string, lang: string | null): string {
+  const info = lang === null ? undefined : langOf(lang);
+  const body = text.replace(/^([ \t]*)(```|~~~)/gm, `$1${ZERO_WIDTH_SPACE}$2`);
+  return `\`\`\`${info ?? ""}\n${body}\n\`\`\``;
+}
+
+/**
+ * A label as markdown link text. Chat's reader takes any text but a bracket or a line break, and has no backslash
+ * escape, so brackets become parentheses and the label is one line.
+ */
+function linkLabel(label: string): string {
+  return label.replace(/\[/g, "(").replace(/\]/g, ")").replace(/\s+/g, " ").trim();
+}
+
+/** A target as a link destination: the reader allows no space and only one level of parentheses, so both are encoded. */
+function linkDestination(href: string): string {
+  return href.replace(/[()]/g, (ch) => (ch === "(" ? "%28" : "%29"));
+}
+
+/** The markdown line of one link item, or null when the target is not an `https://` URL (the log is read again here, not trusted). */
+function linkMarkdown(item: JsonObject): string | null {
+  const href = httpsHrefOf(textOf(item.href) ?? "");
+  if (href === undefined) return null;
+  const label = linkLabel(textOf(item.label) ?? "");
+  return `[${label === "" ? linkLabel(href) : label}](${linkDestination(href)})`;
+}
+
 /** One logged item as a turn, or null when it is not one this adapter can draw. */
 function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
   const id = textOf(item.id);
@@ -100,6 +141,10 @@ function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
     const status = textOf(item.status);
     if (!isRecord(item.tool) || status === null) return null;
     return { uuid: id, ts, role: "assistant", parts: [toolPartOf(id, item.tool, status)] };
+  }
+  if (kind === "link") {
+    const line = linkMarkdown(item);
+    return line === null ? null : { uuid: id, ts, role: "assistant", parts: [{ kind: "text", text: line }] };
   }
   const text = textOf(item.text);
   if (text === null) return null;
@@ -113,6 +158,13 @@ function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
       return { uuid: id, ts, role: "assistant", parts: [{ kind: "thinking", ...body }] };
     case "notice":
       return { uuid: id, ts, role: "note", parts: [{ kind: "text", ...body }] };
+    case "markdown":
+      return { uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] };
+    case "code": {
+      // The cut text goes inside the fence, so a long block still closes; the part says it was cut.
+      const block = { ...body, text: codeMarkdown(body.text, textOf(item.lang)) };
+      return { uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...block }] };
+    }
     default:
       return null;
   }

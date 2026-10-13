@@ -84,6 +84,8 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
 - **Progress.** While a ticket works, Chat shows a thin row under the header with the running step ("write a
   note, 2 of 3") and a bar, and the card gets a one-pixel line along its bottom edge. The three steps are
   "read the ticket", "write a note" and "reply".
+- **Markdown, code and a link.** When a ticket ends, a note with a list of next steps, a shell snippet and a
+  link to the Collie docs follow the reply. They are three item kinds, `markdown`, `code` and `link`.
 - **Send, steer and Stop.** Text sent to an idle ticket starts a new turn. The scripted answer to a
   follow-up takes ten seconds, so you have time to steer it or press Stop. Stop ends the turn, and
   Chat shows a short "stopped" note.
@@ -171,6 +173,9 @@ second program needs it. Copy the folder into your program. It imports nothing f
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - `subtitle(text | null)` sets one line under the title (at most 120 characters), and `badge({ count } | { text } | null)`
   a small mark next to it (a count from 0 to 9999, or at most 12 characters). Each raises `rev` only when the value changes.
+- `event({ type: "item", item })` also takes `{ kind: "markdown", text }`, `{ kind: "code", lang?, text }` (the
+  language is a plain name such as `ts`) and `{ kind: "link", href, label? }` (`href` is an `https://` address).
+  A bad language or address is a `TypeError`, so the wire never carries what the adapter would drop.
 - `progress({ kind: "steps", steps } | { kind: "percent", value, label? } | null)` says how far a working
   conversation is: up to 12 steps (`done`, `running` or `todo`), or a value from 0 to 100. The program clears it
   when the run ends, and the phone draws it only while the pane works or waits.

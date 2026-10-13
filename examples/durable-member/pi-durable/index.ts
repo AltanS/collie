@@ -143,6 +143,10 @@ const textOf = (content: unknown): string =>
         .map((b) => b.text ?? "")
         .join("");
 
+const NEXT_STEPS = "**What to do next**\n\n- Ask the customer to sign in again.\n- Check that the reset mail went out.\n- Close the ticket when they confirm.";
+const REVOKE_COMMAND = "# clear the stale session\nsession-cli revoke --user 412";
+const DOCS_URL = "https://colliepwa.dev/docs/";
+
 /** Pi entries and agent events to the session stream. Whole blocks only: message_update is ignored. */
 class Mapper {
   private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
@@ -163,6 +167,16 @@ class Mapper {
       this.seen.note = true;
       if (item.status !== "running") this.seen.noted = true;
     }
+  }
+
+  /**
+   * What a finished ticket adds under its reply: a markdown note with a list, a code block and a link (WIRE.md 7.11).
+   * The ids come from the reply's, so a replay after a restart writes the same three items again, not three more.
+   */
+  private summary(replyId: string, ts: string) {
+    this.item({ id: safeId(`${replyId}:todo`), ts, kind: "markdown", text: NEXT_STEPS });
+    this.item({ id: safeId(`${replyId}:cmd`), ts, kind: "code", lang: "sh", text: REVOKE_COMMAND });
+    this.item({ id: safeId(`${replyId}:docs`), ts, kind: "link", href: DOCS_URL, label: "Collie docs" });
   }
 
   /** The three steps of a ticket as the first run reaches them: read it, write a note, reply. */
@@ -236,7 +250,10 @@ class Mapper {
     }
     if (m.role === "assistant") {
       (m.content as Block[]).forEach((b, i) => {
-        if (b.type === "text") this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
+        if (b.type === "text") {
+          this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
+          if (this.withProgress && (b.text ?? "").startsWith("Triage done")) this.summary(safeId(`${id}:${i}`), ts);
+        }
         else if (b.type === "thinking") this.item({ id: safeId(`${id}:${i}`), ts, kind: "thinking", text: b.thinking ?? "" });
         else if (b.type === "toolCall") {
           const tool: Extract<Item, { kind: "tool" }> = {

@@ -19,6 +19,8 @@ export const CAPS = {
   summary: 1024,
   output: 16384,
   text: 65536,
+  /** `markdown` and `code` item text. */
+  richText: 32768,
   ts: 40,
   settledReason: 128,
   message: 512,
@@ -151,7 +153,7 @@ export const BADGE_TEXT_MAX = 12;
 export const BADGE_COUNT_MAX = 9999;
 
 /** Clean a display string capped in characters: controls and invisibles out, trimmed, cut with `…` as the last character. Empty after cleaning: undefined. */
-function shortLine(text: unknown, maxChars: number): string | undefined {
+export function shortLine(text: unknown, maxChars: number): string | undefined {
   const clean = cut(text, maxChars * 4 + 3).trim();
   if (clean === "") return undefined;
   const symbols = [...clean];
@@ -179,6 +181,39 @@ export function badgeOf(value: { count: number } | { text: string }): { count: n
   }
   const word = shortLine(text, BADGE_TEXT_MAX);
   return word === undefined ? undefined : { text: word };
+}
+
+/** The longest code language, in characters. WIRE.md 7.11. */
+export const LANG_MAX = 24;
+/** The longest link target, in characters. */
+export const HREF_MAX = 2048;
+/** The longest link label, in characters. */
+export const LINK_LABEL_MAX = 120;
+
+const LANG_RULE = /^[A-Za-z0-9_+#.-]+$/u;
+
+/** A code item's language (WIRE.md 7.11): 1 to 24 of letters, digits and `_ + # . -`. Anything else is a TypeError, because the adapter would drop the name. */
+export function langOf(lang: unknown): string {
+  const trimmed = typeof lang === "string" ? lang.trim() : "";
+  if (trimmed.length < 1 || trimmed.length > LANG_MAX || !LANG_RULE.test(trimmed)) {
+    throw new TypeError(`a code language is 1 to ${LANG_MAX} of letters, digits and _ + # . -`);
+  }
+  return trimmed;
+}
+
+/**
+ * A link item's target (WIRE.md 7.11): an `https://` URL of at most 2048 characters, with a host, no user or password
+ * and no whitespace, control or invisible character. Anything else is a TypeError, because the adapter would drop the
+ * whole item.
+ */
+export function hrefOf(href: unknown): string {
+  const text = typeof href === "string" ? href : "";
+  const bad = text === "" || text.length > HREF_MAX || /\s/u.test(text) || cut(text, HREF_MAX * 4) !== text;
+  if (!bad && URL.canParse(text)) {
+    const url = new URL(text);
+    if (url.protocol === "https:" && url.hostname !== "" && url.username === "" && url.password === "") return text;
+  }
+  throw new TypeError("a link href is an https:// address without spaces, a user or a password, at most 2048 characters");
 }
 
 /** The most steps a progress carries. WIRE.md 7.10. */

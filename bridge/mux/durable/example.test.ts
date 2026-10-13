@@ -189,6 +189,12 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const after = recorder.all(ticket);
     expect(after.some((event) => event.type === "ask-closed" && event.by === "phone")).toBe(true);
     expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.includes("The helper says"))).toBe(true);
+    // The finished ticket adds a markdown note, a code block and a link, and the real adapter reads all three (WIRE.md 7.11).
+    const rich = after.flatMap((event) => (event.type === "item" ? [event.item] : [])).filter((item) => item.kind === "markdown" || item.kind === "code" || item.kind === "link");
+    expect(rich.map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
+    expect(rich[0]?.kind === "markdown" && rich[0].text).toContain("- Ask the customer to sign in again.");
+    expect(rich[1]?.kind === "code" && rich[1].lang).toBe("sh");
+    expect(rich[2]?.kind === "link" && rich[2].href).toBe("https://colliepwa.dev/docs/");
   });
 
   test("example: a send starts a new turn, and a stop ends it with a settled event and no item", async () => {

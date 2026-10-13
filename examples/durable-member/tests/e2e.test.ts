@@ -87,9 +87,12 @@ describe("one ticket", () => {
     expect(await pane(d, main)).not.toHaveProperty("progress"); // the program clears it when the run ends
     expect(await pane(d, helper)).not.toHaveProperty("progress"); // a helper only answers
     const events = await allEvents(d, main);
-    const last = events.filter((e) => e.type === "item").at(-1)!;
-    expect(last).toMatchObject({ item: { kind: "reply" } });
-    expect((last as any).item.text).toContain("The helper says");
+    const items = events.flatMap((e) => (e.type === "item" ? [e.item] : []));
+    const at = items.findIndex((item) => item.kind === "reply" && item.text.startsWith("Triage done"));
+    const reply = items[at];
+    expect(reply?.kind === "reply" && reply.text).toContain("The helper says");
+    // The ticket then adds a markdown note with a list, a code block and a link to the docs (WIRE.md 7.11).
+    expect(items.slice(at + 1).map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
   });
 
   test("send starts a new turn; a repeat runs nothing; stop aborts it; idle, and the stop is a settled event, not an item", async () => {

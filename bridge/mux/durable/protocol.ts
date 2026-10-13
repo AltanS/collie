@@ -18,8 +18,12 @@ import {
   CAPS,
   changedByCleaning,
   cleanText,
+  httpsHrefOf,
   isWireId,
+  ITEM_RICH_BYTES,
+  langOf,
   lineRule,
+  LINK_LABEL_MAX,
   PROGRESS_LABEL_MAX,
   PROGRESS_STEPS_MAX,
   renameTitleOf,
@@ -592,6 +596,10 @@ function isTextKind(value: string): value is TextKind {
 /** An item with a known id replaces the earlier one. `ts` is ISO 8601, or absent. */
 export type DurableItem =
   | { readonly id: string; readonly ts?: string; readonly kind: TextKind; readonly text: string }
+  // The rich kinds (WIRE.md section 7.11): markdown, a code block and a link.
+  | { readonly id: string; readonly ts?: string; readonly kind: "markdown"; readonly text: string }
+  | { readonly id: string; readonly ts?: string; readonly kind: "code"; readonly lang?: string; readonly text: string }
+  | { readonly id: string; readonly ts?: string; readonly kind: "link"; readonly href: string; readonly label?: string }
   | {
       readonly id: string;
       readonly ts?: string;
@@ -627,6 +635,8 @@ export interface DurableEventsReply {
   readonly reset: boolean;
   readonly more: boolean;
   readonly trimmed: number;
+  /** How many `item` events were dropped because the item broke a rule or has a kind this reader does not know. */
+  readonly droppedItems: number;
 }
 
 /** An ISO stamp inside its cap, or undefined. */
@@ -648,6 +658,25 @@ function readItem(value: Json | undefined): DurableItem | null {
   if (isTextKind(kind)) {
     const text = blockOf(value, "text", CAPS.itemText);
     return text === undefined ? null : { id, ts, kind, text };
+  }
+  if (kind === "markdown") {
+    const text = blockOf(value, "text", ITEM_RICH_BYTES);
+    return text === undefined ? null : { id, ts, kind, text };
+  }
+  if (kind === "code") {
+    const text = blockOf(value, "text", ITEM_RICH_BYTES);
+    if (text === undefined) return null;
+    const name = value.lang;
+    const lang = isText(name) ? langOf(name) : undefined;
+    return lang === undefined ? { id, ts, kind, text } : { id, ts, kind, lang, text };
+  }
+  if (kind === "link") {
+    const target = value.href;
+    const href = isText(target) ? httpsHrefOf(target) : undefined;
+    if (href === undefined) return null;
+    const words = value.label;
+    const label = isText(words) ? shortLine(words, LINK_LABEL_MAX) : undefined;
+    return label === undefined ? { id, ts, kind, href } : { id, ts, kind, href, label };
   }
   if (kind !== "tool") return null;
   const status = value.status;
@@ -803,12 +832,14 @@ export function parseEvents(text: string): Parsed<DurableEventsReply> {
     return bad(`events carries ${String(root.events.length)} events, over its cap`);
   }
   const events: DurableEvent[] = [];
+  let droppedItems = 0;
   for (const entry of root.events) {
     const event = readEvent(entry);
     if (event !== null) events.push(event);
+    else if (isRecord(entry) && entry.type === "item") droppedItems += 1;
   }
   const trimmed = root.trimmed;
-  return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0 });
+  return good({ epoch, events, next, reset, more: root.more === true, trimmed: isCount(trimmed) ? trimmed : 0, droppedItems });
 }
 
 // ── answer ────────────────────────────────────────────────────────────────────

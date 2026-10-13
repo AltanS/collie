@@ -5,7 +5,7 @@
 
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
-import { assertId, badgeOf, bytes, CAPS, cut, cwdOf, LIMITS, progressOf, subtitleOf, tsOf } from "./rules.ts";
+import { assertId, badgeOf, bytes, CAPS, cut, cwdOf, hrefOf, langOf, LIMITS, LINK_LABEL_MAX, progressOf, shortLine, subtitleOf, tsOf } from "./rules.ts";
 import type {
   Answer,
   AnswerResult,
@@ -60,6 +60,15 @@ export function cleanItem(item: Item): Item {
   const ts = tsOf(item.ts);
   const head = { id: item.id, ...(ts ? { ts } : {}) };
   if (item.kind === "tool") return { ...head, kind: "tool", tool: cleanTool(item.tool), status: item.status };
+  if (item.kind === "markdown") return { ...head, kind: "markdown", text: cut(item.text, CAPS.richText, true) };
+  if (item.kind === "code") {
+    const lang = item.lang === undefined ? undefined : langOf(item.lang);
+    return { ...head, kind: "code", ...(lang === undefined ? {} : { lang }), text: cut(item.text, CAPS.richText, true) };
+  }
+  if (item.kind === "link") {
+    const label = item.label === undefined ? undefined : shortLine(item.label, LINK_LABEL_MAX);
+    return { ...head, kind: "link", href: hrefOf(item.href), ...(label === undefined ? {} : { label }) };
+  }
   return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true) };
 }
 

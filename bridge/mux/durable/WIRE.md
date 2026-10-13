@@ -371,6 +371,12 @@ type ToolStatus = "running" | "done" | "failed" | "denied";
 /** An item with a known id replaces the earlier one (a tool changes status). Ids are unique per pane. */
 type Item =
   | { id: string; ts?: string; kind: "user" | "reply" | "thinking" | "notice"; text: string }
+  /** Rendered as markdown (section 7.11). */
+  | { id: string; ts?: string; kind: "markdown"; text: string }
+  /** A fenced code block. `lang` is a plain name such as "ts" or "c++". */
+  | { id: string; ts?: string; kind: "code"; lang?: string; text: string }
+  /** A link to an `https://` address. `label` is the words the phone shows for it. */
+  | { id: string; ts?: string; kind: "link"; href: string; label?: string }
   | { id: string; ts?: string; kind: "tool"; tool: ToolCall; status: ToolStatus };
 // `ts`: ISO 8601 with a zone, for example "2026-10-12T09:30:00.000Z".
 
@@ -570,6 +576,10 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `StarterRow.label` | 128 bytes | cut |
 | `Option.label` | 128 bytes | cut |
 | `Pane.harness` | 64 bytes | cut |
+| `Item.text` of a `markdown` or `code` item | 32768 bytes (32 KiB), same rule as a reply's text | cut |
+| `Item.lang` of a `code` item | 24 characters of letters, digits and `_ + # . -` | absent. The block stays. |
+| `Item.href` of a `link` item | 2048 characters, `https://` only | the item is dropped |
+| `Item.label` of a `link` item | 120 characters (code points), same rule as the subtitle | cut at a whole character with `…`. Nothing left: absent. |
 | `Pane.subtitle` | 120 characters (code points), after cleaning and a trim | cut at a whole character with `…` as the 120th. Nothing left after cleaning: absent. |
 | `Pane.badge.text` | 12 characters, same rule | cut the same way. Nothing left: the badge is absent. |
 | `Pane.badge.count` | an integer from 0 to 9999 | absent (not clamped). |
@@ -790,6 +800,27 @@ abort.
 - The phone draws a step list as the running step's label with "n of m" (the first `todo` step when none
   runs, and the last step when all are done), and a percent as a thin bar with its label.
 
+### 7.11 Markdown, code and links in the thread
+
+- An item may have the kind `markdown`, `code` or `link`, beside `user`, `reply`, `thinking`, `notice` and
+  `tool`. All three are optional and additive: a program that sends none is unchanged, and an older
+  adapter drops an item of a kind it does not know (section 2, point 8).
+- `markdown` is text the phone renders as markdown: headings, lists, emphasis, code spans and links. It
+  is the same renderer the phone uses for the log of any other agent, and it draws every string as text,
+  never as markup. `code` is a code block, and `lang` names its language when it has one. `link` is a
+  line with a link in it; the phone shows `label`, or the address when there is no label. A markdown
+  link inside a `markdown` item is a link like any other, and the phone opens only web addresses.
+- Images and files are not items. An item of a kind the adapter does not know is dropped.
+- A `link` whose `href` is not an `https://` address with a host, has a user or a password in it, has a
+  space, a control character or an invisible character in it, or is longer than 2048 characters, is
+  dropped. A `code` item whose `lang` is not a plain name keeps its block and loses the name. The
+  strictness has a reason: the name goes behind a fence in markdown, and the address goes in a link.
+- A dropped item is never an error. The adapter writes one log line for each pane in each epoch that
+  says items were dropped, so a program that sends a bad one can be found without a flood in the log.
+- Chat shows a code item as a fenced block. A line of code that starts with three backticks or three
+  tildes gets an invisible character in front of it, because the markdown reader ends a block at any such
+  line; the code is unchanged to the eye.
+
 ## 8. Restart and epoch
 
 1. Every start of the program makes a new random `epoch`, at least 128 bits, never reused. `rev`
@@ -894,3 +925,6 @@ document. The version number stays 1; the spike's shapes are not supported.
     shipped, so the version stays 1. An older adapter ignores both.
 21. **`Pane` gains an optional `progress`** (sections 4, 6 and 7.10). Added before version 1 shipped, so
     the version stays 1. An older adapter ignores it.
+22. **`Item` gains the kinds `markdown`, `code` and `link`** (sections 4, 6 and 7.11). Added before
+    version 1 shipped, so the version stays 1. An older adapter drops an item of a kind it does not
+    know.

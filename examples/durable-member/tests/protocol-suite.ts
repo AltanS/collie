@@ -687,6 +687,46 @@ export function protocolSuite(transport: Transport) {
       });
     });
 
+    describe("markdown, code and link items", () => {
+      const items = async (id: string) => (await api.events(d, id, 0)).body.events.flatMap((e) => (e.type === "item" ? [e.item] : []));
+      test("a pane takes the three kinds, and the events carry them as written", async () => {
+        const p = mk("rich");
+        p.event({ type: "item", item: { id: "m", kind: "markdown", text: "# Title\n\n- one\n- two" } });
+        p.event({ type: "item", item: { id: "c", kind: "code", lang: "ts", text: "const a = 1;\n" } });
+        p.event({ type: "item", item: { id: "c2", kind: "code", text: "no language" } });
+        p.event({ type: "item", item: { id: "l", kind: "link", href: "https://colliepwa.dev/docs/", label: "Collie docs" } });
+        p.event({ type: "item", item: { id: "l2", kind: "link", href: "https://colliepwa.dev/" } });
+        expect(await items("rich")).toEqual([
+          { id: "m", kind: "markdown", text: "# Title\n\n- one\n- two" },
+          { id: "c", kind: "code", lang: "ts", text: "const a = 1;\n" },
+          { id: "c2", kind: "code", text: "no language" },
+          { id: "l", kind: "link", href: "https://colliepwa.dev/docs/", label: "Collie docs" },
+          { id: "l2", kind: "link", href: "https://colliepwa.dev/" },
+        ]);
+      });
+      test("markdown and code text is cleaned and cut at 32 KiB, and a label at 120 characters", async () => {
+        const p = mk("rich2");
+        p.event({ type: "item", item: { id: "m", kind: "markdown", text: `a\u0000b\u202e${"é".repeat(40_000)}` } });
+        p.event({ type: "item", item: { id: "c", kind: "code", text: "x".repeat(40_000) } });
+        p.event({ type: "item", item: { id: "l", kind: "link", href: "https://example.com/", label: `  a\u200b${"é".repeat(300)} ` } });
+        const [markdown, code, link] = await items("rich2");
+        expect(markdown?.kind === "markdown" && markdown.text.startsWith("ab")).toBe(true);
+        expect(markdown?.kind === "markdown" && Buffer.byteLength(markdown.text)).toBeLessThanOrEqual(32768);
+        expect(code?.kind === "code" && Buffer.byteLength(code.text)).toBeLessThanOrEqual(32768);
+        expect(code?.kind === "code" && code.text.endsWith("…")).toBe(true);
+        expect(link?.kind === "link" && [...(link.label ?? "")]).toHaveLength(120);
+      });
+      test("a bad language or a bad link target is a TypeError here, so the wire never carries what the adapter drops", async () => {
+        const p = mk("rich3");
+        for (const lang of ["", "a".repeat(25), "ts\n```", "c++ x"]) {
+          expect(() => p.event({ type: "item", item: { id: "c", kind: "code", lang, text: "x" } })).toThrow(TypeError);
+        }
+        const hrefs = ["http://example.com/", "javascript:alert(1)", "data:text/html,x", "//example.com/", "/docs", "https://", "https://u:p@example.com/", "https://example.com/a b", `https://example.com/${"a".repeat(2100)}`, ""];
+        for (const href of hrefs) expect(() => p.event({ type: "item", item: { id: "l", kind: "link", href } })).toThrow(TypeError);
+        expect(await items("rich3")).toEqual([]); // a refused item is not in the log
+      });
+    });
+
     describe("progress", () => {
       const rev = async () => (await api.snapshot(d)).body.rev;
       test("a pane starts without progress, and the snapshot carries steps and a percent", async () => {

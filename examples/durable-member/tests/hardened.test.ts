@@ -287,7 +287,7 @@ describe("cleaned asks and invisible characters", () => {
     expect(r.status).toBe(200);
     const items = r.body.events.filter((e) => e.type === "item");
     expect(items).toHaveLength(100);
-    expect(items.every((e, i) => e.type === "item" && e.item.kind !== "tool" && e.item.text.startsWith(`${i}:z`) && e.item.text.length === 60_000 + `${i}:`.length)).toBe(true);
+    expect(items.every((e, i) => e.type === "item" && "text" in e.item && e.item.text.startsWith(`${i}:z`) && e.item.text.length === 60_000 + `${i}:`.length)).toBe(true);
     await c.close();
   });
 });

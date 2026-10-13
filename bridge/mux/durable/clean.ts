@@ -211,6 +211,47 @@ export function shortLine(text: string, maxChars: number): string | undefined {
   return `${symbols.slice(0, maxChars - 1).join("")}${ELLIPSIS}`;
 }
 
+// ── Rich items (WIRE.md section 7.11) ─────────────────────────────────────────
+
+/** The largest `text` of a markdown or code item, in bytes. */
+export const ITEM_RICH_BYTES = 32768;
+
+/** The longest code language, in characters. */
+export const LANG_MAX = 24;
+
+/** The longest link target, in characters (UTF-16 units, as a URL is measured). */
+export const HREF_MAX = 2048;
+
+/** The longest link label, in characters (code points). */
+export const LINK_LABEL_MAX = 120;
+
+const LANG_RULE = /^[A-Za-z0-9_+#.-]+$/u;
+const WHITESPACE = /\s/u;
+
+/**
+ * A code item's language: 1 to 24 of letters, digits and `_ + # . -`, after a trim. Anything else reads as no
+ * language and the block is kept. The strictness is the point: the name goes after a fence in markdown, and a
+ * name with a backtick or a newline could close that fence early.
+ */
+export function langOf(text: string): string | undefined {
+  const trimmed = text.trim();
+  return trimmed.length >= 1 && trimmed.length <= LANG_MAX && LANG_RULE.test(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * A link item's target: an `https://` URL of at most 2048 characters with a host, no user or password, and no
+ * whitespace, control or invisible character. Returns the URL as the platform writes it, or undefined for
+ * anything else (`http:`, `javascript:`, `data:`, a relative path and a malformed URL all read as undefined).
+ */
+export function httpsHrefOf(text: string): string | undefined {
+  if (text === "" || text.length > HREF_MAX || WHITESPACE.test(text)) return undefined;
+  if (changedByCleaning(text, lineRule(HREF_MAX * 4))) return undefined;
+  if (!URL.canParse(text)) return undefined;
+  const url = new URL(text);
+  if (url.protocol !== "https:" || url.hostname === "" || url.username !== "" || url.password !== "") return undefined;
+  return url.href.length <= HREF_MAX ? url.href : undefined;
+}
+
 // ── Progress (WIRE.md section 7.10) ───────────────────────────────────────────
 
 /** The most steps a progress carries. */

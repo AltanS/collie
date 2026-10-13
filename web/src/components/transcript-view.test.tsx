@@ -493,3 +493,62 @@ describe("TranscriptView — tool calls off by default", () => {
     expect(screen.queryByRole("button", { name: /hidden/ })).toBeNull();
   });
 });
+
+// A durable program's markdown, code and link items reach Chat as ordinary text parts (bridge/journal/durable.ts), so the
+// existing renderer draws them and no new block exists. These are the exact strings the journal adapter writes.
+describe("TranscriptView: durable markdown, code and link items", () => {
+  const durable = (uuid: string, text: string): TranscriptEntry =>
+    turn({ uuid, role: "assistant", parts: [{ kind: "text", text }] });
+
+  it("renders a durable markdown item with its heading, list and emphasis", () => {
+    const { container } = render(
+      <TranscriptView
+        agent="durable"
+        entries={[durable("m1", "## Triage\n\n- read the ticket\n- **write** a note\n- reply")]}
+      />,
+    );
+    expect(screen.getByText("Triage")).toBeInTheDocument();
+    expect(container.textContent).not.toContain("##");
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(container.querySelector("strong")).toHaveTextContent("write");
+  });
+
+  it("renders a durable code item as one block that keeps its text and its language", () => {
+    const { container } = render(
+      <TranscriptView agent="durable" entries={[durable("c1", "```sh\n# clear the stale session\nsession-cli revoke --user 412\n```")]} />,
+    );
+    const block = container.querySelector("pre");
+    expect(block).toHaveTextContent("session-cli revoke --user 412");
+    expect(block).toHaveTextContent("# clear the stale session");
+    expect(container.textContent).not.toContain("```");
+    expect(container.innerHTML).toContain("sh");
+  });
+
+  it("keeps a code line that looks like a fence inside the block, behind the invisible character the journal adds", () => {
+    const { container } = render(
+      <TranscriptView agent="durable" entries={[durable("c2", "```md\nbefore\n​```js\nnested\n​```\nafter\n```")]} />,
+    );
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(container.querySelector("pre")).toHaveTextContent("nested");
+    expect(container.querySelector("pre")).toHaveTextContent("after");
+  });
+
+  it("renders a durable link item as a link that opens in a new tab without a referrer, and never as markup", () => {
+    render(
+      <TranscriptView
+        agent="durable"
+        entries={[durable("l1", "[Collie docs](https://colliepwa.dev/docs/)"), durable("l2", "[<img src=x onerror=alert(1)>](https://example.com/)")]}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Collie docs" });
+    expect(link).toHaveAttribute("href", "https://colliepwa.dev/docs/");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(document.querySelector("img")).toBeNull();
+  });
+
+  it("renders a markdown link to a script address as its label, not as a link", () => {
+    render(<TranscriptView agent="durable" entries={[durable("m2", "[click](javascript:alert(1)) and [ok](https://example.com/)")]} />);
+    expect(screen.queryByRole("link", { name: "click" })).toBeNull();
+    expect(screen.getByRole("link", { name: "ok" })).toBeInTheDocument();
+  });
+});

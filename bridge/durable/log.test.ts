@@ -353,7 +353,7 @@ describe("size cap", () => {
     expect(itemIds(kept)).toEqual(["first", "big", "last"]);
     const first = kept[0];
     expect(first?.at).toBe("2026-10-12T08:00:00.000Z");
-    expect(first?.k === "item" && first.item.kind !== "tool" && first.item.text).toBe("no ts of its own, edited");
+    expect(first?.k === "item" && "text" in first.item && first.item.text).toBe("no ts of its own, edited");
   });
 
   test("a rewrite that keeps huge items stops at three quarters of the cap, so the next one is far away", async () => {

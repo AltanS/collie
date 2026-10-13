@@ -48,6 +48,12 @@ export type ToolStatus = "running" | "done" | "failed" | "denied";
 /** An item with a known id replaces the earlier one (a tool changes status). Ids are unique per pane. */
 export type Item =
   | { id: string; ts?: string; kind: "user" | "reply" | "thinking" | "notice"; text: string }
+  /** Rendered as markdown by the phone (WIRE.md 7.11): headings, lists, emphasis, code spans and links. At most 32 KiB. */
+  | { id: string; ts?: string; kind: "markdown"; text: string }
+  /** A fenced code block. `lang` is a plain name such as "ts" or "c++" (at most 24 characters). At most 32 KiB. */
+  | { id: string; ts?: string; kind: "code"; lang?: string; text: string }
+  /** A link. `href` is an `https://` address (at most 2048 characters). `label` is what the phone shows, at most 120 characters. */
+  | { id: string; ts?: string; kind: "link"; href: string; label?: string }
   | { id: string; ts?: string; kind: "tool"; tool: ToolCall; status: ToolStatus };
 
 export interface Option {

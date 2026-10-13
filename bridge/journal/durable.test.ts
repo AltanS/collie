@@ -93,6 +93,61 @@ describe("the durable journal adapter: chat shape", () => {
     expect(entries[1]?.ts).toBe("2026-10-12T09:30:00.000Z");
   });
 
+  test("markdown, code and link items are assistant turns whose text Chat's markdown reader draws", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [
+      { type: "item", item: { id: "m1", kind: "markdown", text: "# Triage\n\n- read\n- **write**" } },
+      { type: "item", item: { id: "c1", kind: "code", lang: "ts", text: "const a = 1;" } },
+      { type: "item", item: { id: "c2", kind: "code", text: "no language" } },
+      { type: "item", item: { id: "l1", kind: "link", href: "https://colliepwa.dev/docs/", label: "The docs" } },
+      { type: "item", item: { id: "l2", kind: "link", href: "https://colliepwa.dev/" } },
+    ]);
+    const { entries } = await page();
+    expect(entries.map((entry) => [entry.uuid, entry.role, entry.parts[0]?.kind])).toEqual([
+      ["m1", "assistant", "text"],
+      ["c1", "assistant", "text"],
+      ["c2", "assistant", "text"],
+      ["l1", "assistant", "text"],
+      ["l2", "assistant", "text"],
+    ]);
+    expect(firstText(entries[0])).toBe("# Triage\n\n- read\n- **write**");
+    expect(firstText(entries[1])).toBe("```ts\nconst a = 1;\n```");
+    expect(firstText(entries[2])).toBe("```\nno language\n```");
+    expect(firstText(entries[3])).toBe("[The docs](https://colliepwa.dev/docs/)");
+    expect(firstText(entries[4])).toBe("[https://colliepwa.dev/](https://colliepwa.dev/)");
+  });
+
+  test("a code line that looks like a fence cannot close the block early, and a long block is cut inside its fence", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [
+      { type: "item", item: { id: "c1", kind: "code", lang: "md", text: "before\n```js\nnested\n```\n   ~~~\nafter" } },
+      { type: "item", item: { id: "c2", kind: "code", text: "x".repeat(25_000) } },
+    ]);
+    const { entries } = await page();
+    const lines = (firstText(entries[0]) ?? "").split("\n");
+    // Only the opening and the closing lines are fence lines to the reader.
+    expect(lines.filter((line) => /^\s*(```|~~~)/.test(line))).toEqual(["```md", "```"]);
+    expect(lines).toContain("\u200b```js");
+    const long = entries[1]?.parts[0];
+    expect(long?.kind === "text" && long.truncated).toBe(true);
+    expect(long?.kind === "text" && long.text.startsWith("```\n") && long.text.endsWith("\n```")).toBe(true);
+  });
+
+  test("a link label cannot reshape the link, and a target with parentheses stays one destination", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [
+      { type: "item", item: { id: "l1", kind: "link", href: "https://en.wikipedia.org/wiki/Foo_(bar)", label: "a [b] c\nd" } },
+    ]);
+    expect(firstText((await page()).entries[0])).toBe("[a (b) c d](https://en.wikipedia.org/wiki/Foo_%28bar%29)");
+  });
+
+  test("a link row in a tampered log whose target is not https draws nothing", () => {
+    const row = (href: string) => JSON.stringify({ k: "item", at: "2026-10-12T09:30:00.000Z", item: { id: "l1", kind: "link", href } });
+    expect(parseDurableLog(row("javascript:alert(1)"))).toEqual([]);
+    expect(parseDurableLog(row("http://example.com/"))).toEqual([]);
+    expect(parseDurableLog(row("https://example.com/"))).toHaveLength(1);
+  });
+
   test("a tool item is a tool part, and its status is its result: running none, done output, failed an error, denied a refusal", async () => {
     const { logs, page } = await rig();
     await logs.apply(PANE, [tool("t1", "running"), tool("t2", "done", "wrote 4 lines"), tool("t3", "failed", "EACCES"), tool("t4", "denied")]);
