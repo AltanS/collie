@@ -77,17 +77,37 @@ export class PaneRegistry {
    * every one has asked or ended, or after `ms`, so a call that does neither does not hold the layout back
    * for good. Await it after `resume()` and before `ready()`: the first snapshot after a start then carries
    * the asks by contract, not by timing (WIRE.md section 8.2).
+   *
+   * When the window ends first, `log` gets one line naming the calls that did not ask, and the start goes on.
+   * Such an ask is not lost: when its hook runs later it is raised under the same id, and the next read lists it.
    */
-  reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS): Promise<void> {
+  reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS, log: (line: string) => void = (line) => console.warn(line)): Promise<void> {
     const ids = [...this.running].filter(([, name]) => risky.has(name)).map(([id]) => id);
     if (ids.length === 0) return Promise.resolve();
-    const each = ids.map((id) => new Promise<void>((resolve) => this.waits.set(id, resolve)));
+    const missing = new Set(ids);
+    const each = ids.map(
+      (id) =>
+        new Promise<void>((resolve) =>
+          this.waits.set(id, () => {
+            missing.delete(id);
+            resolve();
+          }),
+        ),
+    );
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, ms)));
-    return Promise.race([Promise.all(each).then(() => undefined), late]).finally(() => {
-      clearTimeout(timer);
-      for (const id of ids) this.waits.delete(id);
-    });
+    const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), ms)));
+    return Promise.race([Promise.all(each).then(() => "all" as const), late])
+      .then((how) => {
+        if (how === "all") return;
+        log(
+          `collie: ${missing.size} of ${ids.length} waiting asks were not raised again within ${ms} ms of the start; ` +
+            `the layout is ready without them, and each is listed under its old id once its hook runs (${[...missing].join(", ")})`,
+        );
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        for (const id of ids) this.waits.delete(id);
+      });
   }
 
   /** Stop every event stream. Call before `harness.close()`. */

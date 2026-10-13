@@ -200,6 +200,8 @@ export interface DurableProgram {
 }
 
 interface Held {
+  /** The session that read it: what `program()` answers with while the layout is held over a dropped read. */
+  readonly session: DurableSession;
   readonly snapshot: DurableSnapshot;
   readonly mux: MuxSnapshot;
   readonly etag: string | null;
@@ -274,6 +276,8 @@ export class DurableMux implements MuxAdapter {
   private agreedVersion: number | null = null;
   private current: DurableSession | null = null;
   private kept: Held | null = null;
+  /** True while the last read was a dropped one whose layout is held for this interval (WIRE.md section 8.8). */
+  private holding = false;
   private last: Reading | null = null;
   private inflight: Promise<MuxOutcome<MuxSnapshot>> | null = null;
   /** Transport failures in a row: a connect, a timeout or a cut reply. A real answer resets it. */
@@ -381,10 +385,15 @@ export class DurableMux implements MuxAdapter {
     return run;
   }
 
-  /** The program and its clean layout, while it is reachable. Later specs read asks, turns and starters here. */
+  /**
+   * The program and its clean layout, while it is reachable. Later specs read asks, turns and starters
+   * here. While one dropped read is held (WIRE.md section 8.8) the answer is the last good read's, so
+   * the layout and its open asks hold together and the blip does not show.
+   */
   program(): DurableProgram | null {
-    if (this.current === null || this.kept === null) return null;
-    return { session: this.current, snapshot: this.kept.snapshot };
+    if (this.kept === null) return null;
+    const session = this.current ?? (this.holding ? this.kept.session : null);
+    return session === null ? null : { session, snapshot: this.kept.snapshot };
   }
 
   /**
@@ -674,11 +683,13 @@ export class DurableMux implements MuxAdapter {
         const greeted = await this.greet();
         if (!greeted.ok) {
           this.failures = 0;
+          this.holding = false;
           return greeted;
         }
       }
       const outcome = await this.readSnapshot();
       this.failures = 0;
+      this.holding = false;
       return outcome;
     } catch (err) {
       // After any failed connect the next read starts with `hello` again (WIRE.md section 8.8).
@@ -690,7 +701,8 @@ export class DurableMux implements MuxAdapter {
       // Neither is a socket that failed the privacy check: that is a fault to show now.
       const previous = this.last?.outcome;
       const transient = !(err instanceof DurableUnreachable && err.detail.startsWith(SOCKET_NOT_PRIVATE));
-      if (transient && this.failures < FAILURES_TO_UNREACHABLE && previous?.ok === true && this.kept !== null) return muxOk(this.kept.mux);
+      this.holding = transient && this.failures < FAILURES_TO_UNREACHABLE && previous?.ok === true && this.kept !== null;
+      if (this.holding && this.kept !== null) return muxOk(this.kept.mux);
       if (err instanceof DurableUnreachable) return muxUnreachable(err.detail);
       return muxUnreachable(err instanceof Error ? err.message : String(err));
     }
@@ -770,7 +782,8 @@ export class DurableMux implements MuxAdapter {
       if (!again.ok) return muxUnreachable(`unreadable snapshot: ${again.detail}`);
       snapshot = again.value;
     }
-    this.kept = { snapshot, mux: toMuxSnapshot(snapshot), etag: reply.etag };
+    const kept = this.current ?? session;
+    this.kept = { session: kept, snapshot, mux: toMuxSnapshot(snapshot), etag: reply.etag };
     return muxOk(this.kept.mux);
   }
 
