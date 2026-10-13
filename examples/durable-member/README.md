@@ -165,6 +165,11 @@ second program needs it. Copy the folder into your program. It imports nothing f
 - A pane takes `event()` for items, `state()` for working and idle, and `ask()`, which resolves with
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - `starters()` lists what the phone can start from the New page.
+- The phone can give a workspace or a tab a new name (`rename` cap, on by default). The SDK sets the title and
+  raises `rev`. Pass `onRename({ kind, id, title })` to `openCollie` to keep the name, or to return `false` and
+  refuse it with 422. Set `caps: { rename: false }` to take no rename at all. The layout is made again on every
+  start, so a program that wants a name to outlive the process keeps it itself and uses it when it lays out.
+  A pane keeps the title the conversation gives it.
 
 The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
 `Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids

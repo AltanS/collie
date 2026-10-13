@@ -107,7 +107,7 @@ has a public URL, so the token is the whole gate.
 #### What the token does not protect against
 
 - **Anyone who holds the token acts as the phone.** They can read every pane, answer every ask, send
-  text, stop a turn and run a starter. There is nothing else to check: the descendant check of 1A
+  text, stop a turn, rename a workspace or a tab and run a starter. There is nothing else to check: the descendant check of 1A
   needs the caller's credentials on a local socket, and a TLS connection from the internet has none,
   so under 1B it does not exist.
 - **The host sees the text.** TLS ends at the host (on Cloudflare, at Cloudflare's edge). Transcripts,
@@ -166,6 +166,7 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /rename` | `RenameRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `rename-refused`, 503 `starting` |
 | `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
 
 Any other method or path answers 404 `not-found`.
@@ -186,16 +187,18 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
 | 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
 | 401 | (any) | Over the socket (1A): a program that wants a token, which the socket does not carry. Over TLS (1B): the token is missing or wrong. | 1A: `incompatible`, see section 2. 1B: `unreachable`, detail `token-refused`. |
-| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `rename` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
 | 403 | (any) | Over TLS (1B): something in front of the program refused the caller, for example an access proxy. | `unreachable`, detail `token-refused`. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
+| 404 | `no-such-target` | The workspace or tab of a `rename` is not in the program's layout. | `gone`. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
 | 409 | `incompatible` | Version outside the range. Carries `range`. | `unreachable`, detail `incompatible`. Never retried at the same version. |
 | 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current. Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
-| 409 | `request-id-reused` | The `requestId` was already used for a different route, pane or starter. | Refused. |
+| 409 | `request-id-reused` | The `requestId` was already used for a different route, pane, target or starter. | Refused. |
 | 409 | `not-supported` | The cap for this act is false, or this pane cannot take it (for example no send handler). | Refused. |
 | 413 | `too-large` | The request body is over 64 KiB. | Refused. |
+| 422 | `rename-refused` | The program said no to this title for this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `starter-failed` | The starter ran and failed. Carries `message`. Nothing was stored for the request id. | Refused, with the message. The same request id may run again. |
 | 503 | `starting` | `ready` is false. | `unreachable`, detail `starting`. Asks `hello` again on the next poll. |
 | 500 | `internal` | A bug in the program. | A read: `unreachable` for this poll. A POST: outcome unknown (section 7.6). |
@@ -234,6 +237,7 @@ interface Caps {
   send?: boolean;      // it takes text
   steer?: boolean;     // it can steer text into a running turn (needs send)
   abort?: boolean;     // it can stop a running turn
+  rename?: boolean;    // it takes a new title for a workspace or a tab (section 7.8)
   terminal?: boolean;  // MUST be false or absent in version 1. The adapter ignores it.
 }
 
@@ -422,6 +426,16 @@ interface AbortRequest {
 interface ControlReply {
   ok: true;
   replayed?: true;
+}
+
+/** A new title for a workspace or a tab. A pane's title is the conversation's, and is not renamed. */
+interface RenameRequest {
+  requestId: string;
+  kind: "workspace" | "tab";
+  /** The workspace id, or the tab id as the snapshot lists it. */
+  id: string;
+  /** Trimmed, 1 to 120 characters, no control character (section 7.8). */
+  title: string;
 }
 
 interface StarterRequest {
@@ -659,7 +673,7 @@ abort.
   `StarterReply` with `replayed: true` and run nothing. A failed start (422) stores nothing, so the
   same id may run again. A repeat that arrives while the first is still running waits for it and
   returns its result.
-- **Answer, send, abort:** the program SHOULD do the same: a repeat returns the first reply with
+- **Answer, send, abort, rename:** the program SHOULD do the same: a repeat returns the first reply with
   `replayed: true` and runs nothing. The bridge receipt is the main guard. This one covers a reply
   lost on the way.
 - The same `requestId` on a different route, pane or starter: 409 `request-id-reused`.
@@ -682,8 +696,8 @@ abort.
   store, newest first; a pending receipt younger than a day is never pruned. Each store is written
   to a temporary file and renamed over the old one.
 - Timeouts in the adapter over the socket (1A): 1000 ms for `hello`, `snapshot` and `events`;
-  3000 ms for `answer`, `send` and `abort`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
-  `hello`, `snapshot`, `events`, `answer`, `send` and `abort`, because a program that slept may wake
+  3000 ms for `answer`, `send`, `abort` and `rename`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
+  `hello`, `snapshot`, `events`, `answer`, `send`, `abort` and `rename`, because a program that slept may wake
   cold; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
   connect to last byte, and a reply is cut off the moment it passes its byte cap (section 6), so a
   program that trickles bytes or never stops cannot hold a read.
@@ -695,6 +709,33 @@ abort.
 - `POST /starter/:id` runs one and answers the new pane's id. The pane MUST be in the snapshot the
   program serves after it answers.
 - With `caps.starters` false: 409 `not-supported`.
+
+### 7.8 A rename
+
+- `POST /rename` carries a `requestId`, a `kind` (`workspace` or `tab`), the `id` of that workspace
+  or tab as the snapshot lists it, and a `title`. A pane is not renamed: its title is the
+  conversation's, and the program sets it.
+- The title is trimmed. It MUST be 1 to 120 characters (code points, not bytes) with no control
+  character (C0, DEL, C1). Anything else, and a `kind` that is neither word: 400 `bad-body`. An `id`
+  that breaks the id rule: 400 `bad-id`. The program still cleans and cuts the stored title to the
+  field cap (section 6), like every other title.
+- With `caps.rename` false: 409 `not-supported`. An `id` that names no workspace or no tab of that
+  kind: 404 `no-such-target`.
+- The program applies the title and raises `rev` (section 7.1) when the title changed, and the next
+  snapshot carries it. It answers `{ "ok": true }` once the title is applied.
+- The program MAY refuse a title it does not accept: 422 `rename-refused`, with a `message` when it
+  has words for the person. Nothing changed. The same `requestId` may try again, as for a failed
+  starter.
+- The adapter checks the cap and the layout before it posts, and mints a UUID `requestId` for each
+  rename (a rename has no pane log and no bridge receipt). It never retries the POST. Like every
+  POST (section 7.6), a rename that times out, drops the connection or gets a 5xx has an unknown
+  outcome, and the phone is told the rename may have been applied.
+- A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true`
+  and changes nothing, as for the other POSTs (section 7.6). The same `requestId` for another kind,
+  id or title: 409 `request-id-reused`.
+- Collie draws the rename control for a tab, because it already has a tab capability (`renameTab`)
+  that the adapter declares from `caps.rename`. It has no control for a workspace yet; a program
+  MAY still take one on the wire.
 
 ## 8. Restart and epoch
 
@@ -745,7 +786,7 @@ abort.
 - **More than one program per peer.** One socket path, or one URL, per peer.
 - **Ask kinds other than `permission`**, and free-text answers beyond the optional `note`.
 - **Starters that take input**, such as a folder or a prompt.
-- **Creating, renaming or closing** workspaces, tabs or panes from Collie.
+- **Creating or closing** workspaces, tabs or panes, and **renaming a pane**, from Collie. Renaming a workspace or a tab is section 7.8.
 
 ## 10. Changes from the spike
 
@@ -794,3 +835,5 @@ document. The version number stays 1; the spike's shapes are not supported.
 17. **The path cap is 103 bytes** (was 107), and the adapter walks the whole path (section 1A).
 18. **`Ask` gains an optional `cleaned`** (section 4), and cleaning also removes zero-width and tag
     characters (section 6).
+19. **`Caps` gains `rename`, and `POST /rename` is a route** (sections 3, 4 and 7.8), with the codes
+    `no-such-target` and `rename-refused`. Added before version 1 shipped, so the version stays 1.

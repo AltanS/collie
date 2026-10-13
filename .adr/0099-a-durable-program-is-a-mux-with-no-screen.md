@@ -96,6 +96,14 @@ adapter in the registry, and the crew is unchanged.**
     drives two multiplexers is a larger change and is not part of this one.
 11. **The crew protocol does not change.** `CREW_PROTOCOL_VERSION` stays 2. The lead tags the host
     on the merged census as it does for any peer. Anything this adds to the phone API is additive.
+12. **A rename is a cap on the wire.** The program owns its layout, so a workspace or a tab is
+    renamed only when the program says it takes one: `caps.rename` in the hello, and one route,
+    `POST /rename`, with a request id and a refusal of its own (422 `rename-refused`). The adapter
+    declares the tab capability `renameTab` from that cap, as it declares `steerTurn`, `abortTurn`
+    and `starters` from theirs, so the phone draws its usual rename control with no durable special
+    case. A pane is not renamed: its title is the conversation's. `renamePane` stays undeclared.
+    Collie has no capability for renaming a space, so a workspace rename is on the wire and has no
+    control on the phone yet. Added to version 1 before the wire shipped, so there is no version 2.
 
 ## Consequences
 

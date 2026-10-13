@@ -10,7 +10,7 @@ import { isAbsolute } from "node:path";
 
 import type { AgentStatus, Ask } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule } from "./clean.ts";
+import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, renameTitleOf } from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +51,8 @@ export interface DurableCaps {
   readonly send: boolean;
   readonly steer: boolean;
   readonly abort: boolean;
+  /** It takes a new title for a workspace or a tab (WIRE.md section 7.8). */
+  readonly rename: boolean;
 }
 
 export interface DurableHello {
@@ -245,6 +247,7 @@ export function parseHello(text: string): Parsed<DurableHello> {
       send: flag("send"),
       steer: flag("steer"),
       abort: flag("abort"),
+      rename: flag("rename"),
     },
   });
 }
@@ -841,6 +844,35 @@ export function parseControlPost(text: string, act: "send" | "abort"): DurableCo
     text: act === "send" && isText(body) ? body : "",
     steer: steer === true,
   };
+}
+
+/** The body the adapter writes for a rename (WIRE.md section 4, `RenameRequest`). */
+export interface DurableRenameBody {
+  requestId: string;
+  kind: "workspace" | "tab";
+  id: string;
+  title: string;
+}
+
+/**
+ * The program's side of a rename body: `"bad-json"`, `null` for a body that breaks WIRE.md section 7.8
+ * (no request id, a kind that is neither word, no id, a title outside the rule), or the fields with the
+ * title trimmed. The test program reads the adapter's POST with this, so the body the adapter writes and
+ * the body a program reads are checked by one rule.
+ */
+export function parseRenamePost(text: string): DurableRenameBody | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const requestId = root.requestId ?? undefined;
+  const kind = root.kind ?? undefined;
+  const id = root.id ?? undefined;
+  const title = root.title ?? undefined;
+  if (!isText(requestId) || !isText(id) || !isText(title)) return null;
+  if (kind !== "workspace" && kind !== "tab") return null;
+  const trimmed = renameTitleOf(title);
+  if (trimmed === null) return null;
+  return { requestId, kind, id, title: trimmed };
 }
 
 /** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */

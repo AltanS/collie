@@ -455,6 +455,22 @@ export class Store {
     return pane;
   }
 
+  /**
+   * Give a workspace or a tab a new title (WIRE.md 7.8). False when there is no such target. The id of a tab is
+   * the wire's `<workspace>:<tab>`. The title is cleaned and cut like every other, and `rev` rises only when
+   * what a reader sees changes.
+   */
+  rename(kind: "workspace" | "tab", id: string, title: string): boolean {
+    const rec = kind === "workspace" ? this.workspaces.get(id) : this.tabs.get(id);
+    if (rec === undefined) return false;
+    const next = cut(title, CAPS.title);
+    if (rec.title !== next) {
+      rec.title = next;
+      this.rev++;
+    }
+    return true;
+  }
+
   setStarters(list: Starter[]) {
     const rows = list.map((s) => ({ ...s, id: assertId(s.id, "starter id"), label: cut(s.label, CAPS.starterLabel) }));
     this.starters = new Map(rows.slice(0, LIMITS.starters).map((s) => [s.id, s]));

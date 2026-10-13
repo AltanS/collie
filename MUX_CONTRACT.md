@@ -256,6 +256,14 @@ holds it to what is written here.
   program's `caps.steer`, `caps.abort` and `caps.starters` (WIRE.md section 4) of the last good read,
   and no other adapter declares them. The phone draws Steer and Stop in the belt, and the new-tab and
   new-space buttons that open the New page, only for a capability that is declared `true`.
+- **Renaming.** `renameTab` is declared from the program's `caps.rename` of the last good read, and
+  `renameTab` posts `POST /rename` with `kind: "tab"` and a request id the adapter mints (WIRE.md
+  section 7.8), once and never retried. A program that declares no `rename` answers `unsupported` with
+  no socket touched. The program's 404 is `gone`, its 422 `rename-refused` is `refused`, and a POST
+  that may have left without an answer is `refused` with a detail that says the rename may have been
+  applied. `renamePane` stays undeclared: a pane's title is the conversation's, and Collie keeps no
+  operator label for it. There is no space (workspace) rename capability in Collie, so a workspace the
+  wire could rename has no control on the phone.
 
 ### Focus with a terminal and tuios-web attached
 

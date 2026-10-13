@@ -80,6 +80,7 @@ export const api = {
     const target = o.turnId || o.askId ? { turnId: o.turnId, askId: o.askId } : { turnId: (await paneNow(d, pane))?.turnId };
     return call(d, "POST", `/pane/${enc(pane)}/abort`, { requestId: o.requestId ?? mint(), ...target });
   },
+  rename: (d: Dial, kind: string, id: string, title: unknown, requestId: string = mint()) => call(d, "POST", "/rename", { requestId, kind, id, title }),
   start: (d: Dial, starter: string, requestId: string = mint()) => call(d, "POST", `/starter/${enc(starter)}`, { requestId }),
 };
 

@@ -5,8 +5,8 @@
 // four acts (answer, send, abort, starter) and throws 403 `caller-refused`. Reads never call it.
 
 import { BadAnswer, type Pane, type Store } from "./layout.ts";
-import { digestOf, HttpError, STARTER_GROUP } from "./receipts.ts";
-import { assertId, bytes, CAPS, cut, idOk } from "./rules.ts";
+import { digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
+import { assertId, bytes, CAPS, cut, idOk, renameTitleOf } from "./rules.ts";
 import {
   type AnswerReply,
   type AnswerRequest,
@@ -15,6 +15,7 @@ import {
   type EventsReply,
   type Hello,
   PROTOCOL_RANGE,
+  type RenameRequest,
   type SendRequest,
   type StarterReply,
 } from "./types.ts";
@@ -24,6 +25,11 @@ export interface CoreState {
   store: Store;
   hostName: string;
   caps: Caps;
+  /**
+   * Asked before a workspace or a tab takes a new title (WIRE.md 7.8). `false` refuses it: 422 `rename-refused`,
+   * nothing changes, and the same request id may try again. Absent: every rename the wire accepts is applied.
+   */
+  onRename?: (target: { kind: "workspace" | "tab"; id: string; title: string }) => boolean | Promise<boolean>;
 }
 
 /** Per request, from the server that accepted it. */
@@ -231,6 +237,29 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         await pane.abort({ requestId });
         return { ok: true };
       }),
+    );
+  }
+
+  if (method === "POST" && route[0] === "rename" && route.length === 1) {
+    call.refuseAct?.();
+    const body = await readBody(request);
+    const requestId = idField(body, "requestId");
+    const { kind } = body as Partial<RenameRequest>;
+    if (kind !== "workspace" && kind !== "tab") throw badBody("kind must be workspace or tab");
+    const id = idField(body, "id");
+    const title = renameTitleOf(body.title);
+    if (title === undefined) throw badBody("title must be 1 to 120 characters, with no control character");
+    if (!caps.rename) throw new HttpError(409, "not-supported");
+    return json(
+      200,
+      await store.receipts.run<ControlReply>(requestId, digestOf({ verb: "rename", kind, id, title }), async () => {
+        const exists = kind === "workspace" ? store.workspaces.has(id) : store.tabs.has(id);
+        if (!exists) throw new HttpError(404, "no-such-target");
+        if (state.onRename && !(await state.onRename({ kind, id, title }))) throw new HttpError(422, "rename-refused");
+        // The target can go while the hook runs. Then there is nothing to rename and nothing was changed.
+        if (!store.rename(kind, id, title)) throw new HttpError(404, "no-such-target");
+        return { ok: true };
+      }, RENAME_GROUP),
     );
   }
 

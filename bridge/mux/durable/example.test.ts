@@ -124,7 +124,7 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const session = adapter.program()?.session;
     expect(session?.version).toBe(1);
     expect(session?.hostName).toBe("durable-member");
-    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true });
+    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true });
   });
 
   test("example: the snapshot holds the ticket a first start opens, and it waits on one ask", async () => {

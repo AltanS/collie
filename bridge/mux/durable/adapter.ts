@@ -30,6 +30,7 @@ import { namesCurrent, type TurnView } from "../../durable/control.ts";
 import { DurableLogs } from "../../durable/log.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
+  muxAck,
   muxGone,
   muxOk,
   muxRefused,
@@ -59,7 +60,7 @@ import {
   type MuxWorktreeScope,
 } from "../types.ts";
 import type { AnswerRequest, Ask, ControlRequest } from "../../types.ts";
-import { byteLength, CAPS, isWireId, REPLY_CAPS } from "./clean.ts";
+import { byteLength, CAPS, isWireId, RENAME_TITLE_MAX, renameTitleOf, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
   DurableOutcomeUnknown,
@@ -88,6 +89,7 @@ import {
   type DurableCaps,
   type DurableControlBody,
   type DurablePane,
+  type DurableRenameBody,
   type DurableSnapshot,
 } from "./protocol.ts";
 import { buildDurableTransport, chooseDurableTransport, type DurableEnv } from "./transport.ts";
@@ -230,6 +232,9 @@ function controlUnsupported(caps: DurableCaps, request: ControlRequest): string 
   if (request.steer && !caps.steer) return "This program cannot steer a running turn.";
   return null;
 }
+const NO_RENAME = "This program does not take a new name for a tab from here.";
+const GONE_TAB = "The tab is not in the program's layout.";
+const RENAME_UNKNOWN = "The program did not answer, so the rename may have been applied. Look at the tab name before you try again.";
 const NO_KEYS = "A durable conversation takes no typed keys.";
 const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and conversations.";
 
@@ -241,16 +246,19 @@ const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and co
  * are absent too. `idlePollMs` is the transport's slowest census: a change the program did not
  * announce is seen within it.
  *
- * `steerTurn`, `abortTurn` and `starters` are the PROGRAM'S OWN `caps.steer`, `caps.abort` and
- * `caps.starters` from `hello` (WIRE.md section 4), so a program that declares a cap gets the control
+ * `steerTurn`, `abortTurn`, `starters` and `renameTab` are the PROGRAM'S OWN `caps.steer`, `caps.abort`,
+ * `caps.starters` and `caps.rename` from `hello` (WIRE.md section 4), so a program that declares a cap gets the control
  * on the phone and one that does not gets none. `caps` is null until the first good read; then all
- * three read absent, which is the fail-closed direction.
+ * four read absent, which is the fail-closed direction.
  */
 function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxCapabilityDeclaration {
   const supports: MuxCapability[] = ["agentDetection", "agentSessionRef"];
   if (caps?.steer === true) supports.push("steerTurn");
   if (caps?.abort === true) supports.push("abortTurn");
   if (caps?.starters === true) supports.push("starters");
+  // A tab is renamed through the program's own `rename` cap (WIRE.md section 7.8). A workspace has no
+  // Collie capability to declare it under, and a pane keeps the title the conversation gives it.
+  if (caps?.rename === true) supports.push("renameTab");
   return declareCapabilities({
     supports,
     spaces: "many",
@@ -264,7 +272,7 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
       closePane: NO_STRUCTURE,
       setFocus: "There is no terminal to show a conversation in.",
       createTab: NO_STRUCTURE,
-      renameTab: NO_STRUCTURE,
+      renameTab: NO_RENAME,
       closeTab: NO_STRUCTURE,
       createSpace: NO_STRUCTURE,
     },
@@ -858,8 +866,67 @@ export class DurableMux implements MuxAdapter {
     return muxUnsupported("createTab", NO_STRUCTURE);
   }
 
-  async renameTab(_tabId: string, _label: string): Promise<MuxAck> {
-    return muxUnsupported("renameTab", NO_STRUCTURE);
+  /**
+   * Give a tab a new title, through the program's `rename` cap (WIRE.md section 7.8). One POST with a
+   * fresh request id, never retried here. In order: the cap of the last good read (`unsupported`, with no
+   * socket touched); the id rule and the title rule (nothing leaves that the program would answer 400); a
+   * fresh read of the layout; the cap again; the tab (`gone`). A POST that may have left and has no answer is a refusal whose detail says the rename may
+   * have been applied, because an ack has no room for "unknown".
+   */
+  async renameTab(tabId: string, label: string): Promise<MuxAck> {
+    // The capability the phone saw. A program that never declared `rename` is not asked, and no socket is touched.
+    if (this.kept?.session.caps.rename !== true) return muxUnsupported("renameTab", NO_RENAME);
+    if (!isWireId(tabId)) return muxRefused("An id in the request breaks the id rule.");
+    const title = renameTitleOf(label);
+    if (title === null) return muxRefused(`The name must be 1 to ${String(RENAME_TITLE_MAX)} characters, with no control character.`);
+    const read = await this.poll();
+    const program = read.ok ? this.program() : null;
+    if (program === null) return muxUnreachable(read.ok ? STARTING : read.detail);
+    if (!program.session.caps.rename) return muxUnsupported("renameTab", NO_RENAME);
+    if (!program.snapshot.tabs.some((tab) => tab.id === tabId)) return muxGone(GONE_TAB);
+
+    const body: DurableRenameBody = { requestId: crypto.randomUUID(), kind: "tab", id: tabId, title };
+    let reply: DurableReply;
+    try {
+      reply = await this.transport.post({
+        path: "/rename",
+        version: program.session.version,
+        body,
+        timeoutMs: this.budget.writeTimeoutMs,
+        maxBytes: REPLY_CAPS.post,
+      });
+    } catch (err) {
+      if (err instanceof DurableOutcomeUnknown) return muxRefused(`${RENAME_UNKNOWN} (${err.detail})`);
+      // Nothing was sent. The next read starts with `hello` again (WIRE.md section 8.8).
+      this.current = null;
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    return this.renameOutcome(reply);
+  }
+
+  /** What one reply to a rename means (WIRE.md section 7.8). */
+  private async renameOutcome(reply: DurableReply): Promise<MuxAck> {
+    if (reply.status === 200) {
+      // A 200 the adapter cannot read may have acted.
+      if (parseControlReply(reply.text) === null) return muxRefused(`${RENAME_UNKNOWN} (unreadable rename reply)`);
+      // The new title is in the next snapshot. Look now, so the census has it.
+      this.last = null;
+      await this.poll();
+      return muxAck();
+    }
+    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${RENAME_UNKNOWN} (program answered ${String(reply.status)})`);
+    const problem = parseProblem(reply.text);
+    if (reply.status === 404 && problem.code === "no-such-target") return muxGone(GONE_TAB);
+    if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported("renameTab", NO_RENAME);
+    if (reply.status === 422 && problem.code === "rename-refused") {
+      return muxRefused(problem.message === "" ? "The program did not accept this name." : `The program did not accept this name: ${problem.message}`);
+    }
+    // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
+    if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
+      const refusal = this.refusalFor(reply);
+      return refusal ?? muxUnreachable(`program answered ${String(reply.status)}`);
+    }
+    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   async closeTab(_tabId: string): Promise<MuxAck> {

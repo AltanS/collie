@@ -22,8 +22,8 @@ import { protocolSuite } from "./protocol-suite.ts";
 
 protocolSuite({
   name: "against the core",
-  async open({ hostName, caps }) {
-    const core = createCore({ hostName, caps });
+  async open({ hostName, caps, onRename }) {
+    const core = createCore({ hostName, caps, onRename });
     return { collie: { ...core, ready: () => core.ready(), close: async () => {} }, dial: { handler: (r) => core.handle(r), version: 1 } };
   },
 });

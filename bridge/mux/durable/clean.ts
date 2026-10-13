@@ -166,3 +166,19 @@ export function changedByCleaning(text: string, rule: TextRule): boolean {
 export function isWireId(value: string): boolean {
   return byteLength(value) <= CAPS.id && isValidMuxId(value);
 }
+
+/** The longest title a rename may carry, in characters (code points). WIRE.md section 7.8. */
+export const RENAME_TITLE_MAX = 120;
+
+/**
+ * The title a rename asks for: trimmed, 1 to {@link RENAME_TITLE_MAX} characters, no control character.
+ * Null when it breaks the rule, so nothing leaves that the program would answer 400.
+ */
+export function renameTitleOf(title: string): string | null {
+  const trimmed = title.trim();
+  if (trimmed === "" || [...trimmed].length > RENAME_TITLE_MAX) return null;
+  for (const symbol of trimmed) {
+    if (isControl(symbol.codePointAt(0) ?? 0)) return null;
+  }
+  return trimmed;
+}

@@ -96,7 +96,8 @@ export const MUX_CAPABILITY_ROUTES = {
   setFocus:
     "POST /api/pane/:id/focus — the pane action sheet's \"Show in terminal\" row, the one act by which the phone moves the operator's own screen. Absent ⇒ the row is not there (hide the meaningless), and the phone can still SEE which pane the terminal shows, because `MuxPane.focused` is on the floor.",
   createTab: "POST /api/tab — a new tab in a space, opening a fresh shell.",
-  renameTab: "POST /api/tab/:id/rename.",
+  renameTab:
+    "POST /api/tab/:id/rename. A durable program declares it from its own `caps.rename` (WIRE.md section 7.8); every other adapter declares it from its multiplexer's tab rename.",
   closeTab: "POST /api/tab/:id/close — a bulk pane-close.",
   createSpace: "POST /api/workspace — a new space, opening a fresh shell.",
   listWorktrees:
