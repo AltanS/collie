@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **Docs: a glossary, and a page on durable programs in your crew.** The glossary names Collie's parts in plain words. The durable page explains why a program gets a Collie of its own and how the crew joins it.
 - **Chat reads Claude Code 2.1.296 sessions as verified.** The harness canary read a real 2.1.296 session with no unrecognised row, so the reader's recorded version moves from 2.1.285 to 2.1.296 and no longer shows as behind.
 
 ### Fixed

@@ -150,9 +150,11 @@ and that is the only way to install it on a phone.
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios, Tern or a durable agent program, what each backend can answer, and agent beacons. Experimental for tmux, zellij, tuios, Tern and durable; bug reports wanted |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
+| [**Durable programs in your crew**](./docs/durable-programs.md) | Why a durable agent program gets a Collie of its own, how the crew joins it, the two ways to reach it, and what it can do on the phone |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
+| [**Glossary**](./docs/glossary.md) | Collie's parts in plain words: instance, mux, pane, tab, workspace, session, harness, crew, lead, and the durable terms |
 | **For an AI coding agent in your terminal** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·
