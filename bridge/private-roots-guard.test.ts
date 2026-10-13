@@ -41,6 +41,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "bridge/stt/whistle-model.ts", count: 6, why: "every path is `whistlePaths(deps.stateDir)`, the model's folder inside the state folder" },
   { file: "bridge/stt/local-cli.ts", count: 2, why: "one recording's mkdtemp folder under the OS temp dir, the user's own; removed in finally" },
   { file: "bridge/durable/log.ts", count: 8, why: "every path is `<stateDir>/durable/<source>/<pane>.jsonl` or the cursor beside it, `<pane>.cursor.json` (the two chmods hold the folder at 0700 and the file at 0600 when they were there before): `DurableLogs` is handed `sourceLogDir(cfg.stateDir, source.name)` by index.ts for each program, and `moveFlatLogs` makes `durable/default/` once, at boot" },
+  { file: "cli/durable-attach.ts", count: 1, why: "the path is `sourcesPath(deps.ctx)`, `sources.json` in the instance config folder beside `.env`; the temp file is its `.tmp` sibling" },
   { file: "bridge/owner-only.ts", count: 2, why: "the private-folder code itself: the backup folder inside the state folder, and the folder being made private" },
 ];
 
