@@ -129,6 +129,12 @@ interface PaneActionsSheetProps {
    * the route is lead-local and a crew does not forward it. A write, so read-only hides it too.
    */
   onBranchOff?: () => void;
+  /**
+   * The pane is a durable program's conversation (a pane with no screen). Its sheet holds the writes only:
+   * no Pin to top, since the conversation list orders itself and ignores pins, and Close says what it
+   * closes (durable-simple, 2026-10-13).
+   */
+  conversation?: boolean;
 }
 
 const NO_HERD: readonly AgentView[] = [];
@@ -167,6 +173,7 @@ export function PaneActionsSheet({
   herd = NO_HERD,
   onPinChange,
   onBranchOff,
+  conversation = false,
 }: PaneActionsSheetProps) {
   useLocale();
   // Whether this pane is pinned on this device, read live from the store so the row's word is right
@@ -461,6 +468,7 @@ export function PaneActionsSheet({
               }}
             />
           )}
+          {!conversation && (
           <ActionRow
             icon={
               pinned ? (
@@ -472,6 +480,7 @@ export function PaneActionsSheet({
             label={pinned ? t("paneActions.unpin.label") : t("paneActions.pin.label")}
             onClick={togglePin}
           />
+          )}
         </div>
       )}
       {readOnly ? (
@@ -530,7 +539,7 @@ export function PaneActionsSheet({
           {canClose.capable && (
             <DestructiveActionRow
               icon={<XCircle className="size-4 shrink-0" />}
-              label={t("paneActions.close.label")}
+              label={conversation ? t("paneActions.close.conversation") : t("paneActions.close.label")}
               confirmLabel={t("paneActions.close.confirm")}
               closingLabel={t("paneActions.close.closing")}
               armed={confirming}

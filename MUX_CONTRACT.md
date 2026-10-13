@@ -295,7 +295,7 @@ holds it to what is written here.
   have left without an answer is `refused` with a detail that says the conversation may have been
   reopened. Each pane names its session `sessionId ?? pane.id`, the key of the bridge's own log of it.
   The home of a durable machine is its conversation list, open and closed: the phone fills in the closed
-  ones and the item counts only for a declared `programHistory`. A closed conversation opens read-only,
+  ones only for a declared `programHistory`. A closed conversation opens read-only,
   with the Reopen button only for a declared `reopenConversation`.
 
 ### Focus with a terminal and tuios-web attached

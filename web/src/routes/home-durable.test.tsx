@@ -15,7 +15,7 @@ import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 import { HomeRoute } from "./home";
 
-// THE DURABLE HOME (M53 spec 12), through the real home route: on a machine with no screen the Dashboard tab
+// THE DURABLE HOME (M53 spec 12, simplified in durable-simple), through the real home route: on a machine with no screen the Dashboard tab
 // is the program's conversation list, drawn at once from the snapshot and filled in from the program's own
 // list; every other machine keeps the dashboard it had.
 
@@ -136,35 +136,37 @@ afterEach(() => {
 });
 
 describe("durable home: the conversation list is the dashboard", () => {
-  it("durable home: draws the live conversations from the snapshot, then the closed ones and the counts", async () => {
+  it("durable home: draws the live conversations from the snapshot, then the closed ones under their label", async () => {
     declares({ paneGrid: false, programHistory: true });
     const seen = serves(ROWS);
     renderHome(homeData());
     await waitFor(() => expect(list()).not.toBeNull());
-    // The open ones come from the snapshot, with their state, newest first.
-    expect(rowTitles().slice(0, 2)).toEqual(["Refund for order 42", "Login fails on Safari"]);
-    // The closed one and the counts come from the program's own list.
+    // The open ones come from the snapshot, with their state: what waits on you first, then newest first.
+    expect(rowTitles().slice(0, 2)).toEqual(["Login fails on Safari", "Refund for order 42"]);
+    // The closed one comes from the program's own list, under its own label.
     await screen.findByText("Invoice address change");
-    expect(rowTitles()).toEqual(["Refund for order 42", "Login fails on Safari", "Invoice address change"]);
+    expect(rowTitles()).toEqual(["Login fails on Safari", "Refund for order 42", "Invoice address change"]);
     const rows = document.querySelectorAll<HTMLElement>('[data-slot="conversation-row"]');
-    expect(rows[0]).toHaveAttribute("data-state", "working");
-    expect(rows[0]).toHaveTextContent("checking the order");
-    expect(rows[0]).toHaveTextContent("9 items");
-    expect(rows[0]).toHaveTextContent("1m");
-    expect(rows[0]!.querySelector('[role="progressbar"]')).toBeNull();
-    expect(rows[1]).toHaveAttribute("data-state", "waiting");
+    expect(rows[0]).toHaveAttribute("data-state", "waiting");
+    expect(rows[1]).toHaveAttribute("data-state", "working");
+    expect(rows[1]).toHaveTextContent("checking the order");
+    expect(rows[1]).toHaveTextContent("1m");
+    expect(rows[1]).not.toHaveTextContent("9 items");
+    expect(rows[1]!.querySelector('[role="progressbar"]')).toBeNull();
     expect(rows[2]).toHaveAttribute("data-state", "closed");
     expect(rows[2]).toHaveTextContent("done by hand");
-    expect(rows[2]).toHaveTextContent("15 items");
+    const closed = document.querySelector<HTMLElement>('[data-slot="conversation-closed"]')!;
+    expect(closed.firstElementChild).toHaveTextContent(/^Closed$/);
+    expect(within(closed).getByText("Invoice address change")).toBeInTheDocument();
     // No terminal grid: no space navigator, no launch strip.
     expect(screen.queryByRole("button", { name: /^Spaces/ })).toBeNull();
     expect(seen.reads).toBe(1);
   });
 
-  it("durable home: the waiting row carries the open-ask count, and the working row its hairline bar", async () => {
+  it("durable home: the waiting row carries the open-ask count and its question, and a working row draws no bar", async () => {
     declares({ paneGrid: false });
     const ask = { id: "a1", kind: "permission", toolCallId: "t1", revision: 1, title: "Refund it?", itemId: "i1", options: [] };
-    const asking = pane("p2", "Login fails on Safari", { status: "blocked", asks: [ask, { ...ask, id: "a2" }] });
+    const asking = pane("p2", "Login fails on Safari", { status: "blocked", subtitle: "Safari only", asks: [ask, { ...ask, id: "a2" }] });
     const running = pane("p1", "Refund for order 42", {
       status: "working",
       lastActiveAt: NOW,
@@ -174,9 +176,9 @@ describe("durable home: the conversation list is the dashboard", () => {
     await waitFor(() => expect(list()).not.toBeNull());
     const waiting = document.querySelector<HTMLElement>('[data-slot="conversation-row"][data-state="waiting"]')!;
     expect(within(waiting).getByText("2 open questions")).toBeInTheDocument();
+    expect(waiting.querySelector('[data-slot="conversation-line"]')).toHaveTextContent("Refund it?");
     const working = document.querySelector<HTMLElement>('[data-slot="conversation-row"][data-state="working"]')!;
-    // "Step 2 of 3" with the bar at one third: the bar fills by the one step that is done.
-    expect(within(working).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "33");
+    expect(within(working).queryByRole("progressbar")).toBeNull();
   });
 
   it("durable home: asks nothing of a program that keeps no list, and still lists its open conversations", async () => {
@@ -184,7 +186,7 @@ describe("durable home: the conversation list is the dashboard", () => {
     const seen = serves(ROWS);
     renderHome(homeData());
     await waitFor(() => expect(list()).not.toBeNull());
-    expect(rowTitles()).toEqual(["Refund for order 42", "Login fails on Safari"]);
+    expect(rowTitles()).toEqual(["Login fails on Safari", "Refund for order 42"]);
     expect(seen.reads).toBe(0);
   });
 
@@ -198,32 +200,34 @@ describe("durable home: the conversation list is the dashboard", () => {
   });
 });
 
-describe("durable home: the conversation list's filter chips", () => {
-  it("conversation list: All, Open, Needs you and Closed, with the Needs you count on its chip", async () => {
+describe("durable home: one list with no filter", () => {
+  it("conversation list: draws no filter chips", async () => {
     declares({ paneGrid: false, programHistory: true });
     serves(ROWS);
-    const user = userEvent.setup();
     renderHome(homeData());
     await screen.findByText("Invoice address change");
-    const chips = screen.getByRole("radiogroup", { name: "Show conversations" });
-    expect(within(chips).getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
-    expect(within(chips).getByRole("radio", { name: "Needs you, 1 needs you" })).toBeInTheDocument();
-
-    await user.click(within(chips).getByRole("radio", { name: "Open" }));
-    expect(rowTitles()).toEqual(["Refund for order 42", "Login fails on Safari"]);
-    await user.click(within(chips).getByRole("radio", { name: /^Needs you/ }));
-    expect(rowTitles()).toEqual(["Login fails on Safari"]);
-    await user.click(within(chips).getByRole("radio", { name: "Closed" }));
-    expect(rowTitles()).toEqual(["Invoice address change"]);
+    expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 
-  it("conversation list: a chip with nothing under it says so in words", async () => {
+  it("conversation list: a program with no conversation yet says so in words", async () => {
     declares({ paneGrid: false });
-    const user = userEvent.setup();
-    renderHome(homeData({ agents: [pane("p1", "Refund for order 42", { status: "working" })] }));
+    renderHome(homeData({ agents: [] }));
     await waitFor(() => expect(list()).not.toBeNull());
-    await user.click(screen.getByRole("radio", { name: "Needs you" }));
-    expect(screen.getByText("Nothing needs you right now.")).toBeInTheDocument();
+    expect(screen.getByText("This program has no conversations yet.")).toBeInTheDocument();
+  });
+
+  it("durable home: a solo machine with no screen draws no footer tabs, a Herdr machine keeps Dashboard and Files", async () => {
+    declares({ paneGrid: false });
+    renderHome(homeData());
+    await waitFor(() => expect(list()).not.toBeNull());
+    expect(screen.queryByRole("button", { name: "Files" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Dashboard views" })).toBeNull();
+    cleanup();
+    __resetOperatorCommands();
+    declares({ paneGrid: true });
+    renderHome(homeData({ agents: fixtureAgents, shellPanes: fixtureShellPanes, workspaces: fixtureWorkspaces, tabs: fixtureTabs }));
+    await waitFor(() => expect(getMuxConfig()).not.toBeNull());
+    expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
   });
 });
 

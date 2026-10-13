@@ -9,6 +9,8 @@ import { clearStatus, useStatus } from "@/lib/status";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { DurableConversationRow, MuxCapability, MuxConfig } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
+import { __resetProgramLists, rememberProgramList } from "@/lib/conversation-list";
+import { scopeKey } from "@/lib/scope";
 import { ConversationRoute, ConversationsRoute } from "./conversations";
 
 // A durable program's own history (M53 spec 11): the list of its conversations, one conversation read only,
@@ -225,6 +227,22 @@ describe("durable history read-only conversation view", () => {
     expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  });
+
+  it("names the conversation in its header: from the home's list at once, else from the program's first page", async () => {
+    server.use(
+      http.get(/\/api\/durable\/conversation\/c1\/items$/, () => HttpResponse.json({ available: true, id: "c1", entries: [], more: false })),
+      http.get("/api/durable/conversations", () =>
+        HttpResponse.json({ available: true, items: [row({ id: "c1", title: "Maria Lopez", state: "closed" })] }),
+      ),
+    );
+    mount("/conversations/c1?state=closed");
+    expect(await screen.findByRole("heading", { name: "Maria Lopez" })).toBeInTheDocument();
+    __resetProgramLists();
+    rememberProgramList(scopeKey({}), { rows: [row({ id: "c1", title: "Jonas Berg", state: "closed" })], next: undefined });
+    mount("/conversations/c1?state=closed");
+    expect(await screen.findByRole("heading", { name: "Jonas Berg" })).toBeInTheDocument();
+    __resetProgramLists();
   });
 
   it("follows next with Load more and appends the newer items below", async () => {

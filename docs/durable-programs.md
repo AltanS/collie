@@ -126,12 +126,14 @@ The program keeps the record of its conversations, and Collie lists it. A progra
 `history` serves every conversation it keeps, open and closed, newest first, and the messages of any
 of them, page by page.
 
-The home of a durable machine is its conversation list, open and closed, newest first. It is the
-Dashboard tab when the phone shows that machine, and the back arrow of a conversation goes there.
-Chips at the top show All, Open, Needs you or Closed. Each row shows the title, the line under it,
-whether it works, waits on you (with the number of open questions) or is idle or closed, the time of
-its last activity, and how many items it holds. Tap an open conversation to go to it. Tap a closed
-one to read it. That view is read-only: it has no field to type in and no belt. When the program
+The home of a durable machine is its conversation list, like the chat list of a messaging app. The
+back arrow of a conversation goes there. The list has no filters. The conversations that wait on you
+come first, then the other open ones, newest first, then the closed ones under the label Closed. Each
+row shows the title, the time of its last activity, and one line under the title: the question that
+waits on you when there is one, else the line the program gives the conversation. A mark says whether
+it works, waits on you (with the number of open questions beside the title) or is idle. When the phone
+shows only a durable machine, the home has no tab bar, because a program has no files to browse and no
+second view. Tap an open conversation to go to it. Tap a closed one to read it. That view is read-only: it has no field to type in and no belt. When the program
 declares `reopen`, the view has a Reopen button, and the program shows the conversation again under
 the same name.
 

@@ -4,15 +4,7 @@ import { ConversationList, type ConversationListFoot } from "@/components/conver
 import type { PaneOpen } from "@/hooks/use-pane-open";
 import { useNav } from "@/hooks/use-nav";
 import { DURABLE_CONVERSATIONS_PAGE, fetchDurableConversations } from "@/lib/api";
-import {
-  cachedProgramList,
-  mergeConversations,
-  rememberFilter,
-  rememberProgramList,
-  rememberedFilter,
-  type ConversationFilter,
-  type ConversationItem,
-} from "@/lib/conversation-list";
+import { cachedProgramList, mergeConversations, rememberProgramList, type ConversationItem } from "@/lib/conversation-list";
 import { t } from "@/lib/i18n";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { conversationPath } from "@/lib/nav";
@@ -24,8 +16,8 @@ import type { AgentView, DurableConversationRow, WorkspaceView } from "@/lib/typ
 //
 // Altan, hand test 2026-10-13: "history chats for durable muxes should be prominently implemented, this
 // is the main workflow". So the card grid built for terminals gives way to the program's conversations,
-// open and closed, newest first, and one tap opens one: a live pane in Chat, a closed one in the read-only
-// view of spec 11.
+// open and closed, and one tap opens one: a live pane in Chat, a closed one in the read-only view of spec 11.
+// One list with no filter chips since durable-simple (2026-10-13): it orders itself (lib/conversation-list.ts).
 //
 // THE LIST DRAWS AT ONCE. The live panes are in the snapshot the dashboard already holds, so they are rows
 // on the first frame, with their state. The program's own list (closed ones, item counts) is read once per
@@ -67,7 +59,6 @@ export function DurableHome({
     const kept = cachedProgramList(key);
     return kept === undefined ? { kind: "loading" } : { kind: "ready", ...kept };
   });
-  const [filter, setFilter] = useState<ConversationFilter>(() => rememberedFilter(key));
   const [paging, setPaging] = useState(false);
   // A Load more in flight. A ref beside the state, so two quick taps cannot both pass the guard.
   const pagingRef = useRef(false);
@@ -146,11 +137,6 @@ export function DurableHome({
     <ConversationList
       items={items}
       workspaces={workspaces}
-      filter={filter}
-      onFilterChange={(next) => {
-        rememberFilter(key, next);
-        setFilter(next);
-      }}
       onOpen={open}
       onPress={(item) => {
         if (item.pane !== undefined) paneOpen.press(item.pane);

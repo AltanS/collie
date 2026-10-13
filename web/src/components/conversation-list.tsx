@@ -1,50 +1,29 @@
 import { Archive, Loader2 } from "lucide-react";
+import { useId } from "react";
 
 import { StatusDot } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListGroup } from "@/components/ui/list-group";
-import { Progress } from "@/components/ui/progress";
 import { SectionLabel } from "@/components/ui/section-label";
-import { Segmented, type SegmentedOption } from "@/components/ui/segmented";
 import { useLocale } from "@/hooks/use-locale";
-import {
-  CONVERSATION_FILTERS,
-  groupConversations,
-  passesFilter,
-  type ConversationFilter,
-  type ConversationItem,
-  type ConversationState,
-} from "@/lib/conversation-list";
+import { groupConversations, type ConversationItem, type ConversationState } from "@/lib/conversation-list";
 import { timeAgoShort } from "@/lib/format";
-import { t, tn, type MessageKey } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { statusLabel, statusLabelPast, type AgentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// THE DURABLE HOME (M53 spec 12): a durable program's conversations as the dashboard's whole body.
+// THE DURABLE HOME: a durable program's conversations as the dashboard's whole body, the way a messaging
+// app lists its chats.
 //
-// The filter chips are `ui/segmented.tsx`: four labelled segments, exactly one on, each reserving its
-// border so a switch moves nothing (DESIGN.md §2), and a count on "Needs you" floated on its corner.
-// The rows are flat rows in one `ui/list-group.tsx`, the dashboard's own row treatment: a stated 44px
-// (a 20px line over a 16px line), the state mark leading line 1 the way `agent-card.tsx` leads with
-// its dot, and the hairline progress along the bottom edge, inside the row, adding no height.
+// One list, no filter chips (durable-simple, 2026-10-13). The rows order themselves: what waits on you,
+// then the other open conversations, then, under a "Closed" label, the closed ones. The rows are flat rows
+// in one `ui/list-group.tsx`, the dashboard's own row treatment: a stated 44px (a 20px line over a 16px
+// line), the state mark leading line 1 the way `agent-card.tsx` leads with its dot. Line 2 is the question
+// that waits on you, when one does, else the program's subtitle.
 //
-// Presentational: the route owns the reads, the filter and the taps, so the playground draws every state
-// of this file from plain props.
-
-const FILTER_LABEL = {
-  all: "home.conversations.filter.all",
-  open: "home.conversations.filter.open",
-  needsYou: "home.conversations.filter.needsYou",
-  closed: "home.conversations.filter.closed",
-} satisfies Record<ConversationFilter, MessageKey>;
-
-const EMPTY = {
-  all: "conversations.empty",
-  open: "home.conversations.empty.open",
-  needsYou: "home.conversations.empty.needsYou",
-  closed: "home.conversations.empty.closed",
-} satisfies Record<ConversationFilter, MessageKey>;
+// Presentational: the route owns the reads and the taps, so the playground draws every state of this file
+// from plain props.
 
 /** The status the shared mark draws for an open conversation's state. */
 const MARK = {
@@ -85,6 +64,7 @@ export function ConversationRow({
   now?: number;
 }) {
   useLocale();
+  const id = useId();
   const mark = markOf(item.state);
   const closed = mark === null;
   const title = item.title === "" ? t("conversations.untitled") : item.title;
@@ -98,20 +78,22 @@ export function ConversationRow({
       onPointerDown={onPress}
       data-glide-origin={glideKey === undefined ? undefined : "pane"}
       data-glide-key={glideKey}
+      // The name is the two lines as read: the title with its state, count and time, then the line under it.
+      aria-labelledby={`${id}-title ${id}-line`}
       className="w-full text-left transition-colors hover:bg-muted/50 active:bg-muted"
     >
       <div
         className={cn(
           // The row states its height, a 20px line over a 16px one in 44px, so nothing that arrives or
-          // leaves on it (a count, a subtitle, a bar) moves the list (DESIGN.md §2).
-          "relative flex h-11 flex-row items-center gap-3 px-3.5 transition-opacity",
+          // leaves on it (a count, a second line, a question) moves the list (DESIGN.md §2).
+          "flex h-11 flex-row items-center gap-3 px-3.5 transition-opacity",
           // The blocked tint, the one cue the dashboard row keeps for a pane that waits on a person.
           item.state === "waiting" && "bg-status-blocked/5",
           stale && "opacity-50",
         )}
       >
         <div className="min-w-0 flex-1">
-          <div data-slot="conversation-title" className="flex h-5 min-w-0 items-center gap-2">
+          <div id={`${id}-title`} data-slot="conversation-title" className="flex h-5 min-w-0 items-center gap-2">
             {mark === null ? (
               <span aria-hidden className="flex size-3 shrink-0 items-center justify-center text-muted-foreground">
                 <Archive className="size-3" />
@@ -137,23 +119,18 @@ export function ConversationRow({
               {when}
             </span>
           </div>
-          {(item.subtitle !== null || item.items !== null) && (
-            <div data-slot="conversation-detail" className="flex h-4 min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">
-              <span className="min-w-0 flex-1 truncate">{item.subtitle ?? ""}</span>
-              {item.items !== null && (
-                <span className="shrink-0 tabular-nums">{tn("conversations.items", item.items)}</span>
-              )}
-            </div>
-          )}
+          <div
+            id={`${id}-line`}
+            data-slot="conversation-line"
+            className={cn(
+              "h-4 min-w-0 truncate text-xs leading-4",
+              // A question that waits on you reads in the ink of the title: it is the thing to act on.
+              item.asking ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {item.line ?? ""}
+          </div>
         </div>
-        {item.progress !== null && (
-          <Progress
-            value={item.progress.value}
-            label={t("chat.progress.aria")}
-            size="hairline"
-            className="pointer-events-none absolute inset-x-3.5 bottom-0 w-auto"
-          />
-        )}
       </div>
     </button>
   );
@@ -167,11 +144,42 @@ export type ConversationListFoot =
 
 const NO_FOOT: ConversationListFoot = { kind: "none" };
 
+function Rows({
+  items,
+  onOpen,
+  onPress,
+  glideKeyOf,
+  stale,
+  now,
+}: {
+  items: readonly ConversationItem[];
+  onOpen: (item: ConversationItem, row: HTMLButtonElement) => void;
+  onPress?: (item: ConversationItem) => void;
+  glideKeyOf?: (item: ConversationItem) => string | undefined;
+  stale: boolean;
+  now?: number;
+}) {
+  return (
+    <ListGroup as="ul">
+      {items.map((item) => (
+        <li key={item.key}>
+          <ConversationRow
+            item={item}
+            onOpen={(row) => onOpen(item, row)}
+            onPress={onPress === undefined ? undefined : () => onPress(item)}
+            glideKey={glideKeyOf?.(item)}
+            stale={stale && item.pane !== undefined}
+            now={now}
+          />
+        </li>
+      ))}
+    </ListGroup>
+  );
+}
+
 export function ConversationList({
   items,
   workspaces,
-  filter,
-  onFilterChange,
   onOpen,
   onPress,
   glideKeyOf,
@@ -179,12 +187,10 @@ export function ConversationList({
   stale = false,
   now,
 }: {
-  /** Every row, merged and in order (`mergeConversations`). The filter is applied here. */
+  /** Every row, merged and in order (`mergeConversations`). */
   items: readonly ConversationItem[];
   /** The machine's workspaces, for the group headings. One workspace draws no heading. */
   workspaces: readonly { workspaceId: string; label: string }[];
-  filter: ConversationFilter;
-  onFilterChange: (filter: ConversationFilter) => void;
   onOpen: (item: ConversationItem, row: HTMLButtonElement) => void;
   onPress?: (item: ConversationItem) => void;
   glideKeyOf?: (item: ConversationItem) => string | undefined;
@@ -193,52 +199,32 @@ export function ConversationList({
   now?: number;
 }) {
   useLocale();
-  const waiting = items.filter((item) => item.state === "waiting").length;
-  // "Needs you" carries the count of conversations that wait on a person, on its corner.
-  const options = CONVERSATION_FILTERS.map((value): SegmentedOption<ConversationFilter> => {
-    const option: SegmentedOption<ConversationFilter> = { value, label: t(FILTER_LABEL[value]) };
-    if (value === "needsYou") {
-      option.badge = waiting;
-      option.badgeLabel = tn("home.conversations.needsYouCount", waiting);
-    }
-    return option;
-  });
-  const shown = items.filter((item) => passesFilter(item, filter));
-  const groups = groupConversations(shown, workspaces);
+  const open = items.filter((item) => item.state !== "closed");
+  const closed = items.filter((item) => item.state === "closed");
+  const groups = groupConversations(open, workspaces);
+  const rows = { onOpen, onPress, glideKeyOf, stale, now };
   return (
-    <div data-slot="conversation-list" className="flex flex-col gap-3 px-4 py-4">
-      <Segmented
-        options={options}
-        value={filter}
-        onChange={onFilterChange}
-        label={t("home.conversations.filter")}
-        // The dashboard tab's own count fill (`ui/tab-bar.tsx`): a count of panes that wait on you.
-        badgeClassName="bg-status-blocked text-background"
-      />
-      {shown.length === 0 ? (
+    <div data-slot="conversation-list" className="flex flex-col gap-4 px-4 py-4">
+      {items.length === 0 ? (
         <p data-slot="conversation-empty" className="py-12 text-center text-sm text-muted-foreground">
-          {t(EMPTY[filter])}
+          {t("conversations.empty")}
         </p>
       ) : (
-        groups.map((group) => (
-          <section key={group.key} aria-label={group.label ?? undefined} className="flex flex-col">
-            {group.label !== null && <SectionLabel placement="above">{group.label}</SectionLabel>}
-            <ListGroup as="ul">
-              {group.items.map((item) => (
-                <li key={item.key}>
-                  <ConversationRow
-                    item={item}
-                    onOpen={(row) => onOpen(item, row)}
-                    onPress={onPress === undefined ? undefined : () => onPress(item)}
-                    glideKey={glideKeyOf?.(item)}
-                    stale={stale && item.pane !== undefined}
-                    now={now}
-                  />
-                </li>
-              ))}
-            </ListGroup>
-          </section>
-        ))
+        <>
+          {open.length > 0 &&
+            groups.map((group) => (
+              <section key={group.key} aria-label={group.label ?? undefined} className="flex flex-col">
+                {group.label !== null && <SectionLabel placement="above">{group.label}</SectionLabel>}
+                <Rows items={group.items} {...rows} />
+              </section>
+            ))}
+          {closed.length > 0 && (
+            <section data-slot="conversation-closed" aria-label={t("conversations.state.closed")} className="flex flex-col">
+              <SectionLabel placement="above">{t("conversations.state.closed")}</SectionLabel>
+              <Rows items={closed} {...rows} />
+            </section>
+          )}
+        </>
       )}
       {foot.kind === "more" && (
         <Button variant="ghost" className="h-11 self-center" onClick={foot.onMore} disabled={foot.busy}>

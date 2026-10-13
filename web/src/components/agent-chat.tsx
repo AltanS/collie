@@ -1829,6 +1829,11 @@ export function AgentChat({
                   layer and pass their taps through, as before; the cache reading takes its own back.
                   `data-slot="pane-identity"` stays on the place button, which keeps the overview
                   label and the status suffix a screen reader needs. */}
+              {/* A pane with no screen has neither target (durable-simple, 2026-10-13): its settings row is a
+                  prompt-cache warning a program has no cache for, and its workspace is the program's own
+                  bookkeeping, which the conversation list behind the back arrow already lays out. The lines
+                  stay; the state is still named by the dot's own label. */}
+              {!gridless && (
               <div data-slot="pane-identity-taps" className="absolute inset-x-0 -inset-y-2 flex flex-col rounded-lg">
                 <button
                   type="button"
@@ -1859,6 +1864,7 @@ export function AgentChat({
                   className="min-h-0 flex-1 rounded-b-lg transition-colors active:bg-muted/60"
                 />
               </div>
+              )}
               {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
                   the air moved from outside the block to inside it. Each line states its own height
                   (20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
@@ -2753,12 +2759,9 @@ export function AgentChat({
                       open: drawer === "display",
                       onToggle: () => setDrawer(drawer === "display" ? null : "display"),
                     }}
-                    pullHandle={pullHandle}
-                    changesPill={
-                      agent?.cwd
-                        ? { onClick: () => nav.down(filesEntryPath), label: t("chat.changes.label") }
-                        : undefined
-                    }
+                    // No Switch pill and no Files pill (durable-simple, 2026-10-13): the conversation list
+                    // behind the back arrow is how one reaches another conversation, and a program has no
+                    // folder on this machine to show. The belt keeps Display and the program's own section.
                     hand={handOf(prefs)}
                     onSent={onSent}
                     onReload={() => revalidator.revalidate()}
@@ -2991,7 +2994,10 @@ export function AgentChat({
           // The settings row, opened from the ⋮ for the reason zen is: the header's Action slot is
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.
-          onSettings={() => setDrawer("paneSettings")}
+          // Not on a pane with no screen: its one switch warns about a prompt cache a program does not have.
+          onSettings={gridless ? undefined : () => setDrawer("paneSettings")}
+          // A durable conversation: the writes only, and Close names what it closes.
+          conversation={gridless}
           openInRename={renameOnOpen}
           // THE BODY SWITCH. `chatNote` is why this pane keeps the terminal when it does. One
           // standing per-device value, written here and nowhere else.

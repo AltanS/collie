@@ -18,6 +18,7 @@ import {
   reopenDurableConversation,
 } from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
+import { cachedProgramList } from "@/lib/conversation-list";
 import { t, tn, getLocaleSnapshot } from "@/lib/i18n";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/lib/nav";
 import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
+import { scopeKey } from "@/lib/scope";
 import { useScope } from "@/lib/session";
 import { setStatus } from "@/lib/status";
 import { isReadOnly, type DurableConversationRow, type TranscriptEntry } from "@/lib/types";
@@ -243,6 +245,13 @@ export function ConversationsRoute() {
   );
 }
 
+/** The title the program gave a conversation in its list, or undefined when the list does not hold it. */
+function titleIn(rows: readonly DurableConversationRow[] | undefined, id: string): string | undefined {
+  const row = rows?.find((r) => r.id === id);
+  if (row === undefined) return undefined;
+  return row.title === "" ? t("conversations.untitled") : row.title;
+}
+
 type ItemsState =
   | { kind: "loading" }
   | { kind: "failed" }
@@ -262,6 +271,25 @@ export function ConversationRoute() {
   const paging = useRef(false);
   const { prefs } = useDisplayPrefs();
   const mirrorFace = mirrorFont(prefs.fontFamily);
+  // THE HEADER NAMES THE CONVERSATION (durable-simple, 2026-10-13), as an open one's pane header does. The
+  // home's list read it a moment ago, so it is in hand on the first frame; a page opened by its address
+  // asks the program's first page once for it. Until then, and for a row the program no longer lists,
+  // the header says "Conversation".
+  const [title, setTitle] = useState<string | undefined>(() => titleIn(cachedProgramList(scopeKey(scope))?.rows, id));
+  useEffect(() => {
+    if (title !== undefined) return;
+    const ctl = new AbortController();
+    async function name() {
+      try {
+        const res = await fetchDurableConversations({ limit: DURABLE_CONVERSATIONS_PAGE }, scope, ctl.signal);
+        if (!ctl.signal.aborted && res.available) setTitle(titleIn(res.items, id));
+      } catch {
+        // No name: the header keeps saying "Conversation".
+      }
+    }
+    void name();
+    return () => ctl.abort();
+  }, [id, scope, title]);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -345,7 +373,7 @@ export function ConversationRoute() {
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col md:max-w-screen-md lg:max-w-screen-lg">
       <PageHeader
-        title={t("conversations.title")}
+        title={title ?? t("conversations.fallbackTitle")}
         // The program's conversation list is the machine's home since M53 spec 12, so the way back is there.
         onBack={() => nav.up(homePath(scope))}
         trail={

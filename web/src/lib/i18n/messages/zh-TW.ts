@@ -534,6 +534,8 @@ export const zhTW: Dictionary = {
   // TODO wordsmith
   "conversations.title": "Conversations",
   // TODO wordsmith
+  "conversations.fallbackTitle": "Conversation",
+  // TODO wordsmith
   "conversations.back": "Back",
   // TODO wordsmith
   "conversations.state.open": "Open",
@@ -574,30 +576,14 @@ export const zhTW: Dictionary = {
   // TODO wordsmith
   "conversations.reopenFailed": "Couldn't reopen the conversation",
   // TODO wordsmith
-  "home.conversations.filter": "Show conversations",
-  // TODO wordsmith
-  "home.conversations.filter.all": "All",
-  // TODO wordsmith
-  "home.conversations.filter.open": "Open",
-  // TODO wordsmith
-  "home.conversations.filter.needsYou": "Needs you",
-  // TODO wordsmith
-  "home.conversations.filter.closed": "Closed",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.one": "{count} needs you",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.other": "{count} need you",
-  // TODO wordsmith
   "home.conversations.asks.one": "{count} open question",
   // TODO wordsmith
   "home.conversations.asks.other": "{count} open questions",
-  // TODO wordsmith
-  "home.conversations.empty.open": "No open conversations.",
-  // TODO wordsmith
-  "home.conversations.empty.needsYou": "Nothing needs you right now.",
-  // TODO wordsmith
-  "home.conversations.empty.closed": "No closed conversations yet.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
+  // TODO wordsmith
+  "newPage.starters.label": "Starters",
+  // TODO wordsmith
+  "newPage.starters.title": "New conversation",
   "prompt.feedback.cancel": "取消",
   "prompt.feedback.typedAria": "終端機中的回饋內容",
   "prompt.feedback.planChange.offer": "向 Claude 提供修改意見",
@@ -631,6 +617,8 @@ export const zhTW: Dictionary = {
   "paneActions.rename.label": "重新命名",
   "paneActions.rename.placeholder": "窗格名稱",
   "paneActions.close.label": "關閉窗格",
+  // TODO wordsmith
+  "paneActions.close.conversation": "Close conversation",
   "paneActions.close.confirm": "再次點擊以確認關閉",
   "paneActions.close.closing": "正在關閉…",
   "paneActions.focus.labelWithMux": "在 {mux} 中顯示",

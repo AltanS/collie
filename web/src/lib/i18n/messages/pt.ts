@@ -477,6 +477,8 @@ export const pt: Dictionary = {
   // TODO wordsmith
   "conversations.title": "Conversations",
   // TODO wordsmith
+  "conversations.fallbackTitle": "Conversation",
+  // TODO wordsmith
   "conversations.back": "Back",
   // TODO wordsmith
   "conversations.state.open": "Open",
@@ -517,30 +519,14 @@ export const pt: Dictionary = {
   // TODO wordsmith
   "conversations.reopenFailed": "Couldn't reopen the conversation",
   // TODO wordsmith
-  "home.conversations.filter": "Show conversations",
-  // TODO wordsmith
-  "home.conversations.filter.all": "All",
-  // TODO wordsmith
-  "home.conversations.filter.open": "Open",
-  // TODO wordsmith
-  "home.conversations.filter.needsYou": "Needs you",
-  // TODO wordsmith
-  "home.conversations.filter.closed": "Closed",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.one": "{count} needs you",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.other": "{count} need you",
-  // TODO wordsmith
   "home.conversations.asks.one": "{count} open question",
   // TODO wordsmith
   "home.conversations.asks.other": "{count} open questions",
-  // TODO wordsmith
-  "home.conversations.empty.open": "No open conversations.",
-  // TODO wordsmith
-  "home.conversations.empty.needsYou": "Nothing needs you right now.",
-  // TODO wordsmith
-  "home.conversations.empty.closed": "No closed conversations yet.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
+  // TODO wordsmith
+  "newPage.starters.label": "Starters",
+  // TODO wordsmith
+  "newPage.starters.title": "New conversation",
   "prompt.feedback.cancel": "Cancelar",
   "prompt.feedback.typedAria": "Feedback no terminal",
   "prompt.feedback.planChange.offer": "Diga ao Claude o que mudar",
@@ -567,6 +553,8 @@ export const pt: Dictionary = {
   "paneActions.rename.label": "Renomear",
   "paneActions.rename.placeholder": "nomear este painel",
   "paneActions.close.label": "Fechar painel",
+  // TODO wordsmith
+  "paneActions.close.conversation": "Close conversation",
   "paneActions.close.confirm": "Toque novamente para fechar",
   "paneActions.close.closing": "Fechando…",
   "paneActions.focus.labelWithMux": "Focar no {mux}",

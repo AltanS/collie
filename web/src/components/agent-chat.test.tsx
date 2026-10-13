@@ -1325,6 +1325,27 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(screen.queryByRole("button", { name: /conversation history/i })).not.toBeInTheDocument();
   });
 
+  // durable-simple (2026-10-13): a durable conversation's screen keeps the header lines, the thread and the
+  // composer, and drops what belongs to a terminal: the header's two tap targets, Pin and Pane settings in
+  // the sheet, and the Switch and Files pills in the belt. Close says what it closes.
+  it("a pane with no screen: no header taps, no Pin or settings, Close conversation, no Switch or Files pill", async () => {
+    declaresMux({ paneGrid: false, closePane: true });
+    const user = userEvent.setup();
+    const agent = { ...fixtureAgents[0]!, cwd: "/srv/support" };
+    const sibling: AgentView = { ...agent, paneId: "w1:p7" };
+    const { container } = renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
+    await waitFor(() => expect(container.querySelector('[data-slot="pane-identity-taps"]')).toBeNull());
+    expect(container.querySelector('[data-slot="pane-lines"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Switch pane" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Files" })).toBeNull();
+    await openPaneMenu(user);
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).queryByRole("button", { name: /Pin to top/ })).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: /Pane settings/ })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: /Close conversation/ })).toBeInTheDocument();
+  });
+
   it("history row: a pane with a screen keeps it, on Herdr's declaration", async () => {
     declaresMux({ paneGrid: true, agentSessionRef: true });
     const user = userEvent.setup();

@@ -1,22 +1,21 @@
 import { paneName } from "@/lib/pane-name";
-import { paneProgress, paneSubtitle, type ProgressReading } from "@/lib/pane-marks";
+import { paneSubtitle } from "@/lib/pane-marks";
 import type { AgentView, DurableConversationRow } from "@/lib/types";
 
-// THE DURABLE HOME'S LIST (M53 spec 12): a durable program's conversations, open and closed, as one list.
+// THE DURABLE HOME'S LIST: a durable program's conversations, as a messaging app lists its chats.
 //
 // Two sources, merged here and nowhere else. The live panes of the snapshot say how an OPEN conversation
 // is right now (working, waiting with its open asks, idle), and they are in hand the moment the dashboard
-// draws. The program's own list (`/api/durable/conversations`, spec 11) adds the CLOSED ones and the item
-// counts, and arrives a moment later. A conversation in both is one row: the pane gives it its state, the
-// program's row gives it its count. Nothing here touches the DOM or the network, so every rule is
-// table-testable.
+// draws. The program's own list (`/api/durable/conversations`, M53 spec 11) adds the CLOSED ones, and
+// arrives a moment later. A conversation in both is one row, drawn from the pane. Nothing here touches the
+// DOM or the network, so every rule is table-testable.
+//
+// ONE LIST, NO FILTERS (durable-simple, 2026-10-13). The four chips All, Open, Needs you and Closed were a
+// second way to read one short list. The list orders itself instead: what waits on you first, then the
+// other open conversations, newest first, then the closed ones under their own label.
 
 /** The state mark a row draws. `waiting` is a pane that needs a person: blocked, or holding an open ask. */
 export type ConversationState = "working" | "waiting" | "idle" | "closed";
-
-/** The filter chips over the list, in the order they are drawn. */
-export const CONVERSATION_FILTERS = ["all", "open", "needsYou", "closed"] as const;
-export type ConversationFilter = (typeof CONVERSATION_FILTERS)[number];
 
 /** One row of the list. */
 export interface ConversationItem {
@@ -28,16 +27,19 @@ export interface ConversationItem {
   pane: AgentView | undefined;
   /** The title as given. Empty means the program left it blank; the row says "Untitled conversation". */
   title: string;
-  subtitle: string | null;
+  /**
+   * The row's second line: the question that waits on you when one does, else the program's subtitle,
+   * else null. A messaging app shows the newest message there; the question is the newest thing that
+   * matters, and the subtitle is what the program says the conversation is about.
+   */
+  line: string | null;
+  /** The second line is an open question, not the subtitle. */
+  asking: boolean;
   state: ConversationState;
   /** Open asks on the pane, drawn as the count beside a waiting row's title. */
   asks: number;
   /** Epoch ms of the last thing that happened in it, or null when neither source says. */
   at: number | null;
-  /** How many items the program holds for it, or null before its list arrived. */
-  items: number | null;
-  /** How far a working conversation is, for the row's hairline. */
-  progress: ProgressReading | null;
   /** The workspace it sits in, when either source says, for grouping. */
   workspaceId: string | undefined;
 }
@@ -56,17 +58,19 @@ export function paneConversationState(pane: Pick<AgentView, "status" | "asks">):
 }
 
 function fromPane(pane: AgentView, row: DurableConversationRow | undefined): ConversationItem {
+  const question = pane.asks?.[0]?.title.trim();
+  const subtitle = paneSubtitle(pane) ?? (row?.subtitle === undefined || row.subtitle === "" ? null : row.subtitle);
+  const asking = question !== undefined && question !== "";
   return {
     key: row?.id ?? `pane:${pane.paneId}`,
     id: row?.id,
     pane,
     title: paneName(pane),
-    subtitle: paneSubtitle(pane) ?? (row?.subtitle === undefined || row.subtitle === "" ? null : row.subtitle),
+    line: asking ? question : subtitle,
+    asking,
     state: paneConversationState(pane),
     asks: pane.asks?.length ?? 0,
     at: pane.lastActiveAt ?? epoch(row?.endedAt ?? row?.startedAt),
-    items: row?.items ?? null,
-    progress: paneProgress(pane),
     workspaceId: pane.workspaceId,
   };
 }
@@ -77,26 +81,27 @@ function fromRow(row: DurableConversationRow): ConversationItem {
     id: row.id,
     pane: undefined,
     title: row.title,
-    subtitle: row.subtitle === undefined || row.subtitle === "" ? null : row.subtitle,
+    line: row.subtitle === undefined || row.subtitle === "" ? null : row.subtitle,
+    asking: false,
     // An open conversation the snapshot does not show (the pane closed after the list was read, or the
     // program keeps it outside the layout) has no live state to draw, so it reads as idle.
     state: row.state === "closed" ? "closed" : "idle",
     asks: 0,
     at: epoch(row.endedAt ?? row.startedAt),
-    items: row.items,
-    progress: null,
     workspaceId: row.workspaceId,
   };
 }
 
-/** Open conversations sort above closed ones. */
+/** What waits on you comes first, then the other open conversations, then the closed ones. */
 function rank(item: ConversationItem): number {
-  return item.state === "closed" ? 1 : 0;
+  if (item.state === "waiting") return 0;
+  return item.state === "closed" ? 2 : 1;
 }
 
 /**
- * The list, newest activity first, open ones before closed ones. `rows` is null until the program's list
- * arrived (or when it keeps none), and the live panes alone are the list until then.
+ * The list: conversations that wait on you, then the other open ones, then the closed ones, each newest
+ * activity first. `rows` is null until the program's list arrived (or when it keeps none), and the live
+ * panes alone are the list until then.
  */
 export function mergeConversations(
   panes: readonly AgentView[],
@@ -122,20 +127,6 @@ export function mergeConversations(
     .map(({ item }) => item);
 }
 
-/** Whether a row passes a filter chip. */
-export function passesFilter(item: ConversationItem, filter: ConversationFilter): boolean {
-  switch (filter) {
-    case "all":
-      return true;
-    case "open":
-      return item.state !== "closed";
-    case "needsYou":
-      return item.state === "waiting";
-    case "closed":
-      return item.state === "closed";
-  }
-}
-
 /** One workspace's rows, under its label. `label` is null for the rows that name no workspace. */
 export interface ConversationGroup {
   key: string;
@@ -144,8 +135,8 @@ export interface ConversationGroup {
 }
 
 /**
- * The rows under their workspace, only when the program has more than one: a list with one workspace has
- * nothing to tell apart, so it is one group with no heading. Groups follow the order their newest row
+ * The open rows under their workspace, only when the program has more than one: a list with one workspace
+ * has nothing to tell apart, so it is one group with no heading. Groups follow the order their first row
  * takes in the list; rows that name no workspace go last, with no heading.
  */
 export function groupConversations(
@@ -192,19 +183,7 @@ export function rememberProgramList(key: string, list: ProgramList): void {
   cache.set(key, list);
 }
 
-/** Tests only: forget every machine's list and chip. */
+/** Tests only: forget every machine's list. */
 export function __resetProgramLists(): void {
   cache.clear();
-  filters.clear();
-}
-
-const filters = new Map<string, ConversationFilter>();
-
-/** The chip a machine's list last showed on this tab, so a trip into a conversation and back keeps it. */
-export function rememberedFilter(key: string): ConversationFilter {
-  return filters.get(key) ?? "all";
-}
-
-export function rememberFilter(key: string, filter: ConversationFilter): void {
-  filters.set(key, filter);
 }

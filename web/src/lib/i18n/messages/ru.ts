@@ -501,6 +501,8 @@ export const ru: Dictionary = {
   // TODO wordsmith
   "conversations.title": "Conversations",
   // TODO wordsmith
+  "conversations.fallbackTitle": "Conversation",
+  // TODO wordsmith
   "conversations.back": "Back",
   // TODO wordsmith
   "conversations.state.open": "Open",
@@ -545,24 +547,6 @@ export const ru: Dictionary = {
   // TODO wordsmith
   "conversations.reopenFailed": "Couldn't reopen the conversation",
   // TODO wordsmith
-  "home.conversations.filter": "Show conversations",
-  // TODO wordsmith
-  "home.conversations.filter.all": "All",
-  // TODO wordsmith
-  "home.conversations.filter.open": "Open",
-  // TODO wordsmith
-  "home.conversations.filter.needsYou": "Needs you",
-  // TODO wordsmith
-  "home.conversations.filter.closed": "Closed",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.one": "{count} needs you",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.other": "{count} need you",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.few": "{count} need you",
-  // TODO wordsmith
-  "home.conversations.needsYouCount.many": "{count} need you",
-  // TODO wordsmith
   "home.conversations.asks.one": "{count} open question",
   // TODO wordsmith
   "home.conversations.asks.other": "{count} open questions",
@@ -570,13 +554,11 @@ export const ru: Dictionary = {
   "home.conversations.asks.few": "{count} open questions",
   // TODO wordsmith
   "home.conversations.asks.many": "{count} open questions",
-  // TODO wordsmith
-  "home.conversations.empty.open": "No open conversations.",
-  // TODO wordsmith
-  "home.conversations.empty.needsYou": "Nothing needs you right now.",
-  // TODO wordsmith
-  "home.conversations.empty.closed": "No closed conversations yet.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
+  // TODO wordsmith
+  "newPage.starters.label": "Starters",
+  // TODO wordsmith
+  "newPage.starters.title": "New conversation",
   "prompt.feedback.cancel": "Отмена",
   "prompt.feedback.typedAria": "Отзыв в терминале",
   "prompt.feedback.planChange.offer": "Сообщите Claude, что изменить",
@@ -603,6 +585,8 @@ export const ru: Dictionary = {
   "paneActions.rename.label": "Переименовать",
   "paneActions.rename.placeholder": "название панели",
   "paneActions.close.label": "Закрыть панель",
+  // TODO wordsmith
+  "paneActions.close.conversation": "Close conversation",
   "paneActions.close.confirm": "Нажмите еще раз, чтобы закрыть",
   "paneActions.close.closing": "Закрытие…",
   "paneActions.focus.labelWithMux": "Фокус в {mux}",
