@@ -23,7 +23,9 @@ import commands from "../docs/commands.md" with { type: "text" };
 import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
+import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
+import glossary from "../docs/glossary.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
@@ -48,7 +50,7 @@ export interface DocPage {
 }
 
 /**
- * The fourteen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
+ * The sixteen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -93,6 +95,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: crew,
   },
   {
+    name: "durable-programs",
+    purpose: "Why a durable agent program gets a Collie of its own, and how the crew joins it",
+    text: durablePrograms,
+  },
+  {
     name: "upgrading",
     purpose: "Update from the phone or the terminal, roll back, update a crew, cross a major",
     text: upgrading,
@@ -116,6 +123,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "deployment",
     purpose: "Front doors other than the default, and several Collies on one host",
     text: deployment,
+  },
+  {
+    name: "glossary",
+    purpose: "Collie's parts in plain words: instance, mux, pane, crew, lead, and the durable terms",
+    text: glossary,
   },
   {
     name: "troubleshooting",
