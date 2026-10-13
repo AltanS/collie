@@ -479,8 +479,7 @@ export const ja: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
-  // TODO wordsmith
-  "ask.notTaken": "Not taken. The question may show again in a moment.",
+  "ask.notTaken": "受け付けられませんでした。しばらくすると質問が再度表示される場合があります。",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -949,8 +948,7 @@ export const ja: Dictionary = {
   "connection.connected": "接続済み",
   "connection.reconnecting": "再接続中…",
   "connection.herdrDown": "ホスト上のHerdrが停止しています",
-  // TODO wordsmith
-  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
+  "connection.tokenRefused": "プログラムがトークンを拒否しました。このピアの COLLIE_DURABLE_TOKEN を確認してください。",
   "connection.offlineCantReach": "オフライン: Collieに接続できません",
   "connection.cantReach": "Collieに接続できません",
   "connection.withLastSeen": "{cause} (最終確認 {time})",
@@ -1169,17 +1167,11 @@ export const ja: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "送信中",
-  // TODO wordsmith
   "dialog.terminalControl": "ターミナル",
-  // TODO wordsmith
   "dialog.terminalControlAria": "このカードの代わりにターミナルを表示",
-  // TODO wordsmith
   "dialog.backToCard": "カードに戻る",
-  // TODO wordsmith
   "dialog.putAwayControl": "しまう",
-  // TODO wordsmith
   "dialog.putAwayControlAria": "ターミナルを残して、このカードのボタンを非表示",
-  // TODO wordsmith
   "dialog.showButtons": "ボタンを表示",
   "dialog.previousStepAria": "前のステップ",
   "dialog.nextStepAria": "次のステップ",
@@ -1201,9 +1193,7 @@ export const ja: Dictionary = {
   "dialog.menu.moveDown": "下へ移動",
   "dialog.menu.leftAria": "左: {verb}（{label}）",
   "dialog.menu.rightAria": "右: {verb}（{label}）",
-  // TODO wordsmith
   "dialog.menu.levelAria": "{label}に{verb}",
-  // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}、現在",
   "unreadDialog.caption": "Collie はこの対話を読み取れません", // wordsmith
   "unreadDialog.confirmKey": "もう一度タップして{key}を送信", // wordsmith

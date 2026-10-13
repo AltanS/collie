@@ -410,8 +410,7 @@ export const tr: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
-  // TODO wordsmith
-  "ask.notTaken": "Not taken. The question may show again in a moment.",
+  "ask.notTaken": "Kabul edilmedi. Soru birazdan tekrar gösterilebilir.",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -846,8 +845,7 @@ export const tr: Dictionary = {
   "connection.connected": "Bağlandı",
   "connection.reconnecting": "Yeniden bağlanıyor…",
   "connection.herdrDown": "Herdr ana makinede çalışmıyor",
-  // TODO wordsmith
-  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
+  "connection.tokenRefused": "Program belirteci reddetti. Bu eşteki COLLIE_DURABLE_TOKEN değerini kontrol edin.",
   "connection.offlineCantReach": "Çevrimdışı: Collie'ye ulaşılamıyor",
   "connection.cantReach": "Collie'ye ulaşılamıyor",
   "connection.withLastSeen": "{cause}: son görülme {time}",

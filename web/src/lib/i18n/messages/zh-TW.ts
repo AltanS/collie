@@ -467,8 +467,7 @@ export const zhTW: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
-  // TODO wordsmith
-  "ask.notTaken": "Not taken. The question may show again in a moment.",
+  "ask.notTaken": "未被接受。該問題可能稍後會再次出現。",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -934,8 +933,7 @@ export const zhTW: Dictionary = {
   "connection.connected": "已連線",
   "connection.reconnecting": "正在重新連線…",
   "connection.herdrDown": "主機上的 Herdr 服務已停止",
-  // TODO wordsmith
-  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
+  "connection.tokenRefused": "程式拒絕了權杖。請檢查此節點上的 COLLIE_DURABLE_TOKEN。",
   "connection.offlineCantReach": "離線：無法存取 Collie",
   "connection.cantReach": "無法連線至 Collie",
   "connection.withLastSeen": "{cause}，最後上線時間：{time}",
@@ -1154,17 +1152,11 @@ export const zhTW: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "正在傳送",
-  // TODO wordsmith
   "dialog.terminalControl": "終端機",
-  // TODO wordsmith
   "dialog.terminalControlAria": "顯示終端機而非此卡片",
-  // TODO wordsmith
   "dialog.backToCard": "返回卡片",
-  // TODO wordsmith
   "dialog.putAwayControl": "收合",
-  // TODO wordsmith
-  "dialog.putAwayControlAria": "隱藏此資訊卡的按鈕，保留終端機",
-  // TODO wordsmith
+  "dialog.putAwayControlAria": "隱藏此卡片的按鈕，保留終端機",
   "dialog.showButtons": "顯示按鈕",
   "dialog.previousStepAria": "上一步",
   "dialog.nextStepAria": "下一步",
@@ -1186,9 +1178,7 @@ export const zhTW: Dictionary = {
   "dialog.menu.moveDown": "下移",
   "dialog.menu.leftAria": "向左：{verb}（{label}）",
   "dialog.menu.rightAria": "向右：{verb}（{label}）",
-  // TODO wordsmith
   "dialog.menu.levelAria": "{verb}至 {label}",
-  // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}，目前",
   "unreadDialog.caption": "Collie 無法讀取此對話框", // wordsmith
   "unreadDialog.confirmKey": "再次點擊以傳送 {key}", // wordsmith

@@ -485,8 +485,7 @@ export const de: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
-  // TODO wordsmith
-  "ask.notTaken": "Not taken. The question may show again in a moment.",
+  "ask.notTaken": "Nicht angenommen. Die Frage wird möglicherweise gleich wieder angezeigt.",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -955,8 +954,7 @@ export const de: Dictionary = {
   "connection.connected": "Verbunden",
   "connection.reconnecting": "Verbindung wird wiederhergestellt…",
   "connection.herdrDown": "Herdr läuft auf dem Host nicht",
-  // TODO wordsmith
-  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
+  "connection.tokenRefused": "Das Programm hat das Token abgelehnt. Prüfe COLLIE_DURABLE_TOKEN auf diesem Peer.",
   "connection.offlineCantReach": "Offline: Collie ist nicht erreichbar",
   "connection.cantReach": "Collie ist nicht erreichbar",
   "connection.withLastSeen": "{cause}, zuletzt gesehen {time}",
@@ -1178,17 +1176,11 @@ export const de: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "Wird gesendet",
-  // TODO wordsmith
   "dialog.terminalControl": "Terminal",
-  // TODO wordsmith
   "dialog.terminalControlAria": "Terminal anstelle dieser Karte anzeigen",
-  // TODO wordsmith
   "dialog.backToCard": "Zurück zur Karte",
-  // TODO wordsmith
   "dialog.putAwayControl": "Ablegen",
-  // TODO wordsmith
   "dialog.putAwayControlAria": "Schaltflächen dieser Karte ausblenden, Terminal behalten",
-  // TODO wordsmith
   "dialog.showButtons": "Schaltflächen anzeigen",
   "dialog.previousStepAria": "Vorheriger Schritt",
   "dialog.nextStepAria": "Nächster Schritt",
@@ -1210,9 +1202,7 @@ export const de: Dictionary = {
   "dialog.menu.moveDown": "Nach unten",
   "dialog.menu.leftAria": "Links: {verb} ({label})",
   "dialog.menu.rightAria": "Rechts: {verb} ({label})",
-  // TODO wordsmith
   "dialog.menu.levelAria": "{verb} zu {label}",
-  // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}, aktuell",
   "unreadDialog.caption": "Collie kann diesen Dialog nicht lesen", // wordsmith
   "unreadDialog.confirmKey": "Erneut tippen, um {key} zu senden", // wordsmith

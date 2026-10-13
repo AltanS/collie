@@ -478,8 +478,7 @@ export const ko: Dictionary = {
   "ask.caption": "Needs your answer",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
-  // TODO wordsmith
-  "ask.notTaken": "Not taken. The question may show again in a moment.",
+  "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -948,8 +947,7 @@ export const ko: Dictionary = {
   "connection.connected": "연결됨",
   "connection.reconnecting": "재연결 중…",
   "connection.herdrDown": "호스트의 Herdr 프로세스가 중단되었습니다.",
-  // TODO wordsmith
-  "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
+  "connection.tokenRefused": "프로그램이 토큰을 거부했습니다. 이 피어의 COLLIE_DURABLE_TOKEN을 확인하세요.",
   "connection.offlineCantReach": "오프라인. Collie에 접근할 수 없습니다.",
   "connection.cantReach": "Collie에 접근할 수 없습니다.",
   "connection.withLastSeen": "{cause}. 마지막 확인 시각: {time}",
@@ -1168,17 +1166,11 @@ export const ko: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "전송 중",
-  // TODO wordsmith
   "dialog.terminalControl": "터미널",
-  // TODO wordsmith
   "dialog.terminalControlAria": "이 카드 대신 터미널 표시",
-  // TODO wordsmith
   "dialog.backToCard": "카드로 돌아가기",
-  // TODO wordsmith
   "dialog.putAwayControl": "치우기",
-  // TODO wordsmith
   "dialog.putAwayControlAria": "이 카드의 버튼을 숨기고 터미널을 유지합니다",
-  // TODO wordsmith
   "dialog.showButtons": "버튼 표시",
   "dialog.previousStepAria": "이전 단계",
   "dialog.nextStepAria": "다음 단계",
@@ -1200,9 +1192,7 @@ export const ko: Dictionary = {
   "dialog.menu.moveDown": "아래로 이동",
   "dialog.menu.leftAria": "왼쪽: {verb} ({label})",
   "dialog.menu.rightAria": "오른쪽: {verb} ({label})",
-  // TODO wordsmith
   "dialog.menu.levelAria": "{label}에 {verb}",
-  // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}, 현재",
   "unreadDialog.caption": "Collie가 이 대화상자를 읽을 수 없습니다", // wordsmith
   "unreadDialog.confirmKey": "{key}을(를) 보내려면 다시 누르세요", // wordsmith
