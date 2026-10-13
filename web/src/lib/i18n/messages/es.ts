@@ -415,6 +415,8 @@ export const es: Dictionary = {
   "chat.stream.empty": "Envía un mensaje para empezar.",
   "chat.stream.working": "Sigue trabajando…",
   "chat.stream.queued": "En espera de envío",
+  "chat.pin.label": "Tu mensaje",
+  "chat.pin.earlier": "La pregunta está más atrás · Cargar anteriores",
   "chat.stream.sendNow": "Enviar ahora",
   "chat.stream.sendNowAria": "Enviar ahora, los mensajes en espera",
   "chat.stream.loadOlderFailed": "No se pudieron cargar los turnos anteriores",

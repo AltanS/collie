@@ -5,6 +5,7 @@ import { decodeCursor, encodeCursor, NO_CURSOR } from "./cursor.ts";
 import {
   chatParams,
   DEFAULT_CHAT_LIMIT,
+  LAST_PROMPT_MAX_CHARS,
   LiveWindows,
   MAX_CHAT_LIMIT,
   MAX_LIVE_BYTES,
@@ -40,7 +41,15 @@ import type {
 // That second row is the whole reason `upserts` exists, and the reason a position watermark cannot
 // answer "what is new" (see live.ts's header).
 
-type FakeRow = { id?: string; say?: string; for?: string; out?: string; queue?: string[] };
+type FakeRow = {
+  id?: string;
+  say?: string;
+  for?: string;
+  out?: string;
+  queue?: string[];
+  ask?: string;
+  role?: "user" | "note";
+};
 
 function readRow(line: string): FakeRow | null {
   if (line === "") return null;
@@ -66,6 +75,16 @@ function fakeReducer(): RowReducer {
       if (Array.isArray(row.queue)) {
         queue = [...row.queue];
         return NO_CHANGE;
+      }
+      // A prompt: the operator's own (`user`) or one the agent sent itself (`note`).
+      if (typeof row.id === "string" && typeof row.ask === "string") {
+        const entry: TranscriptEntry = {
+          uuid: row.id,
+          ts: "2026-10-10T00:00:00Z",
+          role: row.role ?? "user",
+          parts: [{ kind: "text", text: row.ask }],
+        };
+        return { added: [entry], changed: NO_CHANGE.changed };
       }
       if (typeof row.id === "string") {
         const part: Extract<TranscriptPart, { kind: "tool" }> = {
@@ -173,6 +192,8 @@ const say = (id: string, what = "ls") => JSON.stringify({ id, say: what });
 const answer = (id: string, out = "ok") => JSON.stringify({ for: id, out });
 /** A row that moves the message queue and adds no turn, the way a `queue-operation` row does. */
 const queue = (...waiting: string[]) => JSON.stringify({ queue: waiting });
+/** A prompt turn; `note` makes it one the agent sent itself. */
+const ask = (id: string, text: string, role: "user" | "note" = "user") => JSON.stringify({ id, ask: text, role });
 
 function windows(fx: ReturnType<typeof fakeJournal>): LiveWindows {
   return new LiveWindows(new TranscriptStore(), fx.clock);
@@ -732,6 +753,101 @@ describe("what is queued", () => {
   });
 });
 
+// ── the operator's newest prompt rides the body too ─────────────────────────
+
+describe("the newest prompt", () => {
+  test("a prompt above the first page still rides the body", async () => {
+    // The case the field exists for: a run of tool calls pushes the prompt out of `limit`.
+    const fx = fakeJournal([ask("p1", "fix the flaky test"), say("u1"), say("u2"), say("u3")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 2 });
+    expect(body!.upserts.map((e) => e.uuid)).toEqual(["u2", "u3"]);
+    expect(body!.lastPrompt).toEqual({ uuid: "p1", ts: "2026-10-10T00:00:00Z", text: "fix the flaky test" });
+  });
+
+  test("the newest operator prompt wins, and a prompt the agent sent itself never does", async () => {
+    const fx = fakeJournal([ask("p1", "first"), say("u1"), ask("p2", "second"), ask("n1", "loop wake-up", "note")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect(body!.lastPrompt?.uuid).toBe("p2");
+  });
+
+  test("absent when the window holds no prompt", async () => {
+    const fx = fakeJournal([say("u1"), ask("n1", "loop wake-up", "note")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect("lastPrompt" in body!).toBe(false);
+  });
+
+  test("a long prompt is capped and says so", async () => {
+    const fx = fakeJournal([ask("p1", "x".repeat(LAST_PROMPT_MAX_CHARS + 50))]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect(body!.lastPrompt?.text).toHaveLength(LAST_PROMPT_MAX_CHARS);
+    expect(body!.lastPrompt?.truncated).toBe(true);
+  });
+
+  test("an incremental answer carries it whole, and a new prompt replaces it", async () => {
+    const fx = fakeJournal([ask("p1", "first"), say("u1")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 });
+    fx.append(say("u2"));
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } });
+    expect(next!.upserts.map((e) => e.uuid)).toEqual(["u2"]);
+    expect(next!.lastPrompt?.uuid).toBe("p1");
+    fx.append(ask("p2", "second"));
+    fx.settle();
+    const last = await live.window(fx.adapter, ref(), { limit: 10, after: { gen: next!.gen, rev: next!.rev } });
+    expect(last!.lastPrompt?.uuid).toBe("p2");
+  });
+
+  /** The fake read as a bounded tail: an opening read keeps only its last `keep` rows. */
+  function tailOf(fx: ReturnType<typeof fakeJournal>, keep: number): JournalAdapter {
+    const source = fx.adapter.source;
+    return {
+      ...fx.adapter,
+      source: {
+        ...source,
+        async readSince(key, cursor) {
+          const read = await source.readSince(key, cursor);
+          return read.reset ? { ...read, lines: read.lines.slice(-keep), fromStart: false } : read;
+        },
+      },
+    };
+  }
+
+  test("a window that opened mid-run looks the prompt up behind its front, once, without waiting for it", async () => {
+    const fx = fakeJournal([ask("p1", "the real question"), say("u1"), say("u2"), say("u3")]);
+    const tail = tailOf(fx, 2);
+    const live = windows(fx);
+    const first = await live.window(tail, ref(), { limit: 10 });
+    expect(first!.upserts.map((e) => e.uuid)).toEqual(["u2", "u3"]);
+    // The answer is not held for the lookup; the next poll carries what it found.
+    expect("lastPrompt" in first!).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fx.settle();
+    const next = await live.window(tail, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } });
+    expect(next!.lastPrompt?.uuid).toBe("p1");
+    fx.settle();
+    await live.window(tail, ref(), { limit: 10 });
+    expect(fx.calls.load).toBe(1);
+  });
+
+  test("a window that holds a prompt never reads behind its front", async () => {
+    const fx = fakeJournal([say("u0"), ask("p1", "held"), say("u1")]);
+    const live = windows(fx);
+    const body = await live.window(tailOf(fx, 2), ref(), { limit: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(body!.lastPrompt?.uuid).toBe("p1");
+    expect(fx.calls.load).toBe(0);
+  });
+
+  test("a `?before=` page says nothing about it", async () => {
+    const fx = fakeJournal([ask("p1", "first"), say("u1"), say("u2")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 1 });
+    const older = await live.older(fx.adapter, ref(), { seq: first!.oldest, uuid: "u2" }, 10);
+    expect("lastPrompt" in older!).toBe(false);
+  });
+});
+
 // M46: the journal's text is masked with the mirror's own list before a turn leaves the bridge. The
 // History route maps `redactEntry` over its page and the Chat route runs `redactChatBody`; both keep
 // every part, every hunk line and every line break where it was. Placeholders only.
@@ -795,6 +911,18 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     });
     expect(JSON.stringify(live)).not.toContain(key);
     expect(live).toMatchObject({ page: "live", gen: 1, rev: 2, queued: [`and use ${masked}`] });
+    const prompted = redactChatBody({
+      page: "live",
+      gen: 1,
+      rev: 2,
+      head: SEQ_BASE,
+      oldest: SEQ_BASE,
+      hasOlder: false,
+      upserts: [],
+      queued: [],
+      lastPrompt: { uuid: "p1", ts: "", text: `deploy with ${key}` },
+    });
+    expect(prompted).toMatchObject({ lastPrompt: { uuid: "p1", text: `deploy with ${masked}` } });
     const older = redactChatBody({ page: "older", gen: 1, upserts: [turn], hasOlder: true });
     expect(JSON.stringify(older)).not.toContain(key);
     expect(older).toMatchObject({ page: "older", gen: 1, hasOlder: true });

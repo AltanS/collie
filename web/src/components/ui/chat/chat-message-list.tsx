@@ -13,6 +13,10 @@ export interface ChatMessageListHandle {
   scrollToBottom: () => void;
   /** The scroll container itself — lets the parent measure/anchor (e.g. "Load older" scrollback). */
   getScrollElement: () => HTMLElement | null;
+  /** Bring a child's top edge to the top of the scrollport and stop following the tail. `force` moves
+   *  even a reader who had scrolled away — for a control they pressed, not for content that arrived
+   *  (useAutoScroll § scrollToChild). False when it declined. */
+  scrollToChild: (child: HTMLElement | null, force?: boolean) => boolean;
 }
 
 interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -30,6 +34,12 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
    * padding that results replaces it.
    */
   clearBand?: number;
+  /**
+   * Drawn OVER the top of the scrollport, below the strip band when {@link clearBand} is set. It
+   * takes no room in the list, so showing or hiding it moves nothing the reader is on. Its wrapper
+   * ignores the pointer; a control inside opts back in with `pointer-events-auto`.
+   */
+  overlay?: React.ReactNode;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -37,21 +47,26 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, clearBand, style, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, style, ...props },
     ref,
   ) {
     useLocale();
-    const { scrollRef, isAtBottom, scrollToBottom, onScroll } = useAutoScroll<HTMLDivElement>({
-      dep,
-      onAtBottomChange,
-    });
+    const { scrollRef, isAtBottom, scrollToBottom, scrollToChild, onScroll } =
+      useAutoScroll<HTMLDivElement>({
+        dep,
+        onAtBottomChange,
+      });
 
     const bandStyle = useBandInset(scrollRef, clearBand ?? 0);
 
     React.useImperativeHandle(
       ref,
-      () => ({ scrollToBottom: () => scrollToBottom(), getScrollElement: () => scrollRef.current }),
-      [scrollToBottom, scrollRef],
+      () => ({
+        scrollToBottom: () => scrollToBottom(),
+        getScrollElement: () => scrollRef.current,
+        scrollToChild: (child: HTMLElement | null, force?: boolean) => scrollToChild(child, force),
+      }),
+      [scrollToBottom, scrollToChild, scrollRef],
     );
 
     return (
@@ -71,6 +86,15 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
         >
           {children}
         </div>
+
+        {overlay !== undefined && overlay !== null && (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 px-3 pt-1"
+            style={clearBand !== undefined ? { top: bandStyle?.paddingTop } : undefined}
+          >
+            {overlay}
+          </div>
+        )}
 
         {!isAtBottom && (
           <Button

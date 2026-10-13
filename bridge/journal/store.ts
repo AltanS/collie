@@ -58,6 +58,31 @@ export class TranscriptStore {
     ref: AgentSessionRef,
     opts: { limit: number; before?: string },
   ): Promise<Omit<TranscriptPage, "paneId"> | null> {
+    const entry = await this.cached(adapter, ref);
+    if (entry === null) return null;
+    const { entries, complete } = entry;
+    const { window, hasMore } = pageEntries(entries, opts);
+    return {
+      entries: window,
+      // A clipped file always has more behind it, even at the window's start.
+      hasMore: hasMore || (!complete && window.length > 0 && window[0] === entries[0]),
+      total: entries.length,
+      fileTruncated: !complete,
+    };
+  }
+
+  /**
+   * The parsed window `page` already caches, without slicing it.
+   *
+   * The live window's prompt lookup reads this instead of opening the log again: a repeat ask is a
+   * stat, and a cold ask is the same bounded tail `load` caps at `MAX_TRANSCRIPT_BYTES`.
+   * `complete: false` means that cap clipped the head; a caller does not read the rest of the file
+   * to fill the gap.
+   */
+  async cached(
+    adapter: JournalAdapter,
+    ref: AgentSessionRef,
+  ): Promise<{ entries: TranscriptEntry[]; complete: boolean } | null> {
     const path = await adapter.source.resolve(ref);
     if (path === null) return null;
 
@@ -82,15 +107,6 @@ export class TranscriptStore {
         if (oldest !== undefined) this.cache.delete(oldest);
       }
     }
-    const { entries, complete } = entry;
-
-    const { window, hasMore } = pageEntries(entries, opts);
-    return {
-      entries: window,
-      // A clipped file always has more behind it, even at the window's start.
-      hasMore: hasMore || (!complete && window.length > 0 && window[0] === entries[0]),
-      total: entries.length,
-      fileTruncated: !complete,
-    };
+    return { entries: entry.entries, complete: entry.complete };
   }
 }
