@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { startApp, type App } from "../app.ts";
 import { PaneRegistry, Mapper, PARTIAL_MS } from "../pi-durable/index.ts";
-import { longAnswer } from "../script.ts";
+import { LONG_ANSWER_START, longAnswer } from "../script.ts";
 import type { AgentEvent, MessageChange, SnapshotEvent } from "@earendil-works/pi-durable";
 import { api, type Dial } from "./client.ts";
 import type { Item, ProgramEvent } from "../sdk/core/types.ts";
@@ -20,7 +20,7 @@ beforeAll(async () => {
   const dir = tmp();
   app = await startApp({ socket: join(dir, "s.sock"), storage: "memory", stepMs: 0, slowMs: SLOW_MS, notesFile: join(dir, "notes.txt"), callerCheck: "off", seed: false });
   d = { socket: app.collie.address, version: 1 };
-  main = (await api.start(d, "new-triage")).body.paneId;
+  main = (await api.start(d, "sign-in")).body.paneId;
   await api.answer(d, main, (await waitFor("ask", () => firstAsk(d, main))).id, "allow");
   await waitFor("idle", async () => (await pane(d, main))?.state === "idle");
 });
@@ -40,7 +40,7 @@ describe("a reply that grows, through the app", () => {
     expect(sent.body).toEqual({ ok: true });
     await waitFor("idle again", async () => (await pane(d, main))?.state === "idle" && (await allEvents(d, main)).length > before + 6, SLOW_MS * 3);
     const fresh = (await allEvents(d, main)).slice(before);
-    const longs = repliesOf(fresh).filter((r) => r.text.startsWith("Another thought"));
+    const longs = repliesOf(fresh).filter((r) => r.text.startsWith(LONG_ANSWER_START));
     const id = longs[0]!.id;
     const versions = repliesOf(fresh, id);
     // Several versions under ONE id, partial all but the last, the text only ever growing.
@@ -51,7 +51,7 @@ describe("a reply that grows, through the app", () => {
     expect(versions.at(-1)!.text).toBe(longAnswer(SLOW_MS));
     for (let i = 1; i < versions.length; i++) expect(versions[i]!.text.startsWith(versions[i - 1]!.text)).toBe(true);
     // A reader holds one reply, not one per version.
-    expect(latestItems(fresh).filter((item) => item.kind === "reply" && item.text.startsWith("Another thought"))).toHaveLength(1);
+    expect(latestItems(fresh).filter((item) => item.kind === "reply" && item.text.startsWith(LONG_ANSWER_START))).toHaveLength(1);
     // No version is written faster than the least gap, give or take the scheduler: the count stays far below one per chunk.
     expect(versions.length).toBeLessThan((SLOW_MS / PARTIAL_MS) * 2);
   });
@@ -67,7 +67,7 @@ describe("a reply that grows, through the app", () => {
     await api.send(d, main, "and another", { requestId: "stream-send-2" });
     const growing = await waitFor("a partial reply", async () => {
       const here = (await allEvents(d, main)).slice(before);
-      const partials = repliesOf(here).filter((r) => r.partial === true && r.text.startsWith("Another thought"));
+      const partials = repliesOf(here).filter((r) => r.partial === true && r.text.startsWith(LONG_ANSWER_START));
       return partials.length >= 2 ? partials.at(-1) : undefined;
     }, SLOW_MS);
     expect((await api.abort(d, main)).status).toBe(200);

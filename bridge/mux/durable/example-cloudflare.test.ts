@@ -205,7 +205,8 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect(mux.panes.length).toBeGreaterThanOrEqual(1);
     const first = mux.panes[0];
     expect(first?.agent).toBe("durable");
-    expect(first?.tabLabel).toBe("Inbox");
+    expect(first?.tabLabel).toBe("Tickets");
+    expect(first?.terminalTitle).toBe("Maria Lopez");
     ticket = first?.paneId ?? "";
     const asks = await until("an open ask", async () => {
       await adapter.refresh();
@@ -219,7 +220,7 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
   test("cloudflare: the events reader reads the pane's events, then only the newer ones", async () => {
     await adapter.syncEvents();
     const first = recorder.all(ticket);
-    expect(first.some((event) => event.type === "item" && event.item.kind === "user" && event.item.text.includes("Triage ticket"))).toBe(true);
+    expect(first.some((event) => event.type === "item" && event.item.kind === "user" && event.item.text.startsWith("Maria Lopez writes:"))).toBe(true);
     expect(first.some((event) => event.type === "ask")).toBe(true);
     expect(first.some((event) => event.type === "reset")).toBe(false);
     const before = recorder.batches.get(ticket)?.length ?? 0;
@@ -234,11 +235,12 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: true } });
     await until("the ticket idle", async () => ((await pane(ticket))?.state === "idle" ? true : undefined), 15_000);
-    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(true);
+    // The look-up answered and closed itself, so no pane is left under Look-ups.
+    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(false);
     await adapter.syncEvents();
     const after = recorder.all(ticket);
     expect(after.filter((event) => event.type === "ask-closed" && event.by === "phone")).toHaveLength(1);
-    expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.includes("The helper says"))).toBe(true);
+    expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.startsWith("Found it."))).toBe(true);
   });
 
   test("cloudflare: a send starts a new turn, and a stop ends it with a settled event and no item", async () => {
@@ -269,18 +271,18 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
 
   test("cloudflare: a starter opens a new pane, and a repeat with the same request id opens nothing", async () => {
     const listed = await adapter.listStarters();
-    expect(listed.starters.map((starter) => starter.id)).toContain("new-triage");
+    expect(listed.starters.map((starter) => starter.id)).toContain("sign-in");
     const requestId = crypto.randomUUID();
-    const started = await adapter.startStarter("new-triage", requestId);
+    const started = await adapter.startStarter("sign-in", requestId);
     if (started.kind !== "started") throw new Error(`the starter did not start: ${JSON.stringify(started)}`);
     expect(started.replayed).toBe(false);
     expect(started.paneId).not.toBe(ticket);
     expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.id === started.paneId)).toBe(true);
-    expect(await adapter.startStarter("new-triage", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
+    expect(await adapter.startStarter("sign-in", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
     expect(adapter.program()?.snapshot.panes.filter((candidate) => candidate.tabId === "triage:inbox")).toHaveLength(2);
   });
   test("cloudflare: history lists the ticket and its items from the program, and a close then a reopen bring it back", async () => {
-    // Run alone (a `-t` filter), the earlier tests did not name the ticket: find the first one in the Inbox.
+    // Run alone (a `-t` filter), the earlier tests did not name the ticket: find the first one under Tickets.
     if (ticket === "") {
       ticket = await until("the first ticket", async () => {
         await adapter.refresh();

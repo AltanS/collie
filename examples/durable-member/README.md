@@ -1,7 +1,7 @@
 # Durable member: a Pi Durable program in your crew
 
 A small Bun program built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable).
-It triages made-up support tickets with a scripted model and shows each conversation to Collie over
+It answers made-up support tickets for a small online shop with a scripted model and shows each conversation to Collie over
 the durable socket wire. A Collie peer with `COLLIE_MUX=durable` lists those conversations as panes,
 so you can read them on the phone and answer their questions there. The wire is experimental and may
 change in any minor release of Collie ([`WIRE.md`](../../bridge/mux/durable/WIRE.md)). This folder is
@@ -22,8 +22,8 @@ The app prints the socket it listens on, for example
 it says so on the next line: "Using the scripted model. Set REAL_MODEL and OPENROUTER_API_KEY for a real
 one." See [A real model](#a-real-model).
 
-On the first start the app opens one ticket. The scripted model asks to run `write_note`, and the
-ticket waits for your answer. The app keeps its conversations in `~/.local/state/durable-member/`, so
+On the first start the app opens one ticket: Maria Lopez can't sign in after a password reset. The
+scripted model asks to save a note to the ticket, and the ticket waits for your answer. The app keeps its conversations in `~/.local/state/durable-member/`, so
 the next start shows them again. Delete that folder to start over. Stop the app with Ctrl-C.
 
 The app installs on its own. The collie root install does not pull in Pi Durable, and this folder
@@ -73,39 +73,45 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
 
 ## What you see on the phone
 
-- **The conversations.** The workspace is "Triage". Tickets are in the tab "Inbox", and the helper a
-  ticket starts is in the tab "Helpers".
+- **The conversations.** Each ticket is a conversation, named after its customer (Maria Lopez, Jonas
+  Berg, Priya Shah, and so on), with its topic on the line under the name. When a question waits for you,
+  that line shows the question instead. The workspace is "Support". Tickets are in the tab "Tickets", and the
+  look-ups a ticket starts are in the tab "Look-ups".
 - **Chat only.** A conversation has no terminal, so there is no Terminal view and no typed keys.
-- **The ask.** A card under the `write_note` step offers Allow and Deny. Allow writes one line to
-  `notes.txt` in the data folder, a helper answers, and the ticket ends with a reply. Deny blocks the
-  tool, and the ticket stops there. Only your tap answers. The app never answers its own ask.
-- **A line under the title, and a badge.** Each ticket says "a customer cannot log in" under its name, and
-  a helper says "helping ticket N". A badge next to the ticket's name counts the questions that wait for you.
+- **The question.** A card under the note asks "Save this note to the ticket?" and shows the note, with Save
+  and Don't save. Save writes the note to `notes.txt` in the data folder, a look-up finds the cause, and the
+  ticket ends with a reply. Don't save blocks the tool, and the ticket stops there. Only your tap answers. The
+  app never answers its own question.
+- **A look-up.** The sign-in ticket starts a second conversation, "Look-up for Maria Lopez", that asks why
+  sign-in fails after a reset. It answers in one sentence, hands the answer back to the ticket and closes. The
+  list shows it under Closed, and a tap opens it read-only.
+- **A badge.** A badge next to the ticket's name counts the questions that wait for you.
 - **A belt action.** Each ticket has an Escalate button in the belt. A tap writes one notice into the thread,
-  dims the button, and the badge reads "esc" once no question waits.
-- **Progress.** While a ticket works, Chat shows a thin row under the header with the running step ("write a
-  note, 2 of 3") and a bar, and the card gets a one-pixel line along its bottom edge. The three steps are
-  "read the ticket", "write a note" and "reply".
-- **Markdown, code and a link.** When a ticket ends, a note with a list of next steps, a shell snippet and a
-  link to the Collie docs follow the reply. They are three item kinds, `markdown`, `code` and `link`.
+  dims the button, and the line under the name reads "Escalated to the on-call lead.".
+- **Progress.** While a ticket works, Chat shows a thin row under the header with the running step ("Save a
+  note, 2 of 3") and a bar, and the card gets a one-pixel line along its bottom edge. The three steps are "Read
+  the ticket", "Save a note" and "Reply".
+- **Markdown, code and a link.** When the sign-in ticket ends, its next steps (a list), the command that signs
+  the customer out (a shell snippet) and a runbook link follow the reply. They are three item kinds, `markdown`,
+  `code` and `link`. The link goes to `example.com`, so it leads nowhere real.
 - **Send, steer and Stop.** Text sent to an idle ticket starts a new turn. The scripted answer to a
-  follow-up takes ten seconds to write, so you have time to steer it or press Stop. Stop ends the turn, and
-  Chat shows a short "stopped" note.
+  follow-up is a long explanation that takes about ten seconds to write, so you have time to steer it or press
+  Stop. Stop ends the turn where it is.
 - **A reply that grows.** The model writes every answer in chunks, and the pane writes the reply item again under
   the same id as it grows, with `partial: true`, at most every 250 ms. The last version has no `partial`. Chat draws
   a cursor at the end while it grows, and Stop cuts the reply where it is. The `user` item carries the `requestId` of
   the send, so the phone swaps its own pending line for it (WIRE.md 7.15).
-- **Starters on the New page.** "New triage" opens another ticket. "Two notes at once" makes the
-  model ask two questions at the same time. "A choice and a line of text" asks after its note
-  which queue the ticket goes to (a `choice`, three buttons) and then for one line to send to the
-  customer (a `text` ask). A third kind, `form`, takes up to six fields; see `pane.ask()` in the SDK
-  and WIRE.md section 7.14.
-- **Renames.** Long-press the "Triage" space chip, or a tab, and tap Rename. The app keeps the new name in
-  `titles.json` in its data folder, so a restart shows it again.
-- **Closes.** Open a ticket's actions sheet and tap Close. The app ends the ticket's run, writes it to
-  `closed.json` in its data folder so a restart does not show it again, and the ticket leaves the list. Its open
-  ask closes as stopped. The Inbox and Helpers tabs and the Triage space are the app's own layout, in code, so it
-  refuses to close those (422).
+- **Starters on the New page.** Each starter opens a ticket from the next customer. "Sign-in problem" is the
+  ticket above. "Double charge" saves a note, asks which team should take it (a `choice`, three buttons) and then
+  what to tell the customer (a `text` ask). "Address change" asks to save two notes at the same time, one per
+  order. A fourth kind of question, `form`, takes up to six fields; see `pane.ask()` in the SDK and WIRE.md
+  section 7.14.
+- **Renames.** The app takes a new name for its space or a tab (`POST /rename`) and keeps it in `titles.json` in
+  its data folder, so a restart shows it again.
+- **Closes.** Open a ticket's actions sheet and tap Close conversation. The app ends the ticket's run, writes it to
+  `closed.json` in its data folder so a restart does not show it again, and the ticket moves to Closed. Its open
+  question closes as stopped. The two tabs and the space are the app's own layout, in code, so it refuses to
+  close those (422).
 
 ## A real model
 

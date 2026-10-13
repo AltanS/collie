@@ -8,6 +8,7 @@ import { env as bindings, exports } from "cloudflare:workers";
 import { abortAllDurableObjects, listDurableObjectIds, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
 import { PaneRegistry } from "../../durable-member/pi-durable/index.ts";
+import { LONG_ANSWER_START, SIGN_IN_DONE } from "../../durable-member/script.ts";
 import { askIdFor, createCore, HttpError, Receipts } from "../../durable-member/sdk/core/index.ts";
 import type { Env } from "../src/env.ts";
 import type { Member } from "../src/member.ts";
@@ -54,7 +55,7 @@ async function waitFor<T>(what: string, look: () => Promise<T | undefined | fals
   }
 }
 
-/** The first ticket in the Inbox, once its ask is open. */
+/** The first ticket under Tickets, once its ask is open. */
 const firstTicket = () =>
   waitFor("the first ticket's ask", async () => (await snapshot()).panes.find((p: any) => p.tabId === "triage:inbox" && p.openAsks.length > 0));
 
@@ -75,7 +76,7 @@ describe("the bearer token", () => {
       const r = await call("GET", "/hello", o);
       expect([JSON.stringify(o), r.status, r.body]).toEqual([JSON.stringify(o), 401, { code: "unauthorized" }]);
     }
-    expect((await call("POST", "/starter/new-triage", { token: "wrong", body: { requestId: "r" } })).status).toBe(401);
+    expect((await call("POST", "/starter/sign-in", { token: "wrong", body: { requestId: "r" } })).status).toBe(401);
     expect(await listDurableObjectIds(env.MEMBER)).toHaveLength(0); // nothing woke
   });
 
@@ -112,17 +113,18 @@ describe("the wire", () => {
     expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
   });
 
-  test("the snapshot lays out Triage, Inbox and Helpers, the first ticket waits on an Allow or Deny ask, and the ETag gives 304", async () => {
+  test("the snapshot lays out Support, Tickets and Look-ups, the first ticket waits on a Save or Don't save ask, and the ETag gives 304", async () => {
     const pane = await firstTicket();
     const s = await snapshot();
-    expect(s.workspaces).toEqual([{ id: "triage", title: "Triage", cwd: "/srv/triage" }]);
-    expect(s.tabs.map((t: { title: string }) => t.title)).toEqual(["Inbox", "Helpers"]);
+    expect(s.workspaces).toEqual([{ id: "triage", title: "Support", cwd: "/srv/support" }]);
+    expect(s.tabs.map((t: { title: string }) => t.title)).toEqual(["Tickets", "Look-ups"]);
     expect(s.starters).toEqual([
-      { id: "new-triage", label: "New triage" },
-      { id: "two-notes", label: "Two notes at once (faux only)" },
-      { id: "ask-questions", label: "A choice and a line of text (faux only)" },
+      { id: "sign-in", label: "Sign-in problem" },
+      { id: "double-charge", label: "Double charge" },
+      { id: "new-address", label: "Address change" },
     ]);
-    expect(pane.state).toBe("waiting");
+    expect(pane).toMatchObject({ state: "waiting", title: "Maria Lopez", subtitle: "Can't sign in after a password reset" });
+    expect(pane.openAsks[0].title).toBe("Save this note to the ticket?");
     expect(pane.openAsks[0].options.map((o: { effect: string }) => o.effect)).toEqual(["allow", "deny"]);
     const first = await call("GET", "/snapshot");
     expect(first.etag).toBe(`"${first.body.epoch}-${first.body.rev}"`);
@@ -130,7 +132,7 @@ describe("the wire", () => {
     expect((await call("GET", "/snapshot", { headers: { "if-none-match": `W/${first.etag}` } })).status).toBe(304);
   });
 
-  test("an answer runs once: a repeat replays, the note is written once, a helper answers and the ticket replies", async () => {
+  test("an answer runs once: a repeat replays, the note is written once, a look-up answers and closes, and the ticket replies", async () => {
     const pane = await firstTicket();
     const ask = pane.openAsks[0];
     const body = { requestId: "answer-1", askId: ask.id, revision: ask.revision, answer: { optionId: "allow" } };
@@ -139,11 +141,14 @@ describe("the wire", () => {
     expect((await call("POST", `/pane/${pane.id}/answer`, { body: { ...body, answer: { optionId: "deny" } } })).body).toEqual({ code: "request-id-reused" });
     const done = await waitFor("the ticket's reply", async () => {
       const r = await events(pane.id, 0, "none");
-      return r.events.some((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.partial !== true && e.item.text.startsWith("Triage done.")) && r;
+      return r.events.some((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.partial !== true && e.item.text.startsWith(SIGN_IN_DONE)) && r;
     });
     expect(done.reset).toBe(true);
-    expect((await snapshot()).panes.some((p: any) => p.tabId === "triage:helpers")).toBe(true);
-    expect((await notes()).map((n) => n.note)).toEqual(["Ticket 412: login failure after password reset."]);
+    // The look-up closed itself once it answered: no pane, and the history lists it closed.
+    expect((await snapshot()).panes.some((p: any) => p.tabId === "triage:helpers")).toBe(false);
+    const lookup = (await call("GET", "/conversations")).body.items.find((x: { tabId: string }) => x.tabId === "triage:helpers");
+    expect(lookup).toMatchObject({ title: "Look-up for Maria Lopez", state: "closed" });
+    expect((await notes()).map((n) => n.note)).toEqual(["Sign-in fails after a password reset. The old session may still be active."]);
     expect((await paneOf(pane.id)).state).toBe("idle");
   });
 
@@ -171,7 +176,7 @@ describe("the wire", () => {
     const pane = (await snapshot()).panes.find((p: any) => p.tabId === "triage:inbox");
     const before = await events(pane.id, 0, "none");
     expect((await call("POST", `/pane/${pane.id}/send`, { body: { requestId: "stream-1", text: "Go on", turnId: pane.turnId } })).body).toEqual({ ok: true });
-    const replies = (list: any[]) => list.filter((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Another thought")).map((e: any) => e.item);
+    const replies = (list: any[]) => list.filter((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith(LONG_ANSWER_START)).map((e: any) => e.item);
     const growing = await waitFor("a partial reply", async () => {
       const r = await events(pane.id, before.next, before.epoch);
       const partial = replies(r.events).filter((i: any) => i.partial === true);
@@ -191,9 +196,9 @@ describe("the wire", () => {
 
   test("a starter opens a new ticket; the same request id replays the same pane and opens nothing", async () => {
     const count = (await snapshot()).panes.length;
-    const r = await call("POST", "/starter/new-triage", { body: { requestId: "start-1" } });
+    const r = await call("POST", "/starter/sign-in", { body: { requestId: "start-1" } });
     expect(r.status).toBe(200);
-    expect((await call("POST", "/starter/new-triage", { body: { requestId: "start-1" } })).body).toEqual({ paneId: r.body.paneId, replayed: true });
+    expect((await call("POST", "/starter/sign-in", { body: { requestId: "start-1" } })).body).toEqual({ paneId: r.body.paneId, replayed: true });
     const s = await snapshot();
     expect(s.panes.length).toBe(count + 1);
     expect(s.panes.some((p: { id: string }) => p.id === r.body.paneId)).toBe(true);
@@ -206,19 +211,19 @@ describe("a rename", () => {
 
   test("a tab takes a new title, the snapshot shows it and rev rises, and the same request id replays", async () => {
     const before = await snapshot();
-    const r = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
+    const r = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Open tickets  " } });
     expect([r.status, r.body]).toEqual([200, { ok: true }]);
     const after = await snapshot();
-    expect(after.tabs.find((t: { id: string }) => t.id === "triage:inbox").title).toBe("Tickets");
+    expect(after.tabs.find((t: { id: string }) => t.id === "triage:inbox").title).toBe("Open tickets");
     expect(after.rev).toBeGreaterThan(before.rev);
-    const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
+    const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Open tickets  " } });
     expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
     expect((await snapshot()).rev).toBe(after.rev);
   });
 
   test("a workspace takes one too; an unknown target is 404 no-such-target, a bad title 400, and the token still guards the route", async () => {
-    expect((await call("POST", "/rename", { body: { requestId: "rename-2", kind: "workspace", id: "triage", title: "Support" } })).status).toBe(200);
-    expect(await titleOf("workspaces", "triage")).toBe("Support");
+    expect((await call("POST", "/rename", { body: { requestId: "rename-2", kind: "workspace", id: "triage", title: "Help desk" } })).status).toBe(200);
+    expect(await titleOf("workspaces", "triage")).toBe("Help desk");
     const missing = await call("POST", "/rename", { body: { requestId: "rename-3", kind: "tab", id: "triage:nope", title: "X" } });
     expect([missing.status, missing.body.code]).toEqual([404, "no-such-target"]);
     const bad = await call("POST", "/rename", { body: { requestId: "rename-4", kind: "tab", id: "triage:inbox", title: "" } });
@@ -228,10 +233,10 @@ describe("a rename", () => {
 
   test.skipIf(!SQLITE)("the names survive a wake of the object, and the receipt still replays", async () => {
     await abortAllDurableObjects();
-    expect(await titleOf("tabs", "triage:inbox")).toBe("Tickets");
-    expect(await titleOf("workspaces", "triage")).toBe("Support");
-    expect(await titleOf("tabs", "triage:helpers")).toBe("Helpers"); // never renamed: the name in the code
-    const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Tickets  " } });
+    expect(await titleOf("tabs", "triage:inbox")).toBe("Open tickets");
+    expect(await titleOf("workspaces", "triage")).toBe("Help desk");
+    expect(await titleOf("tabs", "triage:helpers")).toBe("Look-ups"); // never renamed: the name in the code
+    const again = await call("POST", "/rename", { body: { requestId: "rename-1", kind: "tab", id: "triage:inbox", title: "  Open tickets  " } });
     expect(again.body).toEqual({ ok: true, replayed: true });
   });
 });
@@ -239,7 +244,7 @@ describe("a rename", () => {
 let closedPane = "";
 describe("a close", () => {
   test("the phone closes a ticket: it leaves the snapshot, rev rises, a tab is refused, and the same request id replays", async () => {
-    const started = await call("POST", "/starter/new-triage", { body: { requestId: "close-start-1" } });
+    const started = await call("POST", "/starter/sign-in", { body: { requestId: "close-start-1" } });
     expect(started.status).toBe(200);
     const paneId: string = started.body.paneId;
     await waitFor("the new ticket's ask", async () => (await paneOf(paneId))?.openAsks.length > 0);
@@ -269,7 +274,7 @@ describe("a close", () => {
     expect(list.status).toBe(200);
     const row = list.body.items.find((x: { id: string }) => x.id === closedPane);
     expect(row).toMatchObject({ state: "closed", workspaceId: "triage", tabId: "triage:inbox" });
-    expect(row.title).toMatch(/^Ticket #/);
+    expect(row.title).toBe("Priya Shah"); // the third ticket takes the third customer
     const items = await call("GET", `/conversation/${encodeURIComponent(closedPane)}/items`);
     expect(items.status).toBe(200);
     expect(items.body.more).toBe(false);
@@ -294,7 +299,7 @@ describe("a close", () => {
 
 describe("an action", () => {
   test("a ticket lists Escalate, a tap runs it once and dims the button, and the token still guards the route", async () => {
-    const started = await call("POST", "/starter/new-triage", { body: { requestId: "action-start-1" } });
+    const started = await call("POST", "/starter/sign-in", { body: { requestId: "action-start-1" } });
     const paneId: string = started.body.paneId;
     await waitFor("the new ticket's ask", async () => (await paneOf(paneId))?.openAsks.length > 0);
     expect((await paneOf(paneId)).actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag" }]);
@@ -327,7 +332,7 @@ describe("a restart", () => {
     expect(after.epoch).not.toBe(before);
     expect(after.ready).toBe(true);
     // Every receipt from before the restart still replays and runs nothing. The bodies are the same as the first time.
-    expect((await call("POST", "/starter/new-triage", { body: { requestId: "start-1" } })).body.replayed).toBe(true);
+    expect((await call("POST", "/starter/sign-in", { body: { requestId: "start-1" } })).body.replayed).toBe(true);
     if (!SQLITE) return; // in memory, Pi's conversations are gone, and so are the panes
     const panes = (await snapshot()).panes;
     expect(panes.some((p: { id: string }) => p.id === ticket.id)).toBe(true); // a pane id is the conversation id
@@ -335,12 +340,12 @@ describe("a restart", () => {
     expect(r.reset).toBe(true);
     expect(r.epoch).toBe(after.epoch);
     expect(r.events[0]).toEqual({ type: "reset" });
-    expect(r.events.some((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Triage done."))).toBe(true);
+    expect(r.events.some((e: any) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith(SIGN_IN_DONE))).toBe(true);
     expect((await notes()).length).toBe(1); // the note was not written again
   });
 
   test.skipIf(!SQLITE)("a wake keeps the ask: raised again before ready, with the same id, and a tap sent across it is taken once", async () => {
-    const r = await call("POST", "/starter/new-triage", { body: { requestId: "start-2" } });
+    const r = await call("POST", "/starter/sign-in", { body: { requestId: "start-2" } });
     const paneId = r.body.paneId;
     const old = await waitFor("an ask", async () => (await paneOf(paneId)).openAsks[0]);
     const notesBefore = (await notes()).length;
@@ -357,7 +362,7 @@ describe("a restart", () => {
   });
 
   test.skipIf(!SQLITE)("the M50 spec 14 case: a tap that is the first request after a wake is taken, not too-late", async () => {
-    const paneId = (await call("POST", "/starter/new-triage", { body: { requestId: "start-3" } })).body.paneId;
+    const paneId = (await call("POST", "/starter/sign-in", { body: { requestId: "start-3" } })).body.paneId;
     const old = await waitFor("an ask", async () => (await paneOf(paneId)).openAsks[0]);
     await abortAllDurableObjects();
     // No read between the wake and the tap: the answer itself starts the object, which raises the ask before ready.
@@ -385,7 +390,7 @@ describe("a restart", () => {
     );
     expect(after.reads).toBe(0);
     const replies = after.entries.flatMap((e) => (e.model ?? []).filter((m: any) => m.role === "assistant")).map((m: any) => JSON.stringify(m.content));
-    expect(replies.at(-1)).toContain("Another thought, in detail.");
+    expect(replies.at(-1)).toContain(LONG_ANSWER_START);
   });
 });
 
@@ -483,14 +488,14 @@ describe("the receipts cap", () => {
 
 describe("more kinds of ask", () => {
   test("a ticket with questions asks a choice, then a text ask, and each takes its own answer shape", async () => {
-    const r = await call("POST", "/starter/ask-questions", { body: { requestId: "start-ask" } });
+    const r = await call("POST", "/starter/double-charge", { body: { requestId: "start-ask" } });
     const id = r.body.paneId;
     const answer = (askId: string, revision: number, requestId: string, payload: object) =>
       call("POST", `/pane/${id}/answer`, { body: { requestId, askId, revision, answer: payload } });
     const note = await waitFor("the note's ask", async () => (await paneOf(id)).openAsks.find((a: { kind: string }) => a.kind === "permission"));
     await answer(note.id, note.revision, "ask-note", { optionId: "allow" });
     const choice = await waitFor("the choice", async () => (await paneOf(id)).openAsks.find((a: { kind: string }) => a.kind === "choice"));
-    expect(choice.options.map((o: { id: string }) => o.id)).toEqual(["billing", "access", "other"]);
+    expect(choice.options.map((o: { id: string }) => o.id)).toEqual(["billing", "accounts", "other"]);
     expect((await answer(choice.id, choice.revision, "ask-bad", { text: "billing" })).status).toBe(400);
     expect((await answer(choice.id, choice.revision, "ask-choice", { optionIds: ["other"] })).body).toEqual({ result: "taken" });
     const text = await waitFor("the text ask", async () => (await paneOf(id)).openAsks.find((a: { kind: string }) => a.kind === "text"));

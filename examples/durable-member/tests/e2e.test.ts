@@ -1,4 +1,4 @@
-// One ticket from start to end, in-process, with memory storage, the Pi Durable glue and the SDK.
+// One support ticket from start to end, in-process, with memory storage, the Pi Durable glue and the SDK.
 // The app opens no ticket of its own here (`seed: false`), so every pane comes from a starter.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -33,12 +33,13 @@ describe("one ticket", () => {
     expect((await api.hello({ ...d, version: 2 })).body.code).toBe("incompatible");
   });
 
-  test("start new-triage: a pane in triage:inbox, working", async () => {
-    main = (await api.start(d, "new-triage")).body.paneId;
+  test("start sign-in: a pane in triage:inbox named after its customer, working", async () => {
+    main = (await api.start(d, "sign-in")).body.paneId;
     const p = (await api.snapshot(d)).body.panes.find((x) => x.id === main)!;
     expect(p.tabId).toBe("triage:inbox");
     expect(p.cwd).toBeUndefined();
     expect(p.workspaceId).toBe("triage");
+    expect(p.title).toBe("Maria Lopez"); // the first ticket takes the first customer
     expect(["working", "waiting"]).toContain(p.state);
   });
 
@@ -48,18 +49,25 @@ describe("one ticket", () => {
       return x?.state === "waiting" ? x : undefined;
     });
     // The ticket's line under the title, and a badge that counts the asks waiting for the phone.
-    expect(p.subtitle).toBe("a customer cannot log in");
+    expect(p.subtitle).toBe("Can't sign in after a password reset");
     expect(p.badge).toEqual({ count: 1 });
     // The ticket's progress: it read the ticket, and the note waits for the phone's yes.
     expect(p.progress).toEqual({
       kind: "steps",
-      steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }],
+      steps: [{ label: "Read the ticket", state: "done" }, { label: "Save a note", state: "running" }, { label: "Reply", state: "todo" }],
     });
-    expect(p.openAsks[0]).toMatchObject({ kind: "permission", revision: 1, tool: { name: "write_note" }, title: expect.stringContaining("write_note") });
+    // The question shows the note in words, with Save and Don't save.
+    expect(p.openAsks[0]).toMatchObject({
+      kind: "permission",
+      revision: 1,
+      title: "Save this note to the ticket?",
+      tool: { name: "write_note", summary: "Sign-in fails after a password reset. The old session may still be active." },
+    });
+    expect(p.openAsks[0]!.options.map((o) => o.label)).toEqual(["Save", "Don't save"]);
     expect(p.openAsks[0]!.toolCallId).toBe(p.openAsks[0]!.itemId); // the tool item the card sits under
     expect(p.openAsks[0]!.options.map((o) => o.id)).toEqual(["allow", "deny"]);
     // The guard chooses the words of the push for this ask (WIRE.md section 6).
-    expect(p.openAsks[0]!.push).toEqual({ title: "Ticket needs a yes", line: "write_note wants to add one line to the notes" });
+    expect(p.openAsks[0]!.push).toEqual({ title: "A note needs your OK", line: "Sign-in fails after a password reset. The old session may still be active." });
     askId = p.openAsks[0]!.id;
     expect(readFileSync(join(dir, "notes.txt"), { flag: "a+" }).toString()).toBe(""); // not run yet
   });
@@ -69,31 +77,35 @@ describe("one ticket", () => {
     await waitFor("tool done", async () =>
       (await allEvents(d, main)).some((e) => e.type === "item" && e.item.kind === "tool" && e.item.tool.name === "write_note" && e.item.status === "done"),
     );
-    expect(readFileSync(join(dir, "notes.txt"), "utf8")).toContain("Ticket 412");
+    expect(readFileSync(join(dir, "notes.txt"), "utf8")).toContain("Sign-in fails after a password reset.");
     const events = await allEvents(d, main);
     expect(events.find((e) => e.type === "ask-closed")).toMatchObject({ askId, by: "phone" });
     await waitFor("badge cleared", async () => (await pane(d, main))?.badge === undefined);
     expect((await api.answer(d, main, askId, "allow")).body).toEqual({ result: "too-late" });
   });
 
-  test("spawn_helper: a second pane in tab helpers; the helper answers and goes idle", async () => {
-    helper = await waitFor("helper pane", async () => (await api.snapshot(d)).body.panes.find((x) => x.tabId === "triage:helpers")?.id);
-    expect((await pane(d, helper))?.subtitle).toBe(`helping ticket ${main.replace("conv-", "")}`);
-    await waitFor("helper idle", async () => (await pane(d, helper))?.state === "idle");
-    const events = await allEvents(d, helper);
-    expect(events.some((e) => e.type === "item" && e.item.kind === "reply" && e.item.text.includes("session cookie"))).toBe(true);
+  test("spawn_helper: a look-up pane in tab helpers; once it answered, it is closed and the history keeps it", async () => {
+    const shown = await waitFor("helper pane", async () => (await api.snapshot(d)).body.panes.find((x) => x.tabId === "triage:helpers"));
+    helper = shown.id;
+    expect(shown.title).toBe("Look-up for Maria Lopez");
+    expect(shown.subtitle).toBe("Why does sign-in fail right after a password reset?");
+    // The look-up answered: the program takes its pane out, so the open conversations are the tickets.
+    await waitFor("helper closed", async () => (await pane(d, helper)) === undefined);
+    const row = (await api.conversations(d)).body.items.find((r) => r.id === helper);
+    expect(row).toMatchObject({ title: "Look-up for Maria Lopez", state: "closed" });
+    const items = (await api.items(d, helper)).body.items;
+    expect(items.some((item) => item.kind === "reply" && item.text.includes("session cookie"))).toBe(true);
   });
 
   test("the first pane's turn ends: idle, with the helper's words in the answer", async () => {
     await waitFor("main idle", async () => (await pane(d, main))?.state === "idle");
     expect(await pane(d, main)).not.toHaveProperty("progress"); // the program clears it when the run ends
-    expect(await pane(d, helper)).not.toHaveProperty("progress"); // a helper only answers
     const events = await allEvents(d, main);
     const items = latestItems(events);
-    const at = items.findIndex((item) => item.kind === "reply" && item.text.startsWith("Triage done"));
+    const at = items.findIndex((item) => item.kind === "reply" && item.text.startsWith("Found it."));
     const reply = items[at];
-    expect(reply?.kind === "reply" && reply.text).toContain("The helper says");
-    // The ticket then adds a markdown note with a list, a code block and a link to the docs (WIRE.md 7.13).
+    expect(reply?.kind === "reply" && reply.text).toContain("session cookie");
+    // The ticket then adds next steps as markdown with a list, a code block and a link to a runbook (WIRE.md 7.13).
     expect(items.slice(at + 1).map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
   });
 
@@ -135,8 +147,8 @@ describe("one ticket", () => {
 });
 
 describe("the Escalate action", () => {
-  test("a ticket lists Escalate with the flag icon, a helper lists nothing, and a tap writes one notice and dims the button", async () => {
-    const id = (await api.start(d, "new-triage")).body.paneId;
+  test("a ticket lists Escalate with the flag icon, a helper lists nothing, and a tap writes one notice, dims the button and says so under the title", async () => {
+    const id = (await api.start(d, "sign-in")).body.paneId;
     await waitFor("ask", () => firstAsk(d, id));
     expect((await pane(d, id))!.actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag" }]);
     const helperPanes = (await api.snapshot(d)).body.panes.filter((x) => x.tabId === "triage:helpers");
@@ -153,15 +165,16 @@ describe("the Escalate action", () => {
     expect([second.status, second.body.code]).toEqual([422, "action-refused"]);
     expect((await api.abort(d, id)).status).toBe(200);
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
-    // No question waits any more, so the badge says the ticket was escalated.
-    await waitFor("the esc badge", async () => JSON.stringify((await pane(d, id))?.badge) === JSON.stringify({ text: "esc" }));
+    // The line under the title says the ticket was escalated, and no question waits, so no badge.
+    expect((await pane(d, id))!.subtitle).toBe("Escalated to the on-call lead.");
+    await waitFor("no badge", async () => (await pane(d, id))?.badge === undefined);
   });
 });
 
 describe("beyond the script", () => {
   test("deny: the tool is blocked, the item reads denied, the file is untouched", async () => {
     const before = readFileSync(join(dir, "notes.txt"), "utf8");
-    const id = (await api.start(d, "new-triage")).body.paneId;
+    const id = (await api.start(d, "sign-in")).body.paneId;
     const p = await waitFor("ask", () => firstAsk(d, id));
     expect((await api.answer(d, id, p.id, "deny")).body).toEqual({ result: "taken" });
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
@@ -172,7 +185,7 @@ describe("beyond the script", () => {
   });
 
   test("stop while an ask is open closes the ask as stopped and ends the turn", async () => {
-    const id = (await api.start(d, "new-triage")).body.paneId;
+    const id = (await api.start(d, "sign-in")).body.paneId;
     await waitFor("ask", () => firstAsk(d, id));
     const t0 = Date.now();
     expect((await api.abort(d, id)).status).toBe(200);
@@ -184,7 +197,7 @@ describe("beyond the script", () => {
   });
 
   test("an answer arriving after the stop is too-late", async () => {
-    const id = (await api.start(d, "new-triage")).body.paneId;
+    const id = (await api.start(d, "sign-in")).body.paneId;
     const open = await waitFor("ask", () => firstAsk(d, id));
     await api.abort(d, id);
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
@@ -195,11 +208,11 @@ describe("beyond the script", () => {
 // Pi Durable runs the calls of one assistant message in parallel by default (settings.toolExecution =
 // "parallel"), so both `beforeTool` hooks wait at once and the wire shows both asks.
 describe("two risky calls in one message", () => {
-  const notes = () => readFileSync(join(dir, "notes.txt"), "utf8").split("\n").filter((l) => l.includes("Two notes:"));
+  const notes = () => readFileSync(join(dir, "notes.txt"), "utf8").split("\n").filter((l) => l.includes("ships to the new address"));
   const toolItems = async (id: string) =>
     (await allEvents(d, id)).flatMap((e) => (e.type === "item" && e.item.kind === "tool" ? [e.item] : []));
   const start = async () => {
-    const id = (await api.start(d, "two-notes")).body.paneId;
+    const id = (await api.start(d, "new-address")).body.paneId;
     const both = await waitFor("two open asks", async () => {
       const a = await openAsks(d, id);
       return a.length === 2 && a;
@@ -212,7 +225,7 @@ describe("two risky calls in one message", () => {
     const { id, both } = await start();
     expect(both[0]!.id).not.toBe(both[1]!.id);
     expect(both[0]!.toolCallId).not.toBe(both[1]!.toolCallId);
-    expect(both.map((a) => a.tool!.summary)).toEqual(['{"note":"Two notes: first"}', '{"note":"Two notes: second"}']);
+    expect(both.map((a) => a.tool!.summary)).toEqual(["Order 5530 ships to the new address.", "Order 5531 ships to the new address."]);
     expect((await pane(d, id))!.state).toBe("waiting");
     expect(notes().length).toBe(before); // neither ran
     expect((await oldestAsk(d, id))!.id).toBe(both[0]!.id);
@@ -238,7 +251,7 @@ describe("two risky calls in one message", () => {
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
     expect(notes().length - before).toBe(2);
     const last = (await allEvents(d, id)).filter((e) => e.type === "item" && e.item.kind === "reply").at(-1) as any;
-    expect(last.item.text).toBe("Both notes handled, 2 saved.");
+    expect(last.item.text).toBe("Both orders now ship to the new address.");
     const closed = (await allEvents(d, id)).filter((e) => e.type === "ask-closed").map((e: any) => e.askId);
     expect(closed).toEqual([both[1]!.id, both[0]!.id]); // closed in the order they were answered
   });
@@ -251,13 +264,13 @@ describe("two risky calls in one message", () => {
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
     const lines = notes().slice(before);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("Two notes: second");
+    expect(lines[0]).toContain("Order 5531");
     const final = new Map((await toolItems(id)).map((t) => [t.id, t.status]));
     expect(final.get(both[0]!.itemId)).toBe("denied");
     expect(final.get(both[1]!.itemId)).toBe("done");
     expect(final.size).toBe(2);
     const last = (await allEvents(d, id)).filter((e) => e.type === "item" && e.item.kind === "reply").at(-1) as any;
-    expect(last.item.text).toBe("Both notes handled, 1 saved.");
+    expect(last.item.text).toBe("1 of the 2 orders ship to the new address.");
   });
 
   test("stop with two asks open closes both as stopped", async () => {
@@ -271,33 +284,33 @@ describe("two risky calls in one message", () => {
   });
 });
 
-// A ticket that asks questions: the note (a permission), then which queue (a choice), then one line (a text ask).
+// A ticket that asks questions: the note (a permission), then which team (a choice), then the customer's line (a text ask).
 describe("a ticket with questions", () => {
   test("the choice and the text ask are answered by their own shapes, one after the other, and the reply uses both", async () => {
-    const id = (await api.start(d, "ask-questions")).body.paneId;
+    const id = (await api.start(d, "double-charge")).body.paneId;
     const permission = await waitFor("the note's ask", async () => (await openAsks(d, id)).find((a) => a.kind === "permission"));
     expect((await api.answer(d, id, permission.id, "allow")).body).toEqual({ result: "taken" });
 
     const choice = await waitFor("the choice", async () => (await openAsks(d, id)).find((a) => a.kind === "choice"));
-    expect(choice).toMatchObject({ title: "Which queue?", options: [{ id: "billing" }, { id: "access" }, { id: "other" }] });
+    expect(choice).toMatchObject({ title: "Which team should take this?", options: [{ id: "billing" }, { id: "accounts" }, { id: "other" }] });
     expect(choice.options.every((o) => !("effect" in o))).toBe(true);
     expect(choice.toolCallId).toBe(choice.itemId);
     expect((await pane(d, id))!.state).toBe("waiting");
     expect((await pane(d, id))!.badge).toEqual({ count: 1 });
     // The wrong shape for a choice is refused and the ask stays open.
     expect((await api.answerWith(d, id, choice.id, { text: "billing" })).status).toBe(400);
-    expect((await api.answerWith(d, id, choice.id, { optionIds: ["access"] })).body).toEqual({ result: "taken" });
+    expect((await api.answerWith(d, id, choice.id, { optionIds: ["accounts"] })).body).toEqual({ result: "taken" });
     expect((await api.answerWith(d, id, choice.id, { optionIds: ["billing"] })).body).toEqual({ result: "too-late" });
 
     const text = await waitFor("the text ask", async () => (await openAsks(d, id)).find((a) => a.kind === "text"));
-    expect(text).toMatchObject({ title: "One line for the customer", placeholder: "We are looking into it", maxLength: 280 });
+    expect(text).toMatchObject({ title: "What should we tell the customer?", placeholder: "We are looking into it.", maxLength: 280 });
     expect((await api.answerWith(d, id, text.id, { text: "x".repeat(281) })).body.code).toBe("bad-body");
     expect((await api.answerWith(d, id, text.id, { text: "We are on it." })).body).toEqual({ result: "taken" });
 
     const reply = await waitFor("the reply", async () =>
-      (await allEvents(d, id)).find((e) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Questions answered.")),
+      (await allEvents(d, id)).find((e) => e.type === "item" && e.item.kind === "reply" && e.item.partial !== true && e.item.text.startsWith("Handed to")),
     );
-    expect((reply as { item: { text: string } }).item.text).toBe("Questions answered. customer line: We are on it.");
+    expect((reply as { item: { text: string } }).item.text).toMatch(/^Handed to Accounts\. .+ gets your line: "We are on it\."$/);
     expect((await pane(d, id))!.badge).toBeUndefined();
     const tools = (await allEvents(d, id)).flatMap((e) => (e.type === "item" && e.item.kind === "tool" ? [`${e.item.tool.name}:${e.item.status}`] : []));
     expect(tools).toContain("ask_queue:done");

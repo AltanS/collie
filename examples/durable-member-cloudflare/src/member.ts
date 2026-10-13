@@ -1,4 +1,4 @@
-// The program: the same ticket triage as ../durable-member/app.ts, in one Durable Object hosted by Cloudflare's
+// The program: the same support desk as ../durable-member/app.ts, in one Durable Object hosted by Cloudflare's
 // PiHarness (package `agents`, `agents/harness/pi`, beta). PiHarness keeps Pi Durable's conversations in the
 // object's SQLite under the prefix `pi_`, opens Pi on every start, and wakes the object by alarm while a session
 // has work, so a run that was evicted goes on without waiting for a read. The SDK core serves Collie's wire
@@ -36,15 +36,26 @@ import {
   ASKING_TOOLS,
   askTools,
   conversationOfPaneId,
+  firstMessageOf,
   PaneRegistry,
   piHistory,
   riskGuard,
   showConversation,
   spawnHelperTool,
   type Submit,
-  subtitleFor,
 } from "../../durable-member/pi-durable/index.ts";
-import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "../../durable-member/script.ts";
+import {
+  CASE_IDS,
+  CASES,
+  type CaseId,
+  customerFor,
+  INSTRUCTIONS,
+  lookOf,
+  noteAsk,
+  REAL_INSTRUCTIONS,
+  ticketText,
+  useScriptedModel,
+} from "../../durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
 import { openPiStorage } from "./storage.ts";
@@ -63,7 +74,6 @@ const ms = (v: string | undefined, fallback: number) => {
 };
 
 const risky = new Set(["write_note"]);
-const ticketText = (prefix: string, id: ConversationId) => `${prefix}Triage ticket ${400 + Number(id)}: a customer cannot log in.`;
 
 export class Member extends DurableObject<Env> {
   /** Wire requests this instance served. A wake by alarm leaves it at 0; the tests read it. */
@@ -78,6 +88,8 @@ export class Member extends DurableObject<Env> {
   private reRaised: Promise<void> = Promise.resolve();
   /** Set on the very first start: the root conversation, which gets the first ticket in onStart. */
   private firstTicket: ConversationId | undefined;
+  /** The tickets so far, so the next one takes the next customer, after a wake too. */
+  private tickets = 0;
 
   // PiHarness owns Harness.open (through `open`), storage, recovery and the wake. Lifecycle owns fetch and alarm:
   // the object answers in onRequest, never in fetch, or Lifecycle would not start it (FINDINGS.md of the spike).
@@ -96,11 +108,16 @@ export class Member extends DurableObject<Env> {
       ...(input.requestId === undefined ? {} : { operationId: input.requestId }),
     });
 
-  private show(conversation: Conversation, owner: ConversationId | undefined) {
+  /**
+   * Show a conversation as a pane, named from its first message: a ticket after its customer, with its topic under
+   * the title; a look-up after the customer it is for. `first` is the message a new ticket is about to get.
+   */
+  private async show(conversation: Conversation, owner: ConversationId | undefined, first?: string) {
     const owned = owner !== undefined;
     const tab = owned ? this.helpers : this.inbox;
+    const look = lookOf(first ?? (await firstMessageOf(conversation, ctx0)), owned);
     return showConversation(
-      { tab, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}`, subtitle: subtitleFor(owner), progress: !owned, escalate: !owned },
+      { tab, ...look, progress: !owned, escalate: !owned },
       this.pi,
       conversation,
       { panes: this.panes, submit: this.submit },
@@ -177,9 +194,10 @@ export class Member extends DurableObject<Env> {
       useScriptedModel(models, { stepMs, slowMs: ms(env.DM_SLOW_MS, 10_000), helperMs: ms(env.DM_HELPER_MS, stepMs) });
     }
 
-    const ws = core.workspace("triage", { title: titled("workspace", "triage", "Triage"), cwd: "/srv/triage" });
-    this.inbox = ws.tab("inbox", { title: titled("tab", "triage:inbox", "Inbox") });
-    this.helpers = ws.tab("helpers", { title: titled("tab", "triage:helpers", "Helpers") });
+    // The wire ids stay as they were (`triage`, `inbox`, `helpers`), so a rename kept in collie_titles still finds its tab.
+    const ws = core.workspace("triage", { title: titled("workspace", "triage", "Support"), cwd: "/srv/support" });
+    this.inbox = ws.tab("inbox", { title: titled("tab", "triage:inbox", "Tickets") });
+    this.helpers = ws.tab("helpers", { title: titled("tab", "triage:helpers", "Look-ups") });
     // The history is Pi's own record in the object's SQLite (WIRE.md 7.16): every conversation, open and closed.
     const inboxId = this.inbox.id;
     const helpersId = this.helpers.id;
@@ -187,10 +205,9 @@ export class Member extends DurableObject<Env> {
       piHistory({
         harness: () => this.pi,
         panes: this.panes,
-        describe: (record) => {
-          const owner = record.owner?.conversationId;
-          const owned = owner !== undefined;
-          return { title: `${owned ? "Helper" : "Ticket"} #${record.id}`, subtitle: subtitleFor(owner), workspaceId: "triage", tabId: owned ? helpersId : inboxId, progress: !owned };
+        describe: (record, first) => {
+          const owned = record.owner !== undefined;
+          return { ...lookOf(first, owned), workspaceId: "triage", tabId: owned ? helpersId : inboxId, progress: !owned };
         },
       }),
     );
@@ -207,12 +224,31 @@ export class Member extends DurableObject<Env> {
     });
     const triageTools: Extension = defineExtension({
       name: "triage-tools",
-      tools: [writeNote, ...askTools({ panes: this.panes }), spawnHelperTool({ panes: this.panes, harness: () => this.pi, tab: this.helpers, model: this.model, without: () => [triageTools] })],
+      tools: [
+        writeNote,
+        ...askTools({ panes: this.panes }),
+        spawnHelperTool({
+          panes: this.panes,
+          harness: () => this.pi,
+          tab: this.helpers,
+          model: this.model,
+          without: () => [triageTools],
+          look: (task) => lookOf(task, true),
+          // A look-up that answered leaves the open conversations: archived, so a wake does not show it either, and
+          // the phone reads it under Closed.
+          done: async (child, pane) => {
+            sql.exec("INSERT OR IGNORE INTO collie_closed (id) VALUES (?)", String(child));
+            closed.add(String(child));
+            pane.close();
+            await this.panes.forget(child);
+          },
+        }),
+      ],
     });
     const registry = createRegistry();
     registry.install(triageTools);
     // PiHarness has no approval step: the asks are ours, raised through the SDK core.
-    registry.install(riskGuard({ panes: this.panes, risky }));
+    registry.install(riskGuard({ panes: this.panes, risky, words: (tool, summary) => (tool === "write_note" ? noteAsk(summary) : undefined) }));
 
     // contextRetentionMs 0: Pi keeps no idle-context timer. With nodejs_compat a Worker's timers look like Node's,
     // so Pi would keep one for 10 minutes after every run, and under wrangler dev a pending timer keeps the object
@@ -240,7 +276,13 @@ export class Member extends DurableObject<Env> {
       this.firstTicket = root.id;
       all.push({ id: root.id });
     }
-    for (const c of all) if (!closed.has(String(c.id))) await this.show((await this.pi.conversation(c.id, ctx0))!, c.owner);
+    this.tickets = all.filter((c) => c.owner === undefined).length;
+    for (const c of all) {
+      if (closed.has(String(c.id))) continue;
+      // The first ticket's message is sent in onStart, after this; it is named from the message it is about to get.
+      const first = c.id === this.firstTicket ? this.firstText() : undefined;
+      await this.show((await this.pi.conversation(c.id, ctx0))!, c.owner, first);
+    }
     // Armed before resume(): it reads which risky calls have no result yet. Each raises its ask again under the
     // same id once Pi re-runs its hook.
     this.reRaised = this.panes.reRaised(new Set([...risky, ...ASKING_TOOLS]));
@@ -251,24 +293,27 @@ export class Member extends DurableObject<Env> {
     return this.real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
   }
 
+  /** The very first ticket: a sign-in problem, from the first customer. */
+  private firstText() {
+    return ticketText("sign-in", customerFor(1));
+  }
+
   /** Step 3 of the start. Lifecycle runs it after PiHarness's onStart, on a request and on an alarm alike. */
   async onStart() {
     // The first snapshot after a wake carries every open ask, by contract and not by timing.
     await this.reRaised;
-    const startTriage = (prefix: string) => async () => {
+    const startTicket = (kind: CaseId) => async () => {
       const conversation = await this.pi.createConversation({ ownership: { kind: "ownerless" }, agent: { model: this.model, instructions: this.instructions() } }, ctx0);
-      const pane = await this.show(conversation, undefined);
-      await this.harness.session(String(conversation.id)).submit(ticketText(prefix, conversation.id));
+      const text = ticketText(kind, customerFor(++this.tickets));
+      const pane = await this.show(conversation, undefined, text);
+      await this.harness.session(String(conversation.id)).submit(text);
       return { paneId: pane.id };
     };
-    this.core.starters([
-      { id: "new-triage", label: "New triage", run: startTriage("") },
-      { id: "two-notes", label: "Two notes at once (faux only)", run: startTriage("TWO: ") },
-      { id: "ask-questions", label: "A choice and a line of text (faux only)", run: startTriage("ASK: ") },
-    ]);
-    // The first start opens one ticket, so the phone has an ask to answer. Later starts show what storage holds.
+    // One starter per kind of ticket, as in the Bun example.
+    this.core.starters(CASE_IDS.map((kind) => ({ id: kind, label: CASES[kind].starter, run: startTicket(kind) })));
+    // The first start opens one sign-in ticket, so the phone has a question to answer. Later starts show what storage holds.
     if (this.firstTicket !== undefined) {
-      await this.harness.session(String(this.firstTicket)).submit(ticketText("", this.firstTicket), { operationId: "first-ticket" });
+      await this.harness.session(String(this.firstTicket)).submit(this.firstText(), { operationId: "first-ticket" });
     }
     this.core.ready(); // the layout is complete: only now may Collie see a snapshot
   }

@@ -19,18 +19,18 @@ describe("persist: a rename survives a restart", () => {
     const dir = tmp();
     const first = await open(dir);
     const d1: Dial = { socket: first.collie.address, version: 1 };
-    expect(await titleOf(d1, "tabs", "triage:inbox")).toBe("Inbox");
-    expect((await api.rename(d1, "tab", "triage:inbox", "  Tickets  ")).body).toEqual({ ok: true });
-    expect((await api.rename(d1, "workspace", "triage", "Support")).body).toEqual({ ok: true });
     expect(await titleOf(d1, "tabs", "triage:inbox")).toBe("Tickets");
-    expect(JSON.parse(readFileSync(join(dir, "titles.json"), "utf8"))).toEqual({ "tab/triage:inbox": "Tickets", "workspace/triage": "Support" });
+    expect((await api.rename(d1, "tab", "triage:inbox", "  Open tickets  ")).body).toEqual({ ok: true });
+    expect((await api.rename(d1, "workspace", "triage", "Help desk")).body).toEqual({ ok: true });
+    expect(await titleOf(d1, "tabs", "triage:inbox")).toBe("Open tickets");
+    expect(JSON.parse(readFileSync(join(dir, "titles.json"), "utf8"))).toEqual({ "tab/triage:inbox": "Open tickets", "workspace/triage": "Help desk" });
     await first.close();
 
     const second = await open(dir, "s2.sock");
     const d2: Dial = { socket: second.collie.address, version: 1 };
-    expect(await titleOf(d2, "tabs", "triage:inbox")).toBe("Tickets");
-    expect(await titleOf(d2, "workspaces", "triage")).toBe("Support");
-    expect(await titleOf(d2, "tabs", "triage:helpers")).toBe("Helpers"); // never renamed: the name in the code
+    expect(await titleOf(d2, "tabs", "triage:inbox")).toBe("Open tickets");
+    expect(await titleOf(d2, "workspaces", "triage")).toBe("Help desk");
+    expect(await titleOf(d2, "tabs", "triage:helpers")).toBe("Look-ups"); // never renamed: the name in the code
     await second.close();
   });
 
@@ -103,9 +103,10 @@ describe("persist: history keeps a closed conversation, and reopen brings it bac
     expect((await pane(d1, ticket))?.sessionId).toBe(ticket);
     const ask = await waitFor("the ticket asks", () => firstAsk(d1, ticket));
     expect((await api.answer(d1, ticket, ask.id, "allow")).body).toEqual({ result: "taken" });
-    await waitFor("the ticket and its helper are idle", async () => {
+    // The look-up closes itself once it answered, so the ticket is the one pane left.
+    await waitFor("the ticket is idle and its look-up closed", async () => {
       const panes = (await api.snapshot(d1)).body.panes;
-      return panes.length === 2 && panes.every((p) => p.state === "idle");
+      return panes.length === 1 && panes[0]!.state === "idle";
     });
     const live = await api.items(d1, ticket);
     expect(live.status).toBe(200);
@@ -116,10 +117,10 @@ describe("persist: history keeps a closed conversation, and reopen brings it bac
 
     expect((await api.close(d1, "pane", ticket)).body).toEqual({ ok: true });
     const listed = (await api.conversations(d1)).body.items;
-    // Newest first: the helper was made after the ticket.
-    expect(listed.map((row) => [row.title.split(" ")[0], row.state])).toEqual([
-      ["Helper", "open"],
-      ["Ticket", "closed"],
+    // Newest first: the look-up was made after the ticket. Both are closed now, each under its own name.
+    expect(listed.map((row) => [row.title, row.subtitle, row.state])).toEqual([
+      ["Look-up for Maria Lopez", "Why does sign-in fail right after a password reset?", "closed"],
+      ["Maria Lopez", "Can't sign in after a password reset", "closed"],
     ]);
     const row = listed.find((x) => x.id === ticket)!;
     expect(row).toMatchObject({ workspaceId: "triage", tabId: "triage:inbox", items: live.body.items.length });
@@ -139,8 +140,10 @@ describe("persist: history keeps a closed conversation, and reopen brings it bac
 
     // Reopen: the same pane id, off closed.json, and listed open.
     expect((await api.reopen(d2, ticket)).body).toEqual({ ok: true });
-    expect((await pane(d2, ticket))?.tabId).toBe("triage:inbox");
-    expect(JSON.parse(readFileSync(join(dir, "closed.json"), "utf8"))).toEqual([]);
+    expect(await pane(d2, ticket)).toMatchObject({ tabId: "triage:inbox", title: "Maria Lopez", subtitle: "Can't sign in after a password reset" });
+    // The ticket is off closed.json; its look-up, closed by the program when it answered, stays on it.
+    const lookup = listed[0]!.id.replace("conv-", "");
+    expect(JSON.parse(readFileSync(join(dir, "closed.json"), "utf8"))).toEqual([lookup]);
     expect((await api.conversations(d2)).body.items.find((x) => x.id === ticket)?.state).toBe("open");
     expect((await api.reopen(d2, "conv-999")).body.code).toBe("no-such-target");
     await second.close();

@@ -36,6 +36,7 @@ import {
   safeId,
   type TabHandle,
 } from "../sdk/core/index.ts";
+import { NEXT_STEPS, REPLY_PLACEHOLDER, REPLY_QUESTION, RUNBOOK, SIGN_IN_DONE, SIGN_OUT_COMMAND, TEAM_QUESTION, TEAMS } from "../script.ts";
 
 const ctx0 = BACKGROUND_CONTEXT;
 
@@ -162,11 +163,10 @@ export interface PaneLocation {
   escalate?: boolean;
 }
 
-/** The line under a pane's title: what the ticket is about, or which ticket the helper helps. */
-export const subtitleFor = (owner: ConversationId | undefined): string => (owner === undefined ? "a customer cannot log in" : `helping ticket ${owner}`);
-
 /** The one belt action of a ticket. */
 const ESCALATE = { id: "escalate", label: "Escalate", icon: "flag" } as const;
+/** What Escalate writes into the thread and under the title. */
+export const ESCALATED = "Escalated to the on-call lead.";
 
 /** The pane id of a conversation, and the id its history is served under (WIRE.md 7.16). */
 export const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
@@ -178,6 +178,18 @@ export function conversationOfPaneId(paneId: string): ConversationId | undefined
 }
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
 
+/**
+ * A tool call's arguments in words: the one text a call carries (a note, a task) as it is, else its JSON. A person
+ * reads "Order 5521 was charged twice." where the JSON would say `{"note":"Order 5521 was charged twice."}`.
+ */
+export function summaryOf(args: unknown): string {
+  if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+    const values = Object.values(args);
+    if (values.length === 1 && typeof values[0] === "string") return clip(values[0]);
+  }
+  return clip(JSON.stringify(args) ?? "");
+}
+
 type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown };
 const textOf = (content: unknown): string =>
   typeof content === "string"
@@ -187,9 +199,6 @@ const textOf = (content: unknown): string =>
         .map((b) => b.text ?? "")
         .join("");
 
-const NEXT_STEPS = "**What to do next**\n\n- Ask the customer to sign in again.\n- Check that the reset mail went out.\n- Close the ticket when they confirm.";
-const REVOKE_COMMAND = "# clear the stale session\nsession-cli revoke --user 412";
-const DOCS_URL = "https://colliepwa.dev/docs/";
 
 /** The least time between two writes of a growing reply (WIRE.md 7.15). */
 export const PARTIAL_MS = 250;
@@ -257,20 +266,20 @@ export class Mapper {
    */
   private summary(replyId: string, ts: string) {
     this.item({ id: safeId(`${replyId}:todo`), ts, kind: "markdown", text: NEXT_STEPS });
-    this.item({ id: safeId(`${replyId}:cmd`), ts, kind: "code", lang: "sh", text: REVOKE_COMMAND });
-    this.item({ id: safeId(`${replyId}:docs`), ts, kind: "link", href: DOCS_URL, label: "Collie docs" });
+    this.item({ id: safeId(`${replyId}:cmd`), ts, kind: "code", lang: "sh", text: SIGN_OUT_COMMAND });
+    this.item({ id: safeId(`${replyId}:docs`), ts, kind: "link", href: RUNBOOK.href, label: RUNBOOK.label });
   }
 
-  /** The three steps of a ticket as the first run reaches them: read it, write a note, reply. */
+  /** The three steps of a ticket as the first run reaches them: read it, save a note, reply. */
   private steps(): Progress {
     const { user, note, noted, reply } = this.seen;
     const state = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
     return {
       kind: "steps",
       steps: [
-        { label: "read the ticket", state: state(user && (note || reply), !user || !note) },
-        { label: "write a note", state: state(noted || reply, note || user) },
-        { label: "reply", state: state(reply, noted) },
+        { label: "Read the ticket", state: state(user && (note || reply), !user || !note) },
+        { label: "Save a note", state: state(noted || reply, note || user) },
+        { label: "Reply", state: state(reply, noted) },
       ],
     };
   }
@@ -446,7 +455,7 @@ export class Mapper {
       (m.content as Block[]).forEach((b, i) => {
         if (b.type === "text") {
           this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
-          if (this.withProgress && (b.text ?? "").startsWith("Triage done")) this.summary(safeId(`${id}:${i}`), ts);
+          if (this.withProgress && (b.text ?? "").startsWith(SIGN_IN_DONE)) this.summary(safeId(`${id}:${i}`), ts);
         }
         else if (b.type === "thinking") this.item({ id: safeId(`${id}:${i}`), ts, kind: "thinking", text: b.thinking ?? "" });
         else if (b.type === "toolCall") {
@@ -455,7 +464,7 @@ export class Mapper {
             ts,
             kind: "tool",
             status: "running",
-            tool: { kind: "other", name: b.name!, summary: clip(JSON.stringify(b.arguments)) },
+            tool: { kind: "other", name: b.name!, summary: summaryOf(b.arguments) },
           };
           this.tools.set(safeId(b.id), tool);
           this.item(tool);
@@ -516,14 +525,14 @@ export async function showConversation(
   pane.onAbort(() => conversation.abort(ctx));
   if (loc.escalate === true) {
     pane.actions([ESCALATE]);
-    // The phone taps Escalate: write one notice into the thread, dim the button and mark the badge "esc". The request id keys the
-    // notice, so the same tap never writes it twice. This is a program's own act and needs no Pi Durable call.
+    // The phone taps Escalate: write one notice into the thread, dim the button and say so in the line under the title,
+    // which the conversation list shows too. The request id keys the notice, so the same tap never writes it twice. This
+    // is a program's own act and needs no Pi Durable call.
     pane.onAction(({ actionId, requestId }) => {
       if (actionId !== ESCALATE.id) return false;
-      pane.event({ type: "item", item: { id: safeId(`escalated:${requestId}`), ts: new Date().toISOString(), kind: "notice", text: "Escalated to the on-call lead." } });
+      pane.event({ type: "item", item: { id: safeId(`escalated:${requestId}`), ts: new Date().toISOString(), kind: "notice", text: ESCALATED } });
       pane.actions([{ ...ESCALATE, disabled: true }]);
-      escalated.add(pane);
-      markAsks(pane);
+      pane.subtitle(ESCALATED);
     });
   }
 
@@ -534,6 +543,20 @@ export async function showConversation(
     mapper.applyAll(events);
   });
   return pane;
+}
+
+/** The text of a conversation's first message, or undefined before it has one. A start names a pane from it. */
+export async function firstMessageOf(conversation: Conversation, ctx: Context = ctx0): Promise<string | undefined> {
+  let cursor: Cursor | undefined;
+  do {
+    const page = await conversation.entries({ order: "ascending" }, ENTRY_PAGE, cursor, ctx);
+    for (const entry of page.items) {
+      const m = entry.model?.[0];
+      if (m?.role === "user") return textOf(m.content);
+    }
+    cursor = page.next;
+  } while (cursor);
+  return undefined;
 }
 
 // ── History (WIRE.md 7.16) ────────────────────────────────────────────────────────────────────────────────────────────
@@ -564,8 +587,11 @@ export interface ConversationLook {
 export interface PiHistoryOptions {
   harness: () => Harness;
   panes: PaneRegistry;
-  /** The title, subtitle and place of a conversation, from its Pi record (its owner says a helper from a ticket). */
-  describe: (record: ConversationRecord) => ConversationLook;
+  /**
+   * The title, subtitle and place of a conversation, from its Pi record (its owner says a helper from a ticket) and
+   * the text of its first message, the way the program named it when it showed it.
+   */
+  describe: (record: ConversationRecord, first: string | undefined) => ConversationLook;
   ctx?: Context;
 }
 
@@ -604,7 +630,8 @@ export function piHistory(o: PiHistoryOptions): HistoryProvider {
     const conversation = await o.harness().conversation(rec.id, ctx);
     if (conversation === undefined) return undefined;
     const list = new ItemList();
-    const mapper = new Mapper(list, new PaneRegistry(), o.describe(rec).progress === true);
+    // A helper's record has an owner and never carries a ticket's summary; the first message does not change that.
+    const mapper = new Mapper(list, new PaneRegistry(), o.describe(rec, undefined).progress === true);
     let cursor: Cursor | undefined;
     do {
       const page = await conversation.entries({ order: "ascending" }, ENTRY_PAGE, cursor, ctx);
@@ -622,7 +649,8 @@ export function piHistory(o: PiHistoryOptions): HistoryProvider {
       const rows: ConversationRow[] = [];
       for (const rec of page.items) {
         const items = (await itemsOf(rec)) ?? [];
-        const look = o.describe(rec);
+        const first = items.find((item): item is Extract<Item, { kind: "user" }> => item.kind === "user")?.text;
+        const look = o.describe(rec, first);
         const open = o.panes.has(rec.id);
         const firstTs = items.find((item) => item.ts !== undefined)?.ts;
         const lastTs = items.findLast((item) => item.ts !== undefined)?.ts;
@@ -656,25 +684,33 @@ export function piHistory(o: PiHistoryOptions): HistoryProvider {
   };
 }
 
-/** The panes whose ticket was escalated: their badge reads "esc" while no question waits. */
-const escalated = new WeakSet<PaneHandle>();
-
-/** The pane's badge counts its open asks. At zero it reads "esc" on an escalated ticket, and shows nothing otherwise. */
+/** The pane's badge counts its open asks, and shows nothing at zero. */
 const markAsks = (pane: PaneHandle) => {
   const open = pane.openAsks.length;
-  pane.badge(open > 0 ? { count: open } : escalated.has(pane) ? { text: "esc" } : null);
+  pane.badge(open > 0 ? { count: open } : null);
 };
+
+/** The words of the question a risky call raises: its title, its notification, and the labels of its two buttons. */
+export interface RiskWords {
+  title: string;
+  push: { title: string; line: string };
+  allow: string;
+  deny: string;
+}
 
 export interface Risky {
   panes: PaneRegistry;
   /** Tool names that need the phone's yes. */
   risky: ReadonlySet<string>;
+  /**
+   * The words for a call, from its summary (the call's one text, see {@link summaryOf}). Left out, or undefined for a
+   * tool, the question names the tool: "write_note wants to run", with Allow and Deny.
+   */
+  words?: (tool: string, summary: string) => RiskWords | undefined;
 }
 
-/** The notification words for a risky call. The note tool says what it will do; any other says its summary. */
-function pushFor(tool: string, summary: string): { title: string; line: string } {
-  if (tool === "write_note") return { title: "Ticket needs a yes", line: "write_note wants to add one line to the notes" };
-  return { title: `${tool} needs a yes`, line: summary };
+function defaultWords(tool: string, summary: string): RiskWords {
+  return { title: `${tool} wants to run`, push: { title: `${tool} needs a yes`, line: summary }, allow: "Allow", deny: "Deny" };
 }
 
 /** An extension whose `beforeTool` hook turns a risky call into an ask and waits for the answer. */
@@ -687,20 +723,20 @@ export function riskGuard(o: Risky): Extension {
           if (!o.risky.has(call.name)) return undefined;
           const pane = o.panes.get(api.conversationId);
           if (!pane) return { block: "no pane to ask on" }; // fail closed
-          const summary = clip(JSON.stringify(call.arguments));
+          const summary = summaryOf(call.arguments);
+          const words = o.words?.(call.name, summary) ?? defaultWords(call.name, summary);
           const answer = pane.ask(
             {
               kind: "permission",
               toolCallId: safeId(call.id),
               itemId: safeId(call.id), // the tool item of this call, which the mapper keys the same way
-              title: `${call.name} wants to run: ${summary}`,
+              title: words.title,
               tool: { kind: "other", name: call.name, summary },
-              reason: `${call.name} is marked risky`,
               // The words of the notification (WIRE.md section 6). The pane's name goes in front of the title.
-              push: pushFor(call.name, summary),
+              push: words.push,
               options: [
-                { id: "allow", label: "Allow", effect: "allow" },
-                { id: "deny", label: "Deny", effect: "deny" },
+                { id: "allow", label: words.allow, effect: "allow" },
+                { id: "deny", label: words.deny, effect: "deny" },
               ],
             },
             { signal: ctx.abortSignal },
@@ -721,16 +757,11 @@ export function riskGuard(o: Risky): Extension {
 /** The names of the tools that ask the phone a question of their own, so a restart waits for their asks too. */
 export const ASKING_TOOLS: ReadonlySet<string> = new Set(["ask_queue", "ask_customer"]);
 
-export const QUEUES = [
-  { id: "billing", label: "Billing" },
-  { id: "access", label: "Access" },
-  { id: "other", label: "Other" },
-];
-
 /**
- * `ask_queue` (a choice) and `ask_customer` (a text ask): tools whose whole job is a question for the person on the
- * phone (WIRE.md 7.14). The ask sits under the tool's own item, and `replay: "safe"` means a rerun after a crash asks
- * again under the same id. The scripted ticket that starts with `ASK:` calls them after its note.
+ * `ask_queue` (a choice: which team takes the ticket) and `ask_customer` (a text ask: the line for the customer):
+ * tools whose whole job is a question for the person on the phone (WIRE.md 7.14). The ask sits under the tool's own
+ * item, and `replay: "safe"` means a rerun after a crash asks again under the same id. Each answers the model with the
+ * person's words: the team's name, or the line. The scripted double-charge ticket calls them after its note.
  */
 export function askTools(o: { panes: PaneRegistry }) {
   const ask = async <A>(api: { conversationId: ConversationId; callId: string }, raise: (pane: PaneHandle, id: string) => Promise<A>): Promise<A> => {
@@ -749,12 +780,12 @@ export function askTools(o: { panes: PaneRegistry }) {
   const reply = (text: string) => ({ content: [{ type: "text" as const, text }] });
   const queue = defineTool({
     name: "ask_queue",
-    description: "Ask the person which queue the ticket goes to.",
+    description: "Ask the person which team takes the ticket.",
     parameters: Type.Object({}),
     replay: "safe",
     execute: async (_args, api) => {
-      const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: "Which queue?", options: QUEUES }));
-      return reply(`queue: ${answer.optionIds.join(", ")}`);
+      const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: TEAM_QUESTION, options: TEAMS }));
+      return reply(answer.optionIds.map((picked) => TEAMS.find((team) => team.id === picked)?.label ?? picked).join(", "));
     },
   });
   const customer = defineTool({
@@ -764,9 +795,9 @@ export function askTools(o: { panes: PaneRegistry }) {
     replay: "safe",
     execute: async (_args, api) => {
       const answer = await ask(api, (pane, id) =>
-        pane.ask({ kind: "text", toolCallId: id, itemId: id, title: "One line for the customer", placeholder: "We are looking into it", maxLength: 280 }),
+        pane.ask({ kind: "text", toolCallId: id, itemId: id, title: REPLY_QUESTION, placeholder: REPLY_PLACEHOLDER, maxLength: 280 }),
       );
-      return reply(`customer line: ${clip(answer.text)}`);
+      return reply(clip(answer.text));
     },
   });
   return [queue, customer];
@@ -781,6 +812,13 @@ export interface HelperOptions {
   model?: { provider: string; modelId: string };
   /** Extensions the helper must not get, so it cannot spawn helpers of its own. */
   without: () => Extension[];
+  /** The helper's title and the line under it, from its task. */
+  look: (task: string) => { title: string; subtitle?: string };
+  /**
+   * The helper answered: the program takes its pane out of the layout, so the conversation list keeps the tickets in
+   * sight and the look-up goes under Closed, where it can still be read. Left out, the pane stays.
+   */
+  done?: (child: ConversationId, pane: PaneHandle) => Promise<void> | void;
 }
 
 /** `spawn_helper`: a child conversation owned by the call, shown as a new pane. Returns the helper's answer. */
@@ -800,7 +838,8 @@ export function spawnHelperTool(o: HelperOptions) {
       }, ctx);
       const harness = o.harness();
       const conversation = (await harness.conversation(child, ctx))!;
-      await showConversation({ tab: o.tab, title: `Helper #${child}`, subtitle: subtitleFor(api.conversationId) }, harness, conversation, {
+      const look = o.look(args.task);
+      const pane = await showConversation({ tab: o.tab, title: look.title, ...(look.subtitle === undefined ? {} : { subtitle: look.subtitle }) }, harness, conversation, {
         panes: o.panes,
         ctx,
       });
@@ -811,6 +850,7 @@ export function spawnHelperTool(o: HelperOptions) {
       if (settled.status !== "done" || settled.type !== "input") throw new Error(`helper failed: ${settled.status}`);
       const entry = await api.commit((tx) => tx.entry(AssistantEntry, settled.answer), ctx);
       const text = textOf((entry?.model?.[0] as { content?: unknown } | undefined)?.content ?? "");
+      await o.done?.(child, pane);
       return { content: [{ type: "text", text }], details: { conversationId: child } };
     },
   });

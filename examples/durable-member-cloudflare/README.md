@@ -1,6 +1,6 @@
 # Durable member on Cloudflare: a Pi Durable program behind a token
 
-A Cloudflare Worker with one Durable Object that runs the same ticket triage as
+A Cloudflare Worker with one Durable Object that runs the same support desk as
 [`examples/durable-member`](../durable-member/README.md). Cloudflare's
 [PiHarness](https://developers.cloudflare.com/agents/harnesses/pi/) hosts
 [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) in the object and keeps its
