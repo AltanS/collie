@@ -42,6 +42,9 @@ the ETag and every error code. Only how the program is reached, and who may reac
 Setting both, or a URL without a token, is a config error: the peer starts, names the error once in
 its log, and reports `unreachable` with the same line on every read.
 
+A Collie may run several programs at once, each one entry of its `sources.json` with its own transport
+and its own session; nothing on this wire changes for that, and each program sees one caller.
+
 ### 1A. A private socket
 
 The socket transport is Linux and macOS. Windows has no socket transport: a Windows peer that is given `COLLIE_DURABLE_SOCKET` dials nothing and reports `unreachable` with a detail that says so; use 1B there.

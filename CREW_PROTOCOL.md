@@ -381,6 +381,15 @@ answering build:
   admissible here for `member`'s reason, being the same block that member already serves to every
   read client of its own front door.
 
+- `sessions` is **OPTIONAL**, added 2026-10-13 (M55): one card per session on this member,
+  `{ name, kind, mux, caps, where, state, experimental }`, sent only by a member that runs a durable
+  program beside (or as) its multiplexer. **Absent means "the `mux` block answers for every session"**
+  (§7.1), which is how every lead read a member before the field existed, so an old lead ignores it and
+  loses nothing it had. The lead replaces it on every successful hello, as it does `mux`, and answers
+  `/api/config?host=<member>&session=<name>` from the card that names the session, else from `mux`. A
+  card names no path and no secret. The member's snapshot already carries the same cards on its
+  `sessions` entries, so the phone reads them without asking the lead.
+
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
 same reason `member` is — it is already knowable to anyone who has cleared both factors. A warrant

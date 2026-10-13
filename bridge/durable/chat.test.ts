@@ -179,8 +179,9 @@ describe("Chat for a durable pane", () => {
 describe("the bridge wires the log to both ends", () => {
   const src = readFileSync(join(import.meta.dir, "..", "index.ts"), "utf8");
 
-  test("the mux target names the log folder, and the journal registry reads the same folder", () => {
-    expect(src).toContain("[DURABLE_LOG_DIR_OPTION]: durableLogDir(cfg.stateDir)");
+  test("each program's mux target names its own log folder, under the folder the journal registry reads", () => {
+    expect(src).toContain("const logDir = sourceLogDir(cfg.stateDir, source.name);");
+    expect(src).toContain("[DURABLE_LOG_DIR_OPTION]: logDir");
     expect(src).toContain("durable: [durableLogDir(cfg.stateDir)]");
   });
 });

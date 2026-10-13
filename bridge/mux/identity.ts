@@ -13,9 +13,11 @@
 //  2. **Stable while the pane lives.** The same pane keeps its id across a reconnect of the adapter,
 //     a restart of the multiplexer process, a rename, and a move between tabs or spaces. An id
 //     derived from anything the operator can change (a label, a title, a position) breaks this.
-//  3. **Unique within one collie.** Across every space and tab of the configured target. NOT across
+//  3. **Unique within one session.** Across every space and tab of the configured target. NOT across
 //     machines — a crew address is `(host, session, paneId)` and the host half is the lead's job
-//     (CREW_PROTOCOL.md §4), so an adapter must not try to make its ids globally unique.
+//     (CREW_PROTOCOL.md §4), so an adapter must not try to make its ids globally unique. Nor across
+//     sessions: since M55 one collie may run several durable programs, each its own session, and two
+//     of them may use the same conversation id; the session half of the address tells them apart.
 //  4. **Never recycled onto a different pane** for the lifetime of the bridge process. A
 //     multiplexer that reuses a slot number must salt it; answering for the wrong pane is worse
 //     than answering "gone".

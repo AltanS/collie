@@ -649,6 +649,31 @@ export function muxConfigBody(mux: MuxPublication): MuxConfig {
 }
 
 /**
+ * What `/api/config?session=` publishes for a LOCAL session (M55), given the runtime `registry.get`
+ * answered: `"unknown"` for a named session the registry does not hold (the route's 404), `undefined`
+ * for the primary (the route then builds the body it always built, byte for byte), else the named
+ * session's own block, with its mark under `?session=`.
+ */
+export function sessionConfigMux(
+  runtime: { readonly name: string; readonly isPrimary: boolean; readonly herdr: MuxPublication } | undefined,
+  session: string | undefined,
+): MuxConfig | undefined | "unknown" {
+  if (runtime === undefined) return session === undefined ? undefined : "unknown";
+  return runtime.isPrimary ? undefined : sessionMuxWire(runtime);
+}
+
+/**
+ * A non-primary session's mux block (M55): the session's own declaration, with its mark served under
+ * `?session=<name>`, because the bare logo path answers the primary's. The name is a registry key the
+ * bridge chose, encoded for the query.
+ */
+export function sessionMuxWire(rt: { readonly name: string; readonly herdr: MuxPublication }): MuxConfig {
+  const wire = muxConfigBody(rt.herdr);
+  if (wire.logoUrl !== undefined) wire.logoUrl = `${MUX_LOGO_PATH}?session=${encodeURIComponent(rt.name)}`;
+  return wire;
+}
+
+/**
  * What publishing an adapter needs off it — its name, its declaration, and its mark.
  *
  * The three FIELDS rather than the {@link MuxAdapter} itself, so this stays a pure shape `bun test`
@@ -1922,6 +1947,9 @@ export function startServer(opts: {
       const active = registry.get();
       return active === undefined ? null : muxConfigBody(active.herdr);
     },
+    // M55: every session's card, so the lead can answer `/api/config?host=&session=` for a program
+    // session on this machine. Null on a machine that runs no program, so its `hello` is unchanged.
+    sessions: () => registry.cards(),
     dispatch: async (req, url, from) => {
       const session = url.searchParams.get("session") ?? undefined;
       const device = crewDeviceOf(req);
@@ -2356,11 +2384,16 @@ export function startServer(opts: {
         // Same mtime-checked re-read, same reason: an operator who adds a face to theme.toml wants
         // it in the picker on the next page load, not after a restart.
         const myFonts = await operatorFonts();
-        // The PRIMARY session's adapter, because one collie drives one multiplexer: every session in
-        // the registry is built by the same factory off the same `cfg.mux`, so which runtime answers
-        // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
-        // eagerly in the constructor and never disposed.
-        const activeMux = registry.get();
+        // `?session=<name>` answers THAT session's adapter (M55): since a durable program can run as a
+        // session beside the terminal mux, one collie no longer drives one multiplexer, and the phone
+        // reads capabilities per (host, session). No `session` answers the primary's, as before, so a
+        // phone that never sends one reads the byte-identical body. An unknown name is the same 404
+        // every session-scoped route gives; it is a Map key, never a path.
+        const activeMux = registry.get(sessionName);
+        const localMux = host.kind === "local" ? sessionConfigMux(activeMux, sessionName) : null;
+        if (localMux === "unknown") {
+          return jsonError(apiError("session.unknown", { session: sessionName ?? "" }), 404, req.headers.get("accept-encoding"));
+        }
         // ── `?host=<member>`: THIS MEMBER's capability declaration (M22/03) ──────────────────
         //
         // Answered from what the lead already holds, and never forwarded: `config` is on
@@ -2383,7 +2416,15 @@ export function startServer(opts: {
         // A member that has published nothing answers with the LEAD's block, because absent means
         // "use the lead's" — which is byte for byte the reading the phone gives every pane today.
         // The lead's own entry resolves `local`, so it takes its own branch and its own adapter.
-        const memberMux = scoped?.kind === "peer" ? crewLead?.muxFor(scoped.link.memberId) : null;
+        // A member that sent its session cards (M55) answers `&session=<name>` from the card it named;
+        // without one, the member's block, which is that member's primary.
+        const memberMux =
+          scoped?.kind === "peer"
+            ? ((sessionName === undefined ? null : crewLead?.sessionMuxFor(scoped.link.memberId, sessionName)) ?? crewLead?.muxFor(scoped.link.memberId))
+            : null;
+        // A named session that is not the primary serves its own mark (M55): the logo route reads the
+        // same `?session=`, so the URL names it. The primary's block is the one it always was.
+        const sessionWire = localMux ?? undefined;
         // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
         // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
         // because "no provider" must OMIT the key, never send a null one (CREW_PROTOCOL.md §11).
@@ -2404,7 +2445,7 @@ export function startServer(opts: {
             mux: activeMux?.herdr,
             // Assigned through `?? undefined` rather than conditionally, so the no-`host=` request
             // builds the byte-identical body it always did (CREW_PROTOCOL.md §11).
-            muxWire: memberMux ?? undefined,
+            muxWire: memberMux ?? sessionWire,
             stt: sttWire,
             whistle: whistleWire,
             // This host's own limits, read from cfg on every request like everything else here.
@@ -2432,9 +2473,9 @@ export function startServer(opts: {
         // from an object URL: an `<img src>` cannot carry an `Authorization` header.
         const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
-        // The PRIMARY session's adapter, for the reason `/api/config` gives: one collie drives one
-        // multiplexer, so which runtime answers is not a choice.
-        const logo = registry.get()?.herdr.logo;
+        // The session `?session=` names, for the reason `/api/config` gives (M55): a program session
+        // beside the terminal mux has its own mark. No `session` is the primary's, as before.
+        const logo = registry.get(url.searchParams.get("session") ?? undefined)?.herdr.logo;
         // 404 rather than an empty 200, and rather than a stand-in: an adapter with no mark
         // publishes no `logoUrl`, so nothing in a current client can even ask this. Reaching here
         // means a stale page holding a URL this bridge no longer serves — and "there is no picture"
