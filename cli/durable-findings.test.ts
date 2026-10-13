@@ -115,7 +115,7 @@ describe("doctor durable over https", () => {
   });
 
   test("both transports set, or a URL without a token, fails the env row with one message and skips the rest", async () => {
-    const both = await durableFindings({ ctx: context({ COLLIE_MUX: "durable", COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: testToken() }) });
+    const both = await durableFindings({ ctx: context({ COLLIE_MUX: "durable", COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: testToken() }), platform: "linux" });
     expect(rows(both)).toEqual([
       ["durable-env", "error"],
       ["durable-socket", "skipped"],
@@ -131,10 +131,44 @@ describe("doctor durable over https", () => {
   });
 
   test("on the socket transport the url and token rows are skipped with the reason", async () => {
-    const findings = await durableFindings({ ctx: context({ COLLIE_MUX: "durable", COLLIE_DURABLE_SOCKET: "/nonexistent/durable/d.sock" }) });
+    const findings = await durableFindings({ ctx: context({ COLLIE_MUX: "durable", COLLIE_DURABLE_SOCKET: "/nonexistent/durable/d.sock" }), platform: "linux" });
     expect(row(findings, "durable-url")).toMatchObject({ status: "skipped", detail: "this peer uses the socket, and COLLIE_DURABLE_URL is not set" });
     expect(row(findings, "durable-token")).toMatchObject({ status: "skipped" });
     expect(row(findings, "durable-socket").status).toBe("error");
+  });
+});
+
+describe("doctor durable on Windows (a fake platform, so the rows are proved on every host)", () => {
+  const socketEnv = { COLLIE_MUX: "durable", COLLIE_DURABLE_SOCKET: "C:\\run\\d.sock" };
+
+  test("a socket path fails the env row with the sentence the boot line prints, and every socket row skips with the reason", async () => {
+    const findings = await durableFindings({ ctx: context(socketEnv), platform: "win32" });
+    expect(rows(findings)).toEqual([
+      ["durable-env", "error"],
+      ["durable-socket", "skipped"],
+      ["durable-url", "skipped"],
+      ["durable-token", "skipped"],
+      ["durable-hello", "skipped"],
+      ["durable-ready", "skipped"],
+      ["durable-lead", "skipped"],
+    ]);
+    expect(row(findings, "durable-env").detail).toBe("the private socket transport is not available on Windows; set COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN instead");
+    expect(row(findings, "durable-env").remedy).toContain("set COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN");
+    expect(row(findings, "durable-socket").detail).toBe("Windows has no socket transport");
+  });
+
+  test("nothing set points at the URL and the token only", async () => {
+    const findings = await durableFindings({ ctx: context({ COLLIE_MUX: "durable" }), platform: "win32" });
+    expect(row(findings, "durable-env").remedy).toContain("COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN");
+    expect(row(findings, "durable-env").remedy).not.toContain("absolute path");
+  });
+
+  test("the URL with its token reads the same on Windows as anywhere", async () => {
+    const token = testToken();
+    const program = await startHttp(token);
+    const findings = await durableFindings({ ctx: context(onUrl(program.url, token)), platform: "win32" });
+    expect(row(findings, "durable-env").status).toBe("ok");
+    expect(row(findings, "durable-hello").status).toBe("ok");
   });
 });
 

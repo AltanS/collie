@@ -3,6 +3,8 @@ import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { isPrivateFile, privateTestDir } from "../mux/durable/fixture.ts";
+import { HOST } from "../host.ts";
 import { parseLogRow, type DurableAsk, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
 import { DurableLogs, durableLogDir, GAP_NOTICE, gapItemId, HOST_MAX_BYTES, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
 
@@ -11,7 +13,7 @@ const dirs: string[] = [];
 async function tempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "collie-durable-log-"));
   dirs.push(dir);
-  return dir;
+  return privateTestDir(dir);
 }
 
 afterEach(async () => {
@@ -60,7 +62,7 @@ async function newLog(options: { now?: () => number } = {}): Promise<{ log: Pane
 
 describe("where the log lives", () => {
   test("one file per pane under the state dir, named by a reversible encoding of the pane id", () => {
-    expect(durableLogDir("/state")).toBe("/state/durable");
+    expect(durableLogDir("/state")).toBe(join("/state", "durable"));
     expect(logFileName("conv-01")).toBe(`${Buffer.from("conv-01").toString("base64url")}.jsonl`);
     // No id can name a different folder: the name holds no separator and no dot segment.
     for (const id of ["../etc/passwd", "a:b", "..", "x".repeat(128)]) {
@@ -75,14 +77,16 @@ describe("where the log lives", () => {
   test("a new log is a private file in a private folder, and a pane with no events yet still has one", async () => {
     const { log, path } = await newLog();
     await log.ensure();
-    expect((await stat(path)).mode & 0o077).toBe(0);
-    expect((await stat(join(path, ".."))).mode & 0o077).toBe(0);
+    expect(isPrivateFile(path)).toBe(true);
+    expect(isPrivateFile(dirname(path))).toBe(true);
     // Only the header, which names the file's generation.
     expect(await rows(path)).toEqual([]);
     expect(await generation(path)).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  test("a folder and a file that were there with wider modes are made 0700 and 0600 when opened", async () => {
+  // POSIX only: a mode (0755, 0644) widened by hand and put back. NTFS has no such mode; its access list
+  // is read by the test above.
+  test.skipIf(HOST.platform === "win32")("a folder and a file that were there with wider modes are made 0700 and 0600 when opened", async () => {
     const dir = await tempDir();
     const folder = join(dir, "durable");
     const path = join(folder, logFileName("conv-01"));

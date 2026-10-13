@@ -42,6 +42,7 @@ const EXEMPT = {
   COLLIE_VERSION: "a token `collie docs` substitutes into a page",
   COLLIE_DOCS_TABLE: "a token `collie docs` substitutes into a page",
   COLLIE_REGEN_SOLO_BASELINE: "a switch that regenerates a test fixture",
+  COLLIE_TEST_LOOPBACK: "a test switch: durable wire tests dial 127.0.0.1 instead of a Unix socket, as they must on Windows",
   COLLIE_STDIN__: "a marker in the remote script `cli/remote.ts` writes",
   COLLIE_PAYLOAD__: "a marker in the remote script `cli/remote.ts` writes",
   COLLIE_TAG: "install.sh's version pin, set by the release install leg `crew add` sends (cli/remote.ts)",
@@ -238,20 +239,39 @@ describe("the durable transport settings", () => {
   });
 
   test("durable: the socket alone, or the URL with its token, is a transport", () => {
-    expect(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock" })).toEqual({ kind: "socket", configured: "/run/user/1000/d.sock" });
+    expect(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock" }, "linux")).toEqual({ kind: "socket", configured: "/run/user/1000/d.sock" });
     expect(chooseDurableTransport({})).toEqual({ kind: "socket", configured: undefined });
     const pair = chooseDurableTransport({ COLLIE_DURABLE_URL: "https://member.example.workers.dev", COLLIE_DURABLE_TOKEN: token() });
     expect(pair.kind).toBe("https");
   });
 
   test("durable: the socket and the URL both set is one clear config error", () => {
-    const both = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() });
+    const both = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() }, "linux");
     expect(both).toEqual({
       kind: "conflict",
       detail: "COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set; set the socket, or the URL with its token, not both",
     });
-    const socketAndToken = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_TOKEN: token() });
+    const socketAndToken = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock", COLLIE_DURABLE_TOKEN: token() }, "linux");
     expect(socketAndToken.kind).toBe("conflict");
+  });
+
+  test("durable: on Windows a socket path is one clear config error, and the URL with its token is unchanged", () => {
+    const socket = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "C:\\run\\d.sock" }, "win32");
+    expect(socket).toEqual({
+      kind: "conflict",
+      detail: "the private socket transport is not available on Windows; set COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN instead",
+      windows: true,
+    });
+    const both = chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/s", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() }, "win32");
+    expect(both).toEqual(socket.kind === "conflict" ? { ...socket } : socket);
+    expect(chooseDurableTransport({ COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() }, "win32").kind).toBe("https");
+    expect(chooseDurableTransport({}, "win32")).toEqual({ kind: "socket", configured: undefined });
+    // The boot line is the same sentence, and nothing is dialled.
+    expect(buildDurableTransport(socket).description).toBe(`not started: ${socket.kind === "conflict" ? socket.detail : ""}`);
+    // Every other platform still takes the socket.
+    for (const platform of ["linux", "darwin"] as const) {
+      expect(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/run/user/1000/d.sock" }, platform).kind).toBe("socket");
+    }
   });
 
   test("durable: a URL without a token, or a token without a URL, is a config error", () => {
@@ -304,7 +324,7 @@ describe("the durable transport settings", () => {
   test("durable: a broken config still builds a transport, and its boot line names the broken rule", () => {
     const built = buildDurableTransport(chooseDurableTransport({ COLLIE_DURABLE_URL: "http://example.com:1", COLLIE_DURABLE_TOKEN: token() }));
     expect(built.description).toStartWith("not started: COLLIE_DURABLE_URL uses plain http");
-    const both = buildDurableTransport(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/s", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() }));
+    const both = buildDurableTransport(chooseDurableTransport({ COLLIE_DURABLE_SOCKET: "/s", COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: token() }, "linux"));
     expect(both.description).toStartWith("not started: COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set");
   });
 });

@@ -7,9 +7,8 @@ import type { JsonObject, JsonValue } from "../../json.ts";
 import { logFileName } from "../../durable/log.ts";
 import { DURABLE_LOG_DIR_OPTION, DURABLE_SOCKET_OPTION, DurableMux, durableMuxFactory, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { CAPS } from "./clean.ts";
-import { DurableSocketClient } from "./client.ts";
 import type { DurableEventSink } from "./events.ts";
-import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, type FakeEvent } from "./fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP, type FakeEvent } from "./fixture.ts";
 import { parseEvents, type DurableEvent } from "./protocol.ts";
 
 // THE EVENTS READER against a fake program that serves `GET /pane/:id/events` as WIRE.md 7.2 says.
@@ -33,11 +32,11 @@ class RecordingSink implements DurableEventSink {
 const programs: FakeDurableProgram[] = [];
 
 async function rig() {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
   const sink = new RecordingSink();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock, sink);
+  const adapter = new DurableMux(program.wire(), clock, sink);
   const readLayout = async (): Promise<void> => {
     clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
     await adapter.poll();
@@ -226,8 +225,8 @@ describe("reset", () => {
 
 /** The body of a plain events read, as the program sent it. */
 async function fetchEvents(program: FakeDurableProgram, paneId: string, after: number, epoch: string): Promise<string> {
-  const url = `http://localhost/session/v1/pane/${paneId}/events?after=${String(after)}&epoch=${epoch}`;
-  const response = await fetch(url, { unix: program.socketPath, headers: { "x-collie-session": "1" } });
+  const route = `/session/v1/pane/${paneId}/events?after=${String(after)}&epoch=${epoch}`;
+  const response = await program.rawGet(route, { "x-collie-session": "1" });
   return response.text();
 }
 
@@ -403,10 +402,10 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
 
 describe("where the events go", () => {
   test("an adapter built without a log asks the program for no events at all", async () => {
-    const program = await FakeDurableProgram.start();
+    const program = await FakeDurableProgram.startWire();
     programs.push(program);
     const clock = new FakeDurableClock();
-    const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+    const adapter = new DurableMux(program.wire(), clock);
     program.appendEvent(PANE, item("i1", "one"));
     clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
     await adapter.poll();
@@ -414,7 +413,8 @@ describe("where the events go", () => {
     expect(program.requests.filter((request) => request.path.endsWith("/events"))).toEqual([]);
   });
 
-  test("the registry's factory builds the pane log from the target's log folder: one file per pane, even for a pane with no events", async () => {
+  // Socket only: the factory is handed a socket path.
+  test.skipIf(SOCKET_ONLY_SKIP)("the registry's factory builds the pane log from the target's log folder: one file per pane, even for a pane with no events", async () => {
     const program = await FakeDurableProgram.start();
     programs.push(program);
     const dir = await mkdtemp(join(tmpdir(), "collie-durable-factory-"));

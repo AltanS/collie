@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **On Windows a durable program is reached over HTTPS only.** The private socket transport needs a Unix socket, so a Windows peer says so in its boot line and in `collie doctor`, and takes `COLLIE_DURABLE_URL` with a token instead.
 - **A box table with Chinese or Japanese cells pans, and its walls line up.** A double-width character takes two terminal columns but one place in the text, so the walls never matched and the table wrapped into stacked rules on a phone. Walls are now matched by terminal column. An emoji with a variation selector, such as a heart, counts as two columns, as it does in Herdr. Thanks @GGGODLIN (#417).
 - **Claude Code's question dialogs show their buttons at 40 columns.** A narrow pane breaks the footer over two rows, and a single or pick-many question fell to the unread-dialog card with Escape alone. The footer on two rows now reads as one, in named and unnamed sessions alike (#422).
 - **Muse 1.4.7 dialogs lift again.** The pointer moved to a new glyph and multi-question pages gained a progress row; both read as before. Thanks @jpcarranza94 (#424).

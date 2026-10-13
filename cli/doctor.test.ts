@@ -12,7 +12,7 @@ import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
 import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { FakeDurableProgram } from "../bridge/mux/durable/fixture.ts";
+import { FakeDurableProgram, SOCKET_ONLY_SKIP } from "../bridge/mux/durable/fixture.ts";
 import { SYSTEM_PROBE, type SocketProbe } from "../bridge/mux/durable/client.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import { durableFindings } from "./durable-findings.ts";
@@ -2516,7 +2516,9 @@ describe("stt.whistle-model", () => {
 // and the privacy check and the client are the adapter's own. Only the owner case needs a stand-in
 // user id, which the section takes through its `probe` seam.
 
-describe("doctor durable", () => {
+// Socket only: every row here reads a Unix socket. Windows has no socket transport (WIRE.md section 1A),
+// and `cli/durable-findings.test.ts` covers its rows with a fake platform.
+describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
   const started: FakeDurableProgram[] = [];
   const scratch: string[] = [];
   afterEach(async () => {

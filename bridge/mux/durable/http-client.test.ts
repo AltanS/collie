@@ -5,7 +5,7 @@ import type { MuxOutcome, MuxSnapshot } from "../types.ts";
 import { createDurableMux, DURABLE_BUDGETS, describeDurableTarget, DurableMux, MIN_SNAPSHOT_GAP_MS, STARTER_TIMEOUT_MS } from "./adapter.ts";
 import { DurableOutcomeUnknown, DurableSocketClient, DurableUnreachable, type DurableGet, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
 import type { DurableEventSink } from "./events.ts";
-import { FakeDurableClock, FakeDurableProgram, helloFixture, snapshotFixture, testToken } from "./fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, helloFixture, snapshotFixture, SOCKET_ONLY_SKIP, testToken } from "./fixture.ts";
 import { DURABLE_TOKEN_ENV, DURABLE_URL_ENV, DurableHttpClient, strongEtag, TOKEN_REFUSED } from "./http-client.ts";
 import type { DurableEvent } from "./protocol.ts";
 import { DurableWatch, type WatchClock, type WatchTimer } from "./watch.ts";
@@ -97,7 +97,8 @@ describe("the http transport: the request", () => {
     expect(program.requests.every((request) => request.bearer === "match")).toBe(true);
   });
 
-  test("the socket client never sends an Authorization header (http check of the other transport)", async () => {
+  // Socket only: it is the socket client under test.
+  test.skipIf(SOCKET_ONLY_SKIP)("the socket client never sends an Authorization header (http check of the other transport)", async () => {
     const program = await FakeDurableProgram.start();
     programs.push(program);
     const adapter = new DurableMux(new DurableSocketClient(program.socketPath), new FakeDurableClock());

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +10,7 @@ import { durableJournal, STOPPED_TEXT } from "../journal/durable.ts";
 import { TranscriptStore } from "../journal/store.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "../mux/durable/adapter.ts";
 import { DurableSocketClient } from "../mux/durable/client.ts";
-import { FakeDurableClock, FakeDurableProgram } from "../mux/durable/fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, isPrivateFile, privateTestDir } from "../mux/durable/fixture.ts";
 import type { MuxAdapter, MuxControlOutcome } from "../mux/types.ts";
 import type { ControlRequest, ControlResponse, PaneWire } from "../types.ts";
 import {
@@ -96,7 +96,7 @@ const dirs: string[] = [];
 function stateDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "collie-control-"));
   dirs.push(dir);
-  return dir;
+  return privateTestDir(dir);
 }
 const programs: FakeDurableProgram[] = [];
 afterEach(async () => {
@@ -106,10 +106,10 @@ afterEach(async () => {
 
 /** The real adapter over a real socket to a fake program, read once. */
 async function durable(options: { logs?: DurableLogs } = {}) {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock, options.logs ?? null);
+  const adapter = new DurableMux(program.wire(), clock, options.logs ?? null);
   const tick = () => clock.advance(MIN_SNAPSHOT_GAP_MS);
   expect((await adapter.poll()).ok).toBe(true);
   const posts = () => program.requests.filter((q) => q.method === "POST");
@@ -493,7 +493,7 @@ describe("control: the receipt comes first", () => {
     expect(existsSync(join(dir, CONTROL_RECEIPTS_FILE))).toBe(false);
     await rig(new ScriptedAdapter([{ kind: "unknown", detail: "connection reset" }]), first).call("send", "conv-03");
     const file = join(dir, CONTROL_RECEIPTS_FILE);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(isPrivateFile(file)).toBe(true);
     expect(readFileSync(file, "utf8")).not.toContain("steer left");
 
     const second = new ControlReceiptStore(dir);

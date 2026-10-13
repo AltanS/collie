@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
 import type { JsonValue } from "../json.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "../mux/durable/adapter.ts";
-import { DurableSocketClient } from "../mux/durable/client.ts";
-import { FakeDurableClock, FakeDurableProgram } from "../mux/durable/fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, isPrivateFile, privateTestDir } from "../mux/durable/fixture.ts";
 import { muxGone, muxOk, muxRefused, muxUnreachable, type MuxAdapter, type MuxAnswerResult, type MuxOutcome } from "../mux/types.ts";
 import type { AnswerRequest, AnswerResponse, Ask } from "../types.ts";
 import {
@@ -90,7 +89,7 @@ const dirs: string[] = [];
 function stateDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "collie-answer-"));
   dirs.push(dir);
-  return dir;
+  return privateTestDir(dir);
 }
 const programs: FakeDurableProgram[] = [];
 afterEach(async () => {
@@ -206,7 +205,7 @@ describe("answer: the receipt comes first", () => {
     expect(existsSync(join(dir, ANSWER_RECEIPTS_FILE))).toBe(false);
     await rig(new ScriptedAdapter([muxOk({ kind: "unknown", detail: "connection reset" })]), first).call("conv-02");
     const file = join(dir, ANSWER_RECEIPTS_FILE);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(isPrivateFile(file)).toBe(true);
     // No note and no ask text on disk: ids and the state only.
     expect(readFileSync(file, "utf8")).not.toContain("note");
 
@@ -398,10 +397,10 @@ const DAY = 24 * HOUR;
 // ── Through the real adapter, over a real socket ───────────────────────────────
 
 async function durable() {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+  const adapter = new DurableMux(program.wire(), clock);
   const tick = () => clock.advance(MIN_SNAPSHOT_GAP_MS);
   expect((await adapter.poll()).ok).toBe(true);
   return { program, adapter, tick, r: rig(adapter) };

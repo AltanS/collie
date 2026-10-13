@@ -18,7 +18,7 @@ import {
   type SocketFacts,
   type SocketProbe,
 } from "./client.ts";
-import { FakeDurableProgram } from "./fixture.ts";
+import { FakeDurableProgram, SOCKET_ONLY_SKIP } from "./fixture.ts";
 
 const programs: FakeDurableProgram[] = [];
 const scratch: string[] = [];
@@ -75,7 +75,8 @@ describe("the socket path", () => {
   });
 });
 
-describe("the privacy check (WIRE.md section 1A)", () => {
+// Socket only: the owner, mode and links of a Unix socket. Windows has no socket transport (WIRE.md section 1A).
+describe.skipIf(SOCKET_ONLY_SKIP)("the privacy check (WIRE.md section 1A)", () => {
   test("a socket of mode 0600 owned by this user may be dialled", async () => {
     const program = await startProgram();
     expect(await socketAccessProblem(program.socketPath)).toBeNull();
@@ -156,7 +157,8 @@ describe("the privacy check (WIRE.md section 1A)", () => {
   });
 });
 
-describe("the path walk (WIRE.md section 1A)", () => {
+// Socket only: the folders on the way to a Unix socket. Windows has no socket transport (WIRE.md section 1A).
+describe.skipIf(SOCKET_ONLY_SKIP)("the path walk (WIRE.md section 1A)", () => {
   const ME = 1000;
 
   /** One `lstat` answer: a directory, a socket or a link, with its owner and mode. */
@@ -275,7 +277,8 @@ describe("the path walk (WIRE.md section 1A)", () => {
   });
 });
 
-describe("the request", () => {
+// Socket only: the socket client dialling a Unix socket. Windows has no socket transport (WIRE.md section 1A).
+describe.skipIf(SOCKET_ONLY_SKIP)("the request", () => {
   test("the version header and If-None-Match are sent only when asked for", async () => {
     const program = await startProgram();
     const client = new DurableSocketClient(program.socketPath);

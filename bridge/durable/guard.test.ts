@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Ask } from "../types.ts";
 import { askFloodMessage, askFloodTag, AskPush, LOCAL_ASK_HOST, type AskPushPane } from "./ask-push.ts";
 import { AskGuardStore, BREAKER_MS, decideAsks, DEFAULT_GUARD_LIMITS, GUARD_FILE, type GuardAsk, type GuardDecision, type GuardEntry } from "./guard.ts";
+import { isPrivateFile, privateTestDir } from "../mux/durable/fixture.ts";
 
 // The push guard for asks that travel as data (ADR 0100), ported from the durable-member spike's
 // lead guard and its tests. 3 pushes per pane per minute, 10 per host per minute, 30 per host per
@@ -40,7 +41,7 @@ const dirs: string[] = [];
 function stateDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "collie-guard-"));
   dirs.push(dir);
-  return dir;
+  return privateTestDir(dir);
 }
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -243,7 +244,7 @@ describe("the memory on disk", () => {
     expect(existsSync(join(dir, GUARD_FILE))).toBe(false);
     store.observe(H, [{ paneId: "p", asks: [ask()] }], START);
     const file = join(dir, GUARD_FILE);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(isPrivateFile(file)).toBe(true);
     const saved: { entries: GuardEntry[]; breakers: unknown[] } = JSON.parse(readFileSync(file, "utf8"));
     expect(saved.breakers).toEqual([]);
     expect(saved.entries).toHaveLength(1);

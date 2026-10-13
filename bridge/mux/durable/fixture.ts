@@ -45,10 +45,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../../json.ts";
+import { HOST } from "../../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../../owner-only.ts";
 import { isRequestId } from "../../worktree-receipts.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld } from "../conformance.ts";
 import { DURABLE_BUDGETS, DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS, type DurableClock } from "./adapter.ts";
-import { DurableSocketClient } from "./client.ts";
+import { DurableSocketClient, type DurableGet, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
 import { DurableHttpClient } from "./http-client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
@@ -331,12 +333,15 @@ export class FakeDurableProgram {
     private readonly dir: string | null,
     /** The SHA-256 of the bearer token over HTTP; null on the socket, which takes no token. */
     private tokenDigest: Buffer | null,
+    /** The token itself, kept only so {@link wire} can hand a client for it. Null on the socket. */
+    private token: string | null = null,
   ) {}
 
   /** Over HTTP, take another token from now on, as a program redeployed with a new secret does. */
   rotateToken(token: string): void {
     if (this.tokenDigest === null) throw new Error("a program on the socket takes no token");
     this.tokenDigest = digest(token);
+    this.token = token;
   }
 
   /** Start a program on a fresh socket under the temp directory. */
@@ -350,9 +355,32 @@ export class FakeDurableProgram {
 
   /** Start a program over HTTP on 127.0.0.1, on a free port, that takes only this bearer token. */
   static async startHttp(token: string): Promise<FakeDurableProgram> {
-    const program = new FakeDurableProgram("", null, digest(token));
+    const program = new FakeDurableProgram("", null, digest(token), token);
     program.listen();
     return program;
+  }
+
+  /**
+   * Start a program for a test about the WIRE (controls, asks, answers, events, receipts), not about the
+   * socket. On Linux and macOS it is the private socket, as in {@link start}. Windows has no socket
+   * transport, so there it listens on 127.0.0.1 and {@link wire} dials it, with the adapter still on the
+   * socket's budgets and cadence. `loopback` forces that form on any platform, which is how the Linux
+   * gate proves the Windows form (`COLLIE_TEST_LOOPBACK=1`).
+   */
+  static async startWire(loopback: boolean = wireOverLoopback()): Promise<FakeDurableProgram> {
+    return loopback ? FakeDurableProgram.startHttp(testToken()) : FakeDurableProgram.start();
+  }
+
+  /** One GET straight at the program, whichever way it listens. `route` starts at `/session/v1`. */
+  rawGet(route: string, headers: Record<string, string> = {}): Promise<Response> {
+    if (this.token === null) return fetch(`http://localhost${route}`, { unix: this.socketPath, headers });
+    return fetch(`${this.url}${route}`, { headers: { ...headers, authorization: `Bearer ${this.token}` } });
+  }
+
+  /** The transport a {@link startWire} program is dialled with. The adapter sees `kind: "socket"` in both forms. */
+  wire(): DurableTransport {
+    if (this.token === null) return new DurableSocketClient(this.socketPath);
+    return new LoopbackWireClient(new DurableHttpClient(this.url, this.token));
   }
 
   /** The base URL over HTTP. Empty on the socket. */
@@ -756,6 +784,49 @@ export class FakeDurableProgram {
   }
 }
 
+/**
+ * Make a test folder private to this user on every host: mode 0700 on POSIX, an owner-only access list
+ * on Windows (M43 spec 04), which the files made inside it inherit. NTFS has no 0600 to read back.
+ */
+export function privateTestDir(dir: string): string {
+  ensureOwnerOnlyDir(dir, HOST, { root: privateRoot("state"), repair: true });
+  return dir;
+}
+
+/** Whether a file the bridge wrote is private to this user: mode 0600 on POSIX, the access list on Windows. */
+export function isPrivateFile(path: string): boolean {
+  return isOwnerOnly(path, HOST).state === "private";
+}
+
+/** Whether wire tests dial a loopback port: always on Windows, and on request elsewhere. */
+export function wireOverLoopback(platform: NodeJS.Platform = HOST.platform, env: DurableEnvLike = process.env): boolean {
+  return platform === "win32" || env.COLLIE_TEST_LOOPBACK === "1";
+}
+
+/**
+ * Skip a test that is about the socket itself (its mode, its path, the environment variable that names
+ * it, a program that asks for a token on it). Windows has no socket transport, so these cannot run
+ * there; `COLLIE_TEST_LOOPBACK=1` skips them on Linux too, which is how the Windows form is proven.
+ */
+export const SOCKET_ONLY_SKIP = wireOverLoopback();
+
+type DurableEnvLike = Readonly<Record<string, string | undefined>>;
+
+/**
+ * The HTTP client wearing the socket's `kind`, so the adapter keeps the socket's budgets and poll
+ * cadence while the bytes cross 127.0.0.1. A test about the wire does not care which pipe carries it.
+ */
+class LoopbackWireClient implements DurableTransport {
+  readonly kind = "socket";
+  constructor(private readonly inner: DurableHttpClient) {}
+  get(request: DurableGet): Promise<DurableReply> {
+    return this.inner.get(request);
+  }
+  post(request: DurablePost): Promise<DurableReply> {
+    return this.inner.post(request);
+  }
+}
+
 /** A token's SHA-256, so two tokens of any length compare in constant time. */
 function digest(token: string): Buffer {
   return createHash("sha256").update(token).digest();
@@ -786,9 +857,9 @@ const ONE_IDLE_CENSUS_MS = DURABLE_BUDGETS.https.idlePollMs;
  * so the world cannot move focus, and the suite then demands that no pane is ever reported focused.
  */
 export async function durableWorld(): Promise<MuxConformanceWorld> {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   const clock = new FakeDurableClock();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+  const adapter = new DurableMux(program.wire(), clock);
   const change = (act: () => void): Promise<void> => {
     act();
     clock.advance(PAST_THE_FLOOR_MS);

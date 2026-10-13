@@ -9,7 +9,6 @@ import { LiveWindows, type ChatWindowBody } from "../journal/live.ts";
 import { adapterFor, buildJournalRegistry } from "../journal/registry.ts";
 import { TranscriptStore } from "../journal/store.ts";
 import { DurableMux } from "../mux/durable/adapter.ts";
-import { DurableSocketClient } from "../mux/durable/client.ts";
 import { FakeDurableProgram, type FakeEvent } from "../mux/durable/fixture.ts";
 import type { MuxSubscription } from "../mux/types.ts";
 import { paneChat } from "../server.ts";
@@ -44,9 +43,9 @@ const item = (id: string, kind: string, text: string): FakeEvent => ({ type: "it
 
 async function world() {
   const state = await mkdtemp(join(tmpdir(), "collie-durable-chat-"));
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   const logs = new DurableLogs(durableLogDir(state));
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), undefined, logs);
+  const adapter = new DurableMux(program.wire(), undefined, logs);
   const engine = new StateEngine(adapter, 40);
   const watches: MuxSubscription[] = [];
   cleanups.push(async () => {

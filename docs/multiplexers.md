@@ -194,6 +194,8 @@ COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
 
 Set one of the two, never both. A URL without a token, or both set, is a config error: the peer
 starts, names the error in its log, and shows the program as unreachable with that reason.
+The socket transport is for Linux and macOS. On Windows use the URL and the token: a socket path
+there is the same config error, and the peer says so in its log and in `collie doctor`.
 
 | | private socket | https with a token |
 | --- | --- | --- |
@@ -273,6 +275,7 @@ with a reason:
 | reason | what it means |
 | --- | --- |
 | `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 103 bytes` | the variable is missing or unusable |
+| `the private socket transport is not available on Windows` | on Windows set `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN` instead of the socket |
 | `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set` | set the socket, or the URL with its token, not both |
 | `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN` | the URL needs its token |
 | `COLLIE_DURABLE_URL uses plain http to <host>` | use `https://`; plain http is for 127.0.0.1 or localhost only |

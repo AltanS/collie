@@ -4,7 +4,7 @@ import { withOpenAsks } from "../../durable/pane-asks.ts";
 import type { PaneWire } from "../../types.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { DurableOutcomeUnknown, DurableSocketClient, DurableUnreachable, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
-import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP } from "./fixture.ts";
 import type { DurableAsk } from "./protocol.ts";
 
 // Asks as data on the durable adapter (ADR 0100, WIRE.md sections 4, 7.3, 7.6 and 8):
@@ -24,7 +24,7 @@ afterEach(async () => {
 class CountingTransport implements DurableTransport {
   readonly posts: DurablePost[] = [];
   failNext: Error | null = null;
-  constructor(private readonly inner: DurableSocketClient) {}
+  constructor(private readonly inner: DurableTransport) {}
   get(request: Parameters<DurableTransport["get"]>[0]): Promise<DurableReply> {
     return this.inner.get(request);
   }
@@ -38,10 +38,10 @@ class CountingTransport implements DurableTransport {
 }
 
 async function rig() {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  const transport = new CountingTransport(new DurableSocketClient(program.socketPath));
+  const transport = new CountingTransport(program.wire());
   const adapter = new DurableMux(transport, clock);
   const read = async () => {
     clock.advance(MIN_SNAPSHOT_GAP_MS);
@@ -160,7 +160,8 @@ describe("openAsks", () => {
 });
 
 describe("the POST on the socket client", () => {
-  test("a socket with nothing listening is `nothing was sent`", async () => {
+  // Socket only: the path of a socket that nothing listens on.
+  test.skipIf(SOCKET_ONLY_SKIP)("a socket with nothing listening is `nothing was sent`", async () => {
     const program = await FakeDurableProgram.start();
     const path = program.socketPath;
     await program.close();
@@ -170,7 +171,7 @@ describe("the POST on the socket client", () => {
   });
 
   test("a POST past its budget is `may have landed`, never retried", async () => {
-    const program = await FakeDurableProgram.start();
+    const program = await FakeDurableProgram.startWire();
     programs.push(program);
     let seen = 0;
     program.override = (path) => {
@@ -178,7 +179,7 @@ describe("the POST on the socket client", () => {
       seen += 1;
       return Bun.sleep(300).then(() => new Response(JSON.stringify({ result: "taken" }), { status: 200 }));
     };
-    const client = new DurableSocketClient(program.socketPath);
+    const client = program.wire();
     const sent = client.post({ path: "/pane/conv-02/answer", version: 1, body: {}, timeoutMs: 50, maxBytes: 16384 });
     await expect(sent).rejects.toBeInstanceOf(DurableOutcomeUnknown);
     await Bun.sleep(350);

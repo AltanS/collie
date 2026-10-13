@@ -24,6 +24,7 @@ import {
   TOKEN_MIN_BYTES,
   TOKEN_REFUSED,
 } from "../bridge/mux/durable/http-client.ts";
+import { HOST } from "../bridge/host.ts";
 import { chooseDurableTransport } from "../bridge/mux/durable/transport.ts";
 import {
   DURABLE_SERVICE,
@@ -67,6 +68,8 @@ export interface DurableDeps {
    * as solo: the row is then skipped with that reason.
    */
   readonly crew?: { readonly mode: CrewMode; readonly marker: CrewRuntimeMarker | null };
+  /** The platform the transport rules read. Absent reads as this process's; a test names one. */
+  readonly platform?: NodeJS.Platform;
 }
 
 const ENV_ROW = "durable-env";
@@ -112,15 +115,19 @@ function leadRow(crew: DurableDeps["crew"]): Finding {
 /** The six rows about the program, in order. */
 async function programFindings(deps: DurableDeps): Promise<Finding[]> {
   const dotenv = join(deps.ctx.configDir, ".env");
-  const choice = chooseDurableTransport(deps.ctx.env);
+  const platform = deps.platform ?? HOST.platform;
+  const choice = chooseDurableTransport(deps.ctx.env, platform);
   if (choice.kind === "conflict") {
+    const windows = choice.windows === true;
     return [
       bad(
         ENV_ROW,
         choice.detail,
-        `in ${dotenv}, keep either ${DURABLE_SOCKET_ENV} or the pair ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV}, then \`collie restart\``,
+        windows
+          ? `in ${dotenv}, remove ${DURABLE_SOCKET_ENV} and set ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV}, then \`collie restart\``
+          : `in ${dotenv}, keep either ${DURABLE_SOCKET_ENV} or the pair ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV}, then \`collie restart\``,
       ),
-      skipped(SOCKET_ROW, "no single transport to check", FIRST),
+      skipped(SOCKET_ROW, windows ? "Windows has no socket transport" : "no single transport to check", windows ? "nothing to do" : FIRST),
       skipped(URL_ROW, "no single transport to check", FIRST),
       skipped(TOKEN_ROW, "no single transport to check", FIRST),
       skipped(HELLO_ROW, "nothing to ask", FIRST),
@@ -128,11 +135,11 @@ async function programFindings(deps: DurableDeps): Promise<Finding[]> {
     ];
   }
   if (choice.kind === "https") return httpsFindings(choice.url, choice.token, dotenv);
-  return socketFindings(choice.configured, dotenv, deps.probe ?? SYSTEM_PROBE);
+  return socketFindings(choice.configured, dotenv, deps.probe ?? SYSTEM_PROBE, platform);
 }
 
 /** The rows for the private socket (WIRE.md section 1A). */
-async function socketFindings(configured: string | undefined, dotenv: string, probe: SocketProbe): Promise<Finding[]> {
+async function socketFindings(configured: string | undefined, dotenv: string, probe: SocketProbe, platform: NodeJS.Platform): Promise<Finding[]> {
   const resolved = resolveSocketPath(configured);
   const noUrl = [skipped(URL_ROW, ON_SOCKET, "nothing to do"), skipped(TOKEN_ROW, ON_SOCKET, "nothing to do")];
   if (!resolved.ok) {
@@ -140,7 +147,9 @@ async function socketFindings(configured: string | undefined, dotenv: string, pr
       bad(
         ENV_ROW,
         resolved.detail,
-        `set ${DURABLE_SOCKET_ENV} to the absolute path of your program's socket in ${dotenv}, or ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV} for a program behind TLS, then \`collie restart\``,
+        platform === "win32"
+          ? `set ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV} in ${dotenv}, then \`collie restart\`; Windows has no socket transport`
+          : `set ${DURABLE_SOCKET_ENV} to the absolute path of your program's socket in ${dotenv}, or ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV} for a program behind TLS, then \`collie restart\``,
       ),
       skipped(SOCKET_ROW, "no socket path to check", FIRST),
       ...noUrl,

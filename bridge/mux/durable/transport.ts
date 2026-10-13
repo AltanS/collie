@@ -9,8 +9,12 @@
 // adapter gets a transport that dials nothing and answers every read with the one line that says
 // what is wrong. That line is also the boot line, so `collie logs` shows it once at start.
 
+import { HOST } from "../../host.ts";
 import { DURABLE_SOCKET_ENV, DurableSocketClient, DurableUnreachable, resolveSocketPath, type DurableReply, type DurableTransport, type DurableTransportKind } from "./client.ts";
 import { DURABLE_TOKEN_ENV, DURABLE_URL_ENV, DurableHttpClient, resolveDurableToken, resolveDurableUrl } from "./http-client.ts";
+
+/** The one line a Windows peer shows when `COLLIE_DURABLE_SOCKET` is set. Boot line, adapter and doctor all print it. */
+export const WINDOWS_NO_SOCKET = `the private socket transport is not available on Windows; set ${DURABLE_URL_ENV} and ${DURABLE_TOKEN_ENV} instead`;
 
 /** The environment the choice reads. Only the three durable names are looked at. */
 export type DurableEnv = Readonly<Record<string, string | undefined>>;
@@ -22,7 +26,7 @@ export type DurableEnv = Readonly<Record<string, string | undefined>>;
 export type DurableTransportChoice =
   | { readonly kind: "socket"; readonly configured: string | undefined }
   | { readonly kind: "https"; readonly url: string; readonly token: string }
-  | { readonly kind: "conflict"; readonly detail: string };
+  | { readonly kind: "conflict"; readonly detail: string; readonly windows?: true };
 
 function present(value: string | undefined): boolean {
   return (value ?? "").trim() !== "";
@@ -32,14 +36,19 @@ function present(value: string | undefined): boolean {
  * Read the three variables (ADR 0103 point 1). The socket alone, or the URL and the token together:
  * anything else is a conflict with one line that names the variables. Nothing set at all is the
  * socket transport with no path, which reports `COLLIE_DURABLE_SOCKET is not set` as it always did.
+ *
+ * Windows has no socket transport (WIRE.md section 1A needs a Unix socket and its owner and mode
+ * checks), so a socket path set there is a conflict that says what to set instead. `platform` is a
+ * parameter so a test names the platform; it defaults to this process's.
  */
-export function chooseDurableTransport(env: DurableEnv): DurableTransportChoice {
+export function chooseDurableTransport(env: DurableEnv, platform: NodeJS.Platform = HOST.platform): DurableTransportChoice {
   const socket = env[DURABLE_SOCKET_ENV];
   const url = env[DURABLE_URL_ENV];
   const token = env[DURABLE_TOKEN_ENV];
   const hasSocket = present(socket);
   const hasUrl = present(url);
   const hasToken = present(token);
+  if (hasSocket && platform === "win32") return { kind: "conflict", detail: WINDOWS_NO_SOCKET, windows: true };
   if (hasSocket && (hasUrl || hasToken)) {
     return {
       kind: "conflict",

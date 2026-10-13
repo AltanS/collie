@@ -17,7 +17,7 @@ import {
 } from "./adapter.ts";
 import { CAPS } from "./clean.ts";
 import { DURABLE_SOCKET_ENV, DurableSocketClient, SOCKET_NOT_PRIVATE } from "./client.ts";
-import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./fixture.ts";
+import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP } from "./fixture.ts";
 
 const programs: FakeDurableProgram[] = [];
 
@@ -30,10 +30,10 @@ interface Rig {
 }
 
 async function rig(): Promise<Rig> {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+  const adapter = new DurableMux(program.wire(), clock);
   return { program, adapter, clock, tick: () => clock.advance(MIN_SNAPSHOT_GAP_MS) };
 }
 
@@ -131,7 +131,8 @@ describe("boots with zero panes", () => {
     expect(adapter.watch).toBeDefined();
   });
 
-  test("with no program connected the adapter holds no panes and is unreachable, never an empty census", async () => {
+  // Socket only: the refusal names a socket path, and a Windows process has no user id to check it with.
+  test.skipIf(SOCKET_ONLY_SKIP)("with no program connected the adapter holds no panes and is unreachable, never an empty census", async () => {
     const adapter = new DurableMux(new DurableSocketClient("/nonexistent/durable.sock"), new FakeDurableClock());
     expect(adapter.program()).toBeNull();
     expect(adapter.held()).toBeNull();
@@ -139,7 +140,8 @@ describe("boots with zero panes", () => {
     await expect(adapter.snapshot()).rejects.toThrow("no socket at /nonexistent/durable.sock");
   });
 
-  test("an unset, relative or over-long socket path is unreachable with a detail that names the variable", async () => {
+  // Socket only: the paths are socket paths.
+  test.skipIf(SOCKET_ONLY_SKIP)("an unset, relative or over-long socket path is unreachable with a detail that names the variable", async () => {
     for (const configured of [undefined, "", "durable.sock", `/${"d".repeat(200)}`]) {
       const adapter = durableMuxFactory.create({
         endpoint: "",
@@ -168,7 +170,8 @@ describe("boots with zero panes", () => {
     expect(snapshot.spaces.map((space) => space.spaceId)).toEqual(["ws-notes", "ws-site"]);
   });
 
-  test("the startup line names the socket, or says what is wrong with the variable", () => {
+  // Socket only: the line names the socket.
+  test.skipIf(SOCKET_ONLY_SKIP)("the startup line names the socket, or says what is wrong with the variable", () => {
     const saved = process.env[DURABLE_SOCKET_ENV];
     try {
       process.env[DURABLE_SOCKET_ENV] = "/run/user/1000/durable.sock";
@@ -183,7 +186,8 @@ describe("boots with zero panes", () => {
     }
   });
 
-  test("the factory reads the socket from the environment variable when no override is given", async () => {
+  // Socket only: the variable names a Unix socket path, which Windows has no transport for.
+  test.skipIf(SOCKET_ONLY_SKIP)("the factory reads the socket from the environment variable when no override is given", async () => {
     const program = await FakeDurableProgram.start();
     programs.push(program);
     const saved = process.env[DURABLE_SOCKET_ENV];
@@ -302,7 +306,8 @@ describe("version negotiation", () => {
     expect(await adapter.reachable()).toBe(false);
   });
 
-  test("a program that asks for a token is incompatible", async () => {
+  // Socket only: the HTTPS client reads a 401 as a refused token, the socket client as incompatible.
+  test.skipIf(SOCKET_ONLY_SKIP)("a program that asks for a token is incompatible", async () => {
     const { adapter, program } = await rig();
     program.asksForToken = true;
     expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program asks for a token");
@@ -468,7 +473,8 @@ describe("ready and epoch", () => {
     expect(adapter.program()?.snapshot.starters).toEqual([]);
   });
 
-  test("a socket that loses its privacy between two reads is refused on the next read", async () => {
+  // Socket only: the mode of the socket file.
+  test.skipIf(SOCKET_ONLY_SKIP)("a socket that loses its privacy between two reads is refused on the next read", async () => {
     const { adapter, program, tick } = await rig();
     await adapter.snapshot();
     chmodSync(program.socketPath, 0o666);

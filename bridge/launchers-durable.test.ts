@@ -11,7 +11,6 @@ import { readMerged, type LauncherSources } from "./launcher-adds.ts";
 import { memoryAddedLaunchers } from "./launchers-added.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import { DURABLE_MUX, DurableMux, MIN_SNAPSHOT_GAP_MS } from "./mux/durable/adapter.ts";
-import { DurableSocketClient } from "./mux/durable/client.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./mux/durable/fixture.ts";
 import { DEFAULT_SWITCHES } from "./operator-launchers.ts";
 import { launch, launchersRoute, type LaunchDeps } from "./server.ts";
@@ -54,10 +53,10 @@ interface Rig {
 }
 
 async function rig(receipts: StarterReceiptSurface = memoryStarterReceipts()): Promise<Rig> {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  return { program, adapter: new DurableMux(new DurableSocketClient(program.socketPath), clock), receipts, clock };
+  return { program, adapter: new DurableMux(program.wire(), clock), receipts, clock };
 }
 
 afterEach(async () => {

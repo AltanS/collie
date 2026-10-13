@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ControlRequest } from "../../types.ts";
 import type { MuxControlOutcome } from "../types.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
-import { DurableOutcomeUnknown, DurableSocketClient, DurableUnreachable, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
+import { DurableOutcomeUnknown, DurableUnreachable, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
 import { FakeDurableClock, FakeDurableProgram } from "./fixture.ts";
 import { parseControlPost, parseControlReply, parseStaleControl } from "./protocol.ts";
 
@@ -26,7 +26,7 @@ afterEach(async () => {
 class CountingTransport implements DurableTransport {
   readonly posts: DurablePost[] = [];
   failNext: Error | null = null;
-  constructor(private readonly inner: DurableSocketClient) {}
+  constructor(private readonly inner: DurableTransport) {}
   get(request: Parameters<DurableTransport["get"]>[0]): Promise<DurableReply> {
     return this.inner.get(request);
   }
@@ -40,10 +40,10 @@ class CountingTransport implements DurableTransport {
 }
 
 async function rig() {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  const transport = new CountingTransport(new DurableSocketClient(program.socketPath));
+  const transport = new CountingTransport(program.wire());
   const adapter = new DurableMux(transport, clock);
   expect((await adapter.poll()).ok).toBe(true);
   return { program, clock, transport, adapter, tick: () => clock.advance(MIN_SNAPSHOT_GAP_MS) };
