@@ -15,7 +15,8 @@
 //   • `<stateDir>/control-receipts.json`, their receipts (`coerceControlReceipt`).
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import type { AnswerRequest, Ask, ControlRequest, ControlTarget } from "../types.ts";
+import { PUSH_LINE_MAX, PUSH_TITLE_MAX, pushPartOf } from "../mux/durable/clean.ts";
+import type { AnswerRequest, Ask, AskPushText, ControlRequest, ControlTarget } from "../types.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import type { AnswerReceipt, AnswerState } from "./answer.ts";
 import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
@@ -196,4 +197,22 @@ export function keyableAsks(asks: readonly Ask[]): GuardAsk[] {
     if (typeof id === "string" && typeof toolCallId === "string" && toolCallId !== "") out.push({ id, toolCallId });
   }
   return out;
+}
+
+/**
+ * The push words of one ask of a peer's pane (`push` on the ask, WIRE.md section 6), cleaned and cut again: a
+ * lead gets them from a member over the wire, and what a member sends is not a claim the lead repeats. A part
+ * that is not text or is empty once cleaned is left out; undefined when none is left.
+ */
+export function pushTextOf(ask: Ask | undefined): AskPushText | undefined {
+  const push: unknown = ask?.push;
+  if (typeof push !== "object" || push === null) return undefined;
+  const title: unknown = "title" in push ? push.title : undefined;
+  const line: unknown = "line" in push ? push.line : undefined;
+  const out: AskPushText = {};
+  const cleanTitle = typeof title === "string" ? pushPartOf(title, PUSH_TITLE_MAX) : "";
+  const cleanLine = typeof line === "string" ? pushPartOf(line, PUSH_LINE_MAX) : "";
+  if (cleanTitle !== "") out.title = cleanTitle;
+  if (cleanLine !== "") out.line = cleanLine;
+  return out.title === undefined && out.line === undefined ? undefined : out;
 }

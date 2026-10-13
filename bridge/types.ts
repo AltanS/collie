@@ -296,6 +296,17 @@ export interface Ask {
    * The card says the text was shortened and offers no `allow-always` on such an ask.
    */
   cleaned?: true;
+  /**
+   * The words the program chose for a notification about this ask (WIRE.md section 6). The bridge MAY use
+   * them for a push and falls back to its own text. Cleaned by the adapter; a lead cleans them again.
+   */
+  push?: AskPushText;
+}
+
+/** A push title (60 characters at most) and line (120 at most) a program chose for an ask. */
+export interface AskPushText {
+  title?: string;
+  line?: string;
 }
 
 /**

@@ -8,9 +8,9 @@
 
 import { isAbsolute } from "node:path";
 
-import { type AgentStatus, type Ask, PANE_ACTION_ICONS, type PaneAction } from "../../types.ts";
+import { type AgentStatus, type Ask, type AskPushText, PANE_ACTION_ICONS, type PaneAction } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import { actionLabelOf, blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, renameTitleOf } from "./clean.ts";
+import { actionLabelOf, blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, PUSH_LINE_MAX, PUSH_TITLE_MAX, pushPartOf, renameTitleOf } from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +95,8 @@ export interface DurableAsk {
   readonly tool?: DurableToolCall;
   /** True when cleaning cut or changed the title or the reason, so the card says the text was shortened. */
   readonly cleaned?: true;
+  /** The program's words for a notification about this ask, cleaned and cut (WIRE.md section 6). */
+  readonly push?: AskPushText;
 }
 
 export interface DurableWorkspace {
@@ -324,6 +326,17 @@ function readTool(value: Json | undefined): DurableToolCall | undefined {
   };
 }
 
+/** The push words of an ask: each part cleaned and cut, a part that is empty or not text left out, undefined when none is left. */
+function readPush(value: Json | undefined): AskPushText | undefined {
+  if (!isRecord(value)) return undefined;
+  const out: AskPushText = {};
+  const title = isText(value.title) ? pushPartOf(value.title, PUSH_TITLE_MAX) : "";
+  const line = isText(value.line) ? pushPartOf(value.line, PUSH_LINE_MAX) : "";
+  if (title !== "") out.title = title;
+  if (line !== "") out.line = line;
+  return out.title === undefined && out.line === undefined ? undefined : out;
+}
+
 /** An ask whose id, tool call id or item id breaks the rule is dropped. */
 function readAsk(value: Json): DurableAsk | null {
   if (!isRecord(value)) return null;
@@ -364,7 +377,9 @@ function readAsk(value: Json): DurableAsk | null {
     reason,
     tool,
   };
-  return cleaned ? { ...ask, cleaned: true } : ask;
+  const push = readPush(value.push);
+  const full: DurableAsk = push === undefined ? ask : { ...ask, push };
+  return cleaned ? { ...full, cleaned: true } : full;
 }
 
 function readWorkspace(value: Json): DurableWorkspace | null {
@@ -973,6 +988,7 @@ export function askForWire(ask: DurableAsk): Ask {
   };
   if (ask.reason !== undefined) wire.reason = ask.reason;
   if (ask.cleaned === true) wire.cleaned = true;
+  if (ask.push !== undefined) wire.push = ask.push;
   if (ask.tool !== undefined) {
     wire.tool = { name: ask.tool.name, summary: ask.tool.summary };
     if (ask.tool.output !== undefined) wire.tool.output = ask.tool.output;

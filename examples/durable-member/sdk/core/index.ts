@@ -26,7 +26,7 @@ export {
   RENAME_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
-export { ACTION_LABEL_MAX, actionLabelOf, assertId, bytes, CAPS, cut, idOk, LIMITS, RENAME_TITLE_MAX, renameTitleOf, safeId } from "./rules.ts";
+export { ACTION_LABEL_MAX, actionLabelOf, assertId, bytes, CAPS, cut, idOk, LIMITS, PUSH_LINE_MAX, PUSH_TITLE_MAX, pushTextOf, RENAME_TITLE_MAX, renameTitleOf, safeId } from "./rules.ts";
 export * from "./types.ts";
 
 export interface CoreOptions {

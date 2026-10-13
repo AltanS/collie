@@ -1266,7 +1266,7 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       askPush.observe(
         LOCAL_ASK_HOST,
         s.agents.map((agent) => ({ agent, paneId: agent.paneId, asks: openAsks(agent.paneId) })),
-        ({ agent }) => notifications.onTransition(agent, agent.status, "blocked", "ask"),
+        ({ agent }, text) => notifications.onTransition(agent, agent.status, "blocked", "ask", text),
         // The hourly breaker tripped: one summary, under the same snooze and the same "blocked"
         // preference as every herd push.
         () => {

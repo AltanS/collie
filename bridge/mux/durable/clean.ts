@@ -177,6 +177,15 @@ export function actionLabelOf(label: string): string {
   return [...cleanText(label, lineRule(CAPS.starterLabel)).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
 }
 
+/** The longest push title and push line an ask may carry, in characters (code points). WIRE.md section 6. */
+export const PUSH_TITLE_MAX = 60;
+export const PUSH_LINE_MAX = 120;
+
+/** One part of an ask's push words: cleaned as a one-line string, trimmed and cut to `max` characters. May be empty. */
+export function pushPartOf(text: string, max: number): string {
+  return [...cleanText(text, lineRule(CAPS.askTitle)).trim()].slice(0, max).join("").trim();
+}
+
 /** The longest title a rename may carry, in characters (code points). WIRE.md section 7.8. */
 export const RENAME_TITLE_MAX = 120;
 

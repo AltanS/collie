@@ -152,6 +152,29 @@ export function actionLabelOf(label: unknown): string {
   return [...cut(label, CAPS.title).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
 }
 
+/** The longest push title and push line an ask may carry, in characters (code points). WIRE.md section 6. */
+export const PUSH_TITLE_MAX = 60;
+export const PUSH_LINE_MAX = 120;
+
+/**
+ * The words a program wants a notification for its ask to use (WIRE.md section 6): each cleaned, trimmed and cut
+ * to its limit in characters. A part that is empty once cleaned is left out; undefined when neither is left.
+ */
+export function pushTextOf(push: unknown): { title?: string; line?: string } | undefined {
+  if (typeof push !== "object" || push === null) return undefined;
+  const out: { title?: string; line?: string } = {};
+  const title = pushPartOf(Reflect.get(push, "title"), PUSH_TITLE_MAX);
+  const line = pushPartOf(Reflect.get(push, "line"), PUSH_LINE_MAX);
+  if (title !== "") out.title = title;
+  if (line !== "") out.line = line;
+  return out.title === undefined && out.line === undefined ? undefined : out;
+}
+
+function pushPartOf(value: unknown, max: number): string {
+  if (typeof value !== "string") return "";
+  return [...cut(value, CAPS.askTitle).trim()].slice(0, max).join("").trim();
+}
+
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;
 /** ISO 8601 with a zone, at most 40 bytes, else undefined (it reads as absent). */
 export function tsOf(ts: unknown): string | undefined {

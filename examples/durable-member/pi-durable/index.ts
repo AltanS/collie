@@ -302,6 +302,12 @@ export interface Risky {
   risky: ReadonlySet<string>;
 }
 
+/** The notification words for a risky call. The note tool says what it will do; any other says its summary. */
+function pushFor(tool: string, summary: string): { title: string; line: string } {
+  if (tool === "write_note") return { title: "Ticket needs a yes", line: "write_note wants to add one line to the notes" };
+  return { title: `${tool} needs a yes`, line: summary };
+}
+
 /** An extension whose `beforeTool` hook turns a risky call into an ask and waits for the answer. */
 export function riskGuard(o: Risky): Extension {
   return defineExtension({
@@ -321,6 +327,8 @@ export function riskGuard(o: Risky): Extension {
               title: `${call.name} wants to run: ${summary}`,
               tool: { kind: "other", name: call.name, summary },
               reason: `${call.name} is marked risky`,
+              // The words of the notification (WIRE.md section 6). The pane's name goes in front of the title.
+              push: pushFor(call.name, summary),
               options: [
                 { id: "allow", label: "Allow", effect: "allow" },
                 { id: "deny", label: "Deny", effect: "deny" },

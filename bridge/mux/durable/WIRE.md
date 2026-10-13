@@ -358,6 +358,11 @@ interface Ask {
    * shortened" and offers no `allow-always` option, because the person cannot see the whole request.
    */
   cleaned?: true;
+  /**
+   * The words for a notification about this ask: a `title` of at most 60 characters and a `line` of at
+   * most 120 (section 6). The bridge MAY use them and falls back to its own text. Each part is optional.
+   */
+  push?: { title?: string; line?: string };
 }
 
 interface Option {
@@ -562,6 +567,13 @@ restart lands; the bridge's guard already keys on the tool call id (ADR 0100). T
 SHA-256 over `<paneId>\n<toolCallId>` and keeps the first 32 hex characters. A program that mints a
 random id per raise is still correct, and an answer to an id from before its restart is `too-late`.
 
+### Push words
+
+An ask MAY carry `push: { title?, line? }`: the words the program wants a notification about this ask to use.
+The bridge MAY use them and falls back to its own text, so a program that sends none loses nothing. The
+bridge puts the pane's own name in front of the title, and it sends a push only when its guard allows one
+(ADR 0100), so these words change what a push says and never whether or how often it is sent.
+
 ### Cleaning
 
 The adapter cleans every display string before anything else reads it. The program SHOULD send
@@ -593,6 +605,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `Hello.host.name` | 64 bytes | cut |
 | `Workspace.title`, `Tab.title`, `Pane.title` | 256 bytes | cut |
 | `Ask.title` | 256 bytes | cut |
+| `Ask.push.title` | 60 characters | cut; empty after cleaning reads as absent |
+| `Ask.push.line` | 120 characters | cut; empty after cleaning reads as absent |
 | `StarterRow.label` | 128 bytes | cut |
 | `Option.label` | 128 bytes | cut |
 | `PaneAction.label` | 16 characters | cut; empty after cleaning drops the action |
@@ -942,3 +956,5 @@ document. The version number stays 1; the spike's shapes are not supported.
 21. **`Caps` gains `actions`, `Pane` gains `actions`, and `POST /pane/:id/action` is a route** (sections 3, 4 and
     7.10), with the codes `no-such-action` and `action-refused`. Added before version 1 shipped, so the version
     stays 1.
+22. **`Ask` gains `push`** (sections 4 and 6): the program's own title and line for the push about the ask,
+    within the existing push guard. Added before version 1 shipped, so the version stays 1.

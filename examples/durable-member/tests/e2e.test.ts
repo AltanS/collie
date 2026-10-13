@@ -50,6 +50,8 @@ describe("one ticket", () => {
     expect(p.openAsks[0]).toMatchObject({ kind: "permission", revision: 1, tool: { name: "write_note" }, title: expect.stringContaining("write_note") });
     expect(p.openAsks[0]!.toolCallId).toBe(p.openAsks[0]!.itemId); // the tool item the card sits under
     expect(p.openAsks[0]!.options.map((o) => o.id)).toEqual(["allow", "deny"]);
+    // The guard chooses the words of the push for this ask (WIRE.md section 6).
+    expect(p.openAsks[0]!.push).toEqual({ title: "Ticket needs a yes", line: "write_note wants to add one line to the notes" });
     askId = p.openAsks[0]!.id;
     expect(readFileSync(join(dir, "notes.txt"), { flag: "a+" }).toString()).toBe(""); // not run yet
   });

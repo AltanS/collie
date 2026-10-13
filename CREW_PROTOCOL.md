@@ -397,9 +397,12 @@ ask push guard ([ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by
 the push is sent: on the lead, over each swept body, keyed on `(member id, toolCallId)`, with its
 memory in the lead's state dir. A peer runs no guard for its own asks while it is in a crew. The
 guard's hourly breaker counts per member, and its one summary push names the member id. A solo
-collie runs the same guard over its own panes, under host `""`. The push for an ask says only
+collie runs the same guard over its own panes, under host `""`. The push for an ask says
 "Permission needed in <pane>", where <pane> is the pane's push name, so nothing of the ask crosses
-the push service.
+the push service. The one exception is words the program chose for it: an ask's optional `push`
+(`title` up to 60 characters, `line` up to 120) replaces the headline after the pane's push name and
+the body. The lead cleans and cuts them again, because a member sent them, and masks them like every
+push.
 
 **No upload-read route exists on either surface.** `POST …/upload` stores a file and returns its
 absolute local path (`bridge/server.ts:1090`); nothing serves it back over HTTP today (verified: the

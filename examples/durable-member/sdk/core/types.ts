@@ -81,6 +81,11 @@ export interface Ask {
   tool?: ToolCall;
   /** True when the title or the reason was shortened or cleaned. The phone then offers no `allow-always`. */
   cleaned?: true;
+  /**
+   * The words for a notification about this ask (WIRE.md section 6): a title of at most 60 characters and a line of
+   * at most 120. The bridge MAY use them and falls back to its own text. The pane's name stays in front.
+   */
+  push?: { title?: string; line?: string };
 }
 /** What a program passes to `pane.ask()`. The SDK derives the id (when missing) and sets the revision. */
 export type AskInput = Omit<Ask, "id" | "revision"> & { id?: string };

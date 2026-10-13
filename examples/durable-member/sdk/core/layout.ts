@@ -6,7 +6,7 @@
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
 import { ACTION_ICONS } from "./types.ts";
-import { actionLabelOf, assertId, bytes, CAPS, cut, cwdOf, LIMITS, tsOf } from "./rules.ts";
+import { actionLabelOf, assertId, bytes, CAPS, cut, cwdOf, LIMITS, pushTextOf, tsOf } from "./rules.ts";
 import type {
   ActionContext,
   Answer,
@@ -100,6 +100,8 @@ function cleanAsk(input: AskInput & { id: string; revision: number }): Ask {
   }
   if (cleaned) ask.cleaned = true;
   if (input.tool) ask.tool = cleanTool(input.tool);
+  const push = pushTextOf(input.push);
+  if (push !== undefined) ask.push = push;
   return ask;
 }
 
