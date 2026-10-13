@@ -126,12 +126,14 @@ The program keeps the record of its conversations, and Collie lists it. A progra
 `history` serves every conversation it keeps, open and closed, newest first, and the messages of any
 of them, page by page.
 
-Open the list from the History row of the space sheet (long-press a space chip, or tap the open one),
-or from the History row of a durable conversation's menu, which puts that conversation at the top.
-Each row shows the title, the line under it, the date, whether it is open or closed, and how many
-items it holds. Tap an open conversation to go to it. Tap a closed one to read it. That view is
-read-only: it has no field to type in and no belt. When the program declares `reopen`, the view has
-a Reopen button, and the program shows the conversation again under the same name.
+The home of a durable machine is its conversation list, open and closed, newest first. It is the
+Dashboard tab when the phone shows that machine, and the back arrow of a conversation goes there.
+Chips at the top show All, Open, Needs you or Closed. Each row shows the title, the line under it,
+whether it works, waits on you (with the number of open questions) or is idle or closed, the time of
+its last activity, and how many items it holds. Tap an open conversation to go to it. Tap a closed
+one to read it. That view is read-only: it has no field to type in and no belt. When the program
+declares `reopen`, the view has a Reopen button, and the program shows the conversation again under
+the same name.
 
 Collie keeps its own copy of what it read for a live conversation, so Chat opens fast and works
 when the program is slow to answer. That copy is a cache: it keeps the newest 2000 messages or

@@ -161,14 +161,6 @@ function withQuery(base: string, extra: Record<string, string | undefined>): str
 }
 
 /**
- * A durable program's own list of conversations (M53 spec 11). Machine-scoped: the scope names whose
- * program. With `pane`, the row the program shows in that pane leads the list.
- */
-export function conversationsPath(scope?: Scope, opts: { pane?: string } = {}): string {
-  return withQuery(`/conversations${scopeSearch(scope)}`, { [CONVERSATIONS_PANE_PARAM]: opts.pane });
-}
-
-/**
  * One conversation of that list, read-only. `state` is what the list row said, which is how the view
  * knows whether to offer Reopen; absent draws no Reopen.
  */
@@ -681,13 +673,13 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
-  // The conversations list: behind it the pane it was opened for, else the dashboard. One
-  // conversation sits under the list.
-  if (head === "conversations" && (seg.length === 1 || seg.length === 2)) {
+  // The conversations list: behind it the pane it was opened for, else the dashboard. One conversation
+  // sits under the dashboard, which is a durable machine's conversation list (M53 spec 12).
+  if (head === "conversations" && seg.length === 1) {
     const pane = readConversationsPane(search);
-    const chain = pane === undefined ? [home] : [home, panePath(pane, scope)];
-    return seg.length === 1 ? chain : [...chain, conversationsPath(scope, { pane })];
+    return pane === undefined ? [home] : [home, panePath(pane, scope)];
   }
+  if (head === "conversations" && seg.length === 2) return [home];
   // The New page: behind it the screen it names (the pane whose worktree it is, else the view's machine).
   if (head === "new" && seg.length === 1) {
     const at = readNewAt(search);

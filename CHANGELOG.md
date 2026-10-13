@@ -42,6 +42,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable SDK has typed hooks.** `onSend`, `onAbort` and `onRename` take typed payloads with the request id, so a program handles each action in one named place.
 - **The Cloudflare example runs on Cloudflare's PiHarness.** A job that is evicted mid-run wakes itself by alarm and continues, and a real model comes from a Workers AI binding with no key in the Worker. The Collie wire, the asks and the receipts are unchanged.
 - **Docs: a glossary, and a page on durable programs in your crew.** The glossary names Collie's parts in plain words. The durable page explains why a program gets a Collie of its own and how the crew joins it.
+- **A durable program's home is its conversation list.** The phone opens on the program's conversations, open and closed, with the state and the open-question count on each row, and one tap opens one. The pane header is two lines: the title, and the running step or the subtitle. The bar fills by the steps that are done.
 
 ### Fixed
 

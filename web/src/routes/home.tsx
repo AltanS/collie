@@ -7,6 +7,7 @@ import { SessionSwitcher } from "@/components/session-switcher";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
+import { DurableHome } from "@/components/durable-home";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
@@ -193,7 +194,14 @@ export function HomeRoute() {
   // (`workspace-new-tab.tsx` does the same): a control that comes and goes moves what is around it.
   const { launchers } = useLaunchers(data.scope);
   const canCreateSpace = useMuxCapability("createSpace").capable;
-  const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0);
+  // THE DURABLE HOME (M53 spec 12). A machine with no screen (its multiplexer declared `paneGrid` false, the
+  // test the New page's `startersOnly` makes) runs a durable program, and the Dashboard tab draws that
+  // program's conversations instead of the card grid. Asked of the machine on screen. Every multiplexer with
+  // a screen, and every bridge that has not answered, keeps the list below exactly as it was.
+  const screenless = !useMuxCapability("paneGrid", data.scope).capable;
+  const durableHome = view === "dashboard" && screenless;
+  // The New button stays on the durable home: the New page lists the program's starters there.
+  const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0 || screenless);
   const openNew = () => {
     if (data.stale === true) return setStatus(t("space.readOnly.savedCopy"), "error");
     // THE ONE NEW PAGE (M48 spec 01): the floating button, the Spaces header's folder button and the
@@ -263,6 +271,14 @@ export function HomeRoute() {
             <div className="px-4 py-4">
               <CrewTab />
             </div>
+          ) : durableHome ? (
+            <DurableHome
+              scope={data.scope}
+              panes={navPanes.agents}
+              workspaces={data.workspaces}
+              paneOpen={paneOpen}
+              stale={data.stale === true}
+            />
           ) : (
             <AgentList
               agents={data.agents}
@@ -320,7 +336,7 @@ export function HomeRoute() {
           {/* Launch and the Spaces navigator belong to the whole herd, so they sit under the Dashboard
               with the needs-you switch off. The filtered list and the other tabs are narrower, and
               a launcher under them would read as part of that list. */}
-          {view === "dashboard" && !needsYouOnly && (
+          {view === "dashboard" && !needsYouOnly && !screenless && (
             <>
               <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
               <SpaceOverview

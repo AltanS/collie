@@ -1,17 +1,26 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
+import { __resetOperatorCommands, getMuxConfig } from "@/lib/operator-config";
+import { server } from "@/test/setup";
 import type { AgentView } from "@/lib/types";
 import { DetailRoute } from "./detail";
 
 // Stub the heavy terminal view: this test is about DetailRoute's routing/freshPane logic, not the
 // composer. The stub reports which pane it was handed and whether an agent resolved for it.
 vi.mock("@/components/agent-chat", () => ({
-  AgentChat: ({ paneId, agent }: { paneId: string; agent?: AgentView }) => (
-    <div data-testid="chat">{`pane:${paneId}:${agent ? "live" : "gone"}`}</div>
+  AgentChat: ({ paneId, agent, onBackArrow }: { paneId: string; agent?: AgentView; onBackArrow?: () => void }) => (
+    <>
+      <div data-testid="chat">{`pane:${paneId}:${agent ? "live" : "gone"}`}</div>
+      <button type="button" onClick={onBackArrow}>
+        back
+      </button>
+    </>
   ),
 }));
 
@@ -156,5 +165,60 @@ describe("DetailRoute — the pane's saved row", () => {
     render(<RouterProvider router={router} />);
     await screen.findByTestId("home");
     expect(router.state.location.pathname).toBe("/");
+  });
+});
+
+// M53 spec 12: on a machine with no screen the pane's way back is the conversation list, the machine's home,
+// whatever page the pane was reached from.
+describe("DetailRoute: the durable home is the way back", () => {
+  // The one-shot config store outlives a test: start and end each case with it empty.
+  beforeEach(() => __resetOperatorCommands());
+  afterEach(() => __resetOperatorCommands());
+
+  function declares(capabilities: Record<string, boolean>) {
+    const mux = { name: "reference", capabilities, unsupportedKeys: [], notes: {} };
+    server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
+  }
+
+  it("durable home: the back arrow of a pane with no screen lands on the list, not the space it came from", async () => {
+    declares({ paneGrid: false });
+    const pane = agentView("w1:p1", "agent");
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => connected([pane]),
+          element: <Outlet />,
+          children: [
+            { index: true, element: <div data-testid="home">HOME</div> },
+            { path: "space/:id", element: <div data-testid="space">SPACE</div> },
+            {
+              path: "pane/:paneId",
+              loader: ({ params }): PaneData => ({
+                paneId: params.paneId ?? "",
+                scope: {},
+                text: "",
+                truncated: false,
+                requestedLines: 600,
+                revision: 0,
+                error: false,
+                authError: false,
+              }),
+              element: <DetailRoute />,
+            },
+          ],
+        },
+      ],
+      // Opened from a space: the entry behind is the space, and the pane carries it as its `from`.
+      { initialEntries: ["/space/w1", { pathname: panePath("w1:p1"), state: { from: "/space/w1" } }], initialIndex: 1 },
+    );
+    render(<RouterProvider router={router} />);
+    await screen.findByTestId("chat");
+    // The config lands after the first paint; the tap waits for the hook to have its answer.
+    await waitFor(() => expect(getMuxConfig()).not.toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "back" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(await screen.findByTestId("home")).toBeInTheDocument();
   });
 });

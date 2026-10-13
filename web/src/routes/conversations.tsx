@@ -22,7 +22,6 @@ import { t, tn, getLocaleSnapshot } from "@/lib/i18n";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import {
   conversationPath,
-  conversationsPath,
   homePath,
   panePath,
   readConversationState,
@@ -330,7 +329,7 @@ export function ConversationRoute() {
       if (res.ok) {
         setReopened(true);
         if (res.paneId !== undefined) nav.side(panePath(res.paneId, scope));
-        else nav.up(conversationsPath(scope));
+        else nav.up(homePath(scope));
         return;
       }
       setStatus(describeApiError(res, t("conversations.reopenFailed")), "error");
@@ -347,7 +346,8 @@ export function ConversationRoute() {
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col md:max-w-screen-md lg:max-w-screen-lg">
       <PageHeader
         title={t("conversations.title")}
-        onBack={() => nav.up(conversationsPath(scope))}
+        // The program's conversation list is the machine's home since M53 spec 12, so the way back is there.
+        onBack={() => nav.up(homePath(scope))}
         trail={
           <>
             {state !== undefined && <StateChip state={state} />}

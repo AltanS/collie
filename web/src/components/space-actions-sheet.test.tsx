@@ -148,40 +148,20 @@ describe("SpaceActionsSheet: read-only and saved copy replace the action", () =>
   });
 });
 
-// M53 spec 11: a History row, drawn only when the machine declares `programHistory`. It closes the sheet and
-// then hands the navigation to the route (the sheet itself needs no router).
-describe("SpaceActionsSheet: durable history row follows programHistory", () => {
-  it("draws History when the machine declares programHistory, and closes then acts on a tap", async () => {
-    declares({ programHistory: true });
-    const user = userEvent.setup();
-    const onHistory = vi.fn();
-    const props = renderSheet({ onHistory });
-    const row = await screen.findByRole("button", { name: "History" });
-    await user.click(row);
-    expect(props.onClose).toHaveBeenCalledTimes(1);
-    expect(onHistory).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(onHistory.mock.invocationCallOrder[0]!);
-  });
-
-  it("draws no History row when programHistory is declared false or never answered", async () => {
-    declares({ programHistory: false, renameSpace: true });
-    renderSheet({ onHistory: vi.fn() });
-    expect(await screen.findByRole("button", { name: "Rename" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
-  });
-
-  it("draws no History row when the strip gave the sheet nowhere to go", async () => {
+// M53 spec 12: no History row. A durable program's history is its machine's home, the conversation list, so
+// the space sheet draws none even where the machine declares `programHistory`, and no other machine ever did.
+describe("SpaceActionsSheet: the history row is gone on a durable machine", () => {
+  it("draws no History row when the machine declares programHistory", async () => {
     declares({ programHistory: true, renameSpace: true });
     renderSheet();
     expect(await screen.findByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "History" })).toBeNull();
   });
 
-  it("keeps History beside Rename, and the empty note away, when both are declared", async () => {
-    declares({ programHistory: true, renameSpace: true });
-    renderSheet({ onHistory: vi.fn() });
-    expect(await screen.findByRole("button", { name: "History" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
-    expect(screen.queryByText("This program offers no actions for a space.")).toBeNull();
+  it("keeps the empty note when the program declares history and no rename", async () => {
+    declares({ programHistory: true });
+    renderSheet();
+    expect(await screen.findByText("This program offers no actions for a space.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
   });
 });

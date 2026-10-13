@@ -1298,42 +1298,40 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(router.state.location.pathname).toBe(`/pane/${encodeURIComponent(agent.paneId)}/history`);
   });
 
-  // M53 spec 11: on a machine whose durable program serves its own history, the same row (same label) opens
-  // the program's conversation list with this pane's conversation first, whether or not the pane named a
-  // session. Every other pane keeps the transcript route above.
-  it("durable history: the History row goes to the conversation list on a machine that declares programHistory", async () => {
+  // M53 spec 12: the conversation list on the dashboard is a durable program's history, so a pane with no
+  // screen draws no History row at all, session or not. A pane with a screen keeps the transcript row.
+  function declaresMux(capabilities: Record<string, boolean>) {
     server.use(
       http.get("/api/config", () =>
         HttpResponse.json({
           push: false,
           vapidPublicKey: "",
-          mux: { name: "reference", capabilities: { programHistory: true }, unsupportedKeys: [], notes: {} },
+          mux: { name: "reference", capabilities, unsupportedKeys: [], notes: {} },
         }),
       ),
     );
+  }
+
+  it("history row: a pane with no screen draws none, even where the program serves its history", async () => {
+    declaresMux({ paneGrid: false, programHistory: true });
     const user = userEvent.setup();
-    const agent = fixtureAgents[0]!;
-    const props: ComponentProps<typeof AgentChat> = {
-      paneId: agent.paneId,
-      agent,
-      agents: [agent],
-      shellPanes: [],
-      tabs: [],
-      text: "recent pane output",
-      onBack: vi.fn(),
-      onSelect: vi.fn(),
-    };
-    const router = createMemoryRouter([
-      { path: "/", element: withHeaderHost(<AgentChat {...props} />) },
-      { path: "/pane/:paneId/history", element: <div>transcript route</div> },
-      { path: "/conversations", element: <div>conversations route</div> },
-    ]);
-    render(<RouterProvider router={router} />);
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
+    const sibling: AgentView = { ...agent, paneId: "w1:p7" };
+    renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
+    // The config arrives after the first paint; the strips leaving is the sign it has landed.
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
     await openPaneMenu(user);
-    await user.click(await screen.findByRole("button", { name: /conversation history/i }));
-    expect(await screen.findByText("conversations route")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/conversations");
-    expect(router.state.location.search).toBe(`?pane=${encodeURIComponent(agent.paneId)}`);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /conversation history/i })).not.toBeInTheDocument();
+  });
+
+  it("history row: a pane with a screen keeps it, on Herdr's declaration", async () => {
+    declaresMux({ paneGrid: true, agentSessionRef: true });
+    const user = userEvent.setup();
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
+    renderChat({ agent, agents: [agent] });
+    await openPaneMenu(user);
+    expect(await screen.findByRole("button", { name: /conversation history/i })).toBeInTheDocument();
   });
 
   // THE FIND PATH, end to end, because it is the one that spans three components. The row closes the
@@ -4296,32 +4294,98 @@ describe("AgentChat — the model label and a footer that already names it", () 
   });
 });
 
-describe("AgentChat: the progress row of a durable pane", () => {
-  const row = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-progress"]');
+describe("AgentChat: the header line of a durable pane (M53 spec 12)", () => {
+  const place = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-place"]')!;
   const durable = (over: Partial<AgentView>): AgentView => ({ ...fixtureAgents[0]!, ...over });
+  const steps: AgentView["progress"] = {
+    kind: "steps",
+    steps: [
+      { label: "read the ticket", state: "done" },
+      { label: "write a note", state: "running" },
+      { label: "reply", state: "todo" },
+    ],
+  };
 
-  it("shows the running step with its place while the pane works", () => {
-    const agent = durable({
-      status: "working",
-      progress: { kind: "steps", steps: [{ label: "read the ticket", state: "done" }, { label: "write a note", state: "running" }, { label: "reply", state: "todo" }] },
+  it("header line: the running step leads, over the subtitle, and no bar is drawn under the header", () => {
+    const agent = durable({ status: "working", subtitle: "a customer cannot log in", progress: steps });
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    expect(place(container)).toHaveTextContent("Step 2 of 3: write a note");
+    expect(place(container)).not.toHaveTextContent("a customer cannot log in");
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(container.querySelector('[data-slot="pane-progress"]')).toBeNull();
+  });
+
+  it("header line: a percent reads as the number and its label, or the number alone", () => {
+    const labelled = durable({ status: "blocked", subtitle: "x", progress: { kind: "percent", value: 41.6, label: "uploading" } });
+    const first = renderChat({ agent: labelled, agents: [labelled, ...fixtureAgents.slice(1)] });
+    expect(place(first.container)).toHaveTextContent("42%: uploading");
+    cleanup();
+    const bare = durable({ status: "working", progress: { kind: "percent", value: 40 } });
+    const second = renderChat({ agent: bare, agents: [bare, ...fixtureAgents.slice(1)] });
+    expect(place(second.container).textContent).toBe("40%");
+  });
+
+  it("header line: the subtitle when there is no progress, or the pane is idle; the line keeps its height", () => {
+    const idle = durable({ status: "idle", subtitle: "a customer cannot log in", progress: steps });
+    const { container } = renderChat({ agent: idle, agents: [idle, ...fixtureAgents.slice(1)] });
+    expect(place(container)).toHaveTextContent("a customer cannot log in");
+    expect(place(container).parentElement).toHaveClass("h-3");
+    // Two lines and only two: the name, and this one.
+    const lines = container.querySelector('[data-slot="pane-lines"]')!;
+    expect(lines.children).toHaveLength(2);
+  });
+});
+
+
+// M53 spec 12: the prompt pin (PR 406) under the two-line header. The pin is an overlay hung from the top
+// edge of the thread's own scrollport, so with the progress row and both strips gone on a durable pane it
+// sits right under the header's rule: inside the thread's box, never in the header, and over nothing but the
+// thread. jsdom lays nothing out, so each block gets a 100px row and the reader has scrolled 150px.
+describe("AgentChat: the prompt pin under a durable pane's header line", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("header line: the pin hangs from the thread's top edge, under the header, with no strip or progress row between", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: { paneGrid: false }, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (!this.hasAttribute("data-block")) return DOMRect.fromRect({ x: 0, y: 0, width: 390, height: 600 });
+      const index = [...(this.parentElement?.querySelectorAll(":scope > [data-block]") ?? [])].indexOf(this);
+      return DOMRect.fromRect({ x: 0, y: index * 100 - 150, width: 390, height: 100 });
     });
-    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
-    expect(row(container)).toHaveTextContent("write a note, 2 of 3");
-    expect(row(container)?.querySelector('[role="progressbar"]')).toHaveAttribute("aria-valuenow", "33");
-  });
-
-  it("shows a percent with its label, and while the pane waits for an answer", () => {
-    const agent = durable({ status: "blocked", progress: { kind: "percent", value: 40, label: "uploading" } });
-    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
-    expect(row(container)).toHaveTextContent("uploading");
-    expect(row(container)).toHaveTextContent("40%");
-  });
-
-  it("draws no row on an idle pane, nor on a pane without progress", () => {
-    const idle = durable({ status: "idle", progress: { kind: "percent", value: 40 } });
-    const first = renderChat({ agent: idle, agents: [idle, ...fixtureAgents.slice(1)] });
-    expect(row(first.container)).toBeNull();
-    const second = renderChat();
-    expect(row(second.container)).toBeNull();
+    const agent: AgentView = {
+      ...fixtureAgents[0]!,
+      hasSession: true,
+      status: "working",
+      subtitle: "a customer cannot log in",
+      progress: { kind: "steps", steps: [{ label: "look it up", state: "running" }, { label: "reply", state: "todo" }] },
+    };
+    const sibling: AgentView = { ...agent, paneId: "w1:p7" };
+    const { container } = renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
+    const pin = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-slot="prompt-pin"]');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(pin).toHaveTextContent("what changed today?");
+    // Never in the header: the header holds the title and the one line under it.
+    const header = container.querySelector("header")!;
+    expect(header.contains(pin)).toBe(false);
+    expect(container.querySelector('[data-slot="pane-place"]')).toHaveTextContent("Step 1 of 2: look it up");
+    // Hung from the scrollport's own top edge: the overlay is the scroller's sibling, at top 0.
+    const overlay = pin.parentElement!;
+    expect(overlay).toHaveClass("absolute", "top-0");
+    expect(overlay.previousElementSibling).toHaveClass("overflow-y-auto");
+    // And nothing stands between the header and that edge: no strip, no progress row, no bar.
+    expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
+    expect(container.querySelector('[data-slot="pane-progress"]')).toBeNull();
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 });

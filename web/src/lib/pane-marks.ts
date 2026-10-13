@@ -1,4 +1,5 @@
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
+import { t } from "@/lib/i18n";
 import type { AgentView } from "@/lib/types";
 
 // A DURABLE PANE'S SUBTITLE AND BADGE, read from a body that may have crossed a crew link.
@@ -68,6 +69,28 @@ export function paneProgress(pane: Pick<AgentView, "progress" | "status">): Prog
   const running = steps.findIndex((step) => step.state === "running");
   const todo = steps.findIndex((step) => step.state === "todo");
   const at = running >= 0 ? running : todo >= 0 ? todo : steps.length - 1;
+  // THE TEXT AND THE BAR (WIRE.md 7.12, M53 spec 12). "Step n of m" names the step that runs, and the bar
+  // fills by the steps that are done, done / m. The two agree while one step runs, and a list with every
+  // step done fills to full.
   const done = steps.filter((step) => step.state === "done").length;
   return { kind: "steps", label: steps[at]?.label ?? "", n: at + 1, m: steps.length, value: (done / steps.length) * 100 };
+}
+
+/**
+ * The pane header's second line (M53 spec 12): the running step as "Step 2 of 3: write a note" while
+ * the progress is a step list, "42%: label" while it is a percent, else the program's subtitle. A step
+ * list with every step done names no step to come, so it gives the line back to the subtitle. Null when
+ * the pane carries none of these, so the header keeps the line it draws for every other pane.
+ */
+export function paneHeaderLine(progress: ProgressReading | null, subtitle: string | null): string | null {
+  // `value` is done / m, so 100 is exactly "every step is done".
+  if (progress?.kind === "steps" && progress.value < 100) {
+    return t("chat.header.step", { n: progress.n, m: progress.m, label: progress.label });
+  }
+  if (progress?.kind === "steps") return subtitle;
+  if (progress?.kind === "percent") {
+    const value = Math.round(progress.value);
+    return progress.label === null ? t("chat.progress.percent", { value }) : t("chat.header.percent", { value, label: progress.label });
+  }
+  return subtitle;
 }

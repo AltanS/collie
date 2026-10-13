@@ -258,7 +258,8 @@ describe("durable history read-only conversation view", () => {
     expect(await screen.findByText("This conversation no longer exists.")).toBeInTheDocument();
   });
 
-  it("goes back to the list with the scope kept", async () => {
+  // M53 spec 12: the list is the machine's home now, so the way back from a conversation is the dashboard.
+  it("goes back to the list, the machine's home, with the scope kept", async () => {
     const user = userEvent.setup();
     server.use(
       http.get(/\/api\/durable\/conversation\/c1\/items$/, () =>
@@ -269,7 +270,7 @@ describe("durable history read-only conversation view", () => {
     mount("/conversations/c1?h=lab&state=closed");
     await screen.findByText("hi");
     await user.click(screen.getByRole("button", { name: "Back" }));
-    await waitFor(() => expect(where()).toBe("/conversations?h=lab"));
+    await waitFor(() => expect(where()).toBe("/?h=lab"));
   });
 });
 
@@ -336,7 +337,7 @@ describe("durable history reopen", () => {
     expect(posts).toBe(1);
   });
 
-  it("reopen with no pane in the answer goes back to the list", async () => {
+  it("reopen with no pane in the answer goes back to the list, the machine's home", async () => {
     const user = userEvent.setup();
     server.use(
       items(),
@@ -346,7 +347,7 @@ describe("durable history reopen", () => {
     declares({ reopenConversation: true });
     mount("/conversations/c1?state=closed");
     await user.click(await screen.findByRole("button", { name: "Reopen" }));
-    await waitFor(() => expect(where()).toBe("/conversations"));
+    await waitFor(() => expect(where()).toBe("/"));
   });
 
   it("reopen shows the program's reason on a refusal and lets the person try again", async () => {

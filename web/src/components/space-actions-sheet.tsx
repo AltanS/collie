@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { History, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -27,11 +27,6 @@ interface SpaceActionsSheetProps {
   savedCopy?: boolean;
   /** Fired after a successful rename so the parent can revalidate (the name lands on the next poll). */
   onRenamed: () => void;
-  /**
-   * Open the program's own list of conversations (nav.down to `/conversations` with the scope). The row is
-   * drawn only when this is given AND the machine declares `programHistory`.
-   */
-  onHistory?: () => void;
 }
 
 type Mode = "actions" | "rename";
@@ -50,7 +45,6 @@ export function SpaceActionsSheet({
   readOnly = false,
   savedCopy = false,
   onRenamed,
-  onHistory,
 }: SpaceActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -100,21 +94,8 @@ export function SpaceActionsSheet({
   const hostBlock = useHostWriteBlock(host);
   // The program's own control: asked of the machine the write will land on, and ABSENT until a bridge said yes.
   const canRename = useMuxDeclared("renameSpace", scope);
-  // The program's own history: the same kind of declaration, asked of the same machine, ABSENT until yes.
-  const canHistory = useMuxDeclared("programHistory", scope) && onHistory !== undefined;
-
-  const historyRow =
-    canHistory && onHistory !== undefined ? (
-      <ActionRow
-        icon={<History className="size-4 shrink-0 text-muted-foreground" />}
-        label={t("space.space.history")}
-        // Close FIRST, then act, like the other sheets' rows.
-        onClick={() => {
-          onClose();
-          onHistory();
-        }}
-      />
-    ) : null;
+  // No History row (M53 spec 12): a durable program's history is its machine's home, the conversation list,
+  // so the sheet spec 11 gave one to has nothing to add, and no other multiplexer ever drew it.
 
   return (
     <BottomSheet
@@ -123,11 +104,7 @@ export function SpaceActionsSheet({
       title={space ? t("space.space.titleWithLabel", { label: space.label }) : t("space.space.titleFallback")}
     >
       {readOnly ? (
-        <div className="flex flex-col gap-1">
-          <p className="py-2 text-sm text-muted-foreground">{t("space.space.readOnly")}</p>
-          {/* Reading the program's history is no write, so a device that may not rename may still open it. */}
-          {historyRow}
-        </div>
+        <p className="py-2 text-sm text-muted-foreground">{t("space.space.readOnly")}</p>
       ) : savedCopy ? (
         <p className="py-2 text-sm text-muted-foreground">{t("space.readOnly.savedCopy")}</p>
       ) : hostBlock ? (
@@ -135,15 +112,13 @@ export function SpaceActionsSheet({
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
           <HostChip host={host} variant="target" className="mb-1 self-start" />
-          {historyRow}
-          {canRename && (
+          {canRename ? (
             <ActionRow
               icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
               label={t("space.tab.rename")}
               onClick={() => setMode("rename")}
             />
-          )}
-          {!canRename && !canHistory && (
+          ) : (
             <p className="py-2 text-sm leading-snug text-muted-foreground">{t("space.space.empty.fallback")}</p>
           )}
         </div>

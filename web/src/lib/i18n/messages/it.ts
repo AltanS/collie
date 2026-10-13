@@ -293,8 +293,11 @@ export const it: Dictionary = {
   "chat.header.openOverviewAria": "Apri panoramica di {workspace}{status}",
   // TODO wordsmith
   "chat.progress.aria": "Progress",
-  "chat.progress.step": "{label}, {n} of {m}",
   "chat.progress.percent": "{value}%",
+  // TODO wordsmith
+  "chat.header.step": "Step {n} of {m}: {label}",
+  // TODO wordsmith
+  "chat.header.percent": "{value}%: {label}",
   "chat.header.openPaneSettingsAria": "Impostazioni del riquadro per {name}",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(agent non disponibile)",
@@ -514,7 +517,29 @@ export const it: Dictionary = {
   // TODO wordsmith
   "conversations.reopenFailed": "Couldn't reopen the conversation",
   // TODO wordsmith
-  "space.space.history": "History",
+  "home.conversations.filter": "Show conversations",
+  // TODO wordsmith
+  "home.conversations.filter.all": "All",
+  // TODO wordsmith
+  "home.conversations.filter.open": "Open",
+  // TODO wordsmith
+  "home.conversations.filter.needsYou": "Needs you",
+  // TODO wordsmith
+  "home.conversations.filter.closed": "Closed",
+  // TODO wordsmith
+  "home.conversations.needsYouCount.one": "{count} needs you",
+  // TODO wordsmith
+  "home.conversations.needsYouCount.other": "{count} need you",
+  // TODO wordsmith
+  "home.conversations.asks.one": "{count} open question",
+  // TODO wordsmith
+  "home.conversations.asks.other": "{count} open questions",
+  // TODO wordsmith
+  "home.conversations.empty.open": "No open conversations.",
+  // TODO wordsmith
+  "home.conversations.empty.needsYou": "Nothing needs you right now.",
+  // TODO wordsmith
+  "home.conversations.empty.closed": "No closed conversations yet.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "Annulla",
   "prompt.feedback.typedAria": "Feedback nel terminale",

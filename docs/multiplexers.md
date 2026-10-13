@@ -254,9 +254,9 @@ What works:
 - Closing a conversation or a tab, from the usual close controls. It works when the program declares
   `close`; the program decides what a close means (archive, delete, end), and the conversation or tab
   leaves the list. A workspace close is on the wire, but the phone has no control for it.
-- The program's own history. With `caps.history`, the History row of the space sheet and of a durable
-  conversation's menu opens the program's list of conversations, open and closed. A closed one opens
-  read-only, read from the program, and with `caps.reopen` a Reopen button brings it back. Collie's own
+- The program's own history. The home of a durable machine is its conversation list, open and closed;
+  with `caps.history` the closed ones come from the program. A closed one opens read-only, read from the
+  program, and with `caps.reopen` a Reopen button brings it back. Collie's own
   log of a conversation is a cache for Chat, and it resumes where it stopped after a restart. See
   [History](durable-programs.md#history).
 

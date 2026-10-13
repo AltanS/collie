@@ -356,8 +356,11 @@ export const ko: Dictionary = {
   "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
   // TODO wordsmith
   "chat.progress.aria": "Progress",
-  "chat.progress.step": "{label}, {n} of {m}",
   "chat.progress.percent": "{value}%",
+  // TODO wordsmith
+  "chat.header.step": "Step {n} of {m}: {label}",
+  // TODO wordsmith
+  "chat.header.percent": "{value}%: {label}",
   "chat.header.openPaneSettingsAria": "{name} 창 설정",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(에이전트 연결 끊김)",
@@ -582,7 +585,29 @@ export const ko: Dictionary = {
   // TODO wordsmith
   "conversations.reopenFailed": "Couldn't reopen the conversation",
   // TODO wordsmith
-  "space.space.history": "History",
+  "home.conversations.filter": "Show conversations",
+  // TODO wordsmith
+  "home.conversations.filter.all": "All",
+  // TODO wordsmith
+  "home.conversations.filter.open": "Open",
+  // TODO wordsmith
+  "home.conversations.filter.needsYou": "Needs you",
+  // TODO wordsmith
+  "home.conversations.filter.closed": "Closed",
+  // TODO wordsmith
+  "home.conversations.needsYouCount.one": "{count} needs you",
+  // TODO wordsmith
+  "home.conversations.needsYouCount.other": "{count} need you",
+  // TODO wordsmith
+  "home.conversations.asks.one": "{count} open question",
+  // TODO wordsmith
+  "home.conversations.asks.other": "{count} open questions",
+  // TODO wordsmith
+  "home.conversations.empty.open": "No open conversations.",
+  // TODO wordsmith
+  "home.conversations.empty.needsYou": "Nothing needs you right now.",
+  // TODO wordsmith
+  "home.conversations.empty.closed": "No closed conversations yet.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "취소",
   "prompt.feedback.typedAria": "터미널 내 피드백",

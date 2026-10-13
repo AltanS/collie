@@ -101,10 +101,9 @@ import type { MenuBlockAction } from "@/components/menu-block";
 import { locateReply } from "@/lib/latest-reply";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
-import { paneProgress, paneSubtitle } from "@/lib/pane-marks";
-import { PaneProgressRow } from "@/components/pane-progress";
+import { paneHeaderLine, paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { panesOfTab } from "@/lib/pane-ordinal";
-import { useMuxCapability, useMuxDeclared } from "@/lib/mux-capability";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
@@ -113,7 +112,7 @@ import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, conversationsPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
@@ -343,9 +342,14 @@ export function AgentChat({
   // geometry is a stated sum (20 + 4 + 12), so the subtitle takes the line the workspace holds; the
   // workspace is still named by the line's tap target (`chat.header.openOverviewAria`).
   const subtitle = agent === undefined ? null : paneSubtitle(agent);
-  // How far a working durable conversation is (WIRE.md 7.12), drawn under the header while the pane
-  // works or waits. Null on every pane with a screen, which is what leaves them unchanged.
+  // How far a working durable conversation is (WIRE.md 7.12), while the pane works or waits. Null on every
+  // pane with a screen, which is what leaves them unchanged.
   const progress = agent === undefined ? null : paneProgress(agent);
+  // THE HEADER IS TWO LINES (M53 spec 12): the title, and under it the running step ("Step 2 of 3: write a
+  // note"), else the percent with its label, else the subtitle, else the workspace every other pane shows.
+  // The progress row with its bar that sat under the header is gone: the step is said here, in the line the
+  // header already holds, and the dashboard row keeps the hairline bar.
+  const headerLine = paneHeaderLine(progress, subtitle);
   // The branch the pane's folder is on, beside the workspace on line 2 (lib/git-head.ts).
   const gitHead = agent === undefined ? null : paneGitHead(agent);
   // The panes that share this tab (agents + shells), in the strip's stable order (lib/pane-ordinal.ts
@@ -690,7 +694,13 @@ export function AgentChat({
   const stripTabs =
     agent === undefined ? [] : tabs.filter((tab) => tab.workspaceId === agent.workspaceId);
   const canFold = stripTabs.length > 0;
-  const stripsExist = canFold || tabPanes.length > 1;
+  // Whether the pane's multiplexer hands over a screen (`paneGrid`). Without one the pane is a durable
+  // program's conversation, and the two strips are not drawn at all (M53 spec 12): its tabs and panes are
+  // the program's own bookkeeping, the conversation list on the dashboard is how one reaches another, and
+  // the back arrow goes there. The pane keeps its header, its thread and its composer.
+  const paneGrid = useMuxCapability("paneGrid", scope);
+  const gridless = !paneGrid.capable;
+  const stripsExist = !gridless && (canFold || tabPanes.length > 1);
   const folded = canFold && stripsFolded;
   // WHO OWNS THE 4px ABOVE THE MIRROR'S RULE.
   //
@@ -906,10 +916,6 @@ export function AgentChat({
   // loud. Hiding it is what leaves someone wondering whether Collie is broken.
   const sessionLog = useMuxCapability("agentSessionRef", scope);
   const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
-  // On a machine whose durable program serves its own history (M53 spec 11) the pane menu's History row
-  // opens the program's conversation list, with this pane's conversation first. Asked of the pane's own
-  // machine, and ABSENT until a bridge said yes, so every other pane keeps the per-pane transcript.
-  const programHistory = useMuxDeclared("programHistory", scope);
   // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
   // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so
   // its absence alone cannot say which half failed, and the two want opposite words. On an agent
@@ -961,8 +967,6 @@ export function AgentChat({
   // closed", the controls locked, and a step back to the list once connected). No ghost row, no
   // history kept on the phone, no recovery verb. A dropped conversation that comes back in a later
   // snapshot is simply a pane again.
-  const paneGrid = useMuxCapability("paneGrid", scope);
-  const gridless = !paneGrid.capable;
   const chatChosen = gridless || dash.prefs.paneView === "chat";
   // The chat route is asked only where a session exists to read: a pane with none has nothing for
   // it to answer. The poll that already exists moves it (ADR 0073); disabled is free.
@@ -1993,7 +1997,7 @@ export function AgentChat({
                     data-slot="pane-place"
                     className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
-                    {subtitle ?? workspace}
+                    {headerLine ?? workspace}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives
@@ -2125,14 +2129,6 @@ export function AgentChat({
                 as the banners, so it leaves with them in zen, and in a Collapse of its own so it
                 slides in and out rather than pushing the mirror by a jump. */}
             <MaskedHint open={maskedHintOpen} className="mx-3 mt-1.5" />
-
-            {/* A durable program's progress (WIRE.md 7.12): the running step with its place, or a
-                percent. In the same chrome band as the banners, in a Collapse of its own so it slides
-                in when the run starts and out when the program clears it, and it leaves with the band
-                in zen. The row states its own 20px; nothing else moves (DESIGN.md §1, §2). */}
-            <Collapse open={progress !== null}>
-              {progress !== null && <PaneProgressRow reading={progress} className="mx-3 mt-1.5" />}
-            </Collapse>
 
             {/* THE TWO STRIPS, AND THE THIN BAR THAT STANDS IN FOR THEM — one band that morphs, not
                 two rows taking turns. `CollapseSwap` is nested inside zen's `Collapse`, so zen still
@@ -2973,13 +2969,9 @@ export function AgentChat({
           // not on screen, so the row would open a bar over a surface with nothing to show —
           // withheld, the way the sheet withholds every row it was given nothing for.
           onFind={display && !chatShown ? openFind : undefined}
-          onHistory={
-            programHistory
-              ? () => nav.down(conversationsPath(scope, { pane: paneId }))
-              : historyAvailable
-                ? () => nav.down(historyPath(paneId, scope))
-                : undefined
-          }
+          // No History row on a pane with no screen (M53 spec 12): the conversation list on the dashboard is
+          // the program's history, a tap away on the back arrow. `/pane/:id/history` stays reachable by URL.
+          onHistory={!gridless && historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
           // Copy the buffered output — gated on there being output AND a clipboard to write to (absent
           // over plain HTTP), so the row hides where it could only fail, the way find hides with no
           // output. Same read-row family as find and history.

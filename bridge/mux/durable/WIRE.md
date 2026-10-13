@@ -1025,6 +1025,9 @@ the same item id, not a new item, and it is not a "stopped" line.
   it only when the value changes.
 - The phone draws a step list as the running step's label with "n of m" (the first `todo` step when none
   runs, and the last step when all are done), and a percent as a thin bar with its label.
+- "Step n of m" counts the running step and the bar fills by the steps that are done, done / m, so the two
+  agree while one step runs and a list with every step done fills to full; a percent fills `value` / 100.
+  When every step is done, the pane header's line under the title shows the subtitle again.
 
 ### 7.13 Markdown, code and links in the thread
 
