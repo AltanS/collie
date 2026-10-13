@@ -96,7 +96,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "durable-programs",
-    purpose: "Why a durable agent program gets a Collie of its own, and how the crew joins it",
+    purpose: "Show a durable agent program on your phone: attach it, sessions and sources, what it can do",
     text: durablePrograms,
   },
   {

@@ -53,7 +53,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
 | `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the PATH of the Unix socket a durable program listens on. Absolute, at most 103 bytes, no default |
-| `COLLIE_DURABLE_URL` | `https://collie-durable-member.you.workers.dev` | the address of a durable program behind TLS, instead of the socket. `https://` only, or `http://127.0.0.1:<port>` for `wrangler dev` |
+| `COLLIE_DURABLE_URL` | `https://durable-member.example.com` | the address of a durable program behind TLS, instead of the socket. `https://` only, or `http://127.0.0.1:<port>` for a program on this machine |
 | `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to that URL. At least 32 bytes, always set with the URL |
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
@@ -168,7 +168,12 @@ Collie does not detect Tern on its own, as it does not detect tuios: name it wit
 
 `durable` is for a durable agent program: a program that runs agents, keeps their conversations and
 has no screen. Collie shows each of its conversations as a pane that has **Chat and nothing else**.
-There is no Terminal view, because there is no terminal. Two settings turn it on:
+There is no Terminal view, because there is no terminal.
+
+To show a program beside your terminal sessions in one Collie, run `collie durable attach` and
+restart. [Durable programs](durable-programs.md) has the steps. The settings below run an instance
+that drives only a program, as on Windows or for a hosted program with no terminal. Two settings
+turn that on:
 
 ```bash
 COLLIE_MUX=durable                                    # which backend this install drives
@@ -178,8 +183,7 @@ COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock   # where the program 
 The program listens on that socket, and Collie dials it. Name the backend with `COLLIE_MUX=durable`:
 Collie does not detect it on its own. The path must be absolute and at most 103 bytes. Collie
 connects only when the socket is yours and has no group or other permission (mode `0600`), because
-the socket carries no token and a private socket is the whole gate. Run Collie in a peer of its
-own beside any Herdr one, since one install mirrors one backend.
+the socket carries no token and a private socket is the whole gate.
 
 #### Two ways to reach a program
 
@@ -187,8 +191,8 @@ own beside any Herdr one, since one install mirrors one backend.
 # a program on this machine, as you
 COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock
 
-# or a program you deployed behind TLS, for example on Cloudflare
-COLLIE_DURABLE_URL=https://collie-durable-member.you.workers.dev
+# or a program you deployed behind TLS
+COLLIE_DURABLE_URL=https://durable-member.example.com
 COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
 ```
 
@@ -205,7 +209,7 @@ there is the same config error, and the peer says so in its log and in `collie d
 | How often Collie asks | every 1 s while a phone watches, else every 3 s | every 2 s while a phone watches, else every 10 s |
 
 The URL must start with `https://`. The one exception is `http://127.0.0.1:<port>` or
-`http://localhost:<port>`, with a port, for `wrangler dev` on the same machine. Collie refuses any
+`http://localhost:<port>`, with a port, for a program on the same machine. Collie refuses any
 other `http://` address, because the token would cross the network unencrypted.
 
 Make the token 32 random bytes or more, for example with `openssl rand -hex 32`, and give the
@@ -214,21 +218,16 @@ says "set, 64 bytes", nothing more. To change it, deploy the new token to the pr
 peer's `.env`, and run `collie restart`.
 
 > **Caution.** Over https the token is the only gate. Anyone who has it can read every
-> conversation and answer every question, and the host (Cloudflare, for example) sees the text. A
+> conversation and answer every question, and the host sees the text. A
 > program reached this way should offer Allow and Deny only, never an always-allow.
 
-Every poll over https is a billed request: on Cloudflare one poll is one Worker request and one
-Durable Object request, and a "nothing changed" answer counts too. With no phone open the idle poll
-runs every 10 s, and the bridge's own safety-net poll reuses its last answer, so a peer asks 8,640
-times a day. That fits the Workers Paid plan, which is the honest recommendation for a program you
-poll all day. On the Free plan it leaves little room for anything else.
+Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
+too. With no phone open the idle poll runs every 10 s, and the bridge's own safety-net poll reuses
+its last answer, so Collie asks 8,640 times a day. Check what your host's plan allows for that.
 
-A Worker and a Durable Object that speak this wire, to run under `wrangler dev` first and then
-deploy, are in
-[`examples/durable-member-cloudflare`](../examples/durable-member-cloudflare/README.md).
-The Cloudflare example hosts Pi Durable with Cloudflare's PiHarness, the local example
-[`examples/durable-member`](../examples/durable-member/README.md) runs Pi Durable plain, and the
-SDK core that speaks the wire is the same in both.
+The local example [`examples/durable-member`](../examples/durable-member/README.md) runs a Pi
+Durable program over the socket. A Cloudflare example is parked in
+`experiments/durable-member-cloudflare/`.
 
 What works:
 
@@ -274,13 +273,11 @@ To try it, run the example program in
 a scripted model, so it needs no key, and it opens a conversation with a question to answer as soon
 as it starts. Its README walks you from the first command to the answer on your phone.
 
-One Collie serves one backend, so a durable program needs a Collie of its own, even on a host that
-already runs Herdr. A bridge that drives two backends at once is not part of this release. In
-practice you run a second Collie instance on the same host with `COLLIE_MUX=durable`, give it its
-own port and state directory, and join it to the crew with `collie join` like any other peer. The
-steps for the second instance are in
-[Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host), and
-[Crew commands](crew.md#how-a-crew-is-wired) says what a peer is.
+A durable-only instance drives one program. If you want the program in the same Collie as Herdr,
+tmux or zellij, attach it with `collie durable attach` instead. You can also run a second instance
+with `COLLIE_MUX=durable` and join it to the crew with `collie join` like any other peer. The steps
+are in [Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host),
+and [Crew commands](crew.md#how-a-crew-is-wired) says what a peer is.
 
 With a lead older than 1.21.0, the pane is listed but the question is not. The pane shows "needs you"
 with a red dot, and no card appears. Chat shows the tool call as a collapsed step with no Allow or

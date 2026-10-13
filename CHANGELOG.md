@@ -51,6 +51,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 
+### Docs
+
+- **The durable page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The glossary gains Source and Session card, and the Cloudflare example is named as parked.
+
 ## [1.21.0] - 2026-10-13
 
 ### Added
