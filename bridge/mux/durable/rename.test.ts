@@ -4,7 +4,7 @@ import { MUX_CAPABILITIES } from "../capabilities.ts";
 import { muxConfigBody } from "../../server.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { RENAME_TITLE_MAX, renameTitleOf } from "./clean.ts";
-import { DurableOutcomeUnknown, DurableSocketClient, DurableUnreachable, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
+import { DurableOutcomeUnknown, DurableUnreachable, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
 import { durableHttpWorld, durableWorld, FakeDurableClock, FakeDurableProgram } from "./fixture.ts";
 import { parseHello, parseRenamePost } from "./protocol.ts";
 
@@ -25,7 +25,7 @@ class CountingTransport implements DurableTransport {
   readonly posts: DurablePost[] = [];
   failNext: Error | null = null;
   replyNext: DurableReply | null = null;
-  constructor(private readonly inner: DurableSocketClient) {}
+  constructor(private readonly inner: DurableTransport) {}
   get(request: Parameters<DurableTransport["get"]>[0]): Promise<DurableReply> {
     return this.inner.get(request);
   }
@@ -42,11 +42,11 @@ class CountingTransport implements DurableTransport {
 }
 
 async function rig(options: { rename: boolean } = { rename: true }) {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   program.hello.caps.rename = options.rename;
   const clock = new FakeDurableClock();
-  const transport = new CountingTransport(new DurableSocketClient(program.socketPath));
+  const transport = new CountingTransport(program.wire());
   const adapter = new DurableMux(transport, clock);
   expect((await adapter.poll()).ok).toBe(true);
   return { program, clock, transport, adapter, tick: () => clock.advance(MIN_SNAPSHOT_GAP_MS) };
@@ -73,11 +73,11 @@ describe("rename capability", () => {
   });
 
   test("renameTab is absent before the first read, and replaced by the next hello", async () => {
-    const program = await FakeDurableProgram.start();
+    const program = await FakeDurableProgram.startWire();
     programs.push(program);
     program.hello.caps.rename = true;
     const clock = new FakeDurableClock();
-    const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+    const adapter = new DurableMux(program.wire(), clock);
     expect(adapter.capabilities.supports.renameTab).toBe(false);
     await adapter.snapshot();
     expect(adapter.capabilities.supports.renameTab).toBe(true);

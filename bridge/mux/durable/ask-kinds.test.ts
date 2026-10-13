@@ -6,7 +6,6 @@ import type { JsonValue } from "../../json.ts";
 import type { AnswerRequest, PaneWire } from "../../types.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { ANSWER_TEXT_BYTES } from "./clean.ts";
-import { DurableSocketClient } from "./client.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./fixture.ts";
 import { parseSnapshot, type DurableAsk } from "./protocol.ts";
 
@@ -24,10 +23,10 @@ afterEach(async () => {
 });
 
 async function rig() {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   const clock = new FakeDurableClock();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+  const adapter = new DurableMux(program.wire(), clock);
   const read = async () => {
     clock.advance(MIN_SNAPSHOT_GAP_MS);
     return adapter.poll();

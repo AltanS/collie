@@ -6,7 +6,7 @@ import { muxConfigBody } from "../../server.ts";
 import { MUX_CAPABILITIES } from "../capabilities.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import { ACTION_LABEL_MAX, actionLabelOf } from "./clean.ts";
-import { DurableOutcomeUnknown, DurableSocketClient, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
+import { DurableOutcomeUnknown, type DurablePost, type DurableReply, type DurableTransport } from "./client.ts";
 import { FakeDurableClock, FakeDurableProgram } from "./fixture.ts";
 import { parseActionPost, parseHello, parseSnapshot } from "./protocol.ts";
 
@@ -30,7 +30,7 @@ class CountingTransport implements DurableTransport {
   readonly posts: DurablePost[] = [];
   failNext: Error | null = null;
   replyNext: DurableReply | null = null;
-  constructor(private readonly inner: DurableSocketClient) {}
+  constructor(private readonly inner: DurableTransport) {}
   get(request: Parameters<DurableTransport["get"]>[0]): Promise<DurableReply> {
     return this.inner.get(request);
   }
@@ -47,12 +47,12 @@ class CountingTransport implements DurableTransport {
 }
 
 async function rig(options: { actions: boolean } = { actions: true }) {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   program.hello.caps.actions = options.actions;
   program.snapshot.panes = program.snapshot.panes.map((pane) => (pane.id === "conv-03" ? { ...pane, actions: [ESCALATE] } : pane));
   const clock = new FakeDurableClock();
-  const transport = new CountingTransport(new DurableSocketClient(program.socketPath));
+  const transport = new CountingTransport(program.wire());
   const adapter = new DurableMux(transport, clock);
   expect((await adapter.poll()).ok).toBe(true);
   return { program, clock, transport, adapter, tick: () => clock.advance(MIN_SNAPSHOT_GAP_MS) };
@@ -74,11 +74,11 @@ describe("action capability", () => {
   });
 
   test("it is absent before the first read, and replaced by the next hello", async () => {
-    const program = await FakeDurableProgram.start();
+    const program = await FakeDurableProgram.startWire();
     programs.push(program);
     program.hello.caps.actions = true;
     const clock = new FakeDurableClock();
-    const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+    const adapter = new DurableMux(program.wire(), clock);
     expect(adapter.capabilities.supports.programActions).toBe(false);
     await adapter.snapshot();
     expect(adapter.capabilities.supports.programActions).toBe(true);

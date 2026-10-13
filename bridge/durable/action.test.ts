@@ -6,7 +6,6 @@ import { join } from "node:path";
 import type { AuditEntry } from "../audit.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "../mux/durable/adapter.ts";
-import { DurableSocketClient } from "../mux/durable/client.ts";
 import { FakeDurableClock, FakeDurableProgram } from "../mux/durable/fixture.ts";
 import type { MuxAdapter, MuxControlOutcome } from "../mux/types.ts";
 import type { ControlRequest, PaneWire } from "../types.ts";
@@ -78,12 +77,12 @@ afterEach(async () => {
 
 /** The real adapter over a real socket to a fake program whose conv-03 lists the Escalate action, read once. */
 async function durable(options: { actions?: boolean } = {}) {
-  const program = await FakeDurableProgram.start();
+  const program = await FakeDurableProgram.startWire();
   programs.push(program);
   program.hello.caps.actions = options.actions ?? true;
   program.snapshot.panes = program.snapshot.panes.map((pane) => (pane.id === "conv-03" ? { ...pane, actions: [ESCALATE, { id: "pause", label: "Pause", icon: "pause" as const, disabled: true as const }] } : pane));
   const clock = new FakeDurableClock();
-  const adapter = new DurableMux(new DurableSocketClient(program.socketPath), clock);
+  const adapter = new DurableMux(program.wire(), clock);
   const tick = () => clock.advance(MIN_SNAPSHOT_GAP_MS);
   expect((await adapter.poll()).ok).toBe(true);
   const posts = () => program.requests.filter((q) => q.method === "POST");
