@@ -2,7 +2,8 @@
 // customer's ticket is a conversation, and a Collie peer with COLLIE_MUX=durable shows each one as a pane.
 //   bun app.ts
 // The README lists every environment variable. The model is Pi's faux model, scripted, so no key is
-// needed. REAL_MODEL=<OpenRouter model id> uses a real one through OpenRouter ($OPENROUTER_API_KEY).
+// needed. REAL_MODEL=<model id> uses a real one: through OpenRouter ($OPENROUTER_API_KEY) by default, or with
+// REAL_PROVIDER=openai through an OpenAI API key or a ChatGPT sign-in (see "A real model" in the README).
 
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -36,7 +37,7 @@ import {
   spawnHelperTool,
 } from "./pi-durable/index.ts";
 import { CASE_IDS, CASES, type CaseId, customerFor, INSTRUCTIONS, lookOf, noteAsk, REAL_INSTRUCTIONS, ticketText, useScriptedModel } from "./script.ts";
-import { ClosedStore, TitleStore } from "./state.ts";
+import { ClosedStore, CredentialFile, TitleStore } from "./state.ts";
 
 export interface AppOptions {
   /** The Unix socket path. Absolute, at most 103 bytes. */
@@ -55,6 +56,8 @@ export interface AppOptions {
   titlesFile?: string;
   /** Where the conversations the phone closed are kept, as JSON, so a restart does not show them again. Default: `closed.json` beside `notesFile`. */
   closedFile?: string;
+  /** Where a ChatGPT sign-in is kept (`REAL_PROVIDER=openai`), as Pi's `auth.json`. Default: `auth.json` beside `notesFile`. */
+  authFile?: string;
   /** `descendant` (default) or `off`. An in-process test is the program's own caller, so it turns the check off. */
   callerCheck?: "descendant" | "off";
   /** Open one sign-in ticket when the storage holds no conversation yet, so a first start has an ask to answer. Default true. */
@@ -71,15 +74,29 @@ export async function startApp(o: AppOptions): Promise<App> {
   const stepMs = o.stepMs ?? 400;
   const slowMs = o.slowMs ?? 10_000;
 
-  // The model: faux by default, the scripted one in script.ts. REAL_MODEL is an OpenRouter model id, off by default.
-  const models = createModels();
+  // The model: faux by default, the scripted one in script.ts. REAL_MODEL is a model id, off by default. REAL_PROVIDER picks
+  // where it comes from: "openrouter" (default, the key is $OPENROUTER_API_KEY) or "openai" (an OpenAI API key, or the
+  // ChatGPT sign-in kept in auth.json). Collie holds no key. The app never reads or prints one: Pi does.
+  const credentials = new CredentialFile(o.authFile ?? join(dirname(o.notesFile), "auth.json"));
+  const models = createModels({ credentials });
   let model = { provider: "faux", modelId: "faux-1" };
-  const real = process.env.REAL_MODEL; // an OpenRouter model id, e.g. google/gemini-3.1-flash-lite. Off by default.
+  const real = process.env.REAL_MODEL; // e.g. google/gemini-3.1-flash-lite (OpenRouter) or a model id of Pi's OpenAI catalog.
   if (real) {
-    const { openrouterProvider } = await import("@earendil-works/pi-ai/providers/openrouter");
-    models.setProvider(openrouterProvider()); // reads OPENROUTER_API_KEY, never logged here
-    if (!models.getModel("openrouter", real)) throw new Error(`REAL_MODEL ${real} is not an OpenRouter model id Pi knows`);
-    model = { provider: "openrouter", modelId: real };
+    const provider = process.env.REAL_PROVIDER || "openrouter";
+    if (provider === "openai") {
+      const { openaiProvider } = await import("@earendil-works/pi-ai/providers/openai");
+      models.setProvider(openaiProvider());
+    } else if (provider === "openrouter") {
+      const { openrouterProvider } = await import("@earendil-works/pi-ai/providers/openrouter");
+      models.setProvider(openrouterProvider());
+    } else {
+      throw new Error(`REAL_PROVIDER must be "openrouter" or "openai", not ${JSON.stringify(provider)}`);
+    }
+    if (!models.getModel(provider, real)) throw new Error(`REAL_MODEL ${real} is not an ${provider === "openai" ? "OpenAI" : "OpenRouter"} model id Pi knows`);
+    if (provider === "openai" && (await models.getAuth("openai")) === undefined) {
+      throw new Error("REAL_PROVIDER=openai finds no sign-in. Set OPENAI_API_KEY, or sign in with ChatGPT first (README, A real model)");
+    }
+    model = { provider, modelId: real };
   } else {
     useScriptedModel(models, { stepMs, slowMs, helperMs: o.helperMs });
   }
@@ -274,6 +291,7 @@ export function optionsFromEnv(env: NodeJS.ProcessEnv = process.env): AppOptions
     storage: join(data, "store"),
     notesFile: join(data, "notes.txt"),
     titlesFile: join(data, "titles.json"),
+    authFile: join(data, "auth.json"),
     stepMs: ms("DM_STEP_MS"),
     slowMs: ms("DM_SLOW_MS"),
     helperMs: ms("DM_HELPER_MS"),
@@ -303,7 +321,7 @@ if (import.meta.main) {
     process.exit(1);
   }
   console.log(`listening ${app.collie.address}`);
-  if (!process.env.REAL_MODEL) console.log("Using the scripted model. Set REAL_MODEL and OPENROUTER_API_KEY for a real one.");
+  if (!process.env.REAL_MODEL) console.log("Using the scripted model. Set REAL_MODEL and a key or a sign-in for a real one (README, A real model).");
   const stop = () => {
     setTimeout(() => process.exit(1), 3000).unref(); // a hung close must not hang the shell
     app.close().then(() => process.exit(0));

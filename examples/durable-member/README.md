@@ -1,26 +1,57 @@
 # Durable member: a Pi Durable program in your crew
 
-A small Bun program built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable).
-It answers made-up support tickets for a small online shop with a scripted model and shows each conversation to Collie over
-the durable socket wire. A Collie peer with `COLLIE_MUX=durable` lists those conversations as panes,
-so you can read them on the phone and answer their questions there. The wire is experimental and may
-change in any minor release of Collie ([`WIRE.md`](../../bridge/mux/durable/WIRE.md)). This folder is
-example code to read and copy. It is not a package.
+Two programs that speak the durable socket wire to Collie. `hello.ts` is 12 lines of code and asks one question.
+`app.ts` is a small support desk built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable):
+it answers made-up support tickets for an online shop and shows each conversation to Collie. A Collie peer
+with `COLLIE_MUX=durable` lists those conversations as panes, so you can read them on the phone and answer
+their questions there. The wire is experimental and may change in any minor release of Collie
+([`WIRE.md`](../../bridge/mux/durable/WIRE.md)). This folder is example code to read and copy. It is not a package.
 
-## Run it
+## Start here: hello.ts
 
 You need Linux and Bun 1.4 or later. From a clone of collie:
 
 ```sh
 cd examples/durable-member
 bun install --frozen-lockfile
+bun hello.ts
+```
+
+The program prints `listening /run/user/1000/hello/app.sock` and waits. This is all of it:
+
+```ts
+import { openCollie } from "./sdk/index.ts";
+
+const socket = process.env.COLLIE_DURABLE_SOCKET ?? `${process.env.XDG_RUNTIME_DIR}/hello/app.sock`;
+const caps = { asks: true, starters: false, send: false, steer: false, abort: false, rename: false, close: false, actions: false, reopen: false };
+const collie = await openCollie({ socket, hostName: "hello", caps });
+const pane = collie.workspace("hello", { title: "Hello" }).tab("main", { title: "Questions" }).pane("deploy", { title: "Deploy", harness: "hello" });
+collie.ready();
+console.log(`listening ${collie.address}`);
+const options = [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }];
+const answer = await pane.ask({ kind: "choice", toolCallId: "deploy-1", itemId: "deploy-1", title: "Deploy to staging?", options });
+console.log(`answer: ${answer.optionIds[0]}`);
+await Bun.sleep(200); // let the reply to the phone's answer go out: close() drops open connections
+await collie.close();
+```
+
+It imports the SDK and nothing else, with no Pi Durable and no model. Point a Collie peer at the socket it printed
+([below](#point-a-collie-peer-at-it)), open the peer on the phone, and the question "Deploy to staging?" waits
+on a card with Yes and No. Tap one. The program prints your answer and exits.
+
+## The support desk: app.ts
+
+The same install runs the desk:
+
+```sh
 bun run app
 ```
 
 The app prints the socket it listens on, for example
-`listening /run/user/1000/durable-member/app.sock`. It needs no key and no settings. Without a real model
-it says so on the next line: "Using the scripted model. Set REAL_MODEL and OPENROUTER_API_KEY for a real
-one." See [A real model](#a-real-model).
+`listening /run/user/1000/durable-member/app.sock`. It needs no key and no settings, because its default model is a scripted one: the desk is the fixture the
+tests run and the demo the playground shows. Without a real model it says so on the next line: "Using the
+scripted model. Set REAL_MODEL and a key or a sign-in for a real one (README, A real model)." See
+[A real model](#a-real-model).
 
 On the first start the app opens one ticket: Maria Lopez can't sign in after a password reset. The
 scripted model asks to save a note to the ticket, and the ticket waits for your answer. The app keeps its conversations in `~/.local/state/durable-member/`, so
@@ -36,8 +67,10 @@ peer of its own, even on a host that already runs Collie with Herdr. The peer ne
 
 ```sh
 COLLIE_MUX=durable
-COLLIE_DURABLE_SOCKET=/run/user/1000/durable-member/app.sock   # the path the app printed
+COLLIE_DURABLE_SOCKET=/run/user/1000/durable-member/app.sock   # the path the program printed
 ```
+
+For `hello.ts` the path ends in `hello/app.sock`.
 
 On a host that already runs Collie, make a second instance with its own port and state folder, in
 `~/.config/herdr/plugins/config/herdr.collie-durable/.env`:
@@ -115,16 +148,34 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
 
 ## A real model
 
-The scripted model is the default. To use a real model, set an OpenRouter model id and your key:
+The scripted model is the default. `REAL_MODEL` switches the desk to a real one, from one of two places. Collie
+holds no key of its own. Use an API key or a ChatGPT sign-in. An Anthropic subscription (Pro or Max) may not be used
+through a third-party harness, so do not sign in with one here.
+
+**OpenRouter with an API key.** Set a model id from Pi's OpenRouter catalog and your key:
 
 ```sh
 export OPENROUTER_API_KEY=sk-or-v1-your-key-here
 REAL_MODEL=google/gemini-3.1-flash-lite bun run app
 ```
 
-The id must be one that Pi's OpenRouter catalog knows, or the start stops with an error. Pi reads the
-key, and the app never prints it. Every ticket now costs tokens, including the one a first start
-opens. A real model may not follow the script, so a ticket can take a different path.
+**OpenAI with an API key or a ChatGPT sign-in.** Set `REAL_PROVIDER=openai` and a model id from Pi's OpenAI
+catalog. With an API key, set `OPENAI_API_KEY=your-key-here`. To use a ChatGPT Plus or Pro plan instead, sign in
+once with Pi's login. It saves `auth.json` in the folder you run it from, so run it in the data folder:
+
+```sh
+mkdir -p ~/.local/state/durable-member && cd ~/.local/state/durable-member
+npx @earendil-works/pi-ai login openai    # choose "Sign in with ChatGPT"
+cd - && REAL_PROVIDER=openai REAL_MODEL=gpt-4.1 bun run app
+```
+
+The app reads `auth.json` from its data folder (`DM_DATA`), and Pi keeps the tokens fresh there. Guard that file
+like a password: the app writes it with mode 0600 and never prints it. With neither a key nor a sign-in the start
+stops with an error.
+
+The id must be one that the provider's Pi catalog knows, or the start stops with an error. Pi reads the key,
+and the app never prints it. Every ticket now costs tokens, including the one a first start opens. A real model
+may not follow the script, so a ticket can take a different path.
 
 ## The trust model
 
@@ -169,13 +220,15 @@ Every variable is optional.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `COLLIE_DURABLE_SOCKET` | `$XDG_RUNTIME_DIR/durable-member/app.sock`, or `/tmp/durable-member-<uid>/app.sock` when `XDG_RUNTIME_DIR` is not set | Where the app listens. An absolute path of at most 103 bytes. Collie reads the same variable to find it. |
-| `DM_DATA` | `$XDG_STATE_HOME/durable-member`, else `~/.local/state/durable-member` | The folder for the conversations (`store/`), the file `write_note` appends to (`notes.txt`) the names the phone gave a workspace or a tab (`titles.json`) and the conversations the phone closed (`closed.json`). |
+| `DM_DATA` | `$XDG_STATE_HOME/durable-member`, else `~/.local/state/durable-member` | The folder for the conversations (`store/`), the file `write_note` appends to (`notes.txt`) the names the phone gave a workspace or a tab (`titles.json`) the conversations the phone closed (`closed.json`) and the ChatGPT sign-in (`auth.json`). |
 | `DM_CALLER_CHECK` | `descendant` | `off` turns the descendant check off. Needed on any system but Linux. |
 | `DM_STEP_MS` | `400` | The pause before each scripted answer, so you can see the states change. |
 | `DM_SLOW_MS` | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer is long, and streams in chunks. |
 | `DM_HELPER_MS` | the value of `DM_STEP_MS` | How long the helper's scripted answer takes. |
-| `REAL_MODEL` | not set | An OpenRouter model id. Not set means the scripted model. |
+| `REAL_MODEL` | not set | A model id of the provider's Pi catalog. Not set means the scripted model. |
+| `REAL_PROVIDER` | `openrouter` | `openrouter` or `openai`. Read only when `REAL_MODEL` is set. |
 | `OPENROUTER_API_KEY` | not set | Your OpenRouter key. Pi reads it only when `REAL_MODEL` is set. |
+| `OPENAI_API_KEY` | not set | Your OpenAI key, for `REAL_PROVIDER=openai` without a ChatGPT sign-in. |
 
 ## Write your own program
 
@@ -240,7 +293,7 @@ The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `
 so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. The store keeps
 the newest 1000 per pane; a repeat of an older id gets a 500, an unknown outcome, and runs nothing. It imports no
 runtime module, so the same core serves the
-[Cloudflare example](../durable-member-cloudflare/README.md) from a Durable Object. `sdk/server.ts` is the
+[Cloudflare example](../../experiments/durable-member-cloudflare/README.md) (parked under experiments) from a Durable Object. `sdk/server.ts` is the
 transport for Bun: the private socket and the descendant check. It accepts connections with `Bun.listen`
 and parses them with `node:http`, because only a `Bun.listen` socket gives the file descriptor that
 `SO_PEERCRED` needs. `Bun.serve({ unix })` shows no peer.
@@ -257,8 +310,9 @@ bun run typecheck
 bun test
 ```
 
-The suite covers the socket rules, the hello, the request ids, the cleaning and the caps, the
+The suite covers `hello.ts` (it puts one ask on the wire, and the answer ends it), the pins of the Pi packages,
+the socket rules, the hello, the request ids, the cleaning and the caps, the
 descendant check, a whole ticket, and restarts with real kills. The protocol tests run twice, over the
 socket and straight against the core. It needs no key and makes no network
-call. From the root of collie, `bun test bridge/mux/durable/example.test.ts` starts this app and
-drives it with Collie's own adapter.
+call. From the root of collie, `bun test bridge/mux/durable/example.test.ts` starts the desk, and
+`bun test bridge/mux/durable/example-hello.test.ts` starts `hello.ts`; both are driven by Collie's own adapter.
