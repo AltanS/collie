@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { api, call } from "./client.ts";
-import { openCollie } from "../sdk/index.ts";
+import { openCollie } from "../../../packages/durable-sdk/src/index.ts";
 import { protocolSuite } from "./protocol-suite.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";
 
@@ -30,7 +30,7 @@ describe("no token", () => {
     expect((await call({ ...d }, "GET", "/hello", undefined, { authorization: "Bearer nope" })).status).toBe(200);
     expect((await call(d, "GET", "/snapshot", undefined, { authorization: "Bearer nope" })).status).toBe(200);
     await c.close();
-    const code = filesUnder(new URL("../sdk/", import.meta.url).pathname).map((f) => readFileSync(f, "utf8")).join("\n");
+    const code = filesUnder(new URL("../../../packages/durable-sdk/src/", import.meta.url).pathname).map((f) => readFileSync(f, "utf8")).join("\n");
     expect(code).not.toMatch(/bearer|authorization|DM_TOKEN|timingSafeEqual|\btcp:/i);
   });
 });

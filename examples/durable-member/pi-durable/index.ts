@@ -1,5 +1,5 @@
 // The old path of the Pi Durable helper, kept so the example and its Cloudflare twin import it as before. The helper
-// itself is the SDK's Pi entry (`../sdk/pi/index.ts`), which takes the words a program shows as options. This file
+// itself is the SDK's Pi entry (`packages/durable-sdk/src/pi/index.ts`), which takes the words a program shows as options. This file
 // binds the support desk's words (../script.ts) to it: the summary under a solved ticket, and the two questions.
 
 import {
@@ -13,10 +13,10 @@ import {
   piHistory as piHistoryWith,
   type ReplyExtras,
   showConversation as showConversationWith,
-} from "../sdk/pi/index.ts";
+} from "../../../packages/durable-sdk/src/pi/index.ts";
 import { NEXT_STEPS, REPLY_PLACEHOLDER, REPLY_QUESTION, RUNBOOK, SIGN_IN_DONE, SIGN_OUT_COMMAND, TEAM_QUESTION, TEAMS } from "../script.ts";
 
-export * from "../sdk/pi/index.ts";
+export * from "../../../packages/durable-sdk/src/pi/index.ts";
 
 /** What a solved ticket adds under its reply: a markdown note with a list, a code block and a link (WIRE.md 7.13). */
 export const ticketExtras: ReplyExtras = (text) =>

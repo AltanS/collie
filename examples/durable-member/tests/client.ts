@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { request } from "node:http";
-import type { Ask, ConversationItemsReply, ConversationsReply, EventsReply, Hello, Problem, Snapshot } from "../sdk/core/types.ts";
+import type { Ask, ConversationItemsReply, ConversationsReply, EventsReply, Hello, Problem, Snapshot } from "../../../packages/durable-sdk/src/core/types.ts";
 
 export interface Dial {
   /** The program's Unix socket. */

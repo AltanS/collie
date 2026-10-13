@@ -5,14 +5,14 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { api, type Dial } from "./client.ts";
-import { ALL_CAPS, createCore } from "../sdk/core/index.ts";
-import { openCollie } from "../sdk/index.ts";
-import { summaryOf } from "../sdk/pi/index.ts";
+import { ALL_CAPS, createCore } from "../../../packages/durable-sdk/src/core/index.ts";
+import { openCollie } from "../../../packages/durable-sdk/src/index.ts";
+import { summaryOf } from "../../../packages/durable-sdk/src/pi/index.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";
 
 afterAll(cleanup);
 
-const SDK = new URL("../sdk/", import.meta.url).pathname;
+const SDK = new URL("../../../packages/durable-sdk/src/", import.meta.url).pathname;
 
 /** Every .ts file under a folder, as paths relative to sdk/. */
 function filesOf(dir: string): string[] {

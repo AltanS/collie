@@ -24,7 +24,7 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable";
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
-import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
+import { type Collie, openCollie, SOCKET_ENV } from "../../packages/durable-sdk/src/index.ts";
 import {
   ASKING_TOOLS,
   askTools,

@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PaneRegistry } from "../pi-durable/index.ts";
-import { askIdFor, createCore } from "../sdk/core/index.ts";
+import { askIdFor, createCore } from "../../../packages/durable-sdk/src/core/index.ts";
 import { api, type Dial } from "./client.ts";
 import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, pane, tmp, waitFor } from "./util.ts";
 

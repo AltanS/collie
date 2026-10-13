@@ -17,7 +17,7 @@ import {
   type PermissionAskInput,
   type Starter,
   type WorkspaceHandle,
-} from "../sdk/core/index.ts";
+} from "../../../packages/durable-sdk/src/core/index.ts";
 import { cleanup, waitFor } from "./util.ts";
 
 /** A program with no layout yet, and the dial that reaches it. */

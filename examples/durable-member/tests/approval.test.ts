@@ -4,8 +4,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { api, type Dial } from "./client.ts";
-import { AskClosed, createCore, requireApproval, type PaneHandle } from "../sdk/core/index.ts";
-import { openCollie } from "../sdk/index.ts";
+import { AskClosed, createCore, requireApproval, type PaneHandle } from "../../../packages/durable-sdk/src/core/index.ts";
+import { openCollie } from "../../../packages/durable-sdk/src/index.ts";
 import { allEvents, cleanup, tmp, waitFor } from "./util.ts";
 
 afterAll(cleanup);

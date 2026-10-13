@@ -6,7 +6,7 @@
 // transaction that writes the new one: the reply goes, and the id stays as its digest only, so a repeat of it is
 // refused (an unknown outcome, never a second run). At most 10,000 dropped ids are kept per pane; past that the
 // oldest go too, and the act's own check (a closed ask, a turn that moved) is what is left.
-import { type DroppedReceipt, RECEIPTS_PER_GROUP, type ReceiptRecord, type ReceiptStore } from "../../../examples/durable-member/sdk/core/index.ts";
+import { type DroppedReceipt, RECEIPTS_PER_GROUP, type ReceiptRecord, type ReceiptStore } from "../../../packages/durable-sdk/src/core/index.ts";
 
 export const RECEIPTS_KEPT = RECEIPTS_PER_GROUP;
 export const DROPPED_KEPT = RECEIPTS_PER_GROUP * 10;
