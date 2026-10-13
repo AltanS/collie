@@ -1,5 +1,5 @@
 // The Muse harness adapter — Tier 1 chrome + Tier-2 approval / single-select / multi-select /
-// trust lifts for Muse Code 1.3.0 (agent string "muse").
+// trust lifts for Muse Code 1.3.x–1.4.7 (agent string "muse").
 //
 // The TUI this reads (see DIALOG_NOTES.md beside this file for the full probe log):
 //
@@ -15,13 +15,14 @@
 //
 //   - Approval REPLACES the box (no ❯ row): command (`Would you like to run the following
 //     command?` + `$` / `Stage N/M` / `Current argv:`) or network (`Would you like to allow this
-//     network access?` + `network:` / `full URL:`) + `› N.` options. Digit alone (family
-//     `permission`).
+//     network access?` + `network:` / `full URL:`) + `›`/`⟩ N.` options + a static 1.4.7 hint row.
+//     Digit alone (family `permission`).
 //   - Questions LEAVE the bare ❯ under them: `Request user input` header (live timer — anchors
-//     detection, never enters a signature) + question + `› N.` options + footer. Digits MOVE the
-//     pointer; Enter selects (family `select`, keys [digit, Enter]).
+//     detection, never enters a signature) + question + `›`/`⟩ N.` options + footer (a multi-
+//     question dialog adds an `N of M` progress row above it). Digits MOVE the pointer; Enter
+//     selects (family `select`, keys [digit, Enter]).
 //   - Checkbox adds `[ ]`/`[x]` prefixes + a numbered `Submit answer (N checked)` row and a review
-//     phase (`Review answers before submit` + `> Submit answers` / `Interrupt turn`). Pointer-mode
+//     phase (`Review answers before submit` + `⟩ Submit answers` / `Interrupt turn`). Pointer-mode
 //     choreography throughout (`toggle`/`submit: "pointer"`): digit-jump + verified Enter to toggle,
 //     a verified pointer walk + freshly-bound Enter to submit — review swallows digits entirely.
 //   - Trust is pre-session (no chrome at all): `Do you trust this workspace?` + period-less `N  Label`

@@ -24,6 +24,8 @@
 //       > Submit answers
 //         Interrupt turn
 //
+// 1.4.7 paints the pointer as `⟩` in both phases (`⟩ Submit answers` on review).
+//
 // Everything here is a PURE function over `StyledLine[]`, driven entirely by the fixture corpus
 // (web/src/fixtures/panes/muse--*.txt). It never touches a pane or the network. The tail invariant
 // is the backbone: the dialog must sit directly above the tail chrome, so one that has scrolled up
@@ -156,12 +158,13 @@ function detectCheckboxPhase(lines: StyledLine[]): CheckboxRegion | null {
   const hq = headerAndQuestion(texts, firstOpt);
   if (!hq) return null;
 
-  // 5. Pointer: exactly one `›` expected; anything else is torn output and reports unknown (the
-  //    macros verify before every Enter, so unknown only costs retries, never a blind key).
+  // 5. Pointer: exactly one menu pointer (`›` through 1.3.x, `⟩` from 1.4.7) expected;
+  //    anything else is torn output and reports unknown (the macros verify before every Enter, so
+  //    unknown only costs retries, never a blind key).
   let pointer: MultiPointer = null;
   let pointerRow: number | null = null;
-  const pointed = menu.filter((row) => texts[row.index]!.includes("›"));
-  const submitPointed = texts[last.index]!.includes("›");
+  const pointed = menu.filter((row) => /[›⟩]/.test(texts[row.index]!));
+  const submitPointed = /[›⟩]/.test(texts[last.index]!);
   if (pointed.length + (submitPointed ? 1 : 0) === 1) {
     if (submitPointed) {
       pointer = "advance";
@@ -186,6 +189,7 @@ function detectCheckboxPhase(lines: StyledLine[]): CheckboxRegion | null {
     .map((t) =>
       t
         .replaceAll("›", " ")
+        .replaceAll("⟩", " ")
         .replaceAll("[x]", "[ ]")
         .replace(/Submit answer \(\d+ checked\)/, "Submit answer (checked)"),
     )
@@ -245,17 +249,18 @@ function detectReviewPhase(lines: StyledLine[]): CheckboxRegion | null {
   while (li >= 0 && texts[li]!.trim() === "") li--;
   if (li < 0 || !texts[li]!.trim().startsWith(REVIEW_LEAD)) return null;
 
-  // 3. Pointer: exactly one `>` expected across the two action rows.
+  // 3. Pointer: exactly one review pointer (`>` on 1.3.x, `⟩` from 1.4.7) expected across
+  //    the two action rows.
   let pointer: "submit" | "cancel" | "other" | null = null;
-  const onSubmit = texts[si]!.includes(">");
-  const onCancel = texts[ci]!.includes(">");
+  const onSubmit = /[⟩>]/.test(texts[si]!);
+  const onCancel = /[⟩>]/.test(texts[ci]!);
   if (onSubmit && !onCancel) pointer = "submit";
   else if (onCancel && !onSubmit) pointer = "cancel";
   else if (onSubmit || onCancel) pointer = "other";
 
   const signature = texts
     .slice(li, ci + 1)
-    .map((t) => t.replaceAll(">", " "))
+    .map((t) => t.replaceAll(">", " ").replaceAll("⟩", " "))
     .join("\n");
   return {
     model: {
@@ -271,13 +276,15 @@ function detectReviewPhase(lines: StyledLine[]): CheckboxRegion | null {
   };
 }
 
-/** Parse a review action row (`> Submit answers` / `  Interrupt turn`), or null. */
+/** Parse a review action row (`⟩ Submit answers` / `  Interrupt turn`), or null. The pointer
+ *  is `>` on 1.3.x, `⟩` from 1.4.7 — both single UTF-16 units, so one slice takes either off. */
 function parseReviewRow(text: string): { which: "submit" | "cancel" } | null {
   const t = rstrip(text).trim();
-  const body = t.startsWith(">") ? t.slice(1).trim() : t;
+  const pointed = t.startsWith(">") || t.startsWith("⟩");
+  const body = pointed ? t.slice(1).trim() : t;
   // A bare (pointer-less) row must still be indented — a column-0 twin would be transcript, and the
-  // pointer check above already consumed the `>` form.
-  if (!t.startsWith(">") && !/^\s/.test(rstrip(text))) return null;
+  // pointer check above already consumed the pointed form.
+  if (!pointed && !/^\s/.test(rstrip(text))) return null;
   if (body === REVIEW_SUBMIT_LABEL) return { which: "submit" };
   if (body === REVIEW_CANCEL_LABEL) return { which: "cancel" };
   return null;

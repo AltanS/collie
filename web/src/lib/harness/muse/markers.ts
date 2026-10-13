@@ -212,10 +212,11 @@ export function locateTail(lines: StyledLine[]): MuseTail | null {
   return { rule, status, prompt, voice, popup };
 }
 
-// Either pointer glyph Muse paints: `›` on approval/question/checkbox rows,
-// ASCII `>` on trust/review rows. Matched as text — the red bold SGR moves per
-// responder (and the light responder's red differs from dark's).
-const POINTER = "[›>]";
+// The pointer glyphs Muse paints on approval/question/checkbox rows: `›` (U+203A) through
+// 1.3.x, `⟩` (U+27E9) from 1.4.7 — matched as a set so both generations lift. (Trust and review
+// rows have their own pointer forms, parsed where they are used.) Matched as text — the red bold
+// SGR moves per responder (and the light responder's red differs from dark's).
+const POINTER = "[›⟩>]";
 
 // A numbered option row: optional pointer, `N.`, the label. Matched on the LEFT-TRIMMED row:
 // the indentation carries no meaning (gutter + pointer-or-indent arrange 0–4 leading spaces — an
@@ -234,8 +235,9 @@ export function parseNumberedOption(text: string): { n: number; label: string } 
 
 // Trust's option form: `N` + two (or more) spaces + label, NO period — unlike
 // every other Muse dialog. The `\s{2,}` both requires the gap and excludes the
-// `N.` form (a period is not whitespace). Trimmed like the numbered form.
-const TRUST_OPTION = /^(?:>\s*)?(\d+)\s{2,}(\S.*)$/;
+// `N.` form (a period is not whitespace). Trimmed like the numbered form. The pointer is ASCII
+// `>` on 1.3.x; `⟩` rides along in case the 1.4.7 pointer swap reached this screen too.
+const TRUST_OPTION = /^(?:[⟩>]\s*)?(\d+)\s{2,}(\S.*)$/;
 
 /** Parse `> N  Label` / `N  Label` (trust's period-less form), or null. */
 export function parseTrustOption(text: string): { n: number; label: string } | null {
@@ -284,10 +286,17 @@ export function menuRowsContiguous<T extends { index: number }>(menu: T[]): bool
 // know. (Observed: one row on single-select, two on checkbox.)
 const MAX_FOOTER_ROWS = 3;
 
+// A multi-question dialog paints its progress (`1 of 2`) as its own row between the options and
+// the footer. It is page chrome, not footer — the run stops below it, so the lead match sees the
+// footer alone. A wrapped footer fragment can never take this shape (mid-phrase text), so the stop
+// only ever excludes the progress row.
+const PROGRESS_LINE = /^\d+ of \d+$/;
+
 /** The footer run directly above the tail chrome (`top` = voice ?? prompt ?? rule): its start
- *  and end rows plus the rows joined with a space (a wrap seam is a word space). Null when no
- *  non-blank run sits there, or when the run is unbounded above (it swallowed option rows through a
- *  torn frame — the join would match a fragment). Callers classify the join by their lead string. */
+ *  and end rows plus the rows joined with a space (a wrap seam is a word space). A multi-question
+ *  progress row (`N of M`) above the run bounds it instead of failing it. Null when no non-blank
+ *  run sits there, or when the run is unbounded above (it swallowed option rows through a torn
+ *  frame — the join would match a fragment). Callers classify the join by their lead string. */
 export function footerAboveChrome(
   texts: string[],
   top: number,
@@ -297,9 +306,11 @@ export function footerAboveChrome(
   if (fi < 0) return null;
   let start = fi;
   while (start - 1 >= 0 && texts[start - 1]!.trim() !== "" && fi - (start - 1) < MAX_FOOTER_ROWS) {
+    if (PROGRESS_LINE.test(texts[start - 1]!.trim())) break;
     start--;
   }
-  if (start - 1 >= 0 && texts[start - 1]!.trim() !== "") return null;
+  const above = start - 1 >= 0 ? texts[start - 1]!.trim() : "";
+  if (above !== "" && !PROGRESS_LINE.test(above)) return null;
   const joined = texts
     .slice(start, fi + 1)
     .map((t) => t.trim())
@@ -453,7 +464,7 @@ export function boxIsBare(lines: StyledLine[]): boolean {
 
 /**
  * True when the nearest non-blank row above `row` is a live `Request user input … — running`
- * header. The review screen's lift requires it: its own rows (`> Submit answers`, `Interrupt turn`)
+ * header. The review screen's lift requires it: its own rows (`⟩ Submit answers`, `Interrupt turn`)
  * are short, fixed and easy to quote, and the header's `— running` is what only a live dialog shows.
  */
 export function askHeaderDirectlyAbove(texts: string[], row: number): boolean {

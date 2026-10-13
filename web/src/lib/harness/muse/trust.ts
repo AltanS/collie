@@ -15,6 +15,8 @@
 //
 //     Use Up/Down or 1/2, then Enter. Esc quits.
 //
+// 1.4.7 paints the pointer as `⟩` (`⟩ 1  Trust and continue`).
+//
 // Everything here is a PURE function over `StyledLine[]`, driven entirely by the fixture corpus
 // (web/src/fixtures/panes/muse--*.txt). It never touches a pane or the network. Trust is pre-session
 // — no composer, no rules, no statusline — so the tail invariant is simply that the footer is the
@@ -131,7 +133,7 @@ export function detectTrustRegion(lines: StyledLine[]): TrustRegion | null {
   const signature = regionSignature(texts, questionAt, fi);
   const coreSignature = texts
     .slice(questionAt, fi + 1)
-    .map((t) => t.replaceAll(">", " "))
+    .map((t) => t.replaceAll(">", " ").replaceAll("⟩", " "))
     .join("\n");
   return { model: { question: TRUST_QUESTION, options, family: "trust", signature, coreSignature }, startLine: firstOpt };
 }

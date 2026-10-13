@@ -303,6 +303,83 @@ the popup. `Enter to view` alone names no key a message could start with, so
 that header stays ready. No capture holds the focused header; the tests
 rewrite the captured header row.
 
+## 6. Muse 1.4.7 — the `⟩` pointer, multi-question pages, approval hint (added 2026-10-12)
+
+Probed keystroke-by-keystroke against Muse Code 1.4.7 (1.4.7-R6101.1) in
+scratch Herdr panes (`/tmp/qarepro`, `/tmp/qatrust`, `/tmp/qaapprove`, the
+last with `--approval-mode untrusted --approval-judge off`). Fixtures:
+`muse--ask-multi-q1.txt` (page 1 of 2), `muse--ask-multi-q2.txt` (page 2),
+`muse--ask-multi-review.txt` (the confirm screen),
+`muse--ask-season.txt` (single question), `muse--ask-toppings-147.txt`
+(checkbox) + `muse--ask-toppings-147-moved.txt` (pointer on 2),
+`muse--approval-ls-147.txt` + `muse--approval-date-147.txt` (pointer on 2),
+`muse--trust-prompt-147.txt`.
+
+Three shape changes, all in the paint, none in the choreography. Every
+recipe in §§1–4 was re-probed below and holds; the detectors match both
+generations as a set (markers.ts `POINTER`), so the 1.3.0 corpus still
+lifts untouched.
+
+The pointer moved from `›` (U+203A) to `⟩` (U+27E9) on menu rows, and
+from ASCII `>` to `⟩` on review and trust rows. Every dialog:
+
+```
+◇ Request user input Color, Pet — running (1m 02s)
+
+  What is your favorite color?
+
+  ⟩ 1. Red                Red is your favorite color.
+    2. Green              Green is your favorite color.
+    3. Blue               Blue is your favorite color.
+    4. None of the above  Optionally, add details in notes (tab).
+
+  1 of 2
+  Enter to select · ↑/↓ to move · ←/→ to switch question · Tab for an optional note · Esc to interrupt
+```
+
+A multi-question call paints one page per question with an `N of M`
+progress row between the options and its own footer, which names `←/→ to
+switch question`. The single-question footer is byte-identical to 1.3.0
+(no progress row, no `←/→` clause). Each page answers like §2 (digit
+moves, Enter selects) except that Enter ADVANCES to the next page
+instead of submitting; the flow ends on the review screen, which lists
+one `Question: answer` summary per question under the same lead row,
+with `⟩ Submit answers` pointed. One answered flow confirmed
+`Structured user input answered — Color: Red; Pet: Cat`, a second
+`Color: Green; Pet: Cat`.
+
+Approvals append a static hint under the options:
+
+```
+⟩ 1. Allow this stage once (y)
+  2. Always allow in this workspace: ls ... (p)
+  3. Abort the entire command (esc)
+Change approval defaults in /permissions
+```
+
+The grammar steps over it by exact match (a rewording fails closed to
+raw); it stays outside the signature. Trust is the §4 shape with a `⟩`
+pointer and no blank run between the explainer and the options.
+
+Re-probed recipes (key sent → screen after):
+
+- Radio: `2` moved the pointer 1 → 2, nothing submitted; `Enter`
+  submitted Tea (`Structured user input answered — Drink: Tea`).
+- Multi pages: `2` on page 1 moved the pointer (`1 of 2` kept);
+  `Enter` advanced to page 2 (pointer reset to 1); `Left` switched
+  back with the answer kept (pointer on 2); `Enter` re-confirmed;
+  answering page 2 reached review (`Color: Green`, `Pet: Cat`);
+  `Enter` on `Submit answers` submitted.
+- Checkbox: `2` moved 1 → 2 (`0 checked`); `Enter` toggled Walnuts
+  (`[x]`, `1 checked`); `Down ×3` + `Enter` on the Submit row advanced
+  to review (`Nuts: Walnuts`).
+- Review: `1` was swallowed (no change); `Esc` went back to the
+  checkbox phase with the toggle kept; the answered flow ends on the
+  same banner shape as §2.
+- Approval: `3` alone aborted (dialog gone, turn continued).
+- Trust: `2` alone quit to the shell; `1` alone trusted and started
+  the session.
+
 ## Decisions the adapter rests on
 
 - **The guarded reply path.** Registering the adapter moves Muse panes off one-shot sends onto
