@@ -122,6 +122,10 @@ describe("ompModalOnScreen on the omp corpus", () => {
     expect(screen).not.toMatch(/\besc\b|⎋/i);
   });
 
+  it("the derived model picker cohort is not empty, so a prefix typo cannot make it vanish", () => {
+    expect(SWITCH_WITH_A_WAY_OUT.length).toBeGreaterThan(0);
+  });
+
   it("covers every omp capture exactly once", () => {
     expect(
       [...MODALS_WITH_A_WAY_OUT, ...NO_WAY_OUT, ...OMP_WITHOUT_A_MODAL.filter((f) => !NO_WAY_OUT.includes(f))].toSorted(),
@@ -142,6 +146,7 @@ describe("ompModalOnScreen on other harnesses' captures", () => {
   // of its modals and `Esc to close` on some, and neither may read as omp's. The listed spellings are
   // the whole list.
   it("is false on every capture that is not omp's", () => {
+    expect(FOREIGN.length).toBeGreaterThan(300);
     const hits = FOREIGN.filter((name) => ompModalOnScreen(fixtureLines(name)));
     expect(hits).toEqual([]);
   });

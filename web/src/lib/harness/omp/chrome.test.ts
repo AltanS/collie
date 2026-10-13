@@ -264,6 +264,36 @@ describe("stripChrome", () => {
     },
   );
 
+  // The nine omp 18.10 Ask captures end with a file newline, which reads as one trailing blank row, and
+  // dropping that row is chrome stripping, not a bug: the same-reference contract is for captures whose
+  // last row is already content.
+  const ENDS_IN_CONTENT = NON_BOX_COMPOSER_FIXTURES.filter(
+    (name) => lineText(fixtureLines(name).at(-1)!).trim() !== "",
+  );
+
+  it.each(ENDS_IN_CONTENT)(
+    "%s: returns the SAME reference when there is no chrome to strip",
+    (name) => {
+      // The conservatism contract: callers may treat `result === lines` as "nothing was removed".
+      // Every modal capture qualifies — no composer box at the tail, and no trailing blank run
+      // either, so not a single line is dropped.
+      const original = fixtureLines(name);
+      expect(stripChrome(original)).toBe(original);
+    },
+  );
+
+  it("returns the SAME reference for an empty buffer", () => {
+    // The contract's degenerate end. Nothing can have been removed from `[]`, so `result === lines`
+    // has to hold there too — it used to hand back a fresh array via `lines.slice(0, 0)`, quietly
+    // telling every caller that chrome had been stripped off an empty buffer.
+    const empty: StyledLine[] = [];
+    expect(stripChrome(empty)).toBe(empty);
+    // An all-blank buffer really does lose every row, so that one must NOT be the same reference.
+    const blanks = lines("\n\n\n");
+    expect(stripChrome(blanks)).not.toBe(blanks);
+    expect(stripChrome(blanks)).toHaveLength(0);
+  });
+
   it("never removes content above the box", () => {
     const buffer = lines(["● Wrote the file", "  ⎿  done", "", ...boxRows("")].join("\n"));
     expect(stripChrome(buffer).map(lineText)).toEqual(["● Wrote the file", "  ⎿  done"]);

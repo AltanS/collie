@@ -1,8 +1,107 @@
-// OMP Ask single-select questions and batch review; captures/key evidence: ASK_NOTES.md.
-// Questions use guarded pointer walks. Review arrows SCROLL; only its explicit Submit commits.
-// Ctrl+O expand exposes only Expand/Cancel until the expanded screen is read.
-// Batch identity is style-only: bind the styled region and include the active tab in coreSignature.
-// Unknown layouts retain the raw dialog/Keys controls; no hidden content or key recipes are inferred.
+// The omp `ask` tool's SINGLE-SELECT dialog grammar (.adr/0077), the second omp screen this adapter
+// lifts. The `ask` tool blocks the agent until a human answers, which is why it is worth a card.
+//
+// The screen, as omp 18.4.10 draws it (`omp--v18-4-ask-single.txt`; pi-tui `overlays/ask-dialog.ts`):
+//
+//     ╭─ Ask ───────────────────────────────────────────────╮     the panel title, exactly `Ask`
+//     │ Pick a color                                        │     the question, one to four rows
+//     ├─────────────────────────────────────────────────────┤
+//     │ ❯ ○ Red                                             │     an option: pointer column, radio, label
+//     │   ○ Green                                           │
+//     │   ○ Blue                                            │
+//     │   ○ Other (type your own)                           │     always the last row, omp adds it
+//     │                                                     │     blank rows pad the body to its height
+//     ├─────────────────────────────────────────────────────┤
+//     │ ⏎ select · n note · ↑/↓ move · ⎋ cancel             │     the footer
+//     ╰─────────────────────────────────────────────────────╯
+//
+// THE FOOTER IS THE CONTRACT. omp builds it from what the dialog will do with a key, so this grammar
+// reads it whole and accepts exactly four segments, `<enter> select`, `n note`, `↑/↓ move`,
+// `<esc> cancel`, in one of three keycap dialects (the PRESETS below). That one comparison carries
+// three facts at once:
+//   * a SINGLE-select question, because a multi-select one prints `␣ toggle` (and, before omp 18.4,
+//     `Space/Enter toggle`) in the first segment;
+//   * a ONE-question dialog, because several questions add a `⇥/←/→` tab segment and a tab strip, and
+//     there Enter advances to the next question instead of answering;
+//   * Up and Down are the keys that move the pointer, because omp prints the user's bound keys there.
+// A footer with a scroll indicator, a `ctrl+o expand` hint, a countdown, or anything else this grammar
+// was not built against is a different footer, and the screen stays raw with the Escape card over it.
+//
+// WHAT A TAP SENDS. ADR 0055's walk: `Down` or `Up` from the pointed row to the tapped one, then `Enter`,
+// a key the footer printed. The action layer walks, verifies, then commits (ADR 0080): the arrows go
+// first, bound to the tapped screen, and `Enter` goes only bound to a fresh read that shows the pointer
+// on the tapped row. In a one-question dialog Enter on an option answers the
+// question and closes the dialog (`#commitRow` → `#advanceAfterQuestion` → `#finishSubmit` in 18.4.10).
+// Enter on `Other (type your own)` opens the answer editor instead, which omp/answer-editor.ts reads as
+// an input, so the phone's composer types the answer there. That row is offered like any other, because
+// the next screen is one the phone already handles and the row's own label says what it does. The card's
+// last row is the footer's way out in its own words (`Cancel`), sending `Escape`. No digit anywhere:
+// the screen printed none, and the dialog ignores digits.
+//
+// NOT MODELLED. `n note` opens the same editor for a note on the pointed row; `PromptModel` has no field
+// for a footer action, so it stays off the card, and the Keys drawer reaches it. A row that already
+// carries a note shows `  ✎ note` after its label (`omp--select-menu-noted.txt`). On the card that
+// mark is the option's description, or leads it as `✎ note · <description>` when omp prints one.
+//
+// OPTION DESCRIPTIONS (#372). An option the agent gave a `description` carries it on rows of its
+// own under the label, six columns in (two past the label), wrapped at that indent; the 18.4.10
+// source draws them as well, and `omp--v18-8-ask-single-described.txt` captures them on 18.8.0:
+//
+//     │ ❯ ○ Staging (Recommended)                           │
+//     │       Deploy to the staging cluster first, run the  │     a description, wrapped
+//     │       full smoke suite against it, …                │
+//     │   ○ Production                                      │
+//     │       Ship straight to production.                  │
+//
+// The rows join, one space apart, into that option's `description` on the card. omp draws every
+// option's description wherever the pointer is, so a walk moves the pointer and nothing else
+// (`omp--v18-8-ask-single-described-moved.txt`, 18.8.7). omp shows two rows of a description and adds
+// `<key> expand` to the footer when one runs longer, a footer this grammar declines, so a lifted
+// description is never cut short.
+//
+// FAIL CLOSED. Every piece below is required, and any one missing returns null:
+//   * the bottom border is the last non-blank row, the footer is the row above it, a divider above that;
+//   * the footer's four segments are exactly one preset's;
+//   * the body is option rows, each followed by its description rows, then blank rows, nothing else:
+//     no wrapped label, no preview, no scrollbar cell (omp can print all three; none is captured, so
+//     none is guessed);
+//   * a description row is exactly six columns in, under an option or that option's previous
+//     description row, never under `Other` (omp prints an answer typed earlier there, at the same
+//     indent), never behind a `│` (an option's preview, at the same indent), and never opening with
+//     the preset's radio or pointer, the glyphs of an option row;
+//   * every option row carries that preset's unselected radio, the last one reads exactly
+//     `Other (type your own)`, and no other row does;
+//   * exactly one pointer, in that preset's glyph;
+//   * a divider, one to four question rows and the title `╭─ Ask ─╮` above the body, in that order.
+//     The question rows are free text and are checked only for the box's left side, as resume.ts checks
+//     a session's first-prompt row: their bytes ride in the signature, and nothing reads a key off them;
+//   * a region short enough for the bridge to bind (32000 characters, as resume.ts).
+//
+// THE MULTI-SELECT DIALOG IS NOT LIFTED, on purpose (.adr/0077): its toggle is an arrow walk then Space,
+// a recipe no shared model carries, and its Enter changed meaning between omp versions. It keeps the
+// raw mirror and the Escape card. See ASK_NOTES.md.
+//
+// omp 18.10 (`omp--v18-10-ask-*.txt`, ASK_NOTES.md). Where the three sections below differ from the
+// text above, they are current: the footer may now end `Alt+H hide` and `Ctrl+O expand`/`collapse`.
+//
+// BATCHED QUESTIONS. A call with several single-select questions adds the `⇥/←/→ question` footer
+// segment and a tab strip whose active tab is marked by background and bold ONLY. The grammar reads
+// the strip, binds the active tab's index into `coreSignature` and binds the styled region, so two
+// steps with identical words are not mistaken for one another. Enter saves the answer and advances; a
+// revisited step may show one saved `◉` answer. Unknown controls, scroll indicators and anything the
+// strip cannot place still decline.
+//
+// THE REVIEW SCREEN. After the last question omp draws a review: one numbered answer per tab, the
+// Submit tab active and a static `❯ Submit` row, under the footer `⏎ submit · ↑/↓ scroll · ⎋ cancel`.
+// Its arrows SCROLL, they do not move a pointer, so Submit sends Enter alone. It is read only when
+// every answer is present and nothing is clipped or warned about; the numbers are never digit keys.
+//
+// THE `Ctrl+O expand` STATE. omp cuts a question past four rows and a description past two, and says
+// `Ctrl+O expand`. In that cut state the card offers only Expand (that key, alone) and Cancel, and no
+// answer. The answer buttons appear once the screen shows `Ctrl+O collapse`, which proves the whole
+// text is on screen.
+//
+// Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
 import type { StyledLine } from "../../blocks";
 import { canonicalStyledLines, encodeStyledRegion } from "../../styled-region";

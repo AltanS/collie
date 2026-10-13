@@ -200,5 +200,6 @@ the agent echoed the custom text and both choices. No component or shared action
 `e2e/omp-ask-chat.spec.ts` replays the real captures through Chat: the unmodified parser fails
 to draw single and batch controls; the corrected parser completes their guarded key sequences.
 Unit cases also reject a style-only successor step, ambiguous tabs and incomplete reviews.
+Batches and the review are lifted only for the default glyph preset.
 Not live-probed: a desk/phone race, non-default symbol presets for batches, multi-select toggles,
 scrolling lists or timeout dialogs. These are not claimed as supported by this change.

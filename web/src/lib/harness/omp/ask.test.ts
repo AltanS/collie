@@ -622,6 +622,7 @@ describe("the grammar claims nothing else in the corpus", () => {
 
   it("lifts only the supported Ask states in the complete corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
+    expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectAskSelect(load(name)) !== null);
     expect(lifted.toSorted()).toEqual([...CLAIMED].toSorted());
   });
