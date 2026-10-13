@@ -244,6 +244,23 @@ describe("the controls each state offers", () => {
     expect(spies.back).toHaveBeenCalledOnce();
   });
 
+  it("Done: What changed in <version> opens the Updates page, where the notes are (1.21.1)", async () => {
+    const { spies } = mount({ run: run("done", { settledAt: NOW }), bundle: { id: "b", version: TO } });
+    await userEvent.click(screen.getByRole("button", { name: `What changed in ${TO}` }));
+    expect(spies.back).toHaveBeenCalledOnce();
+    expect(spies.openUpdates).toHaveBeenCalledOnce();
+  });
+
+  it("Done with a member left behind: the retry and a short What changed share the row (1.21.1)", async () => {
+    const { spies } = mount({
+      run: run("done", { peers: [leg("minibuch", "unreachable", { reason: "not reached" })], settledAt: NOW }),
+      bundle: { id: "b", version: TO },
+    });
+    expect(screen.getByRole("button", { name: "Try minibuch again" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "What changed" }));
+    expect(spies.openUpdates).toHaveBeenCalledOnce();
+  });
+
   it("Rolled back: Back, Try again and Show log", async () => {
     const { spies } = mount({ run: run("rolled-back", { reason: "gate" }) });
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));

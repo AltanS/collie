@@ -172,6 +172,7 @@ import {
 } from "./crew/trust-store.ts";
 import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush } from "./crew/warrant.ts";
 import { Push } from "./push.ts";
+import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
 import { buildId, startServer } from "./server.ts";
 import {
@@ -183,6 +184,7 @@ import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import {
   bridgeStampSync,
+  githubReleaseUrl,
   mirrorValue,
   releaseFetchers,
   UpdateMonitor,
@@ -902,6 +904,9 @@ const updateMonitor = new UpdateMonitor({
   // also what makes a bridge restarted BY an update resume reporting that run at startup instead of
   // saying nothing happened.
   runState: () => readUpdateRun(cfg.stateDir),
+  // What this version changed (1.21.1), from the CHANGELOG.md that ships beside package.json in every
+  // checkout and payload. Read on the first Updates page open, once; no network.
+  currentNotes: currentNotesReader(rootDir, currentVersion, githubReleaseUrl(updateRepo, currentVersion)),
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
   notify: (versions, linkChange, urgent) =>
     void push.send({

@@ -252,6 +252,64 @@ describe("update card — what it says before anything happens", () => {
   });
 });
 
+// ── WHAT THE RELEASES CHANGED (1.21.1) ─────────────────────────────────────────────────────────
+// Altan, 2026-10-13: "I also thought that we'd have release notes by now for new updates." The card
+// listed version numbers and nothing else, because nothing upstream carried notes to it.
+describe("release notes on the card", () => {
+  const notes = {
+    current: {
+      version: "1.3.0",
+      url: "https://github.com/AltanS/collie/releases/tag/v1.3.0",
+      groups: [{ name: "Fixed", leads: ["The red row closes when you tap its ✕."] }],
+    },
+    offered: [
+      {
+        version: "1.3.1",
+        url: "https://github.com/AltanS/collie/releases/tag/v1.3.1",
+        groups: [{ name: "Fixed", leads: ["A patch line."] }],
+      },
+      {
+        version: "1.4.0",
+        url: "https://github.com/AltanS/collie/releases/tag/v1.4.0",
+        groups: [
+          { name: "Added", leads: ["The Updates page lists what an update changes."] },
+          { name: "Fixed", leads: ["`collie doctor` names the check."] },
+        ],
+      },
+    ],
+  };
+  const serveNotes = (update: UpdateInfo) =>
+    server.use(http.get("/api/update/check", () => HttpResponse.json({ ...update, preflight: GREEN, releaseNotes: notes })));
+
+  it("names what the offered update brings, newest release first, before the confirm", async () => {
+    serveNotes(info());
+    renderCard(info());
+    expect(await screen.findByText("What's new in 1.4.0")).toBeInTheDocument();
+    expect(screen.getByText("The Updates page lists what an update changes.")).toBeInTheDocument();
+    expect(screen.getByText("A patch line.")).toBeInTheDocument();
+    // A lead's backticks render as code, not as backticks.
+    expect(screen.getByText("collie doctor").tagName).toBe("CODE");
+    // Notes about the version already installed are not notes about the update.
+    expect(screen.queryByText("The red row closes when you tap its ✕.")).not.toBeInTheDocument();
+    const pages = screen.getAllByRole("link", { name: "Release page" });
+    expect(pages[0]).toHaveAttribute("href", "https://github.com/AltanS/collie/releases/tag/v1.4.0");
+  });
+
+  it("after the update, names what the running version changed", async () => {
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    serveNotes(current);
+    renderCard(current);
+    expect(await screen.findByText("What changed in 1.3.0")).toBeInTheDocument();
+    expect(screen.getByText("The red row closes when you tap its ✕.")).toBeInTheDocument();
+  });
+
+  it("an older bridge sends no notes, and the card grows no section", async () => {
+    renderCard(info());
+    expect(await screen.findByText(/folds in 1\.3\.1, 1\.4\.0/)).toBeInTheDocument();
+    expect(screen.queryByText(/What's new in/)).not.toBeInTheDocument();
+  });
+});
+
 describe("Details fold — noise gone when there is nothing to do, open when something needs a look", () => {
   it("up to date: the done head text shows, and Preflight is collapsed behind a '6 checks' summary", async () => {
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });

@@ -21,6 +21,7 @@ import {
   useUpdateRun,
 } from "@/lib/update-run-store";
 import { noteUpdateRun } from "@/lib/self-update";
+import { leadPieces, notesView, type NotesView } from "@/lib/update-notes";
 import {
   crewAction,
   crewActionLabel,
@@ -153,6 +154,9 @@ export function UpdateCard() {
   // THE URGENT MARKER (ADR 0046), or null. Read exactly as every other field on this card is read:
   // off the snapshot first, off the card's own check second, and never re-derived here.
   const urgent = snapshot?.urgent ?? check?.urgent ?? null;
+  // WHAT THE RELEASES CHANGED (1.21.1). Off the card's own check only: the snapshot never carries
+  // notes. The offer's notes while one is waiting, the running version's otherwise.
+  const notes = notesView(check?.releaseNotes, releaseAvailable);
   const preflight = check?.preflight ?? null;
   const runState = run?.state;
   const running = runInFlight(run);
@@ -549,6 +553,10 @@ export function UpdateCard() {
         ) : null}
       </Collapse>
 
+      {/* WHAT THE RELEASES CHANGED (1.21.1). Async like the sections above it, so it arrives in a
+          `Collapse` below the action row and never moves the button. */}
+      <Collapse open={notes !== null}>{notes !== null ? <NotesSection notes={notes} /> : null}</Collapse>
+
       {/* The preflight in full, under the row its one-line summary already reports into. */}
       <Collapse open={preflight !== null && preflight.checks.length > 0}>
         {preflight !== null && preflight.checks.length > 0 ? (
@@ -567,6 +575,81 @@ export function UpdateCard() {
  * that check already resolved, and its absence costs a command and nothing else.
  */
 const PACKAGE_CHECK_ID = "package";
+
+/**
+ * The release notes: each bullet's bold lead, under its group, per release. The leads are the
+ * release's own English and are quoted, not translated, like the urgent sentence above. The group
+ * names and the heading are this app's words and are translated. Open by default: the operator came
+ * to this page to read what an update brings, or what the one just taken changed.
+ */
+function NotesSection({ notes }: { notes: NotesView }) {
+  const [open, setOpen] = useState(true);
+  const several = notes.entries.length > 1;
+  const label =
+    notes.kind === "offered"
+      ? t("settings.updateCard.notes.offered", { version: notes.version })
+      : t("settings.updateCard.notes.current", { version: notes.version });
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <SectionHeader label={label} level={3} open={open} onToggle={setOpen} controls="update-notes-body" />
+      <Collapse open={open}>
+        <div id="update-notes-body" className="mt-1.5 space-y-3">
+          {notes.entries.map((entry) => (
+            <section key={entry.version} aria-label={several ? entry.version : undefined} className="space-y-2">
+              {several && <p className="text-xs font-medium">{entry.version}</p>}
+              {entry.groups.map((group) => (
+                <div key={group.name}>
+                  <p className="text-xs text-muted-foreground">{groupName(group.name)}</p>
+                  <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs">
+                    {group.leads.map((lead, i) => (
+                      <li key={`${group.name}-${i}`}>
+                        {leadPieces(lead).map((piece, j) =>
+                          piece.code ? (
+                            <code key={j} className="font-mono">
+                              {piece.text}
+                            </code>
+                          ) : (
+                            <span key={j}>{piece.text}</span>
+                          ),
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <a
+                href={entry.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-xs text-muted-foreground underline underline-offset-2"
+              >
+                {t("settings.updateCard.notes.page")}
+              </a>
+            </section>
+          ))}
+        </div>
+      </Collapse>
+    </div>
+  );
+}
+
+/** A CHANGELOG group's name in this locale. A name this build does not know is shown as sent. */
+function groupName(name: string): string {
+  switch (name) {
+    case "Added":
+      return t("settings.updateCard.notes.group.Added");
+    case "Changed":
+      return t("settings.updateCard.notes.group.Changed");
+    case "Fixed":
+      return t("settings.updateCard.notes.group.Fixed");
+    case "Packaging":
+      return t("settings.updateCard.notes.group.Packaging");
+    case "Docs":
+      return t("settings.updateCard.notes.group.Docs");
+    default:
+      return name;
+  }
+}
 
 /**
  * The peer lines. Read-only by construction: this function renders no interactive element at all,

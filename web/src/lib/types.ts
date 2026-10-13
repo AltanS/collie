@@ -935,8 +935,37 @@ export interface PreflightReport {
  * REFUSES an update rather than allowing one. `crew` is optional because a bridge older than the
  * crew-wide check omits it; that reads the same as "no peer rows" on the phone.
  */
+/** One CHANGELOG group of a release, as its bullets' bold leads. The leads are the release's own
+ *  English, quoted, never translated; `name` is one of Added, Changed, Fixed, Packaging, Docs. */
+export interface ReleaseNotesGroup {
+  name: string;
+  leads: string[];
+}
+
+/** What one release changed (1.21.1). `url` is its GitHub release page. */
+export interface ReleaseNotes {
+  version: string;
+  url: string;
+  groups: ReleaseNotesGroup[];
+}
+
+/** `GET /api/update/check`'s `releaseNotes` (1.21.1). */
+export interface UpdateNotes {
+  /** The running version's notes, or null when the host could not read them. */
+  current: ReleaseNotes | null;
+  /** Each release in the delta that published notes, oldest first, like `newerVersions`. Releases
+   *  before 1.21.1 published none, so a delta of only those lists nothing. */
+  offered: ReleaseNotes[];
+}
+
 export interface UpdateCheckResponse extends UpdateInfo {
   preflight: PreflightReport | null;
+  /**
+   * What the releases changed (1.21.1). Only on this route, never on the snapshot: a list of
+   * sentences is the Updates page's, and the snapshot is polled by every open client. Absent on an
+   * older bridge, which reads as nothing to list.
+   */
+  releaseNotes?: UpdateNotes;
   /**
    * Every peer's version and preflight (M16/03). Absent on a solo install, and absent on a bridge
    * that predates the crew-wide check. Both read as "no peer rows", which is the same screen.

@@ -2665,8 +2665,12 @@ export function startServer(opts: {
         // follows the same rule: `[]` on a solo instance and on a peer, never absent. It is composed
         // from what the sweep BANKED (`CrewLead.updateRows`) and dials nobody — `status-wire.ts`'s
         // purity argument, one route over.
+        // WHAT THE RELEASES CHANGED (1.21.1), here and not on the snapshot: a list of sentences is
+        // the Updates page's business, and the snapshot is polled by every open client. No request
+        // of its own (see `UpdateMonitor.notes`).
+        const releaseNotes = await updateMonitor.notes();
         return json(
-          { ...updateStatusWithPeers(), preflight: report, crew: opts.crewLead?.updateRows() ?? [] },
+          { ...updateStatusWithPeers(), preflight: report, crew: opts.crewLead?.updateRows() ?? [], releaseNotes },
           req.headers.get("accept-encoding"),
         );
       }

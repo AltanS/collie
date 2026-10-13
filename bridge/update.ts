@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 import type { Environment } from "./config-source.ts";
 import { herdrActionCommand } from "./front-door.ts";
+import type { ReleaseNotes, ReleaseNotesGroup } from "./release-notes.ts";
 import type { CrewMode, UpdateLinkChange, UpdateStatus } from "./types.ts";
 import type { UpdateRun } from "./update-run.ts";
 
@@ -682,6 +683,57 @@ export interface ReleaseReading {
    * courtesy on the cadence, never a gate, so nothing here may turn a bad document into an error.
    */
   urgent?: { reason: string };
+  /**
+   * What the release changed: its CHANGELOG bullets' bold leads, by group (1.21.1). Absent on every
+   * release before 1.21.1 and on a field that does not read as notes, which the Updates page shows
+   * as no list. A courtesy, like `urgent`: nothing here may turn a document into an error.
+   */
+  notes?: ReleaseNotesGroup[];
+}
+
+/** The most leads one group carries on the wire. */
+export const NOTES_LEADS_MAX = 40;
+/** The longest one lead may be. A bold lead is one sentence; anything longer is cut. */
+export const NOTES_LEAD_CHARS = 240;
+
+/**
+ * The five CHANGELOG groups, in the release page's order. A copy of `GROUPS` in
+ * `scripts/release-notes.ts`, kept here because this file sits on the CLI's bare-checkout path and a
+ * script with a shebang may not be imported there. `release-notes.test.ts` pins the two equal.
+ */
+export const NOTES_GROUPS: readonly string[] = ["Added", "Changed", "Fixed", "Packaging", "Docs"];
+
+const KNOWN_GROUPS: ReadonlySet<string> = new Set<string>(NOTES_GROUPS);
+
+/** Cut a lead at the cap, on a word boundary when there is one, and mark the cut. */
+function capLead(lead: string): string {
+  if (lead.length <= NOTES_LEAD_CHARS) return lead;
+  const cut = lead.slice(0, NOTES_LEAD_CHARS);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * The `notes` field of a release's sidecar, read defensively. Null for anything that is not a list
+ * of `{ name, leads }`; a malformed group or lead is dropped and the rest is kept. Groups come back
+ * in the release page's order, so two readers of one release never disagree about it.
+ */
+export function parseNotesField(data: JsonValue | undefined): ReleaseNotesGroup[] | null {
+  if (!Array.isArray(data)) return null;
+  const groups: ReleaseNotesGroup[] = [];
+  for (const entry of data) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const { name, leads } = entry;
+    if (typeof name !== "string" || !KNOWN_GROUPS.has(name)) continue;
+    if (groups.some((g) => g.name === name)) continue;
+    if (!Array.isArray(leads)) continue;
+    const kept = leads
+      .flatMap((lead) => (typeof lead === "string" && lead.trim() !== "" ? [capLead(lead.trim())] : []))
+      .slice(0, NOTES_LEADS_MAX);
+    if (kept.length > 0) groups.push({ name, leads: kept });
+  }
+  groups.sort((a, b) => NOTES_GROUPS.indexOf(a.name) - NOTES_GROUPS.indexOf(b.name));
+  return groups.length === 0 ? null : groups;
 }
 
 /** The newest urgent release in a delta, and why — the shape the snapshot carries. */
@@ -713,6 +765,9 @@ export function parseReleaseReading(data: JsonValue): ReleaseReading | null {
     const reason = urgent.reason;
     if (typeof reason === "string" && reason.trim() !== "") reading.urgent = { reason: reason.trim() };
   }
+  // The notes, on the same rule: read last, can only add, and a bad field is an ordinary release.
+  const notes = parseNotesField(data.notes);
+  if (notes !== null) reading.notes = notes;
   return reading;
 }
 
@@ -1128,6 +1183,19 @@ export interface UpdateMonitorDeps {
    * update, the app goes blank, and it comes back claiming there was no update.
    */
   runState: () => UpdateRun | null;
+  /**
+   * The running version's own notes, from the CHANGELOG beside it (1.21.1). Optional: a monitor
+   * without it reports no current notes, which the Updates page shows as no list.
+   */
+  currentNotes?: () => Promise<ReleaseNotes | null>;
+}
+
+/** What `GET /api/update/check` carries about what releases changed (1.21.1). */
+export interface UpdateNotes {
+  /** The running version's notes, or null when its CHANGELOG section could not be read. */
+  current: ReleaseNotes | null;
+  /** Every release in the delta whose sidecar carried notes, oldest first, like `newerVersions`. */
+  offered: ReleaseNotes[];
 }
 
 export class UpdateMonitor {
@@ -1252,6 +1320,21 @@ export class UpdateMonitor {
     // not change. A failure is a fact about this minute, so it is not remembered.
     if (fetched !== null) this.readings.set(version, fetched);
     return fetched === "absent" ? null : fetched;
+  }
+
+  /**
+   * What the releases changed, for the Updates page (1.21.1). NO REQUEST OF ITS OWN: the offered
+   * notes are the ones the last check already read (the newest {@link URGENT_READING_CAP} of the
+   * delta, for the urgent marker), and the current notes come off this install's own disk.
+   */
+  async notes(): Promise<UpdateNotes> {
+    const offered = this.newerVersions.flatMap((version) => {
+      const held = this.readings.get(version);
+      if (held === undefined || held === "absent" || held.notes === undefined) return [];
+      return [{ version, url: githubReleaseUrl(this.deps.repo, version), groups: held.notes }];
+    });
+    const current = this.deps.currentNotes === undefined ? null : await this.deps.currentNotes();
+    return { current, offered };
   }
 
   /** The newest urgent release among the newest {@link URGENT_READING_CAP} of `versions`, or null. */

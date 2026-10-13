@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The red "Could not update" row closes when you tap its ✕.** After a crew update that left a machine behind, for example one that was offline, the ✕ recorded the close but the row stayed on every screen. It now goes away and stays away. A later run that fails again, or a newer version, shows it again. A machine that was not reached still counts as "Could not update", because the run is over and nothing is still trying. The Updates page offers "Try <name> again".
+- **The Updates page shows release notes.** The notes reached the GitHub release page but never the app, so the page listed only version numbers. Each release now publishes its notes beside its version, and before you update the page lists what the new version brings, by Added, Changed and Fixed, with a link to the release page. After an update it lists what the running version changed, read from the changelog that ships with it, and the update screen's last step has a "What changed in <version>" button. Notes appear for releases from 1.21.1 on, and no new network request is made for them.
 
 ## [1.21.0] - 2026-10-13
 
