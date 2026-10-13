@@ -3,6 +3,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { PaneRegistry } from "../pi-durable/index.ts";
+import { askIdFor, createCore } from "../sdk/core/index.ts";
 import { api, type Dial } from "./client.ts";
 import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, pane, tmp, waitFor } from "./util.ts";
 
@@ -117,5 +119,26 @@ describe("restart with an open ask", () => {
     // a different request id with the same text is a new input
     expect((await api.send(d, main, "ping", { requestId: "pi-dedupe-2" })).status).toBe(200);
     await waitFor("second ping", async () => (await users("ping")) === 2);
+  });
+});
+
+describe("the re-raise window (the start path of app.ts and of the Cloudflare member)", () => {
+  test("a waiting call whose hook does not run again: the start goes on after the window and logs once; a late raise keeps its id", async () => {
+    const core = createCore({ hostName: "wake" });
+    const p = core.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "pi" });
+    const panes = new PaneRegistry();
+    panes.toolStatus("call-1", "write_note", "running"); // replayed from storage before resume(), no result yet
+    const logs: string[] = [];
+    await panes.reRaised(new Set(["write_note"]), 50, (line) => logs.push(line));
+    core.ready();
+    expect(logs.length).toBe(1);
+    expect(logs[0]).toContain("call-1");
+    const late = (await api.snapshot({ handler: (r: Request) => core.handle(r), version: 1 })).body.panes[0]!;
+    expect(late.openAsks).toEqual([]);
+    void p.ask({ kind: "permission", toolCallId: "call-1", itemId: "call-1", title: "write_note", options: [{ id: "allow", label: "Allow", effect: "allow" }] });
+    panes.asked("call-1"); // after the window: nothing waits for it any more, and nothing throws
+    const listed = (await api.snapshot({ handler: (r: Request) => core.handle(r), version: 1 })).body.panes[0]!;
+    expect(listed.openAsks.map((a) => a.id)).toEqual([askIdFor("p", "call-1")]);
+    expect(logs.length).toBe(1);
   });
 });

@@ -7,7 +7,8 @@
 import { env as bindings, exports } from "cloudflare:workers";
 import { abortAllDurableObjects, listDurableObjectIds, runInDurableObject } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
-import { HttpError, Receipts } from "../../durable-member/sdk/core/index.ts";
+import { PaneRegistry } from "../../durable-member/pi-durable/index.ts";
+import { askIdFor, createCore, HttpError, Receipts } from "../../durable-member/sdk/core/index.ts";
 import type { Env } from "../src/env.ts";
 import { DROPPED_KEPT, RECEIPTS_KEPT, SqliteReceiptStore } from "../src/receipts.ts";
 import { tokenAccepted } from "../src/token.ts";
@@ -220,6 +221,76 @@ describe("a restart", () => {
     expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken", replayed: true });
     await waitFor("the ticket to finish", async () => (await paneOf(paneId)).state === "idle");
     expect((await notes()).length).toBe(notesBefore + 1); // the tool ran once
+  });
+});
+
+/**
+ * The start path of member.ts after a wake, without Pi: the registry has seen a risky call with no result (the
+ * mapper replays it from storage before resume()), and the harness then raises its ask, late, or never.
+ */
+describe("a wake whose harness is late", () => {
+  const risky = new Set(["write_note"]);
+  const options = [
+    { id: "allow", label: "Allow", effect: "allow" as const },
+    { id: "deny", label: "Deny", effect: "deny" as const },
+  ];
+  const wake = () => {
+    const core = createCore({ hostName: "wake", allowAlways: false });
+    const pane = core.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "pi" });
+    const panes = new PaneRegistry();
+    const raise = (callId: string) => {
+      const answer = pane.ask({ kind: "permission", toolCallId: callId, itemId: callId, title: "write_note wants to run", options });
+      panes.asked(callId);
+      return answer;
+    };
+    const read = async (path: string, init: RequestInit = {}) => {
+      const res = await core.handle(new Request(`https://member.example/session/v1${path}`, { ...init, headers: { "x-collie-session": "1", "content-type": "application/json" } }));
+      return { status: res.status, body: (await res.json()) as any };
+    };
+    return { core, panes, raise, read };
+  };
+
+  test("the harness raises nothing: the start goes ready when the window ends, logs once, and no request waits; a late raise is listed under its old id", async () => {
+    const { core, panes, raise, read } = wake();
+    panes.toolStatus("call-1", "write_note", "running");
+    const logs: string[] = [];
+    const window = panes.reRaised(risky, 100, (line) => logs.push(line));
+    // While the start waits, hello answers at once and says not ready: nothing queues behind the wait.
+    expect((await read("/hello")).body.ready).toBe(false);
+    await window; // resolves: the harness raised nothing, and the window is the bound
+    core.ready();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain("within 100 ms");
+    expect(logs[0]).toContain("call-1");
+    const first = (await read("/snapshot")).body.panes[0];
+    expect([first.state, first.openAsks]).toEqual(["idle", []]);
+
+    // The hook runs after ready: the ask appears under the id it had before the wake, and an answer to it lands.
+    const answer = raise("call-1");
+    const listed = (await read("/snapshot")).body.panes[0];
+    expect(listed.state).toBe("waiting");
+    expect(listed.openAsks.map((a: { id: string; revision: number }) => [a.id, a.revision])).toEqual([[askIdFor("p", "call-1"), 1]]);
+    const tap = { requestId: "late-tap", askId: askIdFor("p", "call-1"), revision: 1, answer: { optionId: "allow" } };
+    expect((await read("/pane/p/answer", { method: "POST", body: JSON.stringify(tap) })).body).toEqual({ result: "taken" });
+    expect(await answer).toEqual({ optionId: "allow" });
+    expect(logs).toHaveLength(1); // once per start, not once per late ask
+  });
+
+  test("the harness raises inside the window: the start waits for it, logs nothing, and the first snapshot lists the ask", async () => {
+    const { core, panes, raise, read } = wake();
+    panes.toolStatus("call-2", "write_note", "running");
+    panes.toolStatus("call-3", "write_note", "running");
+    const logs: string[] = [];
+    const window = panes.reRaised(risky, 5000, (line) => logs.push(line));
+    setTimeout(() => {
+      void raise("call-2");
+      panes.toolStatus("call-3", "write_note", "done"); // a call that ended while the object slept holds nothing back
+    }, 10);
+    await window;
+    core.ready();
+    expect(logs).toEqual([]);
+    const first = (await read("/snapshot")).body.panes[0];
+    expect(first.openAsks.map((a: { id: string }) => a.id)).toEqual([askIdFor("p", "call-2")]);
   });
 });
 
