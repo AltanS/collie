@@ -243,7 +243,7 @@ On Collie up to 1.8.x, an update tapped on the phone could stop the launchd agen
 again, so the phone lost the service and `launchctl print gui/$(id -u)/herdr.collie` found nothing.
 The runner shared the agent's process group, and restarting the agent killed it half way.
 `collie restart` writes the agent's plist again and loads it. From 1.9.0 on, the bridge
-starts the runner in a session of its own. If a phone update still unloads the agent after that, run
+starts the runner in a process session of its own. If a phone update still unloads the agent after that, run
 the same command and add a note to [#213](https://github.com/AltanS/collie/issues/213).
 
 **On macOS, `collie start` finishes but `collie status` says "loaded, not running".** The launchd job is

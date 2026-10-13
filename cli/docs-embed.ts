@@ -51,7 +51,7 @@ export interface DocPage {
 }
 
 /**
- * The seventeen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
+ * The seventeen pages in an OPERATOR'S READING ORDER: the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
