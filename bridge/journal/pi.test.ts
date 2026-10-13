@@ -673,6 +673,74 @@ describe("parsePiTranscript — the structured call", () => {
     });
   });
 
+  test("OmO's `details.answers` fills the chosen label, in question order", () => {
+    const q = "Pick a color for the Collie sandbox probe?";
+    const part = partOf(
+      call("call_1", "ask_user_question", {
+        questions: [{
+          id: "q1",
+          header: "Color",
+          question: q,
+          options: [{ label: "Red", description: "Warm color." }, { label: "Green", description: "Cool color." }],
+          multiSelect: false,
+        }],
+      }),
+      result("call_1", "ask_user_question", "Color: Green", {
+        details: { resolvedBy: "local_ui", answers: { [q]: "Green" }, unanswered: [], status: "answered" },
+      }),
+    );
+    expect(part.call).toMatchObject({ kind: "question", answers: [["Green"]] });
+  });
+
+  test("OmO's `request_user_input` answers by the question's id", () => {
+    const part = partOf(
+      call("call_1", "request_user_input", {
+        questions: [{
+          id: "color",
+          header: "Color",
+          question: "Pick a color for the Collie sandbox probe?",
+          options: [{ label: "Red", description: "Warm color." }, { label: "Blue", description: "Deep color." }],
+          multiSelect: false,
+        }],
+      }),
+      result("call_1", "request_user_input", "Color: Blue", {
+        details: { resolvedBy: "local_ui", answers: { color: { answers: ["Blue"] } }, unanswered: [], status: "answered" },
+      }),
+    );
+    expect(part.call).toMatchObject({ kind: "question", answers: [["Blue"]] });
+  });
+
+  test("a long, padded question still finds its answer, and a long typed answer is clamped", () => {
+    const q = ` ${"Which one? ".repeat(60)}`;
+    const part = partOf(
+      call("call_1", "ask_user_question", {
+        questions: [{ id: "q1", header: "Long", question: q, options: [{ label: "Red" }], multiSelect: false }],
+      }),
+      result("call_1", "ask_user_question", "Long: …", {
+        details: { answers: { [q]: "x".repeat(1000) }, unanswered: [], status: "answered" },
+      }),
+    );
+    // SAFETY: the call above carries a `questions` list, which `classifyToolCall` keys to `question`;
+    // the assertions read `.answers` and fail on any other branch.
+    const answers = (part.call as Extract<ToolCall, { kind: "question" }>).answers;
+    expect(answers).toHaveLength(1);
+    expect(answers?.[0]?.[0]?.length).toBeGreaterThan(0);
+    expect(answers?.[0]?.[0]?.length).toBeLessThanOrEqual(200);
+  });
+
+  test("a dismissed OmO question records no answer", () => {
+    const q = "Pick a color?";
+    const part = partOf(
+      call("call_1", "ask_user_question", {
+        questions: [{ id: "q1", header: "Color", question: q, options: [{ label: "Red" }], multiSelect: false }],
+      }),
+      result("call_1", "ask_user_question", "cancelled", {
+        details: { answers: {}, unanswered: ["q1"], status: "cancelled" },
+      }),
+    );
+    expect(part.call).not.toHaveProperty("answers");
+  });
+
   test("pi's own block wording marks the result denied, not merely failed", () => {
     const part = partOf(
       call("call_1", "bash", { command: "rm -rf /" }),
