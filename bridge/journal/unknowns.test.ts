@@ -398,6 +398,21 @@ describe("pi", () => {
     row({ type: "session_info", id: "n1", parentId: "p0", name: "a name" }),
     row({ type: "title", v: 1, title: "", updatedAt: "t" }),
     row({ type: "title_change", id: "n2", parentId: "n1", title: "OK", source: "auto" }),
+    // Oh My Pi 18.10's cost ledger and service tier, shaped as a real session wrote them: the tier at
+    // session start (`--service-tier auto`), the usage of a composer prediction after the reply.
+    row({ type: "service_tier_change", id: "s1", parentId: "p0", timestamp: "t", serviceTier: { openai: "auto" } }),
+    row({
+      type: "model_usage",
+      id: "u1",
+      parentId: "m2",
+      timestamp: "t",
+      purpose: "composer-prediction",
+      api: "openai-completions",
+      provider: "p",
+      model: "m",
+      usage: { input: 274, output: 164, cacheRead: 8000, cacheWrite: 0, totalTokens: 8438 },
+      stopReason: "stop",
+    }),
   ];
 
   test("the whole measured inventory counts nothing", () => {
