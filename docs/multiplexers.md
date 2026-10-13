@@ -226,6 +226,9 @@ poll all day. On the Free plan it leaves little room for anything else.
 A Worker and a Durable Object that speak this wire, to run under `wrangler dev` first and then
 deploy, are in
 [`examples/durable-member-cloudflare`](../examples/durable-member-cloudflare/README.md).
+The Cloudflare example hosts Pi Durable with Cloudflare's PiHarness, the local example
+[`examples/durable-member`](../examples/durable-member/README.md) runs Pi Durable plain, and the
+SDK core that speaks the wire is the same in both.
 
 What works:
 

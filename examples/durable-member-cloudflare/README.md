@@ -1,14 +1,36 @@
 # Durable member on Cloudflare: a Pi Durable program behind a token
 
 A Cloudflare Worker with one Durable Object that runs the same ticket triage as
-[`examples/durable-member`](../durable-member/README.md), with
-[Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) keeping its conversations in the
-Durable Object's SQLite storage. It serves Collie's durable wire over HTTPS, and a bearer token is the only
+[`examples/durable-member`](../durable-member/README.md). Cloudflare's
+[PiHarness](https://developers.cloudflare.com/agents/harnesses/pi/) hosts
+[Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) in the object and keeps its
+conversations in the object's SQLite storage. It serves Collie's durable wire over HTTPS, and a bearer token is the only
 gate. A Collie peer with `COLLIE_MUX=durable` and `COLLIE_DURABLE_URL` lists the conversations as panes, and
 you answer their questions from the phone. The wire is experimental and may change in any minor release of
 Collie ([`WIRE.md` section 1B](../../bridge/mux/durable/WIRE.md#1b-tls-with-a-bearer-token)). Once deployed,
 it runs on your Cloudflare account and costs money there: every poll from Collie is a billed request (see
 [Cost](#cost)). This folder is example code to read and copy. It is not a package.
+
+## How it is hosted
+
+The Durable Object uses three parts of Cloudflare's `agents` package (beta, so its API may change between
+releases):
+
+- **`PiHarness`** (`agents/harness/pi`) opens Pi Durable on every start of the object, keeps Pi's tables in
+  the object's SQLite under the prefix `pi_`, and resumes Pi's unfinished work. The program gives it a
+  factory that calls `Harness.open` with the program's own models, tools and settings.
+- **A wake job per session.** While a session has work, PiHarness keeps a Lifecycle job for it and
+  reschedules it every 30 s, and the job sets the object's alarm. When the object is evicted in the middle
+  of a run, the alarm starts it again, and the run continues without a request from Collie.
+- **`Lifecycle`** (`agents/lifecycle`) owns the object's fetch and alarm handlers. It starts PiHarness and
+  then the program, behind the object's input gate, on the first request and on an alarm alike.
+
+The Collie side is the same as in the local example: the SDK core serves the wire, and the asks, the
+request ids and the names a phone gives stay in the program's own `collie_` tables. PiHarness has no
+approval step, so the asks are the program's: a `beforeTool` hook raises them through the SDK core.
+
+On every start the program shows every conversation, raises every waiting question again under its old
+id, and only then says it is ready. The first snapshot after a wake therefore carries every open question.
 
 ## Run it locally
 
@@ -105,6 +127,10 @@ Use a different token for the deployed program than for `wrangler dev`. A deploy
 Object, so Collie sees a new epoch and reads every pane again. An open question comes back with the same id
 (see [Limits](#limits)).
 
+An object deployed before the example moved to PiHarness keeps its conversations in tables without the
+`pi_` prefix. PiHarness does not read them, so that object starts with no tickets. The names and the
+request ids in the `collie_` tables carry over.
+
 ## The trust model
 
 The address is public. Anyone on the internet can send it a request, and the token is the only thing that
@@ -129,10 +155,10 @@ keeps them out.
 
   Each secret you set or delete deploys a new version of the Worker, which restarts the Durable Object.
 - **Cloudflare sees the text.** TLS ends at Cloudflare's edge. Transcripts and tool output sit in the
-  Durable Object's storage, and a real model's key sits in your Worker's secrets.
+  Durable Object's storage, and a real model runs on Workers AI, inside Cloudflare too.
 - **Everything in the Worker can read the secrets.** With `nodejs_compat`, each binding, the token
   included, is in `process.env`. The tools here are toys. A tool that runs code you did not write could
-  read the token and the model key.
+  read the token, and with the `AI` binding on, it could spend your Workers AI budget.
 - **The next step is Cloudflare Access.** An Access policy with a service token would put a second gate in
   front of the Worker, at Cloudflare. Collie does not send Access's two headers yet, so this example
   stops at the bearer token.
@@ -154,6 +180,10 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 - **The Durable Object stays in memory while a peer polls.** An idle Durable Object leaves memory after
   10 s with no request, so a peer that polls every 2 s keeps it in memory. Cloudflare bills that time for
   the full 128 MB: 24 hours in memory is about 11,000 GB-s.
+- **An open question keeps the object in memory, too.** While a session waits for your answer, it still
+  has work, so PiHarness's alarm keeps the object in memory, billed, until you answer, even when no peer
+  polls. A run that works keeps it in memory the same way. With nothing left to do, the object sets no
+  alarm.
 - **A wrong token is billed too.** A request that reaches the Worker is a Worker request, even when it
   gets a 401. It never reaches the Durable Object.
 - **Workers Paid is the honest plan.** It costs at least 5 USD a month. It includes 10 million Worker
@@ -167,21 +197,32 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 
 ## Limits
 
+The `agents` package documents these limits of PiHarness. They apply to this example.
+
+- **A run that was cut off continues by itself.** When the object leaves memory in the middle of a run, the
+  wake job's alarm starts it again within 30 s, and the run continues without a request. The model call that
+  was cut off starts over.
 - **A question that waits survives a wake.** When the object leaves memory between your read and your
   tap, the question is raised again with the same id, and your tap lands on it. Local `wrangler dev`
-  removes an idle object after 10 s, so you see the object wake often there. The object leaves memory on
-  a deploy, on a new secret, and when it is evicted, and it raises every waiting question before it
-  answers again.
-- **Nothing runs while nothing asks.** The object has no alarm. A run that was cut off continues only when
-  the next request, usually Collie's next poll, starts the object again.
+  removes an idle object after 10 s, so you see the object wake often there.
 - **Every start is a new epoch.** Collie then reads each pane again in full.
+- **There is no approval step in PiHarness.** The questions are this program's own, raised by a hook through
+  the SDK core. Nothing in `agents` answers a tool call.
+- **Pi's event streams do not resume from a cursor.** After a wake, each pane is read again from a snapshot,
+  which is what the new epoch tells Collie anyway.
+- **A model request that streams for more than 15 minutes can be cut off.** An alarm runs for at most 15
+  minutes. PiHarness waits up to 10 minutes per alarm and then sets the next one, but one long stream is at
+  the platform's mercy.
+- **Background work is noticed late.** Work Pi runs in the background is checked every 30 s, so its end can
+  show up to 30 s late.
+- **Pi Durable cannot delete a conversation yet.** Every ticket stays in storage.
 - **A Worker must start within 1 s.** Cloudflare's limit for the top-level code. A real deploy of this
   bundle was not tried, so its start time there is not measured.
 - **Free gives a Worker 10 ms of CPU per request.** Whether the Durable Object's start (opening Pi and
   showing every conversation) fits in that was not measured.
 - **Pi keeps no timer here.** The program sets Pi's `contextRetentionMs` to 0. With `nodejs_compat`,
-  Pi takes the Workers runtime for Node and would keep a 10-minute timer after every run, and a pending
-  timer keeps a Durable Object in memory, and billed, until it fires.
+  Pi takes the Workers runtime for Node and would keep a 10-minute timer after every run. Under `wrangler
+  dev`, a pending timer keeps the Durable Object in memory until it fires (measured on 2026-10-13).
 
 ## Environment and secrets
 
@@ -189,8 +230,7 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 | --- | --- | --- | --- |
 | `COLLIE_TOKEN` | secret, required | none | The bearer token, at least 32 bytes. `.dev.vars` for `wrangler dev`, `wrangler secret put COLLIE_TOKEN` after a deploy. Missing or shorter: every request gets 401. |
 | `COLLIE_TOKEN_NEXT` | secret | not set | The next token, while a rotation runs (see [The trust model](#the-trust-model)). A request with either token is taken. Shorter than 32 bytes: ignored. |
-| `REAL_MODEL` | var | not set | An OpenRouter model id. Not set means the scripted model. |
-| `OPENROUTER_API_KEY` | secret | not set | Your OpenRouter key, read only when `REAL_MODEL` is set. |
+| `AI` | Workers AI binding | off | The real model, when the `"ai"` line in `wrangler.jsonc` is on. Off means the scripted model. |
 | `DM_STEP_MS` | var | `400` | The pause before each scripted answer. |
 | `DM_SLOW_MS` | var | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer streams in chunks. |
 | `DM_HELPER_MS` | var | the value of `DM_STEP_MS` | How long the helper's scripted answer takes. |
@@ -201,15 +241,14 @@ A var goes in `wrangler.jsonc` under `"vars"`, or in `.dev.vars` for `wrangler d
 
 ### A real model
 
-```sh
-bunx wrangler secret put OPENROUTER_API_KEY
-```
+The real model comes from Workers AI, through the Worker's `AI` binding, so the Worker holds no model key.
+Uncomment the line `"ai": { "binding": "AI" }` in `wrangler.jsonc` and deploy again. The program then uses
+`@cf/zai-org/glm-4.7-flash` (`WORKERS_AI_MODEL` in `src/member.ts`) for every ticket and every helper.
+Cloudflare bills each ticket by its tokens. Check the Workers AI prices before you turn it on.
 
-Then set `REAL_MODEL` to an OpenRouter model id that Pi's catalog knows, for example
-`google/gemini-3.1-flash-lite`, and deploy again. Locally, put both lines in `.dev.vars`. Pi reads the key
-from `process.env`, which `nodejs_compat` fills from the Worker's secrets. Every ticket then costs tokens,
-and each model call is an outbound request from the Durable Object (Free allows 50 per request, Paid 10,000).
-The tests check that a binding reaches `process.env` inside the Worker; no test calls OpenRouter.
+The binding is remote even under `wrangler dev`, so with the line on, `wrangler dev` needs your Cloudflare
+account. That is why the line is off: with it off, nothing in [Run it locally](#run-it-locally) needs an
+account. No test calls Workers AI.
 
 ## Write your own
 
@@ -226,16 +265,38 @@ reuses three parts of the local example by relative path, so copy both folders:
 The files here:
 
 - `src/worker.ts` checks the token (`src/token.ts`) and forwards to the one Durable Object.
-- `src/member.ts` is the program: the Durable Object that opens Pi, lays out the panes and serves the wire.
+- `src/member.ts` is the program: the Durable Object with PiHarness and Lifecycle. Its PiHarness factory
+  opens Pi, lays out the panes and shows every conversation; its `onStart` waits for the raised questions
+  and says it is ready; its `onRequest` serves the wire.
 - The names the phone gives a workspace or a tab live in a `collie_titles` table (`src/member.ts`), because the
   layout is made again on every start of the object. A wake of the object keeps them.
 - A conversation the phone closes is archived in a `collie_closed` table (`src/member.ts`), so a wake does not show
   it again. The tabs and the workspace are the program's own layout, and it refuses to close those.
-- `src/storage.ts` is the one place where Pi Durable meets the Durable Object's SQLite.
+- `src/storage.ts` is the one place where Pi Durable meets the Durable Object's SQLite: PiHarness hands over
+  the store, or `DM_STORAGE=memory` swaps in one in memory.
 - `src/receipts.ts` keeps the request ids in a `collie_receipts` table, so a retry after a restart still
   runs once. It keeps the newest 1000 per pane and drops older ones in the same transaction; a repeat of a
   dropped id gets a 500, an unknown outcome, and runs nothing. The core's `ReceiptStore` interface is two
   methods.
+
+## Dependencies
+
+`package-lock.json` pins every package, and `npm ci` installs exactly those. `.npmrc` here sets the same
+7-day cooldown as the rest of collie (`min-release-age`) for a fresh resolution such as `npm install <name>`, and excludes five packages from
+it with `min-release-age-exclude`. An npm that does not know the two keys warns and ignores them; npm
+11.6 is one. The maintainer waived
+the cooldown for them on 2026-10-13:
+
+- `agents` 0.28.0, published 2026-10-09 by GitHub Actions with SLSA provenance naming `cloudflare/agents`,
+  `.github/workflows/release.yml` on `refs/heads/main` at commit `48d9c36f`. No install script of its own.
+  Its tree adds two packages with install scripts, `esbuild` and `core-js-pure`; `npm ci --ignore-scripts`
+  skips them, and the Worker needs neither.
+- The four `@earendil-works` packages at 1.1.0, published 2026-10-07 by GitHub Actions with SLSA
+  provenance naming `refs/tags/v1.1.0` at commit `abe508e1`, no install scripts, no binaries
+  (the same waiver as `../durable-member/bunfig.toml`).
+
+The exclusions can go once each pinned version is 7 days old: after 2026-10-14 22:12 UTC for Pi, after
+2026-10-16 14:08 UTC for `agents`.
 
 ## Test
 
@@ -248,8 +309,10 @@ bun run smoke
 The tests run inside workerd, the Workers runtime, through Cloudflare's Vitest plugin, so they need Node and
 Vitest. `bun test` cannot load `cloudflare:workers`, so this folder does not use it. They cover the token,
 `hello`, the snapshot and its ETag, an answer that runs once, send and stop, a starter, a rename and its replay, a close that survives a wake, and restarts: a new
-epoch, request ids that survive in SQLite, and a waiting question raised again with the same id and a
-tap across the wake taken once. They also cover the second token of a rotation and the receipts cap. `npm run
-test:memory` runs them with Pi's conversations in memory and skips the test that needs them to survive. The
+epoch, request ids that survive in SQLite, a waiting question raised again with the same id, a
+tap across the wake taken once, and a tap taken when it is the first request after the wake. A run cut off
+in the middle continues when the test fires the wake job's alarm, with no request in between. They also
+cover the second token of a rotation and the receipts cap. `npm run test:memory` runs them with Pi's
+conversations in memory and skips the tests that need them to survive. The
 smoke starts `wrangler dev` on 8801 with a fresh token and a temporary state folder, asks for `hello` with
 curl, and stops. None of them needs an account or the network.

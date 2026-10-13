@@ -5,11 +5,12 @@
 // Under `npm run test:memory` Pi keeps its conversations in memory, so the two tests that need them to survive a
 // restart are skipped; the request ids live in the example's own SQLite table either way.
 import { env as bindings, exports } from "cloudflare:workers";
-import { abortAllDurableObjects, listDurableObjectIds, runInDurableObject } from "cloudflare:test";
+import { abortAllDurableObjects, listDurableObjectIds, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
 import { PaneRegistry } from "../../durable-member/pi-durable/index.ts";
 import { askIdFor, createCore, HttpError, Receipts } from "../../durable-member/sdk/core/index.ts";
 import type { Env } from "../src/env.ts";
+import type { Member } from "../src/member.ts";
 import { DROPPED_KEPT, RECEIPTS_KEPT, SqliteReceiptStore } from "../src/receipts.ts";
 import { tokenAccepted } from "../src/token.ts";
 
@@ -282,8 +283,8 @@ describe("an action", () => {
   });
 });
 
-describe("the real model's key", () => {
-  test("a binding is readable as process.env, which is where Pi looks for OPENROUTER_API_KEY", () => {
+describe("the trust model", () => {
+  test("a binding is readable as process.env, so every tool in the Worker can read the token (README)", () => {
     // nodejs_compat fills process.env from the Worker's bindings, secrets included. The token is one, so it shows.
     expect(process.env.COLLIE_TOKEN).toBe(TOKEN);
   });
@@ -326,6 +327,38 @@ describe("a restart", () => {
     expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken", replayed: true });
     await waitFor("the ticket to finish", async () => (await paneOf(paneId)).state === "idle");
     expect((await notes()).length).toBe(notesBefore + 1); // the tool ran once
+  });
+
+  test.skipIf(!SQLITE)("the M50 spec 14 case: a tap that is the first request after a wake is taken, not too-late", async () => {
+    const paneId = (await call("POST", "/starter/new-triage", { body: { requestId: "start-3" } })).body.paneId;
+    const old = await waitFor("an ask", async () => (await paneOf(paneId)).openAsks[0]);
+    await abortAllDurableObjects();
+    // No read between the wake and the tap: the answer itself starts the object, which raises the ask before ready.
+    const tap = { requestId: "answer-first-after-wake", askId: old.id, revision: old.revision, answer: { optionId: "allow" } };
+    expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken" });
+    expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken", replayed: true });
+    await waitFor("the ticket to finish", async () => (await paneOf(paneId)).state === "idle");
+  });
+
+  test.skipIf(!SQLITE)("an evicted busy session goes on by alarm, with no read: PiHarness's wake job restarts the object", async () => {
+    const stub = env.MEMBER.getByName("main");
+    const pane = (await snapshot()).panes.find((p: any) => p.tabId === "triage:inbox" && p.state === "idle");
+    expect((await call("POST", `/pane/${pane.id}/send`, { body: { requestId: "send-busy", text: "Any update?", turnId: pane.turnId } })).body).toEqual({ ok: true });
+    await waitFor("the slow answer to start", async () => (await paneOf(pane.id)).state === "working");
+    await abortAllDurableObjects(); // the object dies mid-run, as on an eviction or a deploy
+    // The new instance has served nothing and has not started: no request reached it.
+    const before = await runInDurableObject(stub, async (o: Member, state) => ({ started: o.lifecycle.isStarted(), reads: o.reads, alarm: await state.storage.getAlarm() }));
+    expect(before).toMatchObject({ started: false, reads: 0 });
+    expect(before.alarm).not.toBeNull(); // the wake job's heartbeat, due within 30 s
+    // Fire that alarm now instead of waiting for it. Still no read.
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const session = String(pane.id).replace(/^conv-/, "");
+    const after = await waitFor("the run to end with no read", () =>
+      runInDurableObject(stub, async (o: Member) => !(await o.harness.session(session).busy()) && { reads: o.reads, entries: await o.harness.session(session).messages() }),
+    );
+    expect(after.reads).toBe(0);
+    const replies = after.entries.flatMap((e) => (e.model ?? []).filter((m: any) => m.role === "assistant")).map((m: any) => JSON.stringify(m.content));
+    expect(replies.at(-1)).toContain("Another thought, in detail.");
   });
 });
 

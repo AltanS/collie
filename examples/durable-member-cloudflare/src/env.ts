@@ -10,10 +10,11 @@ export interface Env {
    * peer uses the new one, move it to COLLIE_TOKEN and unset this (README, "Rotate the token").
    */
   COLLIE_TOKEN_NEXT?: string;
-  /** An OpenRouter model id. Unset: the scripted model. */
-  REAL_MODEL?: string;
-  /** Your OpenRouter key, a secret. Pi reads it (through process.env) only when REAL_MODEL is set. */
-  OPENROUTER_API_KEY?: string;
+  /**
+   * The Workers AI binding, set only when `"ai": { "binding": "AI" }` is on in wrangler.jsonc. Set: the real model
+   * (`WORKERS_AI_MODEL` in member.ts), billed by Cloudflare. Unset: the scripted model. It carries no key.
+   */
+  AI?: Ai;
   /** The pause before each scripted answer, in ms. Default 400. */
   DM_STEP_MS?: string;
   /** How long the scripted answer to a follow-up takes, in ms. Default 10000. */

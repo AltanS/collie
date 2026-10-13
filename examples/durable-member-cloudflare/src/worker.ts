@@ -18,7 +18,10 @@ export default {
     }
     try {
       // One program, one Durable Object. A second program is a second Worker, or a second name here.
-      return await env.MEMBER.getByName("main").fetch(request);
+      // Lifecycle, inside the object, reads startup props from this header. Nothing outside the object sets it.
+      const forwarded = new Request(request);
+      forwarded.headers.delete("x-agents-lifecycle-props");
+      return await env.MEMBER.getByName("main").fetch(forwarded);
     } catch (e) {
       console.error("durable object error:", e);
       return new Response(JSON.stringify({ code: "internal" }), { status: 500, headers: { "content-type": "application/json" } });

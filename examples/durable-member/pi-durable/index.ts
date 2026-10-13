@@ -453,6 +453,12 @@ export class Mapper {
 }
 
 /**
+ * How a pane's send reaches Pi. Left out, it is `conversation.submit`. A host that must see every input passes its
+ * own: the Cloudflare example's PiHarness schedules the session's wake job in its `submit`.
+ */
+export type Submit = (conversation: Conversation, input: { content: string; whenBusy: "steer" | "followUp"; requestId?: string }) => Promise<unknown>;
+
+/**
  * Show a conversation as a pane. Safe to call twice for one conversation: the second call returns
  * the pane that exists. History is sent first (then `synced`), after that events are live.
  */
@@ -460,7 +466,7 @@ export async function showConversation(
   loc: PaneLocation,
   harness: Harness,
   conversation: Conversation,
-  opts: { panes: PaneRegistry; ctx?: Context },
+  opts: { panes: PaneRegistry; ctx?: Context; submit?: Submit },
 ): Promise<PaneHandle> {
   const have = opts.panes.get(conversation.id);
   if (have) return have;
@@ -472,7 +478,9 @@ export async function showConversation(
   // The wire's request id goes to Pi Durable as the submission's own dedupe key, so a repeat that
   // reaches Pi after a restart still admits the input once.
   pane.onSend(async (text, { steer, requestId }) => {
-    await conversation.submit({ type: "input", content: text, whenBusy: steer ? "steer" : "followUp", requestId }, ctx);
+    const input = { content: text, whenBusy: steer ? "steer" : "followUp", requestId } as const;
+    if (opts.submit) await opts.submit(conversation, input);
+    else await conversation.submit({ type: "input", ...input }, ctx);
   });
   pane.onAbort(() => conversation.abort(ctx));
   if (loc.escalate === true) {

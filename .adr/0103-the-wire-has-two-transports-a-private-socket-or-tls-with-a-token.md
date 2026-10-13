@@ -112,5 +112,14 @@ a program the person deployed themselves.
   the watch and a person's look (`refresh()`) start a read (amended 2026-10-13; the first text said
   every 5 to 6 seconds, because the safety-net poll dialled too). The docs recommend a paid plan for a
   program polled all day, and say why.
+- The Cloudflare example hosts Pi Durable with Cloudflare's PiHarness (package `agents`, beta,
+  pinned exact), and nothing on the wire changes for it (amended 2026-10-13, M53 spec 09).
+  PiHarness owns `Harness.open`, storage and recovery; the program keeps the token check in the
+  Worker, the asks, the receipts and the `collie_` tables. PiHarness wakes the object by alarm
+  while a session has work, so a run cut off by an eviction continues without a read, and an
+  answer that is the first request after a wake is taken. The cost moves too: an open ask keeps
+  the object in memory, billed, until it is answered, even when no peer polls. A real model comes
+  from a Workers AI binding, so the Worker holds no model key. The SDK core is the same as in the
+  local example, which runs Pi Durable plain.
 - Revisit this decision if a host needs a second header (an access proxy's service token) or a
   push channel. Both are additive to 1B, not changes to the wire.
