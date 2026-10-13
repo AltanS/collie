@@ -56,6 +56,7 @@ interface FakePane {
     max_offset_from_bottom: number;
     viewport_rows: number;
   } | null;
+  tokens?: Record<string, string> | null;
 }
 
 function pane(
@@ -392,6 +393,36 @@ describe("StateEngine — snapshot shaping", () => {
       expect(a.paneLabel).toBeUndefined();
       expect("paneLabel" in a).toBe(false);
     }
+  });
+
+  test("threads the agent's suggested prompts through to the view, in order, without the token names", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      {
+        ...pane("w1:p1", "w1", "idle", "claude"),
+        tokens: { task: "setup-herdr", suggestion_2: "Rewrite it", suggestion_1: "run the tests" },
+      },
+    ];
+    await poll();
+    const view = engine.current().agents[0]!;
+    expect(view.suggestions).toEqual(["run the tests", "Rewrite it"]);
+    // The pane's other tokens stay behind the adapter: no field carries them.
+    expect(JSON.stringify(view)).not.toContain("setup-herdr");
+    expect(JSON.stringify(view)).not.toContain("suggestion_1");
+  });
+
+  test("leaves suggestions absent when the pane has no tokens, empty ones, or only others", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      pane("w1:p1", "w1", "idle", "claude"), // no tokens field at all
+      { ...pane("w1:p2", "w1", "idle", "claude"), tokens: null },
+      { ...pane("w1:p3", "w1", "idle", "claude"), tokens: {} },
+      { ...pane("w1:p4", "w1", "idle", "claude"), tokens: { task: "x", suggestion_1: "  " } },
+    ];
+    await poll();
+    const agents = engine.current().agents;
+    expect(agents).toHaveLength(4);
+    for (const a of agents) expect("suggestions" in a).toBe(false);
   });
 
   test("sorts agents by workspace number, never by status (ADR 0063)", async () => {

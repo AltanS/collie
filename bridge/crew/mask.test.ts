@@ -4,7 +4,15 @@
 // Placeholders only: the fake key is built at run time, so no key shape sits in this file.
 import { describe, expect, test } from "bun:test";
 
-import { maskChatBody, maskDiff, maskFileBody, maskHistoryPage, maskPaneRead, maskSnapshotTitles } from "../answer-mask.ts";
+import {
+  maskChatBody,
+  maskDiff,
+  maskFileBody,
+  maskHistoryPage,
+  maskPaneRead,
+  maskPaneText,
+  maskSnapshotTitles,
+} from "../answer-mask.ts";
 import type { ChatWindowBody } from "../journal/live.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
 import type { ChangeDiff, FileReadAnswer, PaneReadResponse } from "../types.ts";
@@ -304,6 +312,37 @@ describe("the merged snapshot's titles", () => {
     expect(out.agents[1]!.terminalTitle).toBe(masked);
     expect(out.agents[2]).toEqual(snap.agents[2]!);
     expect(out.shellPanes[0]!.terminalTitle).toBe(`curl ${masked}`);
+  });
+
+  // A suggestion is a draft the operator would send. Masked, it would put the dots into the box, so
+  // the mask drops the field outright: key and all, on agents and shells alike.
+  test("a member's suggested prompts are dropped, key and all; the rest of the pane is kept", () => {
+    const snap = {
+      agents: [
+        { paneId: "w1:p1", status: "idle", suggestions: [`export KEY=${key}`, "run the tests"] },
+        { paneId: "w1:p2", status: "idle" },
+      ],
+      shellPanes: [{ paneId: "w1:p3", terminalTitle: `curl ${key}`, suggestions: ["ls"] }],
+    };
+    const out = maskSnapshotTitles(snap);
+    expect("suggestions" in out.agents[0]!).toBe(false);
+    expect(out.agents[0]).toEqual({ paneId: "w1:p1", status: "idle" });
+    // A pane with neither field is passed on with the same keys in the same order.
+    expect(Object.keys(out.agents[1]!)).toEqual(["paneId", "status"]);
+    expect("suggestions" in out.shellPanes[0]!).toBe(false);
+    expect(out.shellPanes[0]!.terminalTitle).toBe(`curl ${masked}`);
+    expect(JSON.stringify(out)).not.toContain(key);
+  });
+});
+
+// The lead's own panes take the same function on their way out (server.ts `withActivity`, under
+// `COLLIE_REDACT`), so a field masked for a member's pane is masked for the lead's own.
+describe("one pane's program-written text", () => {
+  test("drops the suggestions and masks the title; the operator's label is untouched", () => {
+    const pane = { paneId: "w1:p1", paneLabel: `mine ${key}`, terminalTitle: `vim ${key}`, suggestions: [key] };
+    const out = maskPaneText(pane);
+    expect(out).toEqual({ paneId: "w1:p1", paneLabel: `mine ${key}`, terminalTitle: `vim ${masked}` });
+    expect("suggestions" in out).toBe(false);
   });
 });
 
