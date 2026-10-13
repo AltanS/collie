@@ -1802,6 +1802,15 @@ signature.
 | `muse--tasks-popup.txt` | Background-tasks popup between the bottom rule and the statusline: `main · ↓ to select` header + one `└ ◆ … running … 24s` task row, bare `❯` above. The box stays live under it (probed: typing lands in the box), so the tail walk steps over the popup and no card draws. Captured 2026-09-26 on Muse Code 1.4.0; the same shape confirmed on 1.3.0-R3401.1 | `idle` |
 | `muse--tasks-popup-draft.txt` | Same popup with `qq` in the box: the header drops its hint (bare `main`). The draft reads verbatim above the popup | `idle` |
 | `muse--tasks-popup-approval.txt` | An `ls -la /tmp` approval with the popup under it: the approval still lifts (digit-alone keys), and the ticking elapsed stays out of the signature | `blocked` |
+| `muse--ask-season.txt` | Muse Code 1.4.7, single question. The pointer is `⟩` (U+27E9) where 1.3.0 drew `›` (#424) | `blocked` |
+| `muse--ask-toppings-147.txt` | Muse Code 1.4.7, multi-select with the `⟩` pointer (#424) | `blocked` |
+| `muse--ask-toppings-147-moved.txt` | Same 1.4.7 multi-select with `⟩` on option 2 (#424) | `blocked` |
+| `muse--ask-multi-q1.txt` | Muse Code 1.4.7, page 1 of a two-question dialog, with the new progress row (#424) | `blocked` |
+| `muse--ask-multi-q2.txt` | Page 2 of the same dialog, `⟩` on option 1 (#424) | `blocked` |
+| `muse--ask-multi-review.txt` | The review screen that closes the dialog, `⟩ Submit answers` (#424) | `blocked` |
+| `muse--approval-ls-147.txt` | Muse Code 1.4.7 `ls` approval, `⟩` on option 1 (#424) | `blocked` |
+| `muse--approval-date-147.txt` | Muse Code 1.4.7 `date` approval, `⟩` on option 2 (#424) | `blocked` |
+| `muse--trust-prompt-147.txt` | Muse Code 1.4.7 workspace trust prompt (#424) | `blocked` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`

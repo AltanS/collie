@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Chat shows the answer an OmO question got.** The question card fills in from the session log once the person has answered in the terminal. Thanks @welldoingk (#426).
 - **Claude Code's question dialogs show their buttons at 40 columns.** A narrow pane breaks the footer `Enter to select · ↑/↓ to navigate · Esc to cancel` over two rows, and every question grammar read only the last one, so a single or pick-many question fell to the unread-dialog card with Escape alone and a wizard step showed as a plain menu, in named and unnamed sessions alike. The three grammars now read a footer on two rows as one footer, and only when its words name `Enter to select` (#422).
 - **A box table with Chinese or Japanese cells pans, and its walls line up.** A double-width character takes two terminal columns but one place in the text, so the table's walls never matched and it wrapped into stacked rules on a phone. Walls are now matched by terminal column, and each such character inside a table holds exactly two cells. An emoji with a variation selector, such as the warning sign or a heart, is two columns wide in Herdr and is measured the same way. Thanks @GGGODLIN (#417).
+- **Muse 1.4.7 dialogs lift again.** The pointer moved to a new glyph and multi-question pages gained a progress row; both read as before. Thanks @jpcarranza94 (#424).
 
 ## [1.20.2] - 2026-10-12
 
