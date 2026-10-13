@@ -24,7 +24,7 @@ import { backspaceSweep, launchLine, type AgentProfile } from "./profile";
 export const pi: AgentProfile = {
   agent: "pi",
   versionCommand: ["pi", "--version"],
-  launch: (cols) => launchLine(cols, `pi --thinking off`),
+  launch: (cols, bin = "pi") => launchLine(cols, `${bin} --thinking off`),
   startupAnswer: () => null,
   clearKeys: backspaceSweep,
   clearFallback: null,

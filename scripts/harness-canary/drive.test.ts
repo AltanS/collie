@@ -3,9 +3,11 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { claude } from "./agents/claude";
-import { codex } from "./agents/codex";
-import { backspaceSweep, launchLine } from "./agents/profile";
-import { CANARY_AGENTS, parseArgs } from "./args";
+import { CODEX_ARGS, codex } from "./agents/codex";
+import { muse } from "./agents/muse";
+import { opencode } from "./agents/opencode";
+import { backspaceSweep, launchedThrough, launchLine } from "./agents/profile";
+import { DEFAULT_AGENTS, parseArgs } from "./args";
 import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
@@ -17,15 +19,33 @@ const ESC = String.fromCodePoint(0x1b);
 const BEL = String.fromCodePoint(0x07);
 
 describe("parseArgs", () => {
-  test("defaults run every agent and the six default scenarios at the pane's own width", () => {
+  test("defaults run the four default agents and the six default scenarios at the pane's own width", () => {
     const o = parseArgs([], "/repo");
     expect(o).not.toBe("help");
     if (o === "help") return;
-    expect(o.agents).toEqual([...CANARY_AGENTS]);
+    expect(o.agents).toEqual([...DEFAULT_AGENTS]);
     expect(o.scenarios).toEqual([...DEFAULT_SCENARIOS]);
     expect(o.cols).toBeNull();
     expect(o.readers).toBe("/repo");
     expect(o.record).toBe(false);
+    expect(o.via).toBeNull();
+  });
+
+  test("omp and muse run only when named, and --via is resolved against the host", () => {
+    const o = parseArgs(["--agent", "omp,muse", "--via", "/tmp/launchers"], "/repo");
+    if (o === "help") throw new Error("help");
+    expect(o.agents).toEqual(["omp", "muse"]);
+    expect(DEFAULT_AGENTS).not.toContain("omp");
+    expect(DEFAULT_AGENTS).not.toContain("muse");
+    expect(o.via).toBe(resolve("/tmp/launchers"));
+  });
+
+  test("grok, hermes and agy run only when named, and options only when asked for", () => {
+    const o = parseArgs(["--agent", "grok,hermes,agy", "--scenario", "options"], "/repo");
+    if (o === "help") throw new Error("help");
+    expect(o.agents).toEqual(["grok", "hermes", "agy"]);
+    expect(o.scenarios).toEqual(["options"]);
+    expect(DEFAULT_SCENARIOS).not.toContain("options");
   });
 
   test("--agent, --scenario, --cols, --readers", () => {
@@ -39,7 +59,8 @@ describe("parseArgs", () => {
   });
 
   test("refuses what it does not know", () => {
-    expect(() => parseArgs(["--agent", "grok"], "/repo")).toThrow(/unknown agent/);
+    expect(() => parseArgs(["--agent", "gemini"], "/repo")).toThrow(/unknown agent/);
+    expect(() => parseArgs(["--via"], "/repo")).toThrow(/needs a value/);
     expect(() => parseArgs(["--scenario", "plan"], "/repo")).toThrow(/unknown scenario/);
     expect(() => parseArgs(["--cols", "200"], "/repo")).toThrow(/--cols/);
     expect(() => parseArgs(["--readers"], "/repo")).toThrow(/needs a value/);
@@ -80,8 +101,21 @@ describe("startup answers", () => {
     expect(codex.startupAnswer(["› Ask Codex to do anything"])).toBeNull();
   });
 
+  test("Muse's trust question: Enter only with the pointer on trust", () => {
+    const onYes = ["Do you trust this workspace?", "> 1  Trust and continue", "  2  Quit"];
+    const onQuit = ["Do you trust this workspace?", "  1  Trust and continue", "> 2  Quit"];
+    expect(muse.startupAnswer(onYes)).toEqual(["Enter"]);
+    expect(muse.startupAnswer(onQuit)).toEqual(["Up"]);
+    expect(muse.startupAnswer(["> "])).toBeNull();
+  });
+
   test("Codex starts without its update prompt, which would answer Update now", () => {
     expect(codex.launch(null)).toContain("-c check_for_update_on_startup=false");
+  });
+
+  test("OpenCode starts without its update dialog, whose Confirm would update the install", () => {
+    expect(opencode.launch(null)).toBe("clear; OPENCODE_DISABLE_AUTOUPDATE=1 opencode");
+    expect(launchedThrough(opencode, "/opt/launchers/opencode").launch(null)).toBe("clear; OPENCODE_DISABLE_AUTOUPDATE=1 /opt/launchers/opencode");
   });
 
   test("Codex is never cleared with Ctrl+C", () => {
@@ -95,6 +129,13 @@ describe("drafts and messages", () => {
     expect(backspaceSweep("abc")).toHaveLength(19);
     expect(backspaceSweep("🚀✅")).toHaveLength(18);
     expect(new Set(backspaceSweep("x"))).toEqual(new Set(["Backspace"]));
+  });
+
+  test("a launcher replaces only the command word, quoted when the path needs it", () => {
+    expect(launchedThrough(claude, "/opt/launchers/claude").launch(null)).toBe("clear; /opt/launchers/claude --model haiku");
+    expect(launchedThrough(codex, "/opt/launchers/codex").launch(80)).toBe(`clear; stty cols 80; /opt/launchers/codex ${CODEX_ARGS}`);
+    expect(launchedThrough(claude, "/my dir/it's").launch(null)).toBe("clear; '/my dir/it'\\''s' --model haiku");
+    expect(claude.launch(null)).toBe("clear; claude --model haiku");
   });
 
   test("launchLine sets the width only when asked", () => {

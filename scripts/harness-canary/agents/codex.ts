@@ -17,7 +17,7 @@ export const CODEX_ARGS = `-c 'model_reasoning_effort="low"' -c check_for_update
 export const codex: AgentProfile = {
   agent: "codex",
   versionCommand: ["codex", "--version"],
-  launch: (cols) => launchLine(cols, `codex ${CODEX_ARGS}`),
+  launch: (cols, bin = "codex") => launchLine(cols, `${bin} ${CODEX_ARGS}`),
   startupAnswer(texts) {
     // The folder trust question (0.156.1). `-c projects…trust_level` and `-a`/`-s` do not skip it,
     // measured 2026-09-26, so it is answered like a person would: pointer on "Trust and continue",

@@ -5,10 +5,17 @@
 
 import { backspaceSweep, launchLine, type AgentProfile } from "./profile";
 
+/**
+ * Keeps OpenCode's "Update Available" dialog away (1.18.34 offered 1.19.0 on 2026-10-12): it takes
+ * the place of the composer the canary waits for, and its Confirm would change the user's install.
+ * The same reason as Codex's `check_for_update_on_startup=false`.
+ */
+export const OPENCODE_ENV = "OPENCODE_DISABLE_AUTOUPDATE=1";
+
 export const opencode: AgentProfile = {
   agent: "opencode",
   versionCommand: ["opencode", "--version"],
-  launch: (cols) => launchLine(cols, `opencode`),
+  launch: (cols, bin = "opencode") => launchLine(cols, `${OPENCODE_ENV} ${bin}`),
   startupAnswer: () => null,
   clearKeys: backspaceSweep,
   clearFallback: null,

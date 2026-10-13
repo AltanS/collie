@@ -11,9 +11,10 @@ export interface AgentProfile {
   /**
    * The shell line that starts the agent, at `cols` columns when given, else at the pane's own
    * width. `stty` sets the size the agent reads: Herdr does not resize the PTY of a pane nobody is
-   * viewing, and nobody views the canary's panes.
+   * viewing, and nobody views the canary's panes. `bin` replaces the agent's own command word, for
+   * `--via` (args.ts); absent, the agent's own binary on PATH starts.
    */
-  launch(cols: number | null): string;
+  launch(cols: number | null, bin?: string): string;
   /**
    * Keys that answer a screen the agent paints before its composer in a fresh project (the folder
    * trust question), or null when `texts` is not such a screen. Keys go out one answer per poll, and
@@ -28,11 +29,23 @@ export interface AgentProfile {
   readonly clearFallback: readonly string[] | null;
   /** Typed into an empty composer and submitted to leave the agent. */
   readonly exitCommand: string;
+  /** How long to wait between typing {@link exitCommand} and its Enter; 400 ms when absent. */
+  readonly exitSettleMs?: number;
 }
 
 /** `clear`, then the size, then the agent: one shell line. */
 export function launchLine(cols: number | null, command: string): string {
   return cols === null ? `clear; ${command}` : `clear; stty cols ${cols}; ${command}`;
+}
+
+/** A path as one shell word: as it is when it needs no quoting, else in single quotes. */
+export function shellWord(word: string): string {
+  return /^[\w./~+-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
+}
+
+/** The same agent, started through `bin` instead of its own command word (`--via`). */
+export function launchedThrough(profile: AgentProfile, bin: string): AgentProfile {
+  return { ...profile, launch: (cols) => profile.launch(cols, shellWord(bin)) };
 }
 
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });

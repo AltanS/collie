@@ -10,7 +10,7 @@ const TRUST_YES = "Yes, I trust this folder";
 export const claude: AgentProfile = {
   agent: "claude",
   versionCommand: ["claude", "--version"],
-  launch: (cols) => launchLine(cols, `claude --model haiku`),
+  launch: (cols, bin = "claude") => launchLine(cols, `${bin} --model haiku`),
   startupAnswer(texts) {
     // The folder trust question. Since 2.1.283 the pointer starts on "No, exit", so walk it to the
     // yes row first, and press Enter only once a later read shows the pointer there.
