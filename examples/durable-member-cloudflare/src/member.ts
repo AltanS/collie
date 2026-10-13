@@ -1,11 +1,19 @@
-// The program: the same ticket triage as ../durable-member/app.ts, in one Durable Object. Pi Durable keeps the
-// conversations in the object's SQLite (storage.ts), the SDK core serves Collie's wire (core.handle), and the
-// request ids go to a `collie_receipts` table, so a retry after a restart still runs once. The newest 1000 per pane
-// are kept (receipts.ts).
+// The program: the same ticket triage as ../durable-member/app.ts, in one Durable Object hosted by Cloudflare's
+// PiHarness (package `agents`, `agents/harness/pi`, beta). PiHarness keeps Pi Durable's conversations in the
+// object's SQLite under the prefix `pi_`, opens Pi on every start, and wakes the object by alarm while a session
+// has work, so a run that was evicted goes on without waiting for a read. The SDK core serves Collie's wire
+// (core.handle), and the request ids go to a `collie_receipts` table, so a retry after a restart still runs once.
+// The newest 1000 per pane are kept (receipts.ts).
 //
-// The constructor runs on every start of the object: after a deploy, an eviction or a hibernation. Each start is
-// a new epoch, so Collie reads every pane again (WIRE.md section 8). An ask that waited is raised again before
-// the object says it is ready, under the same id, so a tap the phone sent across the wake lands.
+// Every start of the object (a deploy, an eviction, a wake by alarm) is a new epoch, so Collie reads every pane
+// again (WIRE.md section 8). The start runs in this order, inside Lifecycle's blockConcurrencyWhile, so no request
+// sees a half-made layout:
+//   1. `open`, the factory PiHarness calls: Harness.open with our settings, then every conversation is shown and
+//      the wait for re-raised asks is armed. PiHarness calls pi.resume() right after, so a hook that runs again
+//      finds its pane.
+//   2. PiHarness's own onStart: it schedules a wake job for every session with work left.
+//   3. `onStart` here: wait for the re-raised asks (same ids as before the wake, so a tap sent across it lands),
+//      then core.ready(), last.
 
 import { DurableObject } from "cloudflare:workers";
 import { BACKGROUND_CONTEXT as ctx0 } from "@earendil-works/chord/context";
@@ -21,8 +29,10 @@ import {
   type Extension,
   Harness,
 } from "@earendil-works/pi-durable";
-import { type CollieCore, createCore } from "../../durable-member/sdk/core/index.ts";
-import { PaneRegistry, riskGuard, showConversation, spawnHelperTool } from "../../durable-member/pi-durable/index.ts";
+import { PiHarness, type PiHarnessContext } from "agents/harness/pi";
+import { Lifecycle } from "agents/lifecycle";
+import { type CollieCore, createCore, type TabHandle } from "../../durable-member/sdk/core/index.ts";
+import { PaneRegistry, riskGuard, showConversation, spawnHelperTool, type Submit } from "../../durable-member/pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "../../durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
@@ -31,6 +41,9 @@ import { openPiStorage } from "./storage.ts";
 /** The name the phone shows for this program's machine. */
 export const HOST_NAME = "durable-member-cloudflare";
 
+/** The Workers AI model the example uses when the `AI` binding is set. Billed by Cloudflare per token. */
+export const WORKERS_AI_MODEL = "@cf/zai-org/glm-4.7-flash";
+
 const ms = (v: string | undefined, fallback: number) => {
   if (v === undefined || v === "") return fallback;
   const n = Number(v);
@@ -38,21 +51,50 @@ const ms = (v: string | undefined, fallback: number) => {
   return n;
 };
 
+const risky = new Set(["write_note"]);
+const ticketText = (prefix: string, id: ConversationId) => `${prefix}Triage ticket ${400 + Number(id)}: a customer cannot log in.`;
+
 export class Member extends DurableObject<Env> {
+  /** Wire requests this instance served. A wake by alarm leaves it at 0; the tests read it. */
+  reads = 0;
   private core!: CollieCore;
+  private pi!: Harness;
+  private inbox!: TabHandle;
+  private helpers!: TabHandle;
+  private model = { provider: "faux", modelId: "faux-1" };
+  private real = false;
   private readonly panes = new PaneRegistry();
+  private reRaised: Promise<void> = Promise.resolve();
+  /** Set on the very first start: the root conversation, which gets the first ticket in onStart. */
+  private firstTicket: ConversationId | undefined;
 
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    // No request reaches fetch() before the layout is complete, so Collie never sees a half-empty one.
-    void ctx.blockConcurrencyWhile(() => this.start());
-  }
+  // PiHarness owns Harness.open (through `open`), storage, recovery and the wake. Lifecycle owns fetch and alarm:
+  // the object answers in onRequest, never in fetch, or Lifecycle would not start it (FINDINGS.md of the spike).
+  readonly harness = new PiHarness({ harness: (o) => this.open(o) });
+  readonly lifecycle = Lifecycle.install(this).use(this.harness);
 
-  async fetch(request: Request): Promise<Response> {
+  async onRequest(request: Request): Promise<Response> {
+    this.reads++;
     return this.core.handle(request);
   }
 
-  private async start() {
+  /** A pane's send goes through PiHarness: it schedules the session's wake job, then admits the input once. */
+  private readonly submit: Submit = (conversation, input) =>
+    this.harness.session(String(conversation.id)).submit(input.content, {
+      whenBusy: input.whenBusy,
+      ...(input.requestId === undefined ? {} : { operationId: input.requestId }),
+    });
+
+  private show(conversation: Conversation, owned: boolean) {
+    const tab = owned ? this.helpers : this.inbox;
+    return showConversation({ tab, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}` }, this.pi, conversation, {
+      panes: this.panes,
+      submit: this.submit,
+    });
+  }
+
+  /** Step 1 of the start: PiHarness's factory. PiHarness calls pi.root() and pi.resume() after it returns. */
+  private async open({ storage, context }: PiHarnessContext): Promise<Harness> {
     const { env } = this;
     const sql = this.ctx.storage.sql;
     sql.exec("CREATE TABLE IF NOT EXISTS collie_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, note TEXT NOT NULL)");
@@ -76,23 +118,23 @@ export class Member extends DurableObject<Env> {
     this.core = core;
     const stepMs = ms(env.DM_STEP_MS, 400);
 
-    // The model: the scripted one, or a real one through OpenRouter. Pi reads OPENROUTER_API_KEY from
-    // process.env, which nodejs_compat fills from the Worker's secrets.
+    // The model: the scripted one, or Workers AI through the `AI` binding (wrangler.jsonc). The binding carries no
+    // key, so the Worker holds none.
     const models = createModels();
-    let model = { provider: "faux", modelId: "faux-1" };
-    const real = env.REAL_MODEL;
-    if (real) {
-      const { openrouterProvider } = await import("@earendil-works/pi-ai/providers/openrouter");
-      models.setProvider(openrouterProvider());
-      if (!models.getModel("openrouter", real)) throw new Error(`REAL_MODEL ${real} is not an OpenRouter model id Pi knows`);
-      model = { provider: "openrouter", modelId: real };
+    this.real = env.AI !== undefined;
+    if (env.AI !== undefined) {
+      const { createAI } = await import("agents/models/pi-ai");
+      const ai = createAI({ binding: env.AI });
+      models.setProvider(ai.provider);
+      const chosen = ai(WORKERS_AI_MODEL);
+      this.model = { provider: chosen.provider, modelId: chosen.id };
     } else {
       useScriptedModel(models, { stepMs, slowMs: ms(env.DM_SLOW_MS, 10_000), helperMs: ms(env.DM_HELPER_MS, stepMs) });
     }
 
     const ws = core.workspace("triage", { title: titled("workspace", "triage", "Triage"), cwd: "/srv/triage" });
-    const inbox = ws.tab("inbox", { title: titled("tab", "triage:inbox", "Inbox") });
-    const helpers = ws.tab("helpers", { title: titled("tab", "triage:helpers", "Helpers") });
+    this.inbox = ws.tab("inbox", { title: titled("tab", "triage:inbox", "Inbox") });
+    this.helpers = ws.tab("helpers", { title: titled("tab", "triage:helpers", "Helpers") });
 
     // write_note keeps its line in the object's own SQLite: a Worker has no file to append to.
     const writeNote = defineTool({
@@ -104,60 +146,70 @@ export class Member extends DurableObject<Env> {
         return { content: [{ type: "text", text: "note saved" }] };
       },
     });
-    let harness!: Harness;
     const triageTools: Extension = defineExtension({
       name: "triage-tools",
-      tools: [writeNote, spawnHelperTool({ panes: this.panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
+      tools: [writeNote, spawnHelperTool({ panes: this.panes, harness: () => this.pi, tab: this.helpers, model: this.model, without: () => [triageTools] })],
     });
     const registry = createRegistry();
     registry.install(triageTools);
-    const risky = new Set(["write_note"]);
+    // PiHarness has no approval step: the asks are ours, raised through the SDK core.
     registry.install(riskGuard({ panes: this.panes, risky }));
 
     // contextRetentionMs 0: Pi keeps no idle-context timer. With nodejs_compat a Worker's timers look like Node's,
-    // so Pi would keep one for 10 minutes after every run, and a pending timer keeps a Durable Object in memory,
-    // billed, until it fires.
-    const storage = await openPiStorage(this.ctx, env);
-    harness = await Harness.open(
-      storage,
+    // so Pi would keep one for 10 minutes after every run, and under wrangler dev a pending timer keeps the object
+    // in memory until it fires (measured 2026-10-13).
+    // Never call this.harness.pi() in here: it waits for this factory.
+    this.pi = await Harness.open(
+      openPiStorage(storage, env),
       { models, registry, settings: { contextRetentionMs: 0 }, onReport: (e) => console.error("pi-durable report:", e) },
-      ctx0,
+      context,
     );
 
-    // Show every conversation that exists, BEFORE resume(), so a re-run hook finds its pane.
+    // Show every conversation that exists, BEFORE PiHarness calls resume(), so a re-run hook finds its pane.
     const all: { id: ConversationId; owned: boolean }[] = [];
     let cursor: Cursor | undefined;
     do {
       const at = cursor;
-      const page = await harness.commit((tx) => tx.scanConversations({}, 256, at), ctx0);
+      const page = await this.pi.commit((tx) => tx.scanConversations({}, 256, at), ctx0);
       for (const c of page.items) all.push({ id: c.id, owned: c.owner !== undefined });
       cursor = page.next;
     } while (cursor);
-    const show = (conversation: Conversation, owned: boolean) =>
-      showConversation({ tab: owned ? helpers : inbox, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}` }, harness, conversation, { panes: this.panes });
-    for (const c of all) await show((await harness.conversation(c.id, ctx0))!, c.owned);
+    // The very first start: the first ticket is Pi's root conversation (id 1), made here with our model and
+    // instructions. PiHarness's own pi.root() then finds it, instead of making an empty one with no pane.
+    if (all.length === 0) {
+      const root = await this.pi.root(ctx0, { agent: { model: this.model, instructions: this.instructions() } });
+      this.firstTicket = root.id;
+      all.push({ id: root.id, owned: false });
+    }
+    for (const c of all) await this.show((await this.pi.conversation(c.id, ctx0))!, c.owned);
+    // Armed before resume(): it reads which risky calls have no result yet. Each raises its ask again under the
+    // same id once Pi re-runs its hook.
+    this.reRaised = this.panes.reRaised(risky);
+    return this.pi;
+  }
 
-    const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
+  private instructions() {
+    return this.real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
+  }
+
+  /** Step 3 of the start. Lifecycle runs it after PiHarness's onStart, on a request and on an alarm alike. */
+  async onStart() {
+    // The first snapshot after a wake carries every open ask, by contract and not by timing.
+    await this.reRaised;
     const startTriage = (prefix: string) => async () => {
-      const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model, instructions } }, ctx0);
-      const pane = await show(conversation, false);
-      await conversation.submit({ type: "input", content: `${prefix}Triage ticket ${400 + Number(conversation.id)}: a customer cannot log in.` }, ctx0);
+      const conversation = await this.pi.createConversation({ ownership: { kind: "ownerless" }, agent: { model: this.model, instructions: this.instructions() } }, ctx0);
+      const pane = await this.show(conversation, false);
+      await this.harness.session(String(conversation.id)).submit(ticketText(prefix, conversation.id));
       return { paneId: pane.id };
     };
-    core.starters([
+    this.core.starters([
       { id: "new-triage", label: "New triage", run: startTriage("") },
       { id: "two-notes", label: "Two notes at once (faux only)", run: startTriage("TWO: ") },
     ]);
-
     // The first start opens one ticket, so the phone has an ask to answer. Later starts show what storage holds.
-    if (all.length === 0) await startTriage("")();
-
-    // Continue any run the last start left unfinished, and wait for the asks it raises again (Pi re-runs a
-    // waiting hook, which asks under the same id). Only then is the layout complete: the first snapshot after a
-    // wake carries every open ask, by contract and not by timing.
-    const reRaised = this.panes.reRaised(risky);
-    harness.resume();
-    await reRaised;
-    core.ready(); // the layout is complete: only now may Collie see a snapshot
+    if (this.firstTicket !== undefined) {
+      await this.harness.session(String(this.firstTicket)).submit(ticketText("", this.firstTicket), { operationId: "first-ticket" });
+    }
+    this.core.ready(); // the layout is complete: only now may Collie see a snapshot
   }
 }

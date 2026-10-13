@@ -6,13 +6,17 @@
   "name": "collie-durable-member",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
-  // Pi reads its model key from process.env, which nodejs_compat fills from the Worker's bindings.
+  // Pi Durable and Cloudflare's PiHarness (package `agents`) need Node's APIs.
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "durable_objects": {
     "bindings": [{ "name": "MEMBER", "class_name": "Member" }]
   },
-  // The SQLite storage backend. Pi Durable's storage adapter needs ctx.storage.sql.
+  // A real model: Workers AI through this binding, no key in the Worker. It is off, because the binding is remote
+  // even under wrangler dev: on, `wrangler dev` needs a Cloudflare account (README, "A real model"). Uncomment it
+  // to use the model; every ticket is then billed by Cloudflare.
+  // "ai": { "binding": "AI" },
+  // The SQLite storage backend. PiHarness keeps Pi Durable's tables in ctx.storage.sql, under the prefix `pi_`.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Member"] }],
   // The Pi glue and the script are shared with ../durable-member and import Pi from there. These
   // lines make the bundle take Pi from THIS folder, so there is one copy of each package. Two copies

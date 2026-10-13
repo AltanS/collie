@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
 - **Chat reads Claude Code 2.1.296 sessions as verified.** The harness canary read a real 2.1.296 session with no unrecognised row, so the reader's recorded version moves from 2.1.285 to 2.1.296 and no longer shows as behind.
+- **The Cloudflare example runs on Cloudflare's PiHarness.** A job that is evicted mid-run wakes itself by alarm and continues, and a real model comes from a Workers AI binding with no key in the Worker. The Collie wire, the asks and the receipts are unchanged.
 
 ### Fixed
 
