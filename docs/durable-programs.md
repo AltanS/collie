@@ -43,7 +43,7 @@ and each read is a billed request on Cloudflare. Each example has its own README
 
 - [`examples/durable-member`](../examples/durable-member/README.md) runs on this machine, over the
   socket.
-- [`examples/durable-member-cloudflare`](../examples/durable-member-cloudflare/README.md) runs on
+- [`experiments/durable-member-cloudflare`](../experiments/durable-member-cloudflare/README.md) runs on
   Cloudflare, over HTTPS.
 
 The Cloudflare example runs on Cloudflare's PiHarness, and the Bun example runs Pi Durable plain. Both

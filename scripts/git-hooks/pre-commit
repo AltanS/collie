@@ -192,11 +192,11 @@ if [ "${SKIP_LINT_CHECK:-}" = "1" ]; then
 fi
 
 # Lintable staged files, minus the vendored plugin sources (.oxlintrc.json ignores them too, but
-# naming one explicitly on the command line would override that ignore). `examples/` is dropped for
+# naming one explicitly on the command line would override that ignore). `examples/` and `experiments/` are dropped for
 # the same reason: with every file ignored, oxlint exits non-zero with "No files found to lint".
 lintable="$(echo "$staged" \
   | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' \
-  | grep -vE '^(tools/oxlint/anti-slop/|contrib/|examples/)' || true)"
+  | grep -vE '^(tools/oxlint/anti-slop/|contrib/|examples/|experiments/)' || true)"
 
 # Fast path: nothing lintable staged (doc-only commits, config-only commits) — don't spawn oxlint.
 [ -z "$lintable" ] || {

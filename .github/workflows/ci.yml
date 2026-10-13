@@ -67,7 +67,8 @@ jobs:
   # and Pi Durable never enters the root install. In `check`, bridge/mux/durable/example.test.ts
   # skips for want of that install; here it runs, so the wire, the adapter and the example are proven
   # to agree. Linux only, and never in windows.yml: the example's descendant check needs /proc and
-  # SO_PEERCRED, and a Windows socket has no owner for the adapter to check.
+  # SO_PEERCRED, and a Windows socket has no owner for the adapter to check. The Cloudflare example
+  # is parked under experiments/ (M55 spec 04) and is in no CI job.
   durable-example:
     name: durable example
     runs-on: ubuntu-latest
@@ -82,15 +83,6 @@ jobs:
         run: cd examples/durable-member && bun run typecheck
       - name: Test (example)
         run: cd examples/durable-member && bun test
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install (cloudflare example)
-        run: cd examples/durable-member-cloudflare && npm ci --ignore-scripts
-      - name: Typecheck (cloudflare example)
-        run: cd examples/durable-member-cloudflare && npm run typecheck
-      - name: Test (cloudflare example)
-        run: cd examples/durable-member-cloudflare && npm test
       - name: Test (the adapter against the example)
         run: bun test bridge/mux/durable
 

@@ -7,9 +7,9 @@
 import { env as bindings, exports } from "cloudflare:workers";
 import { abortAllDurableObjects, listDurableObjectIds, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
-import { PaneRegistry } from "../../durable-member/pi-durable/index.ts";
-import { LONG_ANSWER_START, SIGN_IN_DONE } from "../../durable-member/script.ts";
-import { askIdFor, createCore, HttpError, Receipts } from "../../durable-member/sdk/core/index.ts";
+import { PaneRegistry } from "../../../examples/durable-member/pi-durable/index.ts";
+import { LONG_ANSWER_START, SIGN_IN_DONE } from "../../../examples/durable-member/script.ts";
+import { askIdFor, createCore, HttpError, Receipts } from "../../../examples/durable-member/sdk/core/index.ts";
 import type { Env } from "../src/env.ts";
 import type { Member } from "../src/member.ts";
 import { DROPPED_KEPT, RECEIPTS_KEPT, SqliteReceiptStore } from "../src/receipts.ts";

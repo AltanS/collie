@@ -4,7 +4,7 @@ import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  // One copy of each Pi package, also for the files shared with ../durable-member (see wrangler.jsonc).
+  // One copy of each Pi package, also for the files shared with ../../examples/durable-member (see wrangler.jsonc).
   resolve: { dedupe: ["@earendil-works/pi-durable", "@earendil-works/pi-ai", "@earendil-works/chord"] },
   plugins: [
     cloudflareTest({

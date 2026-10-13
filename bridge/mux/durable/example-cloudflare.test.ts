@@ -9,31 +9,33 @@ import type { DurableEventSink } from "./events.ts";
 import type { DurableEvent, DurablePane } from "./protocol.ts";
 import { buildDurableTransport, chooseDurableTransport } from "./transport.ts";
 
-// THE CLOUDFLARE EXAMPLE, DRIVEN BY THE REAL ADAPTER OVER THE HTTPS TRANSPORT (M50 spec 13).
-// `examples/durable-member-cloudflare` is the program a person deploys behind a bearer token. This runs
+// THE CLOUDFLARE EXPERIMENT, DRIVEN BY THE REAL ADAPTER OVER THE HTTPS TRANSPORT (M50 spec 13).
+// `experiments/durable-member-cloudflare` is the program a person deploys behind a bearer token. It moved out of
+// examples/ in M55 spec 04: it is experimental and in no CI job, so this test runs only when a person sets
+// COLLIE_CLOUDFLARE_EXPERIMENT=1 after `npm ci` in that folder. CI does not set it. This runs
 // it under `wrangler dev` on 127.0.0.1 (the one plain-http exception of WIRE.md section 1B) and drives
 // the same adapter as example.test.ts through `chooseDurableTransport` and `buildDurableTransport`, so
 // the URL rule, the token rule, the HTTP client and the Worker agree on the bytes.
 //
-// It needs the example's own install (`npm ci` in that folder) and a Node on PATH, so without them it
+// It needs the flag, the experiment's own install (`npm ci` in that folder) and a Node on PATH, so without them it
 // skips and says so. It skips on Windows, where wrangler's process group cannot be stopped this way.
 //
 // The token reaches wrangler through an `--env-file` in a 0700 temp folder, as `smoke.ts` does, and
 // not through `--var`, which would put it on the command line where `ps` shows it. The token is made
 // at run time and is never a literal in this file.
 
-const EXAMPLE = join(import.meta.dir, "..", "..", "..", "examples", "durable-member-cloudflare");
+const EXAMPLE = join(import.meta.dir, "..", "..", "..", "experiments", "durable-member-cloudflare");
 const WRANGLER = join(EXAMPLE, "node_modules", ".bin", "wrangler");
 const NODE = Bun.which("node");
 
-const SKIP_REASON =
-  process.platform === "win32"
-    ? "the Cloudflare example test does not run on Windows"
-    : NODE === null
-      ? "no node on PATH: wrangler needs Node 22 or later"
-      : !existsSync(WRANGLER)
-        ? "example deps not installed: run npm ci in examples/durable-member-cloudflare"
-        : "";
+function skipReason(): string {
+  if (process.env.COLLIE_CLOUDFLARE_EXPERIMENT !== "1") return "the Cloudflare experiment is not in CI: set COLLIE_CLOUDFLARE_EXPERIMENT=1 to run it";
+  if (process.platform === "win32") return "the Cloudflare example test does not run on Windows";
+  if (NODE === null) return "no node on PATH: wrangler needs Node 22 or later";
+  if (!existsSync(WRANGLER)) return "example deps not installed: run npm ci in experiments/durable-member-cloudflare";
+  return "";
+}
+const SKIP_REASON = skipReason();
 const RUNS = SKIP_REASON === "";
 if (!RUNS) {
   // Bun prints no name for a skipped test, so the reason goes to the log as well.
