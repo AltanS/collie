@@ -1,8 +1,11 @@
-# Multiplexers
+# Terminals
 
-Collie drives one multiplexer per install: Herdr, tmux, zellij, tuios or tern. A sixth backend, `durable`, is not a multiplexer but a durable agent program with no screen (see [durable notes](#durable-notes)). Herdr is the default. This
-page covers pointing Collie at any of them, what each backend can answer, and the beacons Collie
-uses to detect an agent in a pane.
+These are the terminals Collie reads [sessions](sessions.md) from: Herdr, tmux, zellij, tuios and
+Tern. Collie drives one terminal per install, and Herdr is the default. This page covers pointing
+Collie at any of them, what each one can answer, and the beacons Collie uses to detect an agent in
+a pane. A program with no screen is not a terminal, and [Programs](durable-programs.md) covers it.
+
+tmux and zellij call their own top-level group a session. Collie shows it as a space.
 
 ## Pointing Collie at a multiplexer
 
@@ -23,7 +26,6 @@ COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
 COLLIE_MUX=tern collie start
-COLLIE_MUX=durable COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock collie start
 ```
 
 Set the endpoint when the default target is not the one you want:
@@ -42,7 +44,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 
 | variable | value | what it means |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr`, `tern`, `tmux`, `zellij`, `tuios` or `durable` | which backend this install drives |
+| `COLLIE_MUX` | `herdr`, `tern`, `tmux`, `zellij` or `tuios` | which terminal this install drives |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `work` | a socket NAME (`tmux -L work`), no `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | empty | tmux's own default server |
@@ -52,9 +54,6 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
-| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the PATH of the Unix socket a durable program listens on. Absolute, at most 103 bytes, no default |
-| `COLLIE_DURABLE_URL` | `https://durable-member.example.com` | the address of a durable program behind TLS, instead of the socket. `https://` only, or `http://127.0.0.1:<port>` for a program on this machine |
-| `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to that URL. At least 32 bytes, always set with the URL |
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
@@ -63,7 +62,7 @@ Herdr has no endpoint variable here: its socket is `HERDR_SOCKET_PATH`, not a
 `COLLIE_MUX_ENDPOINT_` name.
 
 That socket is the local one and no other. A machine saved in Herdr is not a crew member, and only
-a Collie crew brings another machine's sessions to the phone. What each list is, and why one is not
+a Collie crew brings another machine's panes to the phone. What each list is, and why one is not
 the other, is in [Herdr machines and the crew](crew.md#herdr-machines-and-the-crew).
 
 Then restart, install the beacon hooks, and start an agent where the phone can see it:
@@ -97,7 +96,7 @@ The command updates `~/.claude/settings.json` and leaves project configs untouch
 reload their configuration, so restart them.
 
 > **Note.** Herdr is not required in this mode. With `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij`, the
-> bridge loads only the selected adapter and ignores Herdr's socket. Multi-session discovery across
+> bridge loads only the selected adapter and ignores Herdr's socket. Discovery of several Herdr sessions across
 > Herdr config roots is disabled (`bridge/index.ts`). You do not need Herdr installed or running,
 > and `.env` lives in `~/.config/collie/` instead of the plugin configuration directory.
 
@@ -156,166 +155,16 @@ Collie reads Tern sessions as spaces, tabs as tabs, and blocks as panes. The end
 
 Tern reports lifecycle events via `tern events`, enabling immediate topology change notifications.
 
-"Show in terminal" moves your Tern window to the pane's session and tab and focuses its block. A tab or a session that Collie creates opens in the background and does not move your window.
+"Show in terminal" moves your Tern window to the pane's Tern session and tab and focuses its block. A tab or a Tern session that Collie creates opens in the background and does not move your window.
 
 Collie does not detect Tern on its own, as it does not detect tuios: name it with `COLLIE_MUX=tern`. Typed text longer than 128 KiB is refused, because it travels as one command-line argument.
 
 ### durable notes
 
-> **Experimental.** The wire may change in any minor release. The wire is written down in
-> [`bridge/mux/durable/WIRE.md`](../bridge/mux/durable/WIRE.md), and a program and a Collie that do
-> not share a version get a named `incompatible` instead of a silent mismatch.
-
-`durable` is for a durable agent program: a program that runs agents, keeps their conversations and
-has no screen. Collie shows each of its conversations as a pane that has **Chat and nothing else**.
-There is no Terminal view, because there is no terminal.
-
-To show a program beside your terminal sessions in one Collie, run `collie durable attach` and
-restart. [Durable programs](durable-programs.md) has the steps. The settings below run an instance
-that drives only a program, as on Windows or for a hosted program with no terminal. Two settings
-turn that on:
-
-```bash
-COLLIE_MUX=durable                                    # which backend this install drives
-COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock   # where the program listens
-```
-
-The program listens on that socket, and Collie dials it. Name the backend with `COLLIE_MUX=durable`:
-Collie does not detect it on its own. The path must be absolute and at most 103 bytes. Collie
-connects only when the socket is yours and has no group or other permission (mode `0600`), because
-the socket carries no token and a private socket is the whole gate.
-
-#### Two ways to reach a program
-
-```bash
-# a program on this machine, as you
-COLLIE_DURABLE_SOCKET=/run/user/1000/durable/session.sock
-
-# or a program you deployed behind TLS
-COLLIE_DURABLE_URL=https://durable-member.example.com
-COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
-```
-
-Set one of the two, never both. A URL without a token, or both set, is a config error: the peer
-starts, names the error in its log, and shows the program as unreachable with that reason.
-The socket transport is for Linux and macOS. On Windows use the URL and the token: a socket path
-there is the same config error, and the peer says so in its log and in `collie doctor`.
-
-| | private socket | https with a token |
-| --- | --- | --- |
-| Where the program runs | this machine, as your user | anywhere you deploy it |
-| What keeps others out | the socket is yours, mode `0600` | the token, and only the token |
-| Who can act as your phone | any process of your user | anyone who has the token |
-| How often Collie asks | every 1 s while a phone watches, else every 3 s | every 2 s while a phone watches, else every 10 s |
-
-The URL must start with `https://`. The one exception is `http://127.0.0.1:<port>` or
-`http://localhost:<port>`, with a port, for a program on the same machine. Collie refuses any
-other `http://` address, because the token would cross the network unencrypted.
-
-Make the token 32 random bytes or more, for example with `openssl rand -hex 32`, and give the
-program the same value. Collie sends it with every request and never prints it: `collie doctor`
-says "set, 64 bytes", nothing more. To change it, deploy the new token to the program, set it in the
-peer's `.env`, and run `collie restart`.
-
-> **Caution.** Over https the token is the only gate. Anyone who has it can read every
-> conversation and answer every question, and the host sees the text. A
-> program reached this way should offer Allow and Deny only, never an always-allow.
-
-Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
-too. With no phone open the idle poll runs every 10 s, and the bridge's own safety-net poll reuses
-its last answer, so Collie asks 8,640 times a day. Check what your host's plan allows for that.
-
-The local example [`examples/durable-member`](../examples/durable-member/README.md) runs a Pi
-Durable program over the socket. A Cloudflare example is parked in
-`experiments/durable-member-cloudflare/`.
-
-What works:
-
-- The program's conversations in the list, in the merged crew list, and in Chat and History.
-- Questions the program asks: a tool that needs a yes or a no, a choice, a line of text, or a short
-  form. You answer them from the phone, and only a tap answers.
-- A line under the title and a count or a short mark next to it, and the progress of a working
-  conversation as steps or a percent, when the program sets them.
-- Markdown, code and links in the thread. Lists, headings and emphasis render, a code block keeps
-  its language, and a link opens like any other.
-- Send text, steer a turn that is running, and stop it. Steer and Stop sit in the belt above the
-  field. A cap the program declares draws its control: `caps.steer` draws Steer, `caps.abort` draws
-  Stop, and a program that declares neither gets neither.
-- The program's own buttons in the belt. With `caps.actions`, a conversation may list up to four actions, each
-  with a label of at most 16 characters and one of twelve icon names. They follow Steer and Stop in the
-  program's section of the belt; a tap runs the action once in the program, which may refuse it, and a button
-  the program marks `busy` or `disabled` is dimmed.
-- The program's starters, as rows on the New page. With `caps.starters`, the new-tab and new-space
-  buttons open that page too.
-- Renaming a tab or a workspace, from the tab's usual rename control and the Rename row of the space
-  sheet (long-press a space chip, or tap the open one). It works when the program declares `rename`;
-  the program applies the title or refuses it, and the phone shows the refusal.
-- Closing a conversation or a tab, from the usual close controls. It works when the program declares
-  `close`; the program decides what a close means (archive, delete, end), and the conversation or tab
-  leaves the list. A workspace close is on the wire, but the phone has no control for it.
-- The program's own history. The home of a durable machine is its conversation list, open and closed;
-  with `caps.history` the closed ones come from the program. A closed one opens read-only, read from the
-  program, and with `caps.reopen` a Reopen button brings it back. Collie's own
-  log of a conversation is a cache for Chat, and it resumes where it stopped after a restart. See
-  [History](durable-programs.md#history).
-
-What does not work:
-
-- Terminal, and typed keys. A durable pane has no screen to show or type into.
-- Making a tab or a workspace by hand, closing a workspace, and renaming a conversation. The program lays out its own conversations.
-- "Show in terminal". No pane is ever reported as focused.
-- Another user's program on the socket. The socket must belong to the user that runs Collie.
-- A program on another machine over plain TCP. Reach it over https with a token, as above, or run a
-  Collie peer on the machine with the program and join it to the crew.
-
-To try it, run the example program in
-[`examples/durable-member`](../examples/durable-member/README.md). It is a small Pi Durable app with
-a scripted model, so it needs no key, and it opens a conversation with a question to answer as soon
-as it starts. Its README walks you from the first command to the answer on your phone.
-
-A durable-only instance drives one program. If you want the program in the same Collie as Herdr,
-tmux or zellij, attach it with `collie durable attach` instead. You can also run a second instance
-with `COLLIE_MUX=durable` and join it to the crew with `collie join` like any other peer. The steps
-are in [Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host),
-and [Crew commands](crew.md#how-a-crew-is-wired) says what a peer is.
-
-With a lead older than 1.21.0, the pane is listed but the question is not. The pane shows "needs you"
-with a red dot, and no card appears. Chat shows the tool call as a collapsed step with no Allow or
-Deny. The actions sheet still offers Terminal view, and it stays empty. Update the lead and the card
-and the Chat page work. Nothing crashes before that.
-
-A member's crew name defaults to its host name. A durable peer that shares a host with the lead, or
-with a Herdr peer, would join under the same name, and the host chip could not tell them apart.
-Name it when it joins: `COLLIE_INSTANCE=durable collie crew join <lead-address> --label durable`.
-To rename a peer that already joined, run `collie crew remove <member>` on the lead and
-`collie crew leave` on the peer, then join again with `--label`. (`collie crew rename` names the
-crew, not a member.)
-
-When Collie cannot reach the program, the peer starts anyway and shows the program as unreachable,
-with a reason:
-
-| reason | what it means |
-| --- | --- |
-| `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 103 bytes` | the variable is missing or unusable |
-| `the private socket transport is not available on Windows` | on Windows set `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN` instead of the socket |
-| `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set` | set the socket, or the URL with its token, not both |
-| `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN` | the URL needs its token |
-| `COLLIE_DURABLE_URL uses plain http to <host>` | use `https://`; plain http is for 127.0.0.1 or localhost only |
-| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32 bytes, for example 64 hex characters from openssl rand -hex 32` | make a longer token, and give the program the same one |
-| `token-refused` | the program answered 401 or 403: the two sides hold different tokens |
-| `no socket at <path>` | nothing listens there yet |
-| `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |
-| `connection refused`, `no answer within <n>ms` | a stale socket file, a program that hangs, or nothing at the URL yet |
-| `tls refused`, `the host name does not resolve` | the URL's certificate or name is wrong |
-| `incompatible: program speaks 2..3, this Collie speaks 1..1` | the version ranges do not meet. Update the older side |
-| `starting` | the program is up and says it is not ready yet. Collie asks again on the next poll |
-
-`collie doctor` checks the same things in six lines, `durable-env`, `durable-socket`,
-`durable-url`, `durable-token`, `durable-hello` and `durable-ready`, and names the failing check
-with a fix. `durable-env` says which way the peer reaches the program, and the lines for the other
-way are skipped with the reason. A seventh line, `durable-lead`, warns on a peer whose lead runs a
-release below 1.21.0: that lead shows durable panes without the question card, and its Terminal tab
-polls. The peer also writes that sentence to its log once. Update the lead.
+A program that you attach is not a terminal, and it has no screen. [Programs](durable-programs.md)
+covers how to attach one with `collie durable attach`, the older form that drives a program alone
+with `COLLIE_MUX=durable`, the two ways to reach a program, what it can do on the phone, and what to
+check when it shows as unreachable.
 
 ### tuios notes
 
@@ -344,11 +193,11 @@ shows the bridge as disconnected and the log says what to update.
 
 Some things work differently on tuios:
 
-- A new tab opens on the lowest empty workspace. A session has nine workspaces by default, so
+- A new tab opens on the lowest empty workspace. A tuios session has nine workspaces by default, so
   Collie refuses a tenth tab.
-- Show in terminal moves every terminal that shows the pane's session, a tuios-web tab included.
-  tuios cannot move a terminal to another session. If no terminal shows the pane's session, Collie
-  refuses and names the session the terminal shows.
+- Show in terminal moves every terminal that shows the pane's tuios session, a tuios-web tab included.
+  tuios cannot move a terminal to another tuios session. If no terminal shows the pane's tuios session,
+  Collie refuses and names the tuios session the terminal shows.
 - The **New worktree** switch on the New page stays, off, and says it needs Herdr.
 
 ### Did it work?
