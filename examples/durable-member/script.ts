@@ -1,5 +1,5 @@
 // The demo of the example: a small online shop's support desk, and Pi's faux provider answering from a script, so
-// the program needs no key. The local app (app.ts) and the Cloudflare example (../durable-member-cloudflare) both use
+// the program needs no key. The local app (app.ts) and the Cloudflare example (../../experiments/durable-member-cloudflare) both use
 // it, so both show the same tickets. It imports pi-ai only, no runtime module, so it runs in Bun and in a Worker.
 //
 // Every word a person reads on the phone comes from here: the customers, the three kinds of ticket the New page

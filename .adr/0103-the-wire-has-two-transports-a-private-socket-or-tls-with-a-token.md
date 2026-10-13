@@ -13,7 +13,7 @@
   `bridge/mux/durable/client.ts` · `bridge/mux/durable/http-client.ts` ·
   `bridge/mux/durable/transport.ts` · `bridge/mux/durable/adapter.ts` (`DURABLE_BUDGETS`) ·
   `cli/durable-findings.ts` · `bridge/config-schema.ts` ·
-  `examples/durable-member-cloudflare/` (the deployed example)
+  `experiments/durable-member-cloudflare/` (the deployed example)
 
 ## Context
 
@@ -86,7 +86,7 @@ a program the person deployed themselves.
 ## Consequences
 
 - A person can put a program that runs on Cloudflare, or on any host with a certificate, into the
-  crew with two lines in the peer's `.env`. `examples/durable-member-cloudflare/` shows one.
+  crew with two lines in the peer's `.env`. `experiments/durable-member-cloudflare/` shows one.
 - Anyone who holds the token acts as the phone: they can read every conversation, answer every
   question, send, stop and start. The token does not expire by itself. A program MAY take a second
   token while a rotation runs, so the person rotates without a lockout: the Cloudflare example takes

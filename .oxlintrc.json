@@ -34,6 +34,8 @@
     // A program of its own, with its own package.json, lockfile, typecheck and tests (M50 spec 10). It is
     // example code a reader copies, written to the wire rather than to this codebase's rules.
     "examples/**",
+    // The parked Cloudflare example (M55 spec 04): its own package.json, lockfile and tests, in no CI job.
+    "experiments/**",
     // Vendored byte for byte and pinned by hash (ADR 0096 Decision 6): a lint fix would change the served bytes.
     "web/public/stt/**",
     "assets/**",

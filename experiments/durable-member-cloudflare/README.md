@@ -1,7 +1,11 @@
 # Durable member on Cloudflare: a Pi Durable program behind a token
 
+> **Experimental. Verified on 2026-10-13 with agents 0.28.0. Not in CI.** This example lives under `experiments/`, not
+> `examples/`. Nothing in Collie's CI builds or tests it, so it may break without a failing check. Cloudflare's
+> PiHarness is beta, and the plain local example, `examples/durable-member`, is where to start.
+
 A Cloudflare Worker with one Durable Object that runs the same support desk as
-[`examples/durable-member`](../durable-member/README.md). Cloudflare's
+[`examples/durable-member`](../../examples/durable-member/README.md). Cloudflare's
 [PiHarness](https://developers.cloudflare.com/agents/harnesses/pi/) hosts
 [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) in the object and keeps its
 conversations in the object's SQLite storage. It serves Collie's durable wire over HTTPS, and a bearer token is the only
@@ -41,7 +45,7 @@ the Durable Object's SQLite under `.wrangler/state`.
 From a clone of collie:
 
 ```sh
-cd examples/durable-member-cloudflare
+cd experiments/durable-member-cloudflare
 npm ci
 printf 'COLLIE_TOKEN=%s\n' "$(openssl rand -hex 32)" > .dev.vars
 bunx wrangler dev --port 8801 --ip 127.0.0.1
@@ -102,7 +106,7 @@ COLLIE_INSTANCE=durable collie crew join <lead-address> --label durable
 ```
 
 `collie crew invite` on the lead gives the address and the code; the steps are in
-[Join the crew](../durable-member/README.md#join-the-crew). A question the program asks reaches the phone as
+[Join the crew](../../examples/durable-member/README.md#join-the-crew). A question the program asks reaches the phone as
 a push when push is set up, the same as a question from any other pane.
 
 ## Deploy
@@ -255,10 +259,10 @@ account. No test calls Workers AI.
 The contract is [`WIRE.md`](../../bridge/mux/durable/WIRE.md), section 1B for this transport. This folder
 reuses three parts of the local example by relative path, so copy both folders:
 
-- **The SDK core** (`../durable-member/sdk/core/`). `createCore()` returns the layout handles and
+- **The SDK core** (`../../examples/durable-member/sdk/core/`). `createCore()` returns the layout handles and
   `core.handle(request)`, the whole wire as one function from a `Request` to a `Response`. It imports no
   runtime module. The Durable Object's `fetch` is one line that calls it.
-- **The Pi glue and the script** (`../durable-member/pi-durable/index.ts`, `../durable-member/script.ts`).
+- **The Pi glue and the script** (`../../examples/durable-member/pi-durable/index.ts`, `../../examples/durable-member/script.ts`).
   They import Pi, and `wrangler.jsonc` (`alias`), `vitest.config.ts` (`dedupe`) and `tsconfig.json` (`paths`)
   make them take it from this folder, so the bundle holds one copy of each Pi package.
 
@@ -293,7 +297,7 @@ the cooldown for them on 2026-10-13:
   skips them, and the Worker needs neither.
 - The four `@earendil-works` packages at 1.1.0, published 2026-10-07 by GitHub Actions with SLSA
   provenance naming `refs/tags/v1.1.0` at commit `abe508e1`, no install scripts, no binaries
-  (the same waiver as `../durable-member/bunfig.toml`).
+  (the same waiver as `../../examples/durable-member/bunfig.toml`).
 
 The exclusions can go once each pinned version is 7 days old: after 2026-10-14 22:12 UTC for Pi, after
 2026-10-16 14:08 UTC for `agents`.

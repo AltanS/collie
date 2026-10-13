@@ -1,4 +1,4 @@
-// The program: the same support desk as ../durable-member/app.ts, in one Durable Object hosted by Cloudflare's
+// The program: the same support desk as examples/durable-member/app.ts, in one Durable Object hosted by Cloudflare's
 // PiHarness (package `agents`, `agents/harness/pi`, beta). PiHarness keeps Pi Durable's conversations in the
 // object's SQLite under the prefix `pi_`, opens Pi on every start, and wakes the object by alarm while a session
 // has work, so a run that was evicted goes on without waiting for a read. The SDK core serves Collie's wire
@@ -31,7 +31,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { PiHarness, type PiHarnessContext } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
-import { type CollieCore, createCore, type TabHandle } from "../../durable-member/sdk/core/index.ts";
+import { type CollieCore, createCore, type TabHandle } from "../../../examples/durable-member/sdk/core/index.ts";
 import {
   ASKING_TOOLS,
   askTools,
@@ -43,7 +43,7 @@ import {
   showConversation,
   spawnHelperTool,
   type Submit,
-} from "../../durable-member/pi-durable/index.ts";
+} from "../../../examples/durable-member/pi-durable/index.ts";
 import {
   CASE_IDS,
   CASES,
@@ -55,7 +55,7 @@ import {
   REAL_INSTRUCTIONS,
   ticketText,
   useScriptedModel,
-} from "../../durable-member/script.ts";
+} from "../../../examples/durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
 import { openPiStorage } from "./storage.ts";

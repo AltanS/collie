@@ -18,7 +18,7 @@
   // "ai": { "binding": "AI" },
   // The SQLite storage backend. PiHarness keeps Pi Durable's tables in ctx.storage.sql, under the prefix `pi_`.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Member"] }],
-  // The Pi glue and the script are shared with ../durable-member and import Pi from there. These
+  // The Pi glue and the script are shared with ../../examples/durable-member and import Pi from there. These
   // lines make the bundle take Pi from THIS folder, so there is one copy of each package. Two copies
   // would break Pi's class checks. vitest.config.ts (dedupe) and tsconfig.json (paths) say the same.
   "alias": {
