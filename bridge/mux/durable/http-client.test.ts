@@ -137,7 +137,7 @@ describe("the http transport: hello", () => {
     const token = testToken();
     const program = await startProgram(token);
     program.range = { min: 2, max: 3 };
-    const adapter = new DurableMux(new DurableHttpClient(program.url, token), new FakeDurableClock());
+    const adapter = new DurableMux(new DurableHttpClient(program.url, token), new FakeDurableClock(), null, () => {});
     expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program speaks 2..3, this Collie speaks 1..1");
   });
 });

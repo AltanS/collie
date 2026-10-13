@@ -88,6 +88,13 @@ socket. The descendant check is program-side and optional: the adapter does not 
 tell whether a program does. A program that refuses answers 403 `caller-refused` (section 3). An `allow-always` option is the grant that needs the most care: one answer from a hostile
 tool would let every later call through without a question.
 
+**A program on Node cannot run the descendant check.** The check reads the caller's process id off the
+socket (`SO_PEERCRED`), and Node has no way to read it. The example SDK's Node entry
+(`examples/durable-member/sdk/node`) serves the same wire on the same private socket without the
+check, and writes one line at start that says so. Such a program SHOULD run the agent's tools in a
+sandbox that cannot reach the socket. Bun on Linux can read the caller, and the SDK's Bun entry runs
+the check there.
+
 ### 1B. TLS with a bearer token
 
 For a program the person deployed themselves, behind TLS, and that Collie dials out to. The program
@@ -133,12 +140,14 @@ carries it is a `TypeError` when the program raises it.
    to that call, ready or not.
 3. The adapter picks the highest version inside both ranges, and sends it in `X-Collie-Session` on
    every later call, including later `hello` calls.
-4. No overlap: the adapter calls nothing else. It reports `unreachable` with detail
+4. No overlap: the adapter calls nothing else on the wire, except one telling `hello` (the version
+   policy below). It reports `unreachable` with detail
    `incompatible: program speaks <min>..<max>, this Collie speaks 1..1`. It never shows an empty
    census for this case.
 5. A call with a missing header (other than `hello`), a non-integer header, or a version outside
    the program's range gets **409** `{ "code": "incompatible", "range": { "min", "max" } }`. Never a
-   5xx. `hello` with a header outside the range gets the same 409.
+   5xx. `hello` with a header outside the range gets the same 409. When the header is an integer,
+   the program SHOULD add `refusal`, a `VersionRefusal` (section 4) that names both ranges.
 6. A **401** over the socket (1A) means the program asks for a token, which the socket does not
    carry. The adapter reports it as `incompatible` with detail `program asks for a token`. Over TLS
    (1B) a **401** or **403** means the program refused the token: `unreachable`, detail
@@ -146,8 +155,43 @@ carries it is a `TypeError` when the program raises it.
 7. A `hello` without `service: "collie-durable"` is not a durable program: some other server
    listens at the path. The adapter calls nothing else and reports `unreachable` with detail
    `incompatible: not a durable program`.
-8. A field is additive and optional. A reader MUST ignore a field it does not know. A new required
+8. **A receiver ignores unknown fields.** This is the one statement of the rule, for both sides and
+   every shape: a reader MUST ignore a field, an event `type`, an item kind or a code it does not
+   know, and every other section points here. A field is additive and optional. A new required
    field, a new meaning for an old field, or a removed field needs a new version.
+
+### The version policy
+
+Collie speaks one wire version, N, and accepts N-1 for one minor release after N ships. The minor
+after that drops N-1. Today N is 1 and there is no N-1, so Collie speaks `1..1`.
+
+| The program's range | What happens |
+| --- | --- |
+| contains N | N is spoken. |
+| contains N-1 but not N, inside the minor after N shipped | N-1 is spoken. |
+| contains neither | Refused, as below. |
+
+A refusal is one object, the same on both sides:
+
+```ts
+interface VersionRefusal {
+  code: "version";
+  /** Collie's range, [N-1, N] (or [N, N] when it accepts no N-1). */
+  collie: [number, number];
+  /** The program's own range, [min, max]. */
+  program: [number, number];
+}
+```
+
+- **Collie's side.** The adapter writes one log line for each range it refuses, not one per poll, and
+  keeps the refusal for the bridge. The pane list SHOULD show one notice row in place of the program's
+  panes: `Program speaks wire v<max>, this Collie speaks v<N>; update one of them`, where `<max>` is the
+  program's newest version.
+- **The program's side.** Once per program epoch, the adapter sends one more `GET /hello`, this time with
+  `X-Collie-Session: <N>`. The program answers it 409 `incompatible` (point 5), with `refusal`, and
+  SHOULD write one line in its own log. A program that does not add `refusal` still gets the 409, so the
+  telling `hello` is safe against every version 1 program. The adapter reads nothing from the reply.
+- Nothing else changes: no snapshot, no event, no POST to a refused program.
 
 The program checks in this order: version (409), then `hello`, then ready (503 `starting`), then
 the route (404). Over TLS (1B) the token (401) comes before all of them.
@@ -163,7 +207,7 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `GET /hello` | none; version header optional | `Hello` | 409 `incompatible` (header present and out of range) |
 | `GET /snapshot` | optional `If-None-Match: <etag>` | `Snapshot`, with `ETag: "<epoch>-<rev>"`. **304** with the same `ETag` and no body when it matches. | 409 `incompatible`, 503 `starting` |
 | `GET /pane/:id/events?after=N&epoch=E` | `after`: a cursor, integer ≥ 0. `epoch`: the epoch the cursor came from. Both required. | `EventsReply` | 400 `bad-cursor`, 404 `no-such-pane`, 409 `incompatible`, 503 `starting` |
-| `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 403 `caller-refused`, 404 `no-such-pane`, 409 `decided`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/action` | `ActionRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 404 `no-such-action`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `action-refused`, 503 `starting` |
@@ -201,7 +245,8 @@ Every error body is a `Problem` (section 4).
 | 404 | `no-such-conversation` | The conversation of a history read is not one the program knows (section 7.16). | `gone`. |
 | 404 | `no-such-action` | The pane does not list this action (section 7.10). | Refused, with a detail that says the conversation has no such action. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
-| 409 | `incompatible` | Version outside the range. Carries `range`. | `unreachable`, detail `incompatible`. Never retried at the same version. |
+| 409 | `incompatible` | Version outside the range. Carries `range`, and `refusal` when the header was an integer (section 2). | `unreachable`, detail `incompatible`. Never retried at the same version. |
+| 409 | `decided` | On `answer`: the ask was already decided, by the phone, by the program or by its `expiresAt` (section 7.3). Carries `outcome`, the first decision. Nothing ran. | Read as `too-late`. Never retried. |
 | 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current (for an `action`, the `turnId` when the request carried one). Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
 | 409 | `request-id-reused` | The `requestId` was already used for a different route, pane, target or starter. | Refused. |
 | 409 | `not-supported` | The cap for this act is false, or this pane cannot take it (for example no send handler). | Refused. |
@@ -411,6 +456,12 @@ interface Ask {
    * most 120 (section 6). The bridge MAY use them and falls back to its own text. Each part is optional.
    */
   push?: { title?: string; line?: string };
+  /**
+   * ISO 8601 with a zone. Past it, the ask is decided by `timeout`: the program closes it, and a reader
+   * that still holds it drops it on the next snapshot read (section 7.3). Absent: it waits for a person.
+   * A value that is not a time reads as absent.
+   */
+  expiresAt?: string;
 }
 
 interface Option {
@@ -460,14 +511,29 @@ type Item =
   | { id: string; ts?: string; kind: "tool"; tool: ToolCall; status: ToolStatus };
 // `ts`: ISO 8601 with a zone, for example "2026-10-12T09:30:00.000Z".
 
+/** `phone`: an answer on the answer route. `stopped`: anything else (a stop, the program, a timeout). */
 type ClosedBy = "phone" | "stopped";
+
+/** Who decided an ask (section 7.3). `phone` goes with `by: "phone"`; `program` and `timeout` with `by: "stopped"`. */
+type DecidedBy = "phone" | "program" | "timeout";
+
+/** The receipt of a decided ask: the first decision, who made it and when. */
+interface AskOutcome {
+  decidedBy: DecidedBy;
+  /** ISO 8601. */
+  decidedAt: string;
+  /** A `permission` the phone answered: the option it took, and that option's effect. */
+  optionId?: string;
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
 
 type SessionEvent =
   | { type: "item"; item: Item }
   | { type: "remove"; id: string }
   /** A new open ask, or a known `id` with a higher `revision` that replaces it. */
   | { type: "ask"; ask: Ask }
-  | { type: "ask-closed"; askId: string; by: ClosedBy; waitedMs?: number }
+  /** `decidedBy` and `decidedAt`: the receipt (section 7.3). An older program sends neither. */
+  | { type: "ask-closed"; askId: string; by: ClosedBy; waitedMs?: number; decidedBy?: DecidedBy; decidedAt?: string }
   | { type: "state"; state: PaneState }
   /** An input reached its end. `requestId` is present when the input came with one. */
   | { type: "settled"; inputId: string; requestId?: string; status: "answered" | "unanswered"; reason?: string }
@@ -475,7 +541,7 @@ type SessionEvent =
   | { type: "reset" }
   /** The history sent so far is complete. What follows is live. */
   | { type: "synced" };
-// A reader ignores an event `type` it does not know.
+// An event `type` a reader does not know is ignored (section 2, point 8).
 
 interface EventsReply {
   epoch: string;
@@ -509,7 +575,10 @@ interface AnswerRequest {
 }
 
 interface AnswerReply {
-  /** "too-late": the ask id is not open on this pane (answered, stopped, or from before a restart). */
+  /**
+   * "too-late": the ask id is not open on this pane and the program holds no outcome for it (stopped, or from
+   * before a restart). An ask it decided and still remembers gets 409 `decided` instead (section 7.3).
+   */
   result: "taken" | "too-late";
   /** This request id was seen before. Nothing ran a second time. */
   replayed?: true;
@@ -625,6 +694,10 @@ interface Problem {
   message?: string;
   /** With `incompatible`. */
   range?: ProtocolRange;
+  /** With `incompatible`, when the version header was an integer (section 2). */
+  refusal?: VersionRefusal;
+  /** With `decided`: the first decision (section 7.3). */
+  outcome?: AskOutcome;
   /** With `stale`: the pane's current turn and open ask ids. */
   turnId?: string;
   askIds?: string[];
@@ -716,6 +789,12 @@ strings that are already inside the caps; the adapter does not trust that it did
 When cleaning changes an ask's `title` or `reason`, the adapter marks the ask `cleaned: true`
 (section 4).
 
+Every label a card or the belt shows is untrusted text from the program, and through it from the model:
+the ask's `title`, each option's `label`, each field's `label` and each action's `label`. Each goes
+through these steps and its cap below before any other code reads it. A button never shows blank: an
+option or an action with no words left after cleaning is dropped, and a field with none is named by
+its `id`.
+
 The `harness` string is cleaned like the others and stays display text. It may match a name in the
 open harness list, but it never picks a grammar, a parser or a journal adapter.
 
@@ -732,7 +811,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `Ask.push.title` | 60 characters | cut; empty after cleaning reads as absent |
 | `Ask.push.line` | 120 characters | cut; empty after cleaning reads as absent |
 | `StarterRow.label` | 128 bytes | cut |
-| `Option.label` | 128 bytes | cut |
+| `Option.label` (a `permission` or a `choice` option, and an option of a form field) | 128 bytes | cut; empty after cleaning drops the option |
+| `Field.label` | 128 bytes | cut; empty after cleaning reads as the field's `id` |
 | `PaneAction.label` | 16 characters | cut; empty after cleaning drops the action |
 | `Pane.actions` | 4 entries | the first 4 kept |
 | `Pane.harness` | 64 bytes | cut |
@@ -819,9 +899,12 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
   state is `waiting`.
 - An answer names `askId`, the `revision` the phone saw, and what the person chose: an `optionId`, or
   for the other kinds of ask what section 7.14 says.
-  - The ask id is not open on this pane: 200 `{ "result": "too-late" }`. This covers an ask already
-    answered, one closed by a stop, and, for a program that mints a random id per raise, every id
-    from before a restart.
+  - The ask was decided and the program still holds its outcome: 409 `{ "code": "decided", "outcome" }`,
+    with the first `AskOutcome`, whatever `revision` the answer names. A second tap, a second phone and a
+    tap after the program decided all land here. Nothing runs.
+  - The ask id is not open on this pane and the program holds no outcome: 200 `{ "result": "too-late" }`.
+    This covers an ask closed by a stop, one whose outcome the program forgot, and, for a program that
+    mints a random id per raise, every id from before a restart.
   - The ask is open and `revision` is not its current one: 409 `stale`, with `ask` in its current
     form.
   - `optionId` is not one of the options: 400 `bad-option`. The same code for an id in `optionIds` or
@@ -830,6 +913,21 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
     `{ "result": "taken" }`. The tool then runs or is denied, as the option says.
 - Only an answer on this route closes an ask with `by: "phone"`. The program MUST NOT answer its own
   ask through the wire.
+- **The receipt.** Every `ask-closed` SHOULD carry `decidedBy` and `decidedAt`. `phone`: an answer on
+  this route. `program`: the program decided the ask itself, for example in its own window, or closed it
+  for its own reasons. `timeout`: the clock passed `expiresAt`. A stop of the turn closes as `program`.
+  The adapter reads `by: "stopped"` with `decidedBy: "program"` or `"timeout"` as that word, so the phone
+  can say "decided in the program" or "timed out" and not "stopped". Without a receipt it stays `stopped`.
+- **Expiry.** An ask with `expiresAt` closes at that time with `by: "stopped"` and `decidedBy: "timeout"`.
+  A program whose timers can sleep (a Worker) closes it no later than its next snapshot. The adapter
+  does not wait for that: a held ask past its `expiresAt` leaves `openAsks` on the next snapshot read,
+  a 304 included, so the pane stops reading `waiting` for it.
+- **What a program remembers.** A program SHOULD keep the outcome of at least the last 500 decided asks
+  per pane for as long as it runs, so a late tap gets `decided` and not `too-late`. After a restart it
+  MAY have none.
+- **The card is built from data.** A program SHOULD build a `permission` ask from the tool's name and a
+  JSON view of its arguments, never from text the model wrote about the call: a model that wants a yes
+  would describe the call kindly. The example SDK's `requireApproval(toolName, args, options)` does so.
 
 ### 7.4 Send and abort
 
@@ -1036,7 +1134,8 @@ the same item id, not a new item, and it is not a "stopped" line.
   adapter drops an item of a kind it does not know (section 2, point 8).
 - `markdown` is text the phone renders as markdown: headings, lists, emphasis, code spans and links. It
   is the same renderer the phone uses for the log of any other agent, and it draws every string as text,
-  never as markup. `code` is a code block, and `lang` names its language when it has one. `link` is a
+  never as markup. Raw HTML in the text is never rendered: the phone has no HTML path, so a tag shows as
+  its own characters, and the adapter needs no strip of its own. `code` is a code block, and `lang` names its language when it has one. `link` is a
   line with a link in it; the phone shows `label`, or the address when there is no label. A markdown
   link inside a `markdown` item is a link like any other, and the phone opens only web addresses.
 - Images and files are not items. An item of a kind the adapter does not know is dropped.
@@ -1265,3 +1364,19 @@ document. The version number stays 1; the spike's shapes are not supported.
     `no-such-conversation` and `reopen-refused`, and `bad-cursor` for a history cursor. The session id is the
     conversation id the program serves history under, or null. Additive, so the version stays 1: an older
     adapter ignores both caps and `sessionId`, and an older program never sets them.
+28. **A version policy** (section 2): Collie speaks N and accepts N-1 for one minor. `Problem` gains an
+    optional `refusal` (a `VersionRefusal`) on 409 `incompatible`, and a refused program gets one telling
+    `hello` per epoch with Collie's version, which every version 1 program already answers 409.
+    Additive, so the version stays 1.
+29. **`Ask` gains an optional `expiresAt`** (sections 4 and 7.3). Past it the ask is decided by `timeout`.
+    Additive: an older adapter ignores it and keeps the ask until the program closes it.
+30. **`ask-closed` gains optional `decidedBy` and `decidedAt`** (sections 4 and 7.3): the receipt of a
+    decision, `phone`, `program` or `timeout`. `by` keeps its two words, so an older adapter reads a close
+    by the program or by the clock as `stopped`, as before.
+31. **A new code, 409 `decided`, on `answer`** (sections 3 and 7.3), with `Problem.outcome`: a second answer to
+    a decided ask gets the first outcome. An older adapter reads an unknown 409 as refused, and nothing ran,
+    so no answer is lost or run twice.
+32. **An option or an action with no label left after cleaning is dropped, and a field with none is named by
+    its id** (section 6). Every label on a card goes through the cleaner and a cap. No shape changes.
+33. **The descendant check is a Bun-only part of the example SDK** (section 1A). A program on Node serves the
+    same wire without it, and says so at start. No shape changes.

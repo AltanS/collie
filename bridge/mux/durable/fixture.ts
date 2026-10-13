@@ -374,6 +374,8 @@ export class FakeDurableProgram {
   readonly answers: FakeAnswer[] = [];
   /** The first reply per request id, and the pane it was for (WIRE.md section 7.6). */
   private readonly answered = new Map<string, { paneId: string; reply: AnswerDoc }>();
+  /** The first decision of each ask the phone answered, by ask id: what a second answer's 409 `decided` carries (WIRE.md 7.3). */
+  readonly decided = new Map<string, JsonObject>();
 
   /** Every send the fake took, in order. A replay is not a second entry. */
   readonly sends: FakeSend[] = [];
@@ -631,7 +633,10 @@ export class FakeDurableProgram {
     }
     const version = Number(header);
     const inside = Number.isInteger(version) && version >= this.range.min && version <= this.range.max;
-    return inside ? null : reply(409, { code: "incompatible", range: this.range });
+    if (inside) return null;
+    // The refusal names both sides (WIRE.md section 2): the version the caller sent, and the program's range.
+    const refusal = Number.isInteger(version) ? { refusal: { code: "version", collie: [version, version], program: [this.range.min, this.range.max] } } : {};
+    return reply(409, { code: "incompatible", range: this.range, ...refusal });
   }
 
   private async handle(request: Request): Promise<Response> {
@@ -924,6 +929,9 @@ export class FakeDurableProgram {
     }
     const ask = pane.openAsks.find((open) => open.id === askId);
     let answer: AnswerDoc;
+    const first = this.decided.get(askId);
+    // A second answer to an ask the program remembers deciding: 409 `decided`, with the first outcome (WIRE.md 7.3).
+    if (ask === undefined && first !== undefined) return reply(409, { code: "decided", outcome: first });
     if (ask === undefined) {
       answer = { result: "too-late" };
     } else if (ask.revision !== revision) {
@@ -935,6 +943,12 @@ export class FakeDurableProgram {
     } else {
       // Resolved: the ask closes with `by: "phone"`, and the pane waits only while another is open.
       this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId: optionOf(post.answer), answer: post.answer, requestId });
+      const optionId = post.answer.kind === "option" ? post.answer.optionId : undefined;
+      const effect = ask.options.find((option) => option.id === optionId)?.effect;
+      const outcome: JsonObject = { decidedBy: "phone", decidedAt: new Date().toISOString() };
+      if (optionId !== undefined) outcome.optionId = optionId;
+      if (effect !== undefined) outcome.effect = effect;
+      this.decided.set(askId, outcome);
       const left = pane.openAsks.filter((open) => open.id !== askId);
       this.snapshot.panes = this.snapshot.panes.map((candidate) =>
         candidate.id === paneId ? { ...candidate, openAsks: left, state: left.length > 0 ? "waiting" : "working" } : candidate,
