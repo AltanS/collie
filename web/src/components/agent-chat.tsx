@@ -103,6 +103,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { paneHeaderLine, paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { panesOfTab } from "@/lib/pane-ordinal";
+import { ExperimentalBadge } from "@/components/experimental-badge";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -110,6 +111,7 @@ import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-ag
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
+import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
 import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
@@ -383,7 +385,7 @@ export function AgentChat({
   const hostBlock = writeRefusal(hostHealth);
   // Whether the pane's own multiplexer can rename it: gates the Rename row in Pane settings, the way
   // the ⋮ sheet gates its own (components/pane-actions-sheet.tsx asks the same question).
-  const canRenamePane = useMuxCapability("renamePane", { host: agent?.host });
+  const canRenamePane = useMuxCapability("renamePane", { host: agent?.host, session: scope?.session });
   /**
    * The ONE reason this pane currently refuses a write, or undefined when it accepts them. Every
    * write handler below starts with it, so there is a single place that decides both which gates
@@ -699,6 +701,9 @@ export function AgentChat({
   // the program's own bookkeeping, the conversation list on the dashboard is how one reaches another, and
   // the back arrow goes there. The pane keeps its header, its thread and its composer.
   const paneGrid = useMuxCapability("paneGrid", scope);
+  // A pane of a program session wears the Experimental mark beside its name (M55 spec 02), the same
+  // badge its row wears in the Spaces list. A terminal session's header is untouched.
+  const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
   const stripsExist = !gridless && (canFold || tabPanes.length > 1);
   const folded = canFold && stripsFolded;
@@ -1961,6 +1966,7 @@ export function AgentChat({
                   <span data-slot="pane-name" data-glide="name" className="block truncate font-semibold leading-5">
                     {name}
                   </span>
+                  {experimental && <ExperimentalBadge className="shrink-0" />}
                 </div>
                 {/* LINE 2 NAMES THE WORKSPACE, END TO END: the workspace on the left, which machine
                     it sits on and how long its prompt cache stays warm on the right. The two used to

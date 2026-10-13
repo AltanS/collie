@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { keysSendable, muxCapability, muxTopologyLatency, scopedMuxConfig } from "./mux-capability";
+import { keysSendable, muxCapability, muxTopologyLatency, scopedMuxConfig, sessionMuxConfig } from "./mux-capability";
 import type { MuxConfig } from "./types";
 
 // The two rules every gated control in the app leans on, asserted where they live rather than
@@ -172,5 +172,50 @@ describe("scopedMuxConfig — a member answers for itself, and silence means the
     const state = muxCapability(scopedMuxConfig(lead, declined), "agentSessionRef");
     expect(state.mux).toBe("member-mux");
     expect(state.note).toBe("this multiplexer keeps no agent session log for Collie to read.");
+  });
+});
+
+describe("sessionMuxConfig: capabilities per session card (M55)", () => {
+  const machine = cfg({
+    name: "reference",
+    capabilities: { createSpace: false, paneGrid: true },
+    notes: { createSpace: "This runtime makes no spaces by hand." },
+    unsupportedKeys: ["f13"],
+  });
+
+  it("no card is the machine's block, untouched: a bridge older than the card", () => {
+    expect(sessionMuxConfig(machine, null, null)).toBe(machine);
+  });
+
+  it("the primary session's card keeps the machine's block, notes and all", () => {
+    const card = { isPrimary: true, mux: "reference", caps: { createSpace: true } };
+    expect(sessionMuxConfig(machine, card, null)).toBe(machine);
+  });
+
+  it("a program session's card carries its own capability set and no borrowed notes", () => {
+    const card = { isPrimary: false, mux: "support-desk", caps: { paneGrid: false, createSpace: false } };
+    const out = sessionMuxConfig(machine, card, null);
+    expect(muxCapability(out, "paneGrid").capable).toBe(false);
+    expect(muxCapability(out, "createSpace")).toEqual({ capable: false, note: "", mux: "support-desk" });
+  });
+
+  it("a card of the machine's own runtime keeps that runtime's notes", () => {
+    const card = { isPrimary: false, mux: "reference", caps: { createSpace: false } };
+    expect(muxCapability(sessionMuxConfig(machine, card, null), "createSpace").note).toBe(
+      "This runtime makes no spaces by hand.",
+    );
+  });
+
+  it("a card's capability set wins over a fetched block", () => {
+    const card = { isPrimary: false, mux: "support-desk", caps: { paneGrid: false } };
+    const fetched = cfg({ capabilities: { paneGrid: true } });
+    expect(muxCapability(sessionMuxConfig(machine, card, fetched), "paneGrid").capable).toBe(false);
+  });
+
+  it("a card with no capability set falls back to the fetch, then to the machine", () => {
+    const card = { isPrimary: false, mux: "support-desk" };
+    const fetched = cfg({ name: "fetched", capabilities: { paneGrid: false } });
+    expect(sessionMuxConfig(machine, card, fetched)).toBe(fetched);
+    expect(sessionMuxConfig(machine, card, null)).toBe(machine);
   });
 });

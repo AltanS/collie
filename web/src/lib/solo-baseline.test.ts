@@ -74,6 +74,13 @@ const SESSION_SUMMARY_KEYS = {
   working: true,
   blocked: true,
   host: true,
+  // The session card (M55): optional on the type, absent from a solo body with no program session.
+  kind: true,
+  mux: true,
+  caps: true,
+  where: true,
+  state: true,
+  experimental: true,
 } satisfies Record<keyof SessionSummary, true>;
 
 const AGENT_VIEW_KEYS = {

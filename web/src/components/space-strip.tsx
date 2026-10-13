@@ -71,10 +71,10 @@ export function SpaceStrip({
   onRenamed,
 }: SpaceStripProps) {
   const [sheetSpace, setSheetSpace] = useState<WorkspaceView | null>(null);
-  const newSpace = useMuxCapability("createSpace");
+  const newSpace = useMuxCapability("createSpace", scope);
   // A durable program makes no space by hand, but it offers starters, and `onNewSpace` opens the New
   // page, which lists exactly those (route space.tsx). So the "+" is drawn for either (M51 spec 08).
-  const startersOpen = useMuxDeclared("starters");
+  const startersOpen = useMuxDeclared("starters", scope);
   // The space sheet has one row, Rename, which a program draws only when it takes renames (M53 spec 05). With no
   // such declaration, or no callback to revalidate with, a space chip stays a plain switch and opens nothing.
   const renameOpen = useMuxDeclared("renameSpace", scope);

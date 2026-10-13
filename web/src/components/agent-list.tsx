@@ -105,6 +105,11 @@ interface AgentListProps {
   hiddenMachines?: readonly string[];
   /** The machine the dashboard addresses, the scope's `?h=`: undefined is the lead. It always shows. */
   addressedHost?: string | undefined;
+  /**
+   * The address the dashboard shows, machine and session: the empty list's capability answer is asked
+   * of it (M55). Omit and the lead's primary session is asked, as before.
+   */
+  scope?: Scope;
   /** Pick a hidden machine's "Show <machine>'s panes" option: show that machine again. */
   onShowMachine?: (host: string) => void;
   /**
@@ -267,6 +272,7 @@ export function AgentList({
   onToggleHidden,
   hiddenMachines = NO_MACHINES,
   addressedHost,
+  scope: viewScope,
   onShowMachine,
   needsYouOnly = false,
   onNeedsYouOnlyChange,
@@ -285,7 +291,7 @@ export function AgentList({
   const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes], { rereadOnVisible: true });
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
-  const agentDetection = useMuxCapability("agentDetection");
+  const agentDetection = useMuxCapability("agentDetection", viewScope);
   // Whether this device retired the pin hint (lib/pin-hint.ts). Read here for the same
   // reason: above the early return.
   const pinHintRetired = usePinHintRetired();

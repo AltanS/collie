@@ -51,6 +51,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program runs beside your terminal mux in one Collie.** List each program in `sources.json` and it appears as its own session on the phone, no second instance and no crew needed.
 - **The durable examples start with a short hello.** `hello.ts` is 12 lines: it opens the socket, asks "Deploy to staging?" with Yes and No, prints the answer and exits. The Bun example runs a real model through OpenRouter or a ChatGPT sign-in when `REAL_MODEL` is set, and the scripted support desk stays as the default and the demo.
 - **The Cloudflare durable example is parked under `experiments/`.** It moved out of `examples/` and out of CI, with a README banner: experimental, verified on 2026-10-13 with `agents` 0.28.0. Its adapter test runs only when `COLLIE_CLOUDFLARE_EXPERIMENT=1` is set. The Pi packages in both examples stay on the `@earendil-works` scope at 1.1.0.
+- **The phone asks each session what it can do.** A control asks the session it acts in, so a durable program beside a terminal gets only the controls it declares. The session card in the snapshot carries the answer, and a bridge without it is asked as before.
+- **A durable program is a space of its own on the phone.** Its name, its runtime and an Experimental mark sit on the row, and one tap opens its conversations. Your terminal spaces look as before.
 
 ### Fixed
 

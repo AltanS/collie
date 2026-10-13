@@ -142,8 +142,9 @@ function NewPage({ search }: { search: string }) {
   // ── What this machine offers ──────────────────────────────────────────────────────────────────
   const launchers = useLaunchers(target);
   const loaded = launchers.loadedFor === launchersKey(target);
-  // Worktrees are the lead's alone, so the lead's multiplexer is the one asked.
-  const canWorktree = useMuxCapability("createWorktree").capable;
+  // Worktrees are the lead's alone, so the lead's multiplexer is the one asked, in the session the page
+  // opens into (M55).
+  const canWorktree = useMuxCapability("createWorktree", { session: target.session }).capable;
   // Whether the CHOSEN machine has a screen (ADR 0102): one with none starts only its program's starters.
   const chosenGrid = useMuxCapability("paneGrid", target);
   const offer: Offer = offerFor({
