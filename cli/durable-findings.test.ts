@@ -73,7 +73,7 @@ describe("doctor durable over https", () => {
       ["durable-lead", "skipped"],
     ]);
     expect(row(findings, "durable-url").detail).toContain("· https ·");
-    expect(row(findings, "durable-token").detail).toBe("COLLIE_DURABLE_TOKEN is 20 bytes; it must be at least 32");
+    expect(row(findings, "durable-token").detail).toBe("COLLIE_DURABLE_TOKEN is 20 bytes; it must be at least 32 bytes, for example 64 hex characters from `openssl rand -hex 32`");
   });
 
   test("plain http off loopback fails the url row with the reason and dials nothing", async () => {

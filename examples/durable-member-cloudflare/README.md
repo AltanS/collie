@@ -51,13 +51,37 @@ COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here   # the value in .dev.vars
 ```
 
 Collie sends a token only over `https://`, with one exception: `http://127.0.0.1:<port>` or
-`http://localhost:<port>`, for `wrangler dev` on the same machine. On a host that already runs Collie, put
-the lines in a second instance's `.env`, as the local example does in
-[Point a Collie peer at it](../durable-member/README.md#point-a-collie-peer-at-it), with `COLLIE_DURABLE_URL`
-and `COLLIE_DURABLE_TOKEN` in place of `COLLIE_DURABLE_SOCKET`. Set the socket or the URL, never both.
-`collie doctor` says whether the token is set and how long it is, and never prints it. The full peer
-settings are in [durable notes](../../docs/multiplexers.md#durable-notes). Join the peer to your crew as in
-[Join the crew](../durable-member/README.md#join-the-crew).
+`http://localhost:<port>`, for `wrangler dev` on the same machine. The token must be at least 32 bytes, for
+example 64 hex characters from `openssl rand -hex 32`. Set the socket or the URL, never both. `collie doctor`
+says whether the token is set and how long it is, and never prints it. The full peer settings are in
+[durable notes](../../docs/multiplexers.md#durable-notes).
+
+### First run on a host that already runs Collie
+
+The program gets a second Collie instance with its own port and state folder. Put these lines in
+`~/.config/herdr/plugins/config/herdr.collie-durable/.env`:
+
+```sh
+COLLIE_INSTANCE=durable
+COLLIE_PORT=8795
+COLLIE_STATE_DIR=/home/you/.local/state/collie-durable
+COLLIE_MUX=durable
+COLLIE_DURABLE_URL=http://127.0.0.1:8801
+COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here   # the value in .dev.vars
+```
+
+Then start it, check it, and join it to your crew under a name of its own, so the host chip can tell it
+from the other instance on this host:
+
+```sh
+COLLIE_INSTANCE=durable collie start
+COLLIE_INSTANCE=durable collie doctor
+COLLIE_INSTANCE=durable collie crew join <lead-address> --label durable
+```
+
+`collie crew invite` on the lead gives the address and the code; the steps are in
+[Join the crew](../durable-member/README.md#join-the-crew). A question the program asks reaches the phone as
+a push when push is set up, the same as a question from any other pane.
 
 ## Deploy
 
@@ -78,7 +102,7 @@ COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
 ```
 
 Use a different token for the deployed program than for `wrangler dev`. A deploy restarts the Durable
-Object, so Collie sees a new epoch, reads every pane again, and an open question comes back with a new id
+Object, so Collie sees a new epoch and reads every pane again. An open question comes back with the same id
 (see [Limits](#limits)).
 
 ## The trust model
@@ -93,8 +117,8 @@ keeps them out.
 - **The Worker checks the token before anything else**, in constant time, before the version, `hello` and
   the Durable Object. A wrong or missing token gets 401 `{"code":"unauthorized"}` and nothing more, and
   wakes nothing. A token shorter than 32 bytes, or none at all, makes the Worker refuse every request.
-- **Make the token random.** `openssl rand -hex 32` gives 32 random bytes as 64 characters. Keep it in two
-  places only: the Worker's secret and the peer's `.env`.
+- **Make the token random.** It must be at least 32 bytes, for example 64 hex characters from
+  `openssl rand -hex 32`. Keep it in two places only: the Worker's secret and the peer's `.env`.
 - **Rotate it without a lockout.** The Worker takes `COLLIE_TOKEN` and, while it is set,
   `COLLIE_TOKEN_NEXT`. Both are checked hashed and in constant time. Rotate in three steps:
   1. Set `COLLIE_TOKEN_NEXT` to the new value: `bunx wrangler secret put COLLIE_TOKEN_NEXT`. Both tokens
@@ -143,10 +167,11 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 
 ## Limits
 
-- **A question that waits is lost when the Durable Object leaves memory.** That happens on a deploy, on
-  a new secret, and when the object is evicted. The run continues on the next request, and the question
-  comes back with a new id and the same tool call. Collie shows it as the same question and does not
-  push it again. An answer to the old id gets "too late".
+- **A question that waits survives a wake.** When the object leaves memory between your read and your
+  tap, the question is raised again with the same id, and your tap lands on it. Local `wrangler dev`
+  removes an idle object after 10 s, so you see the object wake often there. The object leaves memory on
+  a deploy, on a new secret, and when it is evicted, and it raises every waiting question before it
+  answers again.
 - **Nothing runs while nothing asks.** The object has no alarm. A run that was cut off continues only when
   the next request, usually Collie's next poll, starts the object again.
 - **Every start is a new epoch.** Collie then reads each pane again in full.
@@ -219,7 +244,8 @@ bun run smoke
 The tests run inside workerd, the Workers runtime, through Cloudflare's Vitest plugin, so they need Node and
 Vitest. `bun test` cannot load `cloudflare:workers`, so this folder does not use it. They cover the token,
 `hello`, the snapshot and its ETag, an answer that runs once, send and stop, a starter, and restarts: a new
-epoch, request ids that survive in SQLite, and a waiting question raised again with a new id. `npm run
+epoch, request ids that survive in SQLite, and a waiting question raised again with the same id and a
+tap across the wake taken once. They also cover the second token of a rotation and the receipts cap. `npm run
 test:memory` runs them with Pi's conversations in memory and skips the test that needs them to survive. The
 smoke starts `wrangler dev` on 8801 with a fresh token and a temporary state folder, asks for `hello` with
 curl, and stops. None of them needs an account or the network.

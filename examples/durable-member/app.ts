@@ -206,6 +206,7 @@ if (import.meta.main) {
     process.exit(1);
   }
   console.log(`listening ${app.collie.address}`);
+  if (!process.env.REAL_MODEL) console.log("Using the scripted model. Set REAL_MODEL and OPENROUTER_API_KEY for a real one.");
   const stop = () => {
     setTimeout(() => process.exit(1), 3000).unref(); // a hung close must not hang the shell
     app.close().then(() => process.exit(0));

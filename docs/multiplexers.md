@@ -276,7 +276,7 @@ with a reason:
 | `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set` | set the socket, or the URL with its token, not both |
 | `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN` | the URL needs its token |
 | `COLLIE_DURABLE_URL uses plain http to <host>` | use `https://`; plain http is for 127.0.0.1 or localhost only |
-| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32` | make a longer token, and give the program the same one |
+| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32 bytes, for example 64 hex characters from openssl rand -hex 32` | make a longer token, and give the program the same one |
 | `token-refused` | the program answered 401 or 403: the two sides hold different tokens |
 | `no socket at <path>` | nothing listens there yet |
 | `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |

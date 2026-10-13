@@ -88,9 +88,15 @@ a program the person deployed themselves.
 - A person can put a program that runs on Cloudflare, or on any host with a certificate, into the
   crew with two lines in the peer's `.env`. `examples/durable-member-cloudflare/` shows one.
 - Anyone who holds the token acts as the phone: they can read every conversation, answer every
-  question, send, stop and start. The token does not expire by itself. The person rotates it by
-  deploying a new one to the program and setting the same value in the peer, then restarting the
-  peer.
+  question, send, stop and start. The token does not expire by itself. A program MAY take a second
+  token while a rotation runs, so the person rotates without a lockout: the Cloudflare example takes
+  `COLLIE_TOKEN` and, while it is set, `COLLIE_TOKEN_NEXT`, both hashed and compared in constant
+  time. Set the next token on the program, set it in the peer and restart the peer, then move the
+  value to `COLLIE_TOKEN` and unset `COLLIE_TOKEN_NEXT` (amended 2026-10-13).
+- The example program reached over 1B refuses `allow-always` outright: its core is made with
+  `allowAlways: false`, and an ask with such an option is a `TypeError` when the program raises it.
+  The local example keeps the option for the socket, where the descendant check stands beside the
+  socket's owner (amended 2026-10-13).
 - The host sees the text. TLS ends at the host, and the conversations live in its storage.
 - The bridge makes a third kind of outbound call: to the URL the operator configured. It is
   declined by setting nothing, as the speech provider's is.

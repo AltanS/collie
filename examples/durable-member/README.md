@@ -18,7 +18,9 @@ bun run app
 ```
 
 The app prints the socket it listens on, for example
-`listening /run/user/1000/durable-member/app.sock`. It needs no key and no settings.
+`listening /run/user/1000/durable-member/app.sock`. It needs no key and no settings. Without a real model
+it says so on the next line: "Using the scripted model. Set REAL_MODEL and OPENROUTER_API_KEY for a real
+one." See [A real model](#a-real-model).
 
 On the first start the app opens one ticket. The scripted model asks to run `write_note`, and the
 ticket waits for your answer. The app keeps its conversations in `~/.local/state/durable-member/`, so

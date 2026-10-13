@@ -263,6 +263,8 @@ export class Pane implements PaneHandle {
       lastActiveAt: this.lastActiveAt,
       turnId: this.turnId,
       openAsks: this.openAsks,
+      // Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it.
+      sessionId: null,
       ...(this.cwd ? { cwd: this.cwd } : {}),
     };
   }

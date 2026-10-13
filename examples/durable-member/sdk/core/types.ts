@@ -132,6 +132,8 @@ export interface PaneInfo {
   turnId: string;
   /** Every open ask, oldest first, at most 50. */
   openAsks: Ask[];
+  /** Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it. */
+  sessionId: string | null;
   cwd?: string;
 }
 
