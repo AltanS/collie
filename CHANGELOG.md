@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Docs
+
+- **A real Pi Durable program ran through the durable wire.** disler's proactive incident demo, 170 lines changed, one approval card on the phone shipped its deploy. Findings and two screenshots in `experiments/real-program-spike/`.
+
 ### Added
 
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
