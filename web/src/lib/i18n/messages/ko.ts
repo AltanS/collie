@@ -892,6 +892,18 @@ export const ko: Dictionary = {
   "space.tab.renameFailed": "이름 변경 실패",
   "space.tab.closeFailed": "닫기 실패",
   "space.tab.closed": "탭을 닫았습니다.",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "미연결 상태입니다. 설정에서 기기를 연결하십시오.",
   "space.readOnly.expired": "페어링이 만료되었습니다. 설정에서 다시 연결하십시오.",
   "space.readOnly.deviceUnauthorised": "읽기 전용. 승인되지 않은 기기입니다.",
@@ -1287,6 +1299,8 @@ export const ko: Dictionary = {
   "apiError.tab.create_failed": "탭을 생성하지 못했습니다: {reason}",
   "apiError.tab.rename_failed": "탭 이름을 바꾸지 못했습니다: {reason}",
   "apiError.tab.close_failed": "탭을 닫지 못했습니다: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "새 탭을 생성할 작업 공간이 지정되지 않았습니다.",
   "apiError.launch.not_allowlisted": "해당 명령은 등록된 실행 항목이 아닙니다",
   "apiError.launch.unknown_harness": "이 머신은 {harness}을(를) 시작하지 않습니다.",

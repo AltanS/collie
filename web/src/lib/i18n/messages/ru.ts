@@ -854,6 +854,18 @@ export const ru: Dictionary = {
   "space.tab.renameFailed": "Сбой переименования",
   "space.tab.closeFailed": "Сбой закрытия",
   "space.tab.closed": "Вкладка закрыта",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Не сопряжено: свяжите это устройство в Настройках",
   "space.readOnly.expired": "Срок сопряжения истек. Свяжите снова в Настройках",
   "space.readOnly.deviceUnauthorised": "Только чтение: устройство не авторизовано",
@@ -1197,6 +1209,8 @@ export const ru: Dictionary = {
   "apiError.tab.create_failed": "Не удалось создать вкладку: {reason}",
   "apiError.tab.rename_failed": "Не удалось переименовать вкладку: {reason}",
   "apiError.tab.close_failed": "Не удалось закрыть вкладку: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Для новой вкладки не указано пространство.",
   "apiError.launch.not_allowlisted": "Эта команда отсутствует среди ваших средств запуска",
   "apiError.launch.unknown_harness": "Эта машина не запускает {harness}.",

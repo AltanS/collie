@@ -1497,6 +1497,7 @@ export const MUX_CAPABILITIES = [
   "steerTurn",
   "abortTurn",
   "starters",
+  "renameSpace",
 ] as const;
 
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];

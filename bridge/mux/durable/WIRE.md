@@ -731,9 +731,9 @@ abort.
 - A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true`
   and changes nothing, as for the other POSTs (section 7.6). The same `requestId` for another kind,
   id or title: 409 `request-id-reused`.
-- Collie draws the rename control for a tab, because it already has a tab capability (`renameTab`)
-  that the adapter declares from `caps.rename`. It has no control for a workspace yet; a program
-  MAY still take one on the wire.
+- Collie draws the rename control for a tab through its tab capability (`renameTab`) and the one for a
+  workspace through its space capability (`renameSpace`). The adapter declares both from `caps.rename`,
+  so a program that takes renames gets a Rename row in the tab sheet and in the space sheet.
 
 ## 8. Restart and epoch
 

@@ -804,6 +804,18 @@ export const tr: Dictionary = {
   "space.tab.renameFailed": "Yeniden adlandırılamadı",
   "space.tab.closeFailed": "Kapatılamadı",
   "space.tab.closed": "Sekme kapatıldı",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Eşleşmedi, bu cihazı Ayarlar'da eşleyin",
   "space.readOnly.expired": "Eşleme süresi doldu. Ayarlar'da tekrar eşleyin",
   "space.readOnly.deviceUnauthorised": "Salt okunur, cihaza yetki verilmedi",
@@ -1143,6 +1155,8 @@ export const tr: Dictionary = {
   "apiError.tab.create_failed": "Sekme oluşturulamadı: {reason}",
   "apiError.tab.rename_failed": "Sekme yeniden adlandırılamadı: {reason}",
   "apiError.tab.close_failed": "Sekme kapatılamadı: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Yeni sekme için alan adı belirtilmedi.",
   "apiError.launch.not_allowlisted": "Bu komut başlatıcılarınızdan biri değil",
   "apiError.launch.unknown_harness": "Bu makine {harness} başlatmıyor.",

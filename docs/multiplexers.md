@@ -235,13 +235,14 @@ What works:
   Stop, and a program that declares neither gets neither.
 - The program's starters, as rows on the New page. With `caps.starters`, the new-tab and new-space
   buttons open that page too.
-- Renaming a tab, from the tab's usual rename control. It works when the program declares `rename`;
+- Renaming a tab or a workspace, from the tab's usual rename control and the Rename row of the space
+  sheet (long-press a space chip, or tap the open one). It works when the program declares `rename`;
   the program applies the title or refuses it, and the phone shows the refusal.
 
 What does not work:
 
 - Terminal, and typed keys. A durable pane has no screen to show or type into.
-- Making a tab or a workspace by hand, closing them, and renaming a workspace or a conversation. The program lays out its own conversations.
+- Making a tab or a workspace by hand, closing them, and renaming a conversation. The program lays out its own conversations.
 - "Show in terminal". No pane is ever reported as focused.
 - Another user's program on the socket. The socket must belong to the user that runs Collie.
 - A program on another machine over plain TCP. Reach it over https with a token, as above, or run a

@@ -1395,6 +1395,21 @@ export function renameTab(
   });
 }
 
+/**
+ * Set a space's name, on a machine whose multiplexer declares `renameSpace` (a durable program that takes
+ * renames). Non-empty required, like a tab: the bridge 400s a blank label.
+ */
+export function renameSpace(
+  spaceId: string,
+  label: string,
+  scope?: Scope,
+): Promise<ActionResponse> {
+  return req<ActionResponse>(withScope(`/api/space/${encodeURIComponent(spaceId)}/rename`, scope), {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
 /** Close a tab, killing every pane inside it. */
 export function closeTab(tabId: string, scope?: Scope): Promise<ActionResponse> {
   return req<ActionResponse>(withScope(`/api/tab/${encodeURIComponent(tabId)}/close`, scope), {

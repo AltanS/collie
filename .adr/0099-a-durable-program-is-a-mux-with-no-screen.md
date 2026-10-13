@@ -102,8 +102,10 @@ adapter in the registry, and the crew is unchanged.**
     declares the tab capability `renameTab` from that cap, as it declares `steerTurn`, `abortTurn`
     and `starters` from theirs, so the phone draws its usual rename control with no durable special
     case. A pane is not renamed: its title is the conversation's. `renamePane` stays undeclared.
-    Collie has no capability for renaming a space, so a workspace rename is on the wire and has no
-    control on the phone yet. Added to version 1 before the wire shipped, so there is no version 2.
+    A workspace is renamed through a new capability, `renameSpace` (an optional method of the port,
+    `POST /api/space/:id/rename`), which only a durable program declares, from the same `caps.rename`.
+    The phone draws a Rename row in a new space sheet for it. Added to version 1 before the wire
+    shipped, so there is no version 2.
 
 ## Consequences
 

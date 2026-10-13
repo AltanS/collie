@@ -743,6 +743,13 @@ export interface MuxAdapter {
   /** Set a tab's label. Needs `renameTab`. */
   renameTab(tabId: string, label: string): Promise<MuxAck>;
 
+  /**
+   * Set a space's name. Needs `renameSpace`. OPTIONAL by design, like {@link controlTurn}: only an adapter that
+   * can name a space declares the capability and has the method (`durable`, from its program's `caps.rename`).
+   * An adapter without it is never asked, and `bridge/server.ts` answers `unsupported` for it.
+   */
+  renameSpace?(spaceId: string, label: string): Promise<MuxAck>;
+
   /** Close a tab and every pane in it. Needs `closeTab`. */
   closeTab(tabId: string): Promise<MuxAck>;
 
@@ -808,7 +815,7 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
 }
 
 /** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
-export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn" | "foregroundProcesses";
+export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn" | "foregroundProcesses" | "renameSpace";
 
 /**
  * The OPTIONAL methods, gathered the way {@link muxDataFields} gathers the optional data fields.
@@ -838,6 +845,8 @@ export function muxOptionalMethods(
   if (controlTurn !== undefined) methods.controlTurn = controlTurn;
   const foregroundProcesses = adapter.foregroundProcesses?.bind(adapter);
   if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
+  const renameSpace = adapter.renameSpace?.bind(adapter);
+  if (renameSpace !== undefined) methods.renameSpace = renameSpace;
   return methods;
 }
 

@@ -14,8 +14,10 @@ import type {
   ClosedBy,
   Item,
   PaneInfo,
+  PaneRef,
   PaneState,
   ProgramEvent,
+  ProgramHooks,
   SessionEvent,
   Snapshot,
   Starter,
@@ -360,18 +362,36 @@ export class Pane implements PaneHandle {
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>) {
     this.abortFn = fn;
   }
+  /** A pane takes text when it has its own handler or the program has an `onSend` hook (the fallback). */
   get canSend() {
-    return this.sendFn !== undefined;
+    return this.sendFn !== undefined || this.store.hooks.onSend !== undefined;
   }
   get canAbort() {
-    return this.abortFn !== undefined;
+    return this.abortFn !== undefined || this.store.hooks.onAbort !== undefined;
   }
+
+  /** This pane as a hook sees it. */
+  get ref(): PaneRef {
+    return {
+      id: this.id,
+      workspaceId: this.workspaceId,
+      tabId: this.tabId,
+      title: this.title,
+      harness: this.harness,
+      ...(this.cwd ? { cwd: this.cwd } : {}),
+      turnId: this.turnId,
+    };
+  }
+
+  /** The pane's own handler wins; the program's `onSend` hook runs for a pane that has none. */
   async send(text: string, o: SendContext) {
-    await this.sendFn?.(text, o);
+    if (this.sendFn) await this.sendFn(text, o);
+    else await this.store.hooks.onSend?.(this.ref, { text, steer: o.steer, turnId: this.turnId, requestId: o.requestId });
     this.touch();
   }
   async abort(o: { requestId: string }) {
-    await this.abortFn?.(o);
+    if (this.abortFn) await this.abortFn(o);
+    else await this.store.hooks.onAbort?.(this.ref, { turnId: this.turnId, requestId: o.requestId });
     this.touch();
   }
 
@@ -407,6 +427,8 @@ export class Store {
   ) {
     this.receipts = new Receipts(receipts);
   }
+  /** The program's hooks (`createCore` sets them once). */
+  hooks: ProgramHooks = {};
   rev = 1;
   /** False until the program says its layout is complete. A restarting program must not show a half-empty one. */
   ready = false;

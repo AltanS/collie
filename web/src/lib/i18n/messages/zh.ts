@@ -882,6 +882,18 @@ export const zh: Dictionary = {
   "space.tab.renameFailed": "重命名失败",
   "space.tab.closeFailed": "关闭失败",
   "space.tab.closed": "标签页已关闭",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "未配对，请在设置中配对当前设备",
   "space.readOnly.expired": "配对已过期，请在设置中重新配对",
   "space.readOnly.deviceUnauthorised": "只读模式，设备未授权",
@@ -1274,6 +1286,8 @@ export const zh: Dictionary = {
   "apiError.tab.create_failed": "创建标签页失败：{reason}",
   "apiError.tab.rename_failed": "重命名标签页失败：{reason}",
   "apiError.tab.close_failed": "关闭标签页失败：{reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "未指定新标签页的工作区。",
   "apiError.launch.not_allowlisted": "该命令不在你的启动器列表中",
   "apiError.launch.unknown_harness": "这台机器不启动 {harness}。",

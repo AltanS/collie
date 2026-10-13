@@ -8,10 +8,10 @@ import { DurableOutcomeUnknown, DurableSocketClient, DurableUnreachable, type Du
 import { durableHttpWorld, durableWorld, FakeDurableClock, FakeDurableProgram } from "./fixture.ts";
 import { parseHello, parseRenamePost } from "./protocol.ts";
 
-// A durable program takes a new title for a tab through its own `rename` cap (WIRE.md sections 3, 4 and 7.8):
+// A durable program takes a new title for a tab or a workspace through its own `rename` cap (WIRE.md sections 3, 4 and 7.8):
 //
-//   • The cap of the last good read declares `renameTab`, and no other capability changes with it.
-//   • `renameTab` posts one `/rename` with a request id it mints, and never retries.
+//   • The cap of the last good read declares `renameTab` and `renameSpace`, and no other capability changes with it.
+//   • `renameTab` and `renameSpace` post one `/rename` with a request id they mint, and never retry.
 //   • The program's answers map onto the refusals the tab route renders.
 //   • A program with no cap is not asked.
 
@@ -58,14 +58,18 @@ describe("rename capability", () => {
   test("renameTab follows the program's own caps.rename, and nothing else changes with it", async () => {
     const withCap = await rig({ rename: true });
     expect(withCap.adapter.capabilities.supports.renameTab).toBe(true);
+    expect(withCap.adapter.capabilities.supports.renameSpace).toBe(true);
     expect(muxConfigBody(withCap.adapter).capabilities.renameTab).toBe(true);
+    expect(muxConfigBody(withCap.adapter).capabilities.renameSpace).toBe(true);
     for (const other of MUX_CAPABILITIES.filter((capability) => ["renamePane", "closeTab", "closePane", "createTab", "createSpace"].includes(capability))) {
       expect(withCap.adapter.capabilities.supports[other]).toBe(false);
     }
 
     const without = await rig({ rename: false });
     expect(without.adapter.capabilities.supports.renameTab).toBe(false);
+    expect(without.adapter.capabilities.supports.renameSpace).toBe(false);
     expect(muxConfigBody(without.adapter).capabilities.renameTab).toBe(false);
+    expect(muxConfigBody(without.adapter).capabilities.renameSpace).toBe(false);
   });
 
   test("renameTab is absent before the first read, and replaced by the next hello", async () => {
@@ -245,6 +249,52 @@ describe("renameTab", () => {
   });
 });
 
+describe("renameSpace", () => {
+  const spaceTitle = async (adapter: DurableMux, spaceId: string) => (await adapter.snapshot()).spaces.find((space) => space.spaceId === spaceId)?.label;
+
+  test("posts /rename with kind workspace, the id and the trimmed title, and the next read shows it", async () => {
+    const { adapter, transport, program } = await rig();
+    const answer = await adapter.renameSpace("ws-notes", "  Field notes  ");
+    expect(answer.ok).toBe(true);
+    expect(transport.posts).toHaveLength(1);
+    expect(transport.posts[0]!.path).toBe("/rename");
+    expect(transport.posts[0]!.body).toEqual({ requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), kind: "workspace", id: "ws-notes", title: "Field notes" });
+    expect(program.renames).toHaveLength(1);
+    expect(await spaceTitle(adapter, "ws-notes")).toBe("Field notes");
+  });
+
+  test("with the cap absent the verb answers unsupported, names renameSpace, and touches no socket", async () => {
+    const { adapter, program } = await rig({ rename: false });
+    const before = program.requests.length;
+    expect(await adapter.renameSpace("ws-notes", "x")).toMatchObject({ ok: false, reason: "unsupported", capability: "renameSpace" });
+    expect(program.requests.length).toBe(before);
+  });
+
+  test("a workspace that is not in the layout is gone, a tab id is not a workspace id, and a bad title is refused before the socket", async () => {
+    const { adapter, transport } = await rig();
+    expect(await adapter.renameSpace("ws-nope", "x")).toMatchObject({ ok: false, reason: "gone" });
+    expect(await adapter.renameSpace("ws-notes:main", "x")).toMatchObject({ ok: false, reason: "gone" });
+    expect(await adapter.renameSpace("ws-notes", "   ")).toMatchObject({ ok: false, reason: "refused" });
+    expect(await adapter.renameSpace("bad id", "x")).toMatchObject({ ok: false, reason: "refused" });
+    expect(transport.posts).toHaveLength(0);
+  });
+
+  test("the program's 422 is a refusal with its words, and a post with no answer says the rename may have been applied", async () => {
+    const { adapter, program, transport, tick } = await rig();
+    program.renameRefusal = "Not that name.";
+    const refused = await adapter.renameSpace("ws-notes", "Taken");
+    expect(refused).toMatchObject({ ok: false, reason: "refused" });
+    expect(refused.ok ? "" : refused.detail).toContain("Not that name.");
+    program.renameRefusal = null;
+    tick();
+    transport.failNext = new DurableOutcomeUnknown("no answer within 3000ms");
+    const unknown = await adapter.renameSpace("ws-notes", "Maybe");
+    expect(unknown).toMatchObject({ ok: false, reason: "refused" });
+    expect(unknown.ok ? "" : unknown.detail).toContain("workspace name");
+    expect(unknown.ok ? "" : unknown.detail).toContain("may have been applied");
+  });
+});
+
 describe("rename in the conformance worlds", () => {
   // The world's clock moves past the census only when the world changes, so a rename the adapter made shows
   // in the very next snapshot because the adapter itself looks again after a 200.
@@ -258,6 +308,11 @@ describe("rename in the conformance worlds", () => {
         const { adapter } = world;
         const before = await adapter.snapshot();
         expect(adapter.capabilities.supports.renameTab).toBe(true);
+        expect(adapter.capabilities.supports.renameSpace).toBe(true);
+        const space = before.spaces[0]!;
+        const named = await adapter.renameSpace?.(space.spaceId, "Space renamed by the phone");
+        expect(named?.ok).toBe(true);
+        expect((await adapter.snapshot()).spaces.find((candidate) => candidate.spaceId === space.spaceId)?.label).toBe("Space renamed by the phone");
         const tab = before.tabs[0]!;
         const answer = await adapter.renameTab(tab.tabId, "Renamed by the phone");
         expect(answer.ok).toBe(true);

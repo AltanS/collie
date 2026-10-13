@@ -37,6 +37,7 @@ export const MUX_CAPABILITIES = [
   "setFocus",
   "createTab",
   "renameTab",
+  "renameSpace",
   "closeTab",
   "createSpace",
   "listWorktrees",
@@ -98,6 +99,8 @@ export const MUX_CAPABILITY_ROUTES = {
   createTab: "POST /api/tab — a new tab in a space, opening a fresh shell.",
   renameTab:
     "POST /api/tab/:id/rename. A durable program declares it from its own `caps.rename` (WIRE.md section 7.8); every other adapter declares it from its multiplexer's tab rename.",
+  renameSpace:
+    "POST /api/space/:id/rename: set a space's name. Only a durable program declares it today, from its own `caps.rename` (WIRE.md section 7.8); the phone draws the Rename row of the space sheet when it is declared. Absent ⇒ no Rename row, and the space chip opens no sheet.",
   closeTab: "POST /api/tab/:id/close — a bulk pane-close.",
   createSpace: "POST /api/workspace — a new space, opening a fresh shell.",
   listWorktrees:
@@ -216,6 +219,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     setFocus: claimed.has("setFocus"),
     createTab: claimed.has("createTab"),
     renameTab: claimed.has("renameTab"),
+    renameSpace: claimed.has("renameSpace"),
     closeTab: claimed.has("closeTab"),
     createSpace: claimed.has("createSpace"),
     listWorktrees: claimed.has("listWorktrees"),

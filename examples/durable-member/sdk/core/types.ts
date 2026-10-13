@@ -214,3 +214,63 @@ export interface Problem {
   askIds?: string[];
   ask?: Ask;
 }
+
+// ── Program hooks ─────────────────────────────────────────────────────────────
+
+/** A pane as a hook sees it: who it is, and the turn it is on. Read only; look the pane up by `id` to act on it. */
+export interface PaneRef {
+  id: string;
+  workspaceId: string;
+  tabId: string;
+  title: string;
+  harness: string;
+  cwd?: string;
+  /** The pane's newest turn when the hook runs. */
+  turnId: string;
+}
+
+/** What the phone sent with a send: the text, the steer switch, and the ids that name this act. */
+export interface SendHookRequest {
+  text: string;
+  /** Join the running turn (true) or wait for the next one (false). On an idle pane: no effect. */
+  steer: boolean;
+  /** The pane's newest turn when the hook runs. */
+  turnId: string;
+  requestId: string;
+}
+
+/** What the phone sent with a stop. */
+export interface AbortHookRequest {
+  /** The pane's newest turn when the hook runs. */
+  turnId: string;
+  requestId: string;
+}
+
+/** The workspace or the tab a rename names, with the title already trimmed and cleaned. */
+export interface RenameTarget {
+  kind: "workspace" | "tab";
+  /** The workspace id, or the tab id as the snapshot lists it (`<workspace>:<tab>`). */
+  id: string;
+  title: string;
+}
+
+/**
+ * One named place for every act the phone can send. A hook runs only when the act is allowed (its cap is on) and
+ * its request id is new; a repeat answers from the receipt and never reaches a hook. A hook that throws makes the
+ * act fail (500 `internal`, outcome unknown to the phone).
+ *
+ * The per-pane handlers (`pane.onSend`, `pane.onAbort`) stay the first choice: a hook is the fallback for a pane
+ * that has none, and it is also what makes a pane without a handler take the act at all.
+ */
+export interface ProgramHooks {
+  /** Text for a pane that has no `pane.onSend` handler. */
+  onSend?(pane: PaneRef, req: SendHookRequest): Promise<void> | void;
+  /** A stop for a pane that has no `pane.onAbort` handler. */
+  onAbort?(pane: PaneRef, req: AbortHookRequest): Promise<void> | void;
+  /**
+   * A new title for a workspace or a tab. Return `false` to refuse it (422 `rename-refused`, nothing changes, the
+   * same request id may try again); persist the title here if it should outlive the process. Not called for a
+   * target that does not exist.
+   */
+  onRename?(target: RenameTarget, requestId: string): Promise<boolean> | boolean;
+}

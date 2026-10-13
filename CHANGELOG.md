@@ -32,11 +32,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Chat pins the prompt a reply answers above the thread.** Scroll down a long run and the prompt it answers stays at the top in two lines; tap it to jump back to it, even when the first page left it out. Thanks @GGGODLIN (#406).
 - **New sheet options for Grok and Antigravity.** Always approve and Continue last for Grok; Skip permission prompts or Plan mode, plus Continue last, for Antigravity. Thanks @GGGODLIN (#430).
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
+- **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 
 ### Changed
 
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
 - **Chat reads Claude Code 2.1.296 sessions as verified.** The harness canary read a real 2.1.296 session with no unrecognised row, so the reader's recorded version moves from 2.1.285 to 2.1.296 and no longer shows as behind.
+- **The durable SDK has typed hooks.** `onSend`, `onAbort` and `onRename` take typed payloads with the request id, so a program handles each action in one named place.
 
 ### Fixed
 

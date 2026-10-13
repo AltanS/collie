@@ -76,6 +76,8 @@ export const ERROR_CODES = {
   "tab.create_failed": "{reason}",
   "tab.rename_failed": "{reason}",
   "tab.close_failed": "{reason}",
+  /** The space would not take the name (gone, refused by the program, or the adapter cannot name a space). */
+  "space.rename_failed": "{reason}",
   /** The create body named no space to create the tab in. */
   "tab.workspace_required": "workspaceId required",
   "workspace.create_failed": "{reason}",

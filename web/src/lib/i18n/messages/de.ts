@@ -899,6 +899,18 @@ export const de: Dictionary = {
   "space.tab.renameFailed": "Umbenennen fehlgeschlagen",
   "space.tab.closeFailed": "Schließen fehlgeschlagen",
   "space.tab.closed": "Tab geschlossen",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Nicht gekoppelt. Dieses Gerät in den Einstellungen koppeln.",
   "space.readOnly.expired": "Kopplung abgelaufen. In den Einstellungen erneut koppeln.",
   "space.readOnly.deviceUnauthorised": "Schreibgeschützt: Gerät nicht autorisiert",
@@ -1304,6 +1316,8 @@ export const de: Dictionary = {
   "apiError.tab.create_failed": "Tab konnte nicht erstellt werden: {reason}",
   "apiError.tab.rename_failed": "Tab konnte nicht umbenannt werden: {reason}",
   "apiError.tab.close_failed": "Tab konnte nicht geschlossen werden: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Für den neuen Tab wurde kein Space angegeben.",
   "apiError.launch.not_allowlisted": "Dieser Befehl ist kein definierter Launcher",
   "apiError.launch.unknown_harness": "Dieser Rechner startet {harness} nicht.",

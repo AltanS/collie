@@ -16,7 +16,7 @@ export interface Opened {
 }
 export interface Transport {
   name: string;
-  open(o: { hostName: string; caps?: Partial<Caps>; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
+  open(o: { hostName: string; caps?: Partial<Caps>; hooks?: CoreOptions["hooks"]; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
 }
 
 export function protocolSuite(transport: Transport) {
@@ -57,9 +57,11 @@ export function protocolSuite(transport: Transport) {
     beforeAll(async () => {
       ({ collie, dial: d } = await transport.open({
         hostName: "t",
-        onRename: (target) => {
-          asked.push(target);
-          return renameVerdict;
+        hooks: {
+          onRename: (target, requestId) => {
+            asked.push({ ...target, requestId });
+            return renameVerdict;
+          },
         },
       }));
       pane = mk("p1");
@@ -725,6 +727,87 @@ export function protocolSuite(transport: Transport) {
           const r = await post("/rename", body);
           expect([JSON.stringify(body), r.status, r.body.code]).toEqual([JSON.stringify(body), 400, code]);
         }
+      });
+    });
+
+    describe("hooks", () => {
+      /** A core whose program sets hooks and no per-pane handler, and the dial that reaches it. */
+      const withHooks = async (hooks: NonNullable<CoreOptions["hooks"]>, caps?: Partial<Caps>) => {
+        const opened = await transport.open({ hostName: "h", hooks, caps });
+        const p = opened.collie.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("hp", { title: "HP", harness: "x" });
+        opened.collie.ready();
+        return { ...opened, p };
+      };
+      test("onSend runs for a pane with no handler, with a typed payload: text, steer, the turn and the request id", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t, p } = await withHooks({ onSend: (pane, req) => void got.push({ pane, req }) });
+        p.state("working");
+        const turnId = (await api.snapshot(t)).body.panes[0]!.turnId;
+        expect((await api.send(t, "hp", "hello", { turnId, steer: true, requestId: "hook-send-1" })).body).toEqual({ ok: true });
+        expect(got).toEqual([
+          {
+            pane: { id: "hp", workspaceId: "w", tabId: "w:t", title: "HP", harness: "x", turnId },
+            req: { text: "hello", steer: true, turnId, requestId: "hook-send-1" },
+          },
+        ]);
+        // A repeat of the request id answers from the receipt and does not reach the hook again.
+        expect((await api.send(t, "hp", "hello", { turnId, steer: true, requestId: "hook-send-1" })).body).toEqual({ ok: true, replayed: true });
+        expect(got.length).toBe(1);
+        await c.close();
+      });
+      test("onAbort runs for a pane with no handler, and not on an idle pane", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t, p } = await withHooks({ onAbort: (pane, req) => void got.push({ id: pane.id, req }) });
+        const turnId = (await api.snapshot(t)).body.panes[0]!.turnId;
+        expect((await api.abort(t, "hp", { turnId, requestId: "hook-abort-0" })).body).toEqual({ ok: true });
+        expect(got).toEqual([]); // nothing runs: nothing to stop
+        p.state("working");
+        const running = (await api.snapshot(t)).body.panes[0]!.turnId;
+        expect((await api.abort(t, "hp", { turnId: running, requestId: "hook-abort-1" })).body).toEqual({ ok: true });
+        expect(got).toEqual([{ id: "hp", req: { turnId: running, requestId: "hook-abort-1" } }]);
+        await c.close();
+      });
+      test("a pane's own handler wins over the hook", async () => {
+        const viaHook: string[] = [];
+        const viaPane: string[] = [];
+        const { collie: c, dial: t, p } = await withHooks({ onSend: (_pane, req) => void viaHook.push(req.text) });
+        p.onSend((text) => void viaPane.push(text));
+        expect((await api.send(t, "hp", "to the pane")).status).toBe(200);
+        expect([viaPane, viaHook]).toEqual([["to the pane"], []]);
+        await c.close();
+      });
+      test("a pane with no handler and no hook is still 409 not-supported", async () => {
+        const { collie: c, dial: t } = await withHooks({ onRename: () => true });
+        expect((await api.send(t, "hp", "x")).body.code).toBe("not-supported");
+        expect((await api.abort(t, "hp")).body.code).toBe("not-supported");
+        await c.close();
+      });
+      test("onRename gets the request id, and false is 422", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t } = await withHooks({
+          onRename: (target, requestId) => {
+            got.push({ target, requestId });
+            return target.title !== "No";
+          },
+        });
+        expect((await api.rename(t, "tab", "w:t", "Yes", "hook-rename-1")).body).toEqual({ ok: true });
+        expect(got).toEqual([{ target: { kind: "tab", id: "w:t", title: "Yes" }, requestId: "hook-rename-1" }]);
+        expect((await api.rename(t, "tab", "w:t", "No", "hook-rename-2")).body.code).toBe("rename-refused");
+        await c.close();
+      });
+      test("the old onRename option still works as an alias, and hooks.onRename wins when both are set", async () => {
+        const old: unknown[] = [];
+        const first = await transport.open({ hostName: "a", onRename: (target) => (old.push(target), false) });
+        first.collie.workspace("w", { title: "W" }).tab("t", { title: "T" });
+        first.collie.ready();
+        expect((await api.rename(first.dial, "tab", "w:t", "X")).body.code).toBe("rename-refused");
+        expect(old).toEqual([{ kind: "tab", id: "w:t", title: "X" }]);
+        await first.collie.close();
+        const both = await transport.open({ hostName: "b", hooks: { onRename: () => true }, onRename: () => false });
+        both.collie.workspace("w", { title: "W" }).tab("t", { title: "T" });
+        both.collie.ready();
+        expect((await api.rename(both.dial, "tab", "w:t", "X")).status).toBe(200);
+        await both.collie.close();
       });
     });
 

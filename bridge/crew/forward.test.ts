@@ -242,6 +242,13 @@ describe("which routes cross a link", () => {
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
     for (const action of tabActions) expect(crewRouteFor(`/api/tab/x/${action}`)).toBe(`tab/x/${action}`);
+    // A space's rename (M53 spec 05) is the same pairing: one id segment and the literal `rename`.
+    const space = server.match(/^const SPACE_ACTION_ROUTE = (.+);$/m)![1]!;
+    expect(space).toBe("/^\\/api\\/space\\/([^/]+)\\/rename$/");
+    expect(crewRouteFor("/api/space/x/rename")).toBe("space/x/rename");
+    expect(crewRouteFor("/api/space/x/close")).toBeNull();
+    expect(crewRouteFor("/api/space/x")).toBeNull();
+    expect(apiPathFor("space/x/rename")).toBe("/api/space/x/rename");
     // The blob route is the same pairing: server.ts matches the hash as one opaque segment, so this
     // grammar must too — a tighter one here would make a hash the phone can fetch locally
     // unfetchable across a link, and a looser one would forward a shape no peer route answers.
@@ -309,6 +316,7 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("pane/w1:p1/rename")).toBe("pane.rename");
     expect(forwardAuditAction("tab")).toBe("tab.create");
     expect(forwardAuditAction("tab/w1:t1/rename")).toBe("tab.rename");
+    expect(forwardAuditAction("space/w1/rename")).toBe("space.rename");
     expect(forwardAuditAction("tab/w1:t1/close")).toBe("tab.close");
     expect(forwardAuditAction("workspace")).toBe("workspace.create");
     // Reads are not audited today and do not become audited by crossing a link.

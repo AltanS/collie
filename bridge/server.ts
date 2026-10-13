@@ -30,6 +30,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
+import { muxUnsupported } from "./mux/types.ts";
 import type { MuxAdapter, MuxAck, MuxGrid, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
@@ -416,6 +417,9 @@ const MAX_HISTORY_LIMIT = 5000;
 // A tab supports rename + close — an action group like the pane route. The `/api/tab` POST above
 // (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
+// A space supports rename only, and only on an adapter that declares `renameSpace` (a durable program that
+// takes `caps.rename`). `/api/space/<id>/rename` is a new path: the create route is `/api/workspace`.
+const SPACE_ACTION_ROUTE = /^\/api\/space\/([^/]+)\/rename$/;
 
 /**
  * `GET /api/stt/model/<sha256>` (ADR 0096 Decision 9). The segment is matched as an opaque value and
@@ -1723,6 +1727,17 @@ export function startServer(opts: {
       const device = caller.device();
       if (action === "close") return closeTab(rt.herdr, rt.engine, tabId, req, caller.audit, device, rt.name);
       return renameTab(rt.herdr, rt.engine, tabId, req, caller.audit, device, rt.name);
+    }
+
+    // ── Space rename: set its name, where the multiplexer (a durable program) declares `renameSpace` ──
+    const spaceMatch = pathname.match(SPACE_ACTION_ROUTE);
+    if (spaceMatch && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      const spaceId = decodeURIComponent(spaceMatch[1]!);
+      return renameSpace(rt.herdr, rt.engine, spaceId, req, caller.audit, caller.device(), rt.name);
     }
 
     // ── Per-pane read / send ─────────────────────────────────────────────
@@ -4374,7 +4389,7 @@ function promptBindingFailure(
  * Cheap where it is already fresh — a pushing adapter's `refresh()` resolves immediately (see the
  * port) — so this costs a listing only on the adapters that actually needed one.
  */
-async function settleTopology(herdr: MuxAdapter, engine: StateEngine): Promise<void> {
+async function settleTopology(herdr: Pick<MuxAdapter, "refresh">, engine: Pick<StateEngine, "pokeNow">): Promise<void> {
   try {
     await herdr.refresh();
   } catch (err) {
@@ -4533,6 +4548,46 @@ async function renameTab(
     );
   }
   audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+  await settleTopology(herdr, engine);
+  return json({ ok: true } satisfies ActionResponse, ae);
+}
+
+/** The refusal for an adapter that cannot name a space: it has no `renameSpace` (capabilities.ts). */
+const NO_SPACE_RENAME = "This multiplexer does not take a new name for a space from here.";
+
+// Set a space's name, on an adapter that declares `renameSpace`. The same body and the same rule as a tab: a
+// blank label is a 400. Only a durable program has the method today, and it answers with its own refusal
+// (`rename-refused`) when it will not take the name.
+export async function renameSpace(
+  herdr: Pick<MuxAdapter, "renameSpace" | "refresh">,
+  engine: Pick<StateEngine, "pokeNow">,
+  spaceId: string,
+  req: Request,
+  audit: Pick<AuditLog, "record">,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; the label is checked below.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const parsed = normalizeTabLabel(asJsonRecord(body)?.label);
+  if (!parsed.ok) return text(parsed.error, 400);
+  const renamed =
+    herdr.renameSpace === undefined
+      ? muxUnsupported("renameSpace", NO_SPACE_RENAME)
+      : await herdr.renameSpace(spaceId, parsed.label);
+  if (!renamed.ok) {
+    return json(
+      { ok: false, ...apiError("space.rename_failed", { reason: renamed.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
+  audit.record({ action: "space.rename", session, device, detail: { spaceId, label: parsed.label } });
   await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }

@@ -67,10 +67,12 @@ export class Member extends DurableObject<Env> {
       hostName: HOST_NAME,
       receipts: new SqliteReceiptStore(this.ctx.storage),
       allowAlways: false,
-      // Keep the new name, so a wake of the object does not give the old one back.
-      onRename: ({ kind, id, title }) => {
-        sql.exec("INSERT OR REPLACE INTO collie_titles (kind, id, title) VALUES (?, ?, ?)", kind, id, title);
-        return true;
+      hooks: {
+        // Keep the new name, so a wake of the object does not give the old one back.
+        onRename: ({ kind, id, title }) => {
+          sql.exec("INSERT OR REPLACE INTO collie_titles (kind, id, title) VALUES (?, ?, ?)", kind, id, title);
+          return true;
+        },
       },
     });
     this.core = core;

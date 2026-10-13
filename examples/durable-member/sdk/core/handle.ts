@@ -15,6 +15,7 @@ import {
   type EventsReply,
   type Hello,
   PROTOCOL_RANGE,
+  type ProgramHooks,
   type RenameRequest,
   type SendRequest,
   type StarterReply,
@@ -26,10 +27,11 @@ export interface CoreState {
   hostName: string;
   caps: Caps;
   /**
-   * Asked before a workspace or a tab takes a new title (WIRE.md 7.8). `false` refuses it: 422 `rename-refused`,
-   * nothing changes, and the same request id may try again. Absent: every rename the wire accepts is applied.
+   * The program's hooks. `onRename` is asked before a workspace or a tab takes a new title (WIRE.md 7.8): `false`
+   * refuses it (422 `rename-refused`, nothing changes, the same request id may try again). Absent: every rename the
+   * wire accepts is applied. `onSend` and `onAbort` are the pane's fallback, see `PaneHandle.onSend`.
    */
-  onRename?: (target: { kind: "workspace" | "tab"; id: string; title: string }) => boolean | Promise<boolean>;
+  hooks: ProgramHooks;
 }
 
 /** Per request, from the server that accepted it. */
@@ -255,7 +257,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
       await store.receipts.run<ControlReply>(requestId, digestOf({ verb: "rename", kind, id, title }), async () => {
         const exists = kind === "workspace" ? store.workspaces.has(id) : store.tabs.has(id);
         if (!exists) throw new HttpError(404, "no-such-target");
-        if (state.onRename && !(await state.onRename({ kind, id, title }))) throw new HttpError(422, "rename-refused");
+        if (state.hooks.onRename && !(await state.hooks.onRename({ kind, id, title }, requestId))) throw new HttpError(422, "rename-refused");
         // The target can go while the hook runs. Then there is nothing to rename and nothing was changed.
         if (!store.rename(kind, id, title)) throw new HttpError(404, "no-such-target");
         return { ok: true };

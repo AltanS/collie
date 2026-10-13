@@ -177,3 +177,48 @@ describe("SpaceStrip on a program that offers starters", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "New space" })).toBeNull());
   });
 });
+
+describe("SpaceStrip on a program that takes renames", () => {
+  function serve(capabilities: Partial<Record<MuxCapability, boolean>>): void {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "durable", capabilities, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+  }
+
+  beforeEach(() => __resetOperatorCommands());
+
+  it("a tap on the active space chip opens the space sheet with a Rename row", async () => {
+    serve({ renameSpace: true });
+    const onRenamed = vi.fn();
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} onRenamed={onRenamed} />);
+    // The declaration arrives with /api/config; until then the chip is a plain switch.
+    await waitFor(async () => {
+      await userEvent.setup().click(screen.getByRole("button", { name: /anchorgenius/ }));
+      expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    });
+  });
+
+  it("with no renameSpace declared, or no onRenamed, a tap on the active chip opens nothing", async () => {
+    serve({ renameSpace: false });
+    const { unmount } = render(
+      <SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} onRenamed={vi.fn()} />,
+    );
+    await screen.findByRole("button", { name: /anchorgenius/ });
+    await userEvent.setup().click(screen.getByRole("button", { name: /anchorgenius/ }));
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    unmount();
+
+    __resetOperatorCommands();
+    serve({ renameSpace: true });
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} />);
+    await screen.findByRole("button", { name: /anchorgenius/ });
+    await userEvent.setup().click(screen.getByRole("button", { name: /anchorgenius/ }));
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+  });
+});

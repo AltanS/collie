@@ -4,7 +4,7 @@
 // The README lists every environment variable. The model is Pi's faux model, scripted, so no key is
 // needed. REAL_MODEL=<OpenRouter model id> uses a real one through OpenRouter ($OPENROUTER_API_KEY).
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
@@ -37,6 +37,11 @@ export interface AppOptions {
   helperMs?: number; // the helper's answer takes this long (default: stepMs), so a test can kill the app mid-answer
   /** Where `write_note` appends. */
   notesFile: string;
+  /**
+   * Where the names the phone gave a workspace or a tab are kept, as JSON, so a restart keeps a rename. Default:
+   * `titles.json` beside `notesFile`.
+   */
+  titlesFile?: string;
   /** `descendant` (default) or `off`. An in-process test is the program's own caller, so it turns the check off. */
   callerCheck?: "descendant" | "off";
   /** Open one ticket when the storage holds no conversation yet, so a first start has an ask to answer. Default true. */
@@ -47,6 +52,34 @@ export interface App {
   collie: Collie;
   harness: Harness;
   close(): Promise<void>;
+}
+
+/**
+ * The names the phone gave, in one small JSON file. Written to a temporary file and renamed over the old one, so a
+ * crash leaves the old names whole. A file that cannot be read is treated as no names: a program should start.
+ */
+export class TitleStore {
+  private readonly names = new Map<string, string>();
+  constructor(private readonly file: string) {
+    if (!existsSync(file)) return;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
+      for (const [key, value] of Object.entries(parsed)) if (typeof value === "string") this.names.set(key, value);
+    } catch {
+      // An unreadable file is as good as none.
+    }
+  }
+  get(kind: "workspace" | "tab", id: string, fallback: string): string {
+    return this.names.get(`${kind}/${id}`) ?? fallback;
+  }
+  set(kind: "workspace" | "tab", id: string, title: string): void {
+    this.names.set(`${kind}/${id}`, title);
+    mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
+    const temporary = `${this.file}.tmp`;
+    writeFileSync(temporary, JSON.stringify(Object.fromEntries(this.names), null, 2), { mode: 0o600 });
+    renameSync(temporary, this.file);
+  }
 }
 
 export async function startApp(o: AppOptions): Promise<App> {
@@ -69,10 +102,24 @@ export async function startApp(o: AppOptions): Promise<App> {
   // Tools and layout.
   const notes = o.notesFile;
   mkdirSync(dirname(notes), { recursive: true, mode: 0o700 });
-  const collie = await openCollie({ socket: o.socket, hostName: "durable-member", callerCheck: o.callerCheck });
-  const ws = collie.workspace("triage", { title: "Triage", cwd: "/srv/triage" });
-  const inbox = ws.tab("inbox", { title: "Inbox" });
-  const helpers = ws.tab("helpers", { title: "Helpers" });
+  // A name the phone gave a workspace or a tab (WIRE.md 7.8). The layout below is made again on every start, so the
+  // names are kept in a file and win over the ones in this code. A key is the kind and the wire id: `tab/triage:inbox`.
+  const titles = new TitleStore(o.titlesFile ?? join(dirname(notes), "titles.json"));
+  const collie = await openCollie({
+    socket: o.socket,
+    hostName: "durable-member",
+    callerCheck: o.callerCheck,
+    hooks: {
+      // Keep the new name, then take it. Returning false would refuse it (422).
+      onRename: ({ kind, id, title }) => {
+        titles.set(kind, id, title);
+        return true;
+      },
+    },
+  });
+  const ws = collie.workspace("triage", { title: titles.get("workspace", "triage", "Triage"), cwd: "/srv/triage" });
+  const inbox = ws.tab("inbox", { title: titles.get("tab", "triage:inbox", "Inbox") });
+  const helpers = ws.tab("helpers", { title: titles.get("tab", "triage:helpers", "Helpers") });
 
   const panes = new PaneRegistry();
   let harness!: Harness;
@@ -177,6 +224,7 @@ export function optionsFromEnv(env: NodeJS.ProcessEnv = process.env): AppOptions
     socket: env[SOCKET_ENV] || join(runtime, "app.sock"),
     storage: join(data, "store"),
     notesFile: join(data, "notes.txt"),
+    titlesFile: join(data, "titles.json"),
     stepMs: ms("DM_STEP_MS"),
     slowMs: ms("DM_SLOW_MS"),
     helperMs: ms("DM_HELPER_MS"),

@@ -55,7 +55,7 @@ describe("restart with an open ask", () => {
     expect(events.some((e) => e.type === "synced")).toBe(true);
   });
 
-  test("after the wake the open ask has the same id: Pi re-runs the hook before the app is ready", async () => {
+  test("after the wake the open ask has the same id: Pi re-runs the waiting tool call before the app is ready", async () => {
     // No wait: the first snapshot the restarted app serves carries the ask, by contract (WIRE.md 8.2).
     const p = (await pane(d, main))!.openAsks[0]!;
     expect(p.id).toBe(oldAsk); // derived from the pane and the tool call, so the same across the restart

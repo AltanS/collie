@@ -893,6 +893,18 @@ export const ja: Dictionary = {
   "space.tab.renameFailed": "名前の変更に失敗しました",
   "space.tab.closeFailed": "終了処理に失敗しました",
   "space.tab.closed": "タブを終了しました",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "未ペアリングです。設定からこの端末をペアリングしてください。",
   "space.readOnly.expired": "ペアリングの期限が切れました。設定から再ペアリングしてください。",
   "space.readOnly.deviceUnauthorised": "読み取り専用です。この端末は許可されていません。",
@@ -1292,6 +1304,8 @@ export const ja: Dictionary = {
   "apiError.tab.create_failed": "タブの作成に失敗しました: {reason}",
   "apiError.tab.rename_failed": "タブのリネームに失敗しました: {reason}",
   "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "新規タブのスペースが指定されていません。",
   "apiError.launch.not_allowlisted": "そのコマンドはランチャーに登録されていません",
   "apiError.launch.unknown_harness": "このマシンは {harness} を起動しません。",

@@ -100,6 +100,10 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "Same as renamePane, one dimension up: the sheet is gone and the tab strip has not re-rendered yet.",
   },
+  renameSpace: {
+    channel: "status",
+    why: "Same as renameTab, one dimension up again: the sheet is gone and the space strip has not re-rendered yet.",
+  },
   closeTab: {
     channel: "echo",
     // TWO paths reach this export and they are acknowledged differently, the same way `sendKeys`
