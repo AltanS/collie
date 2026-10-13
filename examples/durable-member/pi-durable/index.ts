@@ -140,7 +140,12 @@ export interface PaneLocation {
   paneId?: string;
   /** Absolute. Optional: the pane falls back to its workspace's folder. */
   cwd?: string;
+  /** Give the pane the belt action "Escalate" (WIRE.md 7.10). The tickets have it; the helpers do not. */
+  escalate?: boolean;
 }
+
+/** The one belt action of a ticket. */
+const ESCALATE = { id: "escalate", label: "Escalate", icon: "flag" } as const;
 
 const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -271,6 +276,16 @@ export async function showConversation(
     await conversation.submit({ type: "input", content: text, whenBusy: steer ? "steer" : "followUp", requestId }, ctx);
   });
   pane.onAbort(() => conversation.abort(ctx));
+  if (loc.escalate === true) {
+    pane.actions([ESCALATE]);
+    // The phone taps Escalate: write one notice into the thread, then dim the button. The request id keys the
+    // notice, so the same tap never writes it twice. This is a program's own act and needs no Pi Durable call.
+    pane.onAction(({ actionId, requestId }) => {
+      if (actionId !== ESCALATE.id) return false;
+      pane.event({ type: "item", item: { id: safeId(`escalated:${requestId}`), ts: new Date().toISOString(), kind: "notice", text: "Escalated to the on-call lead." } });
+      pane.actions([{ ...ESCALATE, disabled: true }]);
+    });
+  }
 
   const stream = await watchEvents(harness, conversation.id, ctx);
   opts.panes.set(conversation.id, pane, () => stream.stop());

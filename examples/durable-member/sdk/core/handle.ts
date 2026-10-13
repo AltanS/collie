@@ -167,7 +167,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
 
   if (route[0] === "pane" && route.length === 3) {
     const verb = route[2];
-    const want = verb === "events" ? "GET" : verb === "answer" || verb === "send" || verb === "abort" ? "POST" : undefined;
+    const want = verb === "events" ? "GET" : verb === "answer" || verb === "send" || verb === "abort" || verb === "action" ? "POST" : undefined;
     if (method !== want) return json(404, { code: "not-found" });
     const id = decode(route[1]!);
     const pane = id === undefined ? undefined : store.panes.get(id);
@@ -224,6 +224,26 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
           if (!caps.send || !pane.canSend || (steer === true && !caps.steer)) throw new HttpError(409, "not-supported");
           checkTarget(pane, target); // the turn can move between the adapter's check and this one
           await pane.send(text, { steer: steer === true, requestId });
+          return { ok: true };
+        }),
+      );
+    }
+
+    if (verb === "action") {
+      const actionId = idField(body, "actionId");
+      // `turnId` is optional here: a button belongs to the pane, and a program may not care which turn the phone saw.
+      const turnId = body.turnId === undefined || body.turnId === null ? undefined : idField(body, "turnId");
+      return json(
+        200,
+        await once<ControlReply>({ actionId, turnId: turnId ?? null }, async () => {
+          if (!caps.actions || !pane.canAct) throw new HttpError(409, "not-supported");
+          if (turnId !== undefined && turnId !== pane.turnId) throw stale(pane); // the turn can move between the adapter's check and this one
+          const row = pane.actionRows.find((a) => a.id === actionId);
+          if (!row) throw new HttpError(404, "no-such-action");
+          // A dimmed button takes no tap, and a request for one is the program's refusal, not an act.
+          if (row.disabled === true || row.busy === true) throw new HttpError(422, "action-refused", { message: "The action is not available now." });
+          const accepted = await pane.act({ actionId, ...(turnId === undefined ? {} : { turnId }), requestId });
+          if (!accepted) throw new HttpError(422, "action-refused");
           return { ok: true };
         }),
       );

@@ -5,8 +5,10 @@
 
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
-import { assertId, bytes, CAPS, cut, cwdOf, LIMITS, tsOf } from "./rules.ts";
+import { ACTION_ICONS } from "./types.ts";
+import { actionLabelOf, assertId, bytes, CAPS, cut, cwdOf, LIMITS, tsOf } from "./rules.ts";
 import type {
+  ActionContext,
   Answer,
   AnswerResult,
   Ask,
@@ -14,6 +16,7 @@ import type {
   CloseTarget,
   ClosedBy,
   Item,
+  PaneAction,
   PaneInfo,
   PaneRef,
   PaneState,
@@ -144,6 +147,14 @@ export interface PaneHandle {
   updateAsk(askId: string, patch: Partial<Pick<AskInput, "title" | "reason" | "tool" | "options">>): boolean;
   onSend(fn: (text: string, o: SendContext) => void | Promise<void>): void;
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>): void;
+  /**
+   * Set the pane's belt actions (WIRE.md 7.10): at most 4, each with an id, a label of at most 16 characters
+   * and an optional icon, `busy` and `disabled`. `null` or an empty list clears them. `rev` rises only when the
+   * list changed. An id that breaks the id rule throws.
+   */
+  actions(list: PaneAction[] | null): void;
+  /** Run a tap on one of the pane's actions. Return `false` to refuse it (422 `action-refused`). */
+  onAction(fn: (o: ActionContext) => boolean | void | Promise<boolean | void>): void;
   close(): void;
 }
 export interface TabHandle {
@@ -175,6 +186,8 @@ export class Pane implements PaneHandle {
   closed = false;
   sendFn?: (text: string, o: SendContext) => void | Promise<void>;
   abortFn?: (o: { requestId: string }) => void | Promise<void>;
+  actionFn?: (o: ActionContext) => boolean | void | Promise<boolean | void>;
+  private actionList: PaneAction[] = [];
   /** The state last put in the log. Unset until the first sync, so the log always starts with one. */
   private shown?: PaneState;
   private readonly limit: number;
@@ -266,6 +279,7 @@ export class Pane implements PaneHandle {
       lastActiveAt: this.lastActiveAt,
       turnId: this.turnId,
       openAsks: this.openAsks,
+      ...(this.actionList.length > 0 ? { actions: this.actionList.map((a) => ({ ...a })) } : {}),
       // Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it.
       sessionId: null,
       ...(this.cwd ? { cwd: this.cwd } : {}),
@@ -363,6 +377,45 @@ export class Pane implements PaneHandle {
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>) {
     this.abortFn = fn;
   }
+  actions(list: PaneAction[] | null) {
+    const seen = new Set<string>();
+    const next: PaneAction[] = [];
+    for (const given of list ?? []) {
+      if (next.length >= LIMITS.actions) break;
+      const id = assertId(given.id, "action id");
+      const label = actionLabelOf(given.label);
+      if (label === "" || seen.has(id)) continue;
+      seen.add(id);
+      next.push({
+        id,
+        label,
+        ...(given.icon !== undefined && (ACTION_ICONS as readonly string[]).includes(given.icon) ? { icon: given.icon } : {}),
+        ...(given.busy === true ? { busy: true } : {}),
+        ...(given.disabled === true ? { disabled: true } : {}),
+      });
+    }
+    if (JSON.stringify(next) === JSON.stringify(this.actionList)) return;
+    this.actionList = next;
+    this.store.rev++;
+  }
+  onAction(fn: (o: ActionContext) => boolean | void | Promise<boolean | void>) {
+    this.actionFn = fn;
+  }
+  /** The actions the phone may tap now: listed, and neither busy nor disabled. */
+  get actionRows(): readonly PaneAction[] {
+    return this.actionList;
+  }
+  /** A pane runs an action when it has its own handler or the program has an `onAction` hook (the fallback). */
+  get canAct() {
+    return this.actionFn !== undefined || this.store.hooks.onAction !== undefined;
+  }
+  /** The pane's own handler wins; the program's `onAction` hook runs for a pane that has none. False: the program refused. */
+  async act(o: ActionContext): Promise<boolean> {
+    const said = this.actionFn ? await this.actionFn(o) : await this.store.hooks.onAction?.(this.ref, o);
+    this.touch();
+    return said !== false;
+  }
+
   /** A pane takes text when it has its own handler or the program has an `onSend` hook (the fallback). */
   get canSend() {
     return this.sendFn !== undefined || this.store.hooks.onSend !== undefined;

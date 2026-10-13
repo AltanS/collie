@@ -499,6 +499,18 @@ export const zh: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
+  // TODO wordsmith
+  "durable.action.done": "Done",
+  // TODO wordsmith
+  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
+  // TODO wordsmith
+  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
+  // TODO wordsmith
+  "durable.action.refused": "The action was refused.",
+  // TODO wordsmith
+  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
+  // TODO wordsmith
+  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "取消",
   "prompt.feedback.typedAria": "终端中的反馈内容",

@@ -228,7 +228,31 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * not see. Absent on every other pane and from every older bridge.
    */
   turnId?: string;
+  /**
+   * The belt buttons this pane's program lists, in its order (WIRE.md section 4, `PaneAction`).
+   *
+   * ONE PRODUCER, like {@link asks}: only a pane from an adapter that takes program actions carries
+   * the key (the `durable` adapter, `MuxAdapter.paneActions`, when the program declared `caps.actions`).
+   * At most 4, each cleaned by the adapter. Absent on every other pane and from every older bridge,
+   * which the phone reads as "no program buttons here".
+   */
+  actions?: PaneAction[];
 };
+
+/** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
+export const PANE_ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export type PaneActionIcon = (typeof PANE_ACTION_ICONS)[number];
+
+/** One button of a durable program's section of the belt. `label` is at most 16 characters. */
+export interface PaneAction {
+  id: string;
+  label: string;
+  icon?: PaneActionIcon;
+  /** Running now: the phone shows a spinner and sends no second tap. */
+  busy?: true;
+  /** Not available now: the phone dims it and sends no tap. */
+  disabled?: true;
+}
 
 /** What a person may choose on an ask (WIRE.md section 4). */
 export interface AskOption {
@@ -334,13 +358,24 @@ export interface AbortRequest {
   askId?: string;
 }
 
+/**
+ * `POST /api/pane/:id/action`'s body (M53 spec 07). `turnId` is optional: a button belongs to the pane,
+ * and a phone that names the turn it saw gets `stale` when the turn has moved.
+ */
+export interface ActionRequest {
+  requestId: string;
+  actionId: string;
+  turnId?: string;
+}
+
 /** What a control names: the turn the phone saw, or an open ask. Never both, never neither. */
 export type ControlTarget = { readonly kind: "turn"; readonly id: string } | { readonly kind: "ask"; readonly id: string };
 
-/** A send or an abort, as the bridge reads it off the phone's body and hands it to the adapter. */
+/** A send, an abort or a belt action, as the bridge reads it off the phone's body and hands it to the adapter. */
 export type ControlRequest =
   | { readonly act: "send"; readonly requestId: string; readonly target: ControlTarget; readonly text: string; readonly steer: boolean }
-  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget };
+  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget }
+  | { readonly act: "action"; readonly requestId: string; readonly actionId: string; readonly turnId?: string };
 
 /**
  * What `POST /api/pane/:id/send` and `/abort` answer, one shape for both (ADR 0101).

@@ -36,6 +36,8 @@ export const LIMITS = {
   openAsksPerPane: 50,
   options: 6,
   starters: 50,
+  /** Belt actions per pane (WIRE.md section 4, `PaneAction`). */
+  actions: 4,
   eventsPerReply: 1000,
   resetItems: 2000,
   /** The program keeps at least this many request ids per epoch. */
@@ -140,6 +142,14 @@ export function renameTitleOf(title: unknown): string | undefined {
   if (trimmed === "" || HAS_CONTROL.test(trimmed) || [...trimmed].length > RENAME_TITLE_MAX) return undefined;
   const clean = cut(trimmed, CAPS.title).trim();
   return clean === "" ? undefined : clean;
+}
+
+/** The longest belt action label, in characters (code points). WIRE.md section 4. */
+export const ACTION_LABEL_MAX = 16;
+
+/** A belt action label: cleaned, trimmed and cut to {@link ACTION_LABEL_MAX} characters. Empty when nothing is left. */
+export function actionLabelOf(label: unknown): string {
+  return [...cut(label, CAPS.title).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
 }
 
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;

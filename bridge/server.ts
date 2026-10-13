@@ -48,7 +48,7 @@ import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from ".
 import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
 import { controlPane, memoryControlReceipts, rawInputRefusal, type ControlReceiptSurface } from "./durable/control.ts";
-import { withOpenAsks, withTurn } from "./durable/pane-asks.ts";
+import { withActions, withOpenAsks, withTurn } from "./durable/pane-asks.ts";
 import {
   memoryWorktreeChoices,
   type BaseKind,
@@ -384,7 +384,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * (409, `unsupported` for a pane or program that cannot take the act). A body that is not one is a
  * plain 400. Such a pane refuses `reply` and `keys` with `unsupported`. See `bridge/durable/control.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -1408,8 +1408,11 @@ export function startServer(opts: {
         name: from.name,
         // A pane whose adapter raises asks as data carries them, capped at five (ADR 0100), and one
         // whose adapter names turns carries its newest `turnId` (ADR 0101); every other pane comes
-        // back from `withOpenAsks` and `withTurn` as the same object.
-        panes: pick(from).map((p) => withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr)),
+        // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
+        // carries them (M53 spec 07), the same way.
+        panes: pick(from).map((p) =>
+          withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr),
+        ),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
       // at all, which is the whole backward-compatibility claim (solo-baseline.test.ts).
@@ -1827,9 +1830,10 @@ export function startServer(opts: {
         });
         return "text" in answered ? text(answered.text, answered.status) : json(answered.body, req.headers.get("accept-encoding"), answered.status);
       }
-      // A send or an abort that names the turn or ask the phone saw (ADR 0101). The receipt is written
-      // before the control leaves; on a crew it lives on the member that owns the pane.
-      if ((action === "send" || action === "abort") && req.method === "POST") {
+      // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
+      // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
+      // leaves; on a crew it lives on the member that owns the pane.
+      if ((action === "send" || action === "abort" || action === "action") && req.method === "POST") {
         let body: JsonValue | undefined;
         try {
           // SAFETY: `Request.json()` output IS a JsonValue by construction; `controlPane` checks every field.

@@ -105,7 +105,7 @@ describe("the wire", () => {
       protocol: { min: 1, max: 1 },
       host: { name: "durable-member-cloudflare" },
       ready: true,
-      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, terminal: false },
+      caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, terminal: false },
     });
     expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/);
     expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
@@ -238,6 +238,24 @@ describe("a close", () => {
   test.skipIf(!SQLITE)("a closed ticket stays closed after a wake of the object", async () => {
     await abortAllDurableObjects();
     expect((await snapshot()).panes.some((p: { id: string }) => p.id === closedPane)).toBe(false);
+  });
+});
+
+describe("an action", () => {
+  test("a ticket lists Escalate, a tap runs it once and dims the button, and the token still guards the route", async () => {
+    const started = await call("POST", "/starter/new-triage", { body: { requestId: "action-start-1" } });
+    const paneId: string = started.body.paneId;
+    await waitFor("the new ticket's ask", async () => (await paneOf(paneId))?.openAsks.length > 0);
+    expect((await paneOf(paneId)).actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag" }]);
+    const path = `/pane/${encodeURIComponent(paneId)}/action`;
+    const r = await call("POST", path, { body: { requestId: "action-1", actionId: "escalate" } });
+    expect([r.status, r.body]).toEqual([200, { ok: true }]);
+    const again = await call("POST", path, { body: { requestId: "action-1", actionId: "escalate" } });
+    expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+    expect((await paneOf(paneId)).actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag", disabled: true }]);
+    const gone = await call("POST", path, { body: { requestId: "action-2", actionId: "nope" } });
+    expect([gone.status, gone.body.code]).toEqual([404, "no-such-action"]);
+    expect((await call("POST", path, { token: "wrong", body: { requestId: "action-3", actionId: "escalate" } })).status).toBe(401);
   });
 });
 

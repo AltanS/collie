@@ -59,7 +59,7 @@ import {
   type MuxWorktreeOpened,
   type MuxWorktreeScope,
 } from "../types.ts";
-import type { AnswerRequest, Ask, ControlRequest } from "../../types.ts";
+import type { AnswerRequest, Ask, ControlRequest, PaneAction } from "../../types.ts";
 import { byteLength, CAPS, isWireId, RENAME_TITLE_MAX, renameTitleOf, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
@@ -89,6 +89,7 @@ import {
   type DurableCaps,
   type DurableControlBody,
   type DurablePane,
+  type DurableActionBody,
   type DurableCloseBody,
   type DurableRenameBody,
   type DurableSnapshot,
@@ -228,6 +229,7 @@ function turnView(pane: DurablePane): TurnView {
 
 /** Why the program cannot take this control, from its caps (WIRE.md section 7.4), or null when it can. */
 function controlUnsupported(caps: DurableCaps, request: ControlRequest): string | null {
+  if (request.act === "action") return caps.actions ? null : "This program lists no actions to run from here.";
   if (request.act === "abort") return caps.abort ? null : "This program cannot stop a turn from here.";
   if (!caps.send) return "This program takes no text from here.";
   if (request.steer && !caps.steer) return "This program cannot steer a running turn.";
@@ -248,6 +250,7 @@ const RENAME_WORDS = {
   },
 } as const;
 type RenameKind = keyof typeof RENAME_WORDS;
+const NO_SUCH_ACTION = "This conversation has no such action.";
 const NO_CLOSE = "This program does not take a close of a conversation or a tab from here.";
 /** What a close says of the thing it names, per kind: the words of a refusal. */
 const CLOSE_WORDS = {
@@ -290,6 +293,8 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
   // A pane and a tab are closed through the program's own `close` cap (WIRE.md section 7.9). A workspace close is on
   // the wire too, but the phone has no control for it, so no capability is declared for it.
   if (caps?.close === true) supports.push("closePane", "closeTab");
+  // The belt buttons a program lists for a pane (WIRE.md section 7.10), under `programActions`.
+  if (caps?.actions === true) supports.push("programActions");
   return declareCapabilities({
     supports,
     spaces: "many",
@@ -303,6 +308,7 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
       closePane: NO_CLOSE,
       setFocus: "There is no terminal to show a conversation in.",
       createTab: NO_STRUCTURE,
+      programActions: "This program lists no actions to run from here.",
       renameTab: NO_RENAME,
       renameSpace: NO_RENAME,
       closeTab: NO_CLOSE,
@@ -639,7 +645,18 @@ export class DurableMux implements MuxAdapter {
   }
 
   /**
-   * Send text to, or stop, the turn the phone named. The route calls this after it has written its
+   * The belt actions the program lists for one pane, from the last layout read (WIRE.md section 7.10), or `undefined`
+   * for a pane with none, a pane that is not in the layout, and a program that never declared `caps.actions`. Asks
+   * nothing of the program: it is called at serialise time.
+   */
+  paneActions(paneId: string): readonly PaneAction[] | undefined {
+    const program = this.program();
+    if (program === null || !program.session.caps.actions) return undefined;
+    return program.snapshot.panes.find((pane) => pane.id === paneId)?.actions;
+  }
+
+  /**
+   * Send text to, or stop, the turn the phone named, or run one of the pane's belt actions. The route calls this after it has written its
    * receipt, and only for a person's tap.
    *
    * In order: the id rule and the text cap (nothing leaves that the program would answer 400); a
@@ -648,7 +665,8 @@ export class DurableMux implements MuxAdapter {
    * reaches the socket, as ONE POST, never retried here.
    */
   async controlTurn(paneId: string, request: ControlRequest): Promise<MuxControlOutcome> {
-    for (const id of [paneId, request.requestId, request.target.id]) {
+    const named = request.act === "action" ? [request.actionId, ...(request.turnId === undefined ? [] : [request.turnId])] : [request.target.id];
+    for (const id of [paneId, request.requestId, ...named]) {
       if (!isWireId(id)) return { kind: "refused", detail: "An id in the request breaks the id rule." };
     }
     if (request.act === "send" && (request.text === "" || byteLength(request.text) > CAPS.sendText)) {
@@ -662,15 +680,27 @@ export class DurableMux implements MuxAdapter {
     const pane = program.snapshot.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return { kind: "gone", detail: GONE };
     const view = turnView(pane);
-    if (!namesCurrent(request.target, view)) return { kind: "stale", ...view };
+    if (request.act === "action") {
+      // The phone names a button the layout lists, and the turn it saw when it names one. Nothing else reaches the socket.
+      if (!(pane.actions ?? []).some((action) => action.id === request.actionId)) return { kind: "refused", detail: NO_SUCH_ACTION };
+      if (request.turnId !== undefined && request.turnId !== view.turnId) return { kind: "stale", ...view };
+    } else if (!namesCurrent(request.target, view)) return { kind: "stale", ...view };
 
-    const body: DurableControlBody = { requestId: request.requestId };
-    if (request.act === "send") {
-      body.text = request.text;
-      if (request.steer) body.steer = true;
+    let body: DurableControlBody | DurableActionBody;
+    if (request.act === "action") {
+      const ran: DurableActionBody = { requestId: request.requestId, actionId: request.actionId };
+      if (request.turnId !== undefined) ran.turnId = request.turnId;
+      body = ran;
+    } else {
+      const sent: DurableControlBody = { requestId: request.requestId };
+      if (request.act === "send") {
+        sent.text = request.text;
+        if (request.steer) sent.steer = true;
+      }
+      if (request.target.kind === "turn") sent.turnId = request.target.id;
+      else sent.askId = request.target.id;
+      body = sent;
     }
-    if (request.target.kind === "turn") body.turnId = request.target.id;
-    else body.askId = request.target.id;
     let reply: DurableReply;
     try {
       reply = await this.transport.post({
@@ -710,6 +740,11 @@ export class DurableMux implements MuxAdapter {
     }
     if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "The program cannot take this here." };
     if (reply.status === 404 && problem.code === "no-such-pane") return { kind: "gone", detail: GONE };
+    // A belt action the program does not know any more, or does not run now (WIRE.md section 7.10).
+    if (reply.status === 404 && problem.code === "no-such-action") return { kind: "refused", detail: NO_SUCH_ACTION };
+    if (reply.status === 422 && problem.code === "action-refused") {
+      return { kind: "refused", detail: problem.message === "" ? "The program did not run this action." : `The program did not run this action: ${problem.message}` };
+    }
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
       const refusal = this.refusalFor(reply);

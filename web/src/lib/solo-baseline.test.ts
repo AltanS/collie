@@ -126,6 +126,8 @@ const AGENT_VIEW_KEYS = {
   // only on a pane with no screen and absent from an older bridge or peer.
   asks: true,
   turnId: true,
+  // Not a crew dimension either: the belt buttons a durable program lists for a pane (M53 spec 07), present only on a pane that has some.
+  actions: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -215,6 +217,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     // the golden object above pins — and this list is the tripwire against a quiet third.
     expect(AGENT_VIEW_KEYS.session).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
+      "actions",
       "agent",
       "asks",
       "cache",

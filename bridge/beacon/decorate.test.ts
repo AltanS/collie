@@ -77,6 +77,7 @@ class StubAdapter implements MuxAdapter {
   /** The two control methods (ADR 0101), when a case gives them. Absent by default, like every
    *  adapter whose panes have a screen. */
   paneTurn?: MuxAdapter["paneTurn"];
+  paneActions?: MuxAdapter["paneActions"];
   controlTurn?: MuxAdapter["controlTurn"];
   renameSpace?: MuxAdapter["renameSpace"];
   /** The foreground argv, when a case gives it one. Absent by default, like a multiplexer
@@ -283,6 +284,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     openAsks: true,
     answerAsk: true,
     paneTurn: true,
+    paneActions: true,
     controlTurn: true,
     foregroundProcesses: true,
     renameSpace: true,
@@ -326,6 +328,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.openAsks = () => [];
     stub.answerAsk = () => Promise.resolve(muxOk({ kind: "taken", replayed: false }));
     stub.paneTurn = () => "turn-1";
+    stub.paneActions = () => undefined;
     stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
     stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
     stub.renameSpace = () => Promise.resolve(muxAck());
@@ -361,7 +364,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     expect("readLogicalText" in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     // The ask methods too (ADR 0100): a screen adapter must never come out looking like it answers by id.
     // And the control methods (ADR 0101): a screen adapter must never come out refusing `/reply`.
-    for (const field of ["openAsks", "answerAsk", "paneTurn", "controlTurn", "renameSpace"]) {
+    for (const field of ["openAsks", "answerAsk", "paneTurn", "paneActions", "controlTurn", "renameSpace"]) {
       expect(field in decorate(new StubAdapter(), [])).toBe(false);
       expect(field in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     }

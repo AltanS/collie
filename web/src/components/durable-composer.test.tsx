@@ -10,7 +10,7 @@ import { loadDraft } from "@/lib/drafts";
 import { asJsonObject, type JsonObject } from "@/lib/json";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { useStatus } from "@/lib/status";
-import type { Ask, MuxCapability } from "@/lib/types";
+import type { Ask, MuxCapability, PaneAction } from "@/lib/types";
 import { DurableComposer, type DurableComposerProps } from "./durable-composer";
 
 // The composer of a pane with no screen against stubbed send and abort routes (ADR 0101): what each
@@ -39,7 +39,7 @@ beforeEach(() => {
 const steerButton = () => screen.findByRole("button", { name: /Steer the running turn/ });
 const stopButton = () => screen.findByRole("button", { name: "Stop the running turn" });
 
-function stub(route: "send" | "abort", reply: (n: number) => Response): Sent[] {
+function stub(route: "send" | "abort" | "action", reply: (n: number) => Response): Sent[] {
   const seen: Sent[] = [];
   server.use(
     http.post<never, JsonObject>(new RegExp(`/api/pane/[^/]+/${route}$`), async ({ request }) => {
@@ -390,6 +390,110 @@ describe("stop, maybe applied", () => {
     await userEvent.setup().click(await stopButton());
     await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("The stop may already be applied. Check the chat."));
     expect(onReload).toHaveBeenCalled();
+  });
+});
+
+describe("the program's own actions", () => {
+  const escalate: PaneAction = { id: "escalate", label: "Escalate", icon: "flag" };
+  const pause: PaneAction = { id: "pause", label: "Pause", icon: "pause", disabled: true };
+  const button = (name: string) => screen.findByRole("button", { name });
+
+  beforeEach(() => declares({ steerTurn: true, abortTurn: true, programActions: true }));
+
+  it("draws the pane's actions after Steer and Stop when the program declared programActions", async () => {
+    draw({ actions: [escalate, pause] });
+    expect(await button("Escalate")).toBeEnabled();
+    expect(await button("Pause")).toBeDisabled();
+    const names = within(screen.getByRole("group", { name: "Harness shortcuts" })).getAllByRole("button").map((b) => b.textContent);
+    expect(names).toEqual(["Steer", "Stop", "Escalate", "Pause"]);
+  });
+
+  it("draws none when the program did not declare the capability, whatever the snapshot carried", async () => {
+    declares({ steerTurn: true, abortTurn: true });
+    draw({ actions: [escalate] });
+    await stopButton();
+    expect(screen.queryByRole("button", { name: "Escalate" })).toBeNull();
+  });
+
+  it("posts the action once with the turn the phone saw and a request id, says it is done, and reads the pane again", async () => {
+    const seen = stub("action", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const { onReload } = draw({ actions: [escalate] });
+    await userEvent.setup().click(await button("Escalate"));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]).toMatchObject({ actionId: "escalate", turnId: "turn-7" });
+    expect(String(seen[0]!.requestId)).toMatch(/^[0-9a-f-]{36}$/u);
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("Done"));
+    expect(onReload).toHaveBeenCalled();
+  });
+
+  it("a second tap while the first is in flight waits for it, so the program is asked once", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const seen: Sent[] = [];
+    server.use(
+      http.post<never, JsonObject>(/\/api\/pane\/[^/]+\/action$/, async ({ request }) => {
+        seen.push(asJsonObject(await request.json()) ?? {});
+        await gate;
+        return HttpResponse.json({ ok: true, outcome: "ok" });
+      }),
+    );
+    draw({ actions: [escalate] });
+    const user = userEvent.setup();
+    const tap = await button("Escalate");
+    await user.click(tap);
+    await waitFor(() => expect(tap).toBeDisabled());
+    await user.click(tap);
+    release();
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("Done"));
+    expect(seen).toHaveLength(1);
+  });
+
+  it("a refusal says the bridge's own words, keeps nothing, and the next tap is a new intent", async () => {
+    const seen = stub("action", () =>
+      HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "The program did not run this action: Already escalated." }, { status: 409 }),
+    );
+    const { onReload } = draw({ actions: [escalate] });
+    const user = userEvent.setup();
+    await user.click(await button("Escalate"));
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("Already escalated."));
+    expect(onReload).not.toHaveBeenCalled();
+    await user.click(await button("Escalate"));
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]!.requestId).not.toBe(seen[0]!.requestId);
+  });
+
+  it("a refusal with no words says the catalog's sentence", async () => {
+    stub("action", () => HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "" }, { status: 409 }));
+    draw({ actions: [escalate] });
+    await userEvent.setup().click(await button("Escalate"));
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("The action was refused."));
+  });
+
+  it("a stale turn reads the pane again and says the conversation moved on", async () => {
+    stub("action", () => HttpResponse.json({ ok: false, outcome: "stale", turnId: "turn-8", askIds: [] }, { status: 409 }));
+    const { onReload } = draw({ actions: [escalate] });
+    await userEvent.setup().click(await button("Escalate"));
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent(/did not run/));
+    expect(onReload).toHaveBeenCalled();
+  });
+
+  it("an unknown outcome keeps the request id, so tapping again carries the same one", async () => {
+    const seen = stub("action", (n) => (n === 1 ? HttpResponse.json({ ok: false, outcome: "unknown", detail: "reset" }, { status: 504 }) : HttpResponse.json({ ok: true, outcome: "ok", replayed: true })));
+    draw({ actions: [escalate] });
+    const user = userEvent.setup();
+    await user.click(await button("Escalate"));
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent(/Not sure the action arrived/));
+    await user.click(await button("Escalate"));
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]!.requestId).toBe(seen[0]!.requestId);
+  });
+
+  it("is dimmed when the composer is locked or the pane is a saved copy", async () => {
+    draw({ actions: [escalate], offline: true });
+    expect(await button("Escalate")).toBeEnabled(); // the belt greys with `locked`; the tap itself refuses offline
+    const seen = stub("action", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    await userEvent.setup().click(await button("Escalate"));
+    expect(seen).toHaveLength(0);
   });
 });
 

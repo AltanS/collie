@@ -171,6 +171,26 @@ export interface AgentView {
    * screen. Sent back unchanged, never shown.
    */
   turnId?: string;
+  /**
+   * The buttons this pane's program lists for the belt (M53 spec 07). Mirrors `PaneWire.actions` in
+   * bridge/types.ts. At most four, in the program's order. **Absent on every pane with a screen**, on
+   * an older bridge and on an older crew member, which all read as "no program buttons here". Text only,
+   * never markup: every label came from a program, and an icon it names that this list lacks draws none.
+   */
+  actions?: PaneAction[];
+}
+
+/** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */
+export const PANE_ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export type PaneActionIcon = (typeof PANE_ACTION_ICONS)[number];
+
+/** One button of a durable program's section of the belt. Mirrors `PaneAction` in bridge/types.ts. */
+export interface PaneAction {
+  id: string;
+  label: string;
+  icon?: PaneActionIcon;
+  busy?: boolean;
+  disabled?: boolean;
 }
 
 /** What a person may choose on an ask. Mirrors `AskOption` in bridge/types.ts. */
@@ -1498,6 +1518,7 @@ export const MUX_CAPABILITIES = [
   "abortTurn",
   "starters",
   "renameSpace",
+  "programActions",
 ] as const;
 
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];

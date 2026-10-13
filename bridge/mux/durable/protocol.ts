@@ -8,9 +8,9 @@
 
 import { isAbsolute } from "node:path";
 
-import type { AgentStatus, Ask } from "../../types.ts";
+import { type AgentStatus, type Ask, PANE_ACTION_ICONS, type PaneAction } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, renameTitleOf } from "./clean.ts";
+import { actionLabelOf, blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, renameTitleOf } from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,8 @@ export interface DurableCaps {
   readonly rename: boolean;
   /** It closes a workspace, a tab or a pane when asked (WIRE.md section 7.9). */
   readonly close: boolean;
+  /** It lists actions on a pane and runs one when asked (WIRE.md section 7.10). */
+  readonly actions: boolean;
 }
 
 export interface DurableHello {
@@ -120,6 +122,8 @@ export interface DurablePane {
   readonly turnId: string;
   readonly openAsks: readonly DurableAsk[];
   readonly cwd?: string;
+  /** The program's belt buttons for this pane, cleaned: at most 4, label at most 16 characters. Absent when it lists none. */
+  readonly actions?: readonly PaneAction[];
 }
 
 export interface DurableStarter {
@@ -251,6 +255,7 @@ export function parseHello(text: string): Parsed<DurableHello> {
       abort: flag("abort"),
       rename: flag("rename"),
       close: flag("close"),
+      actions: flag("actions"),
     },
   });
 }
@@ -378,6 +383,26 @@ function readTab(value: Json, workspaces: ReadonlyMap<string, DurableWorkspace>)
   return { id, workspaceId, title: textOf(value, "title", CAPS.title) };
 }
 
+/** One belt action: an id that follows the id rule, a label that is not empty once cleaned, a known icon or none. */
+function readAction(value: Json): PaneAction | null {
+  if (!isRecord(value)) return null;
+  const id = idOf(value, "id");
+  const label = isText(value.label) ? actionLabelOf(value.label) : "";
+  if (id === null || label === "") return null;
+  const action: PaneAction = { id, label };
+  const icon = PANE_ACTION_ICONS.find((name) => name === value.icon);
+  if (icon !== undefined) action.icon = icon;
+  if (value.busy === true) action.busy = true;
+  if (value.disabled === true) action.disabled = true;
+  return action;
+}
+
+/** The first valid entry of each id, up to the cap of 4. Anything else is left out, and an empty list reads as absent. */
+function readActions(list: Json | undefined): readonly PaneAction[] | undefined {
+  const kept = collect(list, readAction, CAPS.actionsPerPane);
+  return kept.length === 0 ? undefined : kept;
+}
+
 /**
  * A pane needs its own id, a workspace and a tab the snapshot kept (and the tab must sit in that
  * workspace), and a `turnId`. Without any of them the pane is dropped: a pane that names a tab
@@ -407,7 +432,8 @@ function readPane(
   }
   const lastActiveAt = value.lastActiveAt;
   const cwd = cwdOf(value);
-  return {
+  const actions = readActions(value.actions);
+  const pane: DurablePane = {
     id,
     workspaceId,
     tabId,
@@ -419,6 +445,7 @@ function readPane(
     openAsks: openAsks.slice(0, CAPS.openAsksPerPane),
     cwd,
   };
+  return actions === undefined ? pane : { ...pane, actions };
 }
 
 function readStarter(value: Json): DurableStarter | null {
@@ -805,6 +832,37 @@ export interface DurableControlBody {
   /** Exactly one of `turnId` and `askId`. */
   turnId?: string;
   askId?: string;
+}
+
+/** The body the adapter writes for a belt action (WIRE.md section 4, `ActionRequest`). */
+export interface DurableActionBody {
+  requestId: string;
+  actionId: string;
+  /** The turn the phone saw. Absent when the phone named none. */
+  turnId?: string;
+}
+
+/** An `ActionRequest` (WIRE.md section 4) as a program reads it off the socket. */
+export interface DurableActionPost {
+  readonly requestId: string;
+  readonly actionId: string;
+  readonly turnId: string | null;
+}
+
+/**
+ * The program's side of an action body: `"bad-json"`, `null` for a body that breaks WIRE.md section 7.10 (no request id,
+ * no action id, a `turnId` that is not text), or the fields. The test program reads the adapter's POST with this.
+ */
+export function parseActionPost(text: string): DurableActionPost | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const requestId = root.requestId ?? undefined;
+  const actionId = root.actionId ?? undefined;
+  const turnId = root.turnId ?? undefined;
+  if (!isText(requestId) || !isText(actionId)) return null;
+  if (turnId !== undefined && !isText(turnId)) return null;
+  return { requestId, actionId, turnId: isText(turnId) ? turnId : null };
 }
 
 /** A `SendRequest` or `AbortRequest` (WIRE.md section 4) as a program reads it off the socket. */

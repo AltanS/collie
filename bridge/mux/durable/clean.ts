@@ -39,6 +39,8 @@ export const CAPS = {
   openAsksPerPane: 50,
   optionsPerAsk: 6,
   starters: 50,
+  /** Belt actions per pane (WIRE.md section 4, `PaneAction`). */
+  actionsPerPane: 4,
   /** Events in one plain events reply. */
   eventsPerReply: 1000,
   /** Items in a reset view, the newest. */
@@ -165,6 +167,14 @@ export function changedByCleaning(text: string, rule: TextRule): boolean {
  */
 export function isWireId(value: string): boolean {
   return byteLength(value) <= CAPS.id && isValidMuxId(value);
+}
+
+/** The longest belt action label, in characters (code points). WIRE.md section 4. */
+export const ACTION_LABEL_MAX = 16;
+
+/** A belt action label, cleaned and cut to {@link ACTION_LABEL_MAX} characters. Empty when nothing is left. */
+export function actionLabelOf(label: string): string {
+  return [...cleanText(label, lineRule(CAPS.starterLabel)).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
 }
 
 /** The longest title a rename may carry, in characters (code points). WIRE.md section 7.8. */

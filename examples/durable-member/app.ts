@@ -152,7 +152,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   async function show(conversation: Conversation, owned: boolean) {
     const tab = owned ? helpers : inbox;
     const title = `${owned ? "Helper" : "Ticket"} #${conversation.id}`;
-    return showConversation({ tab, title }, harness, conversation, { panes });
+    return showConversation({ tab, title, escalate: !owned }, harness, conversation, { panes });
   }
 
   let tickets = 0;

@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
 import { accentFor, DurableBar, HarnessBar } from "./harness-bar";
-import { DURABLE_BAR } from "@/lib/harness-bar";
+import { DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
+import type { PaneAction } from "@/lib/types";
 
 /** jsdom normalises a hex colour to `rgb(...)`; compare through the same normaliser on both sides. */
 function normalizedColor(value: string): string {
@@ -225,5 +226,64 @@ describe("DurableBar", () => {
   it("shows a spinner while a stop is in flight", () => {
     render(<DurableBar items={DURABLE_BAR} state={state({ stop: { busy: true } })} />);
     expect(screen.getByRole("button", { name: "Stop the running turn" }).querySelector(".animate-spin")).not.toBeNull();
+  });
+});
+
+describe("DurableBar, the program's own actions", () => {
+  const listed: PaneAction[] = [
+    { id: "escalate", label: "Escalate", icon: "flag" },
+    { id: "pause", label: "Pause", icon: "pause", disabled: true },
+    { id: "run", label: "Run", icon: "play", busy: true },
+    { id: "plain", label: "Plain" },
+  ];
+  const items = durableBarFor(() => true, listed);
+  const state = (running: string | null = null) => ({
+    steer: { pressed: false, offered: true, onPressedChange: vi.fn() },
+    stop: { offered: true, busy: false, onStop: vi.fn() },
+    action: { running, onRun: vi.fn() },
+  });
+
+  it("draws them after Steer and Stop, in the program's order, each with its label", () => {
+    render(<DurableBar items={items} state={state()} />);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Steer", "Stop", "Escalate", "Pause", "Run", "Plain"]);
+  });
+
+  it("draws an icon for a known name and none for an unknown one, and a spinner for a busy action", () => {
+    render(<DurableBar items={items} state={state()} />);
+    expect(screen.getByRole("button", { name: "Escalate" }).querySelector("svg")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plain" }).querySelector("svg")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run" }).querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Escalate" }).querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("dims a disabled or busy action and refuses its tap, and taps an available one through once", async () => {
+    const s = state();
+    const user = userEvent.setup();
+    render(<DurableBar items={items} state={s} />);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    expect(s.action.onRun).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Escalate" }));
+    expect(s.action.onRun).toHaveBeenCalledTimes(1);
+    expect(s.action.onRun).toHaveBeenCalledWith(listed[0]);
+  });
+
+  it("shows the button whose tap is in flight as a spinner and refuses a second tap on it", async () => {
+    const s = state("escalate");
+    render(<DurableBar items={items} state={s} />);
+    const button = screen.getByRole("button", { name: "Escalate" });
+    expect(button).toBeDisabled();
+    expect(button.querySelector(".animate-spin")).not.toBeNull();
+    await userEvent.setup().click(button);
+    expect(s.action.onRun).not.toHaveBeenCalled();
+  });
+
+  it("greys them when the composer is locked, and draws a section for a program that declared only actions", () => {
+    const { rerender } = render(<DurableBar items={items} state={state()} disabled />);
+    for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
+    rerender(<DurableBar items={durableBarFor((cap) => cap === "programActions", listed)} state={state()} />);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Escalate", "Pause", "Run", "Plain"]);
   });
 });

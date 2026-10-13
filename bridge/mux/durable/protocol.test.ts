@@ -62,7 +62,7 @@ describe("hello", () => {
         hostName: "denis-laptop",
         epoch: EPOCH,
         ready: true,
-        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false },
+        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false, actions: false },
       },
     });
   });
@@ -71,7 +71,7 @@ describe("hello", () => {
     const parsed = parseHello(
       JSON.stringify({ service: "collie-durable", protocol: { min: 1, max: 1 }, host: null, epoch: EPOCH, ready: false, caps: { asks: null, send: true } }),
     );
-    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false, close: false });
+    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false, close: false, actions: false });
     expect(parsed.ok && parsed.value.hostName).toBe("");
   });
 

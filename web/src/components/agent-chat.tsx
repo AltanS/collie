@@ -2717,6 +2717,7 @@ export function AgentChat({
                     scope={scope}
                     turnId={agent?.turnId}
                     asks={agent?.asks}
+                    actions={agent?.actions}
                     status={agent?.status}
                     locked={gone || readOnly || hostBlock !== undefined}
                     lockedWhy={

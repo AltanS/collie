@@ -115,6 +115,14 @@ adapter in the registry, and the crew is unchanged.**
     phone draws its usual close controls with no durable special case. A workspace close is on the wire
     but has no capability, because the phone has no control for it. Added to version 1 before the wire
     shipped, so there is no version 2.
+14. **Program actions are a cap on the wire.** A program lists up to four buttons per conversation
+    (`actions` on the pane, with a label of at most 16 characters and one of twelve icon names), and a
+    tap is `POST /pane/:id/action` with a request id, the action id and, when the phone has one, the
+    turn it saw. The cap is `caps.actions`, and the adapter declares a new capability, `programActions`,
+    from it. The route is a third act of ADR 0101's controls, so it has the same receipt, the same
+    replay, the same unknown-outcome rule and the same `stale` refusal, and the adapter hands it to
+    `controlTurn` as an `action` control. The phone draws the buttons in the durable section of the
+    belt, after Steer and Stop. Added to version 1 before the wire shipped, so there is no version 2.
 
 ## Consequences
 

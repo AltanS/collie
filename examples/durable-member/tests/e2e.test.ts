@@ -117,6 +117,28 @@ describe("one ticket", () => {
   });
 });
 
+describe("the Escalate action", () => {
+  test("a ticket lists Escalate with the flag icon, a helper lists nothing, and a tap writes one notice and dims the button", async () => {
+    const id = (await api.start(d, "new-triage")).body.paneId;
+    await waitFor("ask", () => firstAsk(d, id));
+    expect((await pane(d, id))!.actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag" }]);
+    const helperPanes = (await api.snapshot(d)).body.panes.filter((x) => x.tabId === "triage:helpers");
+    for (const h of helperPanes) expect("actions" in h).toBe(false);
+
+    const turnId = (await pane(d, id))!.turnId;
+    expect((await api.action(d, id, "escalate", { turnId, requestId: "e2e-action-1" })).body).toEqual({ ok: true });
+    expect((await api.action(d, id, "escalate", { turnId, requestId: "e2e-action-1" })).body).toEqual({ ok: true, replayed: true });
+    const notices = (await allEvents(d, id)).filter((e) => e.type === "item" && e.item.kind === "notice" && e.item.text.startsWith("Escalated"));
+    expect(notices.length).toBe(1);
+    expect((await pane(d, id))!.actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag", disabled: true }]);
+    // Dimmed means no second tap: the program refuses it.
+    const second = await api.action(d, id, "escalate", { requestId: "e2e-action-2" });
+    expect([second.status, second.body.code]).toEqual([422, "action-refused"]);
+    expect((await api.abort(d, id)).status).toBe(200);
+    await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
+  });
+});
+
 describe("beyond the script", () => {
   test("deny: the tool is blocked, the item reads denied, the file is untouched", async () => {
     const before = readFileSync(join(dir, "notes.txt"), "utf8");

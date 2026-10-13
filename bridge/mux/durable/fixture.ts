@@ -61,6 +61,7 @@ import { DurableHttpClient } from "./http-client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
+  parseActionPost,
   parseAnswerPost,
   parseClosePost,
   parseControlPost,
@@ -89,6 +90,7 @@ export interface FakeHello {
     abort?: boolean;
     rename?: boolean;
     close?: boolean;
+    actions?: boolean;
     terminal?: boolean;
   };
 }
@@ -285,6 +287,14 @@ export interface FakeClose {
   readonly id: string;
 }
 
+/** One belt action the fake ran (WIRE.md section 7.10). A replay is not one. */
+export interface FakeAction {
+  readonly requestId: string;
+  readonly paneId: string;
+  readonly actionId: string;
+  readonly turnId: string | null;
+}
+
 /** What a send or an abort answers. */
 export interface ControlDoc {
   ok: true;
@@ -360,6 +370,12 @@ export class FakeDurableProgram {
   /** When set, the next closes fail with 422 `close-refused` and this message, and change nothing. */
   closeRefusal: string | null = null;
   private readonly closedByRequest = new Map<string, FakeClose>();
+
+  /** Every belt action the fake ran, in order. A replay is not a second entry. */
+  readonly actionsRun: FakeAction[] = [];
+  /** When set, the next actions fail with 422 `action-refused` and this message, and change nothing. */
+  actionRefusal: string | null = null;
+  private readonly actedByRequest = new Map<string, FakeAction>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
   /** The TCP port over HTTP, kept so a dropped listener comes back on the same URL. */
@@ -595,6 +611,8 @@ export class FakeDurableProgram {
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
     if (request.method === "POST" && route === "/rename") return this.handleRename(body ?? "");
     if (request.method === "POST" && route === "/close") return this.handleClose(body ?? "");
+    const actionRoute = /^\/pane\/([^/]+)\/action$/.exec(route);
+    if (request.method === "POST" && actionRoute !== null) return this.handleAction(decodeURIComponent(actionRoute[1] ?? ""), body ?? "");
     const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
     if (request.method === "POST" && controlRoute !== null) {
       const act = controlRoute[2] === "send" ? "send" : "abort";
@@ -795,6 +813,36 @@ export class FakeDurableProgram {
     }
     this.answered.set(requestId, { paneId, reply: answer });
     return reply(200, answer);
+  }
+
+  /**
+   * `POST /pane/:id/action` (WIRE.md section 7.10): the body, then the pane, then the request id memory, then the cap,
+   * then the turn when the phone named one, then the action, then the program's say. A failure stores nothing, so
+   * the same request id may try again.
+   */
+  private handleAction(paneId: string, text: string): Response {
+    const post = parseActionPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, actionId, turnId } = post;
+    const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return reply(404, { code: "no-such-pane" });
+    const earlier = this.actedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.paneId !== paneId || earlier.actionId !== actionId || earlier.turnId !== turnId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    if (this.hello.caps.actions !== true) return reply(409, { code: "not-supported" });
+    if (turnId !== null && turnId !== pane.turnId) return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((ask) => ask.id) });
+    const row = (pane.actions ?? []).find((candidate) => candidate.id === actionId);
+    if (row === undefined) return reply(404, { code: "no-such-action" });
+    if (this.actionRefusal !== null) return reply(422, { code: "action-refused", message: this.actionRefusal });
+    if (row.disabled === true || row.busy === true) return reply(422, { code: "action-refused" });
+
+    const run: FakeAction = { requestId, paneId, actionId, turnId };
+    this.actedByRequest.set(requestId, run);
+    this.actionsRun.push(run);
+    return reply(200, { ok: true });
   }
 
   /**

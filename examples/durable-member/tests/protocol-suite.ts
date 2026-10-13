@@ -3,7 +3,7 @@
 // agree, so the core is the wire and the socket is only its transport.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
-import { type AskInput, type Caps, type CoreOptions, idOk, type PaneHandle, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
+import { type AskInput, type Caps, type CoreOptions, idOk, type PaneAction, type PaneHandle, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
 import { cleanup, waitFor } from "./util.ts";
 
 /** A program with no layout yet, and the dial that reaches it. */
@@ -98,7 +98,7 @@ export function protocolSuite(transport: Transport) {
         expect(r.body.host.name).toBe("t");
         expect(r.body.ready).toBe(true);
         expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/); // 128 bits
-        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, terminal: false });
+        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, terminal: false });
       });
       test("409 incompatible with the range, never a 5xx; a header that is not an integer is the same", async () => {
         for (const version of [0, 2, 99]) {
@@ -875,6 +875,150 @@ export function protocolSuite(transport: Transport) {
         c.ready();
         expect((await api.close(t, "pane", "p")).body).toEqual({ ok: true });
         expect((await api.snapshot(t)).body.panes).toEqual([]);
+        await c.close();
+      });
+    });
+
+    describe("actions", () => {
+      const ESC = { id: "escalate", label: "Escalate", icon: "flag" } as const;
+      type Hooked = NonNullable<CoreOptions["hooks"]>;
+      /** A core with one pane, the given belt actions, and the given hook or per-pane handler. */
+      const withActions = async (list: PaneAction[] | null, hooks: Hooked = {}, caps?: Partial<Caps>) => {
+        const opened = await transport.open({ hostName: "a", hooks, caps });
+        const p = opened.collie.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("ap", { title: "AP", harness: "x" });
+        if (list !== null) p.actions(list);
+        opened.collie.ready();
+        const info = async () => (await api.snapshot(opened.dial)).body.panes[0]!;
+        return { ...opened, p, info };
+      };
+
+      test("a pane's actions are in the snapshot in the program's order, and a pane with none carries no key", async () => {
+        const { collie: c, p, info } = await withActions([ESC, { id: "pause", label: "Pause", icon: "pause" }]);
+        expect((await info()).actions).toEqual([ESC, { id: "pause", label: "Pause", icon: "pause" }]);
+        p.actions(null);
+        expect("actions" in (await info())).toBe(false);
+        await c.close();
+      });
+      test("at most 4 actions, a label cut to 16 characters, an unknown icon dropped, an empty label and a repeated id left out", async () => {
+        const many = ["a", "b", "c", "d", "e"].map((id) => ({ id, label: id }));
+        const { collie: c, p, info } = await withActions(many);
+        expect((await info()).actions!.map((a) => a.id)).toEqual(["a", "b", "c", "d"]);
+        p.actions([
+          { id: "long", label: "  A label that is far too long  ", icon: "nope" as never },
+          { id: "empty", label: "   " },
+          { id: "long", label: "Again" },
+          { id: "busy", label: "Run", icon: "play", busy: true, disabled: true },
+        ]);
+        expect((await info()).actions).toEqual([
+          { id: "long", label: "A label that is" },
+          { id: "busy", label: "Run", icon: "play", busy: true, disabled: true },
+        ]);
+        expect(() => p.actions([{ id: "bad id", label: "x" }])).toThrow();
+        await c.close();
+      });
+      test("rev rises when the list changes, and not when it is set again to the same thing", async () => {
+        const { collie: c, p, dial: t } = await withActions([ESC]);
+        const rev = async () => (await api.snapshot(t)).body.rev;
+        const first = await rev();
+        p.actions([{ ...ESC }]);
+        expect(await rev()).toBe(first);
+        p.actions([{ ...ESC, disabled: true }]);
+        expect(await rev()).toBeGreaterThan(first);
+        await c.close();
+      });
+      test("a tap runs the hook once with the typed payload, and a repeat of the request id answers from the receipt", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t, info } = await withActions([ESC], { onAction: (pane, action) => void got.push({ id: pane.id, action }) });
+        const turnId = (await info()).turnId;
+        const first = await api.action(t, "ap", "escalate", { turnId, requestId: "act-1" });
+        expect([first.status, first.body]).toEqual([200, { ok: true }]);
+        const again = await api.action(t, "ap", "escalate", { turnId, requestId: "act-1" });
+        expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+        expect(got).toEqual([{ id: "ap", action: { actionId: "escalate", turnId, requestId: "act-1" } }]);
+        // No turn named: the pane's button is the target, and that is allowed.
+        expect((await api.action(t, "ap", "escalate", { requestId: "act-2" })).body).toEqual({ ok: true });
+        expect(got.length).toBe(2);
+        await c.close();
+      });
+      test("a pane's own handler wins over the hook, and the same request id for another action is 409 request-id-reused", async () => {
+        const viaHook: string[] = [];
+        const viaPane: string[] = [];
+        const { collie: c, dial: t, p } = await withActions([ESC, { id: "pause", label: "Pause" }], { onAction: (_pane, a) => void viaHook.push(a.actionId) });
+        p.onAction((a) => void viaPane.push(a.actionId));
+        expect((await api.action(t, "ap", "escalate", { requestId: "act-3" })).status).toBe(200);
+        expect([viaPane, viaHook]).toEqual([["escalate"], []]);
+        const reused = await api.action(t, "ap", "pause", { requestId: "act-3" });
+        expect([reused.status, reused.body.code]).toEqual([409, "request-id-reused"]);
+        await c.close();
+      });
+      test("a stale turn is 409 stale with the current turn, and the hook is not run", async () => {
+        const got: string[] = [];
+        const { collie: c, dial: t, p, info } = await withActions([ESC], { onAction: (_pane, a) => void got.push(a.actionId) });
+        const old = (await info()).turnId;
+        p.state("working");
+        const now = (await info()).turnId;
+        expect(now).not.toBe(old);
+        const r = await api.action(t, "ap", "escalate", { turnId: old });
+        expect([r.status, r.body.code, r.body.turnId]).toEqual([409, "stale", now]);
+        expect(got).toEqual([]);
+        await c.close();
+      });
+      test("an unknown pane is 404 no-such-pane, an action the pane does not list is 404 no-such-action", async () => {
+        const got: string[] = [];
+        const { collie: c, dial: t } = await withActions([ESC], { onAction: (_pane, a) => void got.push(a.actionId) });
+        expect((await api.action(t, "nope", "escalate")).body.code).toBe("no-such-pane");
+        const r = await api.action(t, "ap", "other");
+        expect([r.status, r.body.code]).toEqual([404, "no-such-action"]);
+        expect(got).toEqual([]);
+        await c.close();
+      });
+      test("the hook answering false is 422 action-refused, and the same request id may try again", async () => {
+        let verdict: boolean | undefined = false;
+        const { collie: c, dial: t } = await withActions([ESC], { onAction: () => verdict });
+        const refused = await api.action(t, "ap", "escalate", { requestId: "act-4" });
+        expect([refused.status, refused.body.code]).toEqual([422, "action-refused"]);
+        verdict = undefined; // a hook that returns nothing accepts
+        expect((await api.action(t, "ap", "escalate", { requestId: "act-4" })).body).toEqual({ ok: true });
+        await c.close();
+      });
+      test("a disabled or busy action takes no tap: 422 action-refused, and the hook is not run", async () => {
+        const got: string[] = [];
+        const { collie: c, dial: t } = await withActions(
+          [
+            { id: "off", label: "Off", disabled: true },
+            { id: "run", label: "Run", busy: true },
+          ],
+          { onAction: (_pane, a) => void got.push(a.actionId) },
+        );
+        for (const id of ["off", "run"]) {
+          const r = await api.action(t, "ap", id);
+          expect([id, r.status, r.body.code]).toEqual([id, 422, "action-refused"]);
+        }
+        expect(got).toEqual([]);
+        await c.close();
+      });
+      test("with caps.actions false, or no handler and no hook, the route is 409 not-supported", async () => {
+        const off = await withActions([ESC], { onAction: () => true }, { actions: false });
+        expect((await api.hello(off.dial)).body.caps).toMatchObject({ actions: false });
+        expect((await api.action(off.dial, "ap", "escalate")).body.code).toBe("not-supported");
+        await off.collie.close();
+        const bare = await withActions([ESC]);
+        expect((await api.action(bare.dial, "ap", "escalate")).body.code).toBe("not-supported");
+        await bare.collie.close();
+      });
+      test("a bad body is 400: no action id, a mistyped field, an id that breaks the rule, no request id", async () => {
+        const { collie: c, dial: t } = await withActions([ESC], { onAction: () => true });
+        const cases: [unknown, string][] = [
+          [{ requestId: "r" }, "bad-body"],
+          [{ requestId: "r", actionId: 4 }, "bad-body"],
+          [{ requestId: "r", actionId: "a b" }, "bad-id"],
+          [{ requestId: "r", actionId: "escalate", turnId: 4 }, "bad-body"],
+          [{ actionId: "escalate" }, "bad-body"],
+        ];
+        for (const [body, code] of cases) {
+          const r = await call(t, "POST", "/pane/ap/action", body);
+          expect([JSON.stringify(body), r.status, r.body.code]).toEqual([JSON.stringify(body), 400, code]);
+        }
         await c.close();
       });
     });

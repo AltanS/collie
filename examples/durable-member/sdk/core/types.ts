@@ -22,6 +22,8 @@ export interface Caps {
   rename?: boolean;
   /** It closes a workspace, a tab or a pane when the phone asks (WIRE.md 7.9). */
   close?: boolean;
+  /** It lists actions on a pane and runs one when the phone taps it (WIRE.md 7.10). */
+  actions?: boolean;
   /** Always false in version 1. */
   terminal?: boolean;
 }
@@ -103,6 +105,22 @@ export type SessionEvent =
 /** The events a program may append itself. The SDK writes `ask`, `ask-closed` and `state`. */
 export type ProgramEvent = Exclude<SessionEvent, { type: "ask" | "ask-closed" | "state" }>;
 
+/** The icon names the phone knows (WIRE.md section 4, `PaneAction`). Any other name draws no icon. */
+export const ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export type ActionIcon = (typeof ACTION_ICONS)[number];
+
+/** One button in the program's section of the belt. At most 4 per pane, label at most 16 characters. */
+export interface PaneAction {
+  /** The id the phone sends back. Follows the id rule. */
+  id: string;
+  label: string;
+  icon?: ActionIcon;
+  /** The action is running: the button shows a spinner and takes no tap. */
+  busy?: boolean;
+  /** The action is not available now: the button is dimmed and takes no tap. */
+  disabled?: boolean;
+}
+
 export interface Starter {
   id: string;
   label: string;
@@ -136,6 +154,8 @@ export interface PaneInfo {
   turnId: string;
   /** Every open ask, oldest first, at most 50. */
   openAsks: Ask[];
+  /** The pane's belt actions, in order. Absent when it has none. */
+  actions?: PaneAction[];
   /** Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it. */
   sessionId: string | null;
   cwd?: string;
@@ -207,6 +227,12 @@ export interface CloseRequest {
   /** The pane id, the tab id as the snapshot lists it (`<workspace>:<tab>`), or the workspace id. */
   id: string;
 }
+/** Run one of a pane's actions. `turnId`, when sent, is the turn the phone saw; a turn that moved is 409 `stale`. */
+export interface ActionRequest {
+  requestId: string;
+  actionId: string;
+  turnId?: string;
+}
 export interface StarterRequest {
   requestId: string;
 }
@@ -263,6 +289,14 @@ export interface RenameTarget {
   title: string;
 }
 
+/** What a tap on a belt action carries to the program. */
+export interface ActionContext {
+  actionId: string;
+  /** The turn the phone saw, when it named one. The SDK has already checked it is still the newest. */
+  turnId?: string;
+  requestId: string;
+}
+
 /** The workspace, tab or pane a close names, and every pane that goes with it (the pane itself, or the ones inside). */
 export interface CloseTarget {
   kind: "pane" | "tab" | "workspace";
@@ -298,4 +332,11 @@ export interface ProgramHooks {
    * every open ask on those panes as `stopped`. Not called for a target that does not exist.
    */
   onClose?(target: CloseTarget, requestId: string): Promise<boolean | void> | boolean | void;
+  /**
+   * The phone taps one of a pane's belt actions (WIRE.md 7.10). Run it. Return `false` to refuse (422
+   * `action-refused`, the same request id may try again); returning nothing accepts. A pane's own handler
+   * (`pane.onAction`) is asked first, and this hook is the fallback for a pane that has none. Not called for an
+   * action the pane does not list, nor for one it lists as `disabled` or `busy`.
+   */
+  onAction?(pane: PaneRef, action: ActionContext): Promise<boolean | void> | boolean | void;
 }

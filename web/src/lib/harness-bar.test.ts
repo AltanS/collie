@@ -212,6 +212,25 @@ describe("the durable section", () => {
     expect(durableBarFor(() => false)).toEqual([]);
   });
 
+  it("draws the program's own actions after Steer and Stop, in its order, only when programActions is declared", () => {
+    const actions = [
+      { id: "escalate", label: "Escalate", icon: "flag" as const },
+      { id: "pause", label: "Pause", disabled: true },
+    ];
+    expect(durableBarFor(() => true, actions).map((i) => (i.id === "action" ? `action:${i.action.id}` : i.id))).toEqual([
+      "steer",
+      "stop",
+      "action:escalate",
+      "action:pause",
+    ]);
+    // Without the capability the pane's list is ignored, whatever the snapshot carried.
+    expect(durableBarFor((cap) => cap !== "programActions", actions).map((i) => i.id)).toEqual(["steer", "stop"]);
+    // The section is drawn when any of the three is declared: programActions alone is enough.
+    expect(durableBarFor((cap) => cap === "programActions", actions).map((i) => i.id)).toEqual(["action", "action"]);
+    // Declared, with nothing listed: nothing to draw.
+    expect(durableBarFor((cap) => cap === "programActions")).toEqual([]);
+  });
+
   it("is not a harness: the slash-command table has no entry for it", () => {
     expect(BAR_AGENTS).not.toContain("durable");
     expect(barFor("durable")).toEqual([]);

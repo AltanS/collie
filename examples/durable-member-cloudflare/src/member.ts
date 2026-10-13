@@ -153,7 +153,7 @@ export class Member extends DurableObject<Env> {
       cursor = page.next;
     } while (cursor);
     const show = (conversation: Conversation, owned: boolean) =>
-      showConversation({ tab: owned ? helpers : inbox, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}` }, harness, conversation, { panes: this.panes });
+      showConversation({ tab: owned ? helpers : inbox, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}`, escalate: !owned }, harness, conversation, { panes: this.panes });
     for (const c of all) if (!closed.has(String(c.id))) await show((await harness.conversation(c.id, ctx0))!, c.owned);
 
     const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;

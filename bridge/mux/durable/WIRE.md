@@ -164,6 +164,7 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /pane/:id/action` | `ActionRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 404 `no-such-action`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `action-refused`, 503 `starting` |
 | `POST /rename` | `RenameRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `rename-refused`, 503 `starting` |
 | `POST /close` | `CloseRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `close-refused`, 503 `starting` |
 | `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
@@ -186,18 +187,20 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
 | 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
 | 401 | (any) | Over the socket (1A): a program that wants a token, which the socket does not carry. Over TLS (1B): the token is missing or wrong. | 1A: `incompatible`, see section 2. 1B: `unreachable`, detail `token-refused`. |
-| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `rename`, `close` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `action`, `rename`, `close` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
 | 403 | (any) | Over TLS (1B): something in front of the program refused the caller, for example an access proxy. | `unreachable`, detail `token-refused`. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
 | 404 | `no-such-target` | The workspace, tab or pane of a `rename` or a `close` is not in the program's layout. | `gone`. |
+| 404 | `no-such-action` | The pane does not list this action (section 7.10). | Refused, with a detail that says the conversation has no such action. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
 | 409 | `incompatible` | Version outside the range. Carries `range`. | `unreachable`, detail `incompatible`. Never retried at the same version. |
-| 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current. Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
+| 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current (for an `action`, the `turnId` when the request carried one). Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
 | 409 | `request-id-reused` | The `requestId` was already used for a different route, pane, target or starter. | Refused. |
 | 409 | `not-supported` | The cap for this act is false, or this pane cannot take it (for example no send handler). | Refused. |
 | 413 | `too-large` | The request body is over 64 KiB. | Refused. |
 | 422 | `rename-refused` | The program said no to this title for this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
+| 422 | `action-refused` | The program said no to running this action now. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `close-refused` | The program said no to closing this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `starter-failed` | The starter ran and failed. Carries `message`. Nothing was stored for the request id. | Refused, with the message. The same request id may run again. |
 | 503 | `starting` | `ready` is false. | `unreachable`, detail `starting`. Asks `hello` again on the next poll. |
@@ -239,6 +242,7 @@ interface Caps {
   abort?: boolean;     // it can stop a running turn
   rename?: boolean;    // it takes a new title for a workspace or a tab (section 7.8)
   close?: boolean;     // it closes a workspace, a tab or a pane (section 7.9)
+  actions?: boolean;   // it lists actions on a pane and runs one when asked (section 7.10)
   terminal?: boolean;  // MUST be false or absent in version 1. The adapter ignores it.
 }
 
@@ -294,9 +298,30 @@ interface Pane {
   sessionId?: string | null;
   /** Absolute. Falls back to the workspace `cwd`, then to "". */
   cwd?: string;
+  /**
+   * The buttons the phone draws in the program's section of the belt, in this order (section 7.10). At most 4;
+   * a longer list is cut to its first 4. Absent or empty: no buttons. Ignored unless `caps.actions` is true.
+   */
+  actions?: PaneAction[];
 }
 
 type PaneState = "working" | "waiting" | "idle";
+
+/** One program-defined belt button. */
+interface PaneAction {
+  /** The id the phone sends back. Follows the id rule. Unique inside the pane: a repeated id is dropped. */
+  id: string;
+  /** 1 to 16 characters (code points), cleaned and cut. An action whose label is empty after cleaning is dropped. */
+  label: string;
+  /** One of the twelve names below. Any other value draws no icon. */
+  icon?: ActionIcon;
+  /** Running now: the phone shows a spinner and sends no tap. */
+  busy?: boolean;
+  /** Not available now: the phone dims the button and sends no tap. */
+  disabled?: boolean;
+}
+
+type ActionIcon = "play" | "pause" | "check" | "x" | "refresh" | "archive" | "flag" | "star" | "send" | "note" | "search" | "more";
 
 interface StarterRow {
   id: string;
@@ -447,6 +472,14 @@ interface CloseRequest {
   id: string;
 }
 
+/** Run one of a pane's actions. `turnId`, when sent, is the turn the phone saw. */
+interface ActionRequest {
+  requestId: string;
+  /** One of the ids the pane lists. */
+  actionId: string;
+  turnId?: string;
+}
+
 interface StarterRequest {
   requestId: string;
 }
@@ -562,6 +595,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `Ask.title` | 256 bytes | cut |
 | `StarterRow.label` | 128 bytes | cut |
 | `Option.label` | 128 bytes | cut |
+| `PaneAction.label` | 16 characters | cut; empty after cleaning drops the action |
+| `Pane.actions` | 4 entries | the first 4 kept |
 | `Pane.harness` | 64 bytes | cut |
 | `Workspace.cwd`, `Pane.cwd` | 4096 bytes, absolute | ignored, reads as absent |
 | `Ask.reason` | 2048 bytes | cut |
@@ -682,7 +717,7 @@ abort.
   `StarterReply` with `replayed: true` and run nothing. A failed start (422) stores nothing, so the
   same id may run again. A repeat that arrives while the first is still running waits for it and
   returns its result.
-- **Answer, send, abort, rename, close:** the program SHOULD do the same: a repeat returns the first reply with
+- **Answer, send, abort, action, rename, close:** the program SHOULD do the same: a repeat returns the first reply with
   `replayed: true` and runs nothing. The bridge receipt is the main guard. This one covers a reply
   lost on the way.
 - The same `requestId` on a different route, pane or starter: 409 `request-id-reused`.
@@ -705,8 +740,8 @@ abort.
   store, newest first; a pending receipt younger than a day is never pruned. Each store is written
   to a temporary file and renamed over the old one.
 - Timeouts in the adapter over the socket (1A): 1000 ms for `hello`, `snapshot` and `events`;
-  3000 ms for `answer`, `send`, `abort`, `rename` and `close`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
-  `hello`, `snapshot`, `events`, `answer`, `send`, `abort`, `rename` and `close`, because a program that slept may wake
+  3000 ms for `answer`, `send`, `abort`, `action`, `rename` and `close`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
+  `hello`, `snapshot`, `events`, `answer`, `send`, `abort`, `action`, `rename` and `close`, because a program that slept may wake
   cold; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
   connect to last byte, and a reply is cut off the moment it passes its byte cap (section 6), so a
   program that trickles bytes or never stops cannot hold a read.
@@ -772,6 +807,34 @@ abort.
   declares both from `caps.close`. The phone has no control that closes a workspace, so no capability
   is declared for it: a workspace close is on the wire for a client that sends one, and the phone
   never does.
+
+### 7.10 Program actions
+
+- With `caps.actions` true, a pane MAY list up to 4 `actions` in the snapshot (section 4, `PaneAction`). The
+  phone draws them as buttons in the program's section of the belt, after Steer and Stop, in the order listed. A
+  program changes a pane's buttons by changing the list and raising `rev` (section 7.1). With `caps.actions` false
+  the list is ignored, and the phone draws none.
+- The adapter cleans the list: an `id` that breaks the id rule, a repeated `id`, and a `label` that is empty after
+  cleaning drop that action; the label is cut to 16 characters; an `icon` that is not one of the twelve names is
+  dropped, and the button then draws no icon. `busy` and `disabled` are kept only when `true`.
+- `POST /pane/:id/action` carries a `requestId`, the `actionId`, and OPTIONALLY the `turnId` the phone saw. A
+  button belongs to the pane, not to a turn, so a program that does not care leaves the turn out of its own
+  buttons' meaning; a phone that names the turn gets 409 `stale` when it has moved, with the current `turnId` and
+  `askIds` as for a send (section 7.4). The phone names the newest turn it has.
+- With `caps.actions` false: 409 `not-supported`. A pane that is not in the layout: 404 `no-such-pane`. An
+  `actionId` the pane does not list: 404 `no-such-action`. The program answers `{ "ok": true }` once it has taken
+  the act; it answers when it took it, not when the work behind the button ends.
+- The program MAY refuse: 422 `action-refused`, with a `message` when it has words for the person. Nothing
+  changed. The same `requestId` may try again, as for a failed rename. A program SHOULD refuse a tap on an action
+  it lists as `busy` or `disabled`, because a phone may have drawn the list before the change.
+- A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true` and runs nothing
+  (section 7.6). The same `requestId` for another pane, action or turn: 409 `request-id-reused`.
+- The adapter checks the cap, the pane, that the pane lists the action, and the turn when one is named, before it
+  posts. A name that is not current is refused there and the program is not asked. It then posts ONCE, never
+  retries, and a tap that times out or gets a 5xx has an unknown outcome (section 7.6): the bridge keeps its
+  receipt open, and "tap again" carries the same request id so the program's own memory answers `replayed`.
+- Collie draws the buttons through its capability `programActions`, declared from `caps.actions`. The bridge
+  route is `POST /api/pane/:id/action`, and it keeps the receipt the way send and abort do.
 
 ## 8. Restart and epoch
 
@@ -876,3 +939,6 @@ document. The version number stays 1; the spike's shapes are not supported.
 20. **`Caps` gains `close`, and `POST /close` is a route** (sections 3, 4 and 7.9), with the code
     `close-refused` (and `no-such-target`, shared with rename). Added before version 1 shipped, so
     the version stays 1.
+21. **`Caps` gains `actions`, `Pane` gains `actions`, and `POST /pane/:id/action` is a route** (sections 3, 4 and
+    7.10), with the codes `no-such-action` and `action-refused`. Added before version 1 shipped, so the version
+    stays 1.

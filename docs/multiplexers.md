@@ -233,6 +233,10 @@ What works:
 - Send text, steer a turn that is running, and stop it. Steer and Stop sit in the belt above the
   field. A cap the program declares draws its control: `caps.steer` draws Steer, `caps.abort` draws
   Stop, and a program that declares neither gets neither.
+- The program's own buttons in the belt. With `caps.actions`, a conversation may list up to four actions, each
+  with a label of at most 16 characters and one of twelve icon names. They follow Steer and Stop in the
+  program's section of the belt; a tap runs the action once in the program, which may refuse it, and a button
+  the program marks `busy` or `disabled` is dimmed.
 - The program's starters, as rows on the New page. With `caps.starters`, the new-tab and new-space
   buttons open that page too.
 - Renaming a tab or a workspace, from the tab's usual rename control and the Rename row of the space

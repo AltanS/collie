@@ -26,7 +26,7 @@ export {
   RENAME_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
-export { assertId, bytes, CAPS, cut, idOk, LIMITS, RENAME_TITLE_MAX, renameTitleOf, safeId } from "./rules.ts";
+export { ACTION_LABEL_MAX, actionLabelOf, assertId, bytes, CAPS, cut, idOk, LIMITS, RENAME_TITLE_MAX, renameTitleOf, safeId } from "./rules.ts";
 export * from "./types.ts";
 
 export interface CoreOptions {
@@ -73,7 +73,7 @@ export function createCore(o: CoreOptions): CollieCore {
   const state: CoreState = {
     store,
     hostName: o.hostName,
-    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, ...o.caps, terminal: false },
+    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, ...o.caps, terminal: false },
     hooks,
   };
   return {

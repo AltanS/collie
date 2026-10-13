@@ -236,7 +236,7 @@ describe("which routes cross a link", () => {
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
     // `files` with the Files view (ADR 0083).
     expect(paneActions).toEqual([
-      "abort", "answer", "changes", "chat", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "changes", "chat", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
     ]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();

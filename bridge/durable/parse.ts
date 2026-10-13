@@ -82,14 +82,21 @@ function readTarget(turnId: JsonValue | undefined, askId: JsonValue | undefined)
 }
 
 /**
- * A send or abort body, checked (ADR 0101). Every field is the phone's claim until this says
- * otherwise. A send carries 1 to {@link SEND_TEXT_MAX_BYTES} bytes of text; an abort ignores any.
+ * A send, abort or action body, checked (ADR 0101). Every field is the phone's claim until this says
+ * otherwise. A send carries 1 to {@link SEND_TEXT_MAX_BYTES} bytes of text; an abort ignores any. An
+ * action carries the id of one of the pane's actions and, optionally, the turn the phone saw. The
+ * action id's rule is the adapter's to check, like every other id here.
  */
 export function readControlBody(act: ControlAct, body: JsonValue | undefined): ControlRequest | null {
   const fields = asRecord(body);
   if (fields === null) return null;
-  const { requestId, turnId, askId, text, steer } = fields;
+  const { requestId, turnId, askId, text, steer, actionId } = fields;
   if (!isRequestId(requestId)) return null;
+  if (act === "action") {
+    if (!isText(actionId) || actionId === "") return null;
+    if (turnId === undefined) return { act, requestId, actionId };
+    return isText(turnId) && turnId !== "" ? { act, requestId, actionId, turnId } : null;
+  }
   const target = readTarget(turnId, askId);
   if (target === null) return null;
   if (act === "abort") return { act, requestId, target };
@@ -104,8 +111,9 @@ export function coerceControlReceipt(raw: JsonValue): ControlReceipt | null {
   if (r === null) return null;
   const { requestId, at, paneId, act, target, targetId, steer, digest, state, detail, reason, currentTurnId, currentAskIds } = r;
   if (!isRequestId(requestId) || !isTime(at) || !isText(paneId) || !isText(targetId) || !isDigest(digest)) return null;
-  if (act !== "send" && act !== "abort") return null;
-  if (target !== "turn" && target !== "ask") return null;
+  if (act !== "send" && act !== "abort" && act !== "action") return null;
+  if (target !== "turn" && target !== "ask" && target !== "action") return null;
+  if ((act === "action") !== (target === "action")) return null;
   if (!isControlState(state)) return null;
   const receipt: ControlReceipt = { requestId, at, paneId, act, target, targetId, digest, state };
   if (typeof steer === "boolean") receipt.steer = steer;
