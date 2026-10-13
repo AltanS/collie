@@ -293,6 +293,9 @@ describe("tableRuns — the whole pane corpus", () => {
     // rather than wrapping it, so refusing these did not make them wrap, it made half of each one
     // invisible. They pan now.
     expect(claimed).toEqual([
+      // A Claude Code box table with `⚠️` (VS16) in a cell. Claude pads it two columns wide, so with
+      // a base-only width that row's walls missed and the table split around it.
+      "claude--box-table-vs16-emoji.txt 0..10",
       "claude--trust-prompt-unnumbered.txt 5..10",
       "claude--trust-prompt.txt 5..10",
       // THE SCREEN ADR 0072 WAS TAKEN FOR (discussion #301). Claude's dynamic-workflow view: the

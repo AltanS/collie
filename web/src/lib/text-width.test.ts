@@ -119,6 +119,12 @@ describe("displayWidth — East Asian Width boundary pins", () => {
     expect(displayWidth("🎉🎉🎉")).toBe(6);
   });
 
+  it("VS16 asks for the emoji form, which is two columns; the bare text form stays one", () => {
+    expect(displayWidth("⚠️")).toBe(2); // U+26A0 U+FE0F, as Claude Code 2.1.296 pads it
+    expect(displayWidth("⚠")).toBe(1);
+    expect(displayWidth("1️⃣")).toBe(2);
+  });
+
   it("U+3099/U+309A (combining kana marks) are width 0 despite sitting inside a WIDE range", () => {
     expect(w(0x3099)).toBe(0);
     expect(w(0x309a)).toBe(0);

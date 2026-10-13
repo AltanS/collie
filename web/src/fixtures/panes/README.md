@@ -1765,3 +1765,17 @@ The last seven rows were captured on opencode 1.18.34, the rest of this corpus o
 `idle`, not `blocked`, under the question dialogs probed in round two (see "Round two" in
 `QUESTION_NOTES.md`). Each of the seven was checked for user and host names, home paths, tokens and
 session ids and holds only probe strings and the model name.
+
+## Claude Code box table with a VS16 emoji (captured 2026-10-13, Claude Code 2.1.296, herdr 0.9.0, sandbox pane)
+
+One `format:ansi` read of a sandbox Claude asked to echo a markdown table, cut to the reply's eleven
+rows (the `⏺` row through the bottom border); the rows above and the input box, statusline and
+footer below are left out. CRLF line ends as read.
+
+| file | what's on screen | read as |
+|---|---|---|
+| `claude--box-table-vs16-emoji.txt` | Claude's box table, three columns, a CJK cell in two rows. Row `build` holds `⚠️ warn` (U+26A0 U+FE0F), row `tests` holds `⚠ plain` (U+26A0 alone), plus `✅` and `❌`. Every row is 33 columns as Claude pads it: `⚠️` takes two columns, bare `⚠` one | one table, rows 0 to 10 |
+
+Before `clusterWidth` gave a VS16 cluster two columns, the `build` row measured 32 and the table split
+into rows 0 to 2 and 4 to 10. Checked for user and host names, home paths, tokens and session ids:
+the rows hold only the probe table.

@@ -181,6 +181,10 @@ function clusterWidth(cluster: string): number {
   if (cp === undefined) return 0;
   if (inRanges(cp, COMBINING_RANGES)) return 0;
   if (inRanges(cp, WIDE_RANGES)) return 2;
+  // VS16 turns a narrow base (⚠, ❤, a keycap digit) into its emoji form, and the TUIs pad that two
+  // columns wide: a Claude Code box table with `⚠️` in a cell put its wall one column right of where
+  // a base-only width had it, and the table split around that row (claude--box-table-vs16-emoji.txt).
+  if (cluster.includes("️")) return 2;
   return 1;
 }
 
@@ -230,8 +234,8 @@ export function cellsByColumn(text: string): ReadonlyMap<number, string> {
 // "within the measurement's own error". It cannot be built from these tables, because the tables have
 // no notion of a grapheme cluster: `clusterWidth` scores a cluster by its BASE code point, while the
 // width tables a TUI actually links against (wcwidth/wcswidth, go-runewidth, Rust unicode-width) sum
-// a cluster's code points independently. `👨‍💻` is 2 here and 4 there; `👨‍👩‍👧‍👦` is 2 here and 8 there;
-// a keycap (`1` + VS16 + U+20E3) short-circuits on its ASCII base. Every one of those scored as
+// a cluster's code points independently. `👨‍💻` is 2 here and 4 there; `👨‍👩‍👧‍👦` is 2 here and 8 there.
+// Every one of those scored as
 // CERTAIN — the bar read zero exactly where the error was largest — while `🗑`, `▶` and every arrow
 // scored as doubtful and donated slack a comparison had no business spending. A width measured over
 // one string is useful (harness/claude/markers.ts uses it for a border's minimum length, which is a
