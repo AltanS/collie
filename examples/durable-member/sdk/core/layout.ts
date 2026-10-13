@@ -33,12 +33,14 @@ import type {
   AnswerResult,
   Ask,
   AskInput,
+  AskOutcome,
   Badge,
   ChoiceAnswer,
   ChoiceAskInput,
   CloseTarget,
   ClosedBy,
   ConversationRow,
+  DecidedBy,
   Field,
   FormAnswer,
   FormAskInput,
@@ -77,11 +79,22 @@ export const mintId = () => randomHex(16);
  */
 export const askIdFor = (paneId: string, toolCallId: string): string => sha256Hex(`${paneId}\n${toolCallId}`).slice(0, 32);
 
+/**
+ * An ask closed with no answer from the phone. `by` is the wire's word (`stopped`); `decidedBy` says who closed it: the
+ * program (a stop, a close, an abort signal) or the clock past the ask's `expiresAt` (`timeout`, WIRE.md 7.3).
+ */
 export class AskClosed extends Error {
-  constructor(readonly by: ClosedBy) {
-    super(`ask closed: ${by}`);
+  readonly by: ClosedBy;
+  readonly decidedBy: DecidedBy;
+  constructor(by: ClosedBy, decidedBy: DecidedBy = by === "phone" ? "phone" : "program") {
+    super(decidedBy === "timeout" ? "ask closed: timeout" : `ask closed: ${by}`);
+    this.by = by;
+    this.decidedBy = decidedBy;
   }
 }
+
+/** How many decided asks a pane remembers, newest first, so a second answer gets 409 `decided` with the first outcome. */
+export const DECIDED_KEPT = 500;
 /** The phone sent an answer that picks an id the ask does not offer. The server maps it to 400 `bad-option`. */
 export class BadAnswer extends Error {
   readonly code: "bad-option" | "bad-body" = "bad-option";
@@ -148,7 +161,17 @@ const partialOf = (item: { partial?: true }): { partial?: true } => (item.partia
 type AskDraft = Pick<Ask, "id" | "revision" | "toolCallId" | "title" | "itemId" | "reason" | "tool" | "cleaned" | "push" | "multiple" | "placeholder" | "maxLength" | "fields"> & {
   kind: string;
   options?: Option[];
+  expiresAt?: string | Date;
 };
+
+/** An ask's `expiresAt` as the wire carries it: ISO 8601 with a zone. A value that is no time is a TypeError. */
+function expiresAtOf(value: string | Date | undefined): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const iso = value instanceof Date ? (Number.isNaN(value.getTime()) ? "" : value.toISOString()) : value;
+  const stamp = tsOf(iso);
+  if (stamp === undefined || Number.isNaN(Date.parse(stamp))) throw new TypeError(`an ask's expiresAt is an ISO 8601 stamp with a zone: ${JSON.stringify(value)}`);
+  return stamp;
+}
 
 /** Ids of a list are unique and pass the id rule. `what` names them in the error. */
 function checkIds(list: readonly { id: string }[], what: string): void {
@@ -244,6 +267,8 @@ function cleanAsk(input: AskDraft): Ask {
   if (input.tool) ask.tool = cleanTool(input.tool);
   const push = pushTextOf(input.push);
   if (push !== undefined) ask.push = push;
+  const expiresAt = expiresAtOf(input.expiresAt);
+  if (expiresAt !== undefined) ask.expiresAt = expiresAt;
   return ask;
 }
 
@@ -385,6 +410,15 @@ export interface PaneHandle {
   ask(ask: AskInput, opts?: { signal?: AbortSignal }): Promise<Answer>;
   /** Change an open ask in place. Its revision rises by one. False when the ask is not open. */
   updateAsk(askId: string, patch: AskPatch): boolean;
+  /**
+   * The program decided an open ask itself, somewhere other than the phone (WIRE.md 7.3): it closes with
+   * `decidedBy: "program"`, so the phone says it was decided in the program, not that it stopped. With `answer`, the
+   * waiting `ask()` resolves with it, as if the phone had sent it; without, it rejects with `AskClosed` (`decidedBy`
+   * `program`). A later answer from the phone gets 409 `decided`. False when the ask is not open.
+   */
+  decideAsk(askId: string, answer?: Answer): boolean;
+  /** The first decision of an ask this pane closed, with who and when, or undefined for one it never raised or forgot. */
+  outcomeOf(askId: string): AskOutcome | undefined;
   onSend(fn: (text: string, o: SendContext) => void | Promise<void>): void;
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>): void;
   /**
@@ -416,6 +450,8 @@ interface OpenAsk {
   openedAt: number;
   resolve: (a: Answer) => void;
   reject: (e: Error) => void;
+  /** The timer that closes the ask at its `expiresAt`. A snapshot or an answer sweeps it too, for a host whose timers sleep. */
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 export class Pane implements PaneHandle {
@@ -428,6 +464,8 @@ export class Pane implements PaneHandle {
   /** The compacted history: the latest version of each item, in order of first appearance. */
   private readonly items = new Map<string, Item>();
   readonly asks = new Map<string, OpenAsk>();
+  /** The first decision of each ask closed in this process, newest last, at most {@link DECIDED_KEPT}. */
+  private readonly decided = new Map<string, AskOutcome>();
   closed = false;
   private subtitleText: string | undefined;
   private badgeValue: Badge | undefined;
@@ -439,19 +477,36 @@ export class Pane implements PaneHandle {
   /** The state last put in the log. Unset until the first sync, so the log always starts with one. */
   private shown?: PaneState;
   private readonly limit: number;
+  private store: Store;
+  readonly id: string;
+  readonly tabId: string;
+  readonly workspaceId: string;
+  title: string;
+  readonly harness: string;
+  readonly cwd: string | undefined;
+  /** The program's own session id, when it passed one. Undefined: the default of {@link sessionId}. */
+  private readonly session?: string | null;
 
+  // Plain fields, no parameter properties: the SDK is erasable TypeScript, so Node runs it with its type stripping.
   constructor(
-    private store: Store,
-    readonly id: string,
-    readonly tabId: string,
-    readonly workspaceId: string,
-    public title: string,
-    readonly harness: string,
-    readonly cwd: string | undefined,
+    store: Store,
+    id: string,
+    tabId: string,
+    workspaceId: string,
+    title: string,
+    harness: string,
+    cwd: string | undefined,
     limit = DEFAULT_TAIL,
-    /** The program's own session id, when it passed one. Undefined: the default of {@link sessionId}. */
-    private readonly session?: string | null,
+    session?: string | null,
   ) {
+    this.store = store;
+    this.id = id;
+    this.tabId = tabId;
+    this.workspaceId = workspaceId;
+    this.title = title;
+    this.harness = harness;
+    this.cwd = cwd;
+    this.session = session;
     this.limit = Math.min(limit, MAX_TAIL);
   }
 
@@ -608,10 +663,29 @@ export class Pane implements PaneHandle {
       this.append({ type: "ask", ask });
       this.sync();
       this.touch();
-      const stop = () => this.closeAsk(ask.id, "stopped", new AskClosed("stopped"));
+      const stop = () => this.closeAsk(ask.id, "stopped", "program", new AskClosed("stopped", "program"));
       if (opts.signal?.aborted) stop();
       else opts.signal?.addEventListener("abort", stop, { once: true });
+      if (ask.expiresAt !== undefined && this.asks.has(ask.id)) {
+        open.timer = setTimeout(() => this.sweep(), Math.max(0, Date.parse(ask.expiresAt) - Date.now()));
+      }
     });
+  }
+
+  /**
+   * Close every open ask whose `expiresAt` has passed, as decided by `timeout` (WIRE.md 7.3). The timer of each ask
+   * calls it, and so does every snapshot and every answer, so an ask reads as timed out on the next read even on a
+   * host that put its timers to sleep.
+   */
+  sweep(now = Date.now()) {
+    for (const [id, open] of [...this.asks]) {
+      if (open.ask.expiresAt !== undefined && Date.parse(open.ask.expiresAt) <= now) this.closeAsk(id, "stopped", "timeout", new AskClosed("stopped", "timeout"));
+    }
+  }
+
+  /** The first decision of an ask this pane closed, or undefined for one it never raised or no longer remembers. */
+  outcomeOf(askId: string): AskOutcome | undefined {
+    return this.decided.get(askId);
   }
 
   /** A core made with `allowAlways: false` takes no `allow-always` option: over TLS the token is the only gate. */
@@ -634,11 +708,35 @@ export class Pane implements PaneHandle {
     return true;
   }
 
-  private closeAsk(askId: string, by: ClosedBy, err?: Error) {
+  decideAsk(askId: string, answer?: Answer): boolean {
+    const open = this.asks.get(askId);
+    if (!open) return false;
+    if (answer === undefined) {
+      this.closeAsk(askId, "stopped", "program", new AskClosed("stopped", "program"));
+      return true;
+    }
+    checkAnswer(open.ask, answer);
+    open.resolve(answer);
+    this.closeAsk(askId, "stopped", "program", undefined, answer);
+    return true;
+  }
+
+  private closeAsk(askId: string, by: ClosedBy, decidedBy: DecidedBy, err?: Error, answer?: Answer) {
     const open = this.asks.get(askId);
     if (!open) return;
     this.asks.delete(askId);
-    this.append({ type: "ask-closed", askId, by, waitedMs: Date.now() - open.openedAt });
+    if (open.timer !== undefined) clearTimeout(open.timer);
+    const decidedAt = new Date().toISOString();
+    // The receipt of the decision: who and when, and for a permission the option and its effect.
+    const outcome: AskOutcome = { decidedBy, decidedAt };
+    if (answer !== undefined && "optionId" in answer) {
+      outcome.optionId = answer.optionId;
+      const effect = open.ask.options.find((o) => o.id === answer.optionId)?.effect;
+      if (effect !== undefined) outcome.effect = effect;
+    }
+    this.decided.set(askId, outcome);
+    if (this.decided.size > DECIDED_KEPT) this.decided.delete(this.decided.keys().next().value!);
+    this.append({ type: "ask-closed", askId, by, waitedMs: Date.now() - open.openedAt, decidedBy, decidedAt });
     this.sync();
     this.touch();
     if (err) open.reject(err);
@@ -655,7 +753,7 @@ export class Pane implements PaneHandle {
     if (!open) return "too-late";
     checkAnswer(open.ask, answer);
     open.resolve(answer);
-    this.closeAsk(askId, "phone");
+    this.closeAsk(askId, "phone", "phone", undefined, answer);
     return "taken";
   }
 
@@ -739,7 +837,7 @@ export class Pane implements PaneHandle {
 
   close() {
     this.closed = true;
-    for (const id of [...this.asks.keys()]) this.closeAsk(id, "stopped", new AskClosed("stopped"));
+    for (const id of [...this.asks.keys()]) this.closeAsk(id, "stopped", "program", new AskClosed("stopped", "program"));
     this.store.panes.delete(this.id);
     this.store.rememberClosed(this);
     this.store.rev++;
@@ -762,12 +860,12 @@ export class Store {
   readonly epoch = mintId();
   readonly receipts: Receipts;
   /** `receipts`: where finished request ids are kept. Default: in memory, gone with the process. */
-  constructor(
-    readonly tailLimit = DEFAULT_TAIL,
-    receipts?: ReceiptStore,
-    /** False: an ask option with effect `allow-always` is a TypeError (a program behind TLS, WIRE.md 1B). */
-    readonly allowAlways = true,
-  ) {
+  readonly tailLimit: number;
+  /** False: an ask option with effect `allow-always` is a TypeError (a program behind TLS, WIRE.md 1B). */
+  readonly allowAlways: boolean;
+  constructor(tailLimit = DEFAULT_TAIL, receipts?: ReceiptStore, allowAlways = true) {
+    this.tailLimit = tailLimit;
+    this.allowAlways = allowAlways;
     this.receipts = new Receipts(receipts);
   }
   /** The program's hooks (`createCore` sets them once). */
@@ -914,6 +1012,8 @@ export class Store {
   }
 
   snapshot(): Snapshot {
+    // An ask past its `expiresAt` reads as decided by `timeout` from this read on (WIRE.md 7.3).
+    for (const pane of this.panes.values()) pane.sweep();
     return {
       rev: this.rev,
       epoch: this.epoch,

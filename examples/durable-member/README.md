@@ -239,7 +239,34 @@ The contract is [`WIRE.md`](../../bridge/mux/durable/WIRE.md). The decisions beh
 [ADR 0102](../../.adr/0102-starters-are-launcher-rows.md) (starters).
 
 The SDK in `sdk/` is not published, and there is no package. It ships here as example code until a
-second program needs it. Copy the folder into your program. It imports nothing from Pi Durable:
+second program needs it. Copy the folder into your program.
+
+### Quickstart: one approval
+
+```ts
+import { openCollie, requireApproval } from "./sdk/index.ts"; // on Node: "./sdk/node/index.ts"
+
+// The socket path comes from COLLIE_DURABLE_SOCKET, the same variable the Collie peer reads.
+const collie = await openCollie({ hostName: "my-agent", caps: { asks: true } });
+const pane = collie.workspace("main", { title: "Main" }).tab("chat", { title: "Chat" }).pane("run-1", { title: "Run 1", harness: "my-agent" });
+collie.ready();
+
+// Before the tool runs. The card shows the tool's name and its arguments, never the model's words.
+const approval = await requireApproval("refund", { order: "5521", amount: 40 }, { pane, toolCallId: "call-1", timeoutMs: 10 * 60_000 });
+if (!approval.approved) throw new Error(`refund not approved: ${approval.decidedBy} at ${approval.decidedAt}`);
+```
+
+`requireApproval` waits for Allow or Deny on the phone. It returns `approved`, and a receipt: `decidedBy` is
+`phone`, `program` or `timeout`, and `decidedAt` is when. Only Allow from the phone approves. A timeout, a
+`signal` that aborts, and `pane.decideAsk(askId)` (the program decided it elsewhere) all return
+`approved: false`; `pane.decideAsk(askId, { optionId: "allow" })` approves from the program's side. A second tap
+on the phone gets 409 `decided` with the first outcome, and nothing runs twice.
+
+`caps` is the whole list: a cap you do not name is off. Leave `caps` out to turn on everything the SDK can do.
+
+### The parts
+
+The SDK imports nothing from Pi Durable outside `sdk/pi/`, and a test checks that:
 
 - `openCollie({ socket, hostName })` opens the socket and returns handles for workspaces, tabs and
   panes. Call `ready()` once every pane is shown, so Collie never sees a half-empty layout.
@@ -247,7 +274,10 @@ second program needs it. Copy the folder into your program. It imports nothing f
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - An item `{ kind: "reply" | "thinking" | "notice" | "markdown", partial: true }` is text still growing: write the same
   `id` again as it grows (not faster than every 250 ms), and once more with the final text and no `partial`. A
-  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.15). `pi-durable/index.ts` does both.
+  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.15). `sdk/pi/index.ts` does both.
+- `ask()` takes `expiresAt` (a `Date` or an ISO string). Past it the ask closes as decided by `timeout`, and the
+  `ask()` promise rejects with `AskClosed` whose `decidedBy` is `timeout`. `pane.decideAsk(askId, answer?)` closes
+  an open ask as decided by the program: with an answer the `ask()` promise resolves with it, without one it rejects.
 - `subtitle(text | null)` sets one line under the title (at most 120 characters), and `badge({ count } | { text } | null)`
   a small mark next to it (a count from 0 to 9999, or at most 12 characters). Each raises `rev` only when the value changes.
 - `event({ type: "item", item })` also takes `{ kind: "markdown", text }`, `{ kind: "code", lang?, text }` (the
@@ -281,7 +311,7 @@ second program needs it. Copy the folder into your program. It imports nothing f
   one, oldest first, or `undefined` for one it does not know. Each hands back its own cursor as `next`, at most
   512 bytes of printable ASCII. Once a provider is set, each pane's `sessionId` is its pane id; pass
   `sessionId` to `tab.pane()` to name another, or `null` when it cannot stay the same across a restart.
-  `pi-durable/index.ts` has `piHistory`, which reads every entry of every Pi conversation and maps it with the
+  `sdk/pi/index.ts` has `piHistory`, which reads every entry of every Pi conversation and maps it with the
   same mapper as the live pane, and `app.ts` and the Cloudflare example use it.
 - The phone can bring a closed conversation back (`reopen` cap, on by default). `hooks.onReopen({ id, paneId? },
   requestId)` shows it again under the same pane id, or returns `false` to refuse with 422. Without a hook the SDK
@@ -296,12 +326,23 @@ runtime module, so the same core serves the
 [Cloudflare example](../../experiments/durable-member-cloudflare/README.md) (parked under experiments) from a Durable Object. `sdk/server.ts` is the
 transport for Bun: the private socket and the descendant check. It accepts connections with `Bun.listen`
 and parses them with `node:http`, because only a `Bun.listen` socket gives the file descriptor that
-`SO_PEERCRED` needs. `Bun.serve({ unix })` shows no peer.
+`SO_PEERCRED` needs. `Bun.serve({ unix })` shows no peer. `sdk/http.ts` is that `node:http` part on its own:
+`wireListener(core)` is a request listener for any `node:http` server, and a host that serves web requests
+itself passes `core.handle` straight to it. Closing the server lets the replies in flight go out first, for
+at most 2 s.
 
-`pi-durable/index.ts` is the glue for Pi Durable. It shows a conversation as a pane, turns a risky tool
-call into an ask, and runs a helper conversation as a tool. `script.ts` is the scripted model. Together they
-are the only files that import Pi. A program on another framework writes its own glue against the same
-handles. `app.ts` puts the parts together.
+`sdk/node/index.ts` is the same `openCollie` for Node 22.18 or later, which runs this TypeScript as it is. It
+listens with `node:http` on the same private socket. It cannot run the descendant check, because Node cannot
+read the caller of a socket, and it writes one line at start that says so (WIRE.md 1A). Run the agent's tools
+in a sandbox that cannot reach the socket.
+
+`sdk/pi/index.ts` is the glue for Pi Durable. It shows a conversation as a pane, turns a risky tool call
+into an ask, and runs a helper conversation as a tool. It imports nothing from this example: the words it
+shows (the two questions, the items under a solved ticket) come in as options. It is written against
+`@earendil-works/pi-durable` 1.1.0, because it uses `entries({ order })` and `scanConversations`; on 1.0.x
+it does not type-check. `pi-durable/index.ts` is the old path, kept: it binds this example's words from
+`script.ts` to the helper. `script.ts` is the scripted model. A program on another framework writes its own
+glue against the same handles. `app.ts` puts the parts together.
 
 ## Test
 

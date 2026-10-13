@@ -93,7 +93,11 @@ import {
   parseStaleAsk,
   parseStaleControl,
   parseStarterReply,
+  SPEAKS,
   toMuxSnapshot,
+  versionNotice,
+  versionRefusal,
+  withoutExpired,
   type DurableCaps,
   type DurableControlBody,
   type DurablePane,
@@ -101,6 +105,8 @@ import {
   type DurableCloseBody,
   type DurableRenameBody,
   type DurableSnapshot,
+  type ProtocolRange,
+  type VersionRefusal,
 } from "./protocol.ts";
 import { buildDurableTransport, chooseDurableTransport, type DurableEnv } from "./transport.ts";
 import { DurableWatch, type PollCadence } from "./watch.ts";
@@ -406,6 +412,12 @@ export class DurableMux implements MuxAdapter {
   private readonly watchDials: boolean;
   /** The delay the watch armed with its last census: how old a good read `poll()` may serve over HTTPS. */
   private watchCadenceMs: number;
+  /** The version refusal of the last `hello`, or null while the two ranges meet (WIRE.md section 2). */
+  private refusal: VersionRefusal | null = null;
+  /** The range last refused: the log line goes out once for it. */
+  private loggedRange: string | null = null;
+  /** The program epoch last told about a refusal: the telling `hello` goes out once per start of the program. */
+  private toldEpoch: string | null = null;
 
   /**
    * `log` is where a pane's events go. Without one the adapter reads the layout only, which is what a
@@ -415,6 +427,8 @@ export class DurableMux implements MuxAdapter {
     private readonly transport: DurableTransport,
     private readonly clock: DurableClock = SYSTEM_CLOCK,
     log: DurableEventSink | null = null,
+    /** Where the adapter's own one-line notes go, for example a version refusal. A test passes its own. */
+    private readonly warn: (line: string) => void = (line) => console.warn(line),
   ) {
     this.budget = DURABLE_BUDGETS[transport.kind ?? "socket"];
     this.watchDials = transport.kind === "https";
@@ -453,6 +467,14 @@ export class DurableMux implements MuxAdapter {
         pane.agentSession?.kind === "id" ? { ...pane, agentSession: { kind: "path", value: pathOf(pane.agentSession.value) } } : pane,
       ),
     };
+  }
+
+  /**
+   * The version refusal of the last `hello` (WIRE.md section 2), or null while this Collie and the program share a
+   * version. The pane list draws it as its one notice row, in the words of {@link versionNotice}.
+   */
+  versionRefusal(): VersionRefusal | null {
+    return this.refusal;
   }
 
   /** The watch's two cadences, from this transport's row of {@link DURABLE_BUDGETS}. */
@@ -716,6 +738,9 @@ export class DurableMux implements MuxAdapter {
       const ask = parseStaleAsk(reply.text);
       return muxOk({ kind: "stale", ask: ask === null ? null : askForWire(ask) });
     }
+    // Someone decided first: the phone, the program or the clock (WIRE.md 7.3). This answer did not land, and the
+    // ask is closed, which is what `too-late` says. The first decision is in the pane's log, from its `ask-closed`.
+    if (reply.status === 409 && problem.code === "decided") return muxOk({ kind: "too-late", replayed: false });
     if (reply.status === 404 && problem.code === "no-such-pane") return muxGone("The conversation is not in the program's layout.");
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
@@ -912,11 +937,15 @@ export class DurableMux implements MuxAdapter {
     const hello = parsed.value;
     const version = negotiateVersion(hello.protocol);
     if (version === null) {
-      // No overlap: nothing else is called, and the census is never shown as empty.
+      // No overlap: nothing but the one telling `hello` is called, and the census is never shown as empty.
       this.agreedVersion = null;
       this.current = null;
+      await this.refuseVersion(hello.epoch, hello.protocol);
       return muxUnreachable(incompatibleDetail(hello.protocol));
     }
+    this.refusal = null;
+    this.loggedRange = null;
+    this.toldEpoch = null;
     this.agreedVersion = version;
     if (!hello.ready) {
       this.current = null;
@@ -925,6 +954,31 @@ export class DurableMux implements MuxAdapter {
     const session: DurableSession = { version, epoch: hello.epoch, hostName: hello.hostName, caps: hello.caps };
     this.current = session;
     return muxOk(session);
+  }
+
+  /**
+   * A program this Collie does not speak (WIRE.md section 2): keep the refusal for the pane list, write one line to the
+   * log, and tell the program once. The telling call is a `hello` that carries this Collie's own version, which the
+   * program answers with its 409, so it can name the mismatch in its own log. The line goes out once per refused range,
+   * and the telling call once per start of the program, so a program that stays old costs one extra request per start,
+   * never one per poll.
+   */
+  private async refuseVersion(epoch: string, program: ProtocolRange): Promise<void> {
+    const refusal = versionRefusal(program);
+    this.refusal = refusal;
+    if (refusal === null) return;
+    const range = `${String(program.min)}..${String(program.max)}`;
+    if (this.loggedRange !== range) {
+      this.loggedRange = range;
+      this.warn(`[durable] ${versionNotice(refusal)}`);
+    }
+    if (this.toldEpoch === epoch) return;
+    this.toldEpoch = epoch;
+    try {
+      await this.transport.get({ path: "/hello", version: SPEAKS.max, ifNoneMatch: null, timeoutMs: this.budget.readTimeoutMs, maxBytes: REPLY_CAPS.hello });
+    } catch {
+      // Telling the program is a courtesy. Collie's own refusal stands whatever the program does with it.
+    }
   }
 
   // ── snapshot ────────────────────────────────────────────────────────────────
@@ -943,6 +997,9 @@ export class DurableMux implements MuxAdapter {
     if (reply.status === 304) {
       // Nothing moved since the held read. A 304 with nothing held cannot be answered from memory.
       if (this.kept === null) return muxUnreachable("unreadable snapshot: 304 with nothing held");
+      // The clock moved even when the program did not: an ask past its `expiresAt` leaves the open asks now.
+      const fresh = withoutExpired(this.kept.snapshot, this.clock.now());
+      if (fresh !== this.kept.snapshot) this.kept = { ...this.kept, snapshot: fresh, mux: toMuxSnapshot(fresh) };
       return muxOk(this.kept.mux);
     }
     const refused = this.refusalFor(reply);
@@ -963,6 +1020,8 @@ export class DurableMux implements MuxAdapter {
       snapshot = again.value;
     }
     const kept = this.current ?? session;
+    // An ask past its `expiresAt` reads as decided by `timeout` (WIRE.md 7.3), whatever the program still lists.
+    snapshot = withoutExpired(snapshot, this.clock.now());
     this.kept = { session: kept, snapshot, mux: this.withLogRefs(toMuxSnapshot(snapshot)), etag: reply.etag };
     return muxOk(this.kept.mux);
   }

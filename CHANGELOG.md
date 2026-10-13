@@ -38,6 +38,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A `sources.json` beside `.env` lists the durable programs one Collie runs.** Each entry has a name, the kind `durable`, and a socket, or a URL with its token. A wrong entry stops the bridge with one line that names the entry and the field, and the file is held at mode 600 like `.env`.
 - **`collie doctor` checks each program in `sources.json`.** One `sources` row says whether the file reads and is mode 600, then each program gets its own block of `durable-*:<name>` rows: the transport, the socket or the URL and token, and whether the program answers and is ready. The token is never printed.
 - **`collie durable attach` adds a program to your Collie.** One command writes the source, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
+- **The durable wire has a version policy and a receipt on every approval.** Collie accepts the previous wire version for one minor, a mismatch says so on the phone, and an approval records who decided and when. The SDK core imports nothing from Pi.
+- **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
 
 ### Changed
 

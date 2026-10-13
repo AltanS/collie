@@ -11,6 +11,16 @@ export interface ProtocolRange {
 }
 export const PROTOCOL_RANGE: Readonly<ProtocolRange> = { min: 1, max: 1 };
 
+/**
+ * A version refusal (WIRE.md section 2): what each side speaks, as `[min, max]`. A program puts it in the 409
+ * `incompatible` it answers to a version it does not speak; `collie` is then the one version the caller sent.
+ */
+export interface VersionRefusal {
+  code: "version";
+  collie: [number, number];
+  program: [number, number];
+}
+
 /** What the program can do. An absent cap is false. */
 export interface Caps {
   asks?: boolean;
@@ -145,6 +155,11 @@ export interface Ask {
    * at most 120. The bridge MAY use them and falls back to its own text. The pane's name stays in front.
    */
   push?: { title?: string; line?: string };
+  /**
+   * When the ask stops waiting, ISO 8601 with a zone (WIRE.md 7.3). Past it the SDK closes the ask as decided by
+   * `timeout`, and a reader no longer lists it as open.
+   */
+  expiresAt?: string;
 }
 /** What every ask input has. The SDK derives the id (when missing) and sets the revision. */
 interface AskInputBase {
@@ -157,6 +172,8 @@ interface AskInputBase {
   cleaned?: true;
   /** The words for a notification about this ask (WIRE.md section 6). See {@link Ask.push}. */
   push?: { title?: string; line?: string };
+  /** When the ask stops waiting: an ISO 8601 stamp or a Date. Past it the ask closes as `timeout`. See {@link Ask.expiresAt}. */
+  expiresAt?: string | Date;
 }
 
 /** A tool call that needs the phone's yes. */
@@ -195,11 +212,27 @@ export type AnswerResult = "taken" | "too-late";
 /** "phone": answered. "stopped": the turn ended without an answer. */
 export type ClosedBy = "phone" | "stopped";
 
+/** Who decided an ask (WIRE.md 7.3): the person on the phone, the program itself, or the clock past `expiresAt`. */
+export type DecidedBy = "phone" | "program" | "timeout";
+
+/**
+ * The receipt of an ask's decision (WIRE.md 7.3): who decided and when. A `permission` the phone decided also names
+ * the option it took and that option's effect. A 409 `decided` carries it, so a second answer shows the first one.
+ */
+export interface AskOutcome {
+  decidedBy: DecidedBy;
+  /** ISO 8601 with a zone. */
+  decidedAt: string;
+  optionId?: string;
+  effect?: OptionEffect;
+}
+
 export type SessionEvent =
   | { type: "item"; item: Item }
   | { type: "remove"; id: string }
   | { type: "ask"; ask: Ask }
-  | { type: "ask-closed"; askId: string; by: ClosedBy; waitedMs?: number }
+  /** `decidedBy` and `decidedAt` are the receipt of the decision (WIRE.md 7.3). */
+  | { type: "ask-closed"; askId: string; by: ClosedBy; waitedMs?: number; decidedBy?: DecidedBy; decidedAt?: string }
   | { type: "state"; state: PaneState }
   /** An input reached its end. `requestId` is present when the input came with one. */
   | { type: "settled"; inputId: string; requestId?: string; status: "answered" | "unanswered"; reason?: string }
@@ -424,6 +457,10 @@ export interface Problem {
   code: string;
   message?: string;
   range?: ProtocolRange;
+  /** With `incompatible`, when the caller named a version: both sides of the refusal. */
+  refusal?: VersionRefusal;
+  /** With `decided`: the ask's first decision (WIRE.md 7.3). */
+  outcome?: AskOutcome;
   turnId?: string;
   askIds?: string[];
   ask?: Ask;

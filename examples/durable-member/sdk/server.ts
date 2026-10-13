@@ -1,16 +1,17 @@
-// The durable socket wire, version 1, over one Unix socket, mode 0600 in a directory with mode 0700. No token:
-// the socket is the gate. The wire itself is `core.handle` (core/handle.ts); this file is the transport. The
-// requests are parsed by node:http; the connections are accepted by Bun.listen, because only that gives the fd
-// that tells who the peer is (peer.ts).
+// The durable socket wire, version 1, over one Unix socket, mode 0600 in a directory with mode 0700, in Bun. No
+// token: the socket is the gate. The wire itself is `core.handle` (core/handle.ts); this file is the transport. The
+// requests are parsed by node:http (http.ts, shared with the Node entry); the connections are accepted by
+// Bun.listen, because only that gives the fd that tells who the peer is (peer.ts).
 // A caller that is the program itself or its descendant may read but not act (403 caller-refused).
+// Node has no way to that fd: `../node/index.ts` serves the same wire without the descendant check.
 
 import { rmSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import { dirname } from "node:path";
-import { Readable } from "node:stream";
 import { Conn } from "./conn.ts";
 import type { CollieCore } from "./core/index.ts";
 import { HttpError } from "./core/receipts.ts";
+import { wireListener } from "./http.ts";
 import { peerCredsAvailable } from "./peer.ts";
 import { assertPrivateSocket, checkSocketPath, clearStaleSocket, preparePrivateDir, withNarrowUmask } from "./socket.ts";
 
@@ -28,28 +29,8 @@ export interface ServerOptions {
 export interface Running {
   /** The socket path. */
   address: string;
+  /** Stop taking connections, let the replies in flight go out (at most 2 s), then cut what is left. */
   close(): Promise<void>;
-}
-
-/** node:http's request as a web `Request`. The body streams through, so the core's 64 KiB cap reads it once. */
-function toRequest(req: IncomingMessage): Request {
-  const headers = new Headers();
-  for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) headers.append(req.rawHeaders[i]!, req.rawHeaders[i + 1]!);
-  const method = req.method ?? "GET";
-  const hasBody = method !== "GET" && method !== "HEAD";
-  return new Request(new URL(req.url ?? "/", "http://localhost").href, {
-    method,
-    headers,
-    ...(hasBody ? { body: Readable.toWeb(req) as ReadableStream<Uint8Array>, duplex: "half" } : {}),
-  } as RequestInit);
-}
-
-async function send(res: ServerResponse, response: Response) {
-  const body = Buffer.from(await response.arrayBuffer());
-  const headers: Record<string, string> = Object.fromEntries(response.headers);
-  if (response.status !== 304) headers["content-length"] = String(body.length);
-  res.writeHead(response.status, headers);
-  res.end(response.status === 304 ? undefined : body);
 }
 
 export async function startServer(socketPath: string, o: ServerOptions): Promise<Running> {
@@ -69,18 +50,8 @@ export async function startServer(socketPath: string, o: ServerOptions): Promise
     throw new HttpError(403, "caller-refused", { message });
   }
 
-  const server: Server = createServer((req, res) => {
-    core
-      .handle(toRequest(req), { refuseAct: () => refuseOwnCaller(req) })
-      .then((response) => send(res, response))
-      .catch((e) => {
-        console.error("session server error:", e);
-        if (!res.headersSent) {
-          res.writeHead(500, { "content-type": "application/json" });
-          res.end(JSON.stringify({ code: "internal" }));
-        }
-      });
-  });
+  const wire = wireListener(core, refuseOwnCaller);
+  const server: Server = createServer(wire.listener);
 
   // The folder is 0700 and ours, or the start stops. A dead socket file goes; a live one is another instance.
   preparePrivateDir(dirname(path));
@@ -126,7 +97,10 @@ export async function startServer(socketPath: string, o: ServerOptions): Promise
   return {
     address: path,
     close: async () => {
-      listener.stop(true);
+      // No new connection from here on. A reply already on its way (the phone's answer, just before the program
+      // exits) still goes out, so the phone hears "taken" and not a hang-up.
+      listener.stop(false);
+      await wire.drained();
       for (const c of open) c.destroy();
       rmSync(path, { force: true }); // its own socket goes on a clean exit
     },

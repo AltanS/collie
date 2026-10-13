@@ -320,14 +320,19 @@ describe("version negotiation", () => {
     expect(hellos.map((request) => request.version)).toEqual([null, "1"]);
   });
 
-  test("no overlap is unreachable with the ranges named, nothing else is called, and the census is never empty", async () => {
-    const { adapter, program, tick } = await rig();
+  test("no overlap is unreachable with the ranges named, only hello is called, and the census is never empty", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const clock = new FakeDurableClock();
+    const adapter = new DurableMux(program.wire(), clock, null, () => {});
     program.range = { min: 2, max: 3 };
     for (let attempt = 0; attempt < 3; attempt += 1) {
       expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program speaks 2..3, this Collie speaks 1..1");
-      tick();
+      clock.advance(MIN_SNAPSHOT_GAP_MS);
     }
-    expect(paths(program)).toEqual(["/hello", "/hello", "/hello"]);
+    // The second hello is the one telling call of this epoch (WIRE.md section 2): it carries this Collie's version.
+    expect(paths(program)).toEqual(["/hello", "/hello", "/hello", "/hello"]);
+    expect(program.requests.map((request) => request.version)).toEqual([null, "1", null, null]);
     expect(await adapter.reachable()).toBe(false);
   });
 

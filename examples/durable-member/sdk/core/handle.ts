@@ -25,6 +25,7 @@ import {
   type RenameRequest,
   type SendRequest,
   type StarterReply,
+  type VersionRefusal,
 } from "./types.ts";
 
 /** What `handle` reads and changes. One per program. */
@@ -38,6 +39,10 @@ export interface CoreState {
    * wire accepts is applied. `onSend` and `onAbort` are the pane's fallback, see `PaneHandle.onSend`.
    */
   hooks: ProgramHooks;
+  /** Where the core writes its one-line notes, for example a Collie that speaks another wire version. */
+  warn?: (line: string) => void;
+  /** The Collie versions a refusal was already written for, so each is named once. */
+  warned?: Set<number>;
 }
 
 /** Per request, from the server that accepted it. */
@@ -203,6 +208,27 @@ function fitting(items: readonly Item[]): number {
 /** A proxy that compresses a reply (Cloudflare does) turns a strong ETag weak. The compare ignores the `W/`. */
 const sameTag = (header: string | null, etag: string) => header !== null && header.trim().replace(/^W\//, "") === etag;
 
+/**
+ * The refusal a 409 `incompatible` carries when the caller named a version (WIRE.md section 2): the version Collie sent
+ * and this program's range. A Collie that speaks none of this program's versions sends one `hello` with its own version
+ * per start of the program, so the program can name the mismatch: the core writes it once per version, in one line.
+ */
+function versionRefusal(state: CoreState, version: number | undefined): { refusal?: VersionRefusal } {
+  if (version === undefined || !Number.isSafeInteger(version)) return {};
+  const refusal: VersionRefusal = { code: "version", collie: [version, version], program: [PROTOCOL_RANGE.min, PROTOCOL_RANGE.max] };
+  const warned = (state.warned ??= new Set());
+  if (!warned.has(version)) {
+    warned.add(version);
+    (state.warn ?? ((line: string) => console.warn(line)))(`collie: ${versionLine(refusal)}`);
+  }
+  return { refusal };
+}
+
+/** The line a program writes for a refusal: Collie's version first, then the program's own, as Collie's notice row words it. */
+export function versionLine(refusal: VersionRefusal): string {
+  return `Collie speaks wire v${refusal.collie[1]}, this program speaks v${refusal.program[1]}; update one of them`;
+}
+
 export function hello(state: CoreState): Hello {
   return {
     service: "collie-durable",
@@ -238,7 +264,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
   const inRange = version !== undefined && version >= PROTOCOL_RANGE.min && version <= PROTOCOL_RANGE.max;
   const isHello = route[0] === "hello" && route.length === 1;
   if (!(inRange || (isHello && version === undefined))) {
-    return json(409, { code: "incompatible", range: { ...PROTOCOL_RANGE } });
+    return json(409, { code: "incompatible", range: { ...PROTOCOL_RANGE }, ...versionRefusal(state, version) });
   }
 
   const method = request.method;
@@ -288,8 +314,15 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
       return json(
         200,
         await once<AnswerReply>({ askId, revision, ...bound }, async () => {
+          // An ask past its `expiresAt` is decided by `timeout` before this answer is read (WIRE.md 7.3).
+          pane.sweep();
           const open = pane.asks.get(askId);
-          if (!open) return { result: "too-late" }; // answered or stopped (a re-raised ask keeps its id across a restart)
+          if (!open) {
+            // Decided already, by the phone, the program or the clock: the first outcome stands, and the phone shows it.
+            const outcome = pane.outcomeOf(askId);
+            if (outcome !== undefined) throw new HttpError(409, "decided", { outcome });
+            return { result: "too-late" }; // unknown here: from before a restart, or past what the pane remembers
+          }
           if (open.ask.revision !== revision) throw stale(pane, { ask: open.ask });
           try {
             return { result: pane.answer(askId, answer) };

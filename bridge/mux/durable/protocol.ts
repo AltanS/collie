@@ -50,8 +50,22 @@ export interface ProtocolRange {
   readonly max: number;
 }
 
-/** What this Collie speaks. This document is version 1, so the range is 1..1. */
-export const SPEAKS: ProtocolRange = { min: 1, max: 1 };
+/** The wire version this Collie speaks: N in WIRE.md section 2. */
+export const WIRE_VERSION = 1;
+
+/**
+ * The version before {@link WIRE_VERSION} that this Collie still accepts, for one minor after N ships (WIRE.md
+ * section 2). Null while there is none: version 1 has no predecessor. The minor after that one sets it back to null.
+ */
+export const PREVIOUS_ACCEPTED: number | null = null;
+
+/** The range a Collie speaks under the policy: N, and N-1 while it is still accepted. */
+export function speaksRange(current: number, previous: number | null): ProtocolRange {
+  return { min: previous ?? current, max: current };
+}
+
+/** What this Collie speaks. Version 1 has no predecessor, so the range is 1..1. */
+export const SPEAKS: ProtocolRange = speaksRange(WIRE_VERSION, PREVIOUS_ACCEPTED);
 
 /** The name every durable program sends in `hello` (WIRE.md section 4). A socket without it is something else. */
 export const DURABLE_SERVICE = "collie-durable";
@@ -60,10 +74,31 @@ export const DURABLE_SERVICE = "collie-durable";
 export const NOT_A_DURABLE_PROGRAM = "not a durable program";
 
 /** The highest version inside both ranges, or null when they do not meet (WIRE.md section 2). */
-export function negotiateVersion(program: ProtocolRange): number | null {
-  const highest = Math.min(program.max, SPEAKS.max);
-  const lowest = Math.max(program.min, SPEAKS.min);
+export function negotiateVersion(program: ProtocolRange, speaks: ProtocolRange = SPEAKS): number | null {
+  const highest = Math.min(program.max, speaks.max);
+  const lowest = Math.max(program.min, speaks.min);
   return highest >= lowest ? highest : null;
+}
+
+/**
+ * A version refusal (WIRE.md section 2): what each side speaks, as `[min, max]`. Collie builds it when the program's
+ * range meets neither N nor N-1; a program puts the same shape in the 409 it answers to a version it does not speak.
+ */
+export interface VersionRefusal {
+  readonly code: "version";
+  readonly collie: readonly [number, number];
+  readonly program: readonly [number, number];
+}
+
+/** The refusal for a program whose range this Collie does not speak, or null when the two ranges meet. */
+export function versionRefusal(program: ProtocolRange, speaks: ProtocolRange = SPEAKS): VersionRefusal | null {
+  if (negotiateVersion(program, speaks) !== null) return null;
+  return { code: "version", collie: [speaks.min, speaks.max], program: [program.min, program.max] };
+}
+
+/** The one line a refusal is shown as: in Collie's log, and as the notice row of the program's pane list. */
+export function versionNotice(refusal: VersionRefusal): string {
+  return `Program speaks wire v${String(refusal.program[1])}, this Collie speaks v${String(refusal.collie[1])}; update one of them`;
 }
 
 /** The refusal detail for two ranges that do not meet. It starts with `incompatible`. */
@@ -152,6 +187,8 @@ export interface DurableAsk {
   readonly cleaned?: true;
   /** The program's words for a notification about this ask, cleaned and cut (WIRE.md section 6). */
   readonly push?: AskPushText;
+  /** When the ask stops waiting, ISO 8601 (WIRE.md 7.3). Past it the adapter no longer lists the ask as open. */
+  readonly expiresAt?: string;
 }
 
 export interface DurableWorkspace {
@@ -446,19 +483,30 @@ function isEffect(value: string): value is OptionEffect {
   return EFFECTS.has(value);
 }
 
+/**
+ * An option's label, cleaned and cut like an ask title (WIRE.md section 6), or null when nothing is left. A button with
+ * no words is dropped, never drawn: the person must see what a tap does.
+ */
+function optionLabelOf(value: JsonObject): string | null {
+  const label = textOf(value, "label", CAPS.optionLabel).trim();
+  return label === "" ? null : label;
+}
+
 function readOption(value: Json): DurableOption | null {
   if (!isRecord(value)) return null;
   const id = idOf(value, "id");
   const effect = value.effect;
-  if (id === null || !isText(effect) || !isEffect(effect)) return null;
-  return { id, label: textOf(value, "label", CAPS.optionLabel), effect };
+  const label = optionLabelOf(value);
+  if (id === null || label === null || !isText(effect) || !isEffect(effect)) return null;
+  return { id, label, effect };
 }
 
 /** An option of a `choice` ask or field: an id and a label, and no effect. A stray `effect` is ignored. */
 function readPlainOption(value: Json): DurableOption | null {
   if (!isRecord(value)) return null;
   const id = idOf(value, "id");
-  return id === null ? null : { id, label: textOf(value, "label", CAPS.optionLabel) };
+  const label = optionLabelOf(value);
+  return id === null || label === null ? null : { id, label };
 }
 
 /** The options of a list, each read by `read`, a repeated id dropped, at most `max`. */
@@ -485,7 +533,8 @@ function readField(value: Json): DurableField | null {
   const id = idOf(value, "id");
   const kind = value.kind;
   if (id === null || !isText(kind) || !FIELD_KINDS.has(kind)) return null;
-  const label = textOf(value, "label", CAPS.optionLabel);
+  // A field with no words left after cleaning is named by its id, so the person still sees what they fill in.
+  const label = optionLabelOf(value) ?? id;
   const required = value.required === true ? true : undefined;
   if (kind === "text") return { id, label, kind, required, maxLength: maxLengthOf(value.maxLength) };
   if (kind === "toggle") return { id, label, kind, required };
@@ -580,7 +629,9 @@ function readAsk(value: Json): DurableAsk | null {
     ...kindFields(kind, value),
   };
   const push = readPush(value.push);
-  const full: DurableAsk = push === undefined ? ask : { ...ask, push };
+  const expiresAt = stampField(value, "expiresAt");
+  const pushed: DurableAsk = push === undefined ? ask : { ...ask, push };
+  const full: DurableAsk = expiresAt === undefined ? pushed : { ...pushed, expiresAt };
   return cleaned ? { ...full, cleaned: true } : full;
 }
 
@@ -723,6 +774,24 @@ export function parseSnapshot(text: string, startersOpen: boolean): Parsed<Durab
   return good({ rev, epoch, workspaces, tabs, panes, starters });
 }
 
+/** True when an ask carries an `expiresAt` that is not after `now` (milliseconds since the Unix epoch). */
+export function askExpired(ask: Pick<DurableAsk, "expiresAt">, now: number): boolean {
+  return ask.expiresAt !== undefined && Date.parse(ask.expiresAt) <= now;
+}
+
+/**
+ * The snapshot with every ask past its `expiresAt` taken out of its pane's open asks (WIRE.md 7.3): such an ask reads
+ * as decided by `timeout` from the next read on, even when the program has not closed it yet. The same object when
+ * nothing expired, so a held read stays the same read.
+ */
+export function withoutExpired(snapshot: DurableSnapshot, now: number): DurableSnapshot {
+  if (!snapshot.panes.some((pane) => pane.openAsks.some((ask) => askExpired(ask, now)))) return snapshot;
+  const panes = snapshot.panes.map((pane) =>
+    pane.openAsks.some((ask) => askExpired(ask, now)) ? { ...pane, openAsks: pane.openAsks.filter((ask) => !askExpired(ask, now)) } : pane,
+  );
+  return { ...snapshot, panes };
+}
+
 // ── events ────────────────────────────────────────────────────────────────────
 
 export type ToolStatus = "running" | "done" | "failed" | "denied";
@@ -770,13 +839,39 @@ export type DurableItem =
       readonly status: ToolStatus;
     };
 
+/** The wire's word for who closed an ask (WIRE.md section 4). */
 export type ClosedBy = "phone" | "stopped";
+
+/**
+ * Who closed an ask, as the adapter reads it: the wire's `by`, made precise by `decidedBy` (WIRE.md 7.3). A `stopped`
+ * ask the program decided itself reads `program`, one the clock closed reads `timeout`, so the pane log and the phone
+ * can say "decided in the program" or "timed out" rather than "stopped". An older program sends no `decidedBy`, and
+ * its stops stay `stopped`.
+ */
+export type ReadClosedBy = ClosedBy | "program" | "timeout";
+
+/** Who decided an ask (WIRE.md 7.3): the person on the phone, the program itself, or the clock past `expiresAt`. */
+export type DecidedBy = "phone" | "program" | "timeout";
+
+const DECIDERS: ReadonlySet<string> = new Set(["phone", "program", "timeout"]);
+
+function isDecidedBy(value: Json | undefined): value is DecidedBy {
+  return isText(value) && DECIDERS.has(value);
+}
 
 export type DurableEvent =
   | { readonly type: "item"; readonly item: DurableItem }
   | { readonly type: "remove"; readonly id: string }
   | { readonly type: "ask"; readonly ask: DurableAsk }
-  | { readonly type: "ask-closed"; readonly askId: string; readonly by: ClosedBy; readonly waitedMs?: number }
+  | {
+      readonly type: "ask-closed";
+      readonly askId: string;
+      readonly by: ReadClosedBy;
+      readonly waitedMs?: number;
+      /** The receipt of the decision (WIRE.md 7.3): who decided, and when, ISO 8601. Absent from an older program. */
+      readonly decidedBy?: DecidedBy;
+      readonly decidedAt?: string;
+    }
   | { readonly type: "state"; readonly state: string }
   | {
       readonly type: "settled";
@@ -874,11 +969,15 @@ function readEvent(value: Json): DurableEvent | null {
     const askId = idOf(value, "askId");
     if (askId === null) return null;
     const waited = value.waitedMs;
+    const decidedBy = value.decidedBy;
+    const decidedAt = stampField(value, "decidedAt");
     return {
       type,
       askId,
-      by: value.by === "phone" ? "phone" : "stopped",
+      by: value.by === "phone" ? "phone" : decidedBy === "program" || decidedBy === "timeout" ? decidedBy : "stopped",
       waitedMs: isCount(waited) ? waited : undefined,
+      decidedBy: isDecidedBy(decidedBy) ? decidedBy : undefined,
+      decidedAt,
     };
   }
   if (type === "state") {
@@ -905,7 +1004,13 @@ function readEvent(value: Json): DurableEvent | null {
 // ── the pane log's rows ───────────────────────────────────────────────────────
 
 /** Who closed an ask. `reset` is the bridge's own word: the program's view no longer listed it. */
-export type LogClosedBy = ClosedBy | "reset";
+export type LogClosedBy = ReadClosedBy | "reset";
+
+const LOG_CLOSERS: ReadonlySet<string> = new Set(["phone", "program", "timeout", "reset"]);
+
+function isLogCloser(value: Json | undefined): value is Exclude<LogClosedBy, "stopped"> {
+  return isText(value) && LOG_CLOSERS.has(value);
+}
 
 /** One line of the bridge's pane log (bridge/durable/log.ts), after its header line. */
 export type LogRow =
@@ -952,7 +1057,7 @@ export function parseLogRow(line: string): LogRow | null {
       const askId = idOf(root, "askId");
       if (askId === null) return null;
       const waited = root.waitedMs;
-      const by = root.by === "phone" || root.by === "reset" ? root.by : "stopped";
+      const by = isLogCloser(root.by) ? root.by : "stopped";
       return { k: "ask-closed", at, askId, by, waitedMs: isCount(waited) ? waited : undefined };
     }
     case "state": {
@@ -1134,6 +1239,34 @@ export function parseConversationItems(text: string): Parsed<DurableConversation
 export interface DurableAnswerReply {
   readonly result: "taken" | "too-late";
   readonly replayed: boolean;
+}
+
+/** What a 409 `decided` carries (WIRE.md 7.3): the first decision of the ask, as the program recorded it. */
+export interface DurableAskOutcome {
+  readonly decidedBy: DecidedBy;
+  readonly decidedAt: string;
+  /** A `permission` the phone decided: the option it took, and that option's effect. */
+  readonly optionId?: string;
+  readonly effect?: OptionEffect;
+}
+
+/** The outcome of a 409 `decided`, or null when the body names none or one that breaks a rule. */
+export function parseDecided(text: string): DurableAskOutcome | null {
+  const root = decode(text);
+  if (!isRecord(root)) return null;
+  const outcome = root.outcome;
+  if (!isRecord(outcome)) return null;
+  const decidedBy = outcome.decidedBy;
+  const decidedAt = stampField(outcome, "decidedAt");
+  if (!isDecidedBy(decidedBy) || decidedAt === undefined) return null;
+  const optionId = idOf(outcome, "optionId");
+  const effect = outcome.effect;
+  return {
+    decidedBy,
+    decidedAt,
+    optionId: optionId ?? undefined,
+    effect: isText(effect) && isEffect(effect) ? effect : undefined,
+  };
 }
 
 /** Decode an `AnswerReply`, or null when the body is not one. */
