@@ -36,6 +36,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 - **History lists a durable program's conversations, open and closed.** The program keeps the record and serves it, a closed conversation opens read-only on the phone, and a Reopen button brings it back when the program allows it. The peer's own log is a cache, and it resumes where it stopped after a restart.
 - **The durable wire has a version policy and a receipt on every approval.** Collie accepts the previous wire version for one minor, a mismatch says so on the phone, and an approval records who decided and when. The SDK core imports nothing from Pi.
+- **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
 
 ### Changed
 

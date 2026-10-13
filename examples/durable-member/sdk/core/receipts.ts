@@ -9,13 +9,15 @@ export const digestOf = (payload: unknown): string => sha256Hex(JSON.stringify(p
 
 /** An error the server answers with a status and a `Problem` body. */
 export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    /** More fields of the `Problem`: `message`, `turnId`, `askIds`, `ask`, `range`. */
-    readonly extra: Record<string, unknown> = {},
-  ) {
+  readonly status: number;
+  readonly code: string;
+  /** More fields of the `Problem`: `message`, `turnId`, `askIds`, `ask`, `range`. */
+  readonly extra: Record<string, unknown>;
+  constructor(status: number, code: string, extra: Record<string, unknown> = {}) {
     super(code);
+    this.status = status;
+    this.code = code;
+    this.extra = extra;
   }
 }
 
@@ -75,8 +77,10 @@ export class MemoryReceiptStore implements ReceiptStore {
   private readonly groups = new Map<string, Map<string, ReceiptRecord>>();
   private readonly dropped = new Map<string, Map<string, string>>();
   private readonly where = new Map<string, string>();
+  private readonly limit: number;
   /** Never below 500 (WIRE.md 7.6). */
-  constructor(private readonly limit = RECEIPTS_PER_GROUP) {
+  constructor(limit = RECEIPTS_PER_GROUP) {
+    this.limit = limit;
     if (limit < LIMITS.requestIds) throw new RangeError(`the request id memory must hold at least ${LIMITS.requestIds} ids`);
   }
   /** Receipts kept, over every group. Dropped ids do not count. */
@@ -129,7 +133,10 @@ interface Flying {
  */
 export class Receipts {
   private readonly flying = new Map<string, Flying>();
-  constructor(private readonly store: ReceiptStore = new MemoryReceiptStore()) {}
+  private readonly store: ReceiptStore;
+  constructor(store: ReceiptStore = new MemoryReceiptStore()) {
+    this.store = store;
+  }
 
   /** `group`: the pane id, or {@link STARTER_GROUP}. The store caps its receipts per group. */
   async run<T extends object>(requestId: string, digest: string, act: () => Promise<T>, group = ""): Promise<T & { replayed?: true }> {

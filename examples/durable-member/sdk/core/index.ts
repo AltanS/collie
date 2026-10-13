@@ -1,7 +1,7 @@
 // The SDK core: the layout a program shows, and the wire that serves it, as `handle(request)`. It imports no
 // runtime module (no Bun, no Node, no Cloudflare), so it runs wherever a web `Request` does. A server hands each
-// request to `core.handle`: `../server.ts` does it over a private Unix socket, and
-// `examples/durable-member-cloudflare` does it in a Durable Object. No Pi Durable import here either.
+// request to `core.handle`: `../server.ts` does it over a private Unix socket in Bun, `../node/index.ts` in Node, and
+// `experiments/durable-member-cloudflare` does it in a Durable Object. No Pi Durable import here either.
 
 import { type CallInfo, type CoreState, handle } from "./handle.ts";
 import { Store, type WorkspaceHandle } from "./layout.ts";
@@ -9,7 +9,7 @@ import type { ReceiptStore } from "./receipts.ts";
 import type { Caps, HistoryProvider, ProgramHooks, RenameTarget, Starter } from "./types.ts";
 
 export type { CallInfo, CoreState } from "./handle.ts";
-export { handle, hello } from "./handle.ts";
+export { handle, hello, versionLine } from "./handle.ts";
 export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
 export { AskClosed, askIdFor, cleanConversationRow, cleanItem, mintId, Store } from "./layout.ts";
 export {
@@ -61,16 +61,47 @@ export {
   subtitleOf,
 } from "./rules.ts";
 export * from "./types.ts";
+export { argumentsView, type Approval, type ApprovalOptions, callSummary, requireApproval } from "./approval.ts";
+
+/** Every cap the SDK can serve, on. `history` among them, which a program serves once `history()` has a provider. */
+export const ALL_CAPS: Readonly<Required<Omit<Caps, "terminal">>> = {
+  asks: true,
+  starters: true,
+  send: true,
+  steer: true,
+  abort: true,
+  rename: true,
+  close: true,
+  actions: true,
+  history: true,
+  reopen: true,
+};
+
+/** Every cap off: what a given `caps` list starts from, since an absent cap is false (WIRE.md section 4). */
+const NO_CAPS: Required<Omit<Caps, "terminal">> = {
+  asks: false,
+  starters: false,
+  send: false,
+  steer: false,
+  abort: false,
+  rename: false,
+  close: false,
+  actions: false,
+  history: false,
+  reopen: false,
+};
 
 export interface CoreOptions {
   hostName: string;
   /** How many raw events each pane keeps. At most 1000. Default 500. */
   tailLimit?: number;
   /**
-   * Turn a cap off. Everything the SDK can do is on by default, except `history`, which is on once `history()` has a
-   * provider. `terminal` is always false.
+   * The caps this program declares (WIRE.md section 4). Left out, everything the SDK can do is on ({@link ALL_CAPS}),
+   * and `history` turns on once `history()` has a provider. Given, it is the whole list: a cap it does not name is
+   * false, as on the wire, so `{ asks: true }` declares asks and nothing else. To turn one off and keep the rest, spread
+   * {@link ALL_CAPS}: `{ ...ALL_CAPS, steer: false }`. `terminal` is always false.
    */
-  caps?: Partial<Caps>;
+  caps?: Caps;
   /** Where finished request ids are kept. Default: in memory. A store that outlives the process keeps them across a restart. */
   receipts?: ReceiptStore;
   /**
@@ -80,6 +111,8 @@ export interface CoreOptions {
   allowAlways?: boolean;
   /** One named place for each act the phone can send. See `ProgramHooks`. */
   hooks?: ProgramHooks;
+  /** Where the core writes its one-line notes, for example a Collie that speaks another wire version. Default: `console.warn`. */
+  warn?: (line: string) => void;
   /**
    * The old name of `hooks.onRename`, kept for one release as an alias. It takes the target and no request id.
    * When both are set, `hooks.onRename` wins.
@@ -115,8 +148,10 @@ export function createCore(o: CoreOptions): CollieCore {
   const state: CoreState = {
     store,
     hostName: o.hostName,
-    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: false, reopen: true, ...o.caps, terminal: false },
+    // Left out: everything on, history once a provider is set. Given: exactly the caps it names as true.
+    caps: o.caps === undefined ? { ...ALL_CAPS, history: false, terminal: false } : { ...NO_CAPS, ...o.caps, terminal: false },
     hooks,
+    ...(o.warn === undefined ? {} : { warn: o.warn }),
   };
   return {
     epoch: store.epoch,
@@ -124,7 +159,7 @@ export function createCore(o: CoreOptions): CollieCore {
     starters: (list) => store.setStarters(list),
     history(provider) {
       store.history = provider;
-      state.caps.history = o.caps?.history !== false;
+      state.caps.history = o.caps === undefined || o.caps.history === true;
       store.rev++;
     },
     ready() {

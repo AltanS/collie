@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
 import {
+  ALL_CAPS,
   type AskInput,
   type Caps,
   type ConversationRow,
@@ -30,7 +31,7 @@ export interface Opened {
 }
 export interface Transport {
   name: string;
-  open(o: { hostName: string; caps?: Partial<Caps>; hooks?: CoreOptions["hooks"]; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
+  open(o: { hostName: string; caps?: Caps; hooks?: CoreOptions["hooks"]; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
 }
 
 export function protocolSuite(transport: Transport) {
@@ -127,7 +128,8 @@ export function protocolSuite(transport: Transport) {
         for (const version of [0, 2, 99]) {
           const r = await api.hello({ ...d, version });
           expect(r.status).toBe(409);
-          expect(r.body as unknown).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
+          // The refusal names both sides (WIRE.md section 2): the version the caller sent, and this program's range.
+          expect(r.body as unknown).toEqual({ code: "incompatible", range: { min: 1, max: 1 }, refusal: { code: "version", collie: [version, version], program: [1, 1] } });
         }
         for (const bad of ["abc", "1.0", "-1", "", "1x", "0x1"]) {
           const r = await call({ ...d, version: undefined }, "GET", "/snapshot", undefined, { "x-collie-session": bad });
@@ -375,7 +377,7 @@ export function protocolSuite(transport: Transport) {
     });
 
     describe("asks and answers", () => {
-      test("an ask carries toolCallId, revision, title and itemId; it sets waiting; answer resolves it by phone; a second answer is too-late", async () => {
+      test("an ask carries toolCallId, revision, title and itemId; it sets waiting; answer resolves it by phone; a second answer is 409 decided with the first outcome", async () => {
         const p = mk("p3");
         const pending = p.ask(askInput({ toolCallId: "tc-1", itemId: "item-1", title: "Run it?" }));
         const info = await paneInfo("p3");
@@ -385,7 +387,10 @@ export function protocolSuite(transport: Transport) {
         expect(ask.id).toMatch(/^[0-9a-f]{32}$/);
         expect((await api.answer(d, "p3", ask.id, "allow")).body).toEqual({ result: "taken" });
         expect(await pending).toEqual({ optionId: "allow" });
-        expect((await api.answer(d, "p3", ask.id, "deny")).body).toEqual({ result: "too-late" });
+        const second = await api.answer(d, "p3", ask.id, "deny");
+        expect(second.status).toBe(409);
+        expect(second.body).toMatchObject({ code: "decided", outcome: { decidedBy: "phone", optionId: "allow", effect: "allow" } });
+        expect(Date.parse(second.body.outcome!.decidedAt)).not.toBeNaN();
         expect((await api.answer(d, "p3", "never-existed", "allow")).body).toEqual({ result: "too-late" });
         expect((await api.events(d, "p3", 0)).body.events.map((e) => e.type)).toEqual(["ask", "state", "ask-closed", "state"]);
         expect((await paneInfo("p3")).state).toBe("idle");
@@ -410,13 +415,15 @@ export function protocolSuite(transport: Transport) {
         await api.answer(d, "p3-rev", "ask-other", "deny");
         await other;
       });
-      test("a closed or unknown ask is 200 too-late whatever the revision says, never an error", async () => {
+      test("a decided ask is 409 decided whatever the revision says, and an unknown one 200 too-late, never another error", async () => {
         const p = mk("p3-late");
         hold(p, askInput({ id: "ask-late" }));
         await api.answer(d, "p3-late", "ask-late", "allow");
         for (const revision of [0, 1, 5]) {
           const r = await api.answer(d, "p3-late", "ask-late", "allow", { revision });
-          expect([r.status, r.body]).toEqual([200, { result: "too-late" }]);
+          expect([r.status, r.body.code, r.body.outcome?.decidedBy]).toEqual([409, "decided", "phone"]);
+          const unknown = await api.answer(d, "p3-late", "ask-never", "allow", { revision });
+          expect([unknown.status, unknown.body]).toEqual([200, { result: "too-late" }]);
         }
       });
       test("an answer that is not an option is 400 bad-option and leaves the ask open", async () => {
@@ -582,7 +589,7 @@ export function protocolSuite(transport: Transport) {
         expect([r.status, r.body.code]).toEqual([409, "not-supported"]);
       });
       test("steer: true with caps.steer false is 409 not-supported; send with caps.send false is too", async () => {
-        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { steer: false } });
+        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { ...ALL_CAPS, steer: false } });
         const p = c.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
         let got = 0;
         p.onSend(() => void got++);
@@ -596,7 +603,7 @@ export function protocolSuite(transport: Transport) {
         expect(got).toBe(1);
         await c.close();
 
-        const { collie: none, dial: u } = await transport.open({ hostName: "c", caps: { send: false, abort: false, starters: false } });
+        const { collie: none, dial: u } = await transport.open({ hostName: "c", caps: { ...ALL_CAPS, send: false, abort: false, starters: false } });
         const q = none.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
         q.onSend(() => {});
         q.onAbort(() => {});
@@ -1038,7 +1045,7 @@ export function protocolSuite(transport: Transport) {
         expect((await api.rename(d, "tab", "w:t", "T")).status).toBe(200);
       });
       test("caps.rename false: hello says so and the route is 409 not-supported", async () => {
-        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { rename: false } });
+        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { ...ALL_CAPS, rename: false } });
         c.workspace("w", { title: "W" }).tab("t", { title: "T" });
         c.ready();
         expect((await api.hello(t)).body.caps).toMatchObject({ rename: false });
@@ -1185,7 +1192,7 @@ export function protocolSuite(transport: Transport) {
         }
       });
       test("caps.close false: hello says so and the route is 409 not-supported", async () => {
-        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { close: false } });
+        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { ...ALL_CAPS, close: false } });
         c.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
         c.ready();
         expect((await api.hello(t)).body.caps).toMatchObject({ close: false });
@@ -1651,7 +1658,7 @@ export function protocolSuite(transport: Transport) {
         expect((await api.reopen(d, "nobody-else", "reopen-1")).body.code).toBe("request-id-reused");
       });
       test("reopen: with caps.reopen false it is 409 not-supported, and so is history with caps.history false", async () => {
-        const off = await transport.open({ hostName: "off", caps: { reopen: false, history: false } });
+        const off = await transport.open({ hostName: "off", caps: { ...ALL_CAPS, reopen: false, history: false } });
         off.collie.history(provider);
         off.collie.ready();
         try {

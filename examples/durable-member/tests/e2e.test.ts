@@ -81,7 +81,7 @@ describe("one ticket", () => {
     const events = await allEvents(d, main);
     expect(events.find((e) => e.type === "ask-closed")).toMatchObject({ askId, by: "phone" });
     await waitFor("badge cleared", async () => (await pane(d, main))?.badge === undefined);
-    expect((await api.answer(d, main, askId, "allow")).body).toEqual({ result: "too-late" });
+    expect((await api.answer(d, main, askId, "allow")).body).toMatchObject({ code: "decided", outcome: { decidedBy: "phone", optionId: "allow" } });
   });
 
   test("spawn_helper: a look-up pane in tab helpers; once it answered, it is closed and the history keeps it", async () => {
@@ -196,12 +196,12 @@ describe("beyond the script", () => {
     expect(await asks(id)).toHaveLength(1);
   });
 
-  test("an answer arriving after the stop is too-late", async () => {
+  test("an answer arriving after the stop is 409 decided by the program", async () => {
     const id = (await api.start(d, "sign-in")).body.paneId;
     const open = await waitFor("ask", () => firstAsk(d, id));
     await api.abort(d, id);
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
-    expect((await api.answer(d, id, open.id, "allow")).body).toEqual({ result: "too-late" });
+    expect((await api.answer(d, id, open.id, "allow")).body).toMatchObject({ code: "decided", outcome: { decidedBy: "program" } });
   });
 });
 
@@ -246,7 +246,7 @@ describe("two risky calls in one message", () => {
     expect(left.map((a) => a.id)).toEqual([both[0]!.id]);
     expect((await pane(d, id))!.state).toBe("waiting");
     expect((await oldestAsk(d, id))!.id).toBe(both[0]!.id);
-    expect((await api.answer(d, id, both[1]!.id, "allow")).body).toEqual({ result: "too-late" });
+    expect((await api.answer(d, id, both[1]!.id, "allow")).body).toMatchObject({ code: "decided", outcome: { decidedBy: "phone" } });
     expect((await api.answer(d, id, both[0]!.id, "allow")).body).toEqual({ result: "taken" });
     await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
     expect(notes().length - before).toBe(2);
@@ -300,7 +300,7 @@ describe("a ticket with questions", () => {
     // The wrong shape for a choice is refused and the ask stays open.
     expect((await api.answerWith(d, id, choice.id, { text: "billing" })).status).toBe(400);
     expect((await api.answerWith(d, id, choice.id, { optionIds: ["accounts"] })).body).toEqual({ result: "taken" });
-    expect((await api.answerWith(d, id, choice.id, { optionIds: ["billing"] })).body).toEqual({ result: "too-late" });
+    expect((await api.answerWith(d, id, choice.id, { optionIds: ["billing"] })).body).toMatchObject({ code: "decided", outcome: { decidedBy: "phone" } });
 
     const text = await waitFor("the text ask", async () => (await openAsks(d, id)).find((a) => a.kind === "text"));
     expect(text).toMatchObject({ title: "What should we tell the customer?", placeholder: "We are looking into it.", maxLength: 280 });
