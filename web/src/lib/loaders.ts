@@ -30,8 +30,9 @@ import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
 import { isLostLatched, type ReadFailureKind, wakeStrikeHolds } from "@/lib/connection-health";
 import { markLive as markPaneLive, markSavedCopy } from "@/lib/liveness";
-import { paneGridOf } from "@/lib/mux-capability";
+import { paneGridOf, settleSessionCapabilities } from "@/lib/mux-capability";
 import { ambientSpaces, findPane } from "@/lib/hosts";
+import { noteSessionCards } from "@/lib/session-cards";
 import {
   loadLastPaneText,
   loadLastSnapshot,
@@ -332,6 +333,10 @@ function toHomeData(
   // out from under a running update, and it must reload once that run is done (M15/05). Stamped here
   // rather than in the card so the hold applies on every route, not only where the card is mounted.
   noteUpdateRun(snap.update?.run?.state);
+  // What each session is (M55): filed per (host, session) so a capability anywhere in the app is asked
+  // of the session it acts in (lib/session-cards.ts). A snapshot with no card fields files rows that
+  // read as today's terminal sessions.
+  noteSessionCards(snap.sessions, snap.servers);
   // THE CACHE READING HOLDS ACROSS A POLL THAT ARRIVED WITHOUT ONE (lib/cache-hold.ts). The reading is
   // a measurement, not a field of the pane, and the bridge drops one for a poll on several ordinary
   // paths — a failed `stat`, a harness session id that has not resolved yet, another Herdr session's
@@ -695,6 +700,8 @@ export async function paneLoader({
   // conversation from the Chat read, so this answers an empty, healthy mirror. The pane counts as live
   // while the bridge is not known to be lost (lib/liveness.ts), which is what its Chat reads and its
   // controls ask. Decided by the machine's own declaration, so a bridge that has not said no is read.
+  // A cold open in a named session can run before the root loader filed that session's card.
+  if (isNavigation) await settleSessionCapabilities(scope);
   if (!paneGridOf(scope)) {
     markPaneLive(paneId, Date.now(), scope);
     markPollResult(false);

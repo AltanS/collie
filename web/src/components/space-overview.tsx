@@ -11,6 +11,7 @@ import { spaceKey } from "@/lib/hosts";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
 import { statusLabel } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -34,6 +35,11 @@ interface SpaceOverviewProps {
   /** Fold state, owned by the dashboard so it can be persisted. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * The address the dashboard shows, machine and session: the "+" asks it whether a space can be made
+   * there (M55). Omit and the lead's primary session is asked, as before.
+   */
+  scope?: Scope;
 }
 
 // The dashboard's navigator, and the LAST section on the page: everything you might act on comes
@@ -53,13 +59,14 @@ export function SpaceOverview({
   host,
   open,
   onOpenChange,
+  scope,
 }: SpaceOverviewProps) {
   // Ephemeral view state, like SpaceRoute's tab selection — a filter you typed yesterday should not
   // greet you today with most of your spaces missing.
   useLocale();
   const [query, setQuery] = useState("");
   // Whether this multiplexer can open a new space at all. See the two decision sites below.
-  const newSpace = useMuxCapability("createSpace");
+  const newSpace = useMuxCapability("createSpace", scope);
 
   const panes = [...agents, ...shellPanes];
   // One pass over the panes, then map lookups — this component re-renders on every poll.

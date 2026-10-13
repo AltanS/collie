@@ -202,7 +202,7 @@ export function HomeRoute() {
   // may not write gets none of it. A saved copy keeps the button drawn and refuses on the tap
   // (`workspace-new-tab.tsx` does the same): a control that comes and goes moves what is around it.
   const { launchers } = useLaunchers(data.scope);
-  const canCreateSpace = useMuxCapability("createSpace").capable;
+  const canCreateSpace = useMuxCapability("createSpace", data.scope).capable;
   const durableHome = view === "dashboard" && screenless;
   // The New button stays on the durable home: the New page lists the program's starters there.
   const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0 || screenless);
@@ -315,6 +315,7 @@ export function HomeRoute() {
               onToggleHidden={toggleHiddenSpace}
               hiddenMachines={hiddenMachines}
               addressedHost={data.scope.host}
+              scope={data.scope}
               onShowMachine={(host) => setMachineHidden(host, false, data.servers)}
               pins={pins}
               // The same per-device preference the pane switcher and Settings write (ADR 0071).
@@ -357,6 +358,7 @@ export function HomeRoute() {
                 creatingSpace={creatingSpace}
                 open={spacesOpen}
                 onOpenChange={setSpacesOpen}
+                scope={data.scope}
               />
             </>
           )}

@@ -203,13 +203,15 @@ export function PaneActionsSheet({
   // Asked of the PANE's own machine, for `hostBlock`'s reason one step on (M22/03): a member runs
   // its own multiplexer, so a row this sheet offers has to be a row that machine can carry out.
   // Undefined on a solo install and for a pane on the lead, which is the lead's own answer.
-  const paneHost = { host: pane?.host };
+  // The session comes off the sheet's scope (M55): a program session's panes answer for their program.
+  const paneHost = { host: pane?.host, session: scope?.session };
   const canRename = useMuxCapability("renamePane", paneHost);
   const canClose = useMuxCapability("closePane", paneHost);
   const canFocus = useMuxCapability("setFocus", paneHost);
   // Asked of the LEAD, with no host: the branch-off route never leaves the lead, so the lead's own
-  // multiplexer is the one that must be able to do it.
-  const canWorktree = useMuxCapability("createWorktree");
+  // multiplexer is the one that must be able to do it. In the session the sheet acts in (M55): a
+  // program session on the lead makes no worktree, whatever its terminal neighbour can do.
+  const canWorktree = useMuxCapability("createWorktree", { session: scope?.session });
   const showBranchOff = onBranchOff !== undefined && branchOffOffered(canWorktree.capable, scope);
   const [focusing, setFocusing] = useState(false);
   // The mux name for the "Focus in <mux>" row and its toast — see `focusMux` below for why this

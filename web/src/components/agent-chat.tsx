@@ -383,7 +383,7 @@ export function AgentChat({
   const hostBlock = writeRefusal(hostHealth);
   // Whether the pane's own multiplexer can rename it: gates the Rename row in Pane settings, the way
   // the ⋮ sheet gates its own (components/pane-actions-sheet.tsx asks the same question).
-  const canRenamePane = useMuxCapability("renamePane", { host: agent?.host });
+  const canRenamePane = useMuxCapability("renamePane", { host: agent?.host, session: scope?.session });
   /**
    * The ONE reason this pane currently refuses a write, or undefined when it accepts them. Every
    * write handler below starts with it, so there is a single place that decides both which gates

@@ -468,7 +468,32 @@ export interface SessionSummary {
    * a flat merged list would offer "default" twice with no way to tell them apart.
    */
   host?: string;
+  // ── THE SESSION CARD (M55) ──────────────────────────────────────────────────────────────────
+  //
+  // Every field below is optional because a bridge older than M55 sends none of them, and absent
+  // means what the phone did before: the session is a terminal session, its capabilities are asked
+  // of `/api/config`, and nothing about it is drawn differently. Read them through
+  // lib/session-cards.ts, never off the row by hand.
+  /** A terminal session (a multiplexer) or a program session (a durable program). */
+  kind?: SessionKind;
+  /** The multiplexer's name, or the program's cleaned host name. Printed, never branched on. */
+  mux?: string;
+  /** This session's capability set, the same keys `/api/config`'s `mux.capabilities` answers. */
+  caps?: Record<string, boolean>;
+  /** Whether the session runs on this machine or is reached over the network. */
+  where?: SessionWhere;
+  /** Whether the session answers yet. */
+  state?: SessionState;
+  /** Whether the session wears the Experimental mark. */
+  experimental?: boolean;
 }
+
+/** {@link SessionSummary.kind}. */
+export type SessionKind = "terminal" | "program";
+/** {@link SessionSummary.where}. */
+export type SessionWhere = "local" | "remote";
+/** {@link SessionSummary.state}. */
+export type SessionState = "ready" | "starting" | "unreachable";
 
 /**
  * One member of the crew (CREW_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field

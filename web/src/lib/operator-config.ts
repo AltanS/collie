@@ -4,6 +4,7 @@ import { fetchConfig } from "@/lib/api";
 import { acceptOperatorFonts, applyOperatorFonts, type OperatorFontFace } from "@/lib/operator-fonts";
 import { designPrefs, subscribeDesign } from "@/lib/design";
 import { getDeviceToken, subscribePairing } from "@/lib/pairing";
+import { normalizeScope, scopeKey, type Scope } from "@/lib/scope";
 import type {
   MuxConfig,
   OperatorCommand,
@@ -187,8 +188,8 @@ export function loadHostMuxConfig(host: string): Promise<void> {
   if (running) return running;
   const started = (async () => {
     try {
-      // The HOST alone. No session rides along: `/api/config` is not session-scoped, and sending a
-      // session name would put a parameter on the wire that the route does not read.
+      // The HOST alone. A session's own block is a separate read (`loadSessionMuxConfig` below), so a
+      // member's machine-wide answer is never filed under one of its sessions.
       const cfg = await fetchConfig({ host });
       hostMux.set(host, cfg.mux ?? null);
       emit();
@@ -209,6 +210,50 @@ export function loadHostMuxConfig(host: string): Promise<void> {
  */
 export function getHostMuxConfig(host: string): MuxConfig | null {
   return hostMux.get(host) ?? null;
+}
+
+// ── ONE SESSION's OWN BLOCK (M55) ───────────────────────────────────────────────────────────────
+//
+// Since M55 one collie can carry a terminal multiplexer and one or more durable programs, each its own
+// session, so "can you do this?" has an answer per (host, session). The snapshot's session card
+// normally carries that answer (lib/session-cards.ts), and then nothing is fetched. This map is the
+// fallback for a card with no `caps`: `/api/config?session=<name>`, on the same terms as the member
+// map above.
+//
+//  • **Cached per (host, session), for the life of the page.**
+//  • **Issued ONLY for a named, non-primary session whose card carries no capability set.** The
+//    primary session keeps today's one read, so a solo install with one session never reaches this.
+//  • **A miss is `null`, and `null` means "use the machine's block".** A bridge older than the
+//    `session` parameter answers with the primary's block, which is the answer the phone gave before.
+//  • **A failed read is not cached**, so a later mount asks again.
+
+const sessionMux = new Map<string, MuxConfig | null>();
+const sessionMuxInflight = new Map<string, Promise<void>>();
+
+/** Read one session's own mux block, once per (host, session) per page load. */
+export function loadSessionMuxConfig(scope: Scope): Promise<void> {
+  const key = scopeKey(scope);
+  if (sessionMux.has(key)) return Promise.resolve();
+  const running = sessionMuxInflight.get(key);
+  if (running) return running;
+  const started = (async () => {
+    try {
+      const cfg = await fetchConfig(normalizeScope(scope));
+      sessionMux.set(key, cfg.mux ?? null);
+      emit();
+    } catch {
+      // Additive feature, as above. Nothing is cached, so a later mount asks again.
+    } finally {
+      sessionMuxInflight.delete(key);
+    }
+  })();
+  sessionMuxInflight.set(key, started);
+  return started;
+}
+
+/** One session's own mux block, or `null` when nothing has said otherwise. */
+export function getSessionMuxConfig(scope: Scope): MuxConfig | null {
+  return sessionMux.get(scopeKey(scope)) ?? null;
 }
 
 /**
@@ -311,6 +356,8 @@ export function useOperatorQuickReplies(): readonly OperatorQuickReplyRow[] {
 export function __resetOperatorCommands(): void {
   hostMux.clear();
   hostMuxInflight.clear();
+  sessionMux.clear();
+  sessionMuxInflight.clear();
   current = [];
   currentKeys = [];
   currentReplies = [];
