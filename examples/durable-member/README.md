@@ -161,17 +161,27 @@ REAL_MODEL=google/gemini-3.1-flash-lite bun run app
 
 **OpenAI with an API key or a ChatGPT sign-in.** Set `REAL_PROVIDER=openai` and a model id from Pi's OpenAI
 catalog. With an API key, set `OPENAI_API_KEY=your-key-here`. To use a ChatGPT Plus or Pro plan instead, sign in
-once with Pi's login. It saves `auth.json` in the folder you run it from, so run it in the data folder:
+once with Pi's login. The login saves `auth.json` in the folder you run it from, so run it in the data folder
+(`DM_DATA`, by default `~/.local/state/durable-member`). Run the copy of Pi that `bun install` pinned in this
+example folder, not a fresh download:
 
 ```sh
-mkdir -p ~/.local/state/durable-member && cd ~/.local/state/durable-member
-npx @earendil-works/pi-ai login openai    # choose "Sign in with ChatGPT"
-cd - && REAL_PROVIDER=openai REAL_MODEL=gpt-4.1 bun run app
+EXAMPLE=$PWD; mkdir -p ~/.local/state/durable-member && cd ~/.local/state/durable-member
+bun "$EXAMPLE/node_modules/@earendil-works/pi-ai/dist/cli.js" login openai
+chmod 600 auth.json
+cd "$EXAMPLE" && REAL_PROVIDER=openai REAL_MODEL=gpt-5-nano bun run app
 ```
 
-The app reads `auth.json` from its data folder (`DM_DATA`), and Pi keeps the tokens fresh there. Guard that file
-like a password: the app writes it with mode 0600 and never prints it. With neither a key nor a sign-in the start
-stops with an error.
+No menu appears. The login starts the browser flow at once and prints a URL to open. The browser must run on the
+same machine as the login, because the callback is `127.0.0.1:1455`, the port the Codex CLI login also uses.
+Close a Codex CLI login first, or the port is taken. Which models a ChatGPT plan reaches is OpenAI's list, not
+Collie's. `gpt-5-nano` is the model the API-key test used, so change it if your plan does not include it.
+
+The login writes `auth.json` with mode 0644, so run the `chmod 600` right after it. The app keeps the mode 0600
+when it refreshes the tokens. The app reads `auth.json` from its data folder, and Pi keeps the tokens fresh
+there. Guard that file like a password. The app never prints it. A stored sign-in wins over `OPENAI_API_KEY`, so
+the key is used only when `auth.json` has no `openai` entry. With neither a key nor a sign-in the start stops
+with an error.
 
 The id must be one that the provider's Pi catalog knows, or the start stops with an error. Pi reads the key,
 and the app never prints it. Every ticket now costs tokens, including the one a first start opens. A real model
@@ -228,7 +238,7 @@ Every variable is optional.
 | `REAL_MODEL` | not set | A model id of the provider's Pi catalog. Not set means the scripted model. |
 | `REAL_PROVIDER` | `openrouter` | `openrouter` or `openai`. Read only when `REAL_MODEL` is set. |
 | `OPENROUTER_API_KEY` | not set | Your OpenRouter key. Pi reads it only when `REAL_MODEL` is set. |
-| `OPENAI_API_KEY` | not set | Your OpenAI key, for `REAL_PROVIDER=openai` without a ChatGPT sign-in. |
+| `OPENAI_API_KEY` | not set | Your OpenAI key, for `REAL_PROVIDER=openai`. A ChatGPT sign-in stored in `auth.json` wins over it. |
 
 ## Write your own program
 

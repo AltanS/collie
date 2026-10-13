@@ -78,6 +78,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The changelog says space, program and terminal where it said session.** The 1.22.0 bullets use the words of the Terminology page.
 - **The ten-line program names one cap.** `hello.ts` says `caps: { asks: true }` and leaves the rest to the SDK's default of false.
 - **The Programs page installs the SDK from npm.** The quickstart runs `npm install @colliepwa/durable-sdk@experimental` and a ten-line program that imports the package, and says that on Node a program cannot read who connects to its socket. ADR 0105 records the package: its name, the `experimental` dist-tag, one import, optional Pi peers, who publishes, and the exit it shares with ADR 0104.
+- **The ChatGPT sign-in steps match Pi 1.1.0.** The login runs in the data folder from the pinned copy, shows no menu, needs a `chmod 600`, and a stored sign-in wins over the environment key.
 
 ## [1.21.0] - 2026-10-13
 
