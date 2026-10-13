@@ -109,6 +109,29 @@ describe("herdr 0.9.3: the repo comes from worktree.list", () => {
     expect("folder" in scratch).toBe(false);
   });
 
+  test("foregroundProcesses answers the seeded argv, null argv as no argv", async () => {
+    const fake = new FakeHerdr();
+    const [first] = await fake.listPanes();
+    const paneId = first?.pane_id ?? "missing";
+    fake.setProcesses(paneId, [
+      { pid: 7, name: "muse", argv: ["muse", "resume", "abc"] },
+      { pid: 8, name: "rg", argv: null },
+    ]);
+    const mux = new HerdrMux(fake, () => []);
+    const result = await mux.foregroundProcesses(paneId);
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.value : null).toEqual([
+      { argv: ["muse", "resume", "abc"] },
+      { argv: [] },
+    ]);
+  });
+
+  test("foregroundProcesses on an unknown pane refuses instead of throwing", async () => {
+    const mux = new HerdrMux(new FakeHerdr(), () => []);
+    const result = await mux.foregroundProcesses("w9:nope");
+    expect(result.ok).toBe(false);
+  });
+
   test("looked up once per workspace, not once per poll", async () => {
     const fake = captured();
     fake.records = [...CAPTURE.workspaces, plainWorkspace("w90", "scratch")];

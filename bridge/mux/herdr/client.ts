@@ -184,6 +184,21 @@ export interface PaneRead {
   revision: number;
 }
 
+/** One foreground process, as `pane.process_info` reports it. argv is null when Herdr could not
+ *  read it — the adapter maps that to no argv rather than failing the whole read. */
+export interface WireForegroundProcess {
+  pid: number;
+  name: string;
+  argv: string[] | null;
+}
+
+/** Raw wire shape of `pane.process_info`. Only `pane_id` is required by the schema; a pane
+ *  whose processes Herdr cannot list answers without the foreground group. */
+export interface WireProcessInfo {
+  pane_id: string;
+  foreground_processes?: WireForegroundProcess[] | null;
+}
+
 // Wire names are snake_case: `recent-unwrapped` is REJECTED by the server (`unknown variant`,
 // live-probed 2026-08-03, herdr 0.7.5). Nothing called it before that probe, so the kebab spelling
 // this type carried since day one was never caught. `detection` also exists (listed by the server's
@@ -244,6 +259,7 @@ export type HerdrRpc = Pick<
   | "listPanes"
   | "listTabs"
   | "readPane"
+  | "processInfo"
   | "sendPaneText"
   | "sendPaneKeys"
   | "renamePane"
@@ -687,6 +703,14 @@ export class HerdrClient {
       format,
     });
     return r.read;
+  }
+
+  /** The pane's foreground process group, for telling live sessions apart (journal discovery). */
+  async processInfo(paneId: string): Promise<WireProcessInfo> {
+    const r = await this.request<{ process_info: WireProcessInfo }>("pane.process_info", {
+      pane_id: paneId,
+    });
+    return r.process_info;
   }
 
   /** Type literal text into a pane's terminal (does not submit). */

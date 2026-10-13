@@ -25,7 +25,7 @@
 // (ADR 0008). An adapter whose multiplexer will not hand over a rendered screen declines the
 // capability — it does not get a VT parser written for it.
 
-import type { AgentSessionRef } from "../journal/types.ts";
+import type { AgentSessionRef, ForegroundProcess } from "../journal/types.ts";
 import type { AgentStatus } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
@@ -608,6 +608,17 @@ export interface MuxAdapter {
    */
   readLogicalText?(paneId: string, lines: number): Promise<MuxOutcome<string>>;
 
+  /**
+   * The pane's foreground processes, as argv. OPTIONAL by design: a multiplexer without the
+   * call simply yields no hint, exactly as today.
+   *
+   * Read for ONE purpose — telling live sessions apart when several share a folder. A journal
+   * adapter that can read its session out of its own command line (Muse's `resume <uuid>`)
+   * answers the pane's own session from this; without it, discovery can only guess newest,
+   * and every pane in the folder shows the same transcript.
+   */
+  foregroundProcesses?(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>>;
+
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
 
@@ -718,7 +729,13 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
  * A decorator spreads this rather than conditionally spreading inline, so a multiplexer that cannot
  * unwrap (tmux) never comes out of a decorator appearing to offer the read: absent stays absent.
  */
-export function muxOptionalMethods(adapter: MuxAdapter): Pick<MuxAdapter, "readLogicalText"> {
+export function muxOptionalMethods(
+  adapter: MuxAdapter,
+): Pick<MuxAdapter, "readLogicalText" | "foregroundProcesses"> {
+  const out: Pick<MuxAdapter, "readLogicalText" | "foregroundProcesses"> = {};
   const readLogicalText = adapter.readLogicalText?.bind(adapter);
-  return readLogicalText === undefined ? {} : { readLogicalText };
+  if (readLogicalText !== undefined) out.readLogicalText = readLogicalText;
+  const foregroundProcesses = adapter.foregroundProcesses?.bind(adapter);
+  if (foregroundProcesses !== undefined) out.foregroundProcesses = foregroundProcesses;
+  return out;
 }

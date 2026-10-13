@@ -32,7 +32,9 @@ import type {
   HerdrRpc,
   PaneRead,
   SubscribeOptions,
+  WireForegroundProcess,
   WirePane,
+  WireProcessInfo,
   WireSnapshot,
   WireTab,
   WireWorkspace,
@@ -77,6 +79,8 @@ export class FakeHerdr implements HerdrRpc {
   private tabs: WireTab[] = [];
   private panes: WirePane[] = [];
   private readonly screens = new Map<string, FakeScreen>();
+  /** Foreground processes per pane — what `pane.process_info` answers. Empty unless seeded. */
+  private readonly processes = new Map<string, WireForegroundProcess[]>();
   private readonly subscribers = new Set<Subscriber>();
   private readonly recorded: MuxWrite[] = [];
   /** Worktrees per repo root — the bookkeeping herdr keeps and a plain `git worktree add` does not. */
@@ -158,7 +162,13 @@ export class FakeHerdr implements HerdrRpc {
   async endPane(paneId: string): Promise<void> {
     this.panes = this.panes.filter((pane) => pane.pane_id !== paneId);
     this.screens.delete(paneId);
+    this.processes.delete(paneId);
     await Promise.resolve();
+  }
+
+  /** The pane's foreground group becomes these processes. */
+  setProcesses(paneId: string, processes: WireForegroundProcess[]): void {
+    this.processes.set(paneId, processes);
   }
 
   /** The operator renames a tab in Herdr's own TUI, with the event stream saying nothing. */
@@ -231,6 +241,11 @@ export class FakeHerdr implements HerdrRpc {
       truncated: false,
       revision: pane.revision,
     };
+  }
+
+  async processInfo(paneId: string): Promise<WireProcessInfo> {
+    this.pane("pane.process_info", paneId);
+    return { pane_id: paneId, foreground_processes: this.processes.get(paneId) ?? [] };
   }
 
   async sendPaneText(paneId: string, text: string): Promise<void> {

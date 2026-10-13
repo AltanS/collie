@@ -25,6 +25,7 @@
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
 import { isUnnamedTab } from "../../pane-name.ts";
 import type { DialMode } from "../../dial.ts";
+import type { ForegroundProcess } from "../../journal/types.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import { herdrMachineCandidates } from "./machine-list.ts";
 import { herdrSessionSource } from "./sessions.ts";
@@ -434,6 +435,15 @@ export class HerdrMux implements MuxAdapter {
     try {
       const read = await this.client.readPane(paneId, "recent_unwrapped", lines, "ansi");
       return muxOk(read.text);
+    } catch (err) {
+      return transportRefusal(err);
+    }
+  }
+
+  async foregroundProcesses(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>> {
+    try {
+      const info = await this.client.processInfo(paneId);
+      return muxOk((info.foreground_processes ?? []).map((p) => ({ argv: p.argv ?? [] })));
     } catch (err) {
       return transportRefusal(err);
     }

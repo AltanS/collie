@@ -24,6 +24,7 @@ import {
   type MuxWorktreeOpenRequest,
   type MuxWorktreeScope,
 } from "../mux/types.ts";
+import type { ForegroundProcess } from "../journal/types.ts";
 
 // THE DECORATOR'S OWN TESTS — the join, the two-way capability lift, and the pass-through.
 //
@@ -64,6 +65,9 @@ class StubAdapter implements MuxAdapter {
   /** The unwrapped pane read, when a case gives it one. Absent by default, like a multiplexer that
    *  cannot unwrap at all (tmux) — the decorators must carry it without inventing it. */
   readLogicalText?: (paneId: string, lines: number) => Promise<MuxOutcome<string>>;
+  /** The foreground argv, when a case gives it one. Absent by default, like a multiplexer
+   *  without the call — the decorators must carry it without inventing it. */
+  foregroundProcesses?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -260,6 +264,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     refresh: true,
     readGrid: true,
     readLogicalText: true,
+    foregroundProcesses: true,
     typeText: true,
     sendKeys: true,
     renamePane: true,
@@ -295,6 +300,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     const stub = new StubAdapter();
     stub.logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`;
     stub.readLogicalText = (paneId, lines) => Promise.resolve(muxOk(`${paneId}:${lines}`));
+    stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
     return stub;
   }
 

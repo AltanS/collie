@@ -59,6 +59,7 @@ import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeT
 import { classifyToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
+  ForegroundProcess,
   JournalAdapter,
   TranscriptEntry,
   TranscriptPart,
@@ -70,6 +71,31 @@ const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 export function isMuseSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
+}
+
+/** argv0 spellings the Muse launcher is observed with: `muse`, versioned `muse-bin-*` binaries,
+ *  and either with a Windows `.exe` suffix. Compared case-insensitively after the suffix strip. */
+function isMuseArgv0(argv0: string): boolean {
+  const base = argv0.split(/[/\\]/).pop() ?? "";
+  const stem = base.toLowerCase().replace(/\.exe$/, "");
+  return stem === "muse" || stem.startsWith("muse-bin");
+}
+
+/**
+ * The session a pane's foreground argv names, or null when none does. Only the exact `resume
+ * <uuid>` form counts: a fresh `muse`, `resume --last`, and anything run under a wrapper fall
+ * through to the cwd walk, where the just-started session is the newest and still wins. First
+ * match wins — the foreground group holds one TUI, and a uuid that names no log resolves to
+ * nothing downstream anyway.
+ */
+function sessionFromArgv(processes: readonly ForegroundProcess[] | undefined): string | null {
+  if (processes === undefined) return null;
+  for (const proc of processes) {
+    const argv = proc.argv;
+    if (argv.length < 3 || !isMuseArgv0(argv[0]!) || argv[1] !== "resume") continue;
+    if (isMuseSessionId(argv[2]!)) return argv[2]!.toLowerCase();
+  }
+  return null;
 }
 
 /** `recorded_at` is microseconds since the epoch; the transcript wants an ISO string. */
@@ -667,17 +693,25 @@ export class MuseTranscriptSource implements TranscriptSource {
    * Find the session running in `cwd` without a reported ref.
    *
    * Herdr reports no session for muse panes (see the header), so the history and chat routes ask
-   * here when the pane names none. The rule: the newest session.jsonl whose metadata
-   * workspace_root equals the cwd, read from the file's head (the metadata record sits on line 2).
-   * The walk is newest-first with an early exit, so the common case costs a few directory reads;
-   * the caps below bound the worst case. Subagent logs are excluded by construction — only a
+   * here when the pane names none. Two rules, in order. First, the pane's own foreground argv: a
+   * `muse … resume <uuid>` there names the session exactly, so two tabs in one workspace each
+   * read their own transcript. Otherwise — no argv, a fresh `muse` with no resume, or a
+   * multiplexer that offers none — the newest session.jsonl whose metadata workspace_root
+   * equals the cwd, read from the file's head (the metadata record sits on line 2). The walk is
+   * newest-first with an early exit, so the common case costs a few directory reads; the caps
+   * below bound the worst case. Subagent logs are excluded by construction — only a
    * `<uuid>/session.jsonl` at exactly that depth is ever a candidate.
    *
-   * Two sessions sharing one cwd cross-wire (newest wins); the ref is re-derived per tap so it
-   * self-heals when one ends. That is a documented limitation, not a guess: exactness would need
-   * the agent to report, which is Herdr's integration to add.
+   * The argv match still goes through the same `resolve` and containment as any other ref: a
+   * uuid that names no log on disk resolves to nothing, so a stale or foreign argv entry reads
+   * as no session rather than as someone else's.
    */
-  async discoverSession(cwd: string): Promise<AgentSessionRef | null> {
+  async discoverSession(
+    cwd: string,
+    processes?: readonly ForegroundProcess[],
+  ): Promise<AgentSessionRef | null> {
+    const named = sessionFromArgv(processes);
+    if (named !== null) return { kind: "id", value: named };
     if (cwd.trim() === "") return null;
     for (const root of this.roots) {
       const hit = await this.findByRoot(root, cwd);
@@ -796,6 +830,7 @@ export function museJournal(roots: string | readonly string[]): JournalAdapter {
     source,
     parse: parseMuseTranscript,
     reducer: createMuseReducer,
-    discover: (cwd: string) => source.discoverSession(cwd),
+    discover: (cwd: string, processes?: readonly ForegroundProcess[]) =>
+      source.discoverSession(cwd, processes),
   };
 }

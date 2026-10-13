@@ -27,6 +27,7 @@ import {
   guard,
   type PairingGate,
   historyParams,
+  discoverProcesses,
   journalRefOf,
   isHostAllowed,
   isLoopbackPeer,
@@ -38,6 +39,7 @@ import {
   normalizeTabLabel,
   hasSplitUrl,
   paneReadResponse,
+  paneHistory,
   readPane,
   parsePairRequest,
   parseSnoozeRequest,
@@ -73,7 +75,7 @@ import {
   PAIR_WINDOW_MS,
 } from "./pair-limit.ts";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, truncate, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, truncate, utimes, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -112,6 +114,8 @@ import { DEFAULT_MAX_UPLOAD_BYTES } from "./uploads.ts";
 import { MAX_STT_AUDIO_BYTES } from "./stt/http.ts";
 import { computeEtag } from "./http-cache.ts";
 import { grokJournal } from "./journal/grok.ts";
+import { museJournal } from "./journal/muse.ts";
+import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import {
   MUX_LOGO_PATH,
@@ -4522,6 +4526,31 @@ describe("journalRefOf — which session the history and chat routes read", () =
     expect(await journalRefOf(a, pane({}), [])).toEqual(resumed);
   });
 
+  test("the foreground hint rides through to discover", async () => {
+    const seen: unknown[] = [];
+    const processes = [{ argv: ["muse", "resume", resumed.value] }];
+    const a = adapter({
+      discover: async (cwd, hint) => {
+        seen.push([cwd, hint]);
+        return resumed;
+      },
+    });
+    expect(await journalRefOf(a, pane({}), [], processes)).toEqual(resumed);
+    expect(seen).toEqual([["/home/op/proj", processes]]);
+  });
+
+  test("no hint reads as undefined, never as an empty group", async () => {
+    const seen: unknown[] = [];
+    const a = adapter({
+      discover: async (_cwd, hint) => {
+        seen.push(hint);
+        return null;
+      },
+    });
+    await journalRefOf(a, pane({}), []);
+    expect(seen).toEqual([undefined]);
+  });
+
   describe("another pane in the folder", () => {
     const calls: string[] = [];
     const a = adapter({
@@ -4576,8 +4605,194 @@ describe("journalRefOf — which session the history and chat routes read", () =
   // reported ref and every case above still passes while the resumed session goes unread again.
   test("every journal route reads the ref journalRefOf settles on, never the reported one", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    // history and chat
-    expect([...src.matchAll(/await journalRefOf\(adapter, pane, panes\)/g)]).toHaveLength(2);
+    // history and chat — both resolving the foreground hint first, both passing it through.
+    expect([...src.matchAll(/await journalRefOf\(adapter, pane, panes, processes\)/g)]).toHaveLength(
+      2,
+    );
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
+  });
+});
+
+describe("discoverProcesses — the foreground hint for session discovery", () => {
+  const procs = [{ argv: ["muse", "resume", "x"] }];
+
+  test("a multiplexer without the call yields no hint", async () => {
+    await expect(discoverProcesses({}, "w1:p1")).resolves.toBeUndefined();
+  });
+
+  test("an ok answer passes through", async () => {
+    const mux = { foregroundProcesses: async () => muxOk(procs) };
+    await expect(discoverProcesses(mux, "w1:p1")).resolves.toEqual(procs);
+  });
+
+  test("a refusal reads as no hint, not an error", async () => {
+    const mux = { foregroundProcesses: async () => muxRefused("pane gone") };
+    await expect(discoverProcesses(mux, "w1:p1")).resolves.toBeUndefined();
+  });
+
+  test("a throw reads as no hint, not an error", async () => {
+    const mux = {
+      foregroundProcesses: async (): Promise<never> => {
+        throw new Error("socket died");
+      },
+    };
+    await expect(discoverProcesses(mux, "w1:p1")).resolves.toBeUndefined();
+  });
+});
+
+describe("paneHistory — two muse tabs in one workspace read their own transcripts", () => {
+  const UUID_A = "00000000-0000-4000-8000-00000000a001";
+  const UUID_B = "00000000-0000-4000-8000-00000000b002";
+
+  /** The two muse payload shapes this fixture writes: a chat acceptance and a root record. */
+  type MuseFixturePayload =
+    | {
+        surface: string;
+        semantic_kind: { kind: string };
+        model_messages: { role: string; content: { kind: string; text: string }[] }[];
+      }
+    | { record: { kind: string; workspace_root: string } };
+
+  function logRow(payloadType: string, payload: MuseFixturePayload): string {
+    return JSON.stringify({
+      schema_version: 1,
+      id: "row-1",
+      stream: { kind: "session", id: UUID_A },
+      sequence: 1,
+      recorded_at: 1790904354495081,
+      record_type: "event",
+      durability: "durable",
+      causation_id: null,
+      payload_type: payloadType,
+      payload_schema_version: 1,
+      payload,
+    });
+  }
+
+  function accepted(text: string): string {
+    return logRow("runtime.user_intent.accepted", {
+      surface: "main",
+      semantic_kind: { kind: "chat" },
+      model_messages: [{ role: "user", content: [{ kind: "text", text }] }],
+    });
+  }
+
+  function metadata(root: string): string {
+    return logRow("runtime.session.metadata", {
+      record: { kind: "metadata", workspace_root: root },
+    });
+  }
+
+  async function sessionLog(root: string, uuid: string, lines: string[]): Promise<void> {
+    const dir = join(root, "2026", "10", "02", uuid);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "session.jsonl"), `${lines.join("\n")}\n`);
+  }
+
+  const view = (paneId: string): AgentView => ({
+    paneId,
+    workspaceId: "w1",
+    workspaceLabel: "Main",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "muse",
+    status: "idle",
+    cwd: "/same",
+    focused: false,
+  });
+
+  test("each pane's foreground argv resolves its own session", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      await sessionLog(base, UUID_B, [metadata("/same"), accepted("beta from session B")]);
+      const journals = { muse: museJournal([base]) };
+      const transcripts = new TranscriptStore();
+      const stub: Partial<StateEngine> = {
+        current: () => ({
+          agents: [view("w1:p1"), view("w1:p2")],
+          shellPanes: [],
+          workspaces: [],
+          tabs: [],
+          bridge: "connected",
+        }),
+      };
+      // SAFETY: paneHistory reaches only `current()` (for the pane lookup) — the one member
+      // present above, mirroring the engine stubs elsewhere in this suite.
+      const engine = stub as StateEngine;
+      const argvFor = (uuid: string) => [{ argv: ["muse", "resume", uuid] }];
+      const mux = {
+        foregroundProcesses: async (paneId: string) =>
+          muxOk(argvFor(paneId === "w1:p1" ? UUID_A : UUID_B)),
+      };
+      const read = async (paneId: string) => {
+        const url = new URL(`http://x/api/pane/${paneId}/history`);
+        const res = await paneHistory(
+          cfg(),
+          journals,
+          transcripts,
+          engine,
+          mux,
+          paneId,
+          url,
+          new Request(url),
+        );
+        // SAFETY: the bridge's own JSON, served by the call above.
+        return (await res.json()) as { available: boolean; entries?: unknown[] };
+      };
+      const a = await read("w1:p1");
+      const b = await read("w1:p2");
+      expect(a.available).toBe(true);
+      expect(b.available).toBe(true);
+      expect(JSON.stringify(a.entries)).toContain("alpha from session A");
+      expect(JSON.stringify(a.entries)).not.toContain("beta from session B");
+      expect(JSON.stringify(b.entries)).toContain("beta from session B");
+      expect(JSON.stringify(b.entries)).not.toContain("alpha from session A");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a multiplexer without the call keeps the newest-wins fallback", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      await sessionLog(base, UUID_B, [metadata("/same"), accepted("beta from session B")]);
+      // Pinned mtimes order the newest-first walk; two writes in the same millisecond could tie.
+      const at = (uuid: string) => join(base, "2026", "10", "02", uuid, "session.jsonl");
+      await utimes(at(UUID_A), new Date("2026-10-02T00:00:00Z"), new Date("2026-10-02T00:00:00Z"));
+      await utimes(at(UUID_B), new Date("2026-10-02T01:00:00Z"), new Date("2026-10-02T01:00:00Z"));
+      const journals = { muse: museJournal([base]) };
+      const transcripts = new TranscriptStore();
+      const stub: Partial<StateEngine> = {
+        current: () => ({
+          agents: [view("w1:p1")],
+          shellPanes: [],
+          workspaces: [],
+          tabs: [],
+          bridge: "connected",
+        }),
+      };
+      // SAFETY: paneHistory reaches only `current()` (for the pane lookup) — the one member
+      // present above, mirroring the engine stubs elsewhere in this suite.
+      const engine = stub as StateEngine;
+      const url = new URL("http://x/api/pane/w1:p1/history");
+      const res = await paneHistory(
+        cfg(),
+        journals,
+        transcripts,
+        engine,
+        {},
+        "w1:p1",
+        url,
+        new Request(url),
+      );
+      // SAFETY: the bridge's own JSON, served by the call above.
+      const body = (await res.json()) as { available: boolean; entries?: unknown[] };
+      expect(body.available).toBe(true);
+      expect(JSON.stringify(body.entries)).toContain("beta from session B");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
   });
 });

@@ -132,7 +132,7 @@ import {
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
-import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
+import type { AgentSessionRef, ForegroundProcess, JournalAdapter } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
 import { statFile } from "./journal/files.ts";
 import {
@@ -1721,9 +1721,9 @@ export function startServer(opts: {
 
       if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
       if (action === "history" && req.method === "GET")
-        return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
+        return paneHistory(cfg, journals, transcripts, rt.engine, herdr, paneId, url, req);
       if (action === "chat" && req.method === "GET")
-        return paneChat(cfg, journals, live, rt.engine, herdr.capabilities, paneId, url, req);
+        return paneChat(cfg, journals, live, rt.engine, herdr, paneId, url, req);
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
@@ -3206,16 +3206,41 @@ export function historyParams(url: URL): HistoryParams {
 }
 
 /**
+ * The pane's foreground argv for session discovery. One socket round trip, which the chat route
+ * pays per poll — same cadence discovery itself already runs at. Absent adapter support, a
+ * refusal, or a throw all read as "no hint": discovery falls back to its cwd walk, exactly as
+ * before this call existed.
+ */
+export async function discoverProcesses(
+  mux: Pick<MuxAdapter, "foregroundProcesses">,
+  paneId: string,
+): Promise<readonly ForegroundProcess[] | undefined> {
+  if (mux.foregroundProcesses === undefined) return undefined;
+  try {
+    const result = await mux.foregroundProcesses(paneId);
+    return result.ok ? result.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The session a pane's journal routes read: the reported ref (corrected by an adapter that knows its
  * multiplexer can keep a stale one, while the pane still runs that harness), else a discovered one.
+ *
+ * `processes` is the pane's own foreground argv, for adapters that can read their session out of
+ * it (Muse's `resume <uuid>`): without it, two live sessions in one folder are indistinguishable
+ * and discovery can only guess newest. Always already resolved by the caller — this function
+ * passes it through and never fetches.
  */
 export async function journalRefOf(
   adapter: JournalAdapter,
   pane: AgentView,
   panes: readonly AgentView[],
+  processes?: readonly ForegroundProcess[],
 ): Promise<AgentSessionRef | null> {
   const reported = pane.agentSession;
-  if (reported === undefined) return (await adapter.discover?.(pane.cwd)) ?? null;
+  if (reported === undefined) return (await adapter.discover?.(pane.cwd, processes)) ?? null;
   if (adapter.reconcile === undefined || pane.agent !== adapter.agent) return reported;
   // A fresh pane's row may not be written yet. With another pane running the same harness in the
   // same folder, the one live session found there could be that pane's, so the reported ref stands.
@@ -3234,11 +3259,12 @@ export async function journalRefOf(
  * are a pane id (a Map lookup) and an opaque cursor (an array lookup). Which harness knows how to
  * read the log is the registry's decision, so this route stays agent-agnostic.
  */
-async function paneHistory(
+export async function paneHistory(
   cfg: Config,
   journals: Record<string, JournalAdapter> | null,
   transcripts: TranscriptStore | null,
   engine: StateEngine,
+  mux: Pick<MuxAdapter, "foregroundProcesses">,
   paneId: string,
   url: URL,
   req: Request,
@@ -3264,8 +3290,11 @@ async function paneHistory(
   // never reports one for), the discovered one. Either way an ordinary id ref from here on:
   // discovery widens WHICH panes answer, never how an answer is read. A shell, or a harness whose
   // integration isn't installed, still names nothing discoverable: no-session, an ordinary answer
-  // rather than an error.
-  const ref = await journalRefOf(adapter, pane, panes);
+  // rather than an error. The foreground argv rides along only where an adapter could discover:
+  // other harnesses report, so asking the multiplexer would buy them one round trip of nothing.
+  const processes =
+    adapter.discover === undefined ? undefined : await discoverProcesses(mux, paneId);
+  const ref = await journalRefOf(adapter, pane, panes, processes);
   if (ref === null) return unavailable("no-session");
 
   try {
@@ -3305,7 +3334,7 @@ async function paneChat(
   journals: Record<string, JournalAdapter> | null,
   live: LiveWindows | null,
   engine: StateEngine,
-  mux: Pick<MuxCapabilityDeclaration, "supports" | "unsupportedKeys">,
+  mux: Pick<MuxAdapter, "capabilities" | "foregroundProcesses">,
   paneId: string,
   url: URL,
   req: Request,
@@ -3327,8 +3356,11 @@ async function paneChat(
   if (adapter === undefined) return unavailable("no-session");
   // The reported ref, or the discovered one — the history route's rule, word for word. Discovery
   // runs per poll here, a bounded newest-first walk that costs milliseconds in the common case;
-  // the resolved path below is what the live window holds.
-  const ref = await journalRefOf(adapter, pane, panes);
+  // the resolved path below is what the live window holds. The foreground argv rides along only
+  // where an adapter could discover, as on the history route.
+  const processes =
+    adapter.discover === undefined ? undefined : await discoverProcesses(mux, paneId);
+  const ref = await journalRefOf(adapter, pane, panes, processes);
   if (ref === null) return unavailable("no-session");
 
   const params = chatParams(url);
@@ -3339,7 +3371,7 @@ async function paneChat(
         : await live.older(adapter, ref, params.before, params.limit);
     if (read === null) return unavailable("no-log");
     // Masked before the ETag is hashed, so the tag describes what was actually sent (bridge/redact.ts).
-    const body = chatBodyForMux(cfg.redact ? maskChatBody(read) : read, mux);
+    const body = chatBodyForMux(cfg.redact ? maskChatBody(read) : read, mux.capabilities);
     const data = { paneId, available: true, ...body } satisfies PaneChatResponse;
     const etag = computeEtag(JSON.stringify(data));
     if (notModified(req.headers.get("if-none-match"), etag)) {
