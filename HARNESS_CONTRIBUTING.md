@@ -200,23 +200,27 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    `coreSignature`, and never shape a plan to survive a race: the action layer does that for every
    harness. If the pointer is only a style (a background colour), the signature cannot carry it, so
    the plans do: `promptsEqual` compares them exactly, and the verify read on the phone is the guard.
-   **A grammar whose pointer is only a style MUST also set `styledSignature`**: the canonical styled
-   lines of the same rows as `signature`, from `canonicalStyledLines` in `web/src/lib/styled-region.ts`
+   **A grammar whose pointer or current dialog step is identified only by style MUST set
+   `styledSignature`**: the canonical styled lines of the same rows as `signature`, from
+   `canonicalStyledLines` in `web/src/lib/styled-region.ts`
    (call it on the region's StyledLines, never hand-roll a projection). The bridge's text binding
    cannot see a colour, so the phone sends `styledSignature` as `expected_styled` and the bridge
    compares the colours of the very read it is about to answer
    ([ADR 0080](./.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md) point 7). The
-   conformance suite enforces it: for every declared walk pair whose two `signature` strings are equal,
-   both models must carry `styledSignature` and the two must differ, and the bridge's own verifier must
-   find each value in its raw capture and refuse the other capture of the pair. A grammar that draws its
-   pointer as a glyph sets nothing. An older bridge ignores the field and an older phone sends none,
-   so a mixed pair still works. **A grammar that reads its dialog from part of each row, because
+   conformance suite enforces it for style-only pointer walks: for every declared walk pair whose
+   two `signature` strings are equal, both models must carry different `styledSignature` values,
+   and the bridge verifier must accept each in its raw capture and refuse the other capture. A
+   style-only step, such as the active OMP Ask tab, also needs an identical-text/different-step
+   regression. A glyph pointer needs no styled binding unless another identity cue is style-only.
+   An older bridge ignores the field and an older phone sends none, so a mixed pair still works.
+   **A grammar that reads its dialog from part of each row, because
    something beside it on the same rows moves on its own, sets `bindColumns`** (the columns it read,
    `web/src/lib/column-range.ts`), and `signature` holds exactly those columns of each row. The phone
    sends it as `expected_columns`, and the bridge cuts its read to the same columns before it
    compares. Oh My Pi's side panel is the one case today (`pi/panel.ts`, `pi/index.ts`), and the
    conformance suite checks that the bridge's own verifier finds such a region in its raw capture.
-   An older bridge ignores the field and compares whole rows, which refuses the tap. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
+   An older bridge ignores the field and compares whole rows, which refuses the tap.
+   **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
    any text that follows the pointer, such as a detail row under the list, a description of the
    highlighted row or a "(n/m)" position counter. Text that follows the pointer makes the verify step
    see another dialog after every walk, so a walked tap answers `changed` and never commits (the omp

@@ -149,3 +149,28 @@ dialog with the pointer moved (`omp--v18-8-ask-single-described-moved.txt`, omp 
   pointed option's own row, which description rows push down. Counted in options, the blank would
   miss the pointer, and every walk to an option below a description would read back as a changed
   dialog.
+
+## Addendum — 2026-10-13: current Ask footers and single-select batches
+
+This amends points 1, 7 and 8 for the captured OMP 18.10.3 footer, expanded question body and
+style-only batch identity. Point 9 still excludes multi-select: the review below belongs to a
+batch of single-select questions and prints an explicit Enter-to-submit footer.
+`Alt+H hide` had prevented even short questions from producing a card in Chat;
+`Ctrl+O expand/collapse` names the measured long-text state.
+
+- Single-select batch questions reuse the guarded pointer walk of ADR 0080. Enter advances;
+  the complete final review offers Submit with Enter alone. Review arrows scroll, not select.
+- The active question is style-only. Its tab index is part of the walk identity and the styled
+  region binds each write, including the final review. Identical text on another tab is not
+  the same question.
+- Truncated text offers only Expand and Cancel. Answers become available after the expanded
+  screen is read; no hidden text is reconstructed from the session journal.
+- Missing review answers, preview rails, timeout titles and unknown footer segments decline.
+  Clipped question windows have no capture here and are not claimed as supported; matching a
+  complete-looking box does not establish that arbitrary missing rows can be detected.
+  Multi-select still needs its own guarded toggle recipe.
+
+Evidence and limits: `ASK_NOTES.md`, the `omp--v18-10-ask-*` captures, parser/guard tests and
+`e2e/omp-ask-chat.spec.ts`. A paired mobile-shaped browser completed a real three-question call
+including expansion and final Submit; another completed a typed custom answer. The Chat journal
+card stays read-only. No shared model or Chat component changes are needed.

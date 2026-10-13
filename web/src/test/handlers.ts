@@ -5,19 +5,23 @@ import type {
   CacheRuleWire,
   ChangeCommitDiffResponse,
   ChangeCommitResponse,
+  ChatEntry,
   CreateResponse,
   FileEntry,
   FileReadResponse,
   FilesListResponse,
   CrewStatusResponse,
   MachineAlerts,
+  PaneChatResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
   ServerSummary,
   SessionSummary,
   SnapshotResponse,
   TabView,
+  ToolQuestion,
   TranscriptEntry,
+  TranscriptPart,
   WorkspaceView,
 } from "@/lib/types";
 import { asJsonString, parseJsonObject } from "@/lib/json";
@@ -321,6 +325,64 @@ export const fixtureTranscript: TranscriptEntry[] = [
     ],
   },
 ];
+
+/** Ask histories used by the Chat browser cases alongside real terminal captures. */
+function ompAskChat(summary: string, questions: readonly ToolQuestion[]): PaneChatResponse {
+  const part: TranscriptPart = {
+    kind: "tool",
+    name: "ask",
+    summary,
+    id: "omp-ask-1",
+    call: { kind: "question", name: "ask", summary, questions },
+  };
+  const turn: ChatEntry = {
+    uuid: "omp-ask-turn",
+    ts: "2026-10-13T09:00:00.000Z",
+    role: "assistant",
+    seq: 1_000_000,
+    parts: [part],
+  };
+  return {
+    paneId: fixtureAgents[0]!.paneId,
+    available: true,
+    page: "live",
+    gen: 1,
+    rev: 1,
+    head: turn.seq,
+    oldest: turn.seq,
+    hasOlder: false,
+    upserts: [turn],
+  };
+}
+
+export const fixtureOmpAskSingleChat = ompAskChat("Pick a colour", [
+  {
+    question: "Pick a colour",
+    multiple: false,
+    options: [{ label: "Red" }, { label: "Blue" }, { label: "Other (type your own)" }],
+  },
+]);
+
+export const fixtureOmpAskBatchChat = ompAskChat("Where should the note go?", [
+  {
+    header: "Location",
+    question: "Where should the note go?",
+    multiple: false,
+    options: [{ label: "Above" }, { label: "Below" }, { label: "Separate" }, { label: "Other (type your own)" }],
+  },
+  {
+    header: "Alternative",
+    question: "Which alternative should we keep?",
+    multiple: false,
+    options: [{ label: "Above" }, { label: "Below" }, { label: "Separate" }, { label: "Other (type your own)" }],
+  },
+  {
+    header: "Confirm",
+    question: "Confirm this plan?",
+    multiple: false,
+    options: [{ label: "Above" }, { label: "Below" }, { label: "Separate" }, { label: "Other (type your own)" }],
+  },
+]);
 
 /**
  * A journal image reference in the ONE shape `imageSrc` accepts: a blob path on the owning collie,

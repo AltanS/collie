@@ -1,4 +1,4 @@
-// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12 through v18.4.10), the second registered harness.
+// The omp adapter (oh-my-pi's `omp` CLI), the second registered harness.
 // Its boxed-composer scanner (chrome.ts), rule-composer scanner (rule.ts) and shared lexing primitives
 // (markers.ts) live alongside this file; this module composes them into the HarnessAdapter block and
 // chrome re-surfacing surfaces. The `/resume` picker grammar is resume.ts, the `ask` tool's
@@ -7,7 +7,7 @@
 // modal is modal.ts.
 //
 // This adapter is TIER 1 EVERYWHERE EXCEPT FOUR SCREENS. `ompBuildBlocks` lifts the `/resume` session
-// picker (resume.ts, .adr/0076), the `ask` tool's one-question single-select dialog (ask.ts,
+// picker (resume.ts, .adr/0076), Ask single-select questions and batch review (ask.ts,
 // .adr/0077), the `bash` and `write` tool-approval dialog (approval.ts, .adr/0078) and the compact
 // session-only model picker that `/switch` and Alt+P open (switch.ts, .adr/0079) as `prompt-select`
 // lists, and returns one `raw` block for every other screen. Each lift carries the Tier-2 bar on its
@@ -29,7 +29,7 @@
 // Every other screen stays Tier 1: no `wizard`, `preview-select`, `multi-select` or `menu` is ever
 // emitted, so no tap on any of them sends a key this adapter derived, and a mis-parse there costs
 // cosmetics. The one key they can get is the unread-dialog card's declared Escape (below).
-// `/model`, `/settings`, `/tree`, the Ask tool's multi-select and multi-question dialogs, every
+// `/model`, `/settings`, `/tree`, Ask multi-select toggles and uncaptured layouts, every
 // approval the grammar declines (another tool, a third option row, a countdown, an uncaptured preset),
 // and the model picker's `@` quick-roles and task-model states are the screens that stay raw; a later contribution lifts them one at a time, each clearing the bar
 // itself.
@@ -69,18 +69,9 @@
 //     Ask single-select, tool-approval and model-picker detectors, and each is fail-closed on a whole
 //     layout's worth of evidence (resume.ts, ask.ts, approval.ts, switch.ts). There is no other
 //     detector to mis-fire, so no other screen, captured or not, can be up-levelled.
-//   - TESTED, for the 85 screens in this corpus: 21 composer states, six answer-editor states, the
-//     `/model` and `/settings` pickers (each in the 17.x/18.1 form with a moved-selection twin, and in
-//     the 18.4 form), the `/tree` picker in both versions, the Ask tool's eleven screens, eight
-//     tool-approval screens, the `/resume` picker in both layouts, and the compact model picker in 23
-//     states. harness/omp.test.ts asserts that the `/resume` captures with at least one session, the
-//     six one-question single-select Ask captures, the eight approval captures and the eighteen model
-//     picker captures of its session state lift as a `prompt-select` list, that every other capture
-//     builds only `raw` blocks, and that `composerReady === false` on every modal that is not the
-//     answer editor (which is an input, so it answers `true`). Each screen that stays raw is
-//     declined because it is out of scope above, or because its keys are a recipe no shared model
-//     carries (the Ask multi-select toggles with Space after an arrow walk, .adr/0077). The
-//     fail-closed contract says a detector returns null on anything it does not confidently recognise.
+//   - TESTED: harness/omp.test.ts explicitly classifies every captured screen, checks the lifted
+//     models and verifies composer gating. ASK_NOTES.md records the current single-select,
+//     batch, review and expansion captures and the real terminal/browser probes.
 //
 // THE WAY OUT OF A MODAL WE DID NOT LIFT. omp now declares `cancelKey: "Escape"` and
 // `modalOnScreen: ompModalOnScreen` (.adr/0053, .adr/0076), so an omp modal that stays raw gets the
@@ -142,7 +133,7 @@ import { detectSwitchPickerRegion } from "./switch";
 
 /**
  * omp's block pipeline: the `/resume` session picker (resume.ts, .adr/0076), the `ask` tool's
- * one-question single-select dialog (ask.ts, .adr/0077), the tool-approval dialog (approval.ts,
+ * single-select questions and batch review (ask.ts, .adr/0077), the tool-approval dialog (approval.ts,
  * .adr/0078) or the compact model picker (switch.ts, .adr/0079) as a `prompt-select` list when one is
  * on screen at the tail, otherwise one raw block with the composer chrome stripped off the tail. Those
  * four arms are the ONLY dialog arms, and each is fail-closed on a whole layout's worth of evidence, so

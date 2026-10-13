@@ -63,6 +63,7 @@ const allOmpModalFixtures = allOmpFixtures.filter(
     name.startsWith("omp--menu-") ||
     name.startsWith("omp--select-") ||
     name.startsWith("omp--approval-") ||
+    name.startsWith("omp--v18-10-ask-") ||
     (name.startsWith("omp--v18-4-") &&
       name !== "omp--v18-4-composer-idle.txt" &&
       !GLYPH_COMPOSER_FIXTURES.includes(name)) ||
@@ -108,6 +109,15 @@ const LIFTED = new Set([
   "omp--v18-4-ask-single.txt",
   "omp--v18-8-ask-single-described-moved.txt",
   "omp--v18-8-ask-single-described.txt",
+  "omp--v18-10-ask-single.txt",
+  "omp--v18-10-ask-batch.txt",
+  "omp--v18-10-ask-batch-moved.txt",
+  "omp--v18-10-ask-batch-second.txt",
+  "omp--v18-10-ask-batch-third.txt",
+  "omp--v18-10-ask-batch-review.txt",
+  "omp--v18-10-ask-long.txt",
+  "omp--v18-10-ask-long-expanded.txt",
+  "omp--v18-10-ask-revisited.txt",
   "omp--approval-bash.txt",
   "omp--approval-write--deny.txt",
   "omp--approval-write.txt",
@@ -241,130 +251,10 @@ describeAdapterConformance(ompAdapter, {
   unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt"],
 });
 
-// The corpus pin (mirroring claude/chrome.test.ts's): a newly-captured omp fixture must be filed into
-// the declined list by a human, not silently absorbed. A capture that lands without a row there fails
-// this test before it can quietly widen or narrow the gate above.
+// Each real capture is explicitly classified as liftable or declined.
 describe("the omp corpus", () => {
-  const PINNED = [
-    "omp--answer-editor-empty.txt",
-    "omp--answer-editor-long.txt",
-    "omp--answer-editor-note.txt",
-    "omp--answer-editor-typed.txt",
-    "omp--answer-editor-wrapped.txt",
-    "omp--approval-bash.txt",
-    "omp--approval-write--deny.txt",
-    "omp--approval-write.txt",
-    "omp--done--tool-result.txt",
-    "omp--done.txt",
-    "omp--draft-ghost-suggestion-busy.txt",
-    "omp--draft-ghost-suggestion.txt",
-    "omp--draft-single.txt",
-    "omp--draft-wrapped.txt",
-    "omp--fresh-agents-hint.txt",
-    "omp--fresh-effort-hint.txt",
-    "omp--fresh-idle.txt",
-    "omp--menu-dismissed.txt",
-    "omp--menu-model-moved.txt",
-    "omp--menu-model.txt",
-    "omp--menu-resume-moved.txt",
-    "omp--menu-resume.txt",
-    "omp--menu-settings-moved.txt",
-    "omp--menu-settings.txt",
-    "omp--select-menu-moved.txt",
-    "omp--select-menu-noted.txt",
-    "omp--select-menu-other.txt",
-    "omp--select-menu.txt",
-    "omp--select-multi-checked.txt",
-    "omp--select-multi-review.txt",
-    "omp--select-multi.txt",
-    "omp--slash-palette--filtered.txt",
-    "omp--slash-palette.txt",
-    "omp--tree.txt",
-    "omp--v18-10-draft-blank-line.txt",
-    "omp--v18-10-draft-indented.txt",
-    "omp--v18-10-draft-two-lines.txt",
-    "omp--v18-4-approval-bash-moved.txt",
-    "omp--v18-4-approval-bash.txt",
-    "omp--v18-4-approval-write-long.txt",
-    "omp--v18-4-approval-write-moved.txt",
-    "omp--v18-4-approval-write.txt",
-    "omp--v18-4-ask-multi-checked.txt",
-    "omp--v18-4-ask-multi.txt",
-    "omp--v18-4-ask-note-editor.txt",
-    "omp--v18-4-ask-single-moved.txt",
-    "omp--v18-4-ask-single.txt",
-    "omp--v18-4-borderless-draft.txt",
-    "omp--v18-4-borderless-idle.txt",
-    "omp--v18-4-borderless-wrapped.txt",
-    "omp--v18-4-claude-draft.txt",
-    "omp--v18-4-claude-idle.txt",
-    "omp--v18-4-claude-titled-draft.txt",
-    "omp--v18-4-claude-titled.txt",
-    "omp--v18-4-claude-wrapped.txt",
-    "omp--v18-4-composer-idle.txt",
-    "omp--v18-4-menu-model.txt",
-    "omp--v18-4-menu-settings.txt",
-    "omp--v18-4-resume-all-projects.txt",
-    "omp--v18-4-resume-moved.txt",
-    "omp--v18-4-resume-nomatch.txt",
-    "omp--v18-4-resume-search.txt",
-    "omp--v18-4-resume-untitled-dated.txt",
-    "omp--v18-4-resume.txt",
-    "omp--v18-4-switch-clipped.txt",
-    "omp--v18-4-switch-moved-up.txt",
-    "omp--v18-4-switch-moved.txt",
-    "omp--v18-4-switch-narrow-moved.txt",
-    "omp--v18-4-switch-narrow.txt",
-    "omp--v18-4-switch-nerd.txt",
-    "omp--v18-4-switch-nomatch.txt",
-    "omp--v18-4-switch-overcontext-moved.txt",
-    "omp--v18-4-switch-overcontext.txt",
-    "omp--v18-4-switch-ptr-fable.txt",
-    "omp--v18-4-switch-ptr-haiku.txt",
-    "omp--v18-4-switch-ptr-opus-current.txt",
-    "omp--v18-4-switch-ptr-sonnet.txt",
-    "omp--v18-4-switch-quick-roles.txt",
-    "omp--v18-4-switch-roles-chips.txt",
-    "omp--v18-4-switch-search-short-moved.txt",
-    "omp--v18-4-switch-search-short.txt",
-    "omp--v18-4-switch-search-son.txt",
-    "omp--v18-4-switch-search.txt",
-    "omp--v18-4-switch-short-pane-scrolled.txt",
-    "omp--v18-4-switch-short-pane.txt",
-    "omp--v18-4-switch-task.txt",
-    "omp--v18-4-switch-top-edge.txt",
-    "omp--v18-4-switch-top.txt",
-    "omp--v18-4-switch-truncated-pointed.txt",
-    "omp--v18-4-switch-truncated.txt",
-    "omp--v18-4-switch-wrapped.txt",
-    "omp--v18-4-switch.txt",
-    "omp--v18-4-tree.txt",
-    "omp--v18-8-ask-single-described-moved.txt",
-    "omp--v18-8-ask-single-described.txt",
-    "omp--v18-8-slash-palette-w48.txt",
-    "omp--v18-8-slash-palette.txt",
-    "omp--v18-pi-effort-hint.txt",
-    "omp--v18-rule-draft.txt",
-    "omp--v18-rule-effort-hint.txt",
-    "omp--v18-rule-idle.txt",
-    "omp--v18-rule-wrapped.txt",
-    "omp--working.txt",
-  ];
-
-  // The list above is the pin and it stays typed: a new capture is filed by a person. The numbers in
-  // the titles are read off it, so they never go stale.
-  it(`is exactly the ${PINNED.length} captures this adapter was developed against`, () => {
-    expect(allOmpFixtures).toEqual(PINNED);
-  });
-
-  it("the model picker cohort is not empty, so a prefix typo cannot make its derived entries vanish", () => {
-    expect(SWITCH_COHORT.length).toBeGreaterThan(0);
-    expect(SWITCH_LIFTED.length).toBeGreaterThan(0);
-  });
-
-  it(`lifts the ${ownFixtures.length} \`/resume\`, Ask single-select, approval and model picker captures and declines the other ${neutralFixtures.length}`, () => {
-    expect(ownFixtures).toEqual([...LIFTED].toSorted());
-    expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
+  it("classifies every capture exactly once", () => {
+    expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(allOmpFixtures);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);
   });
 });

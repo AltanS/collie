@@ -182,9 +182,6 @@ function modelsIn<K extends DialogKind>(blocks: Block[], kind: K): DialogModels[
   });
 }
 
-/** Append a marker to line `i`, keeping every existing segment (and its styling — the wizard's
- *  current chip is marked ONLY by a background colour, so a re-synthesised plain line would change
- *  more than the text). */
 /** Change one letter of line `i` that lies inside `columns`, keeping its width and every style. A model
  *  read from a column range (`bindColumns`) ignores what lies outside it, so the marker
  *  {@link perturbLine} appends at the row's end would land beside the dialog, not in it. Null when
@@ -207,9 +204,23 @@ function perturbLineInColumns(lines: StyledLine[], i: number, columns: ColumnRan
   return null;
 }
 
-function perturbLine(lines: StyledLine[], i: number): StyledLine[] {
+/** Change visible text without discarding style-only dialog identity. The in-text probe keeps
+ * fixed-width borders intact when appending outside the box would invalidate the grammar. */
+function perturbLine(lines: StyledLine[], i: number, withinText: boolean): StyledLine[] {
+  const segments = [...lines[i]!.segments];
+  if (withinText) {
+    const at = segments.findLastIndex((segment) => /[\p{L}\p{N}]/u.test(segment.text));
+    if (at < 0) return lines;
+    const segment = segments[at]!;
+    segments[at] = {
+      ...segment,
+      text: segment.text.replace(/[\p{L}\p{N}]/u, (char) => char === "z" ? "x" : "z"),
+    };
+  } else {
+    segments.push({ text: " zqx", style: {}, muted: false });
+  }
   const copy = [...lines];
-  copy[i] = { segments: [...lines[i]!.segments, { text: " zqx", style: {}, muted: false }] };
+  copy[i] = { segments };
   return copy;
 }
 
@@ -257,11 +268,14 @@ function perturbRegion<K extends DialogKind>(
   for (const i of candidates) {
     if (i === footer) continue;
     if (lineIsBlank(lines[i]!)) continue;
-    const perturbed = columns === undefined ? perturbLine(lines, i) : perturbLineInColumns(lines, i, columns);
-    if (perturbed === null) continue;
-    const after = modelsIn(adapter.buildBlocks(perturbed), kind);
-    if (after.length !== count) continue; // this row is load-bearing for detection — try another
-    if (signature(after.at(-1)!) !== before) return after.at(-1)!;
+    for (const withinText of [false, true]) {
+      const perturbed =
+        columns === undefined ? perturbLine(lines, i, withinText) : perturbLineInColumns(lines, i, columns);
+      if (perturbed === null) continue;
+      const after = modelsIn(adapter.buildBlocks(perturbed), kind);
+      if (after.length !== count) continue; // this row is load-bearing for detection — try another
+      if (signature(after.at(-1)!) !== before) return after.at(-1)!;
+    }
   }
   return null;
 }

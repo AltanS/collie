@@ -5,9 +5,9 @@ screen the adapter lifts ([ADR 0077](../../../../../.adr/0077-the-omp-ask-single
 Grammar: `ask.ts`. Corpus: `omp--select-menu.txt` and `omp--select-menu-moved.txt` (omp 17.2.12,
 2026-08), `omp--select-menu-other.txt` and `omp--select-menu-noted.txt` (omp 18.4.4, Nerd Font preset,
 2026-10-01), `omp--v18-4-ask-*.txt` (omp 18.4.10, 2026-10-02), `omp--v18-8-ask-single-described.txt`
-(omp 18.8.0, 2026-10-07) and `omp--v18-8-ask-single-described-moved.txt` (omp 18.8.7, 2026-10-10).
-Behaviour below is read from pi-tui's `overlays/ask-dialog.ts` in the published omp 18.4.10 packages,
-the description rows from the same file in the omp 18.8.7 build, and checked against those captures.
+(omp 18.8.0, 2026-10-07), `omp--v18-8-ask-single-described-moved.txt` (omp 18.8.7, 2026-10-10),
+and `omp--v18-10-ask-*.txt` (omp 18.10.3, 2026-10-13). Key semantics come from the published
+Ask dialog implementation in those versions and the live probes below.
 
 ## What the screen prints
 
@@ -92,20 +92,23 @@ Its source is not on this host.
 
 1. The bottom border is the last non-blank row, the footer is the row above it, and a divider sits
    above the footer.
-2. The footer is exactly the four segments of ONE preset in the table above, nothing more or less.
-   This one check pins three facts: a single-select question (multi-select prints `toggle`), a
-   one-question dialog (several questions add a `⇥/←/→` tab segment, and there `Enter` advances to
-   the next question), and arrows as the move keys (omp prints the user's own binding).
+2. The footer matches one captured preset. Current OMP may append `Alt+H hide`, then
+   `Ctrl+O expand` or `Ctrl+O collapse`. A unicode batch adds exactly `⇥/←/→ question` and
+   requires its styled tab strip. Unknown controls and scroll indicators still decline.
+   `expand` offers only Expand/Cancel; answer buttons require the untruncated screen.
 3. The body is option rows, each followed by its description rows if it has any, then blank rows.
-   Every option row carries that preset's pointer or a space, then that preset's unselected radio,
-   then a label. A description row is exactly six columns in and sits under an option or under that
+   Every option row carries that preset's pointer or a space, then its radio, then a label.
+   A batch may show one saved `◉` answer when revisited; a single question may not.
+   A description row is exactly six columns in and sits under an option or under that
    option's previous description row, never under `Other`, never behind a `│`, and never opening
    with the preset's radio or pointer. Its rows join, one space apart, into the option's description
    on the card.
 4. The last option is exactly `Other (type your own)`, no other row is, and at least one option sits
    above it.
 5. Exactly one pointer.
-6. A divider, one to four question rows, then the title `╭─ Ask ─╮` above the body.
+6. A divider, question rows and the title `╭─ Ask ─╮` above the body. More than four question
+   rows require the measured `Ctrl+O collapse` state. A batch has exactly one styled active tab;
+   its index binds the walk identity and its styled region binds each write.
 7. A signature no longer than the bridge accepts as a bound region (32000 characters here).
 
 Anything missing returns null, and the screen stays raw with the unread-dialog card's Escape over it.
@@ -116,7 +119,7 @@ Anything missing returns null, and the screen stays raw with the unread-dialog c
   a footer action, so the card does not offer it; the Keys drawer sends `n`. A saved note shows as
   the row's description, `✎ note`, or as `✎ note · <description>` when omp prints one under the row.
 - **The multi-select dialog** (see below).
-- **A multi-question call.** Its footer adds the tab segment, so the grammar declines every step of it.
+- **Multi-select toggles, tab navigation, previews and clipped lists.** No new key recipe is inferred.
 
 ## The multi-select dialog stays raw
 
@@ -159,12 +162,43 @@ mirror and the Escape card. ADR 0077 says what a later slice needs.
   Escape card, its mirror wrapping or panning with Wrap lines before and after Put away; there
   `Space` toggled the pointed row and `Enter` submitted the ticked rows alone, as in 18.4.10. Not
   probed: a tap on the pointed row, on `Other` or on Cancel of a described card.
-- **Shapes read from source, none captured, all declined:** a description longer than two rows
-  (`<key> expand` in the footer), a label that wraps (rows four columns in), an option with a preview,
-  an answer typed earlier under `Other`, a list taller than the body (scrollbar cells and a `↑`/`↓`
-  indicator in the footer), a question past four rows (`ctrl+o expand` in the footer), the
-  `ask.timeout` countdown (`Ask (30s)` in the title), and the `ascii` symbol preset. Each needs its
-  own capture before the grammar may read it.
+- **Still declined without a complete captured grammar:** wrapped option labels, previews, a saved
+  custom answer displayed under `Other`, scrolling option lists/reviews, note rows in review,
+  `ask.timeout` countdown titles and the `ascii` preset. Long questions and descriptions are now
+  captured in their collapsed and expanded states, as described below.
 - **A recommended option** carries ` (Recommended)` after its label and starts with the pointer on
   it. Both are read off the screen as they are, so nothing special is needed
   (`omp--v18-8-ask-single-described.txt`: `Staging (Recommended)`, pointed when the dialog opens).
+
+## OMP 18.10.3: current footer, batches and long questions (2026-10-13)
+
+The prior exact footer rejected even a short one-question Ask because OMP added `Alt+H hide`.
+Removing only that hint made the same real capture lift. A three-question call still declined:
+its tabbed layout was outside the earlier grammar. In Chat this left the journal card saying
+`Waiting for an answer` with no interactive dock; the journal itself is intentionally read-only.
+
+The current question uses the same guarded pointer walk. Enter saves the answer and advances;
+the final review is a separate card. Its footer is `⏎ submit · ↑/↓ scroll · ⎋ cancel · Alt+H hide`.
+Up/Down scroll here, so Submit sends only Enter. Recognition requires each numbered answer in tab
+order, the active Submit tab and the static `❯ Submit` row. A warning, missing answer or clipping
+declines instead of submitting unseen answers. The numbers are never digit shortcuts.
+
+Only background/bold styling identifies the active tab. Plain text alone cannot distinguish
+identically worded steps: the tab index is part of `coreSignature`, and `expected_styled` binds
+the full region at entry and commit. Pointer movement alone keeps the core identity.
+
+OMP truncates questions past four rows and descriptions past two rows, advertising `Ctrl+O expand`.
+The card first offers Expand, sending that key alone. Once `Ctrl+O collapse` proves the expanded
+state, the card shows the complete captured text and the answer options.
+
+**Live probe:** isolated bridge and real Herdr/OMP pane, paired Chromium mobile viewport. A long
+three-question Ask expanded, then taps chose Below / Change / Confirm; the review showed those
+answers, Submit closed it, and the agent echoed all three. A separate run submitted a typed
+custom answer through the existing Other editor, then Keep / Confirm and the final review;
+the agent echoed the custom text and both choices. No component or shared action model changed.
+
+`e2e/omp-ask-chat.spec.ts` replays the real captures through Chat: the unmodified parser fails
+to draw single and batch controls; the corrected parser completes their guarded key sequences.
+Unit cases also reject a style-only successor step, ambiguous tabs and incomplete reviews.
+Not live-probed: a desk/phone race, non-default symbol presets for batches, multi-select toggles,
+scrolling lists or timeout dialogs. These are not claimed as supported by this change.

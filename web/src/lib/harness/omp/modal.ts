@@ -10,9 +10,8 @@
 // fifth condition ADR 0053's addendum added for exactly that: the adapter also has to say it can SEE a
 // modal, and it says so by reading the one thing every omp modal prints, the key that closes it.
 //
-// What counts. A footer row, near the buffer tail, that is a LIST of key hints whose LAST segment
-// (or the one before the model picker's task-mode toggle, below) names its own way out in one of
-// these spellings:
+// What counts. A footer row, near the buffer tail, that is a LIST of key hints with a way out
+// before only the known trailing controls below, in one of these spellings:
 //
 //   ⎋ cancel   ⎋ close   ⎋ to close          omp 18.4 and later (glyph keycaps)
 //   Esc cancel   Esc close   Esc to close    omp 17.x to 18.1 (text keycaps; the approval dialog's
@@ -25,13 +24,10 @@
 // modals, and a grammar that accepted it would be one step from reading another harness's screen.
 // The match is case-insensitive only because the approval dialog spells the same word `esc`.
 //
-// ONE segment may follow the way out, and only one shape of it: the compact model picker (`/switch`,
-// Alt+P) ends its footer `⎋ close · Alt+P task model`, and `Alt+P session model` in its task mode
-// (`omp--v18-4-switch*.txt`; pi-tui `overlays/model-picker.ts` appends the task-mode key after the way
-// out). Without this the picker's declined states (task mode, a search with no match, the Nerd Font
-// preset) had no card, and the Keys drawer was the only way out. The trailing segment is a key token and
-// the words `task model` or `session model`, nothing else, so a hint list that merely mentions Esc
-// mid-list still reads false.
+// Known trailing controls: the model picker's `Alt+P task model` / `Alt+P session model`, or Ask
+// `Alt+H hide`, followed optionally by `Ctrl+O expand` / `Ctrl+O collapse` (OMP 18.10 captures).
+// These exact suffixes do not replace Escape: an arbitrary hint list mentioning Esc mid-list
+// still reads false.
 //
 // Tail-anchored like every other grammar. The footer must be one of the last four non-blank rows, and
 // every non-blank row below it must be box frame (a blank `│ │` row, the `╰──╯` bottom border, a bare
@@ -58,16 +54,13 @@ import { isBlank, lineText, rstrip } from "./markers";
  *  blank box row, the bottom border and its usage strip, so the footer is the fourth. */
 const FOOTER_WINDOW = 4;
 
-/** The one segment a footer may END on. The spellings in the header; anything else is not a way out
- *  omp printed. */
+/** The closing segment, before only the known suffixes below. */
 const ESCAPE_SEGMENT = /^(?:⎋|esc|\u{F12B7})(?: (cancel|close)| to (close))$/iu;
 
-/** The one segment allowed AFTER the way out: the model picker's task-mode toggle, a key token and
- *  `task model` or `session model` (see the header). Case-sensitive: omp prints it one way. */
+/** The model picker's trailing task-mode toggle. Case-sensitive: OMP prints it one way. */
 const TASK_MODE_SEGMENT = /^[A-Za-z0-9+]+ (?:task|session) model$/;
 
-/** A footer is short: the longest real one, the 17.x `/settings` footer, is 97 characters. The bound
- *  keeps a long transcript line from being read as a hint list. */
+/** Bound hint lists so long transcript lines cannot be read as modal controls. */
 const MAX_FOOTER_CHARS = 160;
 const MAX_SEGMENT_CHARS = 40;
 const MIN_SEGMENTS = 2;
@@ -83,13 +76,13 @@ const FRAME_ROW = /^[\s│├┤┬┴┼╭╮╰╯─┌┐└┘]+$/;
 export interface OmpFooter {
   /** Every segment of the hint list, in screen order, trimmed (`⏎ select`, `⎋ cancel`). */
   segments: string[];
-  /** The verb the last segment closes with, lower case: `cancel` or `close`. */
+  /** The closing hint's verb, lower case: `cancel` or `close`. */
   escapeVerb: string;
 }
 
 /**
- * Read `text` as omp's key-hint list: two to eight short segments, the last one a way out (or the
- * model picker's task-mode toggle right after it, see the header). `text` is the list ALONE, with any
+ * Read two to eight short key hints ending in a way out plus only the known suffixes above.
+ * `text` is the list ALONE, with any
  * box side or `[ ]` bracket already taken off by the caller; an omp footer wears a different frame on
  * every screen, so the frame is the caller's business and the list is this function's. Null for
  * anything else, including a single `Esc cancel` with nothing beside it.
@@ -100,10 +93,13 @@ export function readOmpHintList(text: string): OmpFooter | null {
   const segments = trimmed.split(SEGMENT_SPLIT).map((s) => s.trim());
   if (segments.length < MIN_SEGMENTS || segments.length > MAX_SEGMENTS) return null;
   if (segments.some((s) => s.length === 0 || s.length > MAX_SEGMENT_CHARS)) return null;
-  const trailing = TASK_MODE_SEGMENT.test(segments[segments.length - 1]!) ? 1 : 0;
-  // The way out still needs a hint beside it, so a task-mode toggle needs two segments before it.
-  if (segments.length - trailing < MIN_SEGMENTS) return null;
-  const escape = ESCAPE_SEGMENT.exec(segments[segments.length - 1 - trailing]!);
+  let escapeAt = segments.length - 1;
+  if (/^Ctrl\+O (?:expand|collapse)$/.test(segments[escapeAt]!)) escapeAt--;
+  const last = segments[escapeAt]!;
+  if (TASK_MODE_SEGMENT.test(last) || last === "Alt+H hide") escapeAt--;
+  // The close/cancel key still needs another hint before it; hide/expand are not escape keys.
+  if (escapeAt < MIN_SEGMENTS - 1) return null;
+  const escape = ESCAPE_SEGMENT.exec(segments[escapeAt]!);
   if (escape === null) return null;
   return { segments, escapeVerb: (escape[1] ?? escape[2])!.toLowerCase() };
 }

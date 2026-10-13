@@ -1687,6 +1687,29 @@ as the one the canary ran. No username, hostname or session id is in any file.
 | `omp--v18-10-draft-blank-line.txt` | `Reply with only OK.`, a blank line, then `A paragraph after a blank line.`: a blank row, then a gutter row | `idle` |
 | `omp--v18-10-draft-indented.txt` | `Reply with only OK.` and two lines indented four more spaces past the gutter | `idle` |
 
+## OMP 18.10 Ask controls (captured 2026-10-13, oh-my-pi `omp` v18.10.3, throwaway Herdr pane)
+
+Real ANSI captures from neutral synthetic Ask calls, read with `herdr pane read <pane> --source
+recent --format ansi --raw`. Only the dialog from `╭─ Ask` through its bottom border is retained;
+the surrounding transcript and host/session metadata were removed. CRLF was normalised to LF,
+with a final newline; SGR runs and row padding are retained. No work conversation is included.
+The active batch tab is distinguished by its background/bold styling, not its text.
+
+| Fixture | Captured state | Columns |
+|---|---|---|
+| `omp--v18-10-ask-single.txt` | Pick a colour; Red/Blue/Other; new `Alt+H hide` footer | 119 |
+| `omp--v18-10-ask-batch.txt` | Location/Alternative/Confirm/Submit tabs; first question, Above pointed | 119 |
+| `omp--v18-10-ask-batch-moved.txt` | Same first question after Down, Below pointed | 119 |
+| `omp--v18-10-ask-batch-second.txt` | Enter saved Below and advanced to Alternative | 119 |
+| `omp--v18-10-ask-batch-third.txt` | Enter saved Above and advanced to Confirm | 217 |
+| `omp--v18-10-ask-batch-review.txt` | Below/Above/Separate recorded; Submit active; arrows scroll | 217 |
+| `omp--v18-10-ask-long.txt` | Question truncated at four rows, description at two; `Ctrl+O expand` | 217 |
+| `omp--v18-10-ask-long-expanded.txt` | After Ctrl+O, full question and description; `Ctrl+O collapse` | 217 |
+| `omp--v18-10-ask-revisited.txt` | Answered Above then navigated back; saved `◉` and live pointer | 217 |
+
+The desktop resized between the second and third batch steps; each capture keeps its actual width.
+Choreography, live browser evidence and unsupported shapes: `lib/harness/omp/ASK_NOTES.md`.
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

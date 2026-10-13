@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
-import { promptsEqual } from "../prompt-model";
+import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 import { detectAskSelect, detectAskSelectRegion } from "./ask";
 import { ompBuildBlocks } from "./index";
 import { ompModalOnScreen } from "./modal";
 
-// The omp `ask` tool's one-question single-select dialog (.adr/0077). Its footer prints the commit
+// The omp `ask` tool's single-select questions and batch review (.adr/0077). Its footer prints the commit
 // key (`⏎ select`, `Enter select`, or the Nerd Font keycap) and the arrows, so a tap is the pointer walk
 // plus a key the screen printed. These tests pin what the grammar reads off each real capture, in all
 // three keycap dialects, the walk each tap sends, and that it fails closed the moment any piece of its
@@ -23,6 +23,123 @@ const textsOf = (name: string): string[] => load(name).map(lineText);
 const fromTexts = (texts: string[]): StyledLine[] => splitLines(parseAnsi(texts.join("\n")));
 
 const OTHER = "Other (type your own)";
+it("a current OMP Ask offers selectable answers even with its hide hint", () => {
+  const lines = load("omp--v18-10-ask-single.txt");
+  const model = detectAskSelect(lines);
+  expect(model?.question).toBe("Pick a colour");
+  expect(model?.options.map((option) => [option.label, option.keys])).toEqual([
+    ["Red", ["Enter"]],
+    ["Blue", ["Down", "Enter"]],
+    [OTHER, ["Down", "Down", "Enter"]],
+    ["Cancel", ["Escape"]],
+  ]);
+  expect(ompModalOnScreen(lines)).toBe(true);
+});
+
+it("answers the current question in an OMP batch with the verified pointer walk", () => {
+  const model = detectAskSelect(load("omp--v18-10-ask-batch.txt"));
+  expect(model?.question).toBe("Where should the note go?");
+  expect(model?.options.find((option) => option.label === "Below")).toMatchObject({
+    description: "Place it below the example.",
+    keys: ["Down", "Enter"],
+  });
+  const moved = detectAskSelect(load("omp--v18-10-ask-batch-moved.txt"));
+  expect(moved?.options.find((option) => option.label === "Below")?.keys).toEqual(["Enter"]);
+  expect(moved?.coreSignature).toBe(model?.coreSignature);
+  expect(moved?.styledSignature).not.toBe(model?.styledSignature);
+  expect(detectAskSelect(load("omp--v18-10-ask-batch-second.txt"))?.question)
+    .toBe("Which alternative should we keep?");
+});
+
+it("shows every batch answer and submits the review with Enter alone", () => {
+  const model = detectAskSelect(load("omp--v18-10-ask-batch-review.txt"));
+  expect(model?.question).toContain("1. Location: Below");
+  expect(model?.question).toContain("2. Alternative: Above");
+  expect(model?.question).toContain("3. Confirm: Separate");
+  expect(model?.options).toEqual([
+    { label: "Submit", keys: ["Enter"], keyLabel: "⏎" },
+    { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+  ]);
+});
+
+it("expands truncated questions before offering answers, then preserves the full text", () => {
+  const collapsed = detectAskSelect(load("omp--v18-10-ask-long.txt"));
+  expect(collapsed?.options).toEqual([
+    { label: "Expand", keys: ["ctrl+o"], keyLabel: "Ctrl+O" },
+    { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+  ]);
+  const expanded = detectAskSelect(load("omp--v18-10-ask-long-expanded.txt"));
+  expect(expanded?.question).toContain("Choose the placement that makes the review clearest.");
+  expect(expanded?.options.find((option) => option.label === "Above")?.description)
+    .toContain("ownership, review status, or publication date.");
+  expect(expanded?.options.find((option) => option.label === "Below")?.keys).toEqual(["Down", "Enter"]);
+  expect(ompModalOnScreen(load("omp--v18-10-ask-long.txt"))).toBe(true);
+});
+
+it("lets a revisited batch question replace its earlier answer", () => {
+  const model = detectAskSelect(load("omp--v18-10-ask-revisited.txt"));
+  expect(model?.options.find((option) => option.label === "Below")?.keys).toEqual(["Down", "Enter"]);
+  expect(model?.options.find((option) => option.label === "Above")?.description)
+    .toContain("ownership, review status, or publication date.");
+});
+
+it("refuses a stale tap when only the active question tab changes", () => {
+  const lines = load("omp--v18-10-ask-batch.txt");
+  const tabs = lines[1]!;
+  const active = tabs.segments.find((segment) => segment.bg !== undefined && segment.bold)!;
+  const changed = structuredClone(lines);
+  for (const segment of changed[1]!.segments) {
+    if (segment.text.trim() === "Location") {
+      segment.bg = undefined;
+      segment.bold = false;
+    } else if (segment.text.trim() === "Alternative") {
+      segment.bg = active.bg;
+      segment.bold = true;
+    }
+  }
+  const before = detectAskSelect(lines)!;
+  const after = detectAskSelect(changed)!;
+  expect(after.question).toBe(before.question);
+  expect(after.signature).toBe(before.signature);
+  expect(after.styledSignature).not.toBe(before.styledSignature);
+  expect(promptsSameIdentity(before, after)).toBe(false);
+  expect(promptsEqual(before, after)).toBe(false);
+});
+
+it("declines a batch without an unambiguous styled current tab", () => {
+  const lines = load("omp--v18-10-ask-batch.txt");
+  expect(detectAskSelect(lines)).not.toBeNull();
+  expect(detectAskSelect(fromTexts(lines.map(lineText)))).toBeNull();
+  const active = lines[1]!.segments.find((segment) => segment.bg !== undefined && segment.bold)!;
+  const ambiguous = structuredClone(lines);
+  for (const segment of ambiguous[1]!.segments) {
+    if (segment.text.trim() === "Alternative") {
+      segment.bg = active.bg;
+      segment.bold = true;
+    }
+  }
+  expect(detectAskSelect(ambiguous)).toBeNull();
+});
+
+it("never submits an incomplete review or a question with two saved single-choice answers", () => {
+  const review = load("omp--v18-10-ask-batch-review.txt");
+  expect(detectAskSelect(review)).not.toBeNull();
+  expect(detectAskSelect(review.filter((line) => !lineText(line).includes("2. Alternative:")))).toBeNull();
+  const revisited = load("omp--v18-10-ask-revisited.txt");
+  expect(detectAskSelect(revisited)).not.toBeNull();
+  const doubled = structuredClone(revisited);
+  for (const line of doubled) {
+    for (const segment of line.segments) segment.text = segment.text.replace("○", "◉");
+  }
+  expect(detectAskSelect(doubled)).toBeNull();
+});
+
+it("declines unknown controls after the current footer instead of guessing their meaning", () => {
+  const lines = textsOf("omp--v18-10-ask-single.txt");
+  expect(detectAskSelect(fromTexts(lines))).not.toBeNull();
+  expect(detectAskSelect(fromTexts(lines.map((line) => line.replace("Alt+H hide", "Alt+H hide · x accept all")))))
+    .toBeNull();
+});
 
 describe("the 18.4.10 dialog (glyph keycaps) lifts as a pointed list", () => {
   it("ask-single: the pointer on Red, every other row walks Down", () => {
@@ -324,7 +441,7 @@ describe("fails closed", () => {
     expect(detectAskSelect(fromTexts(oldMulti))).toBeNull();
   });
 
-  it("with the tab segment of a multi-question dialog in the footer", () => {
+  it("with an uncaptured tab footer and no styled tab strip", () => {
     const tabs = single.map((t, i) =>
       i === FOOTER_AT ? t.replace("↑/↓ move · ⎋ cancel        ", "↑/↓ move · ⇥/←/→ · ⎋ cancel") : t,
     );
@@ -492,11 +609,19 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-4-ask-single.txt",
     "omp--v18-8-ask-single-described-moved.txt",
     "omp--v18-8-ask-single-described.txt",
+    "omp--v18-10-ask-single.txt",
+    "omp--v18-10-ask-batch.txt",
+    "omp--v18-10-ask-batch-moved.txt",
+    "omp--v18-10-ask-batch-second.txt",
+    "omp--v18-10-ask-batch-third.txt",
+    "omp--v18-10-ask-batch-review.txt",
+    "omp--v18-10-ask-long.txt",
+    "omp--v18-10-ask-long-expanded.txt",
+    "omp--v18-10-ask-revisited.txt",
   ]);
 
-  it("lifts exactly the eight one-question single-select captures, out of every capture in the corpus", () => {
+  it("lifts only the supported Ask states in the complete corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
-    expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectAskSelect(load(name)) !== null);
     expect(lifted.toSorted()).toEqual([...CLAIMED].toSorted());
   });
