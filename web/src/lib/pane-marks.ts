@@ -3,7 +3,7 @@ import type { AgentView } from "@/lib/types";
 
 // A DURABLE PANE'S SUBTITLE AND BADGE, read from a body that may have crossed a crew link.
 //
-// The bridge cleaned and capped both (WIRE.md 7.9), but a peer's pane arrives as the peer sent it,
+// The bridge cleaned and capped both (WIRE.md 7.11), but a peer's pane arrives as the peer sent it,
 // so a field of the wrong shape reads as absent here and a pane is never drawn from half a shape.
 // Text only, never markup: both strings came from a program.
 

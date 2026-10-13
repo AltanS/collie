@@ -256,14 +256,33 @@ holds it to what is written here.
   program's `caps.steer`, `caps.abort` and `caps.starters` (WIRE.md section 4) of the last good read,
   and no other adapter declares them. The phone draws Steer and Stop in the belt, and the new-tab and
   new-space buttons that open the New page, only for a capability that is declared `true`.
-- **Renaming.** `renameTab` is declared from the program's `caps.rename` of the last good read, and
-  `renameTab` posts `POST /rename` with `kind: "tab"` and a request id the adapter mints (WIRE.md
-  section 7.8), once and never retried. A program that declares no `rename` answers `unsupported` with
-  no socket touched. The program's 404 is `gone`, its 422 `rename-refused` is `refused`, and a POST
-  that may have left without an answer is `refused` with a detail that says the rename may have been
-  applied. `renamePane` stays undeclared: a pane's title is the conversation's, and Collie keeps no
-  operator label for it. There is no space (workspace) rename capability in Collie, so a workspace the
-  wire could rename has no control on the phone.
+- **Program actions.** `programActions` is declared from the program's `caps.actions` of the last good read,
+  and no other adapter declares it. A pane the program lists buttons for carries them as `actions` (at most
+  four, each cleaned by the adapter: a label of at most 16 characters, one of twelve icon names or none).
+  `paneActions(paneId)` reads them from the last listing and asks nothing; the snapshot attaches them at serialise
+  time, like `turnId`. A tap is `POST /api/pane/:id/action`, which hands the adapter ONE `action` control through
+  `controlTurn` with the receipt rules of send and abort (WIRE.md section 7.10), never retried. The program's 404
+  `no-such-pane` is `gone`, its 404 `no-such-action` and 422 `action-refused` are `refused`, its 409 `stale` is
+  `stale`, and a POST that may have left without an answer is `unknown`. The phone draws the buttons in the
+  program's section of the belt only for a declared `programActions`, and reads an unanswered one as absent.
+- **Renaming.** `renameTab` and `renameSpace` are declared from the program's `caps.rename` of the last
+  good read, and no other adapter declares `renameSpace`. Each posts `POST /rename` with `kind: "tab"`
+  or `kind: "workspace"` and a request id the adapter mints (WIRE.md section 7.8), once and never
+  retried. A program that declares no `rename` answers `unsupported` with no socket touched. The
+  program's 404 is `gone`, its 422 `rename-refused` is `refused`, and a POST that may have left
+  without an answer is `refused` with a detail that says the rename may have been applied.
+  `renamePane` stays undeclared: a pane's title is the conversation's, and Collie keeps no operator
+  label for it. `renameSpace` is an optional method of the port (`renameSpace?`), so Herdr, tern, tmux,
+  zellij and tuios have none and never declare it: none of their adapters names a space today. The
+  phone draws the Rename row of the space sheet (`POST /api/space/:id/rename`) only for a declared
+  `renameSpace`, and reads an unanswered one as absent.
+- **Closing.** `closePane` and `closeTab` are declared from the program's `caps.close` of the last good
+  read. Each posts `POST /close` with `kind: "pane"` or `kind: "tab"` and a request id the adapter mints
+  (WIRE.md section 7.9), once and never retried. A program that declares no `close` answers
+  `unsupported` with no socket touched. The program's 404 `no-such-target` is `gone`, its 422
+  `close-refused` is `refused`, its 409 `not-supported` is `unsupported`, and a POST that may have left
+  without an answer is `refused` with a detail that says the close may have been applied. There is no
+  workspace close capability: the phone has no control for it, so a workspace close stays on the wire.
 
 ### Focus with a terminal and tuios-web attached
 

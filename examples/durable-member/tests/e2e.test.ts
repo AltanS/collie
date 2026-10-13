@@ -58,6 +58,8 @@ describe("one ticket", () => {
     expect(p.openAsks[0]).toMatchObject({ kind: "permission", revision: 1, tool: { name: "write_note" }, title: expect.stringContaining("write_note") });
     expect(p.openAsks[0]!.toolCallId).toBe(p.openAsks[0]!.itemId); // the tool item the card sits under
     expect(p.openAsks[0]!.options.map((o) => o.id)).toEqual(["allow", "deny"]);
+    // The guard chooses the words of the push for this ask (WIRE.md section 6).
+    expect(p.openAsks[0]!.push).toEqual({ title: "Ticket needs a yes", line: "write_note wants to add one line to the notes" });
     askId = p.openAsks[0]!.id;
     expect(readFileSync(join(dir, "notes.txt"), { flag: "a+" }).toString()).toBe(""); // not run yet
   });
@@ -91,7 +93,7 @@ describe("one ticket", () => {
     const at = items.findIndex((item) => item.kind === "reply" && item.text.startsWith("Triage done"));
     const reply = items[at];
     expect(reply?.kind === "reply" && reply.text).toContain("The helper says");
-    // The ticket then adds a markdown note with a list, a code block and a link to the docs (WIRE.md 7.11).
+    // The ticket then adds a markdown note with a list, a code block and a link to the docs (WIRE.md 7.13).
     expect(items.slice(at + 1).map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
   });
 
@@ -129,6 +131,30 @@ describe("one ticket", () => {
     const answered = events.filter((e) => e.type === "settled" && e.status === "answered");
     expect(answered.length).toBeGreaterThan(0);
     for (const e of events) if (e.type === "settled") expect(e.inputId.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the Escalate action", () => {
+  test("a ticket lists Escalate with the flag icon, a helper lists nothing, and a tap writes one notice and dims the button", async () => {
+    const id = (await api.start(d, "new-triage")).body.paneId;
+    await waitFor("ask", () => firstAsk(d, id));
+    expect((await pane(d, id))!.actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag" }]);
+    const helperPanes = (await api.snapshot(d)).body.panes.filter((x) => x.tabId === "triage:helpers");
+    for (const h of helperPanes) expect("actions" in h).toBe(false);
+
+    const turnId = (await pane(d, id))!.turnId;
+    expect((await api.action(d, id, "escalate", { turnId, requestId: "e2e-action-1" })).body).toEqual({ ok: true });
+    expect((await api.action(d, id, "escalate", { turnId, requestId: "e2e-action-1" })).body).toEqual({ ok: true, replayed: true });
+    const notices = (await allEvents(d, id)).filter((e) => e.type === "item" && e.item.kind === "notice" && e.item.text.startsWith("Escalated"));
+    expect(notices.length).toBe(1);
+    expect((await pane(d, id))!.actions).toEqual([{ id: "escalate", label: "Escalate", icon: "flag", disabled: true }]);
+    // Dimmed means no second tap: the program refuses it.
+    const second = await api.action(d, id, "escalate", { requestId: "e2e-action-2" });
+    expect([second.status, second.body.code]).toEqual([422, "action-refused"]);
+    expect((await api.abort(d, id)).status).toBe(200);
+    await waitFor("idle", async () => (await pane(d, id))?.state === "idle");
+    // No question waits any more, so the badge says the ticket was escalated.
+    await waitFor("the esc badge", async () => JSON.stringify((await pane(d, id))?.badge) === JSON.stringify({ text: "esc" }));
   });
 });
 

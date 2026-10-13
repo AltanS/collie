@@ -37,6 +37,7 @@ export const MUX_CAPABILITIES = [
   "setFocus",
   "createTab",
   "renameTab",
+  "renameSpace",
   "closeTab",
   "createSpace",
   "listWorktrees",
@@ -48,6 +49,7 @@ export const MUX_CAPABILITIES = [
   "steerTurn",
   "abortTurn",
   "starters",
+  "programActions",
 ] as const;
 
 /** One declarable capability. */
@@ -98,6 +100,8 @@ export const MUX_CAPABILITY_ROUTES = {
   createTab: "POST /api/tab — a new tab in a space, opening a fresh shell.",
   renameTab:
     "POST /api/tab/:id/rename. A durable program declares it from its own `caps.rename` (WIRE.md section 7.8); every other adapter declares it from its multiplexer's tab rename.",
+  renameSpace:
+    "POST /api/space/:id/rename: set a space's name. Only a durable program declares it today, from its own `caps.rename` (WIRE.md section 7.8); the phone draws the Rename row of the space sheet when it is declared. Absent ⇒ no Rename row, and the space chip opens no sheet.",
   closeTab: "POST /api/tab/:id/close — a bulk pane-close.",
   createSpace: "POST /api/workspace — a new space, opening a fresh shell.",
   listWorktrees:
@@ -116,6 +120,8 @@ export const MUX_CAPABILITY_ROUTES = {
     "POST /api/pane/:id/send with `steer: true` (ADR 0101): text for the turn that is running. Only a durable program can declare it, from its own `caps.steer` (WIRE.md section 4); the phone draws the Steer button in the belt when it is declared. Absent ⇒ no Steer button.",
   abortTurn:
     "POST /api/pane/:id/abort (ADR 0101): stop the running turn. Only a durable program can declare it, from its own `caps.abort`; the phone draws the Stop button in the belt when it is declared. Absent ⇒ no Stop button.",
+  programActions:
+    "POST /api/pane/:id/action (M53 spec 07): run one of the buttons the program lists for a pane (`actions` on the pane, up to four, each with a label and an icon). Only a durable program can declare it, from its own `caps.actions` (WIRE.md section 4); the phone draws the program's buttons in its section of the belt when it is declared. Absent ⇒ no program buttons.",
   starters:
     "GET /api/launchers rows of `source: \"program\"` and POST /api/launch with a `starter` (ADR 0102). Only a durable program can declare it, from its own `caps.starters`; the phone then draws the new-tab and new-space buttons and sends them to the New page. Absent ⇒ those buttons stay hidden where `createTab` and `createSpace` are absent.",
 } satisfies Record<MuxCapability, string>;
@@ -216,6 +222,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     setFocus: claimed.has("setFocus"),
     createTab: claimed.has("createTab"),
     renameTab: claimed.has("renameTab"),
+    renameSpace: claimed.has("renameSpace"),
     closeTab: claimed.has("closeTab"),
     createSpace: claimed.has("createSpace"),
     listWorktrees: claimed.has("listWorktrees"),
@@ -227,6 +234,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     steerTurn: claimed.has("steerTurn"),
     abortTurn: claimed.has("abortTurn"),
     starters: claimed.has("starters"),
+    programActions: claimed.has("programActions"),
   } satisfies Record<MuxCapability, boolean>;
   return {
     supports,

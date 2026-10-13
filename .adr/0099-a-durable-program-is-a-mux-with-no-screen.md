@@ -102,8 +102,27 @@ adapter in the registry, and the crew is unchanged.**
     declares the tab capability `renameTab` from that cap, as it declares `steerTurn`, `abortTurn`
     and `starters` from theirs, so the phone draws its usual rename control with no durable special
     case. A pane is not renamed: its title is the conversation's. `renamePane` stays undeclared.
-    Collie has no capability for renaming a space, so a workspace rename is on the wire and has no
-    control on the phone yet. Added to version 1 before the wire shipped, so there is no version 2.
+    A workspace is renamed through a new capability, `renameSpace` (an optional method of the port,
+    `POST /api/space/:id/rename`), which only a durable program declares, from the same `caps.rename`.
+    The phone draws a Rename row in a new space sheet for it. Added to version 1 before the wire
+    shipped, so there is no version 2.
+13. **A close is a cap on the wire.** The same rule as a rename: the program owns its layout, so a
+    conversation or a tab is closed only when the program says it closes one, `caps.close` in the
+    hello and one route, `POST /close`, with a request id and a refusal of its own (422
+    `close-refused`). What a close means (archive, delete, end) is the program's call; it removes the
+    target and what is inside it, and every open ask on those panes closes as `stopped`, so nothing
+    answers itself. The adapter declares the existing `closePane` and `closeTab` from that cap, so the
+    phone draws its usual close controls with no durable special case. A workspace close is on the wire
+    but has no capability, because the phone has no control for it. Added to version 1 before the wire
+    shipped, so there is no version 2.
+14. **Program actions are a cap on the wire.** A program lists up to four buttons per conversation
+    (`actions` on the pane, with a label of at most 16 characters and one of twelve icon names), and a
+    tap is `POST /pane/:id/action` with a request id, the action id and, when the phone has one, the
+    turn it saw. The cap is `caps.actions`, and the adapter declares a new capability, `programActions`,
+    from it. The route is a third act of ADR 0101's controls, so it has the same receipt, the same
+    replay, the same unknown-outcome rule and the same `stale` refusal, and the adapter hands it to
+    `controlTurn` as an `action` control. The phone draws the buttons in the durable section of the
+    belt, after Steer and Stop. Added to version 1 before the wire shipped, so there is no version 2.
 
 ## Consequences
 

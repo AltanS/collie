@@ -3,7 +3,7 @@ import { t } from "@/lib/i18n";
 import { type ProgressReading } from "@/lib/pane-marks";
 import { cn } from "@/lib/utils";
 
-// THE PROGRESS ROW UNDER CHAT'S HEADER (WIRE.md 7.10): what a working durable conversation is doing and
+// THE PROGRESS ROW UNDER CHAT'S HEADER (WIRE.md 7.12): what a working durable conversation is doing and
 // how far it is. One 16px line of text over a 4px bar, 20px with the gap, so the row's height is stated and
 // only `Collapse` (the caller's) moves content when it arrives. A step list reads as the running step's
 // label with its place, a percent as its label (when it has one) and the number. A program's strings are

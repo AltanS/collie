@@ -38,11 +38,13 @@ export const CAPS = {
   panes: 256,
   openAsksPerPane: 50,
   optionsPerAsk: 6,
-  /** Options of a `choice` ask, and of a `choice` field of a form (WIRE.md 7.12). */
+  /** Options of a `choice` ask, and of a `choice` field of a form (WIRE.md 7.14). */
   choiceOptions: 8,
   /** Fields of a `form` ask. */
   formFields: 6,
   starters: 50,
+  /** Belt actions per pane (WIRE.md section 4, `PaneAction`). */
+  actionsPerPane: 4,
   /** Events in one plain events reply. */
   eventsPerReply: 1000,
   /** Items in a reset view, the newest. */
@@ -171,6 +173,23 @@ export function isWireId(value: string): boolean {
   return byteLength(value) <= CAPS.id && isValidMuxId(value);
 }
 
+/** The longest belt action label, in characters (code points). WIRE.md section 4. */
+export const ACTION_LABEL_MAX = 16;
+
+/** A belt action label, cleaned and cut to {@link ACTION_LABEL_MAX} characters. Empty when nothing is left. */
+export function actionLabelOf(label: string): string {
+  return [...cleanText(label, lineRule(CAPS.starterLabel)).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
+}
+
+/** The longest push title and push line an ask may carry, in characters (code points). WIRE.md section 6. */
+export const PUSH_TITLE_MAX = 60;
+export const PUSH_LINE_MAX = 120;
+
+/** One part of an ask's push words: cleaned as a one-line string, trimmed and cut to `max` characters. May be empty. */
+export function pushPartOf(text: string, max: number): string {
+  return [...cleanText(text, lineRule(CAPS.askTitle)).trim()].slice(0, max).join("").trim();
+}
+
 /** The longest title a rename may carry, in characters (code points). WIRE.md section 7.8. */
 export const RENAME_TITLE_MAX = 120;
 
@@ -187,7 +206,7 @@ export function renameTitleOf(title: string): string | null {
   return trimmed;
 }
 
-// ── Subtitle and badge (WIRE.md section 7.9) ─────────────────────────────────
+// ── Subtitle and badge (WIRE.md section 7.11) ─────────────────────────────────
 
 /** The longest subtitle, in characters (code points). */
 export const SUBTITLE_MAX = 120;
@@ -215,7 +234,7 @@ export function shortLine(text: string, maxChars: number): string | undefined {
   return `${symbols.slice(0, maxChars - 1).join("")}${ELLIPSIS}`;
 }
 
-// ── Ask kinds (WIRE.md section 7.12) ──────────────────────────────────────────
+// ── Ask kinds (WIRE.md section 7.14) ──────────────────────────────────────────
 
 /** The longest `placeholder` of a `text` ask, in characters (code points). */
 export const PLACEHOLDER_MAX = 60;
@@ -229,7 +248,7 @@ export const ANSWER_TEXT_DEFAULT = 500;
 /** The most bytes a text answer may take: {@link ANSWER_TEXT_MAX} characters at four bytes each. */
 export const ANSWER_TEXT_BYTES = ANSWER_TEXT_MAX * 4;
 
-// ── Rich items (WIRE.md section 7.11) ─────────────────────────────────────────
+// ── Rich items (WIRE.md section 7.13) ─────────────────────────────────────────
 
 /** The largest `text` of a markdown or code item, in bytes. */
 export const ITEM_RICH_BYTES = 32768;
@@ -270,7 +289,7 @@ export function httpsHrefOf(text: string): string | undefined {
   return url.href.length <= HREF_MAX ? url.href : undefined;
 }
 
-// ── Progress (WIRE.md section 7.10) ───────────────────────────────────────────
+// ── Progress (WIRE.md section 7.12) ───────────────────────────────────────────
 
 /** The most steps a progress carries. */
 export const PROGRESS_STEPS_MAX = 12;

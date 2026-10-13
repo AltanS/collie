@@ -93,7 +93,7 @@ describe("clean: the id rule", () => {
   });
 });
 
-describe("clean: short lines for a subtitle and a badge (WIRE.md section 7.9)", () => {
+describe("clean: short lines for a subtitle and a badge (WIRE.md section 7.11)", () => {
   test("a short line is cleaned and trimmed, and a line with nothing left is absent", () => {
     expect(shortLine("  a customer cannot log in\u200b\n ", 120)).toBe("a customer cannot log in");
     expect(shortLine("\u0007 \u200e  ", 120)).toBeUndefined();

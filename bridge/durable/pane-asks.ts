@@ -17,6 +17,15 @@ export function withOpenAsks(wire: PaneWire, adapter: Pick<MuxAdapter, "openAsks
 }
 
 /**
+ * `wire` with the belt actions its program lists (M53 spec 07), when its adapter has them. The same object when it
+ * does not, so no other pane's bytes move.
+ */
+export function withActions(wire: PaneWire, adapter: Pick<MuxAdapter, "paneActions">): PaneWire {
+  const actions = adapter.paneActions?.(wire.paneId);
+  return actions === undefined || actions.length === 0 ? wire : { ...wire, actions: [...actions] };
+}
+
+/**
  * `wire` with the pane's newest turn id (ADR 0101), when its adapter names turns, so the phone can
  * name it in a send or an abort. The same object when it does not, so no other pane's bytes move.
  */

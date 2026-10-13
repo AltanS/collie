@@ -516,6 +516,18 @@ export const zhTW: Dictionary = {
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
+  // TODO wordsmith
+  "durable.action.done": "Done",
+  // TODO wordsmith
+  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
+  // TODO wordsmith
+  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
+  // TODO wordsmith
+  "durable.action.refused": "The action was refused.",
+  // TODO wordsmith
+  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
+  // TODO wordsmith
+  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "取消",
   "prompt.feedback.typedAria": "終端機中的回饋內容",
@@ -896,6 +908,18 @@ export const zhTW: Dictionary = {
   "space.tab.renameFailed": "重新命名失敗",
   "space.tab.closeFailed": "關閉失敗",
   "space.tab.closed": "分頁已關閉",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "尚未配對，請在設定中配對目前裝置",
   "space.readOnly.expired": "配對已到期，請在設定中重新配對",
   "space.readOnly.deviceUnauthorised": "唯讀模式，裝置未授權",
@@ -1288,6 +1312,8 @@ export const zhTW: Dictionary = {
   "apiError.tab.create_failed": "建立分頁失敗：{reason}",
   "apiError.tab.rename_failed": "重新命名分頁失敗：{reason}",
   "apiError.tab.close_failed": "關閉分頁失敗：{reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "未指定新分頁的工作區。",
   "apiError.launch.not_allowlisted": "此指令不在你的啟動器清單中",
   "apiError.launch.unknown_harness": "這台機器不啟動 {harness}。",

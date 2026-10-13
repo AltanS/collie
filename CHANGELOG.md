@@ -30,10 +30,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable pane shows its progress.** The program reports steps or a percent, and Chat and the card show how far a working conversation is.
 - **A durable program writes markdown, code and links into Chat.** Lists, headings and emphasis render, a code block keeps its language, and a link opens like any other.
 - **A durable program can ask a choice, a line of text or a short form.** The card shows the options, the field or the form, and one tap sends the answer once.
+- **A durable program chooses the words of the push for its question.** The title and the line come from the program, within the same push limits, and the pane's name stays in front.
+- **A durable program puts its own buttons in the belt.** It lists up to four actions per conversation with an icon and a label, and a tap runs the action once in the program.
+- **A durable program's conversations, tabs and workspaces can be closed from the phone.** The program declares the `close` cap, Collie draws its usual close controls, and the program decides what a close means on its side.
+- **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 
 ### Changed
 
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
+- **The durable SDK has typed hooks.** `onSend`, `onAbort` and `onRename` take typed payloads with the request id, so a program handles each action in one named place.
 
 ### Fixed
 

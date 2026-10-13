@@ -17,7 +17,7 @@
 //   notice     a note (machine text that still belongs on screen)
 //   markdown   an assistant turn whose text part Chat renders as markdown, as it does for any harness
 //   code       an assistant turn whose text part is one fenced code block, with its language after the fence
-//   link       an assistant turn whose text part is one markdown link line (WIRE.md 7.11). There is no
+//   link       an assistant turn whose text part is one markdown link line (WIRE.md 7.13). There is no
 //              block kind for a link, and none is needed: the markdown renderer opens it like any other
 //   tool       a tool part, with its status as the result: running has none, done has the output,
 //              failed is an error, denied is a refusal (not an error)
@@ -132,7 +132,7 @@ function linkMarkdown(item: JsonObject): string | null {
 }
 
 /**
- * The turn marked `partial` when its item is a text still growing (WIRE.md 7.13). The log is read again here, so the flag
+ * The turn marked `partial` when its item is a text still growing (WIRE.md 7.15). The log is read again here, so the flag
  * must be exactly `true`.
  */
 function growing(entry: TranscriptEntry, item: JsonObject): TranscriptEntry {

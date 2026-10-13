@@ -33,7 +33,7 @@ export const CAPS = {
 
 /** List caps. */
 export const LIMITS = {
-  /** Options of a `choice` ask or of a choice field (WIRE.md 7.12). A `permission` has `options`. */
+  /** Options of a `choice` ask or of a choice field (WIRE.md 7.14). A `permission` has `options`. */
   choiceOptions: 8,
   /** Fields of a `form` ask. */
   formFields: 6,
@@ -43,6 +43,8 @@ export const LIMITS = {
   openAsksPerPane: 50,
   options: 6,
   starters: 50,
+  /** Belt actions per pane (WIRE.md section 4, `PaneAction`). */
+  actions: 4,
   eventsPerReply: 1000,
   resetItems: 2000,
   /** The program keeps at least this many request ids per epoch. */
@@ -149,7 +151,7 @@ export function renameTitleOf(title: unknown): string | undefined {
   return clean === "" ? undefined : clean;
 }
 
-/** The longest subtitle, in characters (code points). WIRE.md 7.9. */
+/** The longest subtitle, in characters (code points). WIRE.md 7.11. */
 export const SUBTITLE_MAX = 120;
 /** The longest text badge, in characters. */
 export const BADGE_TEXT_MAX = 12;
@@ -164,13 +166,13 @@ export function shortLine(text: unknown, maxChars: number): string | undefined {
   return symbols.length <= maxChars ? clean : `${symbols.slice(0, maxChars - 1).join("")}…`;
 }
 
-/** A pane's subtitle as the wire carries it (WIRE.md 7.9), or undefined when nothing is left of it. */
+/** A pane's subtitle as the wire carries it (WIRE.md 7.11), or undefined when nothing is left of it. */
 export function subtitleOf(text: unknown): string | undefined {
   return shortLine(text, SUBTITLE_MAX);
 }
 
 /**
- * A pane's badge as the wire carries it (WIRE.md 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to
+ * A pane's badge as the wire carries it (WIRE.md 7.11): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to
  * 12 characters. A program that passes a count out of range or a shape with both keys made a mistake: it is a TypeError
  * here, so the wire never carries what the adapter would drop. A text with nothing left after cleaning is undefined.
  */
@@ -187,7 +189,7 @@ export function badgeOf(value: { count: number } | { text: string }): { count: n
   return word === undefined ? undefined : { text: word };
 }
 
-/** The longest `placeholder` of a text ask, in characters. WIRE.md 7.12. */
+/** The longest `placeholder` of a text ask, in characters. WIRE.md 7.14. */
 export const PLACEHOLDER_MAX = 60;
 /** The largest `maxLength` of a text ask or field. */
 export const ANSWER_TEXT_MAX = 2000;
@@ -196,15 +198,15 @@ export const ANSWER_TEXT_DEFAULT = 500;
 /** The most bytes of an answer's text or field value: {@link ANSWER_TEXT_MAX} characters at four bytes each. */
 export const ANSWER_TEXT_BYTES = ANSWER_TEXT_MAX * 4;
 
-/** A `maxLength` as a program passes it: a whole number from 1 to 2000, else a RangeError (WIRE.md 7.12). */
+/** A `maxLength` as a program passes it: a whole number from 1 to 2000, else a RangeError (WIRE.md 7.14). */
 export function maxLengthOf(value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > ANSWER_TEXT_MAX) {
-    throw new RangeError(`a maxLength is a whole number from 1 to ${ANSWER_TEXT_MAX} (WIRE.md 7.12)`);
+    throw new RangeError(`a maxLength is a whole number from 1 to ${ANSWER_TEXT_MAX} (WIRE.md 7.14)`);
   }
   return value;
 }
 
-/** The longest code language, in characters. WIRE.md 7.11. */
+/** The longest code language, in characters. WIRE.md 7.13. */
 export const LANG_MAX = 24;
 /** The longest link target, in characters. */
 export const HREF_MAX = 2048;
@@ -213,7 +215,7 @@ export const LINK_LABEL_MAX = 120;
 
 const LANG_RULE = /^[A-Za-z0-9_+#.-]+$/u;
 
-/** A code item's language (WIRE.md 7.11): 1 to 24 of letters, digits and `_ + # . -`. Anything else is a TypeError, because the adapter would drop the name. */
+/** A code item's language (WIRE.md 7.13): 1 to 24 of letters, digits and `_ + # . -`. Anything else is a TypeError, because the adapter would drop the name. */
 export function langOf(lang: unknown): string {
   const trimmed = typeof lang === "string" ? lang.trim() : "";
   if (trimmed.length < 1 || trimmed.length > LANG_MAX || !LANG_RULE.test(trimmed)) {
@@ -223,7 +225,7 @@ export function langOf(lang: unknown): string {
 }
 
 /**
- * A link item's target (WIRE.md 7.11): an `https://` URL of at most 2048 characters, with a host, no user or password
+ * A link item's target (WIRE.md 7.13): an `https://` URL of at most 2048 characters, with a host, no user or password
  * and no whitespace, control or invisible character. Anything else is a TypeError, because the adapter would drop the
  * whole item.
  */
@@ -237,7 +239,7 @@ export function hrefOf(href: unknown): string {
   throw new TypeError("a link href is an https:// address without spaces, a user or a password, at most 2048 characters");
 }
 
-/** The most steps a progress carries. WIRE.md 7.10. */
+/** The most steps a progress carries. WIRE.md 7.12. */
 export const PROGRESS_STEPS_MAX = 12;
 /** The longest step or percent label, in characters. */
 export const PROGRESS_LABEL_MAX = 60;
@@ -245,7 +247,7 @@ export const PROGRESS_LABEL_MAX = 60;
 const STEP_STATES: ReadonlySet<string> = new Set(["done", "running", "todo"]);
 
 /**
- * A pane's progress as the wire carries it (WIRE.md 7.10). Steps past the 12th are left out. A program that passes an
+ * A pane's progress as the wire carries it (WIRE.md 7.12). Steps past the 12th are left out. A program that passes an
  * unknown kind, no steps, a step with an unknown state or with no label left, or a value outside 0 to 100 made a
  * mistake: it is a TypeError or RangeError here, so the wire never carries what the adapter would drop. A percent
  * label with nothing left after cleaning is left out alone.
@@ -273,6 +275,37 @@ export function progressOf(value: Progress): Progress {
     return label === undefined ? { kind: "percent", value: percent } : { kind: "percent", value: percent, label };
   }
   throw new TypeError("a progress is steps or percent");
+}
+
+/** The longest belt action label, in characters (code points). WIRE.md section 4. */
+export const ACTION_LABEL_MAX = 16;
+
+/** A belt action label: cleaned, trimmed and cut to {@link ACTION_LABEL_MAX} characters. Empty when nothing is left. */
+export function actionLabelOf(label: unknown): string {
+  return [...cut(label, CAPS.title).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
+}
+
+/** The longest push title and push line an ask may carry, in characters (code points). WIRE.md section 6. */
+export const PUSH_TITLE_MAX = 60;
+export const PUSH_LINE_MAX = 120;
+
+/**
+ * The words a program wants a notification for its ask to use (WIRE.md section 6): each cleaned, trimmed and cut
+ * to its limit in characters. A part that is empty once cleaned is left out; undefined when neither is left.
+ */
+export function pushTextOf(push: unknown): { title?: string; line?: string } | undefined {
+  if (typeof push !== "object" || push === null) return undefined;
+  const out: { title?: string; line?: string } = {};
+  const title = pushPartOf(Reflect.get(push, "title"), PUSH_TITLE_MAX);
+  const line = pushPartOf(Reflect.get(push, "line"), PUSH_LINE_MAX);
+  if (title !== "") out.title = title;
+  if (line !== "") out.line = line;
+  return out.title === undefined && out.line === undefined ? undefined : out;
+}
+
+function pushPartOf(value: unknown, max: number): string {
+  if (typeof value !== "string") return "";
+  return [...cut(value, CAPS.askTitle).trim()].slice(0, max).join("").trim();
 }
 
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;

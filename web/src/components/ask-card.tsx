@@ -48,7 +48,7 @@ import { mintRequestId } from "@/lib/worktree-name";
 // "Try again" is a tap too, and it carries the SAME request id as the tap it retries, so the bridge
 // answers from its receipt instead of resolving the ask twice.
 //
-// FOUR KINDS (WIRE.md 7.12). A permission draws its options by their effect. A choice draws them as
+// FOUR KINDS (WIRE.md 7.14). A permission draws its options by their effect. A choice draws them as
 // plain rows: one tap sends one pick, or with `multiple` the rows toggle and a Send button sends the
 // set. A text ask draws one field and a Send button. A form draws its fields stacked under one Send
 // button. Each is one tap, one request id, one post: the same rule for all four, and the fields'

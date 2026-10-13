@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
-import { abortPane, apiErrorStatus, sendToPane, type ControlResult } from "@/lib/api";
+import { abortPane, apiErrorStatus, runPaneAction, sendToPane, type ControlResult } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 import { addPending, dropNotSent, setPendingState } from "@/lib/durable-pending";
@@ -26,7 +26,7 @@ import {
 import { t } from "@/lib/i18n";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
-import type { AgentStatus, Ask } from "@/lib/types";
+import type { AgentStatus, Ask, PaneAction } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
 
@@ -81,6 +81,8 @@ export interface DurableComposerProps {
   /** What the pane has shown that a control may name: its newest turn and its open asks. */
   turnId?: string;
   asks?: readonly Ask[];
+  /** The buttons the pane's program lists for the belt (M53 spec 07), in its order. */
+  actions?: readonly PaneAction[];
   status?: AgentStatus;
   /** The pane is gone, this device may not write, or the pane's machine is not taking writes. */
   locked: boolean;
@@ -115,6 +117,7 @@ export function DurableComposer({
   scope,
   turnId,
   asks,
+  actions,
   status,
   locked,
   lockedWhy,
@@ -132,10 +135,14 @@ export function DurableComposer({
   const [steer, setSteer] = useState(false);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
+  // The id of the program button whose tap is in flight, so a second tap on it waits for the first.
+  const [running, setRunning] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
   // The request id of the last send or stop, kept only while its outcome is unknown.
   const sendIntent = useRef<IntentId | null>(null);
   const stopIntent = useRef<IntentId | null>(null);
+  // One intent per program button: a retry after an unknown outcome carries the same request id.
+  const actionIntents = useRef(new Map<string, IntentId>());
 
   const field = useRef<HTMLTextAreaElement | null>(null);
   // The field had focus when Send was tapped: it gets it back when the hold ends, so a thumb can go on typing.
@@ -146,7 +153,7 @@ export function DurableComposer({
     field.current?.focus();
   }, [sending]);
 
-  const barItems = useDurableBarItems(scope);
+  const barItems = useDurableBarItems(scope, actions);
   const target = controlTarget({ turnId, asks });
   const canSteer = steerOffered(status);
   const canStop = stopOffered(status, target);
@@ -221,6 +228,30 @@ export function DurableComposer({
     setStatus(say(reading, "stop"), reading.note === "sent" ? "success" : "error");
   }
 
+  async function run(action: PaneAction) {
+    if (off || running !== null) return;
+    // The turn is named when the phone has one: a button belongs to the pane, but a turn that moved since the
+    // phone looked is worth knowing about before the program acts (the bridge answers it as stale).
+    const key = intentKey(action.id, false, turnId === undefined || turnId === "" ? null : { turnId });
+    const id = requestIdFor(actionIntents.current.get(action.id) ?? null, key, mintRequestId);
+    actionIntents.current.set(action.id, id);
+    setRunning(action.id);
+    let result: ControlResult | null = null;
+    let thrown: { status: number | undefined; message: string } | null = null;
+    try {
+      result = await runPaneAction(paneId, { requestId: id.requestId, actionId: action.id, turnId }, scope);
+    } catch (error) {
+      thrown = { status: apiErrorStatus(error), message: describeThrownError(error) };
+    } finally {
+      setRunning(null);
+    }
+    const reading = result !== null ? readControl(result) : readThrown(thrown?.status, thrown?.message ?? "");
+    if (!reading.keepId) actionIntents.current.delete(action.id);
+    // The program may have changed its buttons, its thread or its state: read the pane again.
+    if (reading.reload) onReload();
+    setStatus(say(reading, "action"), reading.note === "sent" ? "success" : "error");
+  }
+
   return (
     <div
       data-slot="durable-composer"
@@ -248,6 +279,7 @@ export function DurableComposer({
           state: {
             steer: { pressed: steer, offered: canSteer && !off, onPressedChange: setSteer },
             stop: { offered: canStop && !off, busy: stopping, onStop: () => void stop() },
+            action: { running, onRun: (action) => void run(action) },
           },
         }}
         onRun={() => Promise.resolve(false)}

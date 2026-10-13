@@ -20,14 +20,18 @@
 // WHAT A PUSH SAYS. The pane goes to the coordinator with the cause `ask`, and its one-pane push reads
 // "Permission needed in <pane>" (`push-titles.ts`, `ask.permission`), where <pane> is the push name
 // (`pushName`: the operator's label, never the program's title). Never the ask's title, its reason or
-// its tool line. When a host's hourly breaker trips, the caller sends ONE summary push built by
+// its tool line. A program MAY choose the words of its own push, though: an ask's `push.title` and
+// `push.line` (WIRE.md section 6) replace the headline and the body, each only when present. They are
+// cleaned and cut again HERE (`pushTextOf`), because a lead gets them from a member over the wire. The
+// push name still leads the headline ("<pane>: <title>"), so a push always says where it comes from,
+// and the guard decides whether it is sent at all: the words change, the caps do not. When a host's hourly breaker trips, the caller sends ONE summary push built by
 // {@link askFloodMessage}, and nothing more for that host for the hour.
 
 import type { PushMessage } from "../push.ts";
 import { pushTitle } from "../push-titles.ts";
-import type { AgentStatus, Ask } from "../types.ts";
+import type { AgentStatus, Ask, AskPushText } from "../types.ts";
 import type { AskGuardStore, GuardPane } from "./guard.ts";
-import { keyableAsks } from "./parse.ts";
+import { keyableAsks, pushTextOf } from "./parse.ts";
 
 /** The host key for this collie's own panes. A peer's panes are keyed by its member id. */
 export const LOCAL_ASK_HOST = "";
@@ -51,10 +55,11 @@ export class AskPush {
 
   /**
    * Run the guard over one host's panes, as seen now, and call `raise` once for each pane with at
-   * least one `push` verdict. Panes without an `asks` field are not the guard's. `flood` is called
+   * least one `push` verdict. `text` is the push words of the first such ask that has any, cleaned;
+   * absent when none has. Panes without an `asks` field are not the guard's. `flood` is called
    * once, on the observation that trips the host's hourly breaker.
    */
-  observe<P extends AskPushPane>(host: string, panes: readonly P[], raise: (pane: P) => void, flood?: () => void): void {
+  observe<P extends AskPushPane>(host: string, panes: readonly P[], raise: (pane: P, text?: AskPushText) => void, flood?: () => void): void {
     const carrying: { pane: P; guarded: GuardPane }[] = [];
     for (const pane of panes) {
       if (!Array.isArray(pane.asks)) continue;
@@ -62,7 +67,9 @@ export class AskPush {
     }
     const observed = this.guard.observe(host, carrying.map((entry) => entry.guarded), this.now());
     for (const { pane } of carrying) {
-      if ((observed.verdicts.get(pane.paneId) ?? []).some((verdict) => verdict.decision === "push")) raise(pane);
+      const pushed = (observed.verdicts.get(pane.paneId) ?? []).filter((verdict) => verdict.decision === "push");
+      if (pushed.length === 0) continue;
+      raise(pane, pushTextFor(pane, pushed.map((verdict) => verdict.ask.id)));
     }
     if (observed.flood) flood?.();
   }
@@ -71,6 +78,15 @@ export class AskPush {
   forget(host: string): void {
     this.guard.forgetHost(host, this.now());
   }
+}
+
+/** The push words of the first of `askIds` (in the pane's order of verdicts) that carries any, cleaned. */
+function pushTextFor(pane: AskPushPane, askIds: readonly string[]): AskPushText | undefined {
+  for (const id of askIds) {
+    const text = pushTextOf((pane.asks ?? []).find((candidate) => candidate?.id === id));
+    if (text !== undefined) return text;
+  }
+  return undefined;
 }
 
 /** The notification slot of a host's flood summary: its own, so it never replaces the herd summary. */

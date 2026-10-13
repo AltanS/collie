@@ -152,7 +152,7 @@ describe("withToolOutput", () => {
   });
 });
 
-describe("a durable turn that is still being written, and a line with a request id (WIRE.md 7.13)", () => {
+describe("a durable turn that is still being written, and a line with a request id (WIRE.md 7.15)", () => {
   it("carries partial onto a reply, a thinking block and a notice, and never onto the person's own line", () => {
     const text: TranscriptPart[] = [{ kind: "text", text: "Hel" }];
     expect(itemsOf(entry({ partial: true, parts: text }))[0]).toMatchObject({ kind: "reply", partial: true });

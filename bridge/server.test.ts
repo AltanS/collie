@@ -40,6 +40,7 @@ import {
   cacheRulesRoute,
   launchersRoute,
   normalizeTabLabel,
+  renameSpace,
   hasSplitUrl,
   paneReadResponse,
   paneHistory,
@@ -2022,6 +2023,66 @@ describe("normalizeTabLabel", () => {
   });
 });
 
+// A space is renamed through `POST /api/space/:id/rename` (M53 spec 05), on an adapter that has `renameSpace`.
+describe("renameSpace", () => {
+  const request = (body: string) => new Request("http://x/api/space/triage/rename", { method: "POST", body });
+  const rig = (rename?: (spaceId: string, label: string) => Promise<MuxAck>) => {
+    const calls: string[] = [];
+    const audit: AuditEntry[] = [];
+    const adapter: Pick<MuxAdapter, "renameSpace" | "refresh"> = {
+      refresh: async () => {
+        calls.push("refresh");
+      },
+    };
+    if (rename !== undefined) adapter.renameSpace = rename;
+    const engine = { pokeNow: () => void calls.push("poke") };
+    const run = (body: string) => renameSpace(adapter, engine, "triage", request(body), { record: (entry: AuditEntry) => void audit.push(entry) }, "pixel", "default");
+    return { calls, audit, run };
+  };
+
+  test("it passes the trimmed label to the adapter, looks again, and writes an audit line", async () => {
+    const seen: string[] = [];
+    const { run, calls, audit } = rig(async (id, label) => (seen.push(`${id}|${label}`), muxAck()));
+    const res = await run(JSON.stringify({ label: "  Support  " }));
+    expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
+    expect(seen).toEqual(["triage|Support"]);
+    expect(calls).toEqual(["refresh", "poke"]);
+    expect(audit).toEqual([{ action: "space.rename", session: "default", device: "pixel", detail: { spaceId: "triage", label: "Support" } }]);
+  });
+
+  test("a blank label, a label that is not a string and a body that is not JSON are 400, and the adapter is not asked", async () => {
+    const seen: string[] = [];
+    const { run } = rig(async (id, label) => (seen.push(`${id}|${label}`), muxAck()));
+    for (const body of [JSON.stringify({ label: "   " }), JSON.stringify({ label: 4 }), JSON.stringify({}), "not json"]) {
+      expect((await run(body)).status).toBe(400);
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("the program's refusal rides the space.rename_failed code with its words, and nothing is audited", async () => {
+    const { run, audit } = rig(async () => muxRefused("The program did not accept this name."));
+    const res = await run(JSON.stringify({ label: "Taken" }));
+    expect(await res.json()).toMatchObject({ ok: false, code: "space.rename_failed", detail: { reason: "The program did not accept this name." } });
+    expect(audit).toEqual([]);
+  });
+
+  test("an adapter with no renameSpace answers unsupported in the same shape", async () => {
+    const { run } = rig();
+    const res = await run(JSON.stringify({ label: "x" }));
+    expect(await res.json()).toMatchObject({ ok: false, code: "space.rename_failed", detail: { reason: expect.stringContaining("does not take a new name for a space") } });
+  });
+
+  test("the route is a write behind the device gate, ahead of the pane routes, and crosses a crew link", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    expect(src).toContain("const SPACE_ACTION_ROUTE = /^\\/api\\/space\\/([^/]+)\\/rename$/;");
+    const at = src.indexOf("const spaceMatch = pathname.match(SPACE_ACTION_ROUTE);");
+    expect(at).toBeGreaterThan(0);
+    expect(src.slice(at, at + 400)).toContain('caller.gate("write")');
+    expect(at).toBeLessThan(src.indexOf("const paneMatch = pathname.match(PANE_ROUTE);"));
+    expect(crewRouteFor("/api/space/triage/rename")).toBe("space/triage/rename");
+  });
+});
+
 // The X-Collie-Build response header is what a no-service-worker client polls to notice a live
 // rebuild (web/src/lib/server-build.ts). withBuildHeader is the pure attach helper; the handlers
 // that call it (snapshot/pane) stay untested by convention (they need Bun.serve + the socket).
@@ -2659,8 +2720,8 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
 
   test("the real Herdr adapter publishes every capability — nothing changes for its operators", () => {
     const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
-    // The three controls of a durable program (M51 spec 08) are the program's to declare, never Herdr's.
-    const program = new Set(["steerTurn", "abortTurn", "starters"]);
+    // The controls of a durable program (M51 spec 08, M53 spec 05) are the program's to declare, never Herdr's.
+    const program = new Set(["steerTurn", "abortTurn", "starters", "renameSpace", "programActions"]);
     for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(!program.has(cap));
     expect(wire.notes).toEqual({});
   });
@@ -3010,16 +3071,16 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All NINETEEN session-scoped route handlers (tab create, workspace create, launch, this host's launcher
+    // All TWENTY session-scoped route handlers (tab create, workspace create, launch, this host's launcher
     // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
     // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
-    // by pane or workspace (ADR 0090), tab action, the pane family, "look now", the New sheet's
+    // by pane or workspace (ADR 0090), tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
     // branch plan and create from a folder (ADR 0093), and the
     // three writes on a phone's own launcher rows, served by one function (ADR 0094), and the two
     // writes on this machine's one-off command history, served by one function (ADR 0095), and the
     // read that checks a typed line before it runs (ADR 0095, amendment)) reach
     // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(19);
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(20);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS

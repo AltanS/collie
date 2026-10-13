@@ -459,6 +459,18 @@ export const pt: Dictionary = {
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
+  // TODO wordsmith
+  "durable.action.done": "Done",
+  // TODO wordsmith
+  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
+  // TODO wordsmith
+  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
+  // TODO wordsmith
+  "durable.action.refused": "The action was refused.",
+  // TODO wordsmith
+  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
+  // TODO wordsmith
+  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "Cancelar",
   "prompt.feedback.typedAria": "Feedback no terminal",
@@ -822,6 +834,18 @@ export const pt: Dictionary = {
   "space.tab.renameFailed": "Falha ao renomear",
   "space.tab.closeFailed": "Falha ao fechar",
   "space.tab.closed": "Aba fechada",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Não pareado: pareie este dispositivo nas Configurações",
   "space.readOnly.expired": "Pareamento expirado. Pareie novamente nas Configurações",
   "space.readOnly.deviceUnauthorised": "Somente leitura: dispositivo não autorizado",
@@ -1161,6 +1185,8 @@ export const pt: Dictionary = {
   "apiError.tab.create_failed": "Não foi possível criar a aba: {reason}",
   "apiError.tab.rename_failed": "Não foi possível renomear a aba: {reason}",
   "apiError.tab.close_failed": "Não foi possível fechar a aba: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Nenhum espaço foi indicado para a nova aba.",
   "apiError.launch.not_allowlisted": "Esse comando não é um dos seus inicializadores",
   "apiError.launch.unknown_harness": "Esta máquina não inicia {harness}.",

@@ -111,7 +111,7 @@ The address is public. Anyone on the internet can send it a request, and the tok
 keeps them out.
 
 - **Who holds the token acts as your phone.** They can read every conversation, answer every question,
-  send text, stop a turn, rename a tab and run a starter. There is no second check. The local example's descendant
+  send text, stop a turn, rename a tab, close a conversation and run a starter. There is no second check. The local example's descendant
   check needs a caller on a local socket, and a request from the internet has none, so here it does not
   exist.
 - **The Worker checks the token before anything else**, in constant time, before the version, `hello` and
@@ -229,6 +229,8 @@ The files here:
 - `src/member.ts` is the program: the Durable Object that opens Pi, lays out the panes and serves the wire.
 - The names the phone gives a workspace or a tab live in a `collie_titles` table (`src/member.ts`), because the
   layout is made again on every start of the object. A wake of the object keeps them.
+- A conversation the phone closes is archived in a `collie_closed` table (`src/member.ts`), so a wake does not show
+  it again. The tabs and the workspace are the program's own layout, and it refuses to close those.
 - `src/storage.ts` is the one place where Pi Durable meets the Durable Object's SQLite.
 - `src/receipts.ts` keeps the request ids in a `collie_receipts` table, so a retry after a restart still
   runs once. It keeps the newest 1000 per pane and drops older ones in the same transaction; a repeat of a
@@ -245,7 +247,7 @@ bun run smoke
 
 The tests run inside workerd, the Workers runtime, through Cloudflare's Vitest plugin, so they need Node and
 Vitest. `bun test` cannot load `cloudflare:workers`, so this folder does not use it. They cover the token,
-`hello`, the snapshot and its ETag, an answer that runs once, send and stop, a starter, a rename and its replay, and restarts: a new
+`hello`, the snapshot and its ETag, an answer that runs once, send and stop, a starter, a rename and its replay, a close that survives a wake, and restarts: a new
 epoch, request ids that survive in SQLite, and a waiting question raised again with the same id and a
 tap across the wake taken once. They also cover the second token of a rotation and the receipts cap. `npm run
 test:memory` runs them with Pi's conversations in memory and skips the test that needs them to survive. The

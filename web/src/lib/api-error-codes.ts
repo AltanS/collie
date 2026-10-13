@@ -51,6 +51,7 @@ export const API_ERROR_CODES = [
   "tab.create_failed",
   "tab.rename_failed",
   "tab.close_failed",
+  "space.rename_failed",
   "tab.workspace_required",
   "workspace.create_failed",
 

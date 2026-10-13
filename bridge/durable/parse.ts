@@ -15,8 +15,8 @@
 //   • `<stateDir>/control-receipts.json`, their receipts (`coerceControlReceipt`).
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { ANSWER_TEXT_BYTES, CAPS } from "../mux/durable/clean.ts";
-import type { AnswerPayload, AnswerRequest, AnswerValues, Ask, ControlRequest, ControlTarget } from "../types.ts";
+import { ANSWER_TEXT_BYTES, CAPS, PUSH_LINE_MAX, PUSH_TITLE_MAX, pushPartOf } from "../mux/durable/clean.ts";
+import type { AnswerPayload, AnswerRequest, AnswerValues, Ask, AskPushText, ControlRequest, ControlTarget } from "../types.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import type { AnswerReceipt, AnswerState } from "./answer.ts";
 import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
@@ -53,7 +53,7 @@ function nonEmpty(value: JsonValue | undefined): string | null {
   return isText(value) && value !== "" ? value : null;
 }
 
-/** A text answer: a non-empty string of at most 2000 characters at four bytes each (WIRE.md 7.12). The ask's own `maxLength` is the program's to check. */
+/** A text answer: a non-empty string of at most 2000 characters at four bytes each (WIRE.md 7.14). The ask's own `maxLength` is the program's to check. */
 function answerText(value: JsonValue | undefined): string | null {
   return isText(value) && value !== "" && Buffer.byteLength(value, "utf8") <= ANSWER_TEXT_BYTES ? value : null;
 }
@@ -150,14 +150,21 @@ function readTarget(turnId: JsonValue | undefined, askId: JsonValue | undefined)
 }
 
 /**
- * A send or abort body, checked (ADR 0101). Every field is the phone's claim until this says
- * otherwise. A send carries 1 to {@link SEND_TEXT_MAX_BYTES} bytes of text; an abort ignores any.
+ * A send, abort or action body, checked (ADR 0101). Every field is the phone's claim until this says
+ * otherwise. A send carries 1 to {@link SEND_TEXT_MAX_BYTES} bytes of text; an abort ignores any. An
+ * action carries the id of one of the pane's actions and, optionally, the turn the phone saw. The
+ * action id's rule is the adapter's to check, like every other id here.
  */
 export function readControlBody(act: ControlAct, body: JsonValue | undefined): ControlRequest | null {
   const fields = asRecord(body);
   if (fields === null) return null;
-  const { requestId, turnId, askId, text, steer } = fields;
+  const { requestId, turnId, askId, text, steer, actionId } = fields;
   if (!isRequestId(requestId)) return null;
+  if (act === "action") {
+    if (!isText(actionId) || actionId === "") return null;
+    if (turnId === undefined) return { act, requestId, actionId };
+    return isText(turnId) && turnId !== "" ? { act, requestId, actionId, turnId } : null;
+  }
   const target = readTarget(turnId, askId);
   if (target === null) return null;
   if (act === "abort") return { act, requestId, target };
@@ -172,8 +179,9 @@ export function coerceControlReceipt(raw: JsonValue): ControlReceipt | null {
   if (r === null) return null;
   const { requestId, at, paneId, act, target, targetId, steer, digest, state, detail, reason, currentTurnId, currentAskIds } = r;
   if (!isRequestId(requestId) || !isTime(at) || !isText(paneId) || !isText(targetId) || !isDigest(digest)) return null;
-  if (act !== "send" && act !== "abort") return null;
-  if (target !== "turn" && target !== "ask") return null;
+  if (act !== "send" && act !== "abort" && act !== "action") return null;
+  if (target !== "turn" && target !== "ask" && target !== "action") return null;
+  if ((act === "action") !== (target === "action")) return null;
   if (!isControlState(state)) return null;
   const receipt: ControlReceipt = { requestId, at, paneId, act, target, targetId, digest, state };
   if (typeof steer === "boolean") receipt.steer = steer;
@@ -256,4 +264,22 @@ export function keyableAsks(asks: readonly Ask[]): GuardAsk[] {
     if (typeof id === "string" && typeof toolCallId === "string" && toolCallId !== "") out.push({ id, toolCallId });
   }
   return out;
+}
+
+/**
+ * The push words of one ask of a peer's pane (`push` on the ask, WIRE.md section 6), cleaned and cut again: a
+ * lead gets them from a member over the wire, and what a member sends is not a claim the lead repeats. A part
+ * that is not text or is empty once cleaned is left out; undefined when none is left.
+ */
+export function pushTextOf(ask: Ask | undefined): AskPushText | undefined {
+  const push: unknown = ask?.push;
+  if (typeof push !== "object" || push === null) return undefined;
+  const title: unknown = "title" in push ? push.title : undefined;
+  const line: unknown = "line" in push ? push.line : undefined;
+  const out: AskPushText = {};
+  const cleanTitle = typeof title === "string" ? pushPartOf(title, PUSH_TITLE_MAX) : "";
+  const cleanLine = typeof line === "string" ? pushPartOf(line, PUSH_LINE_MAX) : "";
+  if (cleanTitle !== "") out.title = cleanTitle;
+  if (cleanLine !== "") out.line = cleanLine;
+  return out.title === undefined && out.line === undefined ? undefined : out;
 }

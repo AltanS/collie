@@ -41,13 +41,14 @@ import { isMuxAgentName } from "./agents.ts";
 import { MUX_CAPABILITIES, type MuxCapability } from "./capabilities.ts";
 import { checkIdentitySet, idsLostBetween, isValidMuxId } from "./identity.ts";
 import { canonicalMuxKey, MUX_NAMED_KEYS } from "./keys.ts";
-import type {
-  MuxAdapter,
-  MuxOutcome,
-  MuxPane,
-  MuxRefusalOutcome,
-  MuxSnapshot,
-  MuxSubscription,
+import {
+  type MuxAdapter,
+  type MuxOutcome,
+  type MuxPane,
+  type MuxRefusalOutcome,
+  type MuxSnapshot,
+  type MuxSubscription,
+  muxUnsupported,
 } from "./types.ts";
 
 // ── What a fixture contributes ────────────────────────────────────────────────
@@ -291,6 +292,18 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       capability: "renameTab",
       writes: true,
       run: async () => refusalOf(await adapter.renameTab(targets.tabId, "conformance")),
+    },
+    {
+      capability: "renameSpace",
+      writes: true,
+      // The method is optional: an adapter that cannot name a space has none, and is never asked. A
+      // declaration without the method is what this entry catches.
+      run: async () =>
+        refusalOf(
+          adapter.renameSpace === undefined
+            ? muxUnsupported("renameSpace", "This adapter has no way to name a space.")
+            : await adapter.renameSpace(targets.spaceId, "conformance"),
+        ),
     },
     {
       capability: "createTab",

@@ -107,7 +107,7 @@ has a public URL, so the token is the whole gate.
 #### What the token does not protect against
 
 - **Anyone who holds the token acts as the phone.** They can read every pane, answer every ask, send
-  text, stop a turn, rename a workspace or a tab and run a starter. There is nothing else to check: the descendant check of 1A
+  text, stop a turn, rename or close a workspace, a tab or a conversation and run a starter. There is nothing else to check: the descendant check of 1A
   needs the caller's credentials on a local socket, and a TLS connection from the internet has none,
   so under 1B it does not exist.
 - **The host sees the text.** TLS ends at the host (on Cloudflare, at Cloudflare's edge). Transcripts,
@@ -166,7 +166,9 @@ adapter and decoded once by the program. Every route except `hello` answers **50
 | `POST /pane/:id/answer` | `AnswerRequest` | `AnswerReply` | 400 `bad-body`, 400 `bad-id`, 400 `bad-option`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/send` | `SendRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
 | `POST /pane/:id/abort` | `AbortRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 503 `starting` |
+| `POST /pane/:id/action` | `ActionRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-pane`, 404 `no-such-action`, 409 `stale`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `action-refused`, 503 `starting` |
 | `POST /rename` | `RenameRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `rename-refused`, 503 `starting` |
+| `POST /close` | `CloseRequest` | `ControlReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-target`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `close-refused`, 503 `starting` |
 | `POST /starter/:id` | `StarterRequest` | `StarterReply` | 400 `bad-body`, 400 `bad-id`, 403 `caller-refused`, 404 `no-such-starter`, 409 `request-id-reused`, 409 `not-supported`, 413 `too-large`, 422 `starter-failed`, 503 `starting` |
 
 Any other method or path answers 404 `not-found`.
@@ -187,18 +189,21 @@ Every error body is a `Problem` (section 4).
 | 400 | `bad-option` | `optionId` is not one of the ask's options. | Same. |
 | 400 | `bad-cursor` | `after` is not an integer ≥ 0, or `epoch` is missing. | Same. |
 | 401 | (any) | Over the socket (1A): a program that wants a token, which the socket does not carry. Over TLS (1B): the token is missing or wrong. | 1A: `incompatible`, see section 2. 1B: `unreachable`, detail `token-refused`. |
-| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `rename` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
+| 403 | `caller-refused` | Over the socket (1A), on `answer`, `send`, `abort`, `action`, `rename`, `close` and `starter`: the program decided the caller is itself or a process below it (the descendant check, section 1A). Nothing ran. | Refused, with a detail that names the code. Never retried. |
 | 403 | (any) | Over TLS (1B): something in front of the program refused the caller, for example an access proxy. | `unreachable`, detail `token-refused`. |
 | 404 | `not-found` | Unknown route. | Refused. |
 | 404 | `no-such-pane` | The pane is not in the program's layout. | `gone`. |
-| 404 | `no-such-target` | The workspace or tab of a `rename` is not in the program's layout. | `gone`. |
+| 404 | `no-such-target` | The workspace, tab or pane of a `rename` or a `close` is not in the program's layout. | `gone`. |
+| 404 | `no-such-action` | The pane does not list this action (section 7.10). | Refused, with a detail that says the conversation has no such action. |
 | 404 | `no-such-starter` | The starter is not in the program's list. | Refused. |
 | 409 | `incompatible` | Version outside the range. Carries `range`. | `unreachable`, detail `incompatible`. Never retried at the same version. |
-| 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current. Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
+| 409 | `stale` | The `turnId`, `askId` or ask `revision` is not current (for an `action`, the `turnId` when the request carried one). Carries the current `turnId` and `askIds`, and `ask` for an answer. | Passed up as a stale refusal. The phone reloads. Never retried by the adapter. |
 | 409 | `request-id-reused` | The `requestId` was already used for a different route, pane, target or starter. | Refused. |
 | 409 | `not-supported` | The cap for this act is false, or this pane cannot take it (for example no send handler). | Refused. |
 | 413 | `too-large` | The request body is over 64 KiB. | Refused. |
 | 422 | `rename-refused` | The program said no to this title for this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
+| 422 | `action-refused` | The program said no to running this action now. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
+| 422 | `close-refused` | The program said no to closing this target. Nothing changed and nothing was stored for the request id. | Refused, with the program's `message` when it sent one. The same request id may run again. |
 | 422 | `starter-failed` | The starter ran and failed. Carries `message`. Nothing was stored for the request id. | Refused, with the message. The same request id may run again. |
 | 503 | `starting` | `ready` is false. | `unreachable`, detail `starting`. Asks `hello` again on the next poll. |
 | 500 | `internal` | A bug in the program. | A read: `unreachable` for this poll. A POST: outcome unknown (section 7.6). |
@@ -238,6 +243,8 @@ interface Caps {
   steer?: boolean;     // it can steer text into a running turn (needs send)
   abort?: boolean;     // it can stop a running turn
   rename?: boolean;    // it takes a new title for a workspace or a tab (section 7.8)
+  close?: boolean;     // it closes a workspace, a tab or a pane (section 7.9)
+  actions?: boolean;   // it lists actions on a pane and runs one when asked (section 7.10)
   terminal?: boolean;  // MUST be false or absent in version 1. The adapter ignores it.
 }
 
@@ -294,25 +301,46 @@ interface Pane {
   /** Absolute. Falls back to the workspace `cwd`, then to "". */
   cwd?: string;
   /**
-   * One line under the title, so a list of conversations reads at a glance (section 7.9). Trimmed, at
+   * One line under the title, so a list of conversations reads at a glance (section 7.11). Trimmed, at
    * most 120 characters, no control character. A bad value reads as absent.
    */
   subtitle?: string;
   /**
    * A small mark next to the title: `{ count }` (an integer from 0 to 9999) or `{ text }` (at most 12
-   * characters). Exactly one key. A bad value reads as absent (section 7.9).
+   * characters). Exactly one key. A bad value reads as absent (section 7.11).
    */
   badge?: { count: number } | { text: string };
   /**
-   * How far a working conversation is: a list of steps, or a percent (section 7.10). A bad value reads
+   * How far a working conversation is: a list of steps, or a percent (section 7.12). A bad value reads
    * as absent. The phone draws it only while `state` is `working` or `waiting`.
    */
   progress?:
     | { kind: "steps"; steps: { label: string; state: "done" | "running" | "todo" }[] }
     | { kind: "percent"; value: number; label?: string };
+  /**
+   * The buttons the phone draws in the program's section of the belt, in this order (section 7.10). At most 4;
+   * a longer list is cut to its first 4. Absent or empty: no buttons. Ignored unless `caps.actions` is true.
+   */
+  actions?: PaneAction[];
 }
 
 type PaneState = "working" | "waiting" | "idle";
+
+/** One program-defined belt button. */
+interface PaneAction {
+  /** The id the phone sends back. Follows the id rule. Unique inside the pane: a repeated id is dropped. */
+  id: string;
+  /** 1 to 16 characters (code points), cleaned and cut. An action whose label is empty after cleaning is dropped. */
+  label: string;
+  /** One of the twelve names below. Any other value draws no icon. */
+  icon?: ActionIcon;
+  /** Running now: the phone shows a spinner and sends no tap. */
+  busy?: boolean;
+  /** Not available now: the phone dims the button and sends no tap. */
+  disabled?: boolean;
+}
+
+type ActionIcon = "play" | "pause" | "check" | "x" | "refresh" | "archive" | "flag" | "star" | "send" | "note" | "search" | "more";
 
 interface StarterRow {
   id: string;
@@ -328,7 +356,7 @@ interface Ask {
    */
   id: string;
   /**
-   * What the person is asked (section 7.12). A reader shows an ask of another kind as not answerable.
+   * What the person is asked (section 7.14). A reader shows an ask of another kind as not answerable.
    * `permission` is the tool-call question of version 1. `choice`, `text` and `form` are the others.
    */
   kind: "permission" | "choice" | "text" | "form";
@@ -367,6 +395,11 @@ interface Ask {
    * shortened" and offers no `allow-always` option, because the person cannot see the whole request.
    */
   cleaned?: true;
+  /**
+   * The words for a notification about this ask: a `title` of at most 60 characters and a `line` of at
+   * most 120 (section 6). The bridge MAY use them and falls back to its own text. Each part is optional.
+   */
+  push?: { title?: string; line?: string };
 }
 
 interface Option {
@@ -403,11 +436,11 @@ type ToolStatus = "running" | "done" | "failed" | "denied";
 
 /** An item with a known id replaces the earlier one (a tool changes status, a reply grows). Ids are unique per pane. */
 type Item =
-  /** `requestId`: the request id of the send that made this line, when the program knows it (section 7.13). */
+  /** `requestId`: the request id of the send that made this line, when the program knows it (section 7.15). */
   | { id: string; ts?: string; kind: "user"; text: string; requestId?: string }
-  /** `partial`: the text is still growing, and the same id comes again (section 7.13). */
+  /** `partial`: the text is still growing, and the same id comes again (section 7.15). */
   | { id: string; ts?: string; kind: "reply" | "thinking" | "notice"; text: string; partial?: true }
-  /** Rendered as markdown (section 7.11). */
+  /** Rendered as markdown (section 7.13). */
   | { id: string; ts?: string; kind: "markdown"; text: string; partial?: true }
   /** A fenced code block. `lang` is a plain name such as "ts" or "c++". */
   | { id: string; ts?: string; kind: "code"; lang?: string; text: string }
@@ -454,7 +487,7 @@ interface AnswerRequest {
   /** The revision the phone saw. */
   revision: number;
   /**
-   * Exactly one shape, by the kind of the ask (section 7.12): `optionId` for a `permission`, `optionIds`
+   * Exactly one shape, by the kind of the ask (section 7.14): `optionId` for a `permission`, `optionIds`
    * for a `choice` (one id when it is not `multiple`), `text` for a `text` ask, `values` for a `form`.
    */
   answer:
@@ -501,6 +534,22 @@ interface RenameRequest {
   id: string;
   /** Trimmed, 1 to 120 characters, no control character (section 7.8). */
   title: string;
+}
+
+/** Close a workspace, a tab or a pane. What "close" means (archive, delete, end) is the program's call. */
+interface CloseRequest {
+  requestId: string;
+  kind: "pane" | "tab" | "workspace";
+  /** The pane id, the tab id as the snapshot lists it, or the workspace id. */
+  id: string;
+}
+
+/** Run one of a pane's actions. `turnId`, when sent, is the turn the phone saw. */
+interface ActionRequest {
+  requestId: string;
+  /** One of the ids the pane lists. */
+  actionId: string;
+  turnId?: string;
 }
 
 interface StarterRequest {
@@ -558,7 +607,7 @@ on `PaneWire` (`idle | working | blocked | done | unknown`).
 | `agent` | always `"durable"`. Never the `harness` string. |
 | `status` | the state mapping above |
 | `terminalTitle` | `Pane.title` |
-| `subtitle`, `badge`, `progress` | `Pane.subtitle`, `Pane.badge`, `Pane.progress`, after cleaning (sections 7.9 and 7.10). Left out when absent. |
+| `subtitle`, `badge`, `progress` | `Pane.subtitle`, `Pane.badge`, `Pane.progress`, after cleaning (sections 7.11 and 7.12). Left out when absent. |
 | `paneLabel` | never set |
 
 A pane that leaves the snapshot is gone: a call to it answers `gone`. A tab or workspace with no
@@ -585,6 +634,13 @@ A program SHOULD derive the ask id from the tool call it stands for, so an answe
 restart lands; the bridge's guard already keys on the tool call id (ADR 0100). The example SDK takes
 SHA-256 over `<paneId>\n<toolCallId>` and keeps the first 32 hex characters. A program that mints a
 random id per raise is still correct, and an answer to an id from before its restart is `too-late`.
+
+### Push words
+
+An ask MAY carry `push: { title?, line? }`: the words the program wants a notification about this ask to use.
+The bridge MAY use them and falls back to its own text, so a program that sends none loses nothing. The
+bridge puts the pane's own name in front of the title, and it sends a push only when its guard allows one
+(ADR 0100), so these words change what a push says and never whether or how often it is sent.
 
 ### Cleaning
 
@@ -617,8 +673,12 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `Hello.host.name` | 64 bytes | cut |
 | `Workspace.title`, `Tab.title`, `Pane.title` | 256 bytes | cut |
 | `Ask.title` | 256 bytes | cut |
+| `Ask.push.title` | 60 characters | cut; empty after cleaning reads as absent |
+| `Ask.push.line` | 120 characters | cut; empty after cleaning reads as absent |
 | `StarterRow.label` | 128 bytes | cut |
 | `Option.label` | 128 bytes | cut |
+| `PaneAction.label` | 16 characters | cut; empty after cleaning drops the action |
+| `Pane.actions` | 4 entries | the first 4 kept |
 | `Pane.harness` | 64 bytes | cut |
 | `Item.text` of a `markdown` or `code` item | 32768 bytes (32 KiB), same rule as a reply's text | cut |
 | `Item.lang` of a `code` item | 24 characters of letters, digits and `_ + # . -` | absent. The block stays. |
@@ -697,14 +757,14 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 - An ask is open from its `ask` event until its `ask-closed` event. While any ask is open, the pane
   state is `waiting`.
 - An answer names `askId`, the `revision` the phone saw, and what the person chose: an `optionId`, or
-  for the other kinds of ask what section 7.12 says.
+  for the other kinds of ask what section 7.14 says.
   - The ask id is not open on this pane: 200 `{ "result": "too-late" }`. This covers an ask already
     answered, one closed by a stop, and, for a program that mints a random id per raise, every id
     from before a restart.
   - The ask is open and `revision` is not its current one: 409 `stale`, with `ask` in its current
     form.
   - `optionId` is not one of the options: 400 `bad-option`. The same code for an id in `optionIds` or
-    in a choice field of a form that the ask does not offer (section 7.12).
+    in a choice field of a form that the ask does not offer (section 7.14).
   - Otherwise the program resolves the ask, closes it with `by: "phone"`, and answers
     `{ "result": "taken" }`. The tool then runs or is denied, as the option says.
 - Only an answer on this route closes an ask with `by: "phone"`. The program MUST NOT answer its own
@@ -743,7 +803,7 @@ When `abort` stops a run:
 The adapter MAY draw a `settled` event as a notice line. It MUST NOT wait for an item after an
 abort.
 
-A reply that was growing when the run stopped (section 7.13) stops where it is: the program writes
+A reply that was growing when the run stopped (section 7.15) stops where it is: the program writes
 that item once more, with the text it had and no `partial`, so the phone drops its cursor. This is
 the same item id, not a new item, and it is not a "stopped" line.
 
@@ -755,7 +815,7 @@ the same item id, not a new item, and it is not a "stopped" line.
   `StarterReply` with `replayed: true` and run nothing. A failed start (422) stores nothing, so the
   same id may run again. A repeat that arrives while the first is still running waits for it and
   returns its result.
-- **Answer, send, abort, rename:** the program SHOULD do the same: a repeat returns the first reply with
+- **Answer, send, abort, action, rename, close:** the program SHOULD do the same: a repeat returns the first reply with
   `replayed: true` and runs nothing. The bridge receipt is the main guard. This one covers a reply
   lost on the way.
 - The same `requestId` on a different route, pane or starter: 409 `request-id-reused`.
@@ -778,8 +838,8 @@ the same item id, not a new item, and it is not a "stopped" line.
   store, newest first; a pending receipt younger than a day is never pruned. Each store is written
   to a temporary file and renamed over the old one.
 - Timeouts in the adapter over the socket (1A): 1000 ms for `hello`, `snapshot` and `events`;
-  3000 ms for `answer`, `send`, `abort` and `rename`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
-  `hello`, `snapshot`, `events`, `answer`, `send`, `abort` and `rename`, because a program that slept may wake
+  3000 ms for `answer`, `send`, `abort`, `action`, `rename` and `close`; 30000 ms for `starter`. Over TLS (1B): 5000 ms for
+  `hello`, `snapshot`, `events`, `answer`, `send`, `abort`, `action`, `rename` and `close`, because a program that slept may wake
   cold; 30000 ms for `starter`. Each is a total deadline for the whole exchange,
   connect to last byte, and a reply is cut off the moment it passes its byte cap (section 6), so a
   program that trickles bytes or never stops cannot hold a read.
@@ -815,11 +875,66 @@ the same item id, not a new item, and it is not a "stopped" line.
 - A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true`
   and changes nothing, as for the other POSTs (section 7.6). The same `requestId` for another kind,
   id or title: 409 `request-id-reused`.
-- Collie draws the rename control for a tab, because it already has a tab capability (`renameTab`)
-  that the adapter declares from `caps.rename`. It has no control for a workspace yet; a program
-  MAY still take one on the wire.
+- Collie draws the rename control for a tab through its tab capability (`renameTab`) and the one for a
+  workspace through its space capability (`renameSpace`). The adapter declares both from `caps.rename`,
+  so a program that takes renames gets a Rename row in the tab sheet and in the space sheet.
 
-### 7.9 Subtitle and badge
+### 7.9 A close
+
+- `POST /close` carries a `requestId`, a `kind` (`pane`, `tab` or `workspace`) and the `id` of that
+  pane, tab (as the snapshot lists it) or workspace. A `kind` that is none of the three words: 400
+  `bad-body`. An `id` that breaks the id rule: 400 `bad-id`.
+- With `caps.close` false: 409 `not-supported`. An `id` that names no target of that kind: 404
+  `no-such-target`.
+- What "close" means is the program's call: archive the conversation, delete it, end its run. The
+  program does what it means on its side, removes the target and everything inside it from its layout
+  (a tab takes its panes, a workspace takes its tabs and their panes), and raises `rev` (section 7.1).
+  The next snapshot no longer carries them.
+- Every open ask on a pane that goes is closed with `by: "stopped"` (section 7.3), so no ask waits for
+  an answer that cannot come. The pane's events are gone with it: `GET /pane/:id/events` answers 404
+  `no-such-pane`.
+- It answers `{ "ok": true }` once the target is gone. The program MAY refuse: 422 `close-refused`, with
+  a `message` when it has words for the person. Nothing changed. The same `requestId` may try again, as
+  for a failed rename.
+- A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true` and
+  changes nothing (section 7.6). The same `requestId` for another kind or id: 409 `request-id-reused`.
+- The adapter checks the cap and the layout before it posts, and mints a UUID `requestId` for each
+  close. It never retries the POST. A close that times out, drops the connection or gets a 5xx has an
+  unknown outcome, and the phone is told the close may have been applied.
+- Collie draws its usual close controls for a pane (`closePane`) and a tab (`closeTab`). The adapter
+  declares both from `caps.close`. The phone has no control that closes a workspace, so no capability
+  is declared for it: a workspace close is on the wire for a client that sends one, and the phone
+  never does.
+
+### 7.10 Program actions
+
+- With `caps.actions` true, a pane MAY list up to 4 `actions` in the snapshot (section 4, `PaneAction`). The
+  phone draws them as buttons in the program's section of the belt, after Steer and Stop, in the order listed. A
+  program changes a pane's buttons by changing the list and raising `rev` (section 7.1). With `caps.actions` false
+  the list is ignored, and the phone draws none.
+- The adapter cleans the list: an `id` that breaks the id rule, a repeated `id`, and a `label` that is empty after
+  cleaning drop that action; the label is cut to 16 characters; an `icon` that is not one of the twelve names is
+  dropped, and the button then draws no icon. `busy` and `disabled` are kept only when `true`.
+- `POST /pane/:id/action` carries a `requestId`, the `actionId`, and OPTIONALLY the `turnId` the phone saw. A
+  button belongs to the pane, not to a turn, so a program that does not care leaves the turn out of its own
+  buttons' meaning; a phone that names the turn gets 409 `stale` when it has moved, with the current `turnId` and
+  `askIds` as for a send (section 7.4). The phone names the newest turn it has.
+- With `caps.actions` false: 409 `not-supported`. A pane that is not in the layout: 404 `no-such-pane`. An
+  `actionId` the pane does not list: 404 `no-such-action`. The program answers `{ "ok": true }` once it has taken
+  the act; it answers when it took it, not when the work behind the button ends.
+- The program MAY refuse: 422 `action-refused`, with a `message` when it has words for the person. Nothing
+  changed. The same `requestId` may try again, as for a failed rename. A program SHOULD refuse a tap on an action
+  it lists as `busy` or `disabled`, because a phone may have drawn the list before the change.
+- A repeat of a `requestId` that already succeeded returns the first reply with `replayed: true` and runs nothing
+  (section 7.6). The same `requestId` for another pane, action or turn: 409 `request-id-reused`.
+- The adapter checks the cap, the pane, that the pane lists the action, and the turn when one is named, before it
+  posts. A name that is not current is refused there and the program is not asked. It then posts ONCE, never
+  retries, and a tap that times out or gets a 5xx has an unknown outcome (section 7.6): the bridge keeps its
+  receipt open, and "tap again" carries the same request id so the program's own memory answers `replayed`.
+- Collie draws the buttons through its capability `programActions`, declared from `caps.actions`. The bridge
+  route is `POST /api/pane/:id/action`, and it keeps the receipt the way send and abort do.
+
+### 7.11 Subtitle and badge
 
 - `Pane.subtitle` and `Pane.badge` are optional and additive: a program that sends neither is
   unchanged, and a reader that does not know them ignores them (section 2, point 8).
@@ -833,13 +948,13 @@ the same item id, not a new item, and it is not a "stopped" line.
   the title. They carry no state and no action. A count of 0 is a valid value, and the phone draws it
   as no mark.
 
-### 7.10 Progress
+### 7.12 Progress
 
-- `Pane.progress` is optional and additive, like the subtitle and the badge (section 7.9). It is one of
+- `Pane.progress` is optional and additive, like the subtitle and the badge (section 7.11). It is one of
   two shapes. `{ kind: "steps", steps }` holds 1 to 12 steps, each a `label` and a `state` of `done`,
   `running` or `todo`. `{ kind: "percent", value, label? }` holds a number from 0 to 100 and an optional
   label.
-- The adapter cleans the labels as it cleans a subtitle (section 7.9). An unknown `kind`, no steps, a
+- The adapter cleans the labels as it cleans a subtitle (section 7.11). An unknown `kind`, no steps, a
   step with an unknown state or with no label left, a `value` outside 0 to 100 and a value that is not a
   number read as no progress at all, because half a progress would mislead. A `label` of the wrong type
   on a percent is left out and the percent stays. Progress is never refused, and it never drops the pane.
@@ -850,7 +965,7 @@ the same item id, not a new item, and it is not a "stopped" line.
 - The phone draws a step list as the running step's label with "n of m" (the first `todo` step when none
   runs, and the last step when all are done), and a percent as a thin bar with its label.
 
-### 7.11 Markdown, code and links in the thread
+### 7.13 Markdown, code and links in the thread
 
 - An item may have the kind `markdown`, `code` or `link`, beside `user`, `reply`, `thinking`, `notice` and
   `tool`. All three are optional and additive: a program that sends none is unchanged, and an older
@@ -871,7 +986,7 @@ the same item id, not a new item, and it is not a "stopped" line.
   tildes gets an invisible character in front of it, because the markdown reader ends a block at any such
   line; the code is unchanged to the eye.
 
-### 7.12 More kinds of ask
+### 7.14 More kinds of ask
 
 - `Ask.kind` is `permission`, `choice`, `text` or `form`. Every kind has the same `id`, `toolCallId`,
   `revision`, `title`, `itemId`, `reason` and `cleaned`, the same id rule, and the same lifecycle: open from
@@ -901,7 +1016,7 @@ the same item id, not a new item, and it is not a "stopped" line.
   sends. It keeps no answer text: the receipt holds ids and a digest, so the same request id with another
   text is refused (`request-id-reused`) without the words being stored.
 
-### 7.13 A reply that grows, and a line that is sent
+### 7.15 A reply that grows, and a line that is sent
 
 - An item of kind `reply`, `thinking`, `notice` or `markdown` MAY carry `partial: true`. It says the text is
   still growing and the same id will come again. Only the value `true` counts; any other value reads as a
@@ -976,7 +1091,7 @@ the same item id, not a new item, and it is not a "stopped" line.
 - **More than one program per peer.** One socket path, or one URL, per peer.
 - **Ask kinds other than `permission`**, and free-text answers beyond the optional `note`.
 - **Starters that take input**, such as a folder or a prompt.
-- **Creating or closing** workspaces, tabs or panes, and **renaming a pane**, from Collie. Renaming a workspace or a tab is section 7.8.
+- **Creating** workspaces, tabs or panes, and **renaming a pane**, from Collie. Renaming a workspace or a tab is section 7.8, and closing is section 7.9.
 
 ## 10. Changes from the spike
 
@@ -1027,15 +1142,23 @@ document. The version number stays 1; the spike's shapes are not supported.
     characters (section 6).
 19. **`Caps` gains `rename`, and `POST /rename` is a route** (sections 3, 4 and 7.8), with the codes
     `no-such-target` and `rename-refused`. Added before version 1 shipped, so the version stays 1.
-20. **`Pane` gains an optional `subtitle` and `badge`** (sections 4, 6 and 7.9). Added before version 1
+20. **`Caps` gains `close`, and `POST /close` is a route** (sections 3, 4 and 7.9), with the code
+    `close-refused` (and `no-such-target`, shared with rename). Added before version 1 shipped, so
+    the version stays 1.
+21. **`Caps` gains `actions`, `Pane` gains `actions`, and `POST /pane/:id/action` is a route** (sections 3, 4 and
+    7.10), with the codes `no-such-action` and `action-refused`. Added before version 1 shipped, so the version
+    stays 1.
+22. **`Ask` gains `push`** (sections 4 and 6): the program's own title and line for the push about the ask,
+    within the existing push guard. Added before version 1 shipped, so the version stays 1.
+23. **`Pane` gains an optional `subtitle` and `badge`** (sections 4, 6 and 7.11). Added before version 1
     shipped, so the version stays 1. An older adapter ignores both.
-21. **`Pane` gains an optional `progress`** (sections 4, 6 and 7.10). Added before version 1 shipped, so
+24. **`Pane` gains an optional `progress`** (sections 4, 6 and 7.12). Added before version 1 shipped, so
     the version stays 1. An older adapter ignores it.
-22. **`Item` gains the kinds `markdown`, `code` and `link`** (sections 4, 6 and 7.11). Added before
+25. **`Item` gains the kinds `markdown`, `code` and `link`** (sections 4, 6 and 7.13). Added before
     version 1 shipped, so the version stays 1. An older adapter drops an item of a kind it does not
     know.
-23. **`Ask.kind` gains `choice`, `text` and `form`, and `AnswerRequest.answer` gains the shapes
-    `{ optionIds }`, `{ text }` and `{ values }`** (sections 3, 4 and 7.12). `Option.effect` becomes
+26. **`Ask.kind` gains `choice`, `text` and `form`, and `AnswerRequest.answer` gains the shapes
+    `{ optionIds }`, `{ text }` and `{ values }`** (sections 3, 4 and 7.14). `Option.effect` becomes
     optional (a `permission` still has it), and `Ask` gains `multiple`, `placeholder`, `maxLength` and
     `fields`. Added before version 1 shipped, so the version stays 1. An older adapter shows an ask of a
     kind it does not know as not answerable.

@@ -1282,7 +1282,7 @@ function controlResultOf(body: JsonObject | undefined): ControlResult | null {
   }
 }
 
-async function postControl(paneId: string, route: "send" | "abort", body: JsonObject, scope: Scope | undefined): Promise<ControlResult> {
+async function postControl(paneId: string, route: "send" | "abort" | "action", body: JsonObject, scope: Scope | undefined): Promise<ControlResult> {
   // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
   stampSend(paneId);
   const got = await req<JsonObject>(
@@ -1310,6 +1310,21 @@ export function sendToPane(
   if (send.steer) body.steer = true;
   if (send.target !== null) Object.assign(body, send.target);
   return postControl(paneId, "send", body, scope);
+}
+
+/**
+ * POST /api/pane/:id/action: a tap on one of the buttons a durable program lists for the pane (M53 spec 07).
+ * It names the action and carries a request id, and the turn the phone saw when it has one: a turn that
+ * moved is refused with 409 before anything reaches the program. Same answers as a send or an abort.
+ */
+export function runPaneAction(
+  paneId: string,
+  run: { requestId: string; actionId: string; turnId?: string | undefined },
+  scope?: Scope,
+): Promise<ControlResult> {
+  const body: JsonObject = { requestId: run.requestId, actionId: run.actionId };
+  if (run.turnId !== undefined && run.turnId !== "") body.turnId = run.turnId;
+  return postControl(paneId, "action", body, scope);
 }
 
 /** POST /api/pane/:id/abort: stop the turn the phone saw. Same names and the same stale rule as a send. */
@@ -1391,6 +1406,21 @@ export function renameTab(
   scope?: Scope,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(withScope(`/api/tab/${encodeURIComponent(tabId)}/rename`, scope), {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+/**
+ * Set a space's name, on a machine whose multiplexer declares `renameSpace` (a durable program that takes
+ * renames). Non-empty required, like a tab: the bridge 400s a blank label.
+ */
+export function renameSpace(
+  spaceId: string,
+  label: string,
+  scope?: Scope,
+): Promise<ActionResponse> {
+  return req<ActionResponse>(withScope(`/api/space/${encodeURIComponent(spaceId)}/rename`, scope), {
     method: "POST",
     body: JSON.stringify({ label }),
   });

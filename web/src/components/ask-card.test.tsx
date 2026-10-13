@@ -319,7 +319,7 @@ describe("a newer revision from the poll", () => {
   });
 });
 
-// ── More kinds of ask (WIRE.md 7.12) ─────────────────────────────────────────────────────────────
+// ── More kinds of ask (WIRE.md 7.14) ─────────────────────────────────────────────────────────────
 
 const QUEUES = [
   { id: "billing", label: "Billing" },

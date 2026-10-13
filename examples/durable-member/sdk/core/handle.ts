@@ -5,18 +5,20 @@
 // four acts (answer, send, abort, starter) and throws 403 `caller-refused`. Reads never call it.
 
 import { BadAnswer, type Pane, type Store } from "./layout.ts";
-import { digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
+import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
 import { ANSWER_TEXT_BYTES, assertId, bytes, CAPS, cut, idOk, LIMITS, renameTitleOf } from "./rules.ts";
 import {
   type Answer,
   type AnswerReply,
   type AnswerRequest,
   type Caps,
+  type CloseRequest,
   type ControlReply,
   type EventsReply,
   type FormAnswer,
   type Hello,
   PROTOCOL_RANGE,
+  type ProgramHooks,
   type RenameRequest,
   type SendRequest,
   type StarterReply,
@@ -28,10 +30,11 @@ export interface CoreState {
   hostName: string;
   caps: Caps;
   /**
-   * Asked before a workspace or a tab takes a new title (WIRE.md 7.8). `false` refuses it: 422 `rename-refused`,
-   * nothing changes, and the same request id may try again. Absent: every rename the wire accepts is applied.
+   * The program's hooks. `onRename` is asked before a workspace or a tab takes a new title (WIRE.md 7.8): `false`
+   * refuses it (422 `rename-refused`, nothing changes, the same request id may try again). Absent: every rename the
+   * wire accepts is applied. `onSend` and `onAbort` are the pane's fallback, see `PaneHandle.onSend`.
    */
-  onRename?: (target: { kind: "workspace" | "tab"; id: string; title: string }) => boolean | Promise<boolean>;
+  hooks: ProgramHooks;
 }
 
 /** Per request, from the server that accepted it. */
@@ -85,7 +88,7 @@ function idField(body: Record<string, unknown>, name: string): string {
 }
 
 /**
- * The `answer` member of an answer request, read for its shape (WIRE.md 7.12): exactly one of `optionId` (with an
+ * The `answer` member of an answer request, read for its shape (WIRE.md 7.14): exactly one of `optionId` (with an
  * optional `note`), `optionIds`, `text` or `values`. A wrong type or an over-cap string is 400 `bad-body`, an id that
  * breaks the id rule 400 `bad-id`. Whether the shape fits THIS ask is the pane's to say, once the ask is known to be open.
  */
@@ -222,7 +225,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
 
   if (route[0] === "pane" && route.length === 3) {
     const verb = route[2];
-    const want = verb === "events" ? "GET" : verb === "answer" || verb === "send" || verb === "abort" ? "POST" : undefined;
+    const want = verb === "events" ? "GET" : verb === "answer" || verb === "send" || verb === "abort" || verb === "action" ? "POST" : undefined;
     if (method !== want) return json(404, { code: "not-found" });
     const id = decode(route[1]!);
     const pane = id === undefined ? undefined : store.panes.get(id);
@@ -282,6 +285,26 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
       );
     }
 
+    if (verb === "action") {
+      const actionId = idField(body, "actionId");
+      // `turnId` is optional here: a button belongs to the pane, and a program may not care which turn the phone saw.
+      const turnId = body.turnId === undefined || body.turnId === null ? undefined : idField(body, "turnId");
+      return json(
+        200,
+        await once<ControlReply>({ actionId, turnId: turnId ?? null }, async () => {
+          if (!caps.actions || !pane.canAct) throw new HttpError(409, "not-supported");
+          if (turnId !== undefined && turnId !== pane.turnId) throw stale(pane); // the turn can move between the adapter's check and this one
+          const row = pane.actionRows.find((a) => a.id === actionId);
+          if (!row) throw new HttpError(404, "no-such-action");
+          // A dimmed button takes no tap, and a request for one is the program's refusal, not an act.
+          if (row.disabled === true || row.busy === true) throw new HttpError(422, "action-refused", { message: "The action is not available now." });
+          const accepted = await pane.act({ actionId, ...(turnId === undefined ? {} : { turnId }), requestId });
+          if (!accepted) throw new HttpError(422, "action-refused");
+          return { ok: true };
+        }),
+      );
+    }
+
     // abort
     const target = targetOf(body);
     return json(
@@ -311,11 +334,33 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
       await store.receipts.run<ControlReply>(requestId, digestOf({ verb: "rename", kind, id, title }), async () => {
         const exists = kind === "workspace" ? store.workspaces.has(id) : store.tabs.has(id);
         if (!exists) throw new HttpError(404, "no-such-target");
-        if (state.onRename && !(await state.onRename({ kind, id, title }))) throw new HttpError(422, "rename-refused");
+        if (state.hooks.onRename && !(await state.hooks.onRename({ kind, id, title }, requestId))) throw new HttpError(422, "rename-refused");
         // The target can go while the hook runs. Then there is nothing to rename and nothing was changed.
         if (!store.rename(kind, id, title)) throw new HttpError(404, "no-such-target");
         return { ok: true };
       }, RENAME_GROUP),
+    );
+  }
+
+  if (method === "POST" && route[0] === "close" && route.length === 1) {
+    call.refuseAct?.();
+    const body = await readBody(request);
+    const requestId = idField(body, "requestId");
+    const { kind } = body as Partial<CloseRequest>;
+    if (kind !== "pane" && kind !== "tab" && kind !== "workspace") throw badBody("kind must be pane, tab or workspace");
+    const id = idField(body, "id");
+    if (!caps.close) throw new HttpError(409, "not-supported");
+    return json(
+      200,
+      await store.receipts.run<ControlReply>(requestId, digestOf({ verb: "close", kind, id }), async () => {
+        const target = store.closeTarget(kind, id);
+        if (!target) throw new HttpError(404, "no-such-target");
+        // Only `false` refuses: a hook that persists the close and returns nothing accepts it.
+        if ((await state.hooks.onClose?.(target, requestId)) === false) throw new HttpError(422, "close-refused");
+        // The target can go while the hook runs. Then there is nothing to close and nothing was changed.
+        if (!store.close(kind, id)) throw new HttpError(404, "no-such-target");
+        return { ok: true };
+      }, CLOSE_GROUP),
     );
   }
 

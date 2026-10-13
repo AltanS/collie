@@ -147,7 +147,7 @@ export class PeerNotifier<H = unknown> {
       host,
       body.agents,
       // SAFETY: as above, `PaneWire` IS `AgentView` minus the two server-only session fields.
-      (pane) => entry.coordinator.onTransition(pane as AgentView, pane.status, "blocked", "ask"),
+      (pane, text) => entry.coordinator.onTransition(pane as AgentView, pane.status, "blocked", "ask", text),
       () => {
         if (!this.deps.mute.isMuted() && this.deps.isNotifiable("blocked")) this.deps.push.send(askFloodMessage(host, host));
       },

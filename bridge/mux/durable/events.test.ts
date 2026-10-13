@@ -110,7 +110,7 @@ describe("a plain events read", () => {
   });
 });
 
-describe("dropped items (WIRE.md 7.11)", () => {
+describe("dropped items (WIRE.md 7.13)", () => {
   test("a pane that sends items the reader drops gets one log line per epoch, not one per item or per read", async () => {
     const { program, sync } = await rig();
     const said: string[] = [];
@@ -369,7 +369,7 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(parsed.ok && parsed.value.events).toEqual([{ type: "item", item: { id: "ok", ts: undefined, kind: "reply", text: "kept" } }]);
   });
 
-  test("markdown, code and link items are read, cleaned and capped (WIRE.md 7.11)", () => {
+  test("markdown, code and link items are read, cleaned and capped (WIRE.md 7.13)", () => {
     const parsed = parseEvents(
       body([
         { type: "item", item: { id: "m1", kind: "markdown", text: `# Title\n\n- one\n- two${String.fromCodePoint(0x202e)}` } },
@@ -391,7 +391,7 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(long?.kind === "markdown" && long.text.endsWith("…")).toBe(true);
   });
 
-  test("partial rides on reply, thinking, notice and markdown only, requestId on user only (WIRE.md 7.13)", () => {
+  test("partial rides on reply, thinking, notice and markdown only, requestId on user only (WIRE.md 7.15)", () => {
     const parsed = parseEvents(
       body([
         { type: "item", item: { id: "r", kind: "reply", text: "Hel", partial: true } },
@@ -553,7 +553,7 @@ describe("where the events go", () => {
   });
 });
 
-describe("a reply that grows, through the reader into the pane log (WIRE.md 7.13)", () => {
+describe("a reply that grows, through the reader into the pane log (WIRE.md 7.15)", () => {
   const grown = (id: string, text: string, partial: boolean): FakeEvent => ({ type: "item", item: partial ? { id, kind: "reply", text, partial: true } : { id, kind: "reply", text } });
 
   test("an item with a known id replaces the earlier one: the log and the chat hold ONE turn, never a row per version", async () => {

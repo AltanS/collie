@@ -339,11 +339,11 @@ export function AgentChat({
   // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
   const name = agent === undefined ? "" : paneName(agent);
   const workspace = agent === undefined ? "" : panePlaceParts(agent, tabs).space;
-  // A durable program's own line under the title (WIRE.md 7.9). The header's second line is 12px and its
+  // A durable program's own line under the title (WIRE.md 7.11). The header's second line is 12px and its
   // geometry is a stated sum (20 + 4 + 12), so the subtitle takes the line the workspace holds; the
   // workspace is still named by the line's tap target (`chat.header.openOverviewAria`).
   const subtitle = agent === undefined ? null : paneSubtitle(agent);
-  // How far a working durable conversation is (WIRE.md 7.10), drawn under the header while the pane
+  // How far a working durable conversation is (WIRE.md 7.12), drawn under the header while the pane
   // works or waits. Null on every pane with a screen, which is what leaves them unchanged.
   const progress = agent === undefined ? null : paneProgress(agent);
   // The branch the pane's folder is on, beside the workspace on line 2 (lib/git-head.ts).
@@ -2122,7 +2122,7 @@ export function AgentChat({
                 slides in and out rather than pushing the mirror by a jump. */}
             <MaskedHint open={maskedHintOpen} className="mx-3 mt-1.5" />
 
-            {/* A durable program's progress (WIRE.md 7.10): the running step with its place, or a
+            {/* A durable program's progress (WIRE.md 7.12): the running step with its place, or a
                 percent. In the same chrome band as the banners, in a Collapse of its own so it slides
                 in when the run starts and out when the program clears it, and it leaves with the band
                 in zen. The row states its own 20px; nothing else moves (DESIGN.md §1, §2). */}
@@ -2737,6 +2737,7 @@ export function AgentChat({
                     scope={scope}
                     turnId={agent?.turnId}
                     asks={agent?.asks}
+                    actions={agent?.actions}
                     status={agent?.status}
                     locked={gone || readOnly || hostBlock !== undefined}
                     lockedWhy={

@@ -37,7 +37,7 @@ export async function allEvents(d: Dial, id: string): Promise<SessionEvent[]> {
 }
 /**
  * The items of a pane as a reader holds them: each id once, in its latest version, in order of first appearance. A reply that
- * grew is written again and again under one id (WIRE.md 7.13), so the raw events hold several versions of it.
+ * grew is written again and again under one id (WIRE.md 7.15), so the raw events hold several versions of it.
  */
 export function latestItems(events: readonly SessionEvent[]): Item[] {
   const byId = new Map<string, Item>();

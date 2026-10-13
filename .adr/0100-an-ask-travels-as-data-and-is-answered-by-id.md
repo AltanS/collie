@@ -64,7 +64,9 @@ involved.**
    program's 50 per pane, is listed on the pane; the phone shows five and opens the rest on a tap.
    A key is forgotten an hour after it was last seen open, and the file keeps at most 2000 keys.
    The push for an ask says "Permission needed in <pane>", where <pane> is the pane's push name,
-   never the ask's title, its reason or a command line. The guard runs where the push is sent: a
+   never the ask's title, its reason or a command line, unless the program chose the words of its own
+   push (an ask's `push`, 60 and 120 characters, cleaned again by the bridge, the pane's name still in
+   front); that changes what a push says and never whether it is sent. The guard runs where the push is sent: a
    solo collie for its own panes, the lead for a peer's panes (CREW_PROTOCOL.md §5).
 6. **A restart re-ask is shown, not pushed.** The same tool call id arrives again after a restart.
    The phone shows the ask. The guard sees the key it already pushed and stays quiet. With a random

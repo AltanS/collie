@@ -25,7 +25,7 @@ export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 /** A small mark next to a pane's title: a count, or a short word. Exactly one key (WIRE.md section 3). */
 export type PaneBadge = { count: number } | { text: string };
 
-/** How far a working pane is: a list of steps, or a percent with an optional label (WIRE.md section 7.10). */
+/** How far a working pane is: a list of steps, or a percent with an optional label (WIRE.md section 7.12). */
 export type PaneProgress =
   | { readonly kind: "steps"; readonly steps: readonly { readonly label: string; readonly state: "done" | "running" | "todo" }[] }
   | { readonly kind: "percent"; readonly value: number; readonly label?: string };
@@ -138,7 +138,7 @@ export interface AgentView {
    */
   badge?: PaneBadge;
   /**
-   * How far a working conversation is (WIRE.md section 7.10). Same producer and same absence rule as
+   * How far a working conversation is (WIRE.md section 7.12). Same producer and same absence rule as
    * {@link subtitle}. The phone draws it only while the pane works or waits.
    */
   progress?: PaneProgress;
@@ -255,7 +255,31 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * not see. Absent on every other pane and from every older bridge.
    */
   turnId?: string;
+  /**
+   * The belt buttons this pane's program lists, in its order (WIRE.md section 4, `PaneAction`).
+   *
+   * ONE PRODUCER, like {@link asks}: only a pane from an adapter that takes program actions carries
+   * the key (the `durable` adapter, `MuxAdapter.paneActions`, when the program declared `caps.actions`).
+   * At most 4, each cleaned by the adapter. Absent on every other pane and from every older bridge,
+   * which the phone reads as "no program buttons here".
+   */
+  actions?: PaneAction[];
 };
+
+/** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
+export const PANE_ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export type PaneActionIcon = (typeof PANE_ACTION_ICONS)[number];
+
+/** One button of a durable program's section of the belt. `label` is at most 16 characters. */
+export interface PaneAction {
+  id: string;
+  label: string;
+  icon?: PaneActionIcon;
+  /** Running now: the phone shows a spinner and sends no second tap. */
+  busy?: true;
+  /** Not available now: the phone dims it and sends no tap. */
+  disabled?: true;
+}
 
 /** What a person may choose on an ask (WIRE.md section 4). */
 export interface AskOption {
@@ -266,7 +290,7 @@ export interface AskOption {
   effect?: "allow" | "allow-always" | "deny" | "cancel";
 }
 
-/** One field of a `form` ask (WIRE.md section 7.12). */
+/** One field of a `form` ask (WIRE.md section 7.14). */
 export interface AskField {
   /** Unique inside its ask. The key of the field's value in the answer. */
   id: string;
@@ -295,7 +319,7 @@ export interface Ask {
   /** New after every restart of the program, even for the same tool call. */
   id: string;
   /**
-   * `permission`, `choice`, `text` or `form` (WIRE.md section 7.12). A card for any other kind (a program
+   * `permission`, `choice`, `text` or `form` (WIRE.md section 7.14). A card for any other kind (a program
    * newer than this build) is not answerable.
    */
   kind: string;
@@ -327,6 +351,17 @@ export interface Ask {
    * The card says the text was shortened and offers no `allow-always` on such an ask.
    */
   cleaned?: true;
+  /**
+   * The words the program chose for a notification about this ask (WIRE.md section 6). The bridge MAY use
+   * them for a push and falls back to its own text. Cleaned by the adapter; a lead cleans them again.
+   */
+  push?: AskPushText;
+}
+
+/** A push title (60 characters at most) and line (120 at most) a program chose for an ask. */
+export interface AskPushText {
+  title?: string;
+  line?: string;
 }
 
 /**
@@ -346,7 +381,7 @@ interface AnswerBase {
 export type AnswerValues = Record<string, string | string[] | boolean>;
 
 /**
- * What the person chose, by the kind of the ask (WIRE.md section 7.12). Exactly one key names the shape:
+ * What the person chose, by the kind of the ask (WIRE.md section 7.14). Exactly one key names the shape:
  * `optionId` for a `permission`, `optionIds` for a `choice` (one when it is not `multiple`), `text` for a
  * `text` ask and `values` for a `form`.
  */
@@ -403,13 +438,24 @@ export interface AbortRequest {
   askId?: string;
 }
 
+/**
+ * `POST /api/pane/:id/action`'s body (M53 spec 07). `turnId` is optional: a button belongs to the pane,
+ * and a phone that names the turn it saw gets `stale` when the turn has moved.
+ */
+export interface ActionRequest {
+  requestId: string;
+  actionId: string;
+  turnId?: string;
+}
+
 /** What a control names: the turn the phone saw, or an open ask. Never both, never neither. */
 export type ControlTarget = { readonly kind: "turn"; readonly id: string } | { readonly kind: "ask"; readonly id: string };
 
-/** A send or an abort, as the bridge reads it off the phone's body and hands it to the adapter. */
+/** A send, an abort or a belt action, as the bridge reads it off the phone's body and hands it to the adapter. */
 export type ControlRequest =
   | { readonly act: "send"; readonly requestId: string; readonly target: ControlTarget; readonly text: string; readonly steer: boolean }
-  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget };
+  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget }
+  | { readonly act: "action"; readonly requestId: string; readonly actionId: string; readonly turnId?: string };
 
 /**
  * What `POST /api/pane/:id/send` and `/abort` answer, one shape for both (ADR 0101).

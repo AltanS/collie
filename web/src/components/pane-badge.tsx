@@ -3,7 +3,7 @@ import { paneBadge } from "@/lib/pane-marks";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// THE MARK NEXT TO A DURABLE PANE'S TITLE (WIRE.md 7.9): a count or a short word, in the shared label
+// THE MARK NEXT TO A DURABLE PANE'S TITLE (WIRE.md 7.11): a count or a short word, in the shared label
 // pill (`ui/badge.tsx`, the secondary look), set to the row's 16px so it never makes a line taller than
 // the name beside it. It renders nothing without a mark, and a program's string is a text node only.
 

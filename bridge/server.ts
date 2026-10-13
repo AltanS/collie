@@ -30,6 +30,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
+import { muxUnsupported } from "./mux/types.ts";
 import type { MuxAdapter, MuxAck, MuxGrid, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
@@ -47,7 +48,7 @@ import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from ".
 import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
 import { controlPane, memoryControlReceipts, rawInputRefusal, type ControlReceiptSurface } from "./durable/control.ts";
-import { withOpenAsks, withTurn } from "./durable/pane-asks.ts";
+import { withActions, withOpenAsks, withTurn } from "./durable/pane-asks.ts";
 import {
   memoryWorktreeChoices,
   type BaseKind,
@@ -384,7 +385,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * (409, `unsupported` for a pane or program that cannot take the act). A body that is not one is a
  * plain 400. Such a pane refuses `reply` and `keys` with `unsupported`. See `bridge/durable/control.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -417,6 +418,9 @@ const MAX_HISTORY_LIMIT = 5000;
 // A tab supports rename + close — an action group like the pane route. The `/api/tab` POST above
 // (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
+// A space supports rename only, and only on an adapter that declares `renameSpace` (a durable program that
+// takes `caps.rename`). `/api/space/<id>/rename` is a new path: the create route is `/api/workspace`.
+const SPACE_ACTION_ROUTE = /^\/api\/space\/([^/]+)\/rename$/;
 
 /**
  * `GET /api/stt/model/<sha256>` (ADR 0096 Decision 9). The segment is matched as an opaque value and
@@ -1405,8 +1409,11 @@ export function startServer(opts: {
         name: from.name,
         // A pane whose adapter raises asks as data carries them, capped at five (ADR 0100), and one
         // whose adapter names turns carries its newest `turnId` (ADR 0101); every other pane comes
-        // back from `withOpenAsks` and `withTurn` as the same object.
-        panes: pick(from).map((p) => withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr)),
+        // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
+        // carries them (M53 spec 07), the same way.
+        panes: pick(from).map((p) =>
+          withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr),
+        ),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
       // at all, which is the whole backward-compatibility claim (solo-baseline.test.ts).
@@ -1726,6 +1733,17 @@ export function startServer(opts: {
       return renameTab(rt.herdr, rt.engine, tabId, req, caller.audit, device, rt.name);
     }
 
+    // ── Space rename: set its name, where the multiplexer (a durable program) declares `renameSpace` ──
+    const spaceMatch = pathname.match(SPACE_ACTION_ROUTE);
+    if (spaceMatch && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      const spaceId = decodeURIComponent(spaceMatch[1]!);
+      return renameSpace(rt.herdr, rt.engine, spaceId, req, caller.audit, caller.device(), rt.name);
+    }
+
     // ── Per-pane read / send ─────────────────────────────────────────────
     const paneMatch = pathname.match(PANE_ROUTE);
     if (paneMatch) {
@@ -1813,9 +1831,10 @@ export function startServer(opts: {
         });
         return "text" in answered ? text(answered.text, answered.status) : json(answered.body, req.headers.get("accept-encoding"), answered.status);
       }
-      // A send or an abort that names the turn or ask the phone saw (ADR 0101). The receipt is written
-      // before the control leaves; on a crew it lives on the member that owns the pane.
-      if ((action === "send" || action === "abort") && req.method === "POST") {
+      // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
+      // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
+      // leaves; on a crew it lives on the member that owns the pane.
+      if ((action === "send" || action === "abort" || action === "action") && req.method === "POST") {
         let body: JsonValue | undefined;
         try {
           // SAFETY: `Request.json()` output IS a JsonValue by construction; `controlPane` checks every field.
@@ -4375,7 +4394,7 @@ function promptBindingFailure(
  * Cheap where it is already fresh — a pushing adapter's `refresh()` resolves immediately (see the
  * port) — so this costs a listing only on the adapters that actually needed one.
  */
-async function settleTopology(herdr: MuxAdapter, engine: StateEngine): Promise<void> {
+async function settleTopology(herdr: Pick<MuxAdapter, "refresh">, engine: Pick<StateEngine, "pokeNow">): Promise<void> {
   try {
     await herdr.refresh();
   } catch (err) {
@@ -4534,6 +4553,46 @@ async function renameTab(
     );
   }
   audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+  await settleTopology(herdr, engine);
+  return json({ ok: true } satisfies ActionResponse, ae);
+}
+
+/** The refusal for an adapter that cannot name a space: it has no `renameSpace` (capabilities.ts). */
+const NO_SPACE_RENAME = "This multiplexer does not take a new name for a space from here.";
+
+// Set a space's name, on an adapter that declares `renameSpace`. The same body and the same rule as a tab: a
+// blank label is a 400. Only a durable program has the method today, and it answers with its own refusal
+// (`rename-refused`) when it will not take the name.
+export async function renameSpace(
+  herdr: Pick<MuxAdapter, "renameSpace" | "refresh">,
+  engine: Pick<StateEngine, "pokeNow">,
+  spaceId: string,
+  req: Request,
+  audit: Pick<AuditLog, "record">,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; the label is checked below.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const parsed = normalizeTabLabel(asJsonRecord(body)?.label);
+  if (!parsed.ok) return text(parsed.error, 400);
+  const renamed =
+    herdr.renameSpace === undefined
+      ? muxUnsupported("renameSpace", NO_SPACE_RENAME)
+      : await herdr.renameSpace(spaceId, parsed.label);
+  if (!renamed.ok) {
+    return json(
+      { ok: false, ...apiError("space.rename_failed", { reason: renamed.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
+  audit.record({ action: "space.rename", session, device, detail: { spaceId, label: parsed.label } });
   await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }

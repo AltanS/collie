@@ -992,7 +992,7 @@
   }
 }
 
-/* A REPLY THE PROGRAM IS STILL WRITING (components/chat-cards.tsx `Growing`, WIRE.md 7.13). The cursor is a pseudo-element
+/* A REPLY THE PROGRAM IS STILL WRITING (components/chat-cards.tsx `Growing`, WIRE.md 7.15). The cursor is a pseudo-element
    at the end of the last block of the markdown, so it takes no row of its own and its going moves no line (DESIGN.md §2). A
    block bar the height of the text, blinking on a hard step; under reduced motion it stands still, which still says "more
    is coming" and needs no movement to say it. */

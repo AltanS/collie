@@ -26,6 +26,7 @@ import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/n
 import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
 import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "./pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "./script.ts";
+import { ClosedStore, TitleStore } from "./state.ts";
 
 export interface AppOptions {
   /** The Unix socket path. Absolute, at most 103 bytes. */
@@ -37,6 +38,13 @@ export interface AppOptions {
   helperMs?: number; // the helper's answer takes this long (default: stepMs), so a test can kill the app mid-answer
   /** Where `write_note` appends. */
   notesFile: string;
+  /**
+   * Where the names the phone gave a workspace or a tab are kept, as JSON, so a restart keeps a rename. Default:
+   * `titles.json` beside `notesFile`.
+   */
+  titlesFile?: string;
+  /** Where the conversations the phone closed are kept, as JSON, so a restart does not show them again. Default: `closed.json` beside `notesFile`. */
+  closedFile?: string;
   /** `descendant` (default) or `off`. An in-process test is the program's own caller, so it turns the check off. */
   callerCheck?: "descendant" | "off";
   /** Open one ticket when the storage holds no conversation yet, so a first start has an ask to answer. Default true. */
@@ -69,13 +77,42 @@ export async function startApp(o: AppOptions): Promise<App> {
   // Tools and layout.
   const notes = o.notesFile;
   mkdirSync(dirname(notes), { recursive: true, mode: 0o700 });
-  const collie = await openCollie({ socket: o.socket, hostName: "durable-member", callerCheck: o.callerCheck });
-  const ws = collie.workspace("triage", { title: "Triage", cwd: "/srv/triage" });
-  const inbox = ws.tab("inbox", { title: "Inbox" });
-  const helpers = ws.tab("helpers", { title: "Helpers" });
-
+  // A name the phone gave a workspace or a tab (WIRE.md 7.8). The layout below is made again on every start, so the
+  // names are kept in a file and win over the ones in this code. A key is the kind and the wire id: `tab/triage:inbox`.
+  const titles = new TitleStore(o.titlesFile ?? join(dirname(notes), "titles.json"));
+  // A conversation the phone closed is archived: it is ended, written down here, and not shown again after a restart.
+  const closed = new ClosedStore(o.closedFile ?? join(dirname(notes), "closed.json"));
   const panes = new PaneRegistry();
   let harness!: Harness;
+  const collie = await openCollie({
+    socket: o.socket,
+    hostName: "durable-member",
+    callerCheck: o.callerCheck,
+    hooks: {
+      // Keep the new name, then take it. Returning false would refuse it (422).
+      onRename: ({ kind, id, title }) => {
+        titles.set(kind, id, title);
+        return true;
+      },
+      // The phone closes a conversation: end its run, write it down so a restart skips it, stop showing it. The SDK
+      // then takes the pane out of the layout and closes its open asks as `stopped`. The Inbox and Helpers tabs and
+      // the Triage workspace are this program's own layout, in code, so it refuses to close those (422).
+      onClose: async ({ kind, paneIds }) => {
+        if (kind !== "pane") return false;
+        for (const paneId of paneIds) {
+          const id = panes.conversationOf(paneId);
+          if (id === undefined) continue;
+          await (await harness.conversation(id, ctx))?.abort(ctx).catch(() => {});
+          closed.add(String(id));
+          await panes.forget(id);
+        }
+      },
+    },
+  });
+  const ws = collie.workspace("triage", { title: titles.get("workspace", "triage", "Triage"), cwd: "/srv/triage" });
+  const inbox = ws.tab("inbox", { title: titles.get("tab", "triage:inbox", "Inbox") });
+  const helpers = ws.tab("helpers", { title: titles.get("tab", "triage:helpers", "Helpers") });
+
   const writeNote = defineTool({
     name: "write_note",
     description: "Save a note about the ticket.",
@@ -107,6 +144,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     cursor = page.next;
   } while (cursor);
   for (const c of all) {
+    if (closed.has(String(c.id))) continue; // the phone closed it
     const conversation = (await harness.conversation(c.id, ctx))!;
     await show(conversation, c.owner);
   }
@@ -115,7 +153,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     const owned = owner !== undefined;
     const tab = owned ? helpers : inbox;
     const title = `${owned ? "Helper" : "Ticket"} #${conversation.id}`;
-    return showConversation({ tab, title, subtitle: subtitleFor(owner), progress: !owned }, harness, conversation, { panes });
+    return showConversation({ tab, title, subtitle: subtitleFor(owner), progress: !owned, escalate: !owned }, harness, conversation, { panes });
   }
 
   let tickets = 0;
@@ -179,6 +217,7 @@ export function optionsFromEnv(env: NodeJS.ProcessEnv = process.env): AppOptions
     socket: env[SOCKET_ENV] || join(runtime, "app.sock"),
     storage: join(data, "store"),
     notesFile: join(data, "notes.txt"),
+    titlesFile: join(data, "titles.json"),
     stepMs: ms("DM_STEP_MS"),
     slowMs: ms("DM_SLOW_MS"),
     helperMs: ms("DM_HELPER_MS"),

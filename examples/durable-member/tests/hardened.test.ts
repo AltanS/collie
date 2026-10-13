@@ -269,6 +269,25 @@ describe("cleaned asks and invisible characters", () => {
     await c.close();
   });
 
+  test("push words are cleaned and cut to 60 and 120 characters, a part that is empty is left out, and no words leave no key", async () => {
+    const { c, p, d } = await mk();
+    p.ask(input("words", { push: { title: `Needs​ a yes${"x".repeat(100)}`, line: `  ${"l".repeat(300)}` } })).catch(() => {});
+    p.ask(input("title-only", { push: { title: "Needs a yes", line: "\u0007" } })).catch(() => {});
+    p.ask(input("empty", { push: { title: "", line: "​" } })).catch(() => {});
+    p.ask(input("none")).catch(() => {});
+    const asks = (await api.snapshot(d)).body.panes[0]!.openAsks;
+    const by = (id: string) => asks.find((a) => a.id === id)!;
+    expect([...(by("words").push?.title ?? "")]).toHaveLength(60);
+    expect(by("words").push?.title?.startsWith("Needs a yes")).toBe(true);
+    expect(by("words").push?.line).toBe("l".repeat(120));
+    expect(by("title-only").push).toEqual({ title: "Needs a yes" });
+    expect(Object.hasOwn(by("empty"), "push")).toBe(false);
+    expect(Object.hasOwn(by("none"), "push")).toBe(false);
+    // The words are not the card's text: the card was not cut, so it carries no `cleaned`.
+    expect(by("words").cleaned).toBeUndefined();
+    await c.close();
+  });
+
   test("a program may set cleaned itself, and an update keeps it", async () => {
     const { c, p, d } = await mk();
     p.ask(input("own", { cleaned: true })).catch(() => {});

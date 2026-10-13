@@ -18,7 +18,7 @@ export const REAL_INSTRUCTIONS =
 
 /**
  * How fast the scripted model writes, in tokens a second. Every answer is streamed at this rate, so a reply grows on
- * the phone while it is written and Stop has a moving reply to cut (WIRE.md 7.13). A token is about four characters.
+ * the phone while it is written and Stop has a moving reply to cut (WIRE.md 7.15). A token is about four characters.
  */
 export const STREAM_TOKENS_PER_SECOND = 60;
 

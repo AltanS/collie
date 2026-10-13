@@ -334,11 +334,14 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension either: the newest turn of a pane whose adapter takes guarded controls
   // (ADR 0101). Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
   turnId: true,
-  // Not crew dimensions: a durable program's line under the title and its small mark (WIRE.md 7.9).
+  // Not crew dimensions: a durable program's line under the title and its small mark (WIRE.md 7.11).
   // Only the `durable` adapter fills them, so they are absent here and no golden byte moved.
   subtitle: true,
   badge: true,
   progress: true,
+  // Not a crew dimension either: the belt buttons of a pane whose program lists actions (M53 spec 07).
+  // Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
+  actions: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -451,6 +454,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
   // bodies below prove; this list is the tripwire that a THIRD such field cannot be added quietly.
   test("PaneWire carries the two address dimensions and nothing else", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
+      "actions",
       "agent",
       "asks",
       "badge",
@@ -651,13 +655,16 @@ describe("solo zero-tax — routes", () => {
       // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
       // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
       // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/",
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/",
       // Which paths exist under the Files root (ADR 0088), asked in one batch for the pane view's
       // links: a read with the Files gate, one `lstat` per path, not forwarded across a crew link.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/exist$/",
       // One picture under the Files root, as its bytes (ADR 0090): the Files read's checks and gate,
       // the type read off the bytes, forwarded to the owning member like `files`.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/image$/",
+      // A space's rename (M53 spec 05): a write, forwarded to the owning member, and only an adapter that
+      // declares `renameSpace` takes it; every other bridge answers it the refusal.
+      "/^\\/api\\/space\\/([^/]+)\\/rename$/",
       // The Whistle model as bytes (ADR 0096 Decision 9): a content-addressed READ, the hash compared
       // with the held file's and never made into a path. Lead-local, not forwardable.
       "/^\\/api\\/stt\\/model\\/([^/]+)$/",

@@ -197,7 +197,7 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     const session = adapter.program()?.session;
     expect(session?.version).toBe(1);
     expect(session?.hostName).toBe("durable-member-cloudflare");
-    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true });
+    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true });
   });
 
   test("cloudflare: the snapshot holds the ticket a first start opens, and it waits on one ask", async () => {
@@ -259,7 +259,7 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     const sent = events.findIndex((event) => event.type === "item" && event.item.kind === "user" && event.item.text === "one more thing");
     expect(sent).toBeGreaterThan(-1);
     // The stop adds no item of its own: no notice, and no reply except the one that was growing, which ends where it was cut
-    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.13).
+    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.15).
     const after = events.slice(sent + 1).flatMap((event) => (event.type === "item" ? [event.item] : []));
     expect(after.some((item) => item.kind === "notice")).toBe(false);
     const replies = after.filter((item) => item.kind === "reply");

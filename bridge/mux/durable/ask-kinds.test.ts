@@ -10,7 +10,7 @@ import { DurableSocketClient } from "./client.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./fixture.ts";
 import { parseSnapshot, type DurableAsk } from "./protocol.ts";
 
-// MORE KINDS OF ASK (WIRE.md 7.12): a `choice`, a `text` ask and a `form` beside the `permission`. The claims:
+// MORE KINDS OF ASK (WIRE.md 7.14): a `choice`, a `text` ask and a `form` beside the `permission`. The claims:
 //
 //   1. The adapter reads each kind, cleans every string, drops what breaks a rule, and fills the defaults.
 //   2. The phone's answer for each kind reaches the program in the one shape the wire names, once; a request id

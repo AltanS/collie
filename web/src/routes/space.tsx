@@ -128,6 +128,10 @@ export function SpaceRoute() {
               onNewSpace={() => nav.down(newPath({ machine: data.scope.host, session: data.scope.session }))}
               creatingSpace={creatingSpace}
               onBack={toDashboard}
+              scope={data.scope}
+              readOnly={isReadOnly(data.device) || notPaired}
+              savedCopy={data.stale === true}
+              onRenamed={() => revalidator.revalidate()}
             />
             <TabStrip
               workspaceId={selectedWs.workspaceId}

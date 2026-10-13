@@ -344,7 +344,7 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
 });
 
 /**
- * A text the program is still writing (WIRE.md 7.13): `data-partial` makes the stylesheet put a cursor at the end of its
+ * A text the program is still writing (WIRE.md 7.15): `data-partial` makes the stylesheet put a cursor at the end of its
  * last block (`.stream-grow` in index.css), and `aria-busy` tells a reader the text is not final. The cursor is a
  * pseudo-element after the last block's own text, so it adds no row, and its going when the last version arrives moves
  * nothing (DESIGN.md §2). A finished text is drawn exactly as it always was: no wrapper attribute changes its box.

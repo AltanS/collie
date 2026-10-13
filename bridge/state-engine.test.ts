@@ -1162,7 +1162,7 @@ describe("terminalTitleIsStale", () => {
   });
 });
 
-// A DURABLE PANE'S SUBTITLE AND BADGE reach the view, and a pane without them gains no key (WIRE.md 7.9).
+// A DURABLE PANE'S SUBTITLE AND BADGE reach the view, and a pane without them gains no key (WIRE.md 7.11).
 describe("StateEngine: subtitle and badge", () => {
   function durablePane(fields: Partial<MuxPane>): MuxPane {
     return {

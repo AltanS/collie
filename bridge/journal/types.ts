@@ -118,12 +118,12 @@ export interface TranscriptEntry {
   abandoned?: true;
   /**
    * The text of this turn is still growing: the program has written part of it and will rewrite it under the same
-   * id. A view draws a cursor and no time until it goes. ABSENT when false. Only a durable pane sets it (WIRE.md 7.13).
+   * id. A view draws a cursor and no time until it goes. ABSENT when false. Only a durable pane sets it (WIRE.md 7.15).
    */
   partial?: true;
   /**
    * The request id of the send that made this user turn, when the program says so. The phone matches its own unsent
-   * line to the turn by it. Only a durable pane sets it (WIRE.md 7.13).
+   * line to the turn by it. Only a durable pane sets it (WIRE.md 7.15).
    */
   requestId?: string;
 }

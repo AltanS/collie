@@ -1,6 +1,6 @@
 import { commandsFor } from "@/lib/agent-commands";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
-import type { MuxCapability, OperatorCommand } from "@/lib/types";
+import type { MuxCapability, OperatorCommand, PaneAction } from "@/lib/types";
 
 // The harness bar's table: which of the running agent's own slash commands get a 44px button above
 // the key rail. One row per harness, four or five buttons, and nothing derived from the screen.
@@ -141,12 +141,24 @@ const OMP: readonly HarnessBarItem[] = [
 // section 4): `caps.steer` draws Steer, `caps.abort` draws Stop. A program that declares neither
 // gets no section. This is the contract a custom program uses to reach the belt: declare a cap, get
 // the control. The order is the thumb's: Stop last, under the thumb edge.
-export interface DurableBarItem {
-  /** Stable. Names the button and keys its i18n text in components/harness-bar.tsx. */
-  id: "steer" | "stop";
-  /** The capability that draws the button. Absent or false and the button is not there. */
-  cap: MuxCapability;
-}
+//
+// A THIRD KIND OF ROW COMES FROM THE PROGRAM (M53 spec 07). `caps.actions` (the capability
+// `programActions`) lets a program list up to four buttons of its own for a pane, each with a label and
+// an icon from a fixed set. They follow Steer and Stop, in the program's order. Their text is the
+// program's, not the catalog's: it was cleaned and cut to 16 characters by the bridge's adapter.
+export type DurableBarItem =
+  | {
+      /** Stable. Names the button and keys its i18n text in components/harness-bar.tsx. */
+      id: "steer" | "stop";
+      /** The capability that draws the button. Absent or false and the button is not there. */
+      cap: MuxCapability;
+    }
+  | {
+      id: "action";
+      cap: "programActions";
+      /** One of the pane's listed actions. */
+      action: PaneAction;
+    };
 
 export const DURABLE_BAR: readonly DurableBarItem[] = [
   { id: "steer", cap: "steerTurn" },
@@ -157,8 +169,10 @@ export const DURABLE_BAR: readonly DurableBarItem[] = [
 export const PROGRAM_MARK = "program";
 
 /** The durable section's rows for a program that declares `declared`. Pure, so a table pins it. */
-export function durableBarFor(declared: (cap: MuxCapability) => boolean): readonly DurableBarItem[] {
-  return DURABLE_BAR.filter((item) => declared(item.cap));
+export function durableBarFor(declared: (cap: MuxCapability) => boolean, actions: readonly PaneAction[] = []): readonly DurableBarItem[] {
+  const fixed = DURABLE_BAR.filter((item) => declared(item.cap));
+  if (!declared("programActions")) return fixed;
+  return [...fixed, ...actions.map((action): DurableBarItem => ({ id: "action", cap: "programActions", action }))];
 }
 
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's

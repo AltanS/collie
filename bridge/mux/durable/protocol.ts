@@ -8,9 +8,10 @@
 
 import { isAbsolute } from "node:path";
 
-import type { AgentStatus, Ask, AskField } from "../../types.ts";
+import { type AgentStatus, type Ask, type AskField, type AskPushText, PANE_ACTION_ICONS, type PaneAction } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
 import {
+  actionLabelOf,
   ANSWER_TEXT_DEFAULT,
   ANSWER_TEXT_MAX,
   BADGE_COUNT_MAX,
@@ -29,6 +30,9 @@ import {
   PLACEHOLDER_MAX,
   PROGRESS_LABEL_MAX,
   PROGRESS_STEPS_MAX,
+  PUSH_LINE_MAX,
+  PUSH_TITLE_MAX,
+  pushPartOf,
   renameTitleOf,
   shortLine,
   SUBTITLE_MAX,
@@ -79,6 +83,10 @@ export interface DurableCaps {
   readonly abort: boolean;
   /** It takes a new title for a workspace or a tab (WIRE.md section 7.8). */
   readonly rename: boolean;
+  /** It closes a workspace, a tab or a pane when asked (WIRE.md section 7.9). */
+  readonly close: boolean;
+  /** It lists actions on a pane and runs one when asked (WIRE.md section 7.10). */
+  readonly actions: boolean;
 }
 
 export interface DurableHello {
@@ -94,11 +102,11 @@ export type OptionEffect = "allow" | "allow-always" | "deny" | "cancel";
 export interface DurableOption {
   readonly id: string;
   readonly label: string;
-  /** Set on a `permission` option, absent on every other kind (WIRE.md 7.12). */
+  /** Set on a `permission` option, absent on every other kind (WIRE.md 7.14). */
   readonly effect?: OptionEffect;
 }
 
-/** One field of a `form` ask (WIRE.md 7.12). */
+/** One field of a `form` ask (WIRE.md 7.14). */
 export interface DurableField {
   readonly id: string;
   readonly label: string;
@@ -138,6 +146,8 @@ export interface DurableAsk {
   readonly tool?: DurableToolCall;
   /** True when cleaning cut or changed the title or the reason, so the card says the text was shortened. */
   readonly cleaned?: true;
+  /** The program's words for a notification about this ask, cleaned and cut (WIRE.md section 6). */
+  readonly push?: AskPushText;
 }
 
 export interface DurableWorkspace {
@@ -169,8 +179,10 @@ export interface DurablePane {
   readonly subtitle?: string;
   /** A count or a short mark next to the title. Absent when the program sent none, or a bad one. */
   readonly badge?: Badge;
-  /** How far a working conversation is (WIRE.md section 7.10). Absent when the program sent none, or a bad one. */
+  /** How far a working conversation is (WIRE.md section 7.12). Absent when the program sent none, or a bad one. */
   readonly progress?: Progress;
+  /** The program's belt buttons for this pane, cleaned: at most 4, label at most 16 characters. Absent when it lists none. */
+  readonly actions?: readonly PaneAction[];
 }
 
 export interface DurableStarter {
@@ -268,14 +280,14 @@ function cwdOf(object: JsonObject): string | undefined {
   return isAbsolute(cleaned) ? cleaned : undefined;
 }
 
-/** A pane's subtitle (WIRE.md section 7.9), or undefined when it is absent, not text, or empty once cleaned. */
+/** A pane's subtitle (WIRE.md section 7.11), or undefined when it is absent, not text, or empty once cleaned. */
 function subtitleOf(object: JsonObject): string | undefined {
   const value = object.subtitle;
   return isText(value) ? shortLine(value, SUBTITLE_MAX) : undefined;
 }
 
 /**
- * A pane's badge (WIRE.md section 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to 12
+ * A pane's badge (WIRE.md section 7.11): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to 12
  * characters. A `null` key reads as absent. Both keys, neither, a count out of range and a text with nothing
  * left read as no badge, and never drop the pane.
  */
@@ -311,7 +323,7 @@ function readStep(value: Json): ProgressStep | null {
 }
 
 /**
- * A pane's progress (WIRE.md section 7.10): `{ kind: "steps" }` with 1 to 12 steps, or `{ kind: "percent" }` with
+ * A pane's progress (WIRE.md section 7.12): `{ kind: "steps" }` with 1 to 12 steps, or `{ kind: "percent" }` with
  * a value from 0 to 100 and an optional label. Steps past the 12th are left out. A step with an unknown state or no
  * label, a value out of range, an unknown kind and any other shape read as no progress, because half a progress would
  * mislead. A percent label that is not text is left out alone. Never drops the pane.
@@ -372,6 +384,8 @@ export function parseHello(text: string): Parsed<DurableHello> {
       steer: flag("steer"),
       abort: flag("abort"),
       rename: flag("rename"),
+      close: flag("close"),
+      actions: flag("actions"),
     },
   });
 }
@@ -454,7 +468,7 @@ function maxLengthOf(value: Json | undefined): number {
 
 const FIELD_KINDS: ReadonlySet<string> = new Set(["text", "choice", "toggle"]);
 
-/** One field of a form (WIRE.md 7.12), or null when its id, kind or options break a rule. */
+/** One field of a form (WIRE.md 7.14), or null when its id, kind or options break a rule. */
 function readField(value: Json): DurableField | null {
   if (!isRecord(value)) return null;
   const id = idOf(value, "id");
@@ -490,7 +504,7 @@ function readTool(value: Json | undefined): DurableToolCall | undefined {
   };
 }
 
-/** What a `choice`, `text` or `form` ask adds to the base shape (WIRE.md 7.12). Nothing for any other kind. */
+/** What a `choice`, `text` or `form` ask adds to the base shape (WIRE.md 7.14). Nothing for any other kind. */
 function kindFields(kind: string, value: JsonObject): Pick<DurableAsk, "multiple" | "placeholder" | "maxLength" | "fields"> {
   if (kind === "choice") return value.multiple === true ? { multiple: true } : {};
   if (kind === "text") {
@@ -499,6 +513,17 @@ function kindFields(kind: string, value: JsonObject): Pick<DurableAsk, "multiple
   }
   if (kind === "form") return { fields: readFields(value.fields) };
   return {};
+}
+
+/** The push words of an ask: each part cleaned and cut, a part that is empty or not text left out, undefined when none is left. */
+function readPush(value: Json | undefined): AskPushText | undefined {
+  if (!isRecord(value)) return undefined;
+  const out: AskPushText = {};
+  const title = isText(value.title) ? pushPartOf(value.title, PUSH_TITLE_MAX) : "";
+  const line = isText(value.line) ? pushPartOf(value.line, PUSH_LINE_MAX) : "";
+  if (title !== "") out.title = title;
+  if (line !== "") out.line = line;
+  return out.title === undefined && out.line === undefined ? undefined : out;
 }
 
 /** An ask whose id, tool call id or item id breaks the rule is dropped. */
@@ -543,7 +568,9 @@ function readAsk(value: Json): DurableAsk | null {
     tool,
     ...kindFields(kind, value),
   };
-  return cleaned ? { ...ask, cleaned: true } : ask;
+  const push = readPush(value.push);
+  const full: DurableAsk = push === undefined ? ask : { ...ask, push };
+  return cleaned ? { ...full, cleaned: true } : full;
 }
 
 function readWorkspace(value: Json): DurableWorkspace | null {
@@ -560,6 +587,26 @@ function readTab(value: Json, workspaces: ReadonlyMap<string, DurableWorkspace>)
   const workspaceId = idOf(value, "workspaceId");
   if (id === null || workspaceId === null || !workspaces.has(workspaceId)) return null;
   return { id, workspaceId, title: textOf(value, "title", CAPS.title) };
+}
+
+/** One belt action: an id that follows the id rule, a label that is not empty once cleaned, a known icon or none. */
+function readAction(value: Json): PaneAction | null {
+  if (!isRecord(value)) return null;
+  const id = idOf(value, "id");
+  const label = isText(value.label) ? actionLabelOf(value.label) : "";
+  if (id === null || label === "") return null;
+  const action: PaneAction = { id, label };
+  const icon = PANE_ACTION_ICONS.find((name) => name === value.icon);
+  if (icon !== undefined) action.icon = icon;
+  if (value.busy === true) action.busy = true;
+  if (value.disabled === true) action.disabled = true;
+  return action;
+}
+
+/** The first valid entry of each id, up to the cap of 4. Anything else is left out, and an empty list reads as absent. */
+function readActions(list: Json | undefined): readonly PaneAction[] | undefined {
+  const kept = collect(list, readAction, CAPS.actionsPerPane);
+  return kept.length === 0 ? undefined : kept;
 }
 
 /**
@@ -594,7 +641,8 @@ function readPane(
   const subtitle = subtitleOf(value);
   const badge = badgeOf(value);
   const progress = progressOf(value);
-  return {
+  const actions = readActions(value.actions);
+  const pane: DurablePane = {
     id,
     workspaceId,
     tabId,
@@ -609,6 +657,7 @@ function readPane(
     badge,
     progress,
   };
+  return actions === undefined ? pane : { ...pane, actions };
 }
 
 function readStarter(value: Json): DurableStarter | null {
@@ -684,8 +733,8 @@ function isTextKind(value: string): value is TextKind {
  * An item with a known id replaces the earlier one. `ts` is ISO 8601, or absent.
  *
  * `requestId` is on a `user` item only: the request id of the send that made it, so the phone can match its own
- * unsent line to the program's (WIRE.md 7.13). `partial` is on a `reply`, `thinking`, `notice` or `markdown` item
- * only: the text is still growing, and a later item with the same id replaces it (WIRE.md 7.13).
+ * unsent line to the program's (WIRE.md 7.15). `partial` is on a `reply`, `thinking`, `notice` or `markdown` item
+ * only: the text is still growing, and a later item with the same id replaces it (WIRE.md 7.15).
  */
 export type DurableItem =
   | { readonly id: string; readonly ts?: string; readonly kind: "user"; readonly text: string; readonly requestId?: string }
@@ -696,7 +745,7 @@ export type DurableItem =
       readonly text: string;
       readonly partial?: true;
     }
-  // The rich kinds (WIRE.md section 7.11): markdown, a code block and a link.
+  // The rich kinds (WIRE.md section 7.13): markdown, a code block and a link.
   | { readonly id: string; readonly ts?: string; readonly kind: "markdown"; readonly text: string; readonly partial?: true }
   | { readonly id: string; readonly ts?: string; readonly kind: "code"; readonly lang?: string; readonly text: string }
   | { readonly id: string; readonly ts?: string; readonly kind: "link"; readonly href: string; readonly label?: string }
@@ -970,7 +1019,7 @@ export interface DurableAnswerPost {
   readonly requestId: string;
   readonly askId: string;
   readonly revision: number;
-  /** The one shape the body's `answer` member names (WIRE.md 7.12). */
+  /** The one shape the body's `answer` member names (WIRE.md 7.14). */
   readonly answer: DurableAnswerBody;
 }
 
@@ -1066,6 +1115,37 @@ export interface DurableControlBody {
   askId?: string;
 }
 
+/** The body the adapter writes for a belt action (WIRE.md section 4, `ActionRequest`). */
+export interface DurableActionBody {
+  requestId: string;
+  actionId: string;
+  /** The turn the phone saw. Absent when the phone named none. */
+  turnId?: string;
+}
+
+/** An `ActionRequest` (WIRE.md section 4) as a program reads it off the socket. */
+export interface DurableActionPost {
+  readonly requestId: string;
+  readonly actionId: string;
+  readonly turnId: string | null;
+}
+
+/**
+ * The program's side of an action body: `"bad-json"`, `null` for a body that breaks WIRE.md section 7.10 (no request id,
+ * no action id, a `turnId` that is not text), or the fields. The test program reads the adapter's POST with this.
+ */
+export function parseActionPost(text: string): DurableActionPost | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const requestId = root.requestId ?? undefined;
+  const actionId = root.actionId ?? undefined;
+  const turnId = root.turnId ?? undefined;
+  if (!isText(requestId) || !isText(actionId)) return null;
+  if (turnId !== undefined && !isText(turnId)) return null;
+  return { requestId, actionId, turnId: isText(turnId) ? turnId : null };
+}
+
 /** A `SendRequest` or `AbortRequest` (WIRE.md section 4) as a program reads it off the socket. */
 export interface DurableControlPost {
   readonly requestId: string;
@@ -1137,6 +1217,30 @@ export function parseRenamePost(text: string): DurableRenameBody | "bad-json" | 
   return { requestId, kind, id, title: trimmed };
 }
 
+/** The body the adapter writes for a close (WIRE.md section 4, `CloseRequest`). */
+export interface DurableCloseBody {
+  requestId: string;
+  kind: "pane" | "tab" | "workspace";
+  id: string;
+}
+
+/**
+ * The program's side of a close body: `"bad-json"`, `null` for a body that breaks WIRE.md section 7.9 (no request
+ * id, a kind that is none of the three words, no id), or the fields. The test program reads the adapter's POST with
+ * this, so the body the adapter writes and the body a program reads are checked by one rule.
+ */
+export function parseClosePost(text: string): DurableCloseBody | "bad-json" | null {
+  const root = text === "" ? {} : decode(text);
+  if (root === undefined) return "bad-json";
+  if (!isRecord(root)) return null;
+  const requestId = root.requestId ?? undefined;
+  const kind = root.kind ?? undefined;
+  const id = root.id ?? undefined;
+  if (!isText(requestId) || !isText(id)) return null;
+  if (kind !== "pane" && kind !== "tab" && kind !== "workspace") return null;
+  return { requestId, kind, id };
+}
+
 /** One clean ask as the phone reads it (`Ask` in `bridge/types.ts`). Optional fields stay absent. */
 function fieldForWire(field: DurableField): AskField {
   const wire: AskField = { id: field.id, label: field.label, kind: field.kind };
@@ -1162,6 +1266,7 @@ export function askForWire(ask: DurableAsk): Ask {
   if (ask.fields !== undefined) wire.fields = ask.fields.map(fieldForWire);
   if (ask.reason !== undefined) wire.reason = ask.reason;
   if (ask.cleaned === true) wire.cleaned = true;
+  if (ask.push !== undefined) wire.push = ask.push;
   if (ask.tool !== undefined) {
     wire.tool = { name: ask.tool.name, summary: ask.tool.summary };
     if (ask.tool.output !== undefined) wire.tool.output = ask.tool.output;
@@ -1258,7 +1363,7 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
       // reads (bridge/journal/durable.ts). The ref is server-side only, like every other.
       agentSession: { kind: "id", value: pane.id },
     };
-    // Optional pane marks (WIRE.md section 7.9). Assigned only when present, so a pane without them is unchanged.
+    // Optional pane marks (WIRE.md section 7.11). Assigned only when present, so a pane without them is unchanged.
     if (pane.subtitle !== undefined) mux.subtitle = pane.subtitle;
     if (pane.badge !== undefined) mux.badge = pane.badge;
     if (pane.progress !== undefined) mux.progress = pane.progress;

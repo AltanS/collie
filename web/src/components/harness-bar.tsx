@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, Cpu, Gauge, History, ListTree, Loader2, Shrink, Slash, Square, Wind } from "lucide-react";
+import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, Loader2, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -16,7 +16,7 @@ import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { canonicalAgent } from "@/lib/operator-scope";
 import type { Scope } from "@/lib/scope";
-import type { OperatorCommand } from "@/lib/types";
+import { PANE_ACTION_ICONS, type OperatorCommand, type PaneAction, type PaneActionIcon } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // The harness section of the actions belt: the running agent's own slash commands, sitting inside
@@ -290,6 +290,34 @@ export interface DurableBarState {
   steer: { pressed: boolean; offered: boolean; onPressedChange: (pressed: boolean) => void };
   /** Stop. `offered` is false when there is nothing to stop; `busy` swaps the glyph for a spinner. */
   stop: { offered: boolean; busy: boolean; onStop: () => void };
+  /**
+   * The program's own buttons (M53 spec 07). `running` is the id of the one whose tap is in flight, so a
+   * second tap on it waits; `onRun` posts it. Absent: the section draws no program button.
+   */
+  action?: { running: string | null; onRun: (action: PaneAction) => void };
+}
+
+/** The glyph a program's icon name draws. A name outside the fixed set draws none (the label stands alone). */
+const ACTION_GLYPHS = {
+  play: Play,
+  pause: Pause,
+  check: Check,
+  x: X,
+  refresh: RefreshCw,
+  archive: Archive,
+  flag: Flag,
+  star: Star,
+  send: Send,
+  note: StickyNote,
+  search: Search,
+  more: Ellipsis,
+} satisfies Record<PaneActionIcon, LucideIcon>;
+
+/** The glyph for a name the program sent, or undefined. A Map-free lookup that cannot answer for `constructor`. */
+function glyphFor(icon: string | undefined): LucideIcon | undefined {
+  if (icon === undefined) return undefined;
+  for (const name of PANE_ACTION_ICONS) if (name === icon) return ACTION_GLYPHS[name];
+  return undefined;
 }
 
 /** The pressed look of a belt switch: the row's own "on" fill (components/actions-row.tsx `ON`). */
@@ -302,10 +330,11 @@ const BELT_PRESSED = "bg-control-on text-control-on-foreground hover:bg-control-
  * the caps. A capability nobody answered reads ABSENT (`useMuxDeclared`), so a program that declared
  * neither Steer nor Stop, and a bridge too old to say, draw no section at all.
  */
-export function useDurableBarItems(scope?: Scope): readonly DurableBarItem[] {
+export function useDurableBarItems(scope?: Scope, actions: readonly PaneAction[] = []): readonly DurableBarItem[] {
   const steer = useMuxDeclared("steerTurn", scope);
   const abort = useMuxDeclared("abortTurn", scope);
-  return durableBarFor((cap) => (cap === "steerTurn" ? steer : cap === "abortTurn" ? abort : false));
+  const program = useMuxDeclared("programActions", scope);
+  return durableBarFor((cap) => (cap === "steerTurn" ? steer : cap === "abortTurn" ? abort : cap === "programActions" ? program : false), actions);
 }
 
 export interface DurableBarProps {
@@ -317,7 +346,8 @@ export interface DurableBarProps {
 }
 
 /**
- * THE DURABLE PROGRAM'S SECTION OF THE BELT (M51 spec 08): Steer, then Stop, after the program's mark.
+ * THE DURABLE PROGRAM'S SECTION OF THE BELT (M51 spec 08): Steer, then Stop, then the program's own buttons
+ * (M53 spec 07), after the program's mark.
  *
  * Both buttons stay drawn for as long as the program declares their cap. A button that cannot act
  * now (Stop with nothing running, Steer with no turn to steer) is dimmed in place and refuses the
@@ -348,6 +378,29 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
             >
               <Wind className={BELT_ICON} />
               {translate("durable.composer.steer")}
+            </Button>
+          );
+        }
+        if (item.id === "action") {
+          // One of the program's own buttons. The label is the program's (cleaned and cut to 16 characters by the
+          // bridge), the glyph one of twelve names or none. Dimmed in place when the program says it is
+          // unavailable or busy, or while this tap is in flight; a busy one swaps its glyph for a spinner.
+          const { action } = item;
+          const Glyph = glyphFor(action.icon);
+          const waiting = action.busy === true || state.action?.running === action.id;
+          return (
+            <Button
+              key={`action:${action.id}`}
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-busy={waiting}
+              disabled={disabled === true || action.disabled === true || waiting || state.action === undefined}
+              onClick={() => state.action?.onRun(action)}
+              className={cn(base, "text-foreground", left && "[direction:ltr]")}
+            >
+              {waiting ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : Glyph === undefined ? null : <Glyph className={BELT_ICON} />}
+              {action.label}
             </Button>
           );
         }

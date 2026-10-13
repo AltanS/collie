@@ -4,6 +4,7 @@ import type { JsonValue } from "../../json.ts";
 import { CAPS } from "./clean.ts";
 import { hasHostileChars, helloFixture, hostileText, snapshotFixture, type FakeSnapshot } from "./fixture.ts";
 import {
+  askForWire,
   DURABLE_SERVICE,
   NOT_A_DURABLE_PROGRAM,
   incompatibleDetail,
@@ -63,7 +64,7 @@ describe("hello", () => {
         hostName: "denis-laptop",
         epoch: EPOCH,
         ready: true,
-        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false },
+        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false, actions: false },
       },
     });
   });
@@ -72,7 +73,7 @@ describe("hello", () => {
     const parsed = parseHello(
       JSON.stringify({ service: "collie-durable", protocol: { min: 1, max: 1 }, host: null, epoch: EPOCH, ready: false, caps: { asks: null, send: true } }),
     );
-    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false });
+    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false, close: false, actions: false });
     expect(parsed.ok && parsed.value.hostName).toBe("");
   });
 
@@ -435,6 +436,37 @@ describe("the id rule drops what hangs from a bad id", () => {
 
 describe("clean: every string in a snapshot is cleaned and capped", () => {
   const hostile = (field: string) => hostileText(field);
+
+  test("an ask's push words are cleaned and cut to 60 and 120 characters, and a part that is empty or not text reads as absent", () => {
+    let first = true;
+    const nextPush = () => {
+      const words = first ? { title: `${hostile("t")}${"é".repeat(100)}`, line: `  ${"l".repeat(300)}` } : { title: "", line: "\u0007\u200b" };
+      first = false;
+      return words;
+    };
+    const snapshot = read((raw) => {
+      raw.panes = raw.panes.map((pane) =>
+        Object.assign({}, pane, { openAsks: pane.openAsks.map((ask) => Object.assign({}, ask, { push: nextPush() })) }),
+      );
+    });
+    const asks = snapshot.panes.flatMap((pane) => pane.openAsks);
+    expect(asks.length).toBeGreaterThan(0);
+    const pushed = asks.find((ask) => ask.push?.title !== undefined);
+    expect(pushed).toBeDefined();
+    expect([...(pushed?.push?.title ?? "")].length).toBeLessThanOrEqual(60);
+    expect(hasHostileChars(pushed?.push?.title ?? "")).toBe(false);
+    expect(pushed?.push?.line).toBe("l".repeat(120));
+    for (const ask of asks) if (ask !== pushed) expect(ask.push).toBeUndefined();
+  });
+
+  test("an ask without push words carries no push key, and the wire form copies the words", () => {
+    const asks = read().panes.flatMap((pane) => pane.openAsks);
+    expect(asks.length).toBeGreaterThan(0);
+    for (const ask of asks) expect(Object.hasOwn(ask, "push")).toBe(false);
+    const withWords = { ...asks[0]!, push: { title: "Needs a yes" } };
+    expect(askForWire(withWords).push).toEqual({ title: "Needs a yes" });
+    expect(Object.hasOwn(askForWire(asks[0]!), "push")).toBe(false);
+  });
 
   test("clean titles, harness and starter labels pass through the same cleaning", () => {
     const snapshot = read((raw) => {

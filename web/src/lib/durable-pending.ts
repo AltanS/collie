@@ -15,7 +15,7 @@ import type { TranscriptEntry } from "@/lib/types";
 // pending line is a fact about this screen's last few seconds, and a reload reads the program's own history.
 //
 // MATCHING (the whole rule, and `unmatched` is the only place it lives):
-//   1. The program's `user` item carries `requestId` (WIRE.md 7.13): the pending line with that id is replaced.
+//   1. The program's `user` item carries `requestId` (WIRE.md 7.15): the pending line with that id is replaced.
 //   2. A program that does not know the id leaves it out. Then the first user item with the SAME TEXT, no
 //      request id of its own, and a time within 30 seconds of the send, is the same line. One item answers
 //      one pending line, the oldest first, so two identical sends in a row are not both hidden by one reply.

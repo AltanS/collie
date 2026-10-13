@@ -5,7 +5,9 @@
 
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
+import { ACTION_ICONS } from "./types.ts";
 import {
+  actionLabelOf,
   ANSWER_TEXT_DEFAULT,
   assertId,
   badgeOf,
@@ -20,11 +22,13 @@ import {
   maxLengthOf,
   PLACEHOLDER_MAX,
   progressOf,
+  pushTextOf,
   shortLine,
   subtitleOf,
   tsOf,
 } from "./rules.ts";
 import type {
+  ActionContext,
   Answer,
   AnswerResult,
   Ask,
@@ -32,20 +36,24 @@ import type {
   Badge,
   ChoiceAnswer,
   ChoiceAskInput,
+  CloseTarget,
   ClosedBy,
   Field,
   FormAnswer,
   FormAskInput,
   Item,
   Option,
+  PaneAction,
+  PaneInfo,
+  PaneRef,
   PermissionAnswer,
   PermissionAskInput,
+  Progress,
   TextAnswer,
   TextAskInput,
-  PaneInfo,
-  Progress,
   PaneState,
   ProgramEvent,
+  ProgramHooks,
   SessionEvent,
   Snapshot,
   Starter,
@@ -110,11 +118,11 @@ export function cleanItem(item: Item): Item {
   return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true), ...partialOf(item) };
 }
 
-/** `partial: true` only when the program set exactly that. Anything else reads as a finished text (WIRE.md 7.13). */
+/** `partial: true` only when the program set exactly that. Anything else reads as a finished text (WIRE.md 7.15). */
 const partialOf = (item: { partial?: true }): { partial?: true } => (item.partial === true ? { partial: true } : {});
 
 /** An ask as `cleanAsk` takes it: an input with its id and revision set, or an open ask patched. */
-type AskDraft = Pick<Ask, "id" | "revision" | "toolCallId" | "title" | "itemId" | "reason" | "tool" | "cleaned" | "multiple" | "placeholder" | "maxLength" | "fields"> & {
+type AskDraft = Pick<Ask, "id" | "revision" | "toolCallId" | "title" | "itemId" | "reason" | "tool" | "cleaned" | "push" | "multiple" | "placeholder" | "maxLength" | "fields"> & {
   kind: string;
   options?: Option[];
 };
@@ -129,29 +137,29 @@ function checkIds(list: readonly { id: string }[], what: string): void {
   }
 }
 
-/** The options of a `choice` ask or of a choice field: 1 to 8, no effect (WIRE.md 7.12). */
+/** The options of a `choice` ask or of a choice field: 1 to 8, no effect (WIRE.md 7.14). */
 function cleanPlainOptions(raw: readonly Option[] | undefined, what: string): Option[] {
-  if (!Array.isArray(raw) || raw.length === 0) throw new TypeError(`${what} needs at least one option (WIRE.md 7.12)`);
-  if (raw.length > LIMITS.choiceOptions) throw new RangeError(`${what} has at most ${LIMITS.choiceOptions} options (WIRE.md 7.12)`);
+  if (!Array.isArray(raw) || raw.length === 0) throw new TypeError(`${what} needs at least one option (WIRE.md 7.14)`);
+  if (raw.length > LIMITS.choiceOptions) throw new RangeError(`${what} has at most ${LIMITS.choiceOptions} options (WIRE.md 7.14)`);
   checkIds(raw, "option");
   return raw.map((o) => {
-    if (o.effect !== undefined) throw new TypeError(`${what} option has no effect: only a permission option does (WIRE.md 7.12)`);
+    if (o.effect !== undefined) throw new TypeError(`${what} option has no effect: only a permission option does (WIRE.md 7.14)`);
     return { id: o.id, label: cut(o.label, CAPS.optionLabel) };
   });
 }
 
 function cleanField(raw: Field): Field {
   assertId(raw.id, "field id");
-  if (raw.kind !== "text" && raw.kind !== "choice" && raw.kind !== "toggle") throw new TypeError(`a field has kind text, choice or toggle (WIRE.md 7.12): ${String(raw.kind)}`);
+  if (raw.kind !== "text" && raw.kind !== "choice" && raw.kind !== "toggle") throw new TypeError(`a field has kind text, choice or toggle (WIRE.md 7.14): ${String(raw.kind)}`);
   const field: Field = { id: raw.id, label: cut(raw.label, CAPS.optionLabel), kind: raw.kind };
   if (raw.required === true) field.required = true;
   if (raw.kind === "text") {
-    if (raw.options !== undefined) throw new TypeError("a text field has no options (WIRE.md 7.12)");
+    if (raw.options !== undefined) throw new TypeError("a text field has no options (WIRE.md 7.14)");
     if (raw.maxLength !== undefined) field.maxLength = maxLengthOf(raw.maxLength);
   } else if (raw.kind === "toggle") {
-    if (raw.options !== undefined || raw.maxLength !== undefined) throw new TypeError("a toggle field has no options and no maxLength (WIRE.md 7.12)");
+    if (raw.options !== undefined || raw.maxLength !== undefined) throw new TypeError("a toggle field has no options and no maxLength (WIRE.md 7.14)");
   } else {
-    if (raw.maxLength !== undefined) throw new TypeError("a choice field has no maxLength (WIRE.md 7.12)");
+    if (raw.maxLength !== undefined) throw new TypeError("a choice field has no maxLength (WIRE.md 7.14)");
     field.options = cleanPlainOptions(raw.options, "a choice field");
   }
   return field;
@@ -160,7 +168,7 @@ function cleanField(raw: Field): Field {
 function cleanAsk(input: AskDraft): Ask {
   const kind = input.kind;
   if (kind !== "permission" && kind !== "choice" && kind !== "text" && kind !== "form") {
-    throw new TypeError(`an ask has kind permission, choice, text or form (WIRE.md 7.12): ${String(kind)}`);
+    throw new TypeError(`an ask has kind permission, choice, text or form (WIRE.md 7.14): ${String(kind)}`);
   }
   assertId(input.id, "ask id");
   assertId(input.toolCallId, "ask toolCallId");
@@ -179,16 +187,16 @@ function cleanAsk(input: AskDraft): Ask {
     options = cleanPlainOptions(input.options, "a choice ask");
     if (input.multiple === true) extra.multiple = true;
   } else if (kind === "text") {
-    if (input.options !== undefined && input.options.length > 0) throw new TypeError("a text ask has no options (WIRE.md 7.12)");
+    if (input.options !== undefined && input.options.length > 0) throw new TypeError("a text ask has no options (WIRE.md 7.14)");
     if (input.placeholder !== undefined) {
       const hint = shortLine(input.placeholder, PLACEHOLDER_MAX);
       if (hint !== undefined) extra.placeholder = hint;
     }
     if (input.maxLength !== undefined) extra.maxLength = maxLengthOf(input.maxLength);
   } else {
-    if (input.options !== undefined && input.options.length > 0) throw new TypeError("a form ask has fields, not options (WIRE.md 7.12)");
-    if (!Array.isArray(input.fields) || input.fields.length === 0) throw new TypeError("a form ask needs at least one field (WIRE.md 7.12)");
-    if (input.fields.length > LIMITS.formFields) throw new RangeError(`a form ask has at most ${LIMITS.formFields} fields (WIRE.md 7.12)`);
+    if (input.options !== undefined && input.options.length > 0) throw new TypeError("a form ask has fields, not options (WIRE.md 7.14)");
+    if (!Array.isArray(input.fields) || input.fields.length === 0) throw new TypeError("a form ask needs at least one field (WIRE.md 7.14)");
+    if (input.fields.length > LIMITS.formFields) throw new RangeError(`a form ask has at most ${LIMITS.formFields} fields (WIRE.md 7.14)`);
     checkIds(input.fields, "field");
     extra.fields = input.fields.map(cleanField);
   }
@@ -211,10 +219,12 @@ function cleanAsk(input: AskDraft): Ask {
   }
   if (cleaned) ask.cleaned = true;
   if (input.tool) ask.tool = cleanTool(input.tool);
+  const push = pushTextOf(input.push);
+  if (push !== undefined) ask.push = push;
   return ask;
 }
 
-/** What a program may change in an open ask (WIRE.md 7.12). Its kind and its ids stay. */
+/** What a program may change in an open ask (WIRE.md 7.14). Its kind and its ids stay. */
 export interface AskPatch {
   title?: string;
   reason?: string;
@@ -231,7 +241,7 @@ const has = <K extends string>(answer: Answer, key: K): answer is Extract<Answer
 const lengthOf = (text: string): number => [...text].length;
 
 /**
- * Whether the phone's answer fits the ask (WIRE.md 7.3 and 7.12): an id the ask does not offer is `BadAnswer`; the wrong
+ * Whether the phone's answer fits the ask (WIRE.md 7.3 and 7.14): an id the ask does not offer is `BadAnswer`; the wrong
  * shape for the kind, a text over its `maxLength`, a missing required field, or a pick count the ask does not take
  * is `BadAnswerBody`.
  */
@@ -319,17 +329,17 @@ export interface PaneHandle {
   readonly openAsks: Ask[];
   state(s: PaneState): void;
   /**
-   * One line under the conversation's title (WIRE.md 7.9), cut to 120 characters. `null` clears it. The revision
+   * One line under the conversation's title (WIRE.md 7.11), cut to 120 characters. `null` clears it. The revision
    * rises only when what the phone reads changes.
    */
   subtitle(text: string | null): void;
   /**
-   * A small mark next to the title (WIRE.md 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` of at
+   * A small mark next to the title (WIRE.md 7.11): `{ count }` with an integer from 0 to 9999, or `{ text }` of at
    * most 12 characters. `null` clears it. A bad count is a RangeError. The revision rises only on a change.
    */
   badge(value: Badge | null): void;
   /**
-   * How far a working conversation is (WIRE.md 7.10): `{ kind: "steps", steps }` with 1 to 12 steps (more are left
+   * How far a working conversation is (WIRE.md 7.12): `{ kind: "steps", steps }` with 1 to 12 steps (more are left
    * out), or `{ kind: "percent", value, label? }` with a value from 0 to 100. `null` clears it; the program owns
    * clearing, and the phone draws it only while the pane works or waits. A bad shape is a TypeError or RangeError.
    * The revision rises only on a change.
@@ -341,7 +351,7 @@ export interface PaneHandle {
    * from the pane and the tool call ({@link askIdFor}), so it is the same after a restart.
    */
   ask(ask: PermissionAskInput, opts?: { signal?: AbortSignal }): Promise<PermissionAnswer>;
-  /** A `choice` ask (WIRE.md 7.12): resolves with `{ optionIds }`, one id unless the ask is `multiple`. */
+  /** A `choice` ask (WIRE.md 7.14): resolves with `{ optionIds }`, one id unless the ask is `multiple`. */
   ask(ask: ChoiceAskInput, opts?: { signal?: AbortSignal }): Promise<ChoiceAnswer>;
   /** A `text` ask: resolves with `{ text }`. */
   ask(ask: TextAskInput, opts?: { signal?: AbortSignal }): Promise<TextAnswer>;
@@ -352,6 +362,14 @@ export interface PaneHandle {
   updateAsk(askId: string, patch: AskPatch): boolean;
   onSend(fn: (text: string, o: SendContext) => void | Promise<void>): void;
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>): void;
+  /**
+   * Set the pane's belt actions (WIRE.md 7.10): at most 4, each with an id, a label of at most 16 characters
+   * and an optional icon, `busy` and `disabled`. `null` or an empty list clears them. `rev` rises only when the
+   * list changed. An id that breaks the id rule throws.
+   */
+  actions(list: PaneAction[] | null): void;
+  /** Run a tap on one of the pane's actions. Return `false` to refuse it (422 `action-refused`). */
+  onAction(fn: (o: ActionContext) => boolean | void | Promise<boolean | void>): void;
   close(): void;
 }
 export interface TabHandle {
@@ -386,6 +404,8 @@ export class Pane implements PaneHandle {
   private progressValue: Progress | undefined;
   sendFn?: (text: string, o: SendContext) => void | Promise<void>;
   abortFn?: (o: { requestId: string }) => void | Promise<void>;
+  actionFn?: (o: ActionContext) => boolean | void | Promise<boolean | void>;
+  private actionList: PaneAction[] = [];
   /** The state last put in the log. Unset until the first sync, so the log always starts with one. */
   private shown?: PaneState;
   private readonly limit: number;
@@ -477,6 +497,7 @@ export class Pane implements PaneHandle {
       lastActiveAt: this.lastActiveAt,
       turnId: this.turnId,
       openAsks: this.openAsks,
+      ...(this.actionList.length > 0 ? { actions: this.actionList.map((a) => ({ ...a })) } : {}),
       // Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it.
       sessionId: null,
       ...(this.cwd ? { cwd: this.cwd } : {}),
@@ -588,7 +609,7 @@ export class Pane implements PaneHandle {
   /**
    * The phone answers (WIRE.md 7.3). The caller has checked the revision. A closed or unknown ask is
    * `too-late`; an option that is not offered throws `BadAnswer` (400 `bad-option`), and an answer of the wrong
-   * shape for the ask's kind throws `BadAnswerBody` (400 `bad-body`, WIRE.md 7.12). An ask raised again after a restart has its
+   * shape for the ask's kind throws `BadAnswerBody` (400 `bad-body`, WIRE.md 7.14). An ask raised again after a restart has its
    * old id, so an answer to the id the phone saw before the wake lands here.
    */
   answer(askId: string, answer: Answer): AnswerResult {
@@ -606,18 +627,75 @@ export class Pane implements PaneHandle {
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>) {
     this.abortFn = fn;
   }
+  actions(list: PaneAction[] | null) {
+    const seen = new Set<string>();
+    const next: PaneAction[] = [];
+    for (const given of list ?? []) {
+      if (next.length >= LIMITS.actions) break;
+      const id = assertId(given.id, "action id");
+      const label = actionLabelOf(given.label);
+      if (label === "" || seen.has(id)) continue;
+      seen.add(id);
+      next.push({
+        id,
+        label,
+        ...(given.icon !== undefined && (ACTION_ICONS as readonly string[]).includes(given.icon) ? { icon: given.icon } : {}),
+        ...(given.busy === true ? { busy: true } : {}),
+        ...(given.disabled === true ? { disabled: true } : {}),
+      });
+    }
+    if (JSON.stringify(next) === JSON.stringify(this.actionList)) return;
+    this.actionList = next;
+    this.store.rev++;
+  }
+  onAction(fn: (o: ActionContext) => boolean | void | Promise<boolean | void>) {
+    this.actionFn = fn;
+  }
+  /** The actions the phone may tap now: listed, and neither busy nor disabled. */
+  get actionRows(): readonly PaneAction[] {
+    return this.actionList;
+  }
+  /** A pane runs an action when it has its own handler or the program has an `onAction` hook (the fallback). */
+  get canAct() {
+    return this.actionFn !== undefined || this.store.hooks.onAction !== undefined;
+  }
+  /** The pane's own handler wins; the program's `onAction` hook runs for a pane that has none. False: the program refused. */
+  async act(o: ActionContext): Promise<boolean> {
+    const said = this.actionFn ? await this.actionFn(o) : await this.store.hooks.onAction?.(this.ref, o);
+    this.touch();
+    return said !== false;
+  }
+
+  /** A pane takes text when it has its own handler or the program has an `onSend` hook (the fallback). */
   get canSend() {
-    return this.sendFn !== undefined;
+    return this.sendFn !== undefined || this.store.hooks.onSend !== undefined;
   }
   get canAbort() {
-    return this.abortFn !== undefined;
+    return this.abortFn !== undefined || this.store.hooks.onAbort !== undefined;
   }
+
+  /** This pane as a hook sees it. */
+  get ref(): PaneRef {
+    return {
+      id: this.id,
+      workspaceId: this.workspaceId,
+      tabId: this.tabId,
+      title: this.title,
+      harness: this.harness,
+      ...(this.cwd ? { cwd: this.cwd } : {}),
+      turnId: this.turnId,
+    };
+  }
+
+  /** The pane's own handler wins; the program's `onSend` hook runs for a pane that has none. */
   async send(text: string, o: SendContext) {
-    await this.sendFn?.(text, o);
+    if (this.sendFn) await this.sendFn(text, o);
+    else await this.store.hooks.onSend?.(this.ref, { text, steer: o.steer, turnId: this.turnId, requestId: o.requestId });
     this.touch();
   }
   async abort(o: { requestId: string }) {
-    await this.abortFn?.(o);
+    if (this.abortFn) await this.abortFn(o);
+    else await this.store.hooks.onAbort?.(this.ref, { turnId: this.turnId, requestId: o.requestId });
     this.touch();
   }
 
@@ -653,6 +731,8 @@ export class Store {
   ) {
     this.receipts = new Receipts(receipts);
   }
+  /** The program's hooks (`createCore` sets them once). */
+  hooks: ProgramHooks = {};
   rev = 1;
   /** False until the program says its layout is complete. A restarting program must not show a half-empty one. */
   ready = false;
@@ -699,6 +779,38 @@ export class Store {
     this.panes.set(id, pane);
     this.rev++;
     return pane;
+  }
+
+  /**
+   * What a close of this workspace, tab or pane takes with it (WIRE.md 7.9), or undefined when there is no such
+   * target. The panes are listed in layout order.
+   */
+  closeTarget(kind: "pane" | "tab" | "workspace", id: string): CloseTarget | undefined {
+    if (kind === "pane") return this.panes.has(id) ? { kind, id, paneIds: [id] } : undefined;
+    if (kind === "tab") return this.tabs.has(id) ? { kind, id, paneIds: this.paneIdsIn((p) => p.tabId === id) } : undefined;
+    return this.workspaces.has(id) ? { kind, id, paneIds: this.paneIdsIn((p) => p.workspaceId === id) } : undefined;
+  }
+
+  private paneIdsIn(inside: (pane: Pane) => boolean): string[] {
+    return [...this.panes.values()].filter(inside).map((p) => p.id);
+  }
+
+  /**
+   * Take a workspace, a tab or a pane out of the layout, with everything inside it (WIRE.md 7.9). Every open ask
+   * on those panes closes as `stopped`, so nothing is left waiting for an answer that cannot come, and `rev`
+   * rises once the target is gone. False when there is no such target.
+   */
+  close(kind: "pane" | "tab" | "workspace", id: string): boolean {
+    const target = this.closeTarget(kind, id);
+    if (target === undefined) return false;
+    for (const paneId of target.paneIds) this.panes.get(paneId)?.close();
+    if (kind === "tab") this.tabs.delete(id);
+    if (kind === "workspace") {
+      for (const [tabId, tab] of this.tabs) if (tab.workspaceId === id) this.tabs.delete(tabId);
+      this.workspaces.delete(id);
+    }
+    this.rev++;
+    return true;
   }
 
   /**

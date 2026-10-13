@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef, ForegroundProcess } from "../journal/types.ts";
-import type { AgentStatus, AnswerRequest, Ask, ControlRequest } from "../types.ts";
+import type { AgentStatus, AnswerRequest, Ask, ControlRequest, PaneAction } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -197,7 +197,7 @@ export interface MuxPane extends MuxIdentity {
    */
   readonly badge?: { readonly count: number } | { readonly text: string };
   /**
-   * How far a working conversation is: a list of steps, or a percent (WIRE.md section 7.10). Same producer as
+   * How far a working conversation is: a list of steps, or a percent (WIRE.md section 7.12). Same producer as
    * {@link subtitle}. Meaningful in any state; the phone draws it while the pane works or waits.
    */
   readonly progress?:
@@ -701,6 +701,14 @@ export interface MuxAdapter {
   paneTurn?(paneId: string): string | undefined;
 
   /**
+   * The belt actions one pane's program lists, from the adapter's last listing (M53 spec 07). OPTIONAL, and
+   * only an adapter that declares `programActions` has it (`durable`). `undefined` for a pane that lists none.
+   * Asks nothing new: it is called at serialise time, like {@link paneTurn}. A tap on one comes back through
+   * {@link controlTurn} as an `action` control.
+   */
+  paneActions?(paneId: string): readonly PaneAction[] | undefined;
+
+  /**
    * Send text to, or stop, the turn the phone named (ADR 0101). OPTIONAL, with {@link paneTurn}:
    * absent is the refusal the send and abort routes render, and the reason the reply and keys routes
    * refuse such a pane. ONE CALLER: `POST /api/pane/:id/send` and `/abort`, which have written their
@@ -759,6 +767,13 @@ export interface MuxAdapter {
 
   /** Set a tab's label. Needs `renameTab`. */
   renameTab(tabId: string, label: string): Promise<MuxAck>;
+
+  /**
+   * Set a space's name. Needs `renameSpace`. OPTIONAL by design, like {@link controlTurn}: only an adapter that
+   * can name a space declares the capability and has the method (`durable`, from its program's `caps.rename`).
+   * An adapter without it is never asked, and `bridge/server.ts` answers `unsupported` for it.
+   */
+  renameSpace?(spaceId: string, label: string): Promise<MuxAck>;
 
   /** Close a tab and every pane in it. Needs `closeTab`. */
   closeTab(tabId: string): Promise<MuxAck>;
@@ -825,7 +840,7 @@ export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
 }
 
 /** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
-export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "controlTurn" | "foregroundProcesses";
+export type MuxOptionalMethod = "readLogicalText" | "listStarters" | "startStarter" | "openAsks" | "answerAsk" | "paneTurn" | "paneActions" | "controlTurn" | "foregroundProcesses" | "renameSpace";
 
 /**
  * The OPTIONAL methods, gathered the way {@link muxDataFields} gathers the optional data fields.
@@ -851,10 +866,14 @@ export function muxOptionalMethods(
   // The two control methods travel together too (ADR 0101): an adapter that names turns takes controls.
   const paneTurn = adapter.paneTurn?.bind(adapter);
   if (paneTurn !== undefined) methods.paneTurn = paneTurn;
+  const paneActions = adapter.paneActions?.bind(adapter);
+  if (paneActions !== undefined) methods.paneActions = paneActions;
   const controlTurn = adapter.controlTurn?.bind(adapter);
   if (controlTurn !== undefined) methods.controlTurn = controlTurn;
   const foregroundProcesses = adapter.foregroundProcesses?.bind(adapter);
   if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
+  const renameSpace = adapter.renameSpace?.bind(adapter);
+  if (renameSpace !== undefined) methods.renameSpace = renameSpace;
   return methods;
 }
 

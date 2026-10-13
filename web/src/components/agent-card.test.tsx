@@ -395,7 +395,7 @@ describe("AgentCard — the branch on line 2", () => {
   });
 });
 
-// A durable program's subtitle and badge (WIRE.md 7.9).
+// A durable program's subtitle and badge (WIRE.md 7.11).
 // A crew peer's pane arrives unchecked, so these cases hand the card the wrong shapes a peer could send.
 // SAFETY: the card reads both fields through the JSON guards (lib/pane-marks.ts), which is what the cases test.
 const wrongBadge = (value: JsonValue): AgentView["badge"] => value as AgentView["badge"];

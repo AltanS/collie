@@ -23,7 +23,9 @@ export interface OpenOptions {
   caps?: Partial<Caps>;
   /** `descendant` (default) or `off`. See `ServerOptions.callerCheck`. */
   callerCheck?: "descendant" | "off";
-  /** Asked before a workspace or a tab takes a new title from the phone. `false` answers 422. See `CoreOptions.onRename`. */
+  /** One named place for each act the phone can send: `onSend`, `onAbort`, `onRename`. See `ProgramHooks`. */
+  hooks?: CoreOptions["hooks"];
+  /** The old name of `hooks.onRename`, kept for one release as an alias. */
   onRename?: CoreOptions["onRename"];
 }
 
@@ -43,7 +45,7 @@ export interface Collie {
 export async function openCollie(o: OpenOptions): Promise<Collie> {
   const socket = o.socket ?? process.env[SOCKET_ENV];
   if (!socket) throw new Error(`openCollie needs a socket path: pass socket or set ${SOCKET_ENV}`);
-  const core = createCore({ hostName: o.hostName, tailLimit: o.tailLimit, caps: o.caps, onRename: o.onRename });
+  const core = createCore({ hostName: o.hostName, tailLimit: o.tailLimit, caps: o.caps, hooks: o.hooks, onRename: o.onRename });
   const running = await startServer(socket, { core, callerCheck: o.callerCheck });
   return {
     address: running.address,

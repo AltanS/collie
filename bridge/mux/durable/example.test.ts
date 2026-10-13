@@ -124,7 +124,7 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const session = adapter.program()?.session;
     expect(session?.version).toBe(1);
     expect(session?.hostName).toBe("durable-member");
-    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true });
+    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true });
   });
 
   test("example: the snapshot holds the ticket a first start opens, and it waits on one ask", async () => {
@@ -189,7 +189,7 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const after = recorder.all(ticket);
     expect(after.some((event) => event.type === "ask-closed" && event.by === "phone")).toBe(true);
     expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.includes("The helper says"))).toBe(true);
-    // The finished ticket adds a markdown note, a code block and a link, and the real adapter reads all three (WIRE.md 7.11).
+    // The finished ticket adds a markdown note, a code block and a link, and the real adapter reads all three (WIRE.md 7.13).
     const rich = after.flatMap((event) => (event.type === "item" ? [event.item] : [])).filter((item) => item.kind === "markdown" || item.kind === "code" || item.kind === "link");
     expect(rich.map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
     expect(rich[0]?.kind === "markdown" && rich[0].text).toContain("- Ask the customer to sign in again.");
@@ -216,7 +216,7 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const sent = events.findIndex((event) => event.type === "item" && event.item.kind === "user" && event.item.text === "one more thing");
     expect(sent).toBeGreaterThan(-1);
     // The stop adds no item of its own: no notice, and no reply except the one that was growing, which ends where it was cut
-    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.13).
+    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.15).
     const after = events.slice(sent + 1).flatMap((event) => (event.type === "item" ? [event.item] : []));
     expect(after.some((item) => item.kind === "notice")).toBe(false);
     const replies = after.filter((item) => item.kind === "reply");

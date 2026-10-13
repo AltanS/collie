@@ -500,7 +500,7 @@ function PaneRow({
             </>
           )}
         </div>
-        {/* A durable program's own line, when it set one (WIRE.md 7.9). A third line only for such a pane. */}
+        {/* A durable program's own line, when it set one (WIRE.md 7.11). A third line only for such a pane. */}
         {subtitle !== null && (
           <div data-slot="pane-row-subtitle" className="min-w-0 truncate text-[11px] text-muted-foreground">
             {subtitle}

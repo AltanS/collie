@@ -108,7 +108,7 @@ export function formFields(ask: Ask): AskField[] {
 
 // ── What a person answers ─────────────────────────────────────────────────────
 
-/** An answer as the route takes it: exactly one of these members, by the kind of the ask (WIRE.md 7.12). */
+/** An answer as the route takes it: exactly one of these members, by the kind of the ask (WIRE.md 7.14). */
 export type AskAnswer =
   | { optionId: string }
   | { optionIds: string[] }

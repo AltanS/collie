@@ -66,7 +66,9 @@ const FORWARDABLE: readonly RegExp[] = [
   // pane, where its receipt lives. Additive-optional (§7.1): a member that predates it answers 404.
   // `send` and `abort` (ADR 0101): a control that names the turn the phone saw, a WRITE to the member
   // that owns the pane, where its receipt lives. Additive-optional the same way.
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort))?$/,
+  // `action` (M53 spec 07): a tap on one of the program's belt buttons, a WRITE to the member that owns the
+  // pane, where its receipt lives. Additive-optional the same way.
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/,
   // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
   // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).
@@ -74,6 +76,9 @@ const FORWARDABLE: readonly RegExp[] = [
   /^workspace\/[^/]+\/files\/image$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
+  // A space's rename (M53 spec 05): a WRITE to the member that owns the space. Mirrors `SPACE_ACTION_ROUTE` in
+  // bridge/server.ts. Additive-optional (§7.1): a member that predates it answers 404.
+  /^space\/[^/]+\/rename$/,
   /^workspace$/,
   // The Changes view asked by workspace (ADR 0065): read-only git over the folder of a space that
   // lives on ONE member, so a `?host=` call is proxied like `pane/:id/changes`. Mirrors
@@ -223,6 +228,7 @@ export function forwardAuditAction(route: string): string | null {
   if (route.startsWith("blobs/")) return null; // a read
   if (isWorkspaceRead(route)) return null; // a read
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
+  if (route.startsWith("space/")) return "space.rename";
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   if (action === "close" || action === "rename") return `pane.${action}`;

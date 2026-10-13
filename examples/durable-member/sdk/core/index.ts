@@ -6,7 +6,7 @@
 import { type CallInfo, type CoreState, handle } from "./handle.ts";
 import { Store, type WorkspaceHandle } from "./layout.ts";
 import type { ReceiptStore } from "./receipts.ts";
-import type { Caps, Starter } from "./types.ts";
+import type { Caps, ProgramHooks, RenameTarget, Starter } from "./types.ts";
 
 export type { CallInfo, CoreState } from "./handle.ts";
 export { handle, hello } from "./handle.ts";
@@ -22,10 +22,13 @@ export {
   type ReceiptRecord,
   Receipts,
   type ReceiptStore,
+  CLOSE_GROUP,
   RENAME_GROUP,
   STARTER_GROUP,
 } from "./receipts.ts";
 export {
+  ACTION_LABEL_MAX,
+  actionLabelOf,
   ANSWER_TEXT_BYTES,
   ANSWER_TEXT_DEFAULT,
   ANSWER_TEXT_MAX,
@@ -46,6 +49,9 @@ export {
   maxLengthOf,
   PLACEHOLDER_MAX,
   progressOf,
+  PUSH_LINE_MAX,
+  PUSH_TITLE_MAX,
+  pushTextOf,
   RENAME_TITLE_MAX,
   renameTitleOf,
   safeId,
@@ -67,12 +73,14 @@ export interface CoreOptions {
    * a TypeError when the ask is raised or changed, because the token is the only gate. Default true (the socket).
    */
   allowAlways?: boolean;
+  /** One named place for each act the phone can send. See `ProgramHooks`. */
+  hooks?: ProgramHooks;
   /**
-   * Asked before a workspace or a tab takes a new title from the phone. Return `false` to refuse (the wire answers
-   * 422 `rename-refused`); persist the title here if it should outlive the process. Absent: the title is applied.
-   * Turn the whole thing off with `caps: { rename: false }`.
+   * The old name of `hooks.onRename`, kept for one release as an alias. It takes the target and no request id.
+   * When both are set, `hooks.onRename` wins.
+   * @deprecated Use `hooks: { onRename }`.
    */
-  onRename?: CoreState["onRename"];
+  onRename?: (target: RenameTarget) => boolean | Promise<boolean>;
 }
 
 export interface CollieCore {
@@ -89,11 +97,15 @@ export interface CollieCore {
 
 export function createCore(o: CoreOptions): CollieCore {
   const store = new Store(o.tailLimit, o.receipts, o.allowAlways ?? true);
+  // The alias fills `onRename` only when the hooks do not set it.
+  const alias = o.onRename;
+  const hooks: ProgramHooks = { ...(alias ? { onRename: (target: RenameTarget) => alias(target) } : {}), ...o.hooks };
+  store.hooks = hooks;
   const state: CoreState = {
     store,
     hostName: o.hostName,
-    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, ...o.caps, terminal: false },
-    onRename: o.onRename,
+    caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, ...o.caps, terminal: false },
+    hooks,
   };
   return {
     epoch: store.epoch,

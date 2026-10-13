@@ -459,6 +459,18 @@ export const tr: Dictionary = {
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
+  // TODO wordsmith
+  "durable.action.done": "Done",
+  // TODO wordsmith
+  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
+  // TODO wordsmith
+  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
+  // TODO wordsmith
+  "durable.action.refused": "The action was refused.",
+  // TODO wordsmith
+  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
+  // TODO wordsmith
+  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "İptal",
   "prompt.feedback.typedAria": "Uçbirimde geri bildirim",
@@ -822,6 +834,18 @@ export const tr: Dictionary = {
   "space.tab.renameFailed": "Yeniden adlandırılamadı",
   "space.tab.closeFailed": "Kapatılamadı",
   "space.tab.closed": "Sekme kapatıldı",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Eşleşmedi, bu cihazı Ayarlar'da eşleyin",
   "space.readOnly.expired": "Eşleme süresi doldu. Ayarlar'da tekrar eşleyin",
   "space.readOnly.deviceUnauthorised": "Salt okunur, cihaza yetki verilmedi",
@@ -1161,6 +1185,8 @@ export const tr: Dictionary = {
   "apiError.tab.create_failed": "Sekme oluşturulamadı: {reason}",
   "apiError.tab.rename_failed": "Sekme yeniden adlandırılamadı: {reason}",
   "apiError.tab.close_failed": "Sekme kapatılamadı: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Yeni sekme için alan adı belirtilmedi.",
   "apiError.launch.not_allowlisted": "Bu komut başlatıcılarınızdan biri değil",
   "apiError.launch.unknown_harness": "Bu makine {harness} başlatmıyor.",

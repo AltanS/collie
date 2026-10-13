@@ -86,7 +86,7 @@ export interface AgentView {
    */
   terminalTitleStale?: boolean;
   /**
-   * One line the program shows under this pane's title (a durable program, WIRE.md 7.9). Mirrors
+   * One line the program shows under this pane's title (a durable program, WIRE.md 7.11). Mirrors
    * `AgentView.subtitle` in bridge/types.ts. **Absent on every pane with a screen**, on an older bridge
    * and on an older crew member. Text only, never markup: read it through `paneSubtitle`
    * (lib/pane-marks.ts), which drops anything that is not a non-empty string.
@@ -98,7 +98,7 @@ export interface AgentView {
    */
   badge?: PaneBadge;
   /**
-   * How far a working durable conversation is: a step list or a percent (WIRE.md 7.10). Mirrors
+   * How far a working durable conversation is: a step list or a percent (WIRE.md 7.12). Mirrors
    * `AgentView.progress` in bridge/types.ts, absent in the same cases. Read it through `paneProgress`
    * (lib/pane-marks.ts), and draw it only while the pane works or waits.
    */
@@ -189,6 +189,26 @@ export interface AgentView {
    * screen. Sent back unchanged, never shown.
    */
   turnId?: string;
+  /**
+   * The buttons this pane's program lists for the belt (M53 spec 07). Mirrors `PaneWire.actions` in
+   * bridge/types.ts. At most four, in the program's order. **Absent on every pane with a screen**, on
+   * an older bridge and on an older crew member, which all read as "no program buttons here". Text only,
+   * never markup: every label came from a program, and an icon it names that this list lacks draws none.
+   */
+  actions?: PaneAction[];
+}
+
+/** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */
+export const PANE_ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export type PaneActionIcon = (typeof PANE_ACTION_ICONS)[number];
+
+/** One button of a durable program's section of the belt. Mirrors `PaneAction` in bridge/types.ts. */
+export interface PaneAction {
+  id: string;
+  label: string;
+  icon?: PaneActionIcon;
+  busy?: boolean;
+  disabled?: boolean;
 }
 
 /** What a person may choose on an ask. Mirrors `AskOption` in bridge/types.ts. */
@@ -1133,7 +1153,7 @@ export interface TranscriptEntry {
   abandoned?: true;
   /**
    * The text of this turn is still growing, and the program will rewrite it under the same id. Draw a cursor and
-   * no time until it goes. Absent when false. Only a durable pane sets it (WIRE.md 7.13).
+   * no time until it goes. Absent when false. Only a durable pane sets it (WIRE.md 7.15).
    */
   partial?: true;
   /** The request id of the send that made this user turn. Matches the phone's own unsent line. Durable panes only. */
@@ -1541,6 +1561,8 @@ export const MUX_CAPABILITIES = [
   "steerTurn",
   "abortTurn",
   "starters",
+  "renameSpace",
+  "programActions",
 ] as const;
 
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];

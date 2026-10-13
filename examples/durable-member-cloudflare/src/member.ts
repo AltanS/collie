@@ -59,6 +59,9 @@ export class Member extends DurableObject<Env> {
     // A name the phone gave a workspace or a tab (WIRE.md 7.8). The layout below is made again on every start, so the
     // names are kept here and win over the ones in this file. A key is the wire id: `triage`, or `triage:inbox`.
     sql.exec("CREATE TABLE IF NOT EXISTS collie_titles (kind TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL, PRIMARY KEY (kind, id))");
+    // A conversation the phone closed (WIRE.md 7.9): archived, so a wake does not show it again. A key is the Pi conversation id.
+    sql.exec("CREATE TABLE IF NOT EXISTS collie_closed (id TEXT PRIMARY KEY)");
+    const closed = new Set(sql.exec<{ id: string }>("SELECT id FROM collie_closed").toArray().map((r) => r.id));
     const renamed = new Map(sql.exec<{ kind: string; id: string; title: string }>("SELECT kind, id, title FROM collie_titles").toArray().map((r) => [`${r.kind}/${r.id}`, r.title]));
     const titled = (kind: "workspace" | "tab", id: string, fallback: string) => renamed.get(`${kind}/${id}`) ?? fallback;
     // Over TLS the token is the only gate, so this program offers Allow and Deny only: an `allow-always` option is
@@ -67,10 +70,26 @@ export class Member extends DurableObject<Env> {
       hostName: HOST_NAME,
       receipts: new SqliteReceiptStore(this.ctx.storage),
       allowAlways: false,
-      // Keep the new name, so a wake of the object does not give the old one back.
-      onRename: ({ kind, id, title }) => {
-        sql.exec("INSERT OR REPLACE INTO collie_titles (kind, id, title) VALUES (?, ?, ?)", kind, id, title);
-        return true;
+      hooks: {
+        // Keep the new name, so a wake of the object does not give the old one back.
+        onRename: ({ kind, id, title }) => {
+          sql.exec("INSERT OR REPLACE INTO collie_titles (kind, id, title) VALUES (?, ?, ?)", kind, id, title);
+          return true;
+        },
+        // Archive a conversation the phone closes: end its run, write it down, stop showing it. The SDK then takes the
+        // pane out of the layout and closes its asks as `stopped`. The tabs and the workspace are this program's own
+        // layout, in code, so it refuses to close those (422).
+        onClose: async ({ kind, paneIds }) => {
+          if (kind !== "pane") return false;
+          for (const paneId of paneIds) {
+            const id = this.panes.conversationOf(paneId);
+            if (id === undefined) continue;
+            await (await harness.conversation(id, ctx0))?.abort(ctx0).catch(() => {});
+            sql.exec("INSERT OR IGNORE INTO collie_closed (id) VALUES (?)", String(id));
+            closed.add(String(id));
+            await this.panes.forget(id);
+          }
+        },
       },
     });
     this.core = core;
@@ -135,12 +154,18 @@ export class Member extends DurableObject<Env> {
     } while (cursor);
     const show = (conversation: Conversation, owner: ConversationId | undefined) =>
       showConversation(
-        { tab: owner !== undefined ? helpers : inbox, title: `${owner !== undefined ? "Helper" : "Ticket"} #${conversation.id}`, subtitle: subtitleFor(owner), progress: owner === undefined },
+        {
+          tab: owner !== undefined ? helpers : inbox,
+          title: `${owner !== undefined ? "Helper" : "Ticket"} #${conversation.id}`,
+          subtitle: subtitleFor(owner),
+          progress: owner === undefined,
+          escalate: owner === undefined,
+        },
         harness,
         conversation,
         { panes: this.panes },
       );
-    for (const c of all) await show((await harness.conversation(c.id, ctx0))!, c.owner);
+    for (const c of all) if (!closed.has(String(c.id))) await show((await harness.conversation(c.id, ctx0))!, c.owner);
 
     const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
     const startTriage = (prefix: string) => async () => {

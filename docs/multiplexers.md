@@ -230,20 +230,32 @@ deploy, are in
 What works:
 
 - The program's conversations in the list, in the merged crew list, and in Chat and History.
-- Questions the program asks, such as a tool that needs a yes or a no. You answer them from the
-  phone, and only a tap answers.
+- Questions the program asks: a tool that needs a yes or a no, a choice, a line of text, or a short
+  form. You answer them from the phone, and only a tap answers.
+- A line under the title and a count or a short mark next to it, and the progress of a working
+  conversation as steps or a percent, when the program sets them.
+- Markdown, code and links in the thread. Lists, headings and emphasis render, a code block keeps
+  its language, and a link opens like any other.
 - Send text, steer a turn that is running, and stop it. Steer and Stop sit in the belt above the
   field. A cap the program declares draws its control: `caps.steer` draws Steer, `caps.abort` draws
   Stop, and a program that declares neither gets neither.
+- The program's own buttons in the belt. With `caps.actions`, a conversation may list up to four actions, each
+  with a label of at most 16 characters and one of twelve icon names. They follow Steer and Stop in the
+  program's section of the belt; a tap runs the action once in the program, which may refuse it, and a button
+  the program marks `busy` or `disabled` is dimmed.
 - The program's starters, as rows on the New page. With `caps.starters`, the new-tab and new-space
   buttons open that page too.
-- Renaming a tab, from the tab's usual rename control. It works when the program declares `rename`;
+- Renaming a tab or a workspace, from the tab's usual rename control and the Rename row of the space
+  sheet (long-press a space chip, or tap the open one). It works when the program declares `rename`;
   the program applies the title or refuses it, and the phone shows the refusal.
+- Closing a conversation or a tab, from the usual close controls. It works when the program declares
+  `close`; the program decides what a close means (archive, delete, end), and the conversation or tab
+  leaves the list. A workspace close is on the wire, but the phone has no control for it.
 
 What does not work:
 
 - Terminal, and typed keys. A durable pane has no screen to show or type into.
-- Making a tab or a workspace by hand, closing them, and renaming a workspace or a conversation. The program lays out its own conversations.
+- Making a tab or a workspace by hand, closing a workspace, and renaming a conversation. The program lays out its own conversations.
 - "Show in terminal". No pane is ever reported as focused.
 - Another user's program on the socket. The socket must belong to the user that runs Collie.
 - A program on another machine over plain TCP. Reach it over https with a token, as above, or run a

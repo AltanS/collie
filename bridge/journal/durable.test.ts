@@ -194,7 +194,7 @@ describe("the durable journal adapter: chat shape", () => {
   });
 });
 
-describe("a reply that grows (WIRE.md 7.13): partial and replace", () => {
+describe("a reply that grows (WIRE.md 7.15): partial and replace", () => {
   const grown = (id: string, body: string, partial = true): DurableEvent => ({
     type: "item",
     item: partial ? { id, kind: "reply", text: body, partial: true } : { id, kind: "reply", text: body },

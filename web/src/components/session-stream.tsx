@@ -400,7 +400,7 @@ export function SessionStream({
     // page gives a turn's steps. One idea, one look, two surfaces.
     //
     // A text the program was still writing (`partial`) keeps its cursor only while the pane works: one that stopped
-    // will not grow, and a cursor left blinking on it would be a lie (WIRE.md 7.13).
+    // will not grow, and a cursor left blinking on it would be a lie (WIRE.md 7.15).
     return groupRuns(
       entries.flatMap((e) => itemsOf(e, showCompactions).map((item) => (working ? item : finished(item)))),
       showToolCalls ? 3 : 1,

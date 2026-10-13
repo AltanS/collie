@@ -3,7 +3,7 @@
 // agree, so the core is the wire and the socket is only its transport.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
-import { type AskInput, type Caps, type CoreOptions, idOk, type PaneHandle, type PermissionAskInput, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
+import { type AskInput, type Caps, type CoreOptions, idOk, type PaneAction, type PaneHandle, type PermissionAskInput, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
 import { cleanup, waitFor } from "./util.ts";
 
 /** A program with no layout yet, and the dial that reaches it. */
@@ -16,7 +16,7 @@ export interface Opened {
 }
 export interface Transport {
   name: string;
-  open(o: { hostName: string; caps?: Partial<Caps>; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
+  open(o: { hostName: string; caps?: Partial<Caps>; hooks?: CoreOptions["hooks"]; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
 }
 
 export function protocolSuite(transport: Transport) {
@@ -28,6 +28,9 @@ export function protocolSuite(transport: Transport) {
     /** What the program's `onRename` hook decides, and the renames it was asked about. */
     let renameVerdict: boolean | Promise<boolean> = true;
     const asked: unknown[] = [];
+    /** What the program's `onClose` hook decides (`undefined` accepts, as a hook that returns nothing does), and what it was asked. */
+    let closeVerdict: boolean | undefined | Promise<boolean | undefined> = undefined;
+    const closeAsked: unknown[] = [];
     let aborted = 0;
     let starts = 0;
     const post = (path: string, body: unknown) => call(d, "POST", path, body);
@@ -57,9 +60,15 @@ export function protocolSuite(transport: Transport) {
     beforeAll(async () => {
       ({ collie, dial: d } = await transport.open({
         hostName: "t",
-        onRename: (target) => {
-          asked.push(target);
-          return renameVerdict;
+        hooks: {
+          onRename: (target, requestId) => {
+            asked.push({ ...target, requestId });
+            return renameVerdict;
+          },
+          onClose: (target, requestId) => {
+            closeAsked.push({ ...target, requestId });
+            return closeVerdict;
+          },
         },
       }));
       pane = mk("p1");
@@ -89,7 +98,7 @@ export function protocolSuite(transport: Transport) {
         expect(r.body.host.name).toBe("t");
         expect(r.body.ready).toBe(true);
         expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/); // 128 bits
-        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, terminal: false });
+        expect(r.body.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, terminal: false });
       });
       test("409 incompatible with the range, never a 5xx; a header that is not an integer is the same", async () => {
         for (const version of [0, 2, 99]) {
@@ -117,6 +126,7 @@ export function protocolSuite(transport: Transport) {
         expect((await call(t, "GET", "/nothing")).status).toBe(503);
         expect((await call(t, "POST", "/pane/p/send", {})).status).toBe(503);
         expect((await call(t, "POST", "/rename", {})).status).toBe(503);
+        expect((await call(t, "POST", "/close", {})).status).toBe(503);
         expect((await api.hello(t)).status).toBe(200); // hello answers before ready is looked at
         c.ready();
         expect((await call(t, "GET", "/nothing")).status).toBe(404);
@@ -130,6 +140,7 @@ export function protocolSuite(transport: Transport) {
         expect((await api.start(d, "nope")).status).toBe(404);
         expect((await call(d, "GET", "/what")).status).toBe(404);
         expect((await call(d, "GET", "/rename")).status).toBe(404); // wrong method
+        expect((await call(d, "GET", "/close")).status).toBe(404); // wrong method
         expect((await call(d, "GET", "/pane/p1/answer")).status).toBe(404); // wrong method
         expect((await call(d, "DELETE", "/snapshot")).status).toBe(404);
         expect((await api.events(d, "nope", 0)).body.code).toBe("no-such-pane");
@@ -138,7 +149,7 @@ export function protocolSuite(transport: Transport) {
       });
       test("a POST body over 64 KiB is 413 too-large, on every POST route", async () => {
         const pad = "x".repeat(70_000);
-        for (const path of ["/pane/p1/answer", "/pane/p1/send", "/pane/p1/abort", "/starter/s1", "/rename"]) {
+        for (const path of ["/pane/p1/answer", "/pane/p1/send", "/pane/p1/abort", "/starter/s1", "/rename", "/close"]) {
           const r = await post(path, { requestId: "big", pad });
           expect([path, r.status, r.body.code]).toEqual([path, 413, "too-large"]);
         }
@@ -687,7 +698,7 @@ export function protocolSuite(transport: Transport) {
       });
     });
 
-    describe("more kinds of ask (WIRE.md 7.12)", () => {
+    describe("more kinds of ask (WIRE.md 7.14)", () => {
       const QUEUES = [
         { id: "billing", label: "Billing" },
         { id: "access", label: "Access" },
@@ -1027,6 +1038,371 @@ export function protocolSuite(transport: Transport) {
           const r = await post("/rename", body);
           expect([JSON.stringify(body), r.status, r.body.code]).toEqual([JSON.stringify(body), 400, code]);
         }
+      });
+    });
+
+    describe("close", () => {
+      const snap = async () => (await api.snapshot(d)).body;
+      /** A workspace of its own with one tab and the given panes, so a close does not touch the shared "w". */
+      const layout = (ws: string, panes: string[] = ["a", "b"]) => {
+        const tab = collie.workspace(ws, { title: ws.toUpperCase() }).tab("t", { title: "T" });
+        return panes.map((id) => tab.pane(`${ws}-${id}`, { title: id, harness: "x" }));
+      };
+      const ids = (list: { id: string }[]) => list.map((x) => x.id);
+
+      test("close a pane: it leaves the snapshot, rev rose, its tab and the other pane stay, and its log is gone", async () => {
+        layout("c1");
+        const before = await snap();
+        const r = await api.close(d, "pane", "c1-a", "close-pane-1");
+        expect([r.status, r.body]).toEqual([200, { ok: true }]);
+        const after = await snap();
+        expect(ids(after.panes).includes("c1-a")).toBe(false);
+        expect(ids(after.panes).includes("c1-b")).toBe(true);
+        expect(ids(after.tabs).includes("c1:t")).toBe(true);
+        expect(after.rev).toBeGreaterThan(before.rev);
+        expect((await api.events(d, "c1-a", 0)).body.code).toBe("no-such-pane");
+      });
+      test("close a tab: the tab and the panes inside it go, the rest stay", async () => {
+        layout("c2");
+        const other = collie.workspace("c2", { title: "C2" }).tab("u", { title: "U" }).pane("c2-keep", { title: "keep", harness: "x" });
+        const r = await api.close(d, "tab", "c2:t");
+        expect(r.body).toEqual({ ok: true });
+        const after = await snap();
+        expect(ids(after.tabs).filter((x) => x.startsWith("c2:"))).toEqual(["c2:u"]);
+        expect(ids(after.panes).filter((x) => x.startsWith("c2-"))).toEqual([other.id]);
+        expect(ids(after.workspaces).includes("c2")).toBe(true);
+      });
+      test("close a workspace: its tabs and panes go with it", async () => {
+        layout("c3");
+        const r = await api.close(d, "workspace", "c3");
+        expect(r.body).toEqual({ ok: true });
+        const after = await snap();
+        expect(ids(after.workspaces).includes("c3")).toBe(false);
+        expect(ids(after.tabs).filter((x) => x.startsWith("c3:"))).toEqual([]);
+        expect(ids(after.panes).filter((x) => x.startsWith("c3-"))).toEqual([]);
+      });
+      test("every open ask on a closed pane closes as stopped, and nobody answers it", async () => {
+        const [a, b] = layout("c4");
+        const waiting = [hold(a!, askInput({ id: "c4-ask-1" })), hold(b!, askInput({ id: "c4-ask-2" }))];
+        const outcomes = Promise.allSettled(waiting);
+        expect((await api.close(d, "tab", "c4:t")).body).toEqual({ ok: true });
+        const settled = await outcomes;
+        for (const s of settled) {
+          expect(s.status).toBe("rejected");
+          expect((s as PromiseRejectedResult).reason).toMatchObject({ by: "stopped" });
+        }
+        // The asks are gone with the panes: an answer finds no pane.
+        expect((await api.answer(d, "c4-a", "c4-ask-1", "allow", { revision: 1 })).status).toBe(404);
+      });
+      test("the hook gets the target, the panes that go with it, and the request id", async () => {
+        layout("c5");
+        const before = closeAsked.length;
+        await api.close(d, "tab", "c5:t", "close-hook-1");
+        await api.close(d, "pane", "c1-b", "close-hook-2");
+        expect(closeAsked.slice(before)).toEqual([
+          { kind: "tab", id: "c5:t", paneIds: ["c5-a", "c5-b"], requestId: "close-hook-1" },
+          { kind: "pane", id: "c1-b", paneIds: ["c1-b"], requestId: "close-hook-2" },
+        ]);
+      });
+      test("a repeat of the request id answers from the receipt, asks the hook once, and does not move rev", async () => {
+        layout("c6");
+        const askedBefore = closeAsked.length;
+        expect((await api.close(d, "pane", "c6-a", "close-once")).body).toEqual({ ok: true });
+        const rev = (await snap()).rev;
+        const again = await api.close(d, "pane", "c6-a", "close-once");
+        expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+        expect(closeAsked.length - askedBefore).toBe(1);
+        expect((await snap()).rev).toBe(rev);
+        // A new request id for a target that is gone is a plain 404.
+        expect((await api.close(d, "pane", "c6-a")).body.code).toBe("no-such-target");
+      });
+      test("the same request id for another kind or target is 409 request-id-reused", async () => {
+        layout("c7");
+        expect((await api.close(d, "pane", "c7-a", "close-reuse")).status).toBe(200);
+        for (const r of [await api.close(d, "pane", "c7-b", "close-reuse"), await api.close(d, "tab", "c7:t", "close-reuse")]) {
+          expect([r.status, r.body.code]).toEqual([409, "request-id-reused"]);
+        }
+      });
+      test("the hook answering false is 422 close-refused, nothing changes, and the same id may try again", async () => {
+        layout("c8");
+        const before = await snap();
+        closeVerdict = false;
+        const refused = await api.close(d, "pane", "c8-a", "close-no");
+        expect([refused.status, refused.body.code]).toEqual([422, "close-refused"]);
+        const after = await snap();
+        expect(ids(after.panes).includes("c8-a")).toBe(true);
+        expect(after.rev).toBe(before.rev);
+        closeVerdict = Promise.resolve(true); // a hook may answer late, and `true` accepts
+        expect((await api.close(d, "pane", "c8-a", "close-no")).body).toEqual({ ok: true });
+        expect(ids((await snap()).panes).includes("c8-a")).toBe(false);
+        closeVerdict = undefined;
+      });
+      test("an unknown target is 404 no-such-target, a target of the wrong kind too, and the hook is not asked", async () => {
+        layout("c9");
+        const askedBefore = closeAsked.length;
+        for (const [kind, id] of [["pane", "nope"], ["pane", "c9:t"], ["tab", "c9"], ["tab", "c9:nope"], ["workspace", "c9:t"], ["workspace", "nope"]] as const) {
+          const r = await api.close(d, kind, id);
+          expect([kind, id, r.status, r.body.code]).toEqual([kind, id, 404, "no-such-target"]);
+        }
+        expect(closeAsked.length).toBe(askedBefore);
+      });
+      test("a bad body is 400: a kind that is not pane, tab or workspace, a missing or mistyped field, an id that breaks the rule", async () => {
+        const cases: [unknown, string][] = [
+          [{ requestId: "r", kind: "space", id: "w" }, "bad-body"],
+          [{ requestId: "r", id: "w" }, "bad-body"],
+          [{ requestId: "r", kind: "tab" }, "bad-body"],
+          [{ kind: "tab", id: "w:t" }, "bad-body"],
+          [{ requestId: "r", kind: "tab", id: 4 }, "bad-body"],
+          [{ requestId: "bad id", kind: "tab", id: "w:t" }, "bad-id"],
+          [{ requestId: "r", kind: "tab", id: "a b" }, "bad-id"],
+        ];
+        for (const [body, code] of cases) {
+          const r = await post("/close", body);
+          expect([JSON.stringify(body), r.status, r.body.code]).toEqual([JSON.stringify(body), 400, code]);
+        }
+      });
+      test("caps.close false: hello says so and the route is 409 not-supported", async () => {
+        const { collie: c, dial: t } = await transport.open({ hostName: "c", caps: { close: false } });
+        c.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
+        c.ready();
+        expect((await api.hello(t)).body.caps).toMatchObject({ close: false });
+        const r = await api.close(t, "pane", "p");
+        expect([r.status, r.body.code]).toEqual([409, "not-supported"]);
+        expect((await api.snapshot(t)).body.panes.map((p) => p.id)).toEqual(["p"]);
+        await c.close();
+      });
+      test("with no hook at all a close just removes the target", async () => {
+        const { collie: c, dial: t } = await transport.open({ hostName: "n" });
+        c.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
+        c.ready();
+        expect((await api.close(t, "pane", "p")).body).toEqual({ ok: true });
+        expect((await api.snapshot(t)).body.panes).toEqual([]);
+        await c.close();
+      });
+    });
+
+    describe("actions", () => {
+      const ESC = { id: "escalate", label: "Escalate", icon: "flag" } as const;
+      type Hooked = NonNullable<CoreOptions["hooks"]>;
+      /** A core with one pane, the given belt actions, and the given hook or per-pane handler. */
+      const withActions = async (list: PaneAction[] | null, hooks: Hooked = {}, caps?: Partial<Caps>) => {
+        const opened = await transport.open({ hostName: "a", hooks, caps });
+        const p = opened.collie.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("ap", { title: "AP", harness: "x" });
+        if (list !== null) p.actions(list);
+        opened.collie.ready();
+        const info = async () => (await api.snapshot(opened.dial)).body.panes[0]!;
+        return { ...opened, p, info };
+      };
+
+      test("a pane's actions are in the snapshot in the program's order, and a pane with none carries no key", async () => {
+        const { collie: c, p, info } = await withActions([ESC, { id: "pause", label: "Pause", icon: "pause" }]);
+        expect((await info()).actions).toEqual([ESC, { id: "pause", label: "Pause", icon: "pause" }]);
+        p.actions(null);
+        expect("actions" in (await info())).toBe(false);
+        await c.close();
+      });
+      test("at most 4 actions, a label cut to 16 characters, an unknown icon dropped, an empty label and a repeated id left out", async () => {
+        const many = ["a", "b", "c", "d", "e"].map((id) => ({ id, label: id }));
+        const { collie: c, p, info } = await withActions(many);
+        expect((await info()).actions!.map((a) => a.id)).toEqual(["a", "b", "c", "d"]);
+        p.actions([
+          { id: "long", label: "  A label that is far too long  ", icon: "nope" as never },
+          { id: "empty", label: "   " },
+          { id: "long", label: "Again" },
+          { id: "busy", label: "Run", icon: "play", busy: true, disabled: true },
+        ]);
+        expect((await info()).actions).toEqual([
+          { id: "long", label: "A label that is" },
+          { id: "busy", label: "Run", icon: "play", busy: true, disabled: true },
+        ]);
+        expect(() => p.actions([{ id: "bad id", label: "x" }])).toThrow();
+        await c.close();
+      });
+      test("rev rises when the list changes, and not when it is set again to the same thing", async () => {
+        const { collie: c, p, dial: t } = await withActions([ESC]);
+        const rev = async () => (await api.snapshot(t)).body.rev;
+        const first = await rev();
+        p.actions([{ ...ESC }]);
+        expect(await rev()).toBe(first);
+        p.actions([{ ...ESC, disabled: true }]);
+        expect(await rev()).toBeGreaterThan(first);
+        await c.close();
+      });
+      test("a tap runs the hook once with the typed payload, and a repeat of the request id answers from the receipt", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t, info } = await withActions([ESC], { onAction: (pane, action) => void got.push({ id: pane.id, action }) });
+        const turnId = (await info()).turnId;
+        const first = await api.action(t, "ap", "escalate", { turnId, requestId: "act-1" });
+        expect([first.status, first.body]).toEqual([200, { ok: true }]);
+        const again = await api.action(t, "ap", "escalate", { turnId, requestId: "act-1" });
+        expect([again.status, again.body]).toEqual([200, { ok: true, replayed: true }]);
+        expect(got).toEqual([{ id: "ap", action: { actionId: "escalate", turnId, requestId: "act-1" } }]);
+        // No turn named: the pane's button is the target, and that is allowed.
+        expect((await api.action(t, "ap", "escalate", { requestId: "act-2" })).body).toEqual({ ok: true });
+        expect(got.length).toBe(2);
+        await c.close();
+      });
+      test("a pane's own handler wins over the hook, and the same request id for another action is 409 request-id-reused", async () => {
+        const viaHook: string[] = [];
+        const viaPane: string[] = [];
+        const { collie: c, dial: t, p } = await withActions([ESC, { id: "pause", label: "Pause" }], { onAction: (_pane, a) => void viaHook.push(a.actionId) });
+        p.onAction((a) => void viaPane.push(a.actionId));
+        expect((await api.action(t, "ap", "escalate", { requestId: "act-3" })).status).toBe(200);
+        expect([viaPane, viaHook]).toEqual([["escalate"], []]);
+        const reused = await api.action(t, "ap", "pause", { requestId: "act-3" });
+        expect([reused.status, reused.body.code]).toEqual([409, "request-id-reused"]);
+        await c.close();
+      });
+      test("a stale turn is 409 stale with the current turn, and the hook is not run", async () => {
+        const got: string[] = [];
+        const { collie: c, dial: t, p, info } = await withActions([ESC], { onAction: (_pane, a) => void got.push(a.actionId) });
+        const old = (await info()).turnId;
+        p.state("working");
+        const now = (await info()).turnId;
+        expect(now).not.toBe(old);
+        const r = await api.action(t, "ap", "escalate", { turnId: old });
+        expect([r.status, r.body.code, r.body.turnId]).toEqual([409, "stale", now]);
+        expect(got).toEqual([]);
+        await c.close();
+      });
+      test("an unknown pane is 404 no-such-pane, an action the pane does not list is 404 no-such-action", async () => {
+        const got: string[] = [];
+        const { collie: c, dial: t } = await withActions([ESC], { onAction: (_pane, a) => void got.push(a.actionId) });
+        expect((await api.action(t, "nope", "escalate")).body.code).toBe("no-such-pane");
+        const r = await api.action(t, "ap", "other");
+        expect([r.status, r.body.code]).toEqual([404, "no-such-action"]);
+        expect(got).toEqual([]);
+        await c.close();
+      });
+      test("the hook answering false is 422 action-refused, and the same request id may try again", async () => {
+        let verdict: boolean | undefined = false;
+        const { collie: c, dial: t } = await withActions([ESC], { onAction: () => verdict });
+        const refused = await api.action(t, "ap", "escalate", { requestId: "act-4" });
+        expect([refused.status, refused.body.code]).toEqual([422, "action-refused"]);
+        verdict = undefined; // a hook that returns nothing accepts
+        expect((await api.action(t, "ap", "escalate", { requestId: "act-4" })).body).toEqual({ ok: true });
+        await c.close();
+      });
+      test("a disabled or busy action takes no tap: 422 action-refused, and the hook is not run", async () => {
+        const got: string[] = [];
+        const { collie: c, dial: t } = await withActions(
+          [
+            { id: "off", label: "Off", disabled: true },
+            { id: "run", label: "Run", busy: true },
+          ],
+          { onAction: (_pane, a) => void got.push(a.actionId) },
+        );
+        for (const id of ["off", "run"]) {
+          const r = await api.action(t, "ap", id);
+          expect([id, r.status, r.body.code]).toEqual([id, 422, "action-refused"]);
+        }
+        expect(got).toEqual([]);
+        await c.close();
+      });
+      test("with caps.actions false, or no handler and no hook, the route is 409 not-supported", async () => {
+        const off = await withActions([ESC], { onAction: () => true }, { actions: false });
+        expect((await api.hello(off.dial)).body.caps).toMatchObject({ actions: false });
+        expect((await api.action(off.dial, "ap", "escalate")).body.code).toBe("not-supported");
+        await off.collie.close();
+        const bare = await withActions([ESC]);
+        expect((await api.action(bare.dial, "ap", "escalate")).body.code).toBe("not-supported");
+        await bare.collie.close();
+      });
+      test("a bad body is 400: no action id, a mistyped field, an id that breaks the rule, no request id", async () => {
+        const { collie: c, dial: t } = await withActions([ESC], { onAction: () => true });
+        const cases: [unknown, string][] = [
+          [{ requestId: "r" }, "bad-body"],
+          [{ requestId: "r", actionId: 4 }, "bad-body"],
+          [{ requestId: "r", actionId: "a b" }, "bad-id"],
+          [{ requestId: "r", actionId: "escalate", turnId: 4 }, "bad-body"],
+          [{ actionId: "escalate" }, "bad-body"],
+        ];
+        for (const [body, code] of cases) {
+          const r = await call(t, "POST", "/pane/ap/action", body);
+          expect([JSON.stringify(body), r.status, r.body.code]).toEqual([JSON.stringify(body), 400, code]);
+        }
+        await c.close();
+      });
+    });
+
+    describe("hooks", () => {
+      /** A core whose program sets hooks and no per-pane handler, and the dial that reaches it. */
+      const withHooks = async (hooks: NonNullable<CoreOptions["hooks"]>, caps?: Partial<Caps>) => {
+        const opened = await transport.open({ hostName: "h", hooks, caps });
+        const p = opened.collie.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("hp", { title: "HP", harness: "x" });
+        opened.collie.ready();
+        return { ...opened, p };
+      };
+      test("onSend runs for a pane with no handler, with a typed payload: text, steer, the turn and the request id", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t, p } = await withHooks({ onSend: (pane, req) => void got.push({ pane, req }) });
+        p.state("working");
+        const turnId = (await api.snapshot(t)).body.panes[0]!.turnId;
+        expect((await api.send(t, "hp", "hello", { turnId, steer: true, requestId: "hook-send-1" })).body).toEqual({ ok: true });
+        expect(got).toEqual([
+          {
+            pane: { id: "hp", workspaceId: "w", tabId: "w:t", title: "HP", harness: "x", turnId },
+            req: { text: "hello", steer: true, turnId, requestId: "hook-send-1" },
+          },
+        ]);
+        // A repeat of the request id answers from the receipt and does not reach the hook again.
+        expect((await api.send(t, "hp", "hello", { turnId, steer: true, requestId: "hook-send-1" })).body).toEqual({ ok: true, replayed: true });
+        expect(got.length).toBe(1);
+        await c.close();
+      });
+      test("onAbort runs for a pane with no handler, and not on an idle pane", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t, p } = await withHooks({ onAbort: (pane, req) => void got.push({ id: pane.id, req }) });
+        const turnId = (await api.snapshot(t)).body.panes[0]!.turnId;
+        expect((await api.abort(t, "hp", { turnId, requestId: "hook-abort-0" })).body).toEqual({ ok: true });
+        expect(got).toEqual([]); // nothing runs: nothing to stop
+        p.state("working");
+        const running = (await api.snapshot(t)).body.panes[0]!.turnId;
+        expect((await api.abort(t, "hp", { turnId: running, requestId: "hook-abort-1" })).body).toEqual({ ok: true });
+        expect(got).toEqual([{ id: "hp", req: { turnId: running, requestId: "hook-abort-1" } }]);
+        await c.close();
+      });
+      test("a pane's own handler wins over the hook", async () => {
+        const viaHook: string[] = [];
+        const viaPane: string[] = [];
+        const { collie: c, dial: t, p } = await withHooks({ onSend: (_pane, req) => void viaHook.push(req.text) });
+        p.onSend((text) => void viaPane.push(text));
+        expect((await api.send(t, "hp", "to the pane")).status).toBe(200);
+        expect([viaPane, viaHook]).toEqual([["to the pane"], []]);
+        await c.close();
+      });
+      test("a pane with no handler and no hook is still 409 not-supported", async () => {
+        const { collie: c, dial: t } = await withHooks({ onRename: () => true });
+        expect((await api.send(t, "hp", "x")).body.code).toBe("not-supported");
+        expect((await api.abort(t, "hp")).body.code).toBe("not-supported");
+        await c.close();
+      });
+      test("onRename gets the request id, and false is 422", async () => {
+        const got: unknown[] = [];
+        const { collie: c, dial: t } = await withHooks({
+          onRename: (target, requestId) => {
+            got.push({ target, requestId });
+            return target.title !== "No";
+          },
+        });
+        expect((await api.rename(t, "tab", "w:t", "Yes", "hook-rename-1")).body).toEqual({ ok: true });
+        expect(got).toEqual([{ target: { kind: "tab", id: "w:t", title: "Yes" }, requestId: "hook-rename-1" }]);
+        expect((await api.rename(t, "tab", "w:t", "No", "hook-rename-2")).body.code).toBe("rename-refused");
+        await c.close();
+      });
+      test("the old onRename option still works as an alias, and hooks.onRename wins when both are set", async () => {
+        const old: unknown[] = [];
+        const first = await transport.open({ hostName: "a", onRename: (target) => (old.push(target), false) });
+        first.collie.workspace("w", { title: "W" }).tab("t", { title: "T" });
+        first.collie.ready();
+        expect((await api.rename(first.dial, "tab", "w:t", "X")).body.code).toBe("rename-refused");
+        expect(old).toEqual([{ kind: "tab", id: "w:t", title: "X" }]);
+        await first.collie.close();
+        const both = await transport.open({ hostName: "b", hooks: { onRename: () => true }, onRename: () => false });
+        both.collie.workspace("w", { title: "W" }).tab("t", { title: "T" });
+        both.collie.ready();
+        expect((await api.rename(both.dial, "tab", "w:t", "X")).status).toBe(200);
+        await both.collie.close();
       });
     });
 

@@ -36,7 +36,8 @@ export const RE_RAISE_MS = 5000;
  */
 export class PaneRegistry {
   private panes = new Map<ConversationId, PaneHandle>();
-  private stops: (() => Promise<unknown>)[] = [];
+  /** The stop of each conversation's event stream. */
+  private stops = new Map<ConversationId, () => Promise<unknown>>();
   /** Tool calls shown as running, by item id, with the tool's name. */
   private readonly running = new Map<string, string>();
   /** A start waiting for these call ids: each settles when the call asks or ends. */
@@ -49,7 +50,22 @@ export class PaneRegistry {
   }
   set(id: ConversationId, pane: PaneHandle, stop: () => Promise<unknown>) {
     this.panes.set(id, pane);
-    this.stops.push(stop);
+    this.stops.set(id, stop);
+  }
+  /** The conversation a pane shows, by the pane's id on the wire, or undefined. */
+  conversationOf(paneId: string): ConversationId | undefined {
+    for (const [id, pane] of this.panes) if (pane.id === paneId) return id;
+    return undefined;
+  }
+  /**
+   * Stop showing a conversation: its event stream stops and the registry forgets it, so showing it again makes a
+   * new pane. The pane itself leaves the layout through the SDK (a close from the phone does that after its hook).
+   */
+  async forget(id: ConversationId) {
+    const stop = this.stops.get(id);
+    this.panes.delete(id);
+    this.stops.delete(id);
+    await stop?.().catch(() => {});
   }
   /** The mapper saw a tool call's status. A call that ends no longer holds a start back. */
   toolStatus(callId: string, name: string, status: string) {
@@ -114,7 +130,9 @@ export class PaneRegistry {
 
   /** Stop every event stream. Call before `harness.close()`. */
   async close() {
-    await Promise.all(this.stops.splice(0).map((stop) => stop().catch(() => {})));
+    const stops = [...this.stops.values()];
+    this.stops.clear();
+    await Promise.all(stops.map((stop) => stop().catch(() => {})));
   }
 }
 
@@ -128,10 +146,15 @@ export interface PaneLocation {
   subtitle?: string;
   /** Show the three steps of a ticket while its first run works. */
   progress?: boolean;
+  /** Give the pane the belt action "Escalate" (WIRE.md 7.10). The tickets have it; the helpers do not. */
+  escalate?: boolean;
 }
 
 /** The line under a pane's title: what the ticket is about, or which ticket the helper helps. */
 export const subtitleFor = (owner: ConversationId | undefined): string => (owner === undefined ? "a customer cannot log in" : `helping ticket ${owner}`);
+
+/** The one belt action of a ticket. */
+const ESCALATE = { id: "escalate", label: "Escalate", icon: "flag" } as const;
 
 const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -149,7 +172,7 @@ const NEXT_STEPS = "**What to do next**\n\n- Ask the customer to sign in again.\
 const REVOKE_COMMAND = "# clear the stale session\nsession-cli revoke --user 412";
 const DOCS_URL = "https://colliepwa.dev/docs/";
 
-/** The least time between two writes of a growing reply (WIRE.md 7.13). */
+/** The least time between two writes of a growing reply (WIRE.md 7.15). */
 export const PARTIAL_MS = 250;
 
 /** A text or thinking block of the answer being written, as far as it has come. */
@@ -172,7 +195,7 @@ const messageId = (timestamp: unknown) => safeId(`m${String(timestamp)}`);
 
 /**
  * Pi entries and agent events to the session stream. A reply grows: `message_update` rewrites its item under one id
- * (at most every {@link PARTIAL_MS}), and the finished entry writes it once more without `partial` (WIRE.md 7.13).
+ * (at most every {@link PARTIAL_MS}), and the finished entry writes it once more without `partial` (WIRE.md 7.15).
  */
 export class Mapper {
   private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
@@ -207,7 +230,7 @@ export class Mapper {
   }
 
   /**
-   * What a finished ticket adds under its reply: a markdown note with a list, a code block and a link (WIRE.md 7.11).
+   * What a finished ticket adds under its reply: a markdown note with a list, a code block and a link (WIRE.md 7.13).
    * The ids come from the reply's, so a replay after a restart writes the same three items again, not three more.
    */
   private summary(replyId: string, ts: string) {
@@ -354,7 +377,7 @@ export class Mapper {
   /**
    * The answer being written is over. Its entry normally follows and writes the final version. Where none does (a
    * stop that left nothing to keep), what was shown is written once more as it stood, without `partial`, so no
-   * cursor is left blinking on a reply that will not grow (WIRE.md 7.5 and 7.13).
+   * cursor is left blinking on a reply that will not grow (WIRE.md 7.5 and 7.15).
    */
   private finish() {
     const live = this.live;
@@ -452,6 +475,18 @@ export async function showConversation(
     await conversation.submit({ type: "input", content: text, whenBusy: steer ? "steer" : "followUp", requestId }, ctx);
   });
   pane.onAbort(() => conversation.abort(ctx));
+  if (loc.escalate === true) {
+    pane.actions([ESCALATE]);
+    // The phone taps Escalate: write one notice into the thread, dim the button and mark the badge "esc". The request id keys the
+    // notice, so the same tap never writes it twice. This is a program's own act and needs no Pi Durable call.
+    pane.onAction(({ actionId, requestId }) => {
+      if (actionId !== ESCALATE.id) return false;
+      pane.event({ type: "item", item: { id: safeId(`escalated:${requestId}`), ts: new Date().toISOString(), kind: "notice", text: "Escalated to the on-call lead." } });
+      pane.actions([{ ...ESCALATE, disabled: true }]);
+      escalated.add(pane);
+      markAsks(pane);
+    });
+  }
 
   const stream = await watchEvents(harness, conversation.id, ctx);
   opts.panes.set(conversation.id, pane, () => stream.stop());
@@ -462,16 +497,25 @@ export async function showConversation(
   return pane;
 }
 
-/** The pane's badge counts its open asks, and shows nothing at zero. */
+/** The panes whose ticket was escalated: their badge reads "esc" while no question waits. */
+const escalated = new WeakSet<PaneHandle>();
+
+/** The pane's badge counts its open asks. At zero it reads "esc" on an escalated ticket, and shows nothing otherwise. */
 const markAsks = (pane: PaneHandle) => {
   const open = pane.openAsks.length;
-  pane.badge(open > 0 ? { count: open } : null);
+  pane.badge(open > 0 ? { count: open } : escalated.has(pane) ? { text: "esc" } : null);
 };
 
 export interface Risky {
   panes: PaneRegistry;
   /** Tool names that need the phone's yes. */
   risky: ReadonlySet<string>;
+}
+
+/** The notification words for a risky call. The note tool says what it will do; any other says its summary. */
+function pushFor(tool: string, summary: string): { title: string; line: string } {
+  if (tool === "write_note") return { title: "Ticket needs a yes", line: "write_note wants to add one line to the notes" };
+  return { title: `${tool} needs a yes`, line: summary };
 }
 
 /** An extension whose `beforeTool` hook turns a risky call into an ask and waits for the answer. */
@@ -493,6 +537,8 @@ export function riskGuard(o: Risky): Extension {
               title: `${call.name} wants to run: ${summary}`,
               tool: { kind: "other", name: call.name, summary },
               reason: `${call.name} is marked risky`,
+              // The words of the notification (WIRE.md section 6). The pane's name goes in front of the title.
+              push: pushFor(call.name, summary),
               options: [
                 { id: "allow", label: "Allow", effect: "allow" },
                 { id: "deny", label: "Deny", effect: "deny" },
@@ -524,7 +570,7 @@ export const QUEUES = [
 
 /**
  * `ask_queue` (a choice) and `ask_customer` (a text ask): tools whose whole job is a question for the person on the
- * phone (WIRE.md 7.12). The ask sits under the tool's own item, and `replay: "safe"` means a rerun after a crash asks
+ * phone (WIRE.md 7.14). The ask sits under the tool's own item, and `replay: "safe"` means a rerun after a crash asks
  * again under the same id. The scripted ticket that starts with `ASK:` calls them after its note.
  */
 export function askTools(o: { panes: PaneRegistry }) {

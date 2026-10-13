@@ -109,8 +109,8 @@ export function readThrown(status: number | undefined, message: string): Control
   return { clear: false, keepId: true, reload: false, note: "unknown", detail: "" };
 }
 
-/** Which write a reading is about: text to the pane, or a stop. Their sentences differ. */
-export type ControlKind = "send" | "stop";
+/** Which write a reading is about: text to the pane, a stop, or a program's belt action. Their sentences differ. */
+export type ControlKind = "send" | "stop" | "action";
 
 /**
  * The sentence for a reading, as a catalog key. A refusal that carries the bridge's own detail is
@@ -118,6 +118,7 @@ export type ControlKind = "send" | "stop";
  * the fallback for a refusal with no words.
  */
 export function noteKey(reading: ControlReading, kind: ControlKind): MessageKey {
+  if (kind === "action") return actionNoteKey(reading);
   const stop = kind === "stop";
   switch (reading.note) {
     case "sent":
@@ -132,5 +133,22 @@ export function noteKey(reading: ControlReading, kind: ControlKind): MessageKey 
       return stop ? "durable.composer.stopUnknown" : "durable.composer.unknown";
     case "maybe":
       return stop ? "durable.composer.stopMaybe" : "durable.composer.maybe";
+  }
+}
+
+function actionNoteKey(reading: ControlReading): MessageKey {
+  switch (reading.note) {
+    case "sent":
+      return "durable.action.done";
+    case "moved":
+      return "durable.action.moved";
+    case "older":
+      return "durable.action.older";
+    case "refused":
+      return "durable.action.refused";
+    case "unknown":
+      return "durable.action.unknown";
+    case "maybe":
+      return "durable.action.maybe";
   }
 }

@@ -483,6 +483,18 @@ export const ru: Dictionary = {
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
+  // TODO wordsmith
+  "durable.action.done": "Done",
+  // TODO wordsmith
+  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
+  // TODO wordsmith
+  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
+  // TODO wordsmith
+  "durable.action.refused": "The action was refused.",
+  // TODO wordsmith
+  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
+  // TODO wordsmith
+  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "Отмена",
   "prompt.feedback.typedAria": "Отзыв в терминале",
@@ -872,6 +884,18 @@ export const ru: Dictionary = {
   "space.tab.renameFailed": "Сбой переименования",
   "space.tab.closeFailed": "Сбой закрытия",
   "space.tab.closed": "Вкладка закрыта",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Не сопряжено: свяжите это устройство в Настройках",
   "space.readOnly.expired": "Срок сопряжения истек. Свяжите снова в Настройках",
   "space.readOnly.deviceUnauthorised": "Только чтение: устройство не авторизовано",
@@ -1215,6 +1239,8 @@ export const ru: Dictionary = {
   "apiError.tab.create_failed": "Не удалось создать вкладку: {reason}",
   "apiError.tab.rename_failed": "Не удалось переименовать вкладку: {reason}",
   "apiError.tab.close_failed": "Не удалось закрыть вкладку: {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Для новой вкладки не указано пространство.",
   "apiError.launch.not_allowlisted": "Эта команда отсутствует среди ваших средств запуска",
   "apiError.launch.unknown_harness": "Эта машина не запускает {harness}.",

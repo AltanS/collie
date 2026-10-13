@@ -49,7 +49,7 @@ export type ChatItem =
   // is matched to it and replaced (lib/durable-pending.ts).
   | { id: string; ts?: string; kind: "user"; text: string; requestId?: string }
   // `partial`: the program is still writing this text and will write it again under the same id (a durable pane,
-  // WIRE.md 7.13). The card draws a cursor at its end until the flag goes.
+  // WIRE.md 7.15). The card draws a cursor at its end until the flag goes.
   | { id: string; ts?: string; kind: "reply"; text: string; partial?: true }
   | { id: string; ts?: string; kind: "thinking"; text: string; partial?: true }
   | { id: string; ts?: string; kind: "notice"; text: string; note?: true; partial?: true }
@@ -61,7 +61,7 @@ export type ChatItem =
 
 /**
  * The item as a finished text: `partial` dropped. A text the program was writing when the pane stopped working will not
- * grow any more (WIRE.md 7.13 lets a reader draw it as final), so no cursor is left on it.
+ * grow any more (WIRE.md 7.15 lets a reader draw it as final), so no cursor is left on it.
  */
 export function finished(item: ChatItem): ChatItem {
   if (item.kind === "reply") return { id: item.id, ts: item.ts, kind: "reply", text: item.text };

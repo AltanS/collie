@@ -81,6 +81,8 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
   tool, and the ticket stops there. Only your tap answers. The app never answers its own ask.
 - **A line under the title, and a badge.** Each ticket says "a customer cannot log in" under its name, and
   a helper says "helping ticket N". A badge next to the ticket's name counts the questions that wait for you.
+- **A belt action.** Each ticket has an Escalate button in the belt. A tap writes one notice into the thread,
+  dims the button, and the badge reads "esc" once no question waits.
 - **Progress.** While a ticket works, Chat shows a thin row under the header with the running step ("write a
   note, 2 of 3") and a bar, and the card gets a one-pixel line along its bottom edge. The three steps are
   "read the ticket", "write a note" and "reply".
@@ -92,12 +94,18 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
 - **A reply that grows.** The model writes every answer in chunks, and the pane writes the reply item again under
   the same id as it grows, with `partial: true`, at most every 250 ms. The last version has no `partial`. Chat draws
   a cursor at the end while it grows, and Stop cuts the reply where it is. The `user` item carries the `requestId` of
-  the send, so the phone swaps its own pending line for it (WIRE.md 7.13).
+  the send, so the phone swaps its own pending line for it (WIRE.md 7.15).
 - **Starters on the New page.** "New triage" opens another ticket. "Two notes at once" makes the
   model ask two questions at the same time. "A choice and a line of text" asks after its note
   which queue the ticket goes to (a `choice`, three buttons) and then for one line to send to the
   customer (a `text` ask). A third kind, `form`, takes up to six fields; see `pane.ask()` in the SDK
-  and WIRE.md section 7.12.
+  and WIRE.md section 7.14.
+- **Renames.** Long-press the "Triage" space chip, or a tab, and tap Rename. The app keeps the new name in
+  `titles.json` in its data folder, so a restart shows it again.
+- **Closes.** Open a ticket's actions sheet and tap Close. The app ends the ticket's run, writes it to
+  `closed.json` in its data folder so a restart does not show it again, and the ticket leaves the list. Its open
+  ask closes as stopped. The Inbox and Helpers tabs and the Triage space are the app's own layout, in code, so it
+  refuses to close those (422).
 
 ## A real model
 
@@ -155,7 +163,7 @@ Every variable is optional.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `COLLIE_DURABLE_SOCKET` | `$XDG_RUNTIME_DIR/durable-member/app.sock`, or `/tmp/durable-member-<uid>/app.sock` when `XDG_RUNTIME_DIR` is not set | Where the app listens. An absolute path of at most 103 bytes. Collie reads the same variable to find it. |
-| `DM_DATA` | `$XDG_STATE_HOME/durable-member`, else `~/.local/state/durable-member` | The folder for the conversations (`store/`) and the file `write_note` appends to (`notes.txt`). |
+| `DM_DATA` | `$XDG_STATE_HOME/durable-member`, else `~/.local/state/durable-member` | The folder for the conversations (`store/`), the file `write_note` appends to (`notes.txt`) the names the phone gave a workspace or a tab (`titles.json`) and the conversations the phone closed (`closed.json`). |
 | `DM_CALLER_CHECK` | `descendant` | `off` turns the descendant check off. Needed on any system but Linux. |
 | `DM_STEP_MS` | `400` | The pause before each scripted answer, so you can see the states change. |
 | `DM_SLOW_MS` | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer is long, and streams in chunks. |
@@ -180,7 +188,7 @@ second program needs it. Copy the folder into your program. It imports nothing f
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - An item `{ kind: "reply" | "thinking" | "notice" | "markdown", partial: true }` is text still growing: write the same
   `id` again as it grows (not faster than every 250 ms), and once more with the final text and no `partial`. A
-  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.13). `pi-durable/index.ts` does both.
+  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.15). `pi-durable/index.ts` does both.
 - `subtitle(text | null)` sets one line under the title (at most 120 characters), and `badge({ count } | { text } | null)`
   a small mark next to it (a count from 0 to 9999, or at most 12 characters). Each raises `rev` only when the value changes.
 - `event({ type: "item", item })` also takes `{ kind: "markdown", text }`, `{ kind: "code", lang?, text }` (the
@@ -190,11 +198,24 @@ second program needs it. Copy the folder into your program. It imports nothing f
   conversation is: up to 12 steps (`done`, `running` or `todo`), or a value from 0 to 100. The program clears it
   when the run ends, and the phone draws it only while the pane works or waits.
 - `starters()` lists what the phone can start from the New page.
+- `hooks` gives each act the phone can send one named place, with a typed payload and the request id:
+  `onSend(pane, { text, steer, turnId, requestId })`, `onAbort(pane, { turnId, requestId })` and
+  `onRename({ kind, id, title }, requestId)` and `onClose({ kind, id, paneIds }, requestId)`. Pass `hooks` to `openCollie` or `createCore`. The per-pane
+  handlers (`pane.onSend`, `pane.onAbort`) stay the first choice, and a hook is the fallback for a pane that
+  has none: a pane with neither is 409 `not-supported`. Every payload type is exported from `sdk/core/types.ts`.
 - The phone can give a workspace or a tab a new name (`rename` cap, on by default). The SDK sets the title and
-  raises `rev`. Pass `onRename({ kind, id, title })` to `openCollie` to keep the name, or to return `false` and
-  refuse it with 422. Set `caps: { rename: false }` to take no rename at all. The layout is made again on every
-  start, so a program that wants a name to outlive the process keeps it itself and uses it when it lays out.
-  A pane keeps the title the conversation gives it.
+  raises `rev`. `hooks.onRename` can keep the name, or return `false` to refuse it with 422. Set
+  `caps: { rename: false }` to take no rename at all. The layout is made again on every start, so a program
+  that wants a name to outlive the process keeps it itself and uses it when it lays out: `app.ts` keeps the
+  names in `titles.json` in its data folder, and the Cloudflare example keeps them in SQLite.
+  A pane keeps the title the conversation gives it. The old top-level `onRename(target)` option still works
+  for one release as an alias for `hooks.onRename`, without the request id.
+- The phone can close a pane, a tab or a workspace (`close` cap, on by default). What a close means is your call:
+  archive the conversation, delete it, end its run. `hooks.onClose` does that and keeps it, so a restart does not
+  show it again, or returns `false` to refuse with 422. Returning nothing accepts. The SDK then removes the target
+  and everything inside it from the layout, raises `rev`, and closes every open ask on those panes as `stopped`.
+  Set `caps: { close: false }` to take no close at all. A repeat of a request id answers from the receipt and runs
+  the hook once.
 
 The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
 `Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids

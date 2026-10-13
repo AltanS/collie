@@ -24,6 +24,10 @@
 // 120 characters, the cap checked, a repeat of a request id answered `replayed`, and a refusal (422
 // `rename-refused`) when a test sets `renameRefusal`. A rename changes the title and `rev` rises.
 //
+// It takes `POST /close` as WIRE.md 7.9 describes it: a pane, a tab or a workspace by kind and id, the cap checked, a
+// repeat of a request id answered `replayed`, and a refusal (422 `close-refused`) when a test sets `closeRefusal`. A
+// close takes the target and everything inside it out of the layout, and `rev` rises.
+//
 // It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
 // whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
 // a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
@@ -59,8 +63,10 @@ import { DurableHttpClient } from "./http-client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
+  parseActionPost,
   parseAnswerPost,
   type DurableAnswerBody,
+  parseClosePost,
   parseControlPost,
   parseEvents,
   parseRenamePost,
@@ -86,6 +92,8 @@ export interface FakeHello {
     steer?: boolean;
     abort?: boolean;
     rename?: boolean;
+    close?: boolean;
+    actions?: boolean;
     terminal?: boolean;
   };
 }
@@ -278,6 +286,21 @@ export interface FakeRename {
   readonly title: string;
 }
 
+/** One close the fake took (WIRE.md section 7.9). A replay is not one. */
+export interface FakeClose {
+  readonly requestId: string;
+  readonly kind: "pane" | "tab" | "workspace";
+  readonly id: string;
+}
+
+/** One belt action the fake ran (WIRE.md section 7.10). A replay is not one. */
+export interface FakeAction {
+  readonly requestId: string;
+  readonly paneId: string;
+  readonly actionId: string;
+  readonly turnId: string | null;
+}
+
 /** What a send or an abort answers. */
 export interface ControlDoc {
   ok: true;
@@ -347,6 +370,18 @@ export class FakeDurableProgram {
   /** When set, the next renames fail with 422 `rename-refused` and this message, and store nothing. */
   renameRefusal: string | null = null;
   private readonly renamedByRequest = new Map<string, FakeRename>();
+
+  /** Every close the fake took, in order. A replay is not a second entry. */
+  readonly closes: FakeClose[] = [];
+  /** When set, the next closes fail with 422 `close-refused` and this message, and change nothing. */
+  closeRefusal: string | null = null;
+  private readonly closedByRequest = new Map<string, FakeClose>();
+
+  /** Every belt action the fake ran, in order. A replay is not a second entry. */
+  readonly actionsRun: FakeAction[] = [];
+  /** When set, the next actions fail with 422 `action-refused` and this message, and change nothing. */
+  actionRefusal: string | null = null;
+  private readonly actedByRequest = new Map<string, FakeAction>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
   /** The TCP port over HTTP, kept so a dropped listener comes back on the same URL. */
@@ -607,6 +642,9 @@ export class FakeDurableProgram {
     const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
     if (request.method === "POST" && route === "/rename") return this.handleRename(body ?? "");
+    if (request.method === "POST" && route === "/close") return this.handleClose(body ?? "");
+    const actionRoute = /^\/pane\/([^/]+)\/action$/.exec(route);
+    if (request.method === "POST" && actionRoute !== null) return this.handleAction(decodeURIComponent(actionRoute[1] ?? ""), body ?? "");
     const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
     if (request.method === "POST" && controlRoute !== null) {
       const act = controlRoute[2] === "send" ? "send" : "abort";
@@ -735,6 +773,45 @@ export class FakeDurableProgram {
     return reply(200, { ok: true });
   }
 
+  /**
+   * `POST /close` (WIRE.md section 7.9): the body, then the cap, then the request id memory, then the target, then the
+   * program's say. A close takes the target and everything inside it out of the layout, which takes the open asks
+   * of those panes with it. A failure changes nothing, so the same id may try again.
+   */
+  private handleClose(text: string): Response {
+    const post = parseClosePost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, kind, id } = post;
+    if (this.hello.caps.close !== true) return reply(409, { code: "not-supported" });
+
+    const earlier = this.closedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.kind !== kind || earlier.id !== id) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    const found =
+      kind === "pane"
+        ? this.snapshot.panes.some((pane) => pane.id === id)
+        : kind === "tab"
+          ? this.snapshot.tabs.some((tab) => tab.id === id)
+          : this.snapshot.workspaces.some((workspace) => workspace.id === id);
+    if (!found) return reply(404, { code: "no-such-target" });
+    if (this.closeRefusal !== null) return reply(422, { code: "close-refused", message: this.closeRefusal });
+
+    const goneTabs = new Set(
+      kind === "tab" ? [id] : kind === "workspace" ? this.snapshot.tabs.filter((tab) => tab.workspaceId === id).map((tab) => tab.id) : [],
+    );
+    this.snapshot.panes = this.snapshot.panes.filter((pane) => (kind === "pane" ? pane.id !== id : !goneTabs.has(pane.tabId)));
+    this.snapshot.tabs = this.snapshot.tabs.filter((tab) => !goneTabs.has(tab.id));
+    if (kind === "workspace") this.snapshot.workspaces = this.snapshot.workspaces.filter((workspace) => workspace.id !== id);
+    this.touch();
+    const close: FakeClose = { requestId, kind, id };
+    this.closedByRequest.set(requestId, close);
+    this.closes.push(close);
+    return reply(200, { ok: true });
+  }
+
   /** `POST /pane/:id/answer`, as WIRE.md section 7.3 says a program answers it. */
   private answer(paneId: string, text: string): Response {
     const post = parseAnswerPost(text);
@@ -770,6 +847,36 @@ export class FakeDurableProgram {
     }
     this.answered.set(requestId, { paneId, reply: answer });
     return reply(200, answer);
+  }
+
+  /**
+   * `POST /pane/:id/action` (WIRE.md section 7.10): the body, then the pane, then the request id memory, then the cap,
+   * then the turn when the phone named one, then the action, then the program's say. A failure stores nothing, so
+   * the same request id may try again.
+   */
+  private handleAction(paneId: string, text: string): Response {
+    const post = parseActionPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, actionId, turnId } = post;
+    const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return reply(404, { code: "no-such-pane" });
+    const earlier = this.actedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.paneId !== paneId || earlier.actionId !== actionId || earlier.turnId !== turnId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    if (this.hello.caps.actions !== true) return reply(409, { code: "not-supported" });
+    if (turnId !== null && turnId !== pane.turnId) return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((ask) => ask.id) });
+    const row = (pane.actions ?? []).find((candidate) => candidate.id === actionId);
+    if (row === undefined) return reply(404, { code: "no-such-action" });
+    if (this.actionRefusal !== null) return reply(422, { code: "action-refused", message: this.actionRefusal });
+    if (row.disabled === true || row.busy === true) return reply(422, { code: "action-refused" });
+
+    const run: FakeAction = { requestId, paneId, actionId, turnId };
+    this.actedByRequest.set(requestId, run);
+    this.actionsRun.push(run);
+    return reply(200, { ok: true });
   }
 
   /**
@@ -919,6 +1026,7 @@ export async function durableWorld(): Promise<MuxConformanceWorld> {
   const program = await FakeDurableProgram.startWire();
   // The recorded hello declares no `rename`. This world's program does, so the suite proves it works.
   program.hello.caps.rename = true;
+  program.hello.caps.close = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(program.wire(), clock);
   const change = (act: () => void): Promise<void> => {
@@ -959,6 +1067,7 @@ export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
   const token = testToken();
   const program = await FakeDurableProgram.startHttp(token);
   program.hello.caps.rename = true;
+  program.hello.caps.close = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
   const change = (act: () => void): Promise<void> => {
@@ -989,7 +1098,7 @@ export const durableHttpConformanceFixture: MuxConformanceFixture = {
   create: durableHttpWorld,
 };
 
-// ── What a program checks in an answer (WIRE.md 7.12) ─────────────────────────
+// ── What a program checks in an answer (WIRE.md 7.14) ─────────────────────────
 
 /** The `optionId` a recorded answer shows: the option, the picks joined, or empty. */
 function optionOf(answer: DurableAnswerBody): string {

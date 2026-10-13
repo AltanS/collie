@@ -21,7 +21,7 @@
 //   {"k":"settled","at":ISO,"inputId":...,...}      an input reached its end
 // `at` is when the bridge wrote the row. An item keeps its own `ts` when the program sent one.
 //
-// A REPLY THAT GROWS (WIRE.md 7.13) is one item rewritten under one id, `partial: true` until the last
+// A REPLY THAT GROWS (WIRE.md 7.15) is one item rewritten under one id, `partial: true` until the last
 // version. Each version is a row, and the reader upserts by id, so Chat and History hold one turn.
 // Versions that arrive in one batch write one row (the last), so the file grows with the polls, not with
 // the program's writes.
@@ -263,7 +263,7 @@ export class PaneLog {
     const listed = new Set<string>();
     // Items a reset view lists, so a partial one it does not list can be finished at `synced` (below).
     const listedItems = new Set<string>();
-    // A reply that grows is rewritten under one id again and again (WIRE.md 7.13). When one batch holds
+    // A reply that grows is rewritten under one id again and again (WIRE.md 7.15). When one batch holds
     // several versions of an item, only the last is news: an earlier one that was still partial is skipped.
     const lastVersion = new Map<string, number>();
     events.forEach((event, place) => {

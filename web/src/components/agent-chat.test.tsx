@@ -4128,7 +4128,7 @@ describe("AgentChat header — the branch on the path line", () => {
   });
 });
 
-// A durable program's subtitle takes the header's second line, in the same 12px box (WIRE.md 7.9).
+// A durable program's subtitle takes the header's second line, in the same 12px box (WIRE.md 7.11).
 // SAFETY: the header reads the field through the JSON guard (lib/pane-marks.ts); this hands it a shape a peer could send.
 const wrongSubtitle = (value: JsonValue): AgentView["subtitle"] => value as AgentView["subtitle"];
 

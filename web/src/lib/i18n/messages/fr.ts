@@ -459,6 +459,18 @@ export const fr: Dictionary = {
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
+  // TODO wordsmith
+  "durable.action.done": "Done",
+  // TODO wordsmith
+  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
+  // TODO wordsmith
+  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
+  // TODO wordsmith
+  "durable.action.refused": "The action was refused.",
+  // TODO wordsmith
+  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
+  // TODO wordsmith
+  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
   "newPage.starters.none": "This machine's program offers no starters yet.",
   "prompt.feedback.cancel": "Annuler",
   "prompt.feedback.typedAria": "Commentaire dans le terminal",
@@ -822,6 +834,18 @@ export const fr: Dictionary = {
   "space.tab.renameFailed": "Échec du renommage",
   "space.tab.closeFailed": "Échec de la fermeture",
   "space.tab.closed": "Onglet fermé",
+  // TODO wordsmith
+  "space.space.titleFallback": "Space",
+  // TODO wordsmith
+  "space.space.titleWithLabel": "Space {label}",
+  // TODO wordsmith
+  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
+  // TODO wordsmith
+  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
+  // TODO wordsmith
+  "space.space.empty.fallback": "This program offers no actions for a space.",
+  // TODO wordsmith
+  "space.space.placeholder": "name this space",
   "space.readOnly.notPaired": "Non associé : associez cet appareil dans Paramètres",
   "space.readOnly.expired": "Association expirée. Associez de nouveau dans Paramètres",
   "space.readOnly.deviceUnauthorised": "Lecture seule : appareil non autorisé",
@@ -1161,6 +1185,8 @@ export const fr: Dictionary = {
   "apiError.tab.create_failed": "L'onglet n'a pas pu être créé : {reason}",
   "apiError.tab.rename_failed": "L'onglet n'a pas pu être renommé : {reason}",
   "apiError.tab.close_failed": "L'onglet n'a pas pu être fermé : {reason}",
+  // TODO wordsmith
+  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
   "apiError.tab.workspace_required": "Aucun espace n'a été nommé pour le nouvel onglet.",
   "apiError.launch.not_allowlisted": "Cette commande ne fait pas partie de vos lanceurs",
   "apiError.launch.unknown_harness": "Cette machine ne lance pas {harness}.",

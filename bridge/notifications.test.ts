@@ -269,6 +269,46 @@ describe("the body a single alert carries — the pane's PLACE, and nothing else
   });
 });
 
+describe("an ask's push words (durable/ask-push.ts)", () => {
+  const durable = (status: AgentStatus, paneId = "p1") => agentNamed(paneId, "durable", status, { paneLabel: "Triage" });
+
+  test("the program's title follows the pane's push name and carries no code; its line is the body", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(durable("blocked"), "working", "blocked", "ask", { title: "Needs a yes", line: "One line." });
+    clock.fireAll();
+    expect(sink.last?.title).toBe("Triage: Needs a yes");
+    expect(sink.last?.titleCode).toBeUndefined();
+    expect(sink.last?.titleDetail).toBeUndefined();
+    expect(sink.last?.body).toBe("One line.");
+  });
+
+  test("with no words the push is the generic one, as before", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(durable("blocked"), "working", "blocked", "ask");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ title: "Permission needed in Triage", titleCode: "ask.permission", body: "demo" });
+  });
+
+  test("words never touch a push that is not an ask's, and a digest ignores them", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "blocked"), "working", "blocked", undefined, { title: "ignored" });
+    clock.fireAll();
+    expect(sink.last?.title).toBe("claude needs you");
+    coord.onTransition(durable("blocked", "p2"), "working", "blocked", "ask", { title: "Needs a yes" });
+    clock.fireAll();
+    expect(sink.last?.titleCode).toBe("herd.blocked");
+    expect(sink.last?.title).toBe("2 agents need you");
+  });
+
+  test("the sink leaves the code out of the message when the title is the program's", () => {
+    const sent: PushMessage[] = [];
+    const sink = makeNotifySink({ send: (m) => void sent.push(m) }, { isMuted: () => false }, "herd");
+    sink.render({ title: "Triage: Needs a yes", body: "One line.", renotify: true });
+    expect(sent[0]).toMatchObject({ title: "Triage: Needs a yes", body: "One line." });
+    expect(sent[0]).not.toHaveProperty("titleCode");
+  });
+});
+
 describe("NotificationCoordinator — multi-agent digest labels (#215)", () => {
   test("several panes of the SAME agent kind are told apart by their pane label", () => {
     const { clock, sink, coord } = setup();

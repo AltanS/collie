@@ -202,12 +202,12 @@ export function AgentCard({
   // than the tab beside it but never takes the whole line. No branch (no checkout, an older bridge or
   // crew member, or a reading not taken yet) draws exactly the line drawn before it existed.
   const head = paneGitHead(agent);
-  // A durable program's own line under the title (WIRE.md 7.9). A flat row has a stated 44px, so there the
+  // A durable program's own line under the title (WIRE.md 7.11). A flat row has a stated 44px, so there the
   // subtitle TAKES the detail slot (a program's panes share one workspace heading, and the subtitle is the
   // fact that tells them apart); a card has no stated height, so it carries the subtitle on a line of its own.
   const subtitle = paneSubtitle(agent);
   const subtitleInSlot = flat && subtitle !== null;
-  // How far a working durable conversation is (WIRE.md 7.10): a 1px line along the bottom edge, inside the
+  // How far a working durable conversation is (WIRE.md 7.12): a 1px line along the bottom edge, inside the
   // straight run between the corners. It adds no height, so a row with one is the height of a row without.
   const progress = paneProgress(agent);
   const hasRest = detailLead !== null || detailTail !== null;

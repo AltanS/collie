@@ -59,7 +59,7 @@ export class DurableEventReader {
   private readonly cursors = new Map<string, Cursor>();
   /** The `epoch-rev` each pane was last read completely at. */
   private readonly readAt = new Map<string, string>();
-  /** The panes whose dropped items were already said in this epoch, as `epoch/paneId`. One log line each (WIRE.md 7.11). */
+  /** The panes whose dropped items were already said in this epoch, as `epoch/paneId`. One log line each (WIRE.md 7.13). */
   private readonly dropSaid = new Set<string>();
   private running: Promise<readonly string[]> | null = null;
   private again = false;
@@ -132,7 +132,7 @@ export class DurableEventReader {
     const key = `${epoch}/${paneId}`;
     if (this.dropSaid.has(key)) return;
     this.dropSaid.add(key);
-    console.warn(`[durable] pane ${paneId}: dropped ${String(dropped)} item(s) that break a rule or have a kind this build does not know (WIRE.md 7.11)`);
+    console.warn(`[durable] pane ${paneId}: dropped ${String(dropped)} item(s) that break a rule or have a kind this build does not know (WIRE.md 7.13)`);
   }
 
   private async readPane(

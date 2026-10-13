@@ -1,4 +1,4 @@
-// A reply that grows (WIRE.md 7.13), through the real app: the scripted model writes its long answer in chunks, the
+// A reply that grows (WIRE.md 7.15), through the real app: the scripted model writes its long answer in chunks, the
 // pane writes the reply again under one id as it grows, and a stop cuts it where it is. Also the Mapper alone, with
 // events as Pi Durable delivers them and a clock the test moves.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
