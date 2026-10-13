@@ -36,6 +36,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 - **History lists a durable program's conversations, open and closed.** The program keeps the record and serves it, a closed conversation opens read-only on the phone, and a Reopen button brings it back when the program allows it. The peer's own log is a cache, and it resumes where it stopped after a restart.
 - **A `sources.json` beside `.env` lists the durable programs one Collie runs.** Each entry has a name, the kind `durable`, and a socket, or a URL with its token. A wrong entry stops the bridge with one line that names the entry and the field, and the file is held at mode 600 like `.env`.
+- **`collie doctor` checks each program in `sources.json`.** One `sources` row says whether the file reads and is mode 600, then each program gets its own block of `durable-*:<name>` rows: the transport, the socket or the URL and token, and whether the program answers and is ready. The token is never printed.
 
 ### Changed
 
