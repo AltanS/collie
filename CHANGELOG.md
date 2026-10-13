@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program's conversations, tabs and workspaces can be closed from the phone.** The program declares the `close` cap, Collie draws its usual close controls, and the program decides what a close means on its side.
 - **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 - **History lists a durable program's conversations, open and closed.** The program keeps the record and serves it, a closed conversation opens read-only on the phone, and a Reopen button brings it back when the program allows it. The peer's own log is a cache, and it resumes where it stopped after a restart.
+- **`collie durable attach` adds a program to your Collie.** One command writes the source, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
 
 ### Changed
 
