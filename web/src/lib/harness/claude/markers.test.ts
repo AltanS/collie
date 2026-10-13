@@ -14,6 +14,8 @@ import {
   lineText,
   namesPlanDialog,
   namesTrustDialog,
+  selectFooterStart,
+  wrappedSelectFooter,
 } from "./markers";
 
 // The shared lexing primitives every Claude-Code grammar leans on (chrome, prompt-select, and — in
@@ -315,6 +317,63 @@ describe("classifyFooter", () => {
     expect(classifyFooter("Enter to confirm · Esc to cancel", ["some prose", "❯ 1. Yes", "  2. No"])).not.toBe(
       "trust",
     );
+  });
+
+  // Claude Code 2.1.296 at 40 columns breaks the select footer over two rows, and the grammars read
+  // the LAST row. The wrapped group claims the family, and only that group.
+  describe("a select footer wrapped over two rows", () => {
+    const WRAPPED = ["  4. Chat about this", "", "Enter to select · ↑/↓ to navigate · Esc", "to cancel"];
+
+    it("claims select from its last row, and measures the options to its first row", () => {
+      expect(classifyFooter("to cancel", WRAPPED)).toBe("select");
+      expect(wrappedSelectFooter(WRAPPED)).toEqual({ startLine: 2, lastRow: "to cancel" });
+      expect(selectFooterStart(WRAPPED, 3)).toBe(2);
+    });
+
+    it("reads the wizard's wording, broken at a different word", () => {
+      const texts = ["  4. Chat about this", "", "Enter to select · Tab/Arrow keys to", "navigate · Esc to cancel"];
+      expect(classifyFooter("navigate · Esc to cancel", texts)).toBe("select");
+      expect(selectFooterStart(texts, 3)).toBe(2);
+    });
+
+    it("keeps a footer on one row where it is", () => {
+      const one = ["  4. Chat about this", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"];
+      expect(wrappedSelectFooter(one)).toBeNull();
+      expect(selectFooterStart(one, 2)).toBe(2);
+    });
+
+    it("fails closed on a wrapped footer that does not name Enter to select", () => {
+      for (const footer of [
+        ["Type to filter · Enter/↓ to select · ↑ to", "tabs · Esc to clear"],
+        ["←/→ to adjust · Enter to confirm · s for", "this session only · Esc to cancel"],
+        ["Esc to cancel · Tab to amend · ctrl+x ctrl+k", "twice to stop background agents"],
+      ]) {
+        const texts = ["  2. Blue", "", ...footer];
+        expect(classifyFooter(footer[1]!, texts) === "select", footer.join(" / ")).toBe(false);
+        expect(wrappedSelectFooter(texts), footer.join(" / ")).toBeNull();
+      }
+    });
+
+    it("fails closed when the second row is prose, is indented differently, or a blank row splits them", () => {
+      const row2 = "Then I will carry on with the next step.";
+      expect(classifyFooter(row2, ["x", "", "Enter to select · ↑/↓ to navigate · Esc", row2])).toBeNull();
+      const indented = ["x", "", "Enter to select · ↑/↓ to navigate · Esc", "   to cancel"];
+      expect(classifyFooter("   to cancel", indented)).toBeNull();
+      const split = ["x", "Enter to select · ↑/↓ to navigate · Esc", "", "to cancel"];
+      expect(classifyFooter("to cancel", split)).toBeNull();
+    });
+
+    it("never folds a rule into the footer", () => {
+      const rule = "────────────────────────── capture lab ─";
+      const texts = ["  4. Chat about this", "", "Enter to select · ↑/↓ to navigate · Esc to cancel", rule, rule];
+      expect(classifyFooter(rule, texts)).toBeNull();
+      expect(wrappedSelectFooter(texts)).toBeNull();
+    });
+
+    it("claims nothing for a row that is not the screen's last", () => {
+      const texts = [...WRAPPED, "", "agent output below the dialog"];
+      expect(classifyFooter("to cancel", texts)).toBeNull();
+    });
   });
 
   it("returns null for a non-footer line (statusline / hint / prose)", () => {

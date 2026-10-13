@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Oh My Pi's model usage and service tier rows are known rows in the journal reader.** Both draw nothing, and the harness canary no longer reports them as unknown. Thanks @GGGODLIN (#425).
 - **Chat shows the answer an OmO question got.** The question card fills in from the session log once the person has answered in the terminal. Thanks @welldoingk (#426).
+- **Claude Code's question dialogs show their buttons at 40 columns.** A narrow pane breaks the footer `Enter to select · ↑/↓ to navigate · Esc to cancel` over two rows, and every question grammar read only the last one, so a single or pick-many question fell to the unread-dialog card with Escape alone and a wizard step showed as a plain menu, in named and unnamed sessions alike. The three grammars now read a footer on two rows as one footer, and only when its words name `Enter to select` (#422).
 
 ## [1.20.2] - 2026-10-12
 

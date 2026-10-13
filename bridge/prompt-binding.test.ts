@@ -188,6 +188,8 @@ const REGIONS = JSON.parse(
  *  Code 2.1.296 beside their unnamed twins, and the wizard review step at both widths. */
 const SAME_DIALOG: string[][] = [
   ["claude-lab--ask-multi-named-v2296--w82.txt", "claude-lab--ask-multi-v2296--w82.txt"],
+  ["claude-lab--ask-multi-named-v2296--w40.txt", "claude-lab--ask-multi-v2296--w40.txt"],
+  ["claude-lab--ask-single-named-v2296--w40.txt", "claude-lab--ask-single-v2296--w40.txt"],
   ["claude-lab--ask-wizard-named-v2296--w82.txt", "claude-lab--ask-wizard-v2296--w82.txt"],
   [
     "claude-lab--ask-wizard-review-named-v2296--w82.txt",

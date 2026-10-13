@@ -7,6 +7,7 @@
 import { isBlank, lineText } from "../../blocks";
 import { CLAUDE_RULE_GLYPH_CLASS } from "../../rule-glyphs";
 import { displayWidth } from "../../text-width";
+import { readKeyHintFooter } from "../menu-hints";
 import type { PromptFamily } from "../prompt-model";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
@@ -450,6 +451,39 @@ export function questionRowText(text: string): string {
   return text.replace(QUESTION_GUTTER, "").trim();
 }
 
+const RULE_RUN = new RegExp(`[${CLAUDE_RULE_GLYPH_CLASS}]{3,}`);
+
+/**
+ * The AskUserQuestion `select` footer when a narrow pane wrapped it onto more than one row, as the
+ * rows it fills at the tail of `texts`: `Enter to select · ↑/↓ to navigate · Esc` over `to cancel`
+ * at 40 columns on Claude Code 2.1.296. Null for a footer on one row (`classifyFooter` reads that
+ * one by itself), and for anything `readKeyHintFooter` does not accept as ONE key-hint block: rows at
+ * one indent, every `·` segment a hint, no blank row inside. FAIL CLOSED on top of that: the joined
+ * text must carry the `Enter to select` phrase, so a wrapped `Esc to cancel` or a wrapped `/effort`
+ * footer never claims the family.
+ */
+export function wrappedSelectFooter(texts: string[]): { startLine: number; lastRow: string } | null {
+  const footer = readKeyHintFooter(texts);
+  if (footer === null || footer.startLine === footer.endLine) return null;
+  if (!/\benter to select\b/i.test(footer.text)) return null;
+  // `readKeyHintFooter` takes "Esc to cancel ──── capture lab ─" for a hint, so a rule folded into the
+  // group would pass as footer text. No footer row holds a run of rule glyphs.
+  for (let i = footer.startLine; i <= footer.endLine; i++) if (RULE_RUN.test(texts[i]!)) return null;
+  return { startLine: footer.startLine, lastRow: texts[footer.endLine]! };
+}
+
+/**
+ * The row a `select` footer starts on when its last non-blank row is `fi`: `fi` itself for a footer
+ * on one row, the first row of the group for a wrapped one. The grammars measure the option rows
+ * against this row, not against `fi`, so the footer's own rows are never read as a description or
+ * counted into the gap above them. Their signatures still end at `fi`, so the phone and the bridge
+ * bind the same rows.
+ */
+export function selectFooterStart(texts: string[], fi: number): number {
+  if (/\benter to select\b/i.test(texts[fi]!)) return fi;
+  return wrappedSelectFooter(texts)?.startLine ?? fi;
+}
+
 /**
  * Classify a candidate footer line — the hint bar at the very bottom of a Claude dialog — into a
  * dialog family, or null when it isn't a recognised menu footer. The footer is the single most
@@ -480,6 +514,10 @@ export function questionRowText(text: string): string {
 export function classifyFooter(text: string, texts: string[]): PromptFamily | null {
   const t = text.toLowerCase();
   if (/\benter to select\b/.test(t)) return "select";
+  // The same footer broken over two or three rows by a narrow pane (Claude Code 2.1.296 at 40
+  // columns: `Enter to select · ↑/↓ to navigate · Esc` over `to cancel`). The caller hands over the
+  // LAST row, which then names nothing on its own.
+  if (wrappedSelectFooter(texts)?.lastRow === text) return "select";
   if (/\benter to confirm\b/.test(t)) {
     return namesTrustDialog(texts) ? "trust" : null;
   }

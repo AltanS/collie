@@ -261,6 +261,134 @@
       }
     },
     {
+      "fixture": "claude-lab--ask-single-named-v2296--w40.txt",
+      "cols": 40,
+      "rows": 40,
+      "state": "ask-single-named-v2296",
+      "notes": "AskUserQuestion with ONE question (Red / Blue): rows 'Type something.' and 'Chat about this' under a rule, footer 'Enter to select · ↑/↓ to navigate · Esc' over 'to cancel', wrapped over two rows (40 columns, 40 rows). Claude Code 2.1.296 in a session renamed to 'capture lab': a closing rule with the session name set into it is drawn under the key-hint footer, as the last row (closing-rule.ts).",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "4",
+          "Enter"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--ask-single-v2296--w40.txt",
+      "cols": 40,
+      "rows": 40,
+      "state": "ask-single-v2296",
+      "notes": "AskUserQuestion with ONE question (Red / Blue): rows 'Type something.' and 'Chat about this' under a rule, footer 'Enter to select · ↑/↓ to navigate · Esc' over 'to cancel', wrapped over two rows (40 columns, 40 rows). Claude Code 2.1.296 in an unnamed session: nothing is drawn under the footer; the sibling of the -named- capture.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "4",
+          "Enter"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--ask-multi-named-v2296--w40.txt",
+      "cols": 40,
+      "rows": 40,
+      "state": "ask-multi-named-v2296",
+      "notes": "AskUserQuestion with ONE pick-many question: three checkbox rows, a Submit row and 'Chat about this' under a rule, footer 'Enter to select · ↑/↓ to navigate · Esc' over 'to cancel', wrapped over two rows (40 columns, 40 rows). Claude Code 2.1.296 in a session renamed to 'capture lab': a closing rule with the session name set into it is drawn under the key-hint footer, as the last row (closing-rule.ts).",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "multi-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "5",
+          "Down",
+          "Enter",
+          "Up"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--ask-multi-v2296--w40.txt",
+      "cols": 40,
+      "rows": 40,
+      "state": "ask-multi-v2296",
+      "notes": "AskUserQuestion with ONE pick-many question: three checkbox rows, a Submit row and 'Chat about this' under a rule, footer 'Enter to select · ↑/↓ to navigate · Esc' over 'to cancel', wrapped over two rows (40 columns, 40 rows). Claude Code 2.1.296 in an unnamed session: nothing is drawn under the footer; the sibling of the -named- capture.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "multi-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "5",
+          "Down",
+          "Enter",
+          "Up"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--ask-wizard-named-v2296--w40.txt",
+      "cols": 40,
+      "rows": 40,
+      "state": "ask-wizard-named-v2296",
+      "notes": "AskUserQuestion with TWO questions: the stepper '← ☐ Colour ☐ Size ✔ Submit →', the first question's rows, footer 'Enter to select · Tab/Arrow keys to' over 'navigate · Esc to cancel', wrapped over two rows (40 columns, 40 rows). Claude Code 2.1.296 in a session renamed to 'capture lab': a closing rule with the session name set into it is drawn under the key-hint footer, as the last row (closing-rule.ts).",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "wizard",
+        "keys": [
+          "1",
+          "2",
+          "4",
+          "Left",
+          "Right"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--ask-wizard-v2296--w40.txt",
+      "cols": 40,
+      "rows": 40,
+      "state": "ask-wizard-v2296",
+      "notes": "AskUserQuestion with TWO questions: the stepper '← ☐ Colour ☐ Size ✔ Submit →', the first question's rows, footer 'Enter to select · Tab/Arrow keys to' over 'navigate · Esc to cancel', wrapped over two rows (40 columns, 40 rows). Claude Code 2.1.296 in an unnamed session: nothing is drawn under the footer; the sibling of the -named- capture.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "wizard",
+        "keys": [
+          "1",
+          "2",
+          "4",
+          "Left",
+          "Right"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--compacting--w82.txt",
       "cols": 82,
       "rows": 49,

@@ -16,7 +16,7 @@
 // marked only by a background highlight, not by a distinct glyph.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, isBlank, isHorizontalRule, lineText, questionRowText } from "./markers";
+import { classifyFooter, selectFooterStart, isBlank, isHorizontalRule, lineText, questionRowText } from "./markers";
 import { checkboxState, freeTextRowIndex, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import {
   WIZARD_BACK_KEYS,
@@ -159,13 +159,16 @@ function detectQuestionPhase(
   fi: number,
 ): WizardRegion | null {
   if (classifyFooter(texts[fi]!, texts) !== "select") return null;
+  // The footer's first row: a footer a narrow pane wrapped onto two rows starts above `fi`, and the
+  // option rows are measured to that row. `fi` stays on the last row, so the signature covers it all.
+  const footerAt = selectFooterStart(texts, fi);
 
   // Numbered rows near the footer (same shape as the single-question menu). The menu is the trailing
   // 1,2,…,m run of them (see trailingMenuRows) — a numbered body above the current question's options
   // sits above it and drops out, the same body-list hazard prompt-select guards against.
   const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
   const rows: { index: number; n: number; label: string }[] = [];
-  for (let i = from; i < fi; i++) {
+  for (let i = from; i < footerAt; i++) {
     const parsed = parseOptionRow(texts[i]!);
     if (parsed) rows.push({ index: i, ...parsed });
   }
@@ -182,7 +185,7 @@ function detectQuestionPhase(
   // mirror + keys pad. (The multi-select grammar only claims the single-question checkbox form.)
   if (menu.some((row) => checkboxState(row.label) !== null)) return null;
   const firstOpt = menu[0]!.index;
-  if (fi - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
+  if (footerAt - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
 
   // The stepper header above the first option — THE wizard discriminator. Stop at a horizontal
   // rule (the dialog's top border) so the scan can't wander into scrollback.
@@ -213,7 +216,7 @@ function detectQuestionPhase(
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
     if (r === field || isFreeTextLabel(row.label)) continue;
-    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
+    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : footerAt;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
