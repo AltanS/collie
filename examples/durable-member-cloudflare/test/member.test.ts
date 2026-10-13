@@ -191,21 +191,20 @@ describe("a restart", () => {
     expect((await notes()).length).toBe(1); // the note was not written again
   });
 
-  test.skipIf(!SQLITE)("an ask that waited is lost with the object and raised again with a new id; the old id is too-late", async () => {
+  test.skipIf(!SQLITE)("a wake keeps the ask: raised again before ready, with the same id, and a tap sent across it is taken once", async () => {
     const r = await call("POST", "/starter/new-triage", { body: { requestId: "start-2" } });
     const paneId = r.body.paneId;
     const old = await waitFor("an ask", async () => (await paneOf(paneId)).openAsks[0]);
+    const notesBefore = (await notes()).length;
     await abortAllDurableObjects();
-    const again = await waitFor("the ask raised again", async () => {
-      const a = (await paneOf(paneId))?.openAsks[0];
-      return a && a.id !== old.id && a;
-    });
-    expect(again.toolCallId).toBe(old.toolCallId);
-    expect(again.revision).toBe(1);
-    const late = { requestId: "answer-old", askId: old.id, revision: old.revision, answer: { optionId: "deny" } };
-    expect((await call("POST", `/pane/${paneId}/answer`, { body: late })).body).toEqual({ result: "too-late" });
-    const now = { requestId: "answer-new", askId: again.id, revision: again.revision, answer: { optionId: "deny" } };
-    expect((await call("POST", `/pane/${paneId}/answer`, { body: now })).body).toEqual({ result: "taken" });
-    await waitFor("the denied ticket to stop", async () => (await paneOf(paneId)).state === "idle");
+    // No wait: the first snapshot after the wake carries the ask, because the object raises it before ready.
+    const again = (await paneOf(paneId)).openAsks[0];
+    expect(again).toMatchObject({ id: old.id, toolCallId: old.toolCallId, revision: 1 });
+    // The tap the phone sent with the id it listed before the wake lands on the raised ask.
+    const tap = { requestId: "answer-across-wake", askId: old.id, revision: old.revision, answer: { optionId: "allow" } };
+    expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken" });
+    expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken", replayed: true });
+    await waitFor("the ticket to finish", async () => (await paneOf(paneId)).state === "idle");
+    expect((await notes()).length).toBe(notesBefore + 1); // the tool ran once
   });
 });

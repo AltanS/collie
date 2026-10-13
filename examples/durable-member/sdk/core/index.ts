@@ -11,7 +11,7 @@ import type { Caps, Starter } from "./types.ts";
 export type { CallInfo, CoreState } from "./handle.ts";
 export { handle, hello } from "./handle.ts";
 export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
-export { AskClosed, mintId, Store } from "./layout.ts";
+export { AskClosed, askIdFor, mintId, Store } from "./layout.ts";
 export { digestOf, HttpError, MemoryReceiptStore, type ReceiptRecord, Receipts, type ReceiptStore } from "./receipts.ts";
 export { assertId, bytes, CAPS, cut, idOk, LIMITS, safeId } from "./rules.ts";
 export * from "./types.ts";

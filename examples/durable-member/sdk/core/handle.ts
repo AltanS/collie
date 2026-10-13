@@ -191,7 +191,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         200,
         await once<AnswerReply>({ askId, revision, optionId, note: typeof note === "string" ? note : null }, async () => {
           const open = pane.asks.get(askId);
-          if (!open) return { result: "too-late" }; // answered, stopped, or from before a restart
+          if (!open) return { result: "too-late" }; // answered or stopped (a re-raised ask keeps its id across a restart)
           if (open.ask.revision !== revision) throw stale(pane, { ask: open.ask });
           try {
             const given = typeof note === "string" ? { optionId, note } : { optionId };

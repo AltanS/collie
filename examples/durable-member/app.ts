@@ -91,7 +91,8 @@ export async function startApp(o: AppOptions): Promise<App> {
   });
   const registry = createRegistry();
   registry.install(triageTools);
-  registry.install(riskGuard({ panes, risky: new Set(["write_note"]) }));
+  const risky = new Set(["write_note"]);
+  registry.install(riskGuard({ panes, risky }));
 
   const storage: Storage = o.storage === "memory" ? new MemoryStorage() : await openNodeJsonlStorage(o.storage, ctx);
   harness = await Harness.open(storage, { models, registry, onReport: (e) => console.error("pi-durable report:", e) }, ctx);
@@ -134,8 +135,13 @@ export async function startApp(o: AppOptions): Promise<App> {
   // Later starts show what the storage holds, as a durable program should.
   if ((o.seed ?? true) && all.length === 0) await startTriage("")();
 
+  // Continue any run the last process left unfinished, and wait for the asks it raises again: Pi re-runs a
+  // waiting hook, which asks under the same id (the SDK derives it from the tool call). Only then is the layout
+  // complete, so the first snapshot after a restart carries every open ask.
+  const reRaised = panes.reRaised(risky);
+  harness.resume();
+  await reRaised;
   collie.ready(); // the layout is complete: only now may Collie see a snapshot
-  harness.resume(); // continue any run the last process left unfinished
 
   return {
     collie,

@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { api, type Dial } from "./client.ts";
-import { createCore, digestOf, MemoryReceiptStore, type ReceiptRecord, Receipts, type ReceiptStore, safeId } from "../sdk/core/index.ts";
+import { askIdFor, createCore, digestOf, MemoryReceiptStore, type ReceiptRecord, Receipts, type ReceiptStore, safeId } from "../sdk/core/index.ts";
 import { sha256Hex } from "../sdk/core/hash.ts";
 import { protocolSuite } from "./protocol-suite.ts";
 
@@ -65,6 +65,28 @@ describe("the core alone", () => {
     const m = new MemoryReceiptStore(500);
     for (let i = 0; i < 600; i++) m.put(`r${i}`, { digest: "d", reply: {} });
     expect([m.size, m.get("r99"), m.get("r100")?.digest]).toEqual([500, undefined, "d"]);
+  });
+
+  test("after a restart (a new core, a new epoch) the same tool call asks under the same id, and an answer to it is taken", async () => {
+    const raise = () => {
+      const core = createCore({ hostName: "wake" });
+      const pane = core.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
+      const options = [{ id: "allow", label: "Allow", effect: "allow" as const }];
+      const answer = pane.ask({ kind: "permission", toolCallId: "call-1", itemId: "call-1", title: "write_note", options });
+      core.ready();
+      return { core, answer, d: { handler: (r: Request) => core.handle(r), version: 1 } satisfies Dial };
+    };
+    const before = raise();
+    const listed = (await api.snapshot(before.d)).body.panes[0]!.openAsks[0]!;
+    const after = raise(); // the restart: a new core, a new epoch
+    const again = (await api.snapshot(after.d)).body.panes[0]!.openAsks[0]!;
+    expect(after.core.epoch).not.toBe(before.core.epoch);
+    expect([again.id, again.revision]).toEqual([listed.id, 1]);
+    expect(listed.id).toMatch(/^[0-9a-f]{32}$/);
+    expect((await api.answer(after.d, "p", listed.id, "allow")).body).toEqual({ result: "taken" });
+    expect(await after.answer).toEqual({ optionId: "allow" });
+    expect(askIdFor("p", "call-2")).not.toBe(listed.id);
+    expect(askIdFor("q", "call-1")).not.toBe(listed.id);
   });
 
   test("a weak ETag (W/ added by a compressing proxy) still gets 304", async () => {

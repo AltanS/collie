@@ -13,7 +13,7 @@ import type { DurableEvent, DurablePane } from "./protocol.ts";
 // program that speaks the wire, so this is the proof that WIRE.md, this adapter and the example agree.
 // It starts the example as a child process on a socket in a fresh temp folder, then runs the adapter
 // and its socket client against it: hello and ready, a snapshot, the events, an answer, a send, a
-// stop and a starter.
+// stop, a starter, and a restart that keeps an open ask's id.
 //
 // It needs the example's own install (Pi Durable is not a dependency of collie), so without one it
 // skips and says how to get it. It skips on Windows, where the example has no private socket.
@@ -90,7 +90,8 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
   }
   const notes = () => (existsSync(join(data, "notes.txt")) ? readFileSync(join(data, "notes.txt"), "utf8").trim().split("\n") : []);
 
-  beforeAll(async () => {
+  /** Start the example on the socket and the data folder, and wait for its listening line. */
+  async function boot(): Promise<void> {
     // The socket and the data folder are set; the timings are the example's own defaults. Off Linux
     // the example starts only without its descendant check, and this test is about the wire.
     const check = process.platform === "linux" ? "descendant" : "off";
@@ -102,7 +103,9 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     });
     child = spawned;
     expect(await listeningLine(spawned.stdout, 10_000)).toBe(`listening ${socket}`);
-  }, 12_000);
+  }
+
+  beforeAll(boot, 12_000);
 
   afterAll(async () => {
     if (child !== null && child.exitCode === null) {
@@ -199,4 +202,28 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect(await adapter.startStarter("new-triage", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
     expect(adapter.program()?.snapshot.panes.filter((candidate) => candidate.tabId === "triage:inbox")).toHaveLength(2);
   });
+
+  test("example: after a restart the adapter lists the same ask id, and an answer sent across the wake is taken once", async () => {
+    const started = adapter.program()?.snapshot.panes.find((candidate) => candidate.tabId === "triage:inbox" && candidate.id !== ticket);
+    if (started === undefined) throw new Error("no started ticket");
+    const before = await until("the started ticket's ask", async () => {
+      await adapter.refresh();
+      return adapter.openAsks(started.id)?.[0];
+    });
+    const epoch = adapter.program()?.session.epoch;
+    child?.kill("SIGKILL");
+    await child?.exited;
+    await boot();
+    const after = await until("the program again, in a new epoch", async () => {
+      await adapter.refresh();
+      const program = adapter.program();
+      return program !== null && program.session.epoch !== epoch ? adapter.openAsks(started.id)?.[0] : undefined;
+    }, 10_000);
+    expect([after.id, after.toolCallId, after.revision]).toEqual([before.id, before.toolCallId, 1]);
+    const written = notes().length;
+    const answer = { requestId: crypto.randomUUID(), askId: before.id, revision: before.revision, optionId: "allow" };
+    expect(await adapter.answerAsk(started.id, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
+    await until("the ticket idle", async () => ((await pane(started.id))?.state === "idle" ? true : undefined), 10_000);
+    expect(notes()).toHaveLength(written + 1);
+  }, 30_000);
 });

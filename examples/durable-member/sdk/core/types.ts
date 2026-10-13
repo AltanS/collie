@@ -55,7 +55,10 @@ export interface Option {
 }
 
 export interface Ask {
-  /** Random, at least 128 bits. A new one after every restart, even for the same tool call. */
+  /**
+   * 128 bits. The SDK derives it from the pane id and the tool call id, so the same tool call keeps its ask id
+   * across a restart, and an answer that crosses the restart lands (WIRE.md section 6).
+   */
   id: string;
   kind: "permission";
   /** The program's id for the tool call. The same across a restart. */
@@ -73,7 +76,7 @@ export interface Ask {
   /** True when the title or the reason was shortened or cleaned. The phone then offers no `allow-always`. */
   cleaned?: true;
 }
-/** What a program passes to `pane.ask()`. The SDK mints the id (when missing) and the revision. */
+/** What a program passes to `pane.ask()`. The SDK derives the id (when missing) and sets the revision. */
 export type AskInput = Omit<Ask, "id" | "revision"> & { id?: string };
 
 export type Answer = { optionId: string; note?: string };

@@ -3,7 +3,7 @@
 // Every id a program passes in is checked against the id rule, and every string is cleaned and cut to
 // its byte cap (WIRE.md section 6) before it is stored, so the wire never carries a string over a cap.
 
-import { randomHex } from "./hash.ts";
+import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
 import { assertId, bytes, CAPS, cut, cwdOf, LIMITS, tsOf } from "./rules.ts";
 import type {
@@ -28,6 +28,14 @@ export const MAX_TAIL = LIMITS.eventsPerReply;
 
 /** At least 128 bits of randomness, as 32 hex characters. */
 export const mintId = () => randomHex(16);
+
+/**
+ * The ask id of a tool call: SHA-256 over the pane id and the tool call id, as hex, the first 32 characters
+ * (128 bits). It is not random on purpose. A program that raises the same tool call again after a restart gets
+ * the same id, so an answer the phone sent across the wake lands (WIRE.md section 6, ADR 0100). The two ids are
+ * joined with a newline, which the id rule keeps out of both, so no two pairs share an input.
+ */
+export const askIdFor = (paneId: string, toolCallId: string): string => sha256Hex(`${paneId}\n${toolCallId}`).slice(0, 32);
 
 export class AskClosed extends Error {
   constructor(readonly by: ClosedBy) {
@@ -124,7 +132,10 @@ export interface PaneHandle {
   readonly turnId: string;
   state(s: PaneState): void;
   event(e: ProgramEvent): void;
-  /** Sets the pane to `waiting`, emits `ask`, resolves with the phone's answer. */
+  /**
+   * Sets the pane to `waiting`, emits `ask`, resolves with the phone's answer. Without an `id`, the ask id comes
+   * from the pane and the tool call ({@link askIdFor}), so it is the same after a restart.
+   */
   ask(ask: AskInput, opts?: { signal?: AbortSignal }): Promise<Answer>;
   /** Change an open ask in place. Its revision rises by one. False when the ask is not open. */
   updateAsk(askId: string, patch: Partial<Pick<AskInput, "title" | "reason" | "tool" | "options">>): boolean;
@@ -281,7 +292,8 @@ export class Pane implements PaneHandle {
   }
 
   ask(input: AskInput, opts: { signal?: AbortSignal } = {}): Promise<Answer> {
-    const ask = cleanAsk({ ...input, id: input.id ?? mintId(), revision: 1 });
+    // Revision 1 on every raise: a tool call raised again after a restart has the same options by construction.
+    const ask = cleanAsk({ ...input, id: input.id ?? askIdFor(this.id, input.toolCallId), revision: 1 });
     if (this.asks.has(ask.id)) throw new TypeError(`ask id already open: ${ask.id}`);
     return new Promise<Answer>((resolve, reject) => {
       const open: OpenAsk = { ask, openedAt: Date.now(), resolve, reject };
@@ -317,7 +329,8 @@ export class Pane implements PaneHandle {
 
   /**
    * The phone answers (WIRE.md 7.3). The caller has checked the revision. A closed or unknown ask is
-   * `too-late`; an option that is not offered throws `BadAnswer`.
+   * `too-late`; an option that is not offered throws `BadAnswer`. An ask raised again after a restart has its
+   * old id, so an answer to the id the phone saw before the wake lands here.
    */
   answer(askId: string, answer: Answer): AnswerResult {
     const open = this.asks.get(askId);

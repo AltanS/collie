@@ -25,10 +25,20 @@ import { type Item, type PaneHandle, safeId, type TabHandle } from "../sdk/core/
 
 const ctx0 = BACKGROUND_CONTEXT;
 
-/** Which pane shows which conversation. The guard hook looks panes up here. */
+/** How long a start waits for the asks it expects to be raised again, before it shows the layout anyway. */
+export const RE_RAISE_MS = 5000;
+
+/**
+ * Which pane shows which conversation. The guard hook looks panes up here. It also knows which tool calls
+ * have no result yet, so a start can wait for their asks before it calls itself ready (`reRaised`).
+ */
 export class PaneRegistry {
   private panes = new Map<ConversationId, PaneHandle>();
   private stops: (() => Promise<unknown>)[] = [];
+  /** Tool calls shown as running, by item id, with the tool's name. */
+  private readonly running = new Map<string, string>();
+  /** A start waiting for these call ids: each settles when the call asks or ends. */
+  private readonly waits = new Map<string, () => void>();
   get(id: ConversationId) {
     return this.panes.get(id);
   }
@@ -39,6 +49,47 @@ export class PaneRegistry {
     this.panes.set(id, pane);
     this.stops.push(stop);
   }
+  /** The mapper saw a tool call's status. A call that ends no longer holds a start back. */
+  toolStatus(callId: string, name: string, status: string) {
+    if (status === "running") {
+      this.running.set(callId, name);
+      return;
+    }
+    this.running.delete(callId);
+    this.settle(callId);
+  }
+
+  /** The guard raised the ask for this call. */
+  asked(callId: string) {
+    this.settle(callId);
+  }
+
+  private settle(callId: string) {
+    const done = this.waits.get(callId);
+    if (!done) return;
+    this.waits.delete(callId);
+    done();
+  }
+
+  /**
+   * Call AFTER every conversation is shown and BEFORE `harness.resume()`: it reads which risky calls have no
+   * result yet, and each of those raises its ask again once Pi re-runs its hook. The promise resolves when
+   * every one has asked or ended, or after `ms`, so a call that does neither does not hold the layout back
+   * for good. Await it after `resume()` and before `ready()`: the first snapshot after a start then carries
+   * the asks by contract, not by timing (WIRE.md section 8.2).
+   */
+  reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS): Promise<void> {
+    const ids = [...this.running].filter(([, name]) => risky.has(name)).map(([id]) => id);
+    if (ids.length === 0) return Promise.resolve();
+    const each = ids.map((id) => new Promise<void>((resolve) => this.waits.set(id, resolve)));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, ms)));
+    return Promise.race([Promise.all(each).then(() => undefined), late]).finally(() => {
+      clearTimeout(timer);
+      for (const id of ids) this.waits.delete(id);
+    });
+  }
+
   /** Stop every event stream. Call before `harness.close()`. */
   async close() {
     await Promise.all(this.stops.splice(0).map((stop) => stop().catch(() => {})));
@@ -68,10 +119,14 @@ const textOf = (content: unknown): string =>
 /** Pi entries and agent events to the session stream. Whole blocks only: message_update is ignored. */
 class Mapper {
   private tools = new Map<string, Extract<Item, { kind: "tool" }>>();
-  constructor(private pane: PaneHandle) {}
+  constructor(
+    private pane: PaneHandle,
+    private registry: PaneRegistry,
+  ) {}
 
   private item(item: Item) {
     this.pane.event({ type: "item", item });
+    if (item.kind === "tool") this.registry.toolStatus(item.id, item.tool.name, item.status);
   }
 
   snapshot(s: SnapshotEvent, first: boolean) {
@@ -170,7 +225,7 @@ export async function showConversation(
   if (have) return have;
   const ctx = opts.ctx ?? ctx0;
   const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
-  const mapper = new Mapper(pane);
+  const mapper = new Mapper(pane, opts.panes);
 
   // The wire's request id goes to Pi Durable as the submission's own dedupe key, so a repeat that
   // reaches Pi after a restart still admits the input once.
@@ -205,7 +260,7 @@ export function riskGuard(o: Risky): Extension {
           const pane = o.panes.get(api.conversationId);
           if (!pane) return { block: "no pane to ask on" }; // fail closed
           const summary = clip(JSON.stringify(call.arguments));
-          const answer = await pane.ask(
+          const answer = pane.ask(
             {
               kind: "permission",
               toolCallId: safeId(call.id),
@@ -220,7 +275,8 @@ export function riskGuard(o: Risky): Extension {
             },
             { signal: ctx.abortSignal },
           );
-          return answer.optionId === "allow" ? undefined : { block: "denied from the phone" };
+          o.panes.asked(safeId(call.id)); // the ask is open now: a start waiting for it may go on
+          return (await answer).optionId === "allow" ? undefined : { block: "denied from the phone" };
         },
       }),
     ],
