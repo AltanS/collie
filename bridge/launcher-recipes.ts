@@ -10,10 +10,11 @@ import type { LaunchCheckResponse } from "./types.ts";
 //
 // ── EVERY FLAG HERE WAS READ OFF THE CLI'S OWN `--help` ─────────────────────────────────────────
 // On 2026-10-09, on the development host, through a login shell: Claude Code 2.1.295, Codex 0.162.0,
-// opencode 1.18.35, pi 0.87.1, omp. A harness that was not installed there (grok, hermes, muse, agy)
-// lists no option: a flag nobody saw is a flag that may not exist. When a CLI renames a flag, a row
-// built from the old one stops matching its rebuild and drops out at read time
-// (bridge/launchers-added.ts), so a stale chip can never type a stale line.
+// opencode 1.18.35, pi 0.87.1, omp; grok and agy on 2026-10-12 (their rows below). A harness not
+// installed there (muse) lists no option: a flag nobody saw is a flag that may not exist. Hermes
+// lists none either: Herdr 0.9.0 does not detect a pane started by v0.21.7's launcher. When a CLI
+// renames a flag, a row built from the old one stops matching its rebuild and drops out at read
+// time (bridge/launchers-added.ts), so a stale chip can never type a stale line.
 //
 // ── GROUPS ARE ONE-OF ───────────────────────────────────────────────────────────────────────────
 // Options in one `group` exclude each other (two models, or plan mode beside skip-permissions). The
@@ -77,6 +78,23 @@ const RECIPE_TABLE = {
   omp: [
     { id: "continue", label: "Continue last", args: "--continue" },
     { id: "thinking-high", label: "Thinking: high", args: "--thinking=high" },
+  ],
+  // grok 1.0.50 and agy 1.3.3, read off each `--help` on 2026-10-12; the harness canary's `options`
+  // scenario started both with every option. No model chips.
+  grok: [
+    { id: "approve", label: "Always approve", args: "--always-approve", noPrompts: true },
+    { id: "continue", label: "Continue last", args: "--continue" },
+  ],
+  agy: [
+    {
+      id: "skip",
+      label: "Skip permission prompts",
+      args: "--dangerously-skip-permissions",
+      group: "permissions",
+      noPrompts: true,
+    },
+    { id: "plan", label: "Plan mode", args: "--mode plan", group: "permissions" },
+    { id: "continue", label: "Continue last", args: "--continue" },
   ],
 } satisfies Record<string, readonly RecipeOption[]>;
 
@@ -159,6 +177,7 @@ export function scanNoPrompts(line: string): boolean {
     // Short or generic spellings count only for the CLI that owns them.
     if (first === "codex" && word === "-a" && next === "never") return true;
     if (first === "opencode" && word === "--auto") return true;
+    if (first === "grok" && word === "--always-approve") return true;
   }
   return false;
 }

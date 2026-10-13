@@ -34,12 +34,15 @@ describe("the recipe table", () => {
         "codex:--dangerously-bypass-approvals-and-sandbox",
         "codex:--ask-for-approval never",
         "opencode:--auto",
+        "grok:--always-approve",
+        "agy:--dangerously-skip-permissions",
       ].toSorted(),
     );
   });
 
-  test("a harness that was not installed when the table was checked lists no option", () => {
-    for (const id of ["grok", "hermes", "muse", "agy"]) expect(recipeOptions(id)).toEqual([]);
+  test("a harness without a checked option lists none", () => {
+    // muse was not installed when the table was checked; hermes's pane goes undetected (see the header).
+    for (const id of ["hermes", "muse"]) expect(recipeOptions(id)).toEqual([]);
     expect(recipeOptions("__proto__")).toEqual([]);
   });
 });
@@ -75,6 +78,12 @@ describe("buildRecipe", () => {
     expect(buildRecipe("pi", ["auto"])).toEqual({ ok: false, reason: "unknown_option" });
   });
 
+  test("a grok and an agy recipe", () => {
+    expect(buildRecipe("grok", ["approve"])).toMatchObject({ ok: true, command: "grok --always-approve", noPrompts: true });
+    expect(buildRecipe("agy", ["plan", "continue"])).toMatchObject({ ok: true, command: "agy --mode plan --continue", noPrompts: false });
+    expect(buildRecipe("agy", ["skip", "plan"])).toMatchObject({ ok: false });
+  });
+
   test("a codex and an opencode recipe", () => {
     expect(buildRecipe("codex", ["never", "search"])).toMatchObject({ command: "codex --ask-for-approval never --search", noPrompts: true });
     expect(buildRecipe("opencode", ["plan"])).toMatchObject({ command: "opencode --agent plan", noPrompts: false });
@@ -96,6 +105,11 @@ describe("scanNoPrompts", () => {
     ["codex -a on-request", false],
     ["codex --full-auto", false],
     ["opencode --auto", true],
+    ["grok --always-approve", true],
+    ["hermes --yolo", true],
+    ["agy --dangerously-skip-permissions", true],
+    ["agy --mode plan", false],
+    ["make --always-approve", false],
     ["~/bin/opencode --auto", true],
     ["C:\\Tools\\opencode.exe --auto", true],
     ["codex.cmd -a never", true],
