@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **History lists a durable program's conversations, open and closed.** The program keeps the record and serves it, a closed conversation opens read-only on the phone, and a Reopen button brings it back when the program allows it. The peer's own log is a cache, and it resumes where it stopped after a restart.
 - **A `sources.json` beside `.env` lists the durable programs one Collie runs.** Each entry has a name, the kind `durable`, and a socket, or a URL with its token. A wrong entry stops the bridge with one line that names the entry and the field, and the file is held at mode 600 like `.env`.
 - **`collie doctor` checks each program in `sources.json`.** One `sources` row says whether the file reads and is mode 600, then each program gets its own block of `durable-*:<name>` rows: the transport, the socket or the URL and token, and whether the program answers and is ready. The token is never printed.
+- **`collie durable attach` adds a program to your Collie.** One command writes the source, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
 
 ### Changed
 
@@ -57,6 +58,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
+
+### Docs
+
+- **The durable page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The glossary gains Source and Session card, and the Cloudflare example is named as parked.
 
 ## [1.21.0] - 2026-10-13
 

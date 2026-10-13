@@ -470,7 +470,7 @@ the socket, or the URL with its token, never both.
 | variable | example | what it means |
 | --- | --- | --- |
 | `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the program's private Unix socket on this machine. Absolute, at most 103 bytes, mode `0600` |
-| `COLLIE_DURABLE_URL` | `https://collie-durable-member.you.workers.dev` | the address of a program you deployed behind TLS. `https://` only, or `http://127.0.0.1:<port>` for `wrangler dev`. At most 2048 bytes, no query |
+| `COLLIE_DURABLE_URL` | `https://durable-member.example.com` | the address of a program you deployed behind TLS. `https://` only, or `http://127.0.0.1:<port>` for a program on this machine. At most 2048 bytes, no query |
 | `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to the URL. At least 32 bytes. A file holding it must be mode 600, and Collie never prints it |
 
 Both set, or a URL without a token, is a config error: the peer starts and shows the program as

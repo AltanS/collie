@@ -1,104 +1,55 @@
-# Durable programs in your crew
+# Durable programs
 
-A durable program is an agent program that has no screen. It keeps its own conversations, and Collie
-shows each one on your phone as a pane that has Chat and nothing else. This page explains why such a
-program gets a Collie of its own, how that Collie joins your crew, and what you see on the phone. The
-words are in the [Glossary](glossary.md).
+If you built an agent with Pi Durable or any long-running program, Collie can show it on your phone. Your program gets approval prompts, history and a chat view without any UI code. This is experimental: the wire may change in any minor, and today only our examples speak it.
 
-> **Experimental.** The wire between Collie and a program may change in any minor release.
+The wire carries a version header, so a program can refuse a version it does not know, and Collie accepts the previous version for one minor release. The words are in the [Glossary](glossary.md).
 
-## One Collie per backend
+## Quickstart
 
-A Collie watches one backend. You set it once at start with `COLLIE_MUX`. The list, the pane ids, the
-capabilities and every pane route belong to that one adapter.
+You need Linux and Bun 1.4 or later. Run the smallest program from a clone of Collie:
 
-So a durable program gets a Collie of its own. This is true even on a host that already runs Collie
-with Herdr. Two Collies run side by side, and each one has its own port and its own state folder.
+```bash
+cd examples/durable-member
+bun install --frozen-lockfile
+bun hello.ts
+```
 
-## The crew is the join
+It prints `listening /run/user/1000/hello/app.sock` and waits. In a second terminal, attach it to your Collie, then restart so Collie reads the new source:
 
-The small Collie joins the crew that your main Collie leads. It works like a second laptop. The phone
-keeps the same URL, and the lead merges the lists and relays the panes. There is no new door to open.
+```bash
+collie durable attach hello --socket /run/user/1000/hello/app.sock
+collie restart
+```
 
-The lead must be 1.21.0 or newer to show the question card. An older lead shows the pane with "needs
-you" and no card. On the peer, `collie doctor` shows the `durable-lead` row, and it warns you.
+Use the path your program printed. Add `--restart` to the first command to restart in the same step. Open Collie on your phone. A space named `hello` appears, with an Experimental badge, and it holds one question card: "Deploy to staging?". Tap Yes or No. The program prints your answer and exits.
 
-The peer joins like any other member. [Crews](crew.md#two-machines-one-crew) has the full steps.
+## Sessions and sources
 
-## Two ways to reach a program
+Each program you attach is a source: one entry in `sources.json`, in the config folder next to `.env`, mode `0600`. Collie turns each source into one session of its own, named after the source, beside your terminal sessions. The session is the thing, and a pane is one view of it. A conversation of the program is a pane in its session, and the phone lists the program as one space with its `mux` and where it runs under the name. Your terminal sessions look and work as before.
 
-A peer uses exactly one of two ways.
+A program that you deployed behind TLS takes a URL and a token. Put the token in an environment variable, and name the variable. The token never goes on the command line:
 
-- **A private socket.** The program runs on the same machine, as the same user. It listens on a Unix
-  socket under `$XDG_RUNTIME_DIR`. The socket is yours alone, and that is the whole gate.
-- **HTTPS with a bearer token.** Use this for a program on Cloudflare, or on any host with a
-  certificate. Plain `http://` works only for `127.0.0.1` with `wrangler dev`.
+```bash
+export DESK_TOKEN=your-32-byte-random-token-here
+collie durable attach desk --url https://desk.example.com --token-env DESK_TOKEN
+```
 
-Only the small Collie holds the token. The lead never sees it. Over HTTPS the token is the only gate,
-so keep it secret and make it random.
+`collie durable list` shows each source and what the running bridge says of it. `collie durable detach desk` removes one. Both `attach` and `detach` only write the file. They print "restart to apply" until you restart, or give `--restart`.
 
-The env lines, the table that compares the two ways, and the cost note are in
-[durable notes](multiplexers.md#durable-notes). An idle peer reads once per 10 seconds over HTTPS,
-and each read is a billed request on Cloudflare. Each example has its own README:
+The older form still works for an instance with no terminal, such as a Windows host or a hosted program: `COLLIE_MUX=durable` with `COLLIE_DURABLE_SOCKET`, or with `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN`. The env lines, the comparison of the two transports and the reasons a program shows as unreachable are in [durable notes](multiplexers.md#durable-notes).
 
-- [`examples/durable-member`](../examples/durable-member/README.md) runs on this machine, over the
-  socket.
-- [`experiments/durable-member-cloudflare`](../experiments/durable-member-cloudflare/README.md) runs on
-  Cloudflare, over HTTPS.
+## Troubleshooting
 
-The Cloudflare example runs on Cloudflare's PiHarness, and the Bun example runs Pi Durable plain. Both
-use the same SDK core.
+`collie doctor` names the failing check. The usual causes:
 
-## Set it up on one host
+- **Socket permission.** Collie connects only to a socket that you own and that has no group or other permission (mode `0600`). The path must be absolute and at most 103 bytes. The reason shows as `socket-not-private`.
+- **A stale socket file.** A program that crashed can leave its socket file behind, and Collie then sees `connection refused`. Delete the file and start the program again.
+- **A program restart with a question open.** An answer to a question from before the restart is `too-late`, and the card goes. A program that derives the question's id from its tool call raises the same question again, and the card comes back.
+- **A version mismatch.** The reason `incompatible` shows both ranges. Update the older side.
 
-You make a second instance, start it, and join it to the crew. Three steps.
+Collie holds no model key. A program uses an API key or a ChatGPT sign-in. An Anthropic subscription may not be used through a third-party harness.
 
-1. Run the program. The example prints the socket it listens on.
-
-   ```bash
-   cd examples/durable-member
-   bun install --frozen-lockfile
-   bun run app
-   ```
-
-2. Make the second instance. Put these lines in
-   `~/.config/herdr/plugins/config/herdr.collie-durable/.env`. For a socket:
-
-   ```bash
-   COLLIE_INSTANCE=durable
-   COLLIE_PORT=8795
-   COLLIE_STATE_DIR=/home/you/.local/state/collie-durable
-   COLLIE_MUX=durable
-   COLLIE_DURABLE_SOCKET=/run/user/1000/durable-member/app.sock
-   ```
-
-   For a program behind HTTPS, drop the socket line and set these two instead:
-
-   ```bash
-   COLLIE_DURABLE_URL=https://collie-durable-member.you.workers.dev
-   COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
-   ```
-
-   Set the socket, or the URL with its token. Never set both. Then start the instance and check it:
-
-   ```bash
-   COLLIE_INSTANCE=durable collie start
-   COLLIE_INSTANCE=durable collie doctor
-   ```
-
-3. Join the crew. Run `invite` on the lead. Run `join` on the peer, with a label so the host chip can
-   tell the peer from the other Collies on that host.
-
-   ```bash
-   collie crew invite
-   COLLIE_INSTANCE=durable collie crew join <lead> --label durable
-   ```
-
-   Replace `<lead>` with the address that `invite` prints. Restart the lead after the join, as
-   [Crews](crew.md#two-machines-one-crew) says.
-
-[Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host) covers
-the second instance in full. [Crews](crew.md#two-machines-one-crew) covers the join.
+The Cloudflare example is parked and is not part of a release. It is in `experiments/durable-member-cloudflare/`.
 
 ## What a program can do on the phone
 
@@ -142,8 +93,3 @@ when the program is slow to answer. That copy is a cache: it keeps the newest 20
 8 MiB of each conversation, and 256 MiB for the machine, and deletes the oldest conversation first,
 with one line in Collie's log for each file it deletes. A closed conversation is always read from the
 program, never from the copy. After a restart, Collie goes on reading where it stopped.
-
-## Why not one Collie for everything
-
-In 1.x one Collie drives one adapter, so a durable program and a Herdr session need two Collies. A
-later design makes the session the unit, and that design changes this rule.

@@ -11,9 +11,10 @@ than one, each with its own port and state folder
 
 ## Mux (the backend)
 
-What a Collie watches: Herdr, tmux, zellij, tuios, tern, or a durable program. You set it once at
-start with `COLLIE_MUX`, and one Collie watches one mux
-([Multiplexers](multiplexers.md#pointing-collie-at-a-multiplexer)).
+What a Collie watches for your terminals: Herdr, tmux, zellij, tuios or tern. You set it once at
+start with `COLLIE_MUX`, and one Collie watches one terminal mux
+([Multiplexers](multiplexers.md#pointing-collie-at-a-multiplexer)). A durable program is not a
+second mux to choose. You attach it as a [source](#source).
 
 ## Pane
 
@@ -32,8 +33,10 @@ group that the program chose.
 
 ## Session
 
-The agent's own record of its conversation, with the history. A pane shows a session. Chat reads the
-session, and the harness keeps it ([Configure](configure.md)).
+Two things carry this name, and the page says which it means. In a Collie, a session is one place
+that holds panes: a Herdr, tmux or zellij session, or an attached durable program. The session is
+the thing, and a pane is one view of it. Separately, an agent keeps a record of its conversation,
+and Chat reads that record from the harness ([Configure](configure.md)).
 
 ## Harness
 
@@ -52,13 +55,26 @@ The Collie your phone talks to. It merges the lists of its members and relays th
 
 ## Crew
 
-The lead plus its members. It gives you one phone URL for many machines or backends
-([Crews](crew.md#two-machines-one-crew)).
+The lead plus its members. It gives you one phone URL for many machines
+([Crews](crew.md#two-machines-one-crew)). One machine needs no crew to show a terminal and a durable
+program together: attach the program as a [source](#source).
 
 ## Program (durable)
 
 A process built on the durable SDK. It owns its workspaces, tabs and panes, and it answers over the
-wire ([Durable programs in your crew](durable-programs.md)).
+wire. Collie shows it as a session ([Durable programs](durable-programs.md)).
+
+## Source
+
+One entry in `sources.json` that names a program and how to reach it, by socket or by URL and token.
+`collie durable attach` writes it. Collie makes one session from each source
+([Sessions and sources](durable-programs.md#sessions-and-sources)).
+
+## Session card
+
+The summary a session shows about itself: its name, whether it is a terminal or a program, its mux,
+what it can do, whether it is local or remote, and whether it is ready, starting or unreachable. The
+phone reads what a session can do from its card.
 
 ## Wire
 

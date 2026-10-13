@@ -150,7 +150,7 @@ and that is the only way to install it on a phone.
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios, Tern or a durable agent program, what each backend can answer, and agent beacons. Experimental for tmux, zellij, tuios, Tern and durable; bug reports wanted |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
-| [**Durable programs in your crew**](./docs/durable-programs.md) | Why a durable agent program gets a Collie of its own, how the crew joins it, the two ways to reach it, and what it can do on the phone |
+| [**Durable programs**](./docs/durable-programs.md) | Show a durable agent program on your phone: attach it with `collie durable attach`, how sessions and sources work, and what it can do on the phone |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
