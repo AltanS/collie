@@ -413,10 +413,21 @@ describe("pi", () => {
       usage: { input: 274, output: 164, cacheRead: 8000, cacheWrite: 0, totalTokens: 8438 },
       stopReason: "stop",
     }),
+    // A tier that was cleared writes `serviceTier: null`.
+    row({ type: "service_tier_change", id: "t1", parentId: "u1", timestamp: "t", serviceTier: null }),
   ];
 
   test("the whole measured inventory counts nothing", () => {
     expect(describeUnknowns(tallyOf(createPiReducer(), clean))).toBe("");
+  });
+
+  test("model_usage and service_tier_change are known rows that draw nothing", () => {
+    for (const type of ["model_usage", "service_tier_change"]) {
+      const reducer = createPiReducer();
+      const reduction = reducer.push(row({ type, id: "k1", parentId: "p0", serviceTier: null }));
+      expect(reduction.added, type).toEqual([]);
+      expect(reducer.unknowns().rows.has(type), type).toBe(false);
+    }
   });
 
   test("a new row type, a new role and a new block are each counted at their own level", () => {

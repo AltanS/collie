@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Oh My Pi's model usage and service tier rows are known rows in the journal reader.** Both draw nothing, and the harness canary no longer reports them as unknown. Thanks @GGGODLIN (#425).
 - **Chat shows the answer an OmO question got.** The question card fills in from the session log once the person has answered in the terminal. Thanks @welldoingk (#426).
 
 ## [1.20.2] - 2026-10-12
