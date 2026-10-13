@@ -66,6 +66,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Packaging
 
 - **The durable SDK is a package of its own, `@colliepwa/durable-sdk` 0.1.0.** It moved from `examples/durable-member/sdk/` to `packages/durable-sdk/`. One import serves Node and Bun and picks the server at run time, `./node` and `./bun` force one, `./pi` is the Pi Durable entry, and `./core` is the wire without a transport. It has no runtime dependency, and the Pi packages are optional peers. It exports `WIRE_VERSION` and its own `SDK_VERSION`.
+- **`bun run sdk:build` builds the durable SDK, and a pack check proves the tarball.** The build writes ESM and type declarations to `packages/durable-sdk/dist/`. `scripts/sdk-pack-check.sh` checks the file list, installs the tarball into a fresh project, and runs one approval round trip on Node and on Bun. CI runs it, and it never publishes.
 
 ### Docs
 
