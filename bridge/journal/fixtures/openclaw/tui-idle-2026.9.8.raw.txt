@@ -1,0 +1,40 @@
+
+[48;2;43;47;54m
+[38;2;243;238;224mReply with only the word ready.[39m
+
+
+[49mready
+
+[48;2;43;47;54m
+[38;2;243;238;224mList the files in this folder using a tool, then tell me how many there are in one short sentence.[39m
+
+
+[49mThere are some items in this folder.
+
+[48;2;43;47;54m
+[38;2;243;238;224mUse the read tool on SOUL.md and tell me its first word in one short sentence.[39m
+
+
+[49mThe first word is SOUL.
+
+[48;2;43;47;54m
+[38;2;243;238;224mRun the shell command 'echo lab-exec-test' with your exec tool and show me the output.[39m
+
+
+[49mThe command printed:
+
+lab-exec-test
+
+[48;2;43;47;54m
+[38;2;243;238;224mCall ask_user with one question (id q1, header Color, options Red and Blue), then repeat the answer.[39m
+
+
+[49m [38;2;155;163;178mQuestion: answered.[39m
+
+You chose Red.
+ [38;2;123;127;135mlocal ready | idle[39m
+ [38;2;123;127;135magent main (main) | session main | lab-model | deliver:off | tokens 100/128k (0%)[39m
+[38;2;60;65;75m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[7m[39m [0m
+[38;2;60;65;75m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+

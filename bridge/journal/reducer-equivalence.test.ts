@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { KNOWN_HARNESS_NAMES } from "./registry.ts";
 import { createLineFeeder, type RowReducer } from "./reduce.ts";
@@ -7,6 +9,7 @@ import { createCodexReducer, parseCodexTranscript } from "./codex.ts";
 import { createGrokReducer, parseGrokTranscript } from "./grok.ts";
 import { createHermesReducer, parseHermesTranscript } from "./hermes.ts";
 import { createMuseReducer, parseMuseTranscript } from "./muse.ts";
+import { createOpenclawReducer, parseOpenclawTranscript } from "./openclaw.ts";
 import { createOpencodeReducer, parseOpencodeTranscript } from "./opencode.ts";
 import { createPiReducer, parsePiTranscript } from "./pi.ts";
 import type { TranscriptEntry } from "./types.ts";
@@ -101,6 +104,7 @@ const COVERED = [
   "grok",
   "hermes",
   "muse",
+  "openclaw",
 ] as const;
 
 test("every harness the registry knows has an equivalence section here", () => {
@@ -342,6 +346,26 @@ describe("hermes: a reducer reads a torn stream the way the parser reads a whole
 
   test("the three readings agree", () => {
     expectEquivalent(() => createHermesReducer(), parseHermesTranscript, text);
+  });
+});
+
+describe("openclaw: a reducer reads a torn stream the way the parser reads a whole file", () => {
+  // The 2026.10.2 re-capture's branch, which carries every shape the normaliser rewrites: string user
+  // turns, a meta `tool_call` renamed to `ask_user`, its nested-tool row, and the unwrapped result.
+  // SAFETY: the fixture is this suite's own file, written in exactly this shape by the lab's extractor.
+  const fixture = JSON.parse(
+    readFileSync(join(import.meta.dir, "fixtures", "openclaw", "session-2026.10.2.json"), "utf8"),
+  ) as { rows: { active: number | null; row: JsonValue }[] };
+  const text = [
+    ...fixture.rows
+      .filter((r) => r.active !== null)
+      .toSorted((a, b) => (a.active ?? 0) - (b.active ?? 0))
+      .map((r) => JSON.stringify(r.row)),
+    ...RUBBISH,
+  ].join("\n");
+
+  test("the three readings agree", () => {
+    expectEquivalent(() => createOpenclawReducer(), parseOpenclawTranscript, text);
   });
 });
 

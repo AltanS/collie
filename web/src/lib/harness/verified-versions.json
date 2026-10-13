@@ -118,6 +118,19 @@
         "how": "unverified",
         "evidence": "bridge/journal/hermes.ts is unit-tested only: no Hermes SessionDB exists on any host we can sweep, so HERMES_KNOWN's three roles are what the first real Hermes will be measured against. 0.0.0 is the floor, so the first install reads as NEWER."
       }
+    },
+    "openclaw": {
+      "version": "0.0.0",
+      "verified": "2026-10-12",
+      "how": "unverified",
+      "adapter": false,
+      "evidence": "No block grammar: an OpenClaw pane keeps the raw mirror. The entry exists for the journal reader beside it (#401), and 0.0.0 is the floor, so the first install reads as NEWER.",
+      "journal": {
+        "version": "2026.10.2",
+        "verified": "2026-10-12",
+        "how": "capture",
+        "evidence": "bridge/journal/fixtures/openclaw/: SQLite rows re-captured on OpenClaw 2026.10.2 and on the reporter's 2026.9.8 (both schema 24) against a scripted local model, plus the 2026-10-12 lab session rebuilt from its chat.history (experiments/openclaw-401). openclaw.test.ts reads all three; no canary runs OpenClaw."
+      }
     }
   }
 }

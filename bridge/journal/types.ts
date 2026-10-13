@@ -28,6 +28,13 @@ export interface AgentSessionRef {
   value: string;
 }
 
+/**
+ * The pane's visible text, plain (no escape sequences), read when an adapter's `discover` asks for
+ * it. Null when the multiplexer cannot hand a screen over or the read failed. See
+ * {@link JournalAdapter.discover} for why it is a thunk and why its text is never trusted as a path.
+ */
+export type PaneScreen = () => Promise<string | null>;
+
 /** One renderable piece of a turn. Deliberately small — the phone renders these as text nodes. */
 export type TranscriptPart =
   | { kind: "text"; text: string; truncated?: boolean }
@@ -194,20 +201,30 @@ export interface JournalAdapter {
    */
   reducer(): RowReducer;
   /**
-   * Find the session running in `cwd` without a reported ref — or null when none matches.
+   * Find the session running in the pane without a reported ref, or null when none matches.
    *
-   * OPTIONAL, and absent everywhere but the harness whose panes carry no `agentSession`:
-   * custom-source session reports never surface in the pane record, and Muse has no integration
-   * of its own (see journal/muse.ts). The history and chat routes call this when the
-   * pane names no session, and `toPaneWire` offers the History affordance on its presence, so a
-   * discoverable pane reads exactly like a reporting one.
+   * OPTIONAL, and absent everywhere but the harnesses whose panes carry no `agentSession`:
+   * custom-source session reports never surface in the pane record (Herdr keeps a session only
+   * from its own integrations), Muse has no integration of its own (journal/muse.ts), and OpenClaw
+   * reports through a source Herdr drops (journal/openclaw.ts). The history and chat routes call
+   * this when the pane names no session, and `toPaneWire` offers the History affordance on its
+   * presence, so a discoverable pane reads exactly like a reporting one.
+   *
+   * Two clues, and an adapter takes the one its harness gives. `cwd` is the pane's folder, which is
+   * enough where a folder holds one session (Muse). `screen` is the pane's visible text, for a
+   * harness that prints which session it is on and whose folder says nothing (OpenClaw's agent
+   * workspace is shared by every session of that agent). It is a THUNK, read only when an adapter
+   * asks, so an adapter that never calls it costs no multiplexer read; it answers null when the
+   * multiplexer cannot hand a screen over. The text is the pane's own output, so it is a hint and
+   * never a path: whatever an adapter reads off it must pass the same shape checks and the same
+   * `resolve` as a reported ref.
    *
    * The returned ref is an ordinary id ref: it goes through the same `resolve`, containment and
    * caching as a reported one, so discovery widens WHICH panes answer, never how an answer is
-   * read. It must be cheap enough to run per tap — bounded walk, early exit — because the chat
-   * route calls it on every poll that finds no ref.
+   * read. It must be cheap enough to run per tap (bounded walk, early exit, one screen read),
+   * because the chat route calls it on every poll that finds no ref.
    */
-  discover?(cwd: string): Promise<AgentSessionRef | null>;
+  discover?(cwd: string, screen?: PaneScreen): Promise<AgentSessionRef | null>;
   /**
    * Correct a reported ref the multiplexer kept after the harness moved to another session, or
    * return it unchanged.

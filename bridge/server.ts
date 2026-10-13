@@ -137,7 +137,7 @@ import {
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
-import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
+import type { AgentSessionRef, JournalAdapter, PaneScreen } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
 import { statFile } from "./journal/files.ts";
 import {
@@ -1770,9 +1770,9 @@ export function startServer(opts: {
 
       if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
       if (action === "history" && req.method === "GET")
-        return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
+        return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req, paneScreen(herdr, paneId));
       if (action === "chat" && req.method === "GET")
-        return paneChat(cfg, journals, live, rt.engine, herdr.capabilities, paneId, url, req);
+        return paneChat(cfg, journals, live, rt.engine, herdr.capabilities, paneId, url, req, paneScreen(herdr, paneId));
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
@@ -3304,17 +3304,44 @@ export function historyParams(url: URL): HistoryParams {
   return params;
 }
 
+/** How many rows of the pane a discovery screen read asks for. The viewport, so this is a ceiling. */
+const DISCOVERY_SCREEN_LINES = 200;
+
+/**
+ * The pane's visible text for journal discovery, as a thunk ({@link PaneScreen}).
+ *
+ * The SAME read the state engine makes for a Claude session name: `viewport` with styling kept, so
+ * it never scrolls an alt-screen pane the way a `recent` read in `strip` form can (see the adapter's
+ * `readGrid`), then the escapes are dropped here because discovery reads characters, not colour. A
+ * failed or declined read is null, which a discovering adapter reads as "nothing to go on". Memoised
+ * so one route call is at most one read however often an adapter asks.
+ */
+export function paneScreen(mux: Pick<MuxAdapter, "readGrid">, paneId: string): PaneScreen {
+  let read: Promise<string | null> | undefined;
+  return () => {
+    read ??= mux
+      .readGrid(paneId, { scope: "viewport", lines: DISCOVERY_SCREEN_LINES, styling: "preserve" })
+      .then((r) => (r.ok ? stripSgr(r.value.text) : null))
+      .catch(() => null);
+    return read;
+  };
+}
+
 /**
  * The session a pane's journal routes read: the reported ref (corrected by an adapter that knows its
  * multiplexer can keep a stale one, while the pane still runs that harness), else a discovered one.
+ *
+ * `screen` is handed to discovery untouched: a thunk the adapter may call, never a read made here,
+ * so a discovering adapter that keys on the folder alone (Muse) costs no multiplexer call.
  */
 export async function journalRefOf(
   adapter: JournalAdapter,
   pane: AgentView,
   panes: readonly AgentView[],
+  screen?: PaneScreen,
 ): Promise<AgentSessionRef | null> {
   const reported = pane.agentSession;
-  if (reported === undefined) return (await adapter.discover?.(pane.cwd)) ?? null;
+  if (reported === undefined) return (await adapter.discover?.(pane.cwd, screen)) ?? null;
   if (adapter.reconcile === undefined || pane.agent !== adapter.agent) return reported;
   // A fresh pane's row may not be written yet. With another pane running the same harness in the
   // same folder, the one live session found there could be that pane's, so the reported ref stands.
@@ -3341,6 +3368,7 @@ async function paneHistory(
   paneId: string,
   url: URL,
   req: Request,
+  screen?: PaneScreen,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const unavailable = (reason: "disabled" | "no-session" | "no-log") =>
@@ -3364,7 +3392,7 @@ async function paneHistory(
   // discovery widens WHICH panes answer, never how an answer is read. A shell, or a harness whose
   // integration isn't installed, still names nothing discoverable: no-session, an ordinary answer
   // rather than an error.
-  const ref = await journalRefOf(adapter, pane, panes);
+  const ref = await journalRefOf(adapter, pane, panes, screen);
   if (ref === null) return unavailable("no-session");
 
   try {
@@ -3408,6 +3436,7 @@ export async function paneChat(
   paneId: string,
   url: URL,
   req: Request,
+  screen?: PaneScreen,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const unavailable = (reason: "disabled" | "no-session" | "no-log") =>
@@ -3427,7 +3456,7 @@ export async function paneChat(
   // The reported ref, or the discovered one — the history route's rule, word for word. Discovery
   // runs per poll here, a bounded newest-first walk that costs milliseconds in the common case;
   // the resolved path below is what the live window holds.
-  const ref = await journalRefOf(adapter, pane, panes);
+  const ref = await journalRefOf(adapter, pane, panes, screen);
   if (ref === null) return unavailable("no-session");
 
   const params = chatParams(url);

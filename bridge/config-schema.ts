@@ -619,6 +619,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "Where Muse keeps its session logs. Empty takes $XDG_DATA_HOME/muse/sessions.",
     configField: "journalRoots",
   },
+  {
+    key: "openclaw_root",
+    env: "COLLIE_OPENCLAW_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where OpenClaw keeps its state. Empty follows OPENCLAW_STATE_DIR, else ~/.openclaw.",
+    configField: "journalRoots",
+  },
 
   // ── crew ───────────────────────────────────────────────────────────────────
   {

@@ -23,16 +23,18 @@ const roots = {
   grok: ["/g"],
   hermes: ["/h"],
   muse: ["/m"],
+  openclaw: ["/oc"],
 };
 
 describe("buildJournalRegistry", () => {
-  test("serves the seven verified harnesses", () => {
+  test("serves the eight verified harnesses", () => {
     expect(journalAgents(buildJournalRegistry(roots))).toEqual([
       "claude",
       "codex",
       "grok",
       "hermes",
       "muse",
+      "openclaw",
       "opencode",
       "pi",
     ]);

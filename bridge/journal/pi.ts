@@ -237,23 +237,37 @@ function enrichCall(
     return;
   }
   if (call.kind === "question") {
+    // One list of chosen labels per question, in question order (`[["Blue"]]`), the shape the
+    // question card reads. pi's own log does not write it; OpenClaw's `ask_user` answers do, once
+    // its normaliser has put them in order (journal/openclaw.ts). Anything of another shape is left
+    // unread rather than guessed at.
+    const answers = details?.answers;
+    if (
+      Array.isArray(answers) &&
+      answers.length === call.questions.length &&
+      answers.every((a) => Array.isArray(a) && a.every((l) => typeof l === "string"))
+    ) {
+      // SAFETY: every element was just checked to be an array of strings.
+      call.answers = answers as string[][];
+      return;
+    }
     // OmO records `details.answers` beside `status: "answered"`, in two shapes (OmO 5.1.30, read off
     // real rows 2026-10-12): `ask_user_question` keys it by the question's TEXT,
     // `{ "<question>": "Green" }`, and `request_user_input` by the question's `id` from the call,
     // `{ "color": { "answers": ["Blue"] } }`. A dismissed call is `status: "cancelled"` with
     // `answers: {}`, so it fills nothing. Mapped onto question order, the shape opencode's
     // `metadata.answers` already has.
-    const answers = details?.answers;
-    if (answers === null || answers === undefined || typeof answers !== "object" || Array.isArray(answers)) return;
+    const keyed = details?.answers;
+    if (keyed === null || keyed === undefined || typeof keyed !== "object" || Array.isArray(keyed)) return;
     // Keys go through the card's own clamp, so a long or padded question still finds its answer.
     const byText = new Map<string, JsonValue>();
-    for (const [key, value] of Object.entries(answers)) {
+    for (const [key, value] of Object.entries(keyed)) {
       const question = questionKey(key);
       if (question !== undefined && value !== undefined) byText.set(question, value);
     }
     const lists = call.questions.map((q) => {
       const id = questionIds?.get(q.question);
-      return answerLabels(byText.get(q.question) ?? (id === undefined ? undefined : answers[id]));
+      return answerLabels(byText.get(q.question) ?? (id === undefined ? undefined : keyed[id]));
     });
     if (lists.some((list) => list.length > 0)) call.answers = lists;
     return;
@@ -581,7 +595,11 @@ export function createPiReducer(): RowReducer {
 
     const role: TranscriptEntry["role"] = m.role === "assistant" ? "assistant" : "user";
     const parts: TranscriptPart[] = [];
-    const content = Array.isArray(m.content) ? m.content : [];
+    // `content` is a block list in pi's own log, and a plain STRING in the same format as OpenClaw
+    // writes it (journal/openclaw.ts), where every user turn is one. A string is one text block:
+    // walking arrays alone dropped every OpenClaw user turn without a trace (issue #401).
+    const content: JsonValue[] =
+      typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : [];
     for (const b of content) {
       // A `continue` over the BLOCK, not the row: the other blocks of this turn still count.
       if (b === null || typeof b !== "object" || Array.isArray(b)) continue;

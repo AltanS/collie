@@ -849,6 +849,12 @@ cannot work this out.
 | tmux, zellij, Tern (experimental) | Collie's [beacon hooks](multiplexers.md#agent-beacons-optional-linux) | Claude Code only, after `collie hooks install claude` |
 | tuios | The tuios daemon | The agents the daemon reports |
 
+OpenClaw needs no Herdr integration for Chat. Herdr does not pass an OpenClaw session on, so Collie
+reads the session name off the footer of `openclaw tui` (`agent main (main) | session work | …`) and
+opens that agent's session database under `$OPENCLAW_STATE_DIR`, or `~/.openclaw`, read-only. Set
+`openclaw_root` when the state folder is somewhere else. The pane must report itself to Herdr as
+agent `openclaw`. Collie never reads OpenClaw's config file or its gateway token.
+
 `herdr integration status` shows which integrations are installed. A hook is read when the agent
 starts, so an agent that was already running when you installed it needs a restart. Oh My Pi is the
 `omp` integration, not the `pi` one: they are two agents with two hooks, and they share one log

@@ -563,6 +563,8 @@ export function resolveJournalRoots(
       join(env.XDG_DATA_HOME ?? join(home, ".local", "share"), "muse", "sessions"),
       env,
     ),
+    // OpenClaw keeps one SQLite per agent under its state folder, which `OPENCLAW_STATE_DIR` moves.
+    openclaw: envRoots("COLLIE_OPENCLAW_ROOT", env.OPENCLAW_STATE_DIR ?? join(home, ".openclaw"), env),
   };
 }
 

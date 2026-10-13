@@ -21,6 +21,7 @@ export const MUX_AGENT_NAMES: readonly string[] = [
   "hermes",
   "muse",
   "omp",
+  "openclaw",
   "opencode",
   "pi",
 ];

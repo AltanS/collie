@@ -29,6 +29,7 @@ import {
   type PairingGate,
   historyParams,
   journalRefOf,
+  paneScreen,
   isHostAllowed,
   isLoopbackPeer,
   isReservedAuthPath,
@@ -97,12 +98,14 @@ import { tmuxMuxFactory } from "./mux/tmux/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import {
   muxAck,
+  muxGone,
   muxOk,
   muxRefused,
   type MuxAck,
   type MuxAdapter,
   type MuxCreatedPane,
   type MuxGrid,
+  type MuxGridRequest,
   type MuxOutcome,
   type MuxSpaceRequest,
   type MuxTabRequest,
@@ -184,6 +187,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       grok: ["/nope/grok"],
       hermes: ["/nope/hermes"],
       muse: ["/nope/muse"],
+      openclaw: ["/nope/openclaw"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
@@ -4561,6 +4565,29 @@ describe("pair source key (forwarded header trust)", () => {
   });
 });
 
+describe("paneScreen: the screen journal discovery may read", () => {
+  test("one viewport read with styling kept, escapes dropped, memoised per route call", async () => {
+    const asked: MuxGridRequest[] = [];
+    const esc = String.fromCharCode(27);
+    const mux = {
+      readGrid: async (paneId: string, request: MuxGridRequest) => {
+        asked.push(request);
+        return muxOk({ paneId, text: `${esc}[2m agent main (main) | session work${esc}[0m`, truncated: false, revision: 1 });
+      },
+    };
+    const screen = paneScreen(mux, "w1:p1");
+    expect(asked).toEqual([]);
+    expect(await screen()).toBe(" agent main (main) | session work");
+    expect(await screen()).toBe(" agent main (main) | session work");
+    expect(asked).toEqual([{ scope: "viewport", lines: 200, styling: "preserve" }]);
+  });
+
+  test("a refused or failed read is null, never a throw", async () => {
+    expect(await paneScreen({ readGrid: async () => muxGone("no pane") }, "w1:p1")()).toBeNull();
+    expect(await paneScreen({ readGrid: async () => Promise.reject(new Error("socket")) }, "w1:p1")()).toBeNull();
+  });
+});
+
 describe("journalRefOf — which session the history and chat routes read", () => {
   const reported = { kind: "id" as const, value: "00000000-0000-7000-8000-00000000a001" };
   const resumed = { kind: "id" as const, value: "00000000-0000-7000-8000-00000000b002" };
@@ -4638,6 +4665,29 @@ describe("journalRefOf — which session the history and chat routes read", () =
     });
   });
 
+  // The screen is a thunk the route hands over untouched: discovery decides whether to read it.
+  test("discovery receives the pane's screen beside its folder, and only reads it when it asks", async () => {
+    let reads = 0;
+    const screen = async () => {
+      reads += 1;
+      return " agent main (main) | session work | m | deliver:off";
+    };
+    const byFolder = adapter({ discover: async (cwd) => ({ kind: "id", value: cwd }) });
+    expect(await journalRefOf(byFolder, pane({}), [], screen)).toEqual({ kind: "id", value: "/home/op/proj" });
+    expect(reads).toBe(0);
+    const byScreen = adapter({
+      discover: async (_cwd, read) => {
+        const text = (await read?.()) ?? "";
+        return text.includes("session work") ? resumed : null;
+      },
+    });
+    expect(await journalRefOf(byScreen, pane({}), [], screen)).toEqual(resumed);
+    expect(reads).toBe(1);
+    // A reported ref never reaches discovery, so the screen is not read for it either.
+    expect(await journalRefOf(byScreen, pane({ agentSession: reported }), [], screen)).toEqual(reported);
+    expect(reads).toBe(1);
+  });
+
   test("an adapter without reconcile reads the reported ref as before", async () => {
     expect(await journalRefOf(adapter({}), pane({ agentSession: reported }), [])).toEqual(reported);
   });
@@ -4660,8 +4710,9 @@ describe("journalRefOf — which session the history and chat routes read", () =
   // reported ref and every case above still passes while the resumed session goes unread again.
   test("every journal route reads the ref journalRefOf settles on, never the reported one", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    // history and chat
-    expect([...src.matchAll(/await journalRefOf\(adapter, pane, panes\)/g)]).toHaveLength(2);
+    // history and chat, each handing discovery the pane's screen
+    expect([...src.matchAll(/await journalRefOf\(adapter, pane, panes, screen\)/g)]).toHaveLength(2);
+    expect([...src.matchAll(/paneScreen\(herdr, paneId\)/g)]).toHaveLength(2);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
   });
 });
