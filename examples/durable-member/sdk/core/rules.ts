@@ -142,6 +142,44 @@ export function renameTitleOf(title: unknown): string | undefined {
   return clean === "" ? undefined : clean;
 }
 
+/** The longest subtitle, in characters (code points). WIRE.md 7.9. */
+export const SUBTITLE_MAX = 120;
+/** The longest text badge, in characters. */
+export const BADGE_TEXT_MAX = 12;
+/** The largest count badge. */
+export const BADGE_COUNT_MAX = 9999;
+
+/** Clean a display string capped in characters: controls and invisibles out, trimmed, cut with `…` as the last character. Empty after cleaning: undefined. */
+function shortLine(text: unknown, maxChars: number): string | undefined {
+  const clean = cut(text, maxChars * 4 + 3).trim();
+  if (clean === "") return undefined;
+  const symbols = [...clean];
+  return symbols.length <= maxChars ? clean : `${symbols.slice(0, maxChars - 1).join("")}…`;
+}
+
+/** A pane's subtitle as the wire carries it (WIRE.md 7.9), or undefined when nothing is left of it. */
+export function subtitleOf(text: unknown): string | undefined {
+  return shortLine(text, SUBTITLE_MAX);
+}
+
+/**
+ * A pane's badge as the wire carries it (WIRE.md 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to
+ * 12 characters. A program that passes a count out of range or a shape with both keys made a mistake: it is a TypeError
+ * here, so the wire never carries what the adapter would drop. A text with nothing left after cleaning is undefined.
+ */
+export function badgeOf(value: { count: number } | { text: string }): { count: number } | { text: string } | undefined {
+  const { count, text } = value as { count?: unknown; text?: unknown };
+  if ((count === undefined) === (text === undefined)) throw new TypeError("a badge has exactly one of count and text");
+  if (count !== undefined) {
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0 || count > BADGE_COUNT_MAX) {
+      throw new RangeError(`a badge count is an integer from 0 to ${BADGE_COUNT_MAX}`);
+    }
+    return { count };
+  }
+  const word = shortLine(text, BADGE_TEXT_MAX);
+  return word === undefined ? undefined : { text: word };
+}
+
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;
 /** ISO 8601 with a zone, at most 40 bytes, else undefined (it reads as absent). */
 export function tsOf(ts: unknown): string | undefined {

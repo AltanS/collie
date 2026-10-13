@@ -22,6 +22,9 @@ export type { GitHead } from "./git-head.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+/** A small mark next to a pane's title: a count, or a short word. Exactly one key (WIRE.md section 3). */
+export type PaneBadge = { count: number } | { text: string };
+
 /**
  * A single pane the user might want to monitor or drive. Usually an agent-bearing pane (the
  * triage home), but also a bare **shell** pane (`kind:"shell"`, `agent:"shell"`) once we surface
@@ -115,6 +118,20 @@ export interface AgentView {
    * bridge, which reads exactly as it did before — as "not known to be stale".
    */
   terminalTitleStale?: boolean;
+  /**
+   * One line the program shows under this pane's title (WIRE.md section 3, `Pane.subtitle`). Text only,
+   * trimmed and capped at 120 characters by the adapter that read it.
+   *
+   * ONE PRODUCER, like {@link PaneWire.asks}: only a pane from an adapter whose panes have no screen
+   * carries it (the `durable` adapter). Absent on every other pane and from every older bridge or crew
+   * member, which all read as "no subtitle", so a solo body stays byte-identical.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: a count (an integer, 0 to 9999) or a short word (at most 12
+   * characters). Same producer and same absence rule as {@link subtitle}.
+   */
+  badge?: PaneBadge;
   /**
    * A finished English sentence about this pane, composed in the bridge and rendered as text the
    * client does not interpret. Absent on almost every pane.

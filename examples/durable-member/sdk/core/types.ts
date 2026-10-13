@@ -122,6 +122,9 @@ export interface Tab {
   title: string;
 }
 
+/** A small mark next to a pane's title: a count (an integer, 0 to 9999) or a short word (at most 12 characters). */
+export type Badge = { count: number } | { text: string };
+
 export interface PaneInfo {
   id: string;
   workspaceId: string;
@@ -137,6 +140,10 @@ export interface PaneInfo {
   /** Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it. */
   sessionId: string | null;
   cwd?: string;
+  /** One line under the title (WIRE.md 7.9). Absent until the program sets one. */
+  subtitle?: string;
+  /** A count or a short mark next to the title (WIRE.md 7.9). Absent until the program sets one. */
+  badge?: Badge;
 }
 
 export interface Snapshot {

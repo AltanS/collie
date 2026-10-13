@@ -751,3 +751,18 @@ describe("ThreadSidebar: the order toggle", () => {
     expect(names()[0]).toContain("webapp");
   });
 });
+
+describe("ThreadSidebar: subtitle and badge of a durable pane", () => {
+  it("draws the badge next to the name and the subtitle as a third line", () => {
+    const durable: AgentView = { ...idleAgent, agent: "durable", sessionName: "Ticket #3", subtitle: "a customer cannot log in", badge: { count: 2 } };
+    const { container } = render(<ThreadSidebar agents={[durable]} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(container.querySelector('[data-slot="pane-badge"]')).toHaveTextContent("2");
+    expect(container.querySelector('[data-slot="pane-row-subtitle"]')).toHaveTextContent("a customer cannot log in");
+  });
+
+  it("draws neither for a pane that has none", () => {
+    const { container } = render(<ThreadSidebar agents={[idleAgent]} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(container.querySelector('[data-slot="pane-badge"]')).toBeNull();
+    expect(container.querySelector('[data-slot="pane-row-subtitle"]')).toBeNull();
+  });
+});

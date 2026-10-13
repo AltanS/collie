@@ -32,6 +32,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Chat pins the prompt a reply answers above the thread.** Scroll down a long run and the prompt it answers stays at the top in two lines; tap it to jump back to it, even when the first page left it out. Thanks @GGGODLIN (#406).
 - **New sheet options for Grok and Antigravity.** Always approve and Continue last for Grok; Skip permission prompts or Plan mode, plus Continue last, for Antigravity. Thanks @GGGODLIN (#430).
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
+- **A durable pane shows a subtitle and a badge.** The program sets one line under the title and a count or a short mark next to it, so a list of its conversations reads at a glance.
 
 ### Changed
 

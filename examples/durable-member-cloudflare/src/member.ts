@@ -22,7 +22,7 @@ import {
   Harness,
 } from "@earendil-works/pi-durable";
 import { type CollieCore, createCore } from "../../durable-member/sdk/core/index.ts";
-import { PaneRegistry, riskGuard, showConversation, spawnHelperTool } from "../../durable-member/pi-durable/index.ts";
+import { PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "../../durable-member/pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "../../durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
@@ -125,22 +125,27 @@ export class Member extends DurableObject<Env> {
     );
 
     // Show every conversation that exists, BEFORE resume(), so a re-run hook finds its pane.
-    const all: { id: ConversationId; owned: boolean }[] = [];
+    const all: { id: ConversationId; owner?: ConversationId }[] = [];
     let cursor: Cursor | undefined;
     do {
       const at = cursor;
       const page = await harness.commit((tx) => tx.scanConversations({}, 256, at), ctx0);
-      for (const c of page.items) all.push({ id: c.id, owned: c.owner !== undefined });
+      for (const c of page.items) all.push({ id: c.id, owner: c.owner?.conversationId });
       cursor = page.next;
     } while (cursor);
-    const show = (conversation: Conversation, owned: boolean) =>
-      showConversation({ tab: owned ? helpers : inbox, title: `${owned ? "Helper" : "Ticket"} #${conversation.id}` }, harness, conversation, { panes: this.panes });
-    for (const c of all) await show((await harness.conversation(c.id, ctx0))!, c.owned);
+    const show = (conversation: Conversation, owner: ConversationId | undefined) =>
+      showConversation(
+        { tab: owner !== undefined ? helpers : inbox, title: `${owner !== undefined ? "Helper" : "Ticket"} #${conversation.id}`, subtitle: subtitleFor(owner) },
+        harness,
+        conversation,
+        { panes: this.panes },
+      );
+    for (const c of all) await show((await harness.conversation(c.id, ctx0))!, c.owner);
 
     const instructions = real ? REAL_INSTRUCTIONS : INSTRUCTIONS;
     const startTriage = (prefix: string) => async () => {
       const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model, instructions } }, ctx0);
-      const pane = await show(conversation, false);
+      const pane = await show(conversation, undefined);
       await conversation.submit({ type: "input", content: `${prefix}Triage ticket ${400 + Number(conversation.id)}: a customer cannot log in.` }, ctx0);
       return { paneId: pane.id };
     };

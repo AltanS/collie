@@ -10,7 +10,21 @@ import { isAbsolute } from "node:path";
 
 import type { AgentStatus, Ask } from "../../types.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule, renameTitleOf } from "./clean.ts";
+import {
+  BADGE_COUNT_MAX,
+  BADGE_TEXT_MAX,
+  blockRule,
+  byteLength,
+  CAPS,
+  changedByCleaning,
+  cleanText,
+  isWireId,
+  lineRule,
+  renameTitleOf,
+  shortLine,
+  SUBTITLE_MAX,
+  type Badge,
+} from "./clean.ts";
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
@@ -118,6 +132,10 @@ export interface DurablePane {
   readonly turnId: string;
   readonly openAsks: readonly DurableAsk[];
   readonly cwd?: string;
+  /** One line under the title (WIRE.md section 3). Absent when the program sent none, or a bad one. */
+  readonly subtitle?: string;
+  /** A count or a short mark next to the title. Absent when the program sent none, or a bad one. */
+  readonly badge?: Badge;
 }
 
 export interface DurableStarter {
@@ -213,6 +231,28 @@ function cwdOf(object: JsonObject): string | undefined {
   const cleaned = cleanText(value, lineRule(Number.MAX_SAFE_INTEGER));
   if (cleaned.length === 0 || byteLength(cleaned) > CAPS.cwd) return undefined;
   return isAbsolute(cleaned) ? cleaned : undefined;
+}
+
+/** A pane's subtitle (WIRE.md section 7.9), or undefined when it is absent, not text, or empty once cleaned. */
+function subtitleOf(object: JsonObject): string | undefined {
+  const value = object.subtitle;
+  return isText(value) ? shortLine(value, SUBTITLE_MAX) : undefined;
+}
+
+/**
+ * A pane's badge (WIRE.md section 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` cut to 12
+ * characters. A `null` key reads as absent. Both keys, neither, a count out of range and a text with nothing
+ * left read as no badge, and never drop the pane.
+ */
+function badgeOf(object: JsonObject): Badge | undefined {
+  const value = object.badge;
+  if (!isRecord(value)) return undefined;
+  const count = value.count ?? undefined;
+  const text = value.text ?? undefined;
+  if ((count === undefined) === (text === undefined)) return undefined;
+  if (count !== undefined) return isCount(count) && count <= BADGE_COUNT_MAX ? { count } : undefined;
+  const word = isText(text) ? shortLine(text, BADGE_TEXT_MAX) : undefined;
+  return word === undefined ? undefined : { text: word };
 }
 
 // ── hello ─────────────────────────────────────────────────────────────────────
@@ -404,6 +444,8 @@ function readPane(
   }
   const lastActiveAt = value.lastActiveAt;
   const cwd = cwdOf(value);
+  const subtitle = subtitleOf(value);
+  const badge = badgeOf(value);
   return {
     id,
     workspaceId,
@@ -415,6 +457,8 @@ function readPane(
     turnId,
     openAsks: openAsks.slice(0, CAPS.openAsksPerPane),
     cwd,
+    subtitle,
+    badge,
   };
 }
 
@@ -912,6 +956,8 @@ export function statusOf(pane: Pick<DurablePane, "state" | "openAsks">): AgentSt
 /** Every durable pane reports this agent name. The `harness` string is display text only. */
 export const DURABLE_AGENT = "durable";
 
+type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
+
 /**
  * The clean layout as a mux snapshot (WIRE.md section 5).
  *
@@ -964,7 +1010,7 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
     const workspace = workspaceById.get(pane.workspaceId);
     const tab = tabById.get(pane.tabId);
     if (workspace === undefined || tab === undefined) continue;
-    panes.push({
+    const mux: MutableMuxPane = {
       paneId: pane.id,
       spaceId: workspace.id,
       spaceLabel: workspace.title === "" ? workspace.id : workspace.title,
@@ -981,7 +1027,11 @@ export function toMuxSnapshot(snapshot: DurableSnapshot): MuxSnapshot {
       // The conversation id names the bridge's own log of it, which the `durable` journal adapter
       // reads (bridge/journal/durable.ts). The ref is server-side only, like every other.
       agentSession: { kind: "id", value: pane.id },
-    });
+    };
+    // Optional pane marks (WIRE.md section 7.9). Assigned only when present, so a pane without them is unchanged.
+    if (pane.subtitle !== undefined) mux.subtitle = pane.subtitle;
+    if (pane.badge !== undefined) mux.badge = pane.badge;
+    panes.push(mux);
   }
   return { panes, spaces, tabs };
 }

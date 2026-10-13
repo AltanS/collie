@@ -291,6 +291,16 @@ interface Pane {
   sessionId?: string | null;
   /** Absolute. Falls back to the workspace `cwd`, then to "". */
   cwd?: string;
+  /**
+   * One line under the title, so a list of conversations reads at a glance (section 7.9). Trimmed, at
+   * most 120 characters, no control character. A bad value reads as absent.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: `{ count }` (an integer from 0 to 9999) or `{ text }` (at most 12
+   * characters). Exactly one key. A bad value reads as absent (section 7.9).
+   */
+  badge?: { count: number } | { text: string };
 }
 
 type PaneState = "working" | "waiting" | "idle";
@@ -491,6 +501,7 @@ on `PaneWire` (`idle | working | blocked | done | unknown`).
 | `agent` | always `"durable"`. Never the `harness` string. |
 | `status` | the state mapping above |
 | `terminalTitle` | `Pane.title` |
+| `subtitle`, `badge` | `Pane.subtitle`, `Pane.badge`, after cleaning (section 7.9). Left out when absent. |
 | `paneLabel` | never set |
 
 A pane that leaves the snapshot is gone: a call to it answers `gone`. A tab or workspace with no
@@ -552,6 +563,9 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 | `StarterRow.label` | 128 bytes | cut |
 | `Option.label` | 128 bytes | cut |
 | `Pane.harness` | 64 bytes | cut |
+| `Pane.subtitle` | 120 characters (code points), after cleaning and a trim | cut at a whole character with `…` as the 120th. Nothing left after cleaning: absent. |
+| `Pane.badge.text` | 12 characters, same rule | cut the same way. Nothing left: the badge is absent. |
+| `Pane.badge.count` | an integer from 0 to 9999 | absent (not clamped). |
 | `Workspace.cwd`, `Pane.cwd` | 4096 bytes, absolute | ignored, reads as absent |
 | `Ask.reason` | 2048 bytes | cut |
 | `ToolCall.name` | 128 bytes | cut |
@@ -735,6 +749,20 @@ abort.
   that the adapter declares from `caps.rename`. It has no control for a workspace yet; a program
   MAY still take one on the wire.
 
+### 7.9 Subtitle and badge
+
+- `Pane.subtitle` and `Pane.badge` are optional and additive: a program that sends neither is
+  unchanged, and a reader that does not know them ignores them (section 2, point 8).
+- The adapter cleans them as it cleans a title (section 6), but counts characters, not bytes. A
+  subtitle is trimmed. A value of the wrong type, a `badge` with both `count` and `text` or with
+  neither, a `count` that is not an integer from 0 to 9999, and a string with nothing left after
+  cleaning read as absent. They are never refused, and they never drop the pane.
+- A change of either is a change a reader could see, so `rev` rises (section 7.1). The example SDK
+  raises it only when the value changes.
+- The phone draws the subtitle under the pane's title in the muted text style, and the badge next to
+  the title. They carry no state and no action. A count of 0 is a valid value, and the phone draws it
+  as no mark.
+
 ## 8. Restart and epoch
 
 1. Every start of the program makes a new random `epoch`, at least 128 bits, never reused. `rev`
@@ -835,3 +863,5 @@ document. The version number stays 1; the spike's shapes are not supported.
     characters (section 6).
 19. **`Caps` gains `rename`, and `POST /rename` is a route** (sections 3, 4 and 7.8), with the codes
     `no-such-target` and `rename-refused`. Added before version 1 shipped, so the version stays 1.
+20. **`Pane` gains an optional `subtitle` and `badge`** (sections 4, 6 and 7.9). Added before version 1
+    shipped, so the version stays 1. An older adapter ignores both.

@@ -637,6 +637,56 @@ export function protocolSuite(transport: Transport) {
       });
     });
 
+    describe("subtitle and badge", () => {
+      const rev = async () => (await api.snapshot(d)).body.rev;
+      test("a pane starts with neither, and the snapshot carries what the program sets", async () => {
+        const p = mk("marks");
+        expect(await paneInfo("marks")).not.toHaveProperty("subtitle");
+        expect(await paneInfo("marks")).not.toHaveProperty("badge");
+        p.subtitle("a customer cannot log in");
+        p.badge({ count: 3 });
+        expect(await paneInfo("marks")).toMatchObject({ subtitle: "a customer cannot log in", badge: { count: 3 } });
+        p.badge({ text: "new" });
+        expect((await paneInfo("marks")).badge).toEqual({ text: "new" });
+      });
+      test("rev rises only when the value changes, and null clears", async () => {
+        const p = mk("marks2");
+        const before = await rev();
+        p.subtitle("one line");
+        const afterFirst = await rev();
+        expect(afterFirst).toBeGreaterThan(before!);
+        p.subtitle("one line");
+        p.badge(null); // nothing to clear
+        expect(await rev()).toBe(afterFirst);
+        p.badge({ count: 2 });
+        const afterBadge = await rev();
+        expect(afterBadge).toBeGreaterThan(afterFirst!);
+        p.badge({ count: 2 });
+        expect(await rev()).toBe(afterBadge);
+        p.subtitle(null);
+        p.badge(null);
+        const cleared = await paneInfo("marks2");
+        expect(cleared).not.toHaveProperty("subtitle");
+        expect(cleared).not.toHaveProperty("badge");
+        expect(await rev()).toBeGreaterThan(afterBadge!);
+      });
+      test("a subtitle and a text badge are cleaned and cut to their caps; a bad count is a RangeError", async () => {
+        const p = mk("marks3");
+        p.subtitle(`  a\u0000b\u200b${"é".repeat(300)} `);
+        const sub = (await paneInfo("marks3")).subtitle!;
+        expect([...sub]).toHaveLength(120);
+        expect(sub.startsWith("ab")).toBe(true);
+        expect(sub.endsWith("…")).toBe(true);
+        p.badge({ text: "a-very-long-badge-text" });
+        expect((await paneInfo("marks3")).badge).toEqual({ text: "a-very-long…" });
+        for (const count of [-1, 10000, 1.5, Number.NaN]) expect(() => p.badge({ count })).toThrow(RangeError);
+        expect(() => p.badge({ count: 1, text: "x" } as never)).toThrow(TypeError);
+        expect((await paneInfo("marks3")).badge).toEqual({ text: "a-very-long…" }); // a refused value changes nothing
+        p.subtitle("   "); // nothing is left of it: cleared
+        expect(await paneInfo("marks3")).not.toHaveProperty("subtitle");
+      });
+    });
+
     describe("rename", () => {
       const snap = async () => (await api.snapshot(d)).body;
       test("rename a tab: the snapshot shows the title and rev rose; panes keep their own title", async () => {

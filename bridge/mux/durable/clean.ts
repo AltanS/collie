@@ -182,3 +182,31 @@ export function renameTitleOf(title: string): string | null {
   }
   return trimmed;
 }
+
+// ── Subtitle and badge (WIRE.md section 7.9) ─────────────────────────────────
+
+/** The longest subtitle, in characters (code points). */
+export const SUBTITLE_MAX = 120;
+
+/** The longest text badge, in characters (code points). */
+export const BADGE_TEXT_MAX = 12;
+
+/** The largest count badge. A count is an integer from 0 to this. */
+export const BADGE_COUNT_MAX = 9999;
+
+/** One small mark next to a pane's title: a count or a short word. Exactly one of the two keys. */
+export type Badge = { readonly count: number } | { readonly text: string };
+
+/**
+ * Clean one display string that is capped in characters, not bytes: control characters, direction
+ * marks and zero-width characters out, trimmed, then cut at a whole code point with `…` as the last
+ * character when it was over `maxChars`. Undefined when nothing is left.
+ */
+export function shortLine(text: string, maxChars: number): string | undefined {
+  // Four bytes a character is the widest a code point gets, so this step never cuts on its own.
+  const cleaned = cleanText(text, lineRule(maxChars * 4 + ELLIPSIS_BYTES)).trim();
+  if (cleaned === "") return undefined;
+  const symbols = [...cleaned];
+  if (symbols.length <= maxChars) return cleaned;
+  return `${symbols.slice(0, maxChars - 1).join("")}${ELLIPSIS}`;
+}

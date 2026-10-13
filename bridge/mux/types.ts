@@ -187,6 +187,16 @@ export interface MuxPane extends MuxIdentity {
    */
   readonly terminalTitle?: string;
   /**
+   * One line the program wants under this pane's title, when it sends one. Only an adapter whose
+   * panes have no screen to read fills it (the `durable` adapter, WIRE.md section 3). Display text,
+   * cleaned and capped by the adapter that read it.
+   */
+  readonly subtitle?: string;
+  /**
+   * A small mark next to this pane's title: a count, or a short word. Same producer as {@link subtitle}.
+   */
+  readonly badge?: { readonly count: number } | { readonly text: string };
+  /**
    * The session the agent in this pane named, when it named one — the journal's key, and the reason
    * `agentSessionRef` is a capability rather than an assumption (bridge/journal/registry.ts).
    *

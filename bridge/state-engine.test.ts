@@ -1162,6 +1162,55 @@ describe("terminalTitleIsStale", () => {
   });
 });
 
+// A DURABLE PANE'S SUBTITLE AND BADGE reach the view, and a pane without them gains no key (WIRE.md 7.9).
+describe("StateEngine: subtitle and badge", () => {
+  function durablePane(fields: Partial<MuxPane>): MuxPane {
+    return {
+      paneId: "conv-01",
+      spaceId: "ws",
+      spaceLabel: "Triage",
+      spaceNumber: 1,
+      tabId: "ws:inbox",
+      cwd: "/srv/triage",
+      focused: false,
+      alive: true,
+      agent: "durable",
+      status: "idle",
+      ...fields,
+    };
+  }
+
+  async function viewsOf(panes: readonly MuxPane[]) {
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes, spaces: [], tabs: [] }),
+    };
+    // SAFETY: a poll of panes that name no Claude session reaches `snapshot()` and `reachable()` and
+    // nothing else, and the stub has both.
+    const engine = new StateEngine(stub as MuxAdapter, 1500);
+    await engine["poll"]();
+    return engine.current();
+  }
+
+  test("the subtitle and the badge ride onto the view", async () => {
+    const now = await viewsOf([
+      durablePane({ subtitle: "a customer cannot log in", badge: { count: 2 } }),
+      durablePane({ paneId: "conv-02", badge: { text: "new" } }),
+    ]);
+    const all = [...now.agents, ...now.shellPanes];
+    expect(all.find((v) => v.paneId === "conv-01")?.subtitle).toBe("a customer cannot log in");
+    expect(all.find((v) => v.paneId === "conv-01")?.badge).toEqual({ count: 2 });
+    expect(all.find((v) => v.paneId === "conv-02")?.badge).toEqual({ text: "new" });
+  });
+
+  test("a pane without them gains neither key", async () => {
+    const now = await viewsOf([durablePane({})]);
+    const view = [...now.agents, ...now.shellPanes][0]!;
+    expect("subtitle" in view).toBe(false);
+    expect("badge" in view).toBe(false);
+  });
+});
+
 // ATTENTION — the one fact the bridge knows and the multiplexer cannot: is somebody looking?
 //
 // It is read by a censusing adapter's watch (mux/types.ts § MuxWatchOptions.attention), so getting

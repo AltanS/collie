@@ -282,6 +282,10 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // Denormalised alongside workspaceLabel so no client has to join tabs[].
   if (pane.tabLabel) view.tabLabel = pane.tabLabel;
   if (pane.terminalTitle) view.terminalTitle = pane.terminalTitle;
+  // The program's own line under the title and its small mark, from an adapter with no screen. Absent
+  // stays absent, so every other pane is byte-identical.
+  if (pane.subtitle) view.subtitle = pane.subtitle;
+  if (pane.badge) view.badge = pane.badge;
   // The title is still on the wire; this only says the phone should read it quietly. Set only when
   // true, so every pane that was byte-identical before this field existed still is.
   if (terminalTitleIsStale(pane)) view.terminalTitleStale = true;

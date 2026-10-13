@@ -122,7 +122,12 @@ export interface PaneLocation {
   paneId?: string;
   /** Absolute. Optional: the pane falls back to its workspace's folder. */
   cwd?: string;
+  /** One line under the title. Set when the pane is first shown. */
+  subtitle?: string;
 }
+
+/** The line under a pane's title: what the ticket is about, or which ticket the helper helps. */
+export const subtitleFor = (owner: ConversationId | undefined): string => (owner === undefined ? "a customer cannot log in" : `helping ticket ${owner}`);
 
 const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -245,6 +250,7 @@ export async function showConversation(
   if (have) return have;
   const ctx = opts.ctx ?? ctx0;
   const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
+  if (loc.subtitle) pane.subtitle(loc.subtitle);
   const mapper = new Mapper(pane, opts.panes);
 
   // The wire's request id goes to Pi Durable as the submission's own dedupe key, so a repeat that
@@ -262,6 +268,12 @@ export async function showConversation(
   });
   return pane;
 }
+
+/** The pane's badge counts its open asks, and shows nothing at zero. */
+const markAsks = (pane: PaneHandle) => {
+  const open = pane.openAsks.length;
+  pane.badge(open > 0 ? { count: open } : null);
+};
 
 export interface Risky {
   panes: PaneRegistry;
@@ -295,8 +307,13 @@ export function riskGuard(o: Risky): Extension {
             },
             { signal: ctx.abortSignal },
           );
+          markAsks(pane); // the badge counts the asks that wait for the phone
           o.panes.asked(safeId(call.id)); // the ask is open now: a start waiting for it may go on
-          return (await answer).optionId === "allow" ? undefined : { block: "denied from the phone" };
+          try {
+            return (await answer).optionId === "allow" ? undefined : { block: "denied from the phone" };
+          } finally {
+            markAsks(pane);
+          }
         },
       }),
     ],
@@ -331,7 +348,10 @@ export function spawnHelperTool(o: HelperOptions) {
       }, ctx);
       const harness = o.harness();
       const conversation = (await harness.conversation(child, ctx))!;
-      await showConversation({ tab: o.tab, title: `Helper #${child}` }, harness, conversation, { panes: o.panes, ctx });
+      await showConversation({ tab: o.tab, title: `Helper #${child}`, subtitle: subtitleFor(api.conversationId) }, harness, conversation, {
+        panes: o.panes,
+        ctx,
+      });
       await api.details({ conversationId: child }, ctx);
       const handle = (await api.conversation(child, ctx))!;
       const request = { type: "input", content: args.task, requestId: `helper:${api.taskId}` } as const;

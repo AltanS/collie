@@ -7,8 +7,10 @@ import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
+import { PaneBadge } from "@/components/pane-badge";
 import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
+import { paneSubtitle } from "@/lib/pane-marks";
 import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
 import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -198,6 +200,11 @@ export function AgentCard({
   // than the tab beside it but never takes the whole line. No branch (no checkout, an older bridge or
   // crew member, or a reading not taken yet) draws exactly the line drawn before it existed.
   const head = paneGitHead(agent);
+  // A durable program's own line under the title (WIRE.md 7.9). A flat row has a stated 44px, so there the
+  // subtitle TAKES the detail slot (a program's panes share one workspace heading, and the subtitle is the
+  // fact that tells them apart); a card has no stated height, so it carries the subtitle on a line of its own.
+  const subtitle = paneSubtitle(agent);
+  const subtitleInSlot = flat && subtitle !== null;
   const hasRest = detailLead !== null || detailTail !== null;
   // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
   // via `tabTitle` (`lib/pane-name.ts`) — or, when the raw label carries no digit at all, nothing:
@@ -318,6 +325,9 @@ export function AgentCard({
             {/* A finished pane you haven't opened yet: the square (ui/unseen-mark.tsx). Right after
                 the name, never before it, and its slot is reserved on a flat row so the name
                 truncates at one width whether the mark is drawn or not. */}
+            {/* The program's small mark (a count, or a short word), 16px like the tile so line 1 holds
+                its height. Nothing without one. */}
+            <PaneBadge pane={agent} className="shrink-0 self-center" />
             <UnseenMark on={unseen} reserve={flat} className="ml-2" />
             <PaneMeta
               host={agent.host}
@@ -331,7 +341,12 @@ export function AgentCard({
               its own is a one-line row. A workspace-grouped row is the exception: its slot is
               always there, holding the tab's name or its position — UNLESS neither is available,
               which skips the slot outright and centres the name in the 44px row instead. */}
-          {!skipBlankSlot && (inPlace || hasRest || head !== null) && (
+          {subtitleInSlot && (
+            <div data-slot="agent-row-detail" className="h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">
+              {subtitle}
+            </div>
+          )}
+          {!subtitleInSlot && !skipBlankSlot && (inPlace || hasRest || head !== null) && (
             <div
               data-slot="agent-row-detail"
               className={cn(
@@ -395,6 +410,11 @@ export function AgentCard({
               (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
               shell, still sorts where an unknown status sorts, and still opens the same view.
               Withheld on any flat row, whose height is stated; see `flat` above. */}
+          {!flat && subtitle !== null && (
+            <p data-slot="agent-row-subtitle" className="mt-0.5 min-w-0 truncate text-xs text-muted-foreground">
+              {subtitle}
+            </p>
+          )}
           {!flat && <PaneHint hint={agent.hint} />}
         </div>
 

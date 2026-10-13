@@ -126,6 +126,10 @@ const AGENT_VIEW_KEYS = {
   // only on a pane with no screen and absent from an older bridge or peer.
   asks: true,
   turnId: true,
+  // Not crew dimensions: a durable program's line under the title and its small mark (WIRE.md 7.9),
+  // present only on a pane with no screen and absent from an older bridge or peer.
+  subtitle: true,
+  badge: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -217,6 +221,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
       "agent",
       "asks",
+      "badge",
       "cache",
       "cwd",
       "focused",
@@ -235,6 +240,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "sessionName",
       "soleTabName",
       "status",
+      "subtitle",
       "tabId",
       "tabLabel",
       "tabPosition",

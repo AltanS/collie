@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams, useRevalidator } from "react-router";
 
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import type { JsonValue } from "@/lib/json";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
@@ -4124,6 +4125,32 @@ describe("AgentChat header — the branch on the path line", () => {
   it("draws no branch when the pane has none", () => {
     const { container } = renderChat();
     expect(pathLine(container).querySelector('[data-slot="branch-label"]')).toBeNull();
+  });
+});
+
+// A durable program's subtitle takes the header's second line, in the same 12px box (WIRE.md 7.9).
+// SAFETY: the header reads the field through the JSON guard (lib/pane-marks.ts); this hands it a shape a peer could send.
+const wrongSubtitle = (value: JsonValue): AgentView["subtitle"] => value as AgentView["subtitle"];
+
+describe("AgentChat header: the subtitle of a durable pane", () => {
+  const place = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-place"]')!;
+
+  it("shows the subtitle in the second line instead of the workspace, and keeps the line's height", () => {
+    const agent: AgentView = { ...fixtureAgents[0]!, subtitle: "a customer cannot log in" };
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    expect(place(container)).toHaveTextContent("a customer cannot log in");
+    expect(place(container)).not.toHaveTextContent(agent.workspaceLabel);
+    expect(place(container).parentElement).toHaveClass("h-3");
+  });
+
+  it("shows the workspace when the pane has no subtitle, or one that is not text", () => {
+    const { container } = renderChat();
+    expect(place(container)).toHaveTextContent(fixtureAgents[0]!.workspaceLabel);
+    // SAFETY: a crew peer's pane arrives unchecked; the header reads the subtitle through the JSON guard.
+    const wrong: AgentView["subtitle"] = wrongSubtitle(7);
+    const odd: AgentView = { ...fixtureAgents[0]!, subtitle: wrong };
+    const again = renderChat({ agent: odd, agents: [odd, ...fixtureAgents.slice(1)] });
+    expect(place(again.container)).toHaveTextContent(fixtureAgents[0]!.workspaceLabel);
   });
 });
 

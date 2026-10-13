@@ -254,6 +254,56 @@ describe("snapshot fixture", () => {
     }
   });
 
+  test("a pane's subtitle and badge are read cleaned, mapped onto the mux pane, and left out when absent", () => {
+    const snapshot = read((raw) => {
+      Object.assign(raw.panes[0] ?? {}, { subtitle: " a customer cannot log in\u200b ", badge: { count: 3 } });
+      Object.assign(raw.panes[1] ?? {}, { subtitle: 7, badge: { count: 99999 } });
+    });
+    expect(snapshot.panes[0]?.subtitle).toBe("a customer cannot log in");
+    expect(snapshot.panes[0]?.badge).toEqual({ count: 3 });
+    // A bad value reads as absent and never drops the pane.
+    expect(snapshot.panes).toHaveLength(read().panes.length);
+    expect(snapshot.panes[1]?.subtitle).toBeUndefined();
+    expect(snapshot.panes[1]?.badge).toBeUndefined();
+    const mux = toMuxSnapshot(snapshot);
+    expect(mux.panes[0]?.subtitle).toBe("a customer cannot log in");
+    expect(mux.panes[0]?.badge).toEqual({ count: 3 });
+    expect("subtitle" in (mux.panes[1] ?? {})).toBe(false);
+    expect("badge" in (mux.panes[1] ?? {})).toBe(false);
+  });
+
+  test("a bad subtitle or badge is dropped alone: wrong type, a count out of range, both keys, nothing left", () => {
+    const bads: [string, object][] = [
+      ["a number subtitle", { subtitle: 7 }],
+      ["an empty subtitle", { subtitle: " \u200b " }],
+      ["a count over 9999", { badge: { count: 10000 } }],
+      ["a negative count", { badge: { count: -1 } }],
+      ["a fractional count", { badge: { count: 1.5 } }],
+      ["a text count", { badge: { count: "3" } }],
+      ["both keys", { badge: { count: 2, text: "two" } }],
+      ["neither key", { badge: {} }],
+      ["a text with nothing left", { badge: { text: "\u0007" } }],
+      ["a badge that is not an object", { badge: 3 }],
+    ];
+    for (const [label, extra] of bads) {
+      const snapshot = read((raw) => Object.assign(raw.panes[0] ?? {}, extra));
+      expect([label, snapshot.panes[0]?.subtitle, snapshot.panes[0]?.badge]).toEqual([label, undefined, undefined]);
+      expect(snapshot.panes).toHaveLength(read().panes.length); // the pane itself is kept
+    }
+  });
+
+  test("a badge takes a count from 0 to 9999 or a text cut to 12 characters, and a null key reads as absent", () => {
+    const badgeOfPane = (badge: Record<string, string | number | null>) => read((raw) => Object.assign(raw.panes[0] ?? {}, { badge })).panes[0]?.badge;
+    expect(badgeOfPane({ count: 0 })).toEqual({ count: 0 });
+    expect(badgeOfPane({ count: 9999 })).toEqual({ count: 9999 });
+    expect(badgeOfPane({ text: " new\u200b " })).toEqual({ text: "new" });
+    expect(badgeOfPane({ text: "x".repeat(40) })).toEqual({ text: `${"x".repeat(11)}…` });
+    expect(badgeOfPane({ count: null, text: "hot" })).toEqual({ text: "hot" });
+    expect(badgeOfPane({ count: 3, text: null })).toEqual({ count: 3 });
+    const long = read((raw) => Object.assign(raw.panes[0] ?? {}, { subtitle: "é".repeat(300) })).panes[0]?.subtitle ?? "";
+    expect([...long]).toHaveLength(120);
+  });
+
   test("a snapshot without rev, epoch or its lists is not a snapshot", () => {
     for (const text of [
       "not json",

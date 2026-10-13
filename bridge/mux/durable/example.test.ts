@@ -143,6 +143,15 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect((await pane(ticket))?.state).toBe("waiting");
   });
 
+  test("example: the ticket's subtitle and badge reach the mux pane, and the helper names its ticket", async () => {
+    const marked = await pane(ticket);
+    expect(marked?.subtitle).toBe("a customer cannot log in");
+    expect(marked?.badge).toEqual({ count: 1 }); // the one ask that waits for the phone
+    const mux = await adapter.snapshot();
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.subtitle).toBe("a customer cannot log in");
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.badge).toEqual({ count: 1 });
+  });
+
   test("example: the events reader reads the history, then only what came after its cursor", async () => {
     await adapter.syncEvents();
     const first = recorder.all(ticket);
@@ -162,7 +171,10 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: true } });
     await until("the ticket idle", async () => ((await pane(ticket))?.state === "idle" ? true : undefined));
     expect(notes()).toHaveLength(1);
-    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(true);
+    const helper = adapter.program()?.snapshot.panes.find((candidate) => candidate.tabId === "triage:helpers");
+    expect(helper).toBeDefined();
+    expect(helper?.subtitle).toBe(`helping ticket ${ticket.replace("conv-", "")}`);
+    expect((await pane(ticket))?.badge).toBeUndefined(); // the ask is answered: the count is gone
     await adapter.syncEvents();
     const after = recorder.all(ticket);
     expect(after.some((event) => event.type === "ask-closed" && event.by === "phone")).toBe(true);

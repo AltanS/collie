@@ -86,6 +86,18 @@ export interface AgentView {
    */
   terminalTitleStale?: boolean;
   /**
+   * One line the program shows under this pane's title (a durable program, WIRE.md 7.9). Mirrors
+   * `AgentView.subtitle` in bridge/types.ts. **Absent on every pane with a screen**, on an older bridge
+   * and on an older crew member. Text only, never markup: read it through `paneSubtitle`
+   * (lib/pane-marks.ts), which drops anything that is not a non-empty string.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: `{ count }` or `{ text }`. Mirrors `AgentView.badge` in
+   * bridge/types.ts, absent in the same cases. Read it through `paneBadge` (lib/pane-marks.ts).
+   */
+  badge?: PaneBadge;
+  /**
    * A finished sentence the bridge composed about this pane, for the operator to read. Absent on
    * almost every pane, and on every bridge older than the version that introduced it.
    *
@@ -2085,4 +2097,7 @@ export type WorktreeCreateResponse =
       replayed?: true;
     }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+/** A small mark next to a pane's title: a count, or a short word. Mirrors `PaneBadge` in bridge/types.ts. */
+export type PaneBadge = { count: number } | { text: string };
+
 

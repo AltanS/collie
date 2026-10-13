@@ -645,6 +645,15 @@ updated machines, so build skew is the steady state (§7), and this section is t
   not know reads as absent. Nothing in `bridge/crew/merge.ts` changes, for the reason the `cache`
   bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
 
+- **A pane gained an optional `subtitle` and an optional `badge`** (added 2026-10-13, M53). They come
+  from a durable program (`bridge/mux/durable/WIRE.md` section 7.9): one line under the pane's title
+  (text, at most 120 characters) and a small mark next to it (`{ count }` from 0 to 9999, or `{ text }`
+  of at most 12 characters). Additive-optional with the closed reading this section requires:
+  **absent means none**, which the phone renders as nothing, exactly as before the fields. An older
+  peer omits them, and an older lead passes them through untouched. Nothing in `bridge/crew/merge.ts`
+  changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route,
+  no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

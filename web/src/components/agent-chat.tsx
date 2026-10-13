@@ -101,6 +101,7 @@ import type { MenuBlockAction } from "@/components/menu-block";
 import { locateReply } from "@/lib/latest-reply";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
+import { paneSubtitle } from "@/lib/pane-marks";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
@@ -337,6 +338,10 @@ export function AgentChat({
   // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
   const name = agent === undefined ? "" : paneName(agent);
   const workspace = agent === undefined ? "" : panePlaceParts(agent, tabs).space;
+  // A durable program's own line under the title (WIRE.md 7.9). The header's second line is 12px and its
+  // geometry is a stated sum (20 + 4 + 12), so the subtitle takes the line the workspace holds; the
+  // workspace is still named by the line's tap target (`chat.header.openOverviewAria`).
+  const subtitle = agent === undefined ? null : paneSubtitle(agent);
   // The branch the pane's folder is on, beside the workspace on line 2 (lib/git-head.ts).
   const gitHead = agent === undefined ? null : paneGitHead(agent);
   // The panes that share this tab (agents + shells), in the strip's stable order (lib/pane-ordinal.ts
@@ -1980,7 +1985,7 @@ export function AgentChat({
                     data-slot="pane-place"
                     className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
-                    {workspace}
+                    {subtitle ?? workspace}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives

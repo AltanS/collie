@@ -5,12 +5,13 @@
 
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
-import { assertId, bytes, CAPS, cut, cwdOf, LIMITS, tsOf } from "./rules.ts";
+import { assertId, badgeOf, bytes, CAPS, cut, cwdOf, LIMITS, subtitleOf, tsOf } from "./rules.ts";
 import type {
   Answer,
   AnswerResult,
   Ask,
   AskInput,
+  Badge,
   ClosedBy,
   Item,
   PaneInfo,
@@ -130,7 +131,19 @@ export interface PaneHandle {
   readonly id: string;
   /** The newest turn: the running one, or the last one that ran. */
   readonly turnId: string;
+  /** Every open ask, oldest first, at most 50. */
+  readonly openAsks: Ask[];
   state(s: PaneState): void;
+  /**
+   * One line under the conversation's title (WIRE.md 7.9), cut to 120 characters. `null` clears it. The revision
+   * rises only when what the phone reads changes.
+   */
+  subtitle(text: string | null): void;
+  /**
+   * A small mark next to the title (WIRE.md 7.9): `{ count }` with an integer from 0 to 9999, or `{ text }` of at
+   * most 12 characters. `null` clears it. A bad count is a RangeError. The revision rises only on a change.
+   */
+  badge(value: Badge | null): void;
   event(e: ProgramEvent): void;
   /**
    * Sets the pane to `waiting`, emits `ask`, resolves with the phone's answer. Without an `id`, the ask id comes
@@ -170,6 +183,8 @@ export class Pane implements PaneHandle {
   private readonly items = new Map<string, Item>();
   readonly asks = new Map<string, OpenAsk>();
   closed = false;
+  private subtitleText: string | undefined;
+  private badgeValue: Badge | undefined;
   sendFn?: (text: string, o: SendContext) => void | Promise<void>;
   abortFn?: (o: { requestId: string }) => void | Promise<void>;
   /** The state last put in the log. Unset until the first sync, so the log always starts with one. */
@@ -266,6 +281,8 @@ export class Pane implements PaneHandle {
       // Reserved for the machine-scoped session id (WIRE.md section 3). Null until a later version defines it.
       sessionId: null,
       ...(this.cwd ? { cwd: this.cwd } : {}),
+      ...(this.subtitleText === undefined ? {} : { subtitle: this.subtitleText }),
+      ...(this.badgeValue === undefined ? {} : { badge: this.badgeValue }),
     };
   }
 
@@ -286,6 +303,21 @@ export class Pane implements PaneHandle {
     this.base = s;
     this.sync();
     this.touch();
+  }
+
+  subtitle(text: string | null) {
+    const next = text === null ? undefined : subtitleOf(text);
+    if (next === this.subtitleText) return;
+    this.subtitleText = next;
+    this.store.rev++;
+  }
+
+  badge(value: Badge | null) {
+    const next = value === null ? undefined : badgeOf(value);
+    const same = next === undefined || this.badgeValue === undefined ? next === this.badgeValue : JSON.stringify(next) === JSON.stringify(this.badgeValue);
+    if (same) return;
+    this.badgeValue = next;
+    this.store.rev++;
   }
 
   event(e: ProgramEvent) {

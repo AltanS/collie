@@ -47,6 +47,9 @@ describe("one ticket", () => {
       const x = await pane(d, main);
       return x?.state === "waiting" ? x : undefined;
     });
+    // The ticket's line under the title, and a badge that counts the asks waiting for the phone.
+    expect(p.subtitle).toBe("a customer cannot log in");
+    expect(p.badge).toEqual({ count: 1 });
     expect(p.openAsks[0]).toMatchObject({ kind: "permission", revision: 1, tool: { name: "write_note" }, title: expect.stringContaining("write_note") });
     expect(p.openAsks[0]!.toolCallId).toBe(p.openAsks[0]!.itemId); // the tool item the card sits under
     expect(p.openAsks[0]!.options.map((o) => o.id)).toEqual(["allow", "deny"]);
@@ -62,11 +65,13 @@ describe("one ticket", () => {
     expect(readFileSync(join(dir, "notes.txt"), "utf8")).toContain("Ticket 412");
     const events = await allEvents(d, main);
     expect(events.find((e) => e.type === "ask-closed")).toMatchObject({ askId, by: "phone" });
+    await waitFor("badge cleared", async () => (await pane(d, main))?.badge === undefined);
     expect((await api.answer(d, main, askId, "allow")).body).toEqual({ result: "too-late" });
   });
 
   test("spawn_helper: a second pane in tab helpers; the helper answers and goes idle", async () => {
     helper = await waitFor("helper pane", async () => (await api.snapshot(d)).body.panes.find((x) => x.tabId === "triage:helpers")?.id);
+    expect((await pane(d, helper))?.subtitle).toBe(`helping ticket ${main.replace("conv-", "")}`);
     await waitFor("helper idle", async () => (await pane(d, helper))?.state === "idle");
     const events = await allEvents(d, helper);
     expect(events.some((e) => e.type === "item" && e.item.kind === "reply" && e.item.text.includes("session cookie"))).toBe(true);
