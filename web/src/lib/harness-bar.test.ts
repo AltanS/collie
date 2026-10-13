@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { commandsFor } from "@/lib/agent-commands";
-import { barFor, BAR_AGENTS, CAPTURE_SOURCED } from "@/lib/harness-bar";
+import { barFor, BAR_AGENTS, CAPTURE_SOURCED, DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
 import type { OperatorCommand } from "@/lib/types";
 
 // The bar's two invariants, as tests rather than as sentences in a spec. A phrase does not fail a
@@ -194,5 +194,26 @@ describe("the operator's bar rows", () => {
     expect(barFor("claude", mine).map((i) => i.id)).toEqual(barFor("claude").map((i) => i.id));
     // Every other pane still gets the wider row.
     expect(barFor("pi", mine).map((i) => i.command)).toEqual(["/deploy"]);
+  });
+});
+
+describe("the durable section", () => {
+  it("is Steer then Stop, each backed by the capability the program declares", () => {
+    expect(DURABLE_BAR).toEqual([
+      { id: "steer", cap: "steerTurn" },
+      { id: "stop", cap: "abortTurn" },
+    ]);
+  });
+
+  it("draws a row only for a declared capability", () => {
+    expect(durableBarFor(() => true).map((i) => i.id)).toEqual(["steer", "stop"]);
+    expect(durableBarFor((cap) => cap === "abortTurn").map((i) => i.id)).toEqual(["stop"]);
+    expect(durableBarFor((cap) => cap === "steerTurn").map((i) => i.id)).toEqual(["steer"]);
+    expect(durableBarFor(() => false)).toEqual([]);
+  });
+
+  it("is not a harness: the slash-command table has no entry for it", () => {
+    expect(BAR_AGENTS).not.toContain("durable");
+    expect(barFor("durable")).toEqual([]);
   });
 });

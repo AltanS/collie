@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
-import { accentFor, HarnessBar } from "./harness-bar";
+import { accentFor, DurableBar, HarnessBar } from "./harness-bar";
+import { DURABLE_BAR } from "@/lib/harness-bar";
 
 /** jsdom normalises a hex colour to `rgb(...)`; compare through the same normaliser on both sides. */
 function normalizedColor(value: string): string {
@@ -173,5 +174,56 @@ describe("HarnessBar", () => {
     render(<HarnessBar agent="claude" mine={mine} onRun={took()} />);
     expect(screen.getByRole("button", { name: "Status" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+  });
+});
+
+describe("DurableBar", () => {
+  const state = (over: { steer?: Partial<Parameters<typeof DurableBar>[0]["state"]["steer"]>; stop?: Partial<Parameters<typeof DurableBar>[0]["state"]["stop"]> } = {}) => ({
+    steer: { pressed: false, offered: true, onPressedChange: vi.fn(), ...over.steer },
+    stop: { offered: true, busy: false, onStop: vi.fn(), ...over.stop },
+  });
+
+  it("draws Steer then Stop in the program's section, with its mark", () => {
+    render(<DurableBar items={DURABLE_BAR} state={state()} />);
+    const section = screen.getByRole("group", { name: "Harness shortcuts" });
+    expect(section).toHaveAttribute("data-slot", "durable-bar");
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Steer", "Stop"]);
+  });
+
+  it("renders nothing for a program that declared neither", () => {
+    const { container } = render(<DurableBar items={[]} state={state()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("dims a control that cannot act and keeps it drawn", async () => {
+    const s = state({ steer: { offered: false, pressed: true }, stop: { offered: false } });
+    render(<DurableBar items={DURABLE_BAR} state={s} />);
+    const steer = screen.getByRole("button", { name: /Steer the running turn/ });
+    const stop = screen.getByRole("button", { name: "Stop the running turn" });
+    expect(steer).toBeDisabled();
+    expect(steer).toHaveAttribute("aria-pressed", "false");
+    expect(stop).toBeDisabled();
+    await userEvent.setup().click(stop);
+    expect(s.stop.onStop).not.toHaveBeenCalled();
+  });
+
+  it("taps through to the composer's handlers", async () => {
+    const s = state();
+    const user = userEvent.setup();
+    render(<DurableBar items={DURABLE_BAR} state={s} />);
+    await user.click(screen.getByRole("button", { name: /Steer the running turn/ }));
+    expect(s.steer.onPressedChange).toHaveBeenCalledWith(true);
+    await user.click(screen.getByRole("button", { name: "Stop the running turn" }));
+    expect(s.stop.onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("greys both when the composer is locked", () => {
+    render(<DurableBar items={DURABLE_BAR} state={state()} disabled />);
+    for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
+  });
+
+  it("shows a spinner while a stop is in flight", () => {
+    render(<DurableBar items={DURABLE_BAR} state={state({ stop: { busy: true } })} />);
+    expect(screen.getByRole("button", { name: "Stop the running turn" }).querySelector(".animate-spin")).not.toBeNull();
   });
 });

@@ -252,6 +252,10 @@ holds it to what is written here.
   accepts both lists, so the name passes the floor without becoming a reader.
 - **The grid.** `paneGrid` is not declared, so the grid read answers `unsupported`, which is the
   existing rule for a declined grid. Typed keys and new tabs answer the same way.
+- **The program's own controls.** `steerTurn`, `abortTurn` and `starters` are declared from the
+  program's `caps.steer`, `caps.abort` and `caps.starters` (WIRE.md section 4) of the last good read,
+  and no other adapter declares them. The phone draws Steer and Stop in the belt, and the new-tab and
+  new-space buttons that open the New page, only for a capability that is declared `true`.
 
 ### Focus with a terminal and tuios-web attached
 

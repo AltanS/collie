@@ -1,6 +1,6 @@
 import { commandsFor } from "@/lib/agent-commands";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
-import type { OperatorCommand } from "@/lib/types";
+import type { MuxCapability, OperatorCommand } from "@/lib/types";
 
 // The harness bar's table: which of the running agent's own slash commands get a 44px button above
 // the key rail. One row per harness, four or five buttons, and nothing derived from the screen.
@@ -133,6 +133,33 @@ const OMP: readonly HarnessBarItem[] = [
     evidence: `${PANES}/omp--menu-resume.txt`,
   },
 ];
+
+// ── durable ──────────────────────────────────────────────────────────────────
+// A durable program has no screen and no slash commands, so its section is not made of text the
+// phone types. Its two buttons are ACTIONS the program declared, and each row is gated by the
+// capability that backs it (bridge/mux/capabilities.ts, from the program's own `caps`, WIRE.md
+// section 4): `caps.steer` draws Steer, `caps.abort` draws Stop. A program that declares neither
+// gets no section. This is the contract a custom program uses to reach the belt: declare a cap, get
+// the control. The order is the thumb's: Stop last, under the thumb edge.
+export interface DurableBarItem {
+  /** Stable. Names the button and keys its i18n text in components/harness-bar.tsx. */
+  id: "steer" | "stop";
+  /** The capability that draws the button. Absent or false and the button is not there. */
+  cap: MuxCapability;
+}
+
+export const DURABLE_BAR: readonly DurableBarItem[] = [
+  { id: "steer", cap: "steerTurn" },
+  { id: "stop", cap: "abortTurn" },
+];
+
+/** The key of the durable section's brand mark in agent-icon-data.ts. A mark's name, never a multiplexer's. */
+export const PROGRAM_MARK = "program";
+
+/** The durable section's rows for a program that declares `declared`. Pure, so a table pins it. */
+export function durableBarFor(declared: (cap: MuxCapability) => boolean): readonly DurableBarItem[] {
+  return DURABLE_BAR.filter((item) => declared(item.cap));
+}
 
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's
 // agent string, so an object lookup would answer for inherited names that ship no bar at all.

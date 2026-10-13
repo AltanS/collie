@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync } from "node:fs";
 
 import { MUX_CAPABILITIES } from "../capabilities.ts";
+import { muxConfigBody } from "../../server.ts";
 import { buildMuxRegistry, createMux, MUX_ADAPTERS } from "../registry.ts";
 import type { MuxOutcome, MuxSnapshot } from "../types.ts";
 import {
@@ -70,6 +71,30 @@ describe("capabilities", () => {
     ] as const) {
       expect(adapter.capabilities.supports[absent]).toBe(false);
     }
+  });
+
+  test("steerTurn, abortTurn and starters follow the program's own caps, and are absent before the first read", async () => {
+    const { adapter, program, tick } = await rig();
+    const program3 = ["steerTurn", "abortTurn", "starters"] as const;
+    // Fail closed: no read yet, so no cap is known and the phone draws none of the controls.
+    for (const cap of program3) expect(adapter.capabilities.supports[cap]).toBe(false);
+
+    expect((await adapter.snapshot()).panes.length).toBeGreaterThan(0);
+    for (const cap of program3) expect(adapter.capabilities.supports[cap]).toBe(true);
+    // They are published by the same body `/api/config` serves.
+    const wire = muxConfigBody(adapter);
+    for (const cap of program3) expect(wire.capabilities[cap]).toBe(true);
+    expect(adapter.capabilities.supports.createTab).toBe(false);
+
+    // A program that declares only some of them gets only those; the old reading is replaced by the new.
+    program.hello.caps.steer = false;
+    program.hello.caps.starters = false;
+    program.restart();
+    tick();
+    await adapter.snapshot();
+    expect(adapter.capabilities.supports.steerTurn).toBe(false);
+    expect(adapter.capabilities.supports.starters).toBe(false);
+    expect(adapter.capabilities.supports.abortTurn).toBe(true);
   });
 
   test("the topology latency is the slowest the watch polls", async () => {

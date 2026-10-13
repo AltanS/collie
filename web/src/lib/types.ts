@@ -1492,6 +1492,11 @@ export const MUX_CAPABILITIES = [
   "openWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
+  // A durable program's own controls, declared from its `caps` (bridge/mux/capabilities.ts). Unlike
+  // every capability above, an unanswered one reads ABSENT here: see `muxDeclared`.
+  "steerTurn",
+  "abortTurn",
+  "starters",
 ] as const;
 
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];

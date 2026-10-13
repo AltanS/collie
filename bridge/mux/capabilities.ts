@@ -45,6 +45,9 @@ export const MUX_CAPABILITIES = [
   "pushTopologyEvents",
   "pushPaneEvents",
   "listSessions",
+  "steerTurn",
+  "abortTurn",
+  "starters",
 ] as const;
 
 /** One declarable capability. */
@@ -108,6 +111,12 @@ export const MUX_CAPABILITY_ROUTES = {
     "bridge/event-poker.ts — one pane's content or status changing arrives as a push. Same fallback, same promise.",
   listSessions:
     "bridge/sessions.ts `SessionRegistry.refresh()`, the OTHER instances of this multiplexer on this machine, each with the endpoint to dial it, so one bridge can front them all. It fills the snapshot's `sessions` list and what `?session=<name>` can select. ABSENT IS THE DEFAULT AND IT IS THE HARMLESS DIRECTION: the registry pins to the primary, the phone sees the one session it saw before this capability existed, and nothing scans anything. Stated here rather than left implicit, because the absence of this key decides whether a filesystem or a process listing is walked at all (M22 counsel).",
+  steerTurn:
+    "POST /api/pane/:id/send with `steer: true` (ADR 0101): text for the turn that is running. Only a durable program can declare it, from its own `caps.steer` (WIRE.md section 4); the phone draws the Steer button in the belt when it is declared. Absent ⇒ no Steer button.",
+  abortTurn:
+    "POST /api/pane/:id/abort (ADR 0101): stop the running turn. Only a durable program can declare it, from its own `caps.abort`; the phone draws the Stop button in the belt when it is declared. Absent ⇒ no Stop button.",
+  starters:
+    "GET /api/launchers rows of `source: \"program\"` and POST /api/launch with a `starter` (ADR 0102). Only a durable program can declare it, from its own `caps.starters`; the phone then draws the new-tab and new-space buttons and sends them to the New page. Absent ⇒ those buttons stay hidden where `createTab` and `createSpace` are absent.",
 } satisfies Record<MuxCapability, string>;
 
 /**
@@ -214,6 +223,9 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     pushTopologyEvents: claimed.has("pushTopologyEvents"),
     pushPaneEvents: claimed.has("pushPaneEvents"),
     listSessions: claimed.has("listSessions"),
+    steerTurn: claimed.has("steerTurn"),
+    abortTurn: claimed.has("abortTurn"),
+    starters: claimed.has("starters"),
   } satisfies Record<MuxCapability, boolean>;
   return {
     supports,

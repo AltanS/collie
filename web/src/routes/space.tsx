@@ -137,6 +137,7 @@ export function SpaceRoute() {
               selected={tab}
               onSelect={switchTab}
               onNewTab={newTab}
+              onNewStarters={() => nav.down(newPath({ machine: data.scope.host, session: data.scope.session }))}
               creatingTab={creatingTab.has(tabCreateKey(selectedWs.workspaceId, data.scope))}
               scope={data.scope}
               readOnly={isReadOnly(data.device) || notPaired}

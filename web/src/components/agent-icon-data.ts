@@ -45,6 +45,20 @@ export const AGENT_BRANDS = new Map<string, AgentBrand>([
   ["opencode", { bg: "#080808", fg: "#FFFFFF", mode: "stroke", d: "M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" }],
   ["agy", { bg: "#1A73E8", fg: "#FFFFFF", accent: "#1A73E8", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
   ["antigravity", { bg: "#1A73E8", fg: "#FFFFFF", accent: "#1A73E8", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
+  // program: the speech bubble of a durable program's own mark (bridge/mux/durable/logo.ts), as one
+  // 24×24 silhouette, for the belt section that holds its Steer and Stop. Keyed by what the mark IS,
+  // not by the multiplexer's name, which the frontend never spells (scripts/check-mux-names.sh). It is
+  // the adapter's mark and not any program's logo, so it carries no brand colour: the section falls
+  // back to the app's muted ground, as Codex's and pi's do.
+  [
+    "program",
+    {
+      bg: "#767676",
+      fg: "#FFFFFF",
+      mode: "fill",
+      d: "M5 3.5h14A3.5 3.5 0 0 1 22.5 7v8a3.5 3.5 0 0 1-3.5 3.5h-6.5L7 22.5v-4H5A3.5 3.5 0 0 1 1.5 15V7A3.5 3.5 0 0 1 5 3.5zM6.5 9a1 1 0 0 0 0 2h11a1 1 0 0 0 0-2zM6.5 13a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2z",
+    },
+  ],
   // omp (oh-my-pi): the π from omp.sh/favicon.svg, its 64×64 mark rescaled ×0.6 and centred to fill
   // 24×24 (the tile adds its own padding) — the same path, not a redrawing. Gradient stops are that
   // favicon's, and match the TUI's own welcome mark.

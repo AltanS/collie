@@ -230,13 +230,16 @@ What works:
 - The program's conversations in the list, in the merged crew list, and in Chat and History.
 - Questions the program asks, such as a tool that needs a yes or a no. You answer them from the
   phone, and only a tap answers.
-- Send text, steer a turn that is running, and stop it.
-- The program's starters, as rows on the New page.
+- Send text, steer a turn that is running, and stop it. Steer and Stop sit in the belt above the
+  field. A cap the program declares draws its control: `caps.steer` draws Steer, `caps.abort` draws
+  Stop, and a program that declares neither gets neither.
+- The program's starters, as rows on the New page. With `caps.starters`, the new-tab and new-space
+  buttons open that page too.
 
 What does not work:
 
 - Terminal, and typed keys. A durable pane has no screen to show or type into.
-- New tabs, renaming and closing tabs or workspaces. The program lays out its own conversations.
+- Making a tab or a workspace by hand, renaming and closing them. The program lays out its own conversations.
 - "Show in terminal". No pane is ever reported as focused.
 - Another user's program on the socket. The socket must belong to the user that runs Collie.
 - A program on another machine over plain TCP. Reach it over https with a token, as above, or run a

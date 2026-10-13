@@ -3,7 +3,12 @@ import { Layers, ListTree, Undo2, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
+import {
+  DurableBar,
+  HarnessBar,
+  useHarnessBarItems,
+  type DurableBarProps,
+} from "@/components/harness-bar";
 import { StatusDot } from "@/components/status-badge";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -370,6 +375,12 @@ export interface ActionsRowProps {
   onRun: (text: string) => Promise<boolean>;
   /** Bound to the composer's `locked`. Greys the harness buttons in place. */
   disabled?: boolean;
+  /**
+   * A DURABLE PANE'S OWN SECTION, after the harness section's place (M51 spec 08): Steer and Stop,
+   * drawn from the caps the program declares. Absent on every pane with a screen, and absent is the
+   * whole of the old behaviour. The composer of a pane with no screen is the one caller.
+   */
+  durable?: Pick<DurableBarProps, "items" | "state">;
   /** Which thumb the belt is laid out for; see {@link Hand}. Default `"right"`, the shipped layout. */
   hand?: Hand;
   /**
@@ -462,7 +473,7 @@ export interface ActionsRowProps {
   };
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, hand = "right", handle, changes, clear }: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
@@ -483,7 +494,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, hand = "righ
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
-  if (general.length === 0 && harnessItems.length === 0) return null;
+  if (general.length === 0 && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0) return null;
 
   return (
     <div
@@ -630,6 +641,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, hand = "righ
               </div>
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
+            {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`
                 row and the harness section is itself a nested `flex` row (`BELT_SECTION`), so the

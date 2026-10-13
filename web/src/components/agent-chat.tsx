@@ -2164,6 +2164,7 @@ export function AgentChat({
                     selected={agent.tabId}
                     onSelect={(id) => id && goToTab(id)}
                     onNewTab={newTab}
+                    onNewStarters={() => nav.down(newPath({ machine: scope?.host, pane: paneId, session: scope?.session }))}
                     creatingTab={creatingTab.has(tabCreateKey(agent.workspaceId, scope))}
                     allowAll={false}
                     scope={scope}

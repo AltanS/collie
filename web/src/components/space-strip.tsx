@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/labelled-strip";
 import { cn } from "@/lib/utils";
 import { worstTriage } from "@/lib/triage";
-import { useMuxCapability, useMuxHasSpaces } from "@/lib/mux-capability";
+import { useMuxCapability, useMuxDeclared, useMuxHasSpaces } from "@/lib/mux-capability";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -54,6 +54,9 @@ export function SpaceStrip({
   onBack,
 }: SpaceStripProps) {
   const newSpace = useMuxCapability("createSpace");
+  // A durable program makes no space by hand, but it offers starters, and `onNewSpace` opens the New
+  // page, which lists exactly those (route space.tsx). So the "+" is drawn for either (M51 spec 08).
+  const startersOpen = useMuxDeclared("starters");
   // Whether the multiplexer underneath can hold more than one space AT ALL (bridge/mux/
   // capabilities.ts `spaces`). Not "how many are there right now": one space out of many is a herd
   // the operator is about to add to, while one space out of one is a level their multiplexer does
@@ -125,7 +128,7 @@ export function SpaceStrip({
           is a one-line row of chips with no room for a sentence, and the dashboard's Spaces section
           — the other place this "+" appears — carries the adapter's reason in full. Saying it twice
           in two shapes is how one wording rule turns into two. */}
-      {newSpace.capable && (
+      {(newSpace.capable || startersOpen) && (
         // 32px drawn, 46x46 hit: STRIP_TAP_TARGET_SQUARE adds the horizontal half of the floor,
         // which only this button needs and only this button can safely take (it is last in the row).
         <AddButton
