@@ -16,11 +16,6 @@ You need Node 22 or later for wrangler and the tests, and Bun for `bun run smoke
 needs a Cloudflare account. `wrangler dev` runs the Worker in a local copy of the Workers runtime and keeps
 the Durable Object's SQLite under `.wrangler/state`.
 
-> **Installs from 2026-10-14 22:12 UTC.** Pi Durable 1.1.0 is the first version with the Durable Object
-> storage. It came out on 2026-10-07, and Collie installs nothing younger than seven days. The lockfile
-> `package-lock.json` lands once that window has passed. Until then `npm ci` stops, because there is no
-> lockfile.
-
 From a clone of collie:
 
 ```sh

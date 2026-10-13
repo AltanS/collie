@@ -82,6 +82,15 @@ jobs:
         run: cd examples/durable-member && bun run typecheck
       - name: Test (example)
         run: cd examples/durable-member && bun test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (cloudflare example)
+        run: cd examples/durable-member-cloudflare && npm ci --ignore-scripts
+      - name: Typecheck (cloudflare example)
+        run: cd examples/durable-member-cloudflare && npm run typecheck
+      - name: Test (cloudflare example)
+        run: cd examples/durable-member-cloudflare && npm test
       - name: Test (the adapter against the example)
         run: bun test bridge/mux/durable
 
