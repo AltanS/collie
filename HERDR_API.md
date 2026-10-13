@@ -326,6 +326,16 @@ not require a literal `done` from Herdr. See [ADR 0003](.adr/0003-one-shared-see
 > `scroll: {offset_from_bottom, max_offset_from_bottom, viewport_rows} | null` (all `uint64`;
 > `offset_from_bottom == 0` means the pane is scrolled to the bottom). Collie doesn't consume it yet.
 
+> **Pane records carry `tokens` on Herdr 0.9.4** (live-verified 2026-10-14 on 0.9.4):
+> `session.snapshot` (`panes[]` and `agents[]`) and `pane get` include
+> `tokens: Record<string, string>`; a pane with no tokens omits the key. A process sets and clears
+> them with `herdr pane report-metadata <pane> --source <id> --token NAME=VALUE --clear-token NAME`.
+> Herdr cuts a value at 80 code points without an error. Collie reads only `suggestion_1`,
+> `suggestion_2` and `suggestion_3`, only from `panes[]`, as the agent's suggested next prompts
+> (`paneSuggestions` in `bridge/mux/herdr/client.ts`). The values are untrusted program output: the
+> bridge strips escape sequences and control characters and caps each one at 80 code points again,
+> and the phone renders them as plain text that a tap puts in the composer, never sends.
+
 > **`revision` is a stub on Herdr 0.7.x** (live-verified 2026-07-05 on 0.7.0; reconfirmed unchanged
 > on 0.7.2, live-verified 2026-07-07): `pane.read`, `pane.list`, and `session.snapshot` all return
 > `revision: 0` for every pane, including actively-changing ones. Treat it as advisory /
