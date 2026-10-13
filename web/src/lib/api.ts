@@ -24,6 +24,7 @@ import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { parseAsk, type AnswerResult } from "./ask";
+import type { ColumnRange } from "./column-range";
 import type {
   ActionResponse,
   AddedLauncherResponse,
@@ -1154,6 +1155,7 @@ export function sendKeys(
   scope?: Scope,
   expectedPrompt?: string,
   expectedStyled?: string,
+  expectedColumns?: ColumnRange,
 ): Promise<ActionResponse> {
   stampSend(paneId);
   // Snapshot what the client has seen NOW, before the key can change anything: `settleAfterSend`
@@ -1169,8 +1171,15 @@ export function sendKeys(
       {
         method: "POST",
         // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`. The bridge honours
-        // `expected_styled` only beside `expected_prompt` (ADR 0080 point 7); an older bridge ignores it.
-        body: JSON.stringify({ keys, expected_prompt: expectedPrompt, expected_styled: expectedStyled }),
+        // `expected_styled` (ADR 0080 point 7) and `expected_columns` (lib/column-range.ts) only beside
+        // `expected_prompt`. An older bridge ignores both: without the columns it compares whole rows,
+        // which refuses a column-bound tap rather than passing it.
+        body: JSON.stringify({
+          keys,
+          expected_prompt: expectedPrompt,
+          expected_styled: expectedStyled,
+          expected_columns: expectedColumns,
+        }),
       },
       recoverPromptChanged,
     ),

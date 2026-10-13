@@ -64,6 +64,9 @@ const LIFTS_397 = new Map<string, Expect>([
   ["pi--omo-v5130-single-described-moved.txt", "digit"],
   // A default OmO install: the status rows end in a plain badge row (fixtures README, issue 416).
   ["pi--omo-v5130-plain-question.txt", "digit"],
+  // The same question beside OmO's side panel: read from the rows cut at the panel, and bound to
+  // those columns (panel.ts, index.ts).
+  ["pi--omo-v5130-panel-question.txt", "digit"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -80,13 +83,11 @@ const RAW_MODALS = new Set([
   "pi--v110-tabs-editor-open.txt",
   "pi--v110-tabs-multi.txt",
   "pi--v110-review-incomplete.txt",
-  // Pickers, told by their key-hint row (.adr/0098, "Pickers"), and a question beside OmO's side
-  // panel, which stays raw because its rows are not the screen's (panel.ts).
+  // Pickers, told by their key-hint row (.adr/0098, "Pickers").
   "pi--omo-v5130-picker-model.txt",
   "pi--omo-v5130-picker-tree.txt",
   "pi--omo-v5130-picker-resume.txt",
   "pi--omo-v5130-panel-picker-tree.txt",
-  "pi--omo-v5130-panel-question.txt",
   "pi--v110-stock-picker-resume.txt",
   "pi--v110-stock-picker-tree.txt",
   ...["v0871", "v110"].flatMap((v) => [

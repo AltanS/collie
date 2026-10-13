@@ -13,6 +13,7 @@ import {
   STYLED_FORMAT,
   styledRegionLines,
 } from "../web/src/lib/styled-region.ts";
+import { cropRawColumns, type ColumnRange } from "../web/src/lib/column-range.ts";
 
 describe("normalizePromptRegion", () => {
   test("strips SGR sequences and normalizes CRLF and CR line endings", () => {
@@ -171,11 +172,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const FIXTURE_DIR = join(import.meta.dir, "..", "web", "src", "fixtures", "panes");
-/** One committed expectation: which region of which pane fixture a given detector must bind to. */
+/** One committed expectation: which region of which pane fixture a given detector must bind to, and,
+ *  for a region read from part of each row, the columns the bridge cuts its read to first. */
 interface BindingRegion {
   fixture: string;
   detector: string;
   region: string;
+  bindColumns?: ColumnRange;
 }
 
 // SAFETY: the fixture file is committed alongside this test and is regenerated only by it; the
@@ -212,10 +215,11 @@ describe("client/bridge binding contract", () => {
     ]);
   });
 
-  for (const { fixture, detector, region } of REGIONS) {
+  for (const { fixture, detector, region, bindColumns } of REGIONS) {
     test(`${detector}: the bridge finds ${fixture}'s region in the raw pane read`, () => {
       const raw = readFileSync(join(FIXTURE_DIR, fixture), "utf8");
-      expect(verifyExpectedPrompt(raw, region)).toEqual({ ok: true });
+      expect(verifyPromptBinding(raw, region, undefined, bindColumns)).toEqual({ ok: true });
+      if (bindColumns === undefined) expect(verifyExpectedPrompt(raw, region)).toEqual({ ok: true });
     });
   }
 
@@ -256,7 +260,7 @@ describe("client/bridge binding contract", () => {
           continue;
         }
         compared++;
-        expect(verifyExpectedPrompt(raw, b.region).ok).toBe(false);
+        expect(verifyPromptBinding(raw, b.region, undefined, b.bindColumns).ok).toBe(false);
       }
     }
     expect(compared).toBeGreaterThan(0);
@@ -419,6 +423,80 @@ describe("verifyPromptBinding: the style check", () => {
         reason: "style_unchecked",
       });
     });
+  });
+});
+
+// A region read from a column range of its rows (`expected_columns`, web/src/lib/column-range.ts).
+// Oh My Pi's side panel runs beside a question and ticks; the phone reads the question from the
+// columns left of the panel, and the bridge cuts every row of its read to the same columns.
+describe("bindColumns: the bridge compares only the bound columns", () => {
+  const FIXTURE = "pi--omo-v5130-panel-question.txt";
+  const raw = readFileSync(join(FIXTURE_DIR, FIXTURE), "utf8");
+  const row = REGIONS.find((r) => r.fixture === FIXTURE)!;
+  const columns = row.bindColumns!;
+  const check = (screen: string, range: ColumnRange | undefined) =>
+    verifyPromptBinding(screen, row.region, undefined, range);
+
+  test("the panel question is pinned with its columns, 0 to the panel's 91", () => {
+    expect(columns).toEqual({ start: 0, end: 91 });
+    expect(check(raw, columns)).toEqual({ ok: true });
+  });
+
+  test("a change beside the region (the panel ticks) does not refuse the tap", () => {
+    for (const [from, to] of [
+      ["5 queued", "6 queued"],
+      ["23.9K/200K", "24.1K/200K"],
+      ["work-00392473", "work-00392474"],
+    ] as const) {
+      const ticked = raw.replace(from, to);
+      expect(ticked, from).not.toBe(raw);
+      expect(check(ticked, columns), from).toEqual({ ok: true });
+    }
+  });
+
+  test("a change inside the region refuses it", () => {
+    for (const [from, to] of [
+      ["Pick a color?", "Pick a colour"],
+      ["· 30m", "· 29m"],
+      ["Green", "Blue!"],
+    ] as const) {
+      const moved = raw.replace(from, to);
+      expect(moved, from).not.toBe(raw);
+      expect(check(moved, columns), from).toEqual({ ok: false, reason: "not_found" });
+    }
+  });
+
+  test("without the range the region is compared as whole rows and refused: absent fails closed", () => {
+    expect(check(raw, undefined)).toEqual({ ok: false, reason: "not_found" });
+    expect(verifyExpectedPrompt(raw, row.region)).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  test("another range is another binding: one column short or long is refused", () => {
+    expect(check(raw, { start: 0, end: 90 }).ok).toBe(false);
+    expect(check(raw, { start: 0, end: 92 }).ok).toBe(false);
+  });
+});
+
+describe("cropRawColumns", () => {
+  const E = "\u001b";
+
+  test("cuts each row at display columns and keeps every escape, so the style check sees the kept cells", () => {
+    const screen = `${E}[31mab${E}[0m${E}[32mcdef${E}[0m\nxyz`;
+    expect(cropRawColumns(screen, { start: 0, end: 4 })).toBe(`${E}[31mab${E}[0m${E}[32mcd${E}[0m\nxyz`);
+    expect(normalizePromptRegion(cropRawColumns(screen, { start: 1, end: 3 }))).toEqual(["bc", "yz"]);
+    const styled = styledRegionLines(cropRawColumns(screen, { start: 0, end: 4 }));
+    expect(styled).toEqual(styledRegionLines(`${E}[31mab${E}[0m${E}[32mcd${E}[0m\nxyz`));
+  });
+
+  test("a wide glyph counts two columns and is dropped whole when it crosses an edge", () => {
+    expect(cropRawColumns("中文ab", { start: 0, end: 4 })).toBe("中文");
+    expect(cropRawColumns("中文ab", { start: 0, end: 3 })).toBe("中");
+    expect(cropRawColumns("中文ab", { start: 1, end: 6 })).toBe("文ab");
+  });
+
+  test("keeps rows as rows, CRLF included, and leaves a short row whole", () => {
+    expect(cropRawColumns("one\r\ntwo", { start: 0, end: 2 })).toBe("on\r\ntw");
+    expect(cropRawColumns("short", { start: 0, end: 40 })).toBe("short");
   });
 });
 

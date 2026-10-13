@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
+import type { ColumnRange } from "../column-range";
+import { buildBlocks } from "./index";
 import { detectMultiSelect } from "./claude/multi-select";
 import { detectPreviewSelect } from "./claude/preview-select";
 import { detectPromptSelect } from "./claude/prompt-select";
@@ -36,11 +38,16 @@ const PANES_DIR = join(FIXTURES_DIR, "panes");
 const fixtureLines = (name: string): StyledLine[] =>
   splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
 
-/** One committed row of the client/bridge binding golden. */
+/** One committed row of the client/bridge binding golden. A row with `agent` is derived through that
+ *  harness's adapter (the public `buildBlocks` dispatch) instead of the Claude detectors below. A row
+ *  with `bindColumns` is a region read from those columns of each row (`PromptModel.bindColumns`,
+ *  lib/column-range.ts): the bridge cuts its fresh read to them before it looks for the region. */
 interface RegionRow {
   fixture: string;
   detector: string;
   region: string;
+  agent?: string;
+  bindColumns?: ColumnRange;
 }
 
 // SAFETY: `prompt-binding-regions.json` is this repo's own committed golden, and every field the
@@ -51,7 +58,7 @@ const REGIONS = JSON.parse(
 
 /** The region each detector hands to the bridge, or null when it does not recognise the pane. The
  *  order mirrors the precedence the action layer uses, so a pane is attributed to one detector. */
-function detectRegion(input: StyledLine[]): { detector: string; region: string } | null {
+function detectRegion(input: StyledLine[]): FoundRegion | null {
   // The adapter takes the closing rule a named session draws under a dialog off first (2.1.296,
   // claude/closing-rule.ts), so the region the phone binds to is the one an unnamed session shows.
   const lines = dropClosingRule(input);
@@ -77,6 +84,23 @@ function detectRegion(input: StyledLine[]): { detector: string; region: string }
   return null;
 }
 
+/** What a fixture binds to: the detector, its region, and the column range when it has one. */
+interface FoundRegion {
+  detector: string;
+  region: string;
+  bindColumns?: ColumnRange;
+}
+
+/** The region and column range a harness's adapter binds a prompt-select to, through the public
+ *  dispatch the renderer and the race guard use. Only prompt-select rows carry an agent today. */
+function adapterRegion(lines: StyledLine[], agent: string): FoundRegion | null {
+  const card = buildBlocks(lines, { agent }).find((block) => block.kind === "prompt-select");
+  if (card?.kind !== "prompt-select") return null;
+  const found: FoundRegion = { detector: "prompt-select", region: card.prompt.signature };
+  if (card.prompt.bindColumns !== undefined) found.bindColumns = card.prompt.bindColumns;
+  return found;
+}
+
 describe("client/bridge binding contract", () => {
   it("covers every dialog detector", () => {
     expect([...new Set(REGIONS.map((r) => r.detector))].toSorted()).toEqual([
@@ -88,14 +112,23 @@ describe("client/bridge binding contract", () => {
     ]);
   });
 
-  for (const { fixture, detector, region } of REGIONS) {
+  for (const { fixture, detector, region, agent, bindColumns } of REGIONS) {
     it(`${detector}: ${fixture} still derives byte-identically`, () => {
-      const found = detectRegion(fixtureLines(fixture));
+      const found = agent === undefined ? detectRegion(fixtureLines(fixture)) : adapterRegion(fixtureLines(fixture), agent);
       expect(found).not.toBeNull();
       expect(found!.detector).toBe(detector);
       expect(found!.region).toBe(region);
+      // The column range is half of the binding: the bridge cuts its read to it before it compares,
+      // so a range that drifted would refuse every tap as surely as a drifted region.
+      expect(found!.bindColumns).toEqual(bindColumns);
     });
   }
+
+  it("covers a column-bound region: the panel question's columns are pinned with its rows", () => {
+    expect(REGIONS.filter((r) => r.bindColumns !== undefined).map((r) => [r.fixture, r.bindColumns])).toEqual([
+      ["pi--omo-v5130-panel-question.txt", { start: 0, end: 91 }],
+    ]);
+  });
 
   // Completeness gate: a newly added dialog fixture must not slip past the contract unnoticed. A new
   // capture that some detector recognises but that carries no committed region would otherwise ship

@@ -27,6 +27,7 @@
 import { sendKeys } from "./api";
 import { describeApiError, describeThrownError } from "./api-error-message";
 import { type StyledLine } from "./blocks";
+import type { ColumnRange } from "./column-range";
 import { withUnreadDialog } from "./harness";
 import { adapterFor } from "./harness/registry";
 import {
@@ -118,6 +119,7 @@ export async function guardDialog<K extends DialogKind>(
     contract[compare],
     contract.region,
     contract.styled,
+    contract.columns,
   );
 }
 
@@ -133,27 +135,31 @@ export async function sendGuardedKeys<K extends DialogKind>(
 ): Promise<ActionResult> {
   const guarded = await guardDialog(target, compare);
   if (!guarded.ok) return guarded.result;
-  return sendBoundKeys(target, keys, guarded.region, guarded.styled);
+  return sendBoundKeys(target, keys, guarded.region, guarded.styled, guarded.columns);
 }
 
 /** Send `keys`, mapping transport + prompt-binding failures onto the ActionResult union. `region`
  *  undefined = an unbound write (a later step of a multi-step choreography, which has deliberately
  *  changed the screen since the guard ran). `styled`, the canonical styled lines of the same region,
- *  rides along as `expected_styled` when the model being bound carries them (ADR 0080 point 7); it
- *  is meaningless without a `region`. */
+ *  rides along as `expected_styled` when the model being bound carries them (ADR 0080 point 7), and
+ *  `columns`, the columns of each row the region was read from, as `expected_columns` when the model
+ *  carries a range (lib/column-range.ts); both are meaningless without a `region`. */
 export async function sendBoundKeys(
   target: { paneId: string; scope?: Scope },
   keys: string[],
   region?: string,
   styled?: string,
+  columns?: ColumnRange,
 ): Promise<ActionResult> {
   try {
     const res =
       region === undefined
         ? await sendKeys(target.paneId, keys, target.scope)
-        : styled === undefined
-          ? await sendKeys(target.paneId, keys, target.scope, region)
-          : await sendKeys(target.paneId, keys, target.scope, region, styled);
+        : columns !== undefined
+          ? await sendKeys(target.paneId, keys, target.scope, region, styled, columns)
+          : styled === undefined
+            ? await sendKeys(target.paneId, keys, target.scope, region)
+            : await sendKeys(target.paneId, keys, target.scope, region, styled);
     // The code is MATCHED here, not displayed: a rejected binding is its own outcome. Only the
     // branch below turns a refusal into words, and that is the one that goes through the catalogue.
     if (!res.ok && res.code === "prompt_changed") {

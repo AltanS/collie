@@ -600,6 +600,7 @@ describe("pane write prompt binding", () => {
     submit?: boolean;
     expected_prompt?: string | number | null;
     expected_styled?: string | number | null;
+    expected_columns?: { start: number; end: number } | number[] | string | null;
   }
 
   function request(body: PaneActionBody): Request {
@@ -1140,6 +1141,82 @@ describe("pane write prompt binding", () => {
       );
       expect(entries[0]?.detail).toMatchObject({ promptBinding: { styled: "checked" } });
       expect(entries[1]?.detail).not.toHaveProperty("promptBinding.styled");
+    });
+  });
+
+  // `expected_columns` (web/src/lib/column-range.ts): the columns of each row the phone read its
+  // region from, for a dialog beside something that moves on its own (Oh My Pi's side panel). The
+  // fresh read is cut to those columns before it is compared. Same single read.
+  describe("expected_columns", () => {
+    const RULE = "─".repeat(12);
+    const screen = (panel: string, question = "Pick a color?") =>
+      [`${RULE}SESSION`, ` ${question}`.padEnd(12) + panel, " → 1. Red".padEnd(12) + "TOOLS 1", RULE, "status"].join("\n");
+    const REGION = [RULE, " Pick a color?".slice(0, 12), " → 1. Red", RULE].join("\n");
+    const COLUMNS = { start: 0, end: 12 };
+
+    test("a change beside the range passes; the keys go after ONE read, and the audit records the range", async () => {
+      const client = new FakePaneClient();
+      client.text = screen("elapsed 1m22");
+      const { audit, entries } = auditEntries();
+      const body = { keys: ["1"], expected_prompt: REGION, expected_columns: COLUMNS };
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, "phone", "default");
+      expect(res.status).toBe(200);
+      expect(client.reads).toHaveLength(1);
+      expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { checked: true, passed: true, columns: COLUMNS } });
+    });
+
+    test("a change inside the range is refused: 409 and no keys", async () => {
+      const client = new FakePaneClient();
+      client.text = screen("elapsed 1m22", "Pick a size?");
+      const { audit, entries } = auditEntries();
+      const body = { keys: ["1"], expected_prompt: REGION, expected_columns: COLUMNS };
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "prompt_changed", reason: "not_found" });
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { passed: false, columns: COLUMNS } });
+    });
+
+    test("without the range the same region is compared as whole rows, and refused (an older phone fails closed)", async () => {
+      const client = new FakePaneClient();
+      client.text = screen("elapsed 1m22");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(409);
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).not.toHaveProperty("promptBinding.columns");
+    });
+
+    test("expected_columns without expected_prompt, or not a range, is a 400 before any read or write", async () => {
+      const bad: PaneActionBody["expected_columns"][] = [
+        { start: 5, end: 5 },
+        { start: -1, end: 4 },
+        { start: 0, end: 4097 },
+        { start: 0.5, end: 4 },
+        [0, 12],
+        "0-12",
+        null,
+      ];
+      for (const route of ["keys", "reply"] as const) {
+        for (const expected_columns of [...bad, COLUMNS]) {
+          const client = new FakePaneClient();
+          const { audit } = auditEntries();
+          const alone = expected_columns === COLUMNS;
+          const body = alone
+            ? { keys: ["1"], text: "hello", expected_columns }
+            : { keys: ["1"], text: "hello", expected_prompt: REGION, expected_columns };
+          const res =
+            route === "keys"
+              ? await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default")
+              : await replyPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+          expect(res.status).toBe(400);
+          expect(await res.text()).toBe("bad expected_columns");
+          expect(client.reads).toEqual([]);
+          expect(client.keys).toEqual([]);
+          expect(client.texts).toEqual([]);
+        }
+      }
     });
   });
 });

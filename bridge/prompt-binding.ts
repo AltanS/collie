@@ -2,6 +2,8 @@
 // It is pure and sits under web/src/lib beside the one SGR parser it is built on; the bridge imports
 // it by relative path, as scripts/harness-canary/ does for web/src/lib/json.
 import { decodeStyledRegion, STYLED_FORMAT, styledRegionLines } from "../web/src/lib/styled-region.ts";
+// The column range of a bound region (`expected_columns`) is cut by one function shared the same way.
+import { cropRawColumns, type ColumnRange } from "../web/src/lib/column-range.ts";
 
 /**
  * Normalize a rendered prompt region for comparison across terminal redraws.
@@ -106,6 +108,14 @@ export function verifyExpectedPrompt(
  * The whole binding verdict for one read: the text check, then, when the phone sent a styled value,
  * the style check AT THE SAME PLACE (ADR 0080 point 7).
  *
+ * When the phone named a column range (`expected_columns`, `PromptModel.bindColumns`), every row of
+ * the fresh read is first cut to those columns (`cropRawColumns`), and both checks then run on the
+ * cut read exactly as below. So a change outside the range, such as Oh My Pi's side panel ticking
+ * beside a question, does not refuse the tap, and a change inside it does. The cut is applied to the
+ * whole read, not only to the matched rows: the bridge does not know which rows match until it has
+ * compared them. Rows the cut leaves empty drop out of both projections alike, so the tail bound
+ * counts the rows that carry text inside the range. Without a range the read is compared whole.
+ *
  * The text check is `verifyExpectedPrompt`'s: the last contiguous match of the normalized expected
  * lines, ending inside the last `tailLines`. The style check does not search. The two projections
  * drop the same lines (a line with no visible text is dropped by both), so the normalized text lines
@@ -124,11 +134,13 @@ export function verifyExpectedPrompt(
  *     have every tap of an older bridge refused.
  */
 export function verifyPromptBinding(
-  freshText: string,
+  readText: string,
   expected: string,
   expectedStyled?: string,
+  columns?: ColumnRange,
   tailLines = DEFAULT_PROMPT_TAIL_LINES,
 ): PromptBindingVerdict {
+  const freshText = columns === undefined ? readText : cropRawColumns(readText, columns);
   const freshLines = normalizePromptRegion(freshText);
   const match = matchText(freshLines, expected, tailLines);
   if (!match.ok) return { ok: false, reason: match.reason };
@@ -163,7 +175,7 @@ export function verifyExpectedStyled(
   expectedStyled: string,
   tailLines = DEFAULT_PROMPT_TAIL_LINES,
 ): StyledBindingResult {
-  const verdict = verifyPromptBinding(freshText, expected, expectedStyled, tailLines);
+  const verdict = verifyPromptBinding(freshText, expected, expectedStyled, undefined, tailLines);
   if (!verdict.ok) return verdict;
   if (verdict.styled !== "checked") return { ok: false, reason: "style_unchecked" };
   return { ok: true };

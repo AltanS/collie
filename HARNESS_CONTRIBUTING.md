@@ -210,7 +210,13 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    both models must carry `styledSignature` and the two must differ, and the bridge's own verifier must
    find each value in its raw capture and refuse the other capture of the pair. A grammar that draws its
    pointer as a glyph sets nothing. An older bridge ignores the field and an older phone sends none,
-   so a mixed pair still works. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
+   so a mixed pair still works. **A grammar that reads its dialog from part of each row, because
+   something beside it on the same rows moves on its own, sets `bindColumns`** (the columns it read,
+   `web/src/lib/column-range.ts`), and `signature` holds exactly those columns of each row. The phone
+   sends it as `expected_columns`, and the bridge cuts its read to the same columns before it
+   compares. Oh My Pi's side panel is the one case today (`pi/panel.ts`, `pi/index.ts`), and the
+   conformance suite checks that the bridge's own verifier finds such a region in its raw capture.
+   An older bridge ignores the field and compares whole rows, which refuses the tap. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
    any text that follows the pointer, such as a detail row under the list, a description of the
    highlighted row or a "(n/m)" position counter. Text that follows the pointer makes the verify step
    see another dialog after every walk, so a walked tap answers `changed` and never commits (the omp

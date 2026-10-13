@@ -6,22 +6,22 @@
 // editor of every layout must be read (composer.ts), or a pi send is refused.
 //
 // Every reader below reads `piView(lines)`: the screen, or the screen cropped at OmO's side panel
-// (panel.ts). Rows keep their indices, and nothing read from a cropped view is bound on the screen.
+// (panel.ts). Rows keep their indices. A question read from a cropped view binds to the columns it
+// was read from (`bindColumns`); the editor beside the panel binds nothing.
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
-import { detectPiQuestion, piModalOnScreen } from "./ask";
+import { detectPiQuestion, piModalOnScreen, type PiQuestion } from "./ask";
 import { composerDraft, composerPrompt, composerStatusLines, locateComposer } from "./composer";
-import { piView } from "./panel";
+import { piView, type PiView } from "./panel";
 
 export function piBuildBlocks(lines: StyledLine[]): Block[] {
   const view = piView(lines);
-  // A question beside the side panel stays raw: its rows are not the screen's, so the bridge would
-  // refuse every tap bound to them. The Escape card still offers the way out.
-  const question = view.cropped ? null : detectPiQuestion(lines);
+  const question = boundQuestion(view);
   if (question !== null) {
     const before = trimTrailingBlank(lines.slice(0, question.startLine));
     const blocks: Block[] = before.length > 0 ? [{ kind: "raw", lines: before }] : [];
-    const region = lines.slice(question.startLine);
+    // The card's own rows are the view's: beside the side panel they end at the panel's column.
+    const region = view.lines.slice(question.startLine);
     blocks.push(
       question.kind === "prompt-select"
         ? { kind: "prompt-select", prompt: question.model, lines: region }
@@ -34,6 +34,20 @@ export function piBuildBlocks(lines: StyledLine[]): Block[] {
   // pi--v110-core-selector.txt), and the mirror must keep it.
   const composer = ready(view.lines) ? locateComposer(view.lines) : null;
   return [{ kind: "raw", lines: composer === null ? lines : trimTrailingBlank(lines.slice(0, composer.top)) }];
+}
+
+/**
+ * The question on the view, bound to the columns it was read from. Beside OmO's side panel the rows
+ * are the screen's first W columns, so a question there carries `bindColumns` 0 to W and the bridge
+ * compares only those columns; the panel ticks beside it and must not refuse the tap. Only a
+ * question card takes the range: a Submit page beside the panel has no capture and stays raw with
+ * the Escape card.
+ */
+function boundQuestion(view: PiView): PiQuestion | null {
+  const question = detectPiQuestion(view.lines);
+  if (question === null || view.column === null) return question;
+  if (question.kind !== "prompt-select") return null;
+  return { ...question, model: { ...question.model, bindColumns: { start: 0, end: view.column } } };
 }
 
 /** The editor is on screen and no pi modal is: the only screen a reply may be typed into. A question's

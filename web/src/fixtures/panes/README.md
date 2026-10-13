@@ -76,7 +76,7 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--omo-v5130-panel-running.txt` | The running turn's labelled rule running into the panel | composer, cropped, unbound |
 | `pi--omo-v5130-panel-slash-model.txt` | `/model` typed beside the panel | composer, cropped, unbound |
 | `pi--omo-v5130-panel-phantom.txt` | Clean rules, the panel's path beside an empty `❯` | composer, cropped, no draft |
-| `pi--omo-v5130-panel-question.txt` | OmO's ask beside the panel | Escape card, not lifted |
+| `pi--omo-v5130-panel-question.txt` | OmO's ask beside the panel | lifts, a tap sends the digit, bound to columns 0 to 91 |
 | `pi--omo-v5130-panel-picker-tree.txt` | 40 rows, `/tree` with the panel beside its header | Escape card |
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |

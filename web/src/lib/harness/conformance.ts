@@ -45,6 +45,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
+import { displayWidth } from "../text-width";
 import { lineText, splitLines, type Block, type MultiSelectModel, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
 import {
@@ -59,7 +60,8 @@ import { WALK_GAPS, WALK_PAIRS, walkGroupKey } from "./walk-pairs";
 // The bridge's own verifier, imported so the phone's `styledSignature` is checked against what the
 // bridge really computes from the same bytes (a web test may import the bridge's pure modules; the
 // bridge imports web/src/lib/styled-region.ts the other way, and neither pulls a cycle).
-import { verifyExpectedStyled } from "../../../../bridge/prompt-binding.ts";
+import { verifyExpectedStyled, verifyPromptBinding } from "../../../../bridge/prompt-binding.ts";
+import { cropRawColumns, type ColumnRange } from "../column-range";
 import {
   DIALOG_CONTRACT,
   dialogComparators,
@@ -87,8 +89,12 @@ import {
 // sits one level ABOVE the per-detector tests, so it's two ".."s to src, not three.
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
+function loadRaw(name: string): string {
+  return readFileSync(join(PANES_DIR, name), "utf8");
+}
+
 function loadLines(name: string): StyledLine[] {
-  return splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  return splitLines(parseAnsi(loadRaw(name)));
 }
 
 // A single unstyled visual line — the minimum an AnsiSegment needs (no colour flags). Used to
@@ -179,6 +185,28 @@ function modelsIn<K extends DialogKind>(blocks: Block[], kind: K): DialogModels[
 /** Append a marker to line `i`, keeping every existing segment (and its styling — the wizard's
  *  current chip is marked ONLY by a background colour, so a re-synthesised plain line would change
  *  more than the text). */
+/** Change one letter of line `i` that lies inside `columns`, keeping its width and every style. A model
+ *  read from a column range (`bindColumns`) ignores what lies outside it, so the marker
+ *  {@link perturbLine} appends at the row's end would land beside the dialog, not in it. Null when
+ *  the row has no ASCII letter in range. */
+function perturbLineInColumns(lines: StyledLine[], i: number, columns: ColumnRange): StyledLine[] | null {
+  let column = 0;
+  const segments = lines[i]!.segments;
+  for (let s = 0; s < segments.length; s++) {
+    const chars = Array.from(segments[s]!.text);
+    for (let c = 0; c < chars.length; c++) {
+      if (column >= columns.start && column < columns.end && /[a-z]/.test(chars[c]!)) {
+        chars[c] = chars[c] === "q" ? "x" : "q";
+        const copy = [...lines];
+        copy[i] = { ...lines[i]!, segments: segments.with(s, { ...segments[s]!, text: chars.join("") }) };
+        return copy;
+      }
+      column += displayWidth(chars[c]!);
+    }
+  }
+  return null;
+}
+
 function perturbLine(lines: StyledLine[], i: number): StyledLine[] {
   const copy = [...lines];
   copy[i] = { segments: [...lines[i]!.segments, { text: " zqx", style: {}, muted: false }] };
@@ -218,7 +246,9 @@ function perturbRegion<K extends DialogKind>(
   const start = lines.length - region.lines.length; // the region is the buffer's tail slice
   const footer = lastNonBlank(lines);
   const signature = DIALOG_CONTRACT[kind].signature;
-  const before = signature(modelsIn(blocks, kind).at(-1)!);
+  const tapped = modelsIn(blocks, kind).at(-1)!;
+  const before = signature(tapped);
+  const columns = dialogComparators(kind).columns?.(tapped);
 
   const candidates = [
     ...range(start, lines.length), // the region itself, top-down
@@ -227,7 +257,9 @@ function perturbRegion<K extends DialogKind>(
   for (const i of candidates) {
     if (i === footer) continue;
     if (lineIsBlank(lines[i]!)) continue;
-    const after = modelsIn(adapter.buildBlocks(perturbLine(lines, i)), kind);
+    const perturbed = columns === undefined ? perturbLine(lines, i) : perturbLineInColumns(lines, i, columns);
+    if (perturbed === null) continue;
+    const after = modelsIn(adapter.buildBlocks(perturbed), kind);
     if (after.length !== count) continue; // this row is load-bearing for detection — try another
     if (signature(after.at(-1)!) !== before) return after.at(-1)!;
   }
@@ -683,8 +715,15 @@ export function describeAdapterConformance(
             // Submit left 6 rows below the match) until a live toggle caught it. Same normalisation
             // as the composerPrompt leg above: trailing whitespace off, blanks dropped.
             const lines = loadLines(name);
-            const fresh = normalizeRegion(lines.map(lineText).join("\n"));
+            const whole = normalizeRegion(lines.map(lineText).join("\n"));
             for (const model of modelsOf(adapter, name, kind)) {
+              // A model read from a column range is matched, as the bridge matches it, against the
+              // read cut to that range (lib/column-range.ts).
+              const columns = contract.columns?.(model);
+              const fresh =
+                columns === undefined
+                  ? whole
+                  : normalizeRegion(splitLines(parseAnsi(cropRawColumns(loadRaw(name), columns))).map(lineText).join("\n"));
               const expected = normalizeRegion(contract.region(model));
               const matchEnd = lastMatchEnd(fresh, expected);
               expect(matchEnd, `${name}: the ${kind} region is not on its own screen`).toBeGreaterThan(-1);
@@ -693,6 +732,19 @@ export function describeAdapterConformance(
                 `${name}: ${fresh.length - 1 - matchEnd} non-blank rows sit below the ${kind} region — ` +
                   `the bridge can only bind within the last ${BRIDGE_PROMPT_TAIL_LINES}`,
               ).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
+            }
+          });
+
+          // A model that names a column range (`bindColumns`) binds to what the bridge's own verifier
+          // finds in the raw capture after cutting it to that range: the phone's crop and the
+          // bridge's must agree cell for cell.
+          it(`${name}: a ${kind} column range binds to its own raw capture through the bridge's verifier`, () => {
+            for (const model of modelsOf(adapter, name, kind)) {
+              const columns = contract.columns?.(model);
+              if (columns === undefined) continue;
+              expect(verifyPromptBinding(loadRaw(name), contract.region(model), contract.styled?.(model), columns)).toEqual(
+                contract.styled?.(model) === undefined ? { ok: true } : { ok: true, styled: "checked" },
+              );
             }
           });
 

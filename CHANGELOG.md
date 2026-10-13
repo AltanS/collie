@@ -55,6 +55,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Muse 1.4.7 dialogs lift again.** The pointer moved to a new glyph and multi-question pages gained a progress row; both read as before. Thanks @jpcarranza94 (#424).
 - **A durable pane keeps its question card across one dropped read.** The peer already held the last layout for one interval when a read timed out; now the open asks and the pane state stay with it, so the card does not blink out and back.
 - **A commit that touches only example files no longer fails the lint guard.** The pre-commit hook handed `examples/` files to oxlint, which ignores them, so oxlint found nothing to lint and the hook stopped the commit with no finding. The hook now leaves `examples/` out of the list it lints.
+- **A question beside OmO's side panel now gets its buttons.** Chat lifts OmO's question card when the fullscreen side panel runs beside it, and a tap answers it. Collie checks only the columns the question sits in before it sends the key, so the panel's ticking clock does not refuse the tap, and a change in the question still does. The phone sends those columns to the bridge as a new optional `expected_columns` field beside `expected_prompt`; an older bridge ignores it and refuses the tap. Thanks @welldoingk (#412).
 
 ## [1.20.2] - 2026-10-12
 

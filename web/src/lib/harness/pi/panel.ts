@@ -27,10 +27,12 @@
 // frame's bottom rule to begin with. Both signs come from OmO 5.1.30 on Linux (Herdr 0.9.3); whether
 // Windows ConPTY pads the panel's rows the same way is not verified.
 //
-// A cropped frame is not one the bridge can find: the bridge matches whole screen rows, and these
-// carry the panel. So the adapter binds nothing on it (index.ts): a reply goes out as an unbound
-// write and still waits for the read-back before Enter, and a question stays raw with the Escape
-// card, because a tap would always be refused.
+// A cropped frame is not one the bridge can find as whole screen rows: these carry the panel, and
+// the panel ticks (`elapsed 1m21`). So a question read from a cropped frame binds to the frame's
+// columns, 0 to W (`PromptModel.bindColumns`, lib/column-range.ts): the bridge cuts its fresh read to
+// the same columns before it compares, so the panel's clock does not refuse the tap and a change in
+// the dialog does (index.ts). A reply to the editor beside the panel still goes out as an unbound
+// write and waits for the read-back before Enter: the composer's bound prompt is whole rows.
 //
 // Pure, no harness imports beyond the pi readers.
 import { lineText, type StyledLine } from "../../blocks";
@@ -51,8 +53,10 @@ const RULE_RUN = /^(?:─{2,} \S.*? ─{3,}|─+)/;
 export interface PiView {
   /** The rows the readers see: cropped at the panel's column, or the screen as it is. */
   lines: StyledLine[];
-  /** True when the rows were cropped, so nothing read from them can be bound on the screen. */
+  /** True when the rows were cropped, so nothing read from them binds as whole screen rows. */
   cropped: boolean;
+  /** The panel's column, W, when `cropped`: every row was cut to its first W display columns. */
+  column: number | null;
 }
 
 /** The column OmO's side panel starts at, or null when no sign says it is there. */
@@ -140,6 +144,6 @@ export function cropLine(line: StyledLine, columns: number): StyledLine {
  *  the screen's either way. */
 export function piView(lines: StyledLine[]): PiView {
   const column = panelColumn(lines);
-  if (column === null) return { lines, cropped: false };
-  return { lines: lines.map((line) => cropLine(line, column)), cropped: true };
+  if (column === null) return { lines, cropped: false, column: null };
+  return { lines: lines.map((line) => cropLine(line, column)), cropped: true, column };
 }

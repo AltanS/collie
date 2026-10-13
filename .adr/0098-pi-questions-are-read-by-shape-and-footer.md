@@ -89,3 +89,21 @@ these signs expect is not verified. Nothing read from a cropped screen is bound,
 bridge matches whole screen rows: a reply goes out as an unbound write and still waits for the
 read-back before Enter, and a question there stays raw with the Escape card. Lifting it would need
 the bridge to bind to cropped rows, which is a separate decision.
+
+## Amendment, 2026-10-12: a question beside the side panel binds to its columns
+
+Status: **Accepted** (2026-10-12). Amends the side panel paragraph above for questions only.
+Trail: `web/src/lib/column-range.ts`, `harness/prompt-model.ts`
+(`bindColumns`), `harness/pi/index.ts`, `bridge/prompt-binding.ts`, `bridge/server.ts`
+(`expected_columns`). Tested on captures and live against OmO 5.1.30 in the tap rig.
+
+The separate decision is taken, as a field of the shared prompt model and not as a pi case in the
+bridge. `PromptModel.bindColumns` names the display columns of each row a grammar read its dialog
+from. The phone sends it as the optional body field `expected_columns` beside `expected_prompt`, and
+the bridge cuts every row of its fresh read to those columns, escapes kept, before both the text and
+the style check. The bridge still holds no grammar: it cuts at two numbers the phone sent. A change
+outside the range, such as the panel's clock, does not refuse the tap; a change inside it does.
+Without the field nothing changes, and an older bridge that ignores it compares whole rows and
+refuses the tap. The pi reader sets it only on a question card read from a cropped view, 0 to the
+panel's column. A Submit page beside the panel stays raw, and the editor's bound prompt beside the
+panel is still whole rows, so a reply there stays an unbound write.

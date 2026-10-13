@@ -24,6 +24,7 @@
 // never a harness — so a model module can never end up depending on an adapter.
 
 import type { Block } from "../blocks";
+import type { ColumnRange } from "../column-range";
 import { menusEqual, menusSameIdentity, type MenuModel } from "./menu-model";
 import { multiSelectEquals, multiSelectIdentity, type MultiSelectModel } from "./multi-select-model";
 import { previewCoreEqual, previewsEqual, type PreviewSelectModel } from "./preview-model";
@@ -120,6 +121,12 @@ export interface DialogComparators<M> {
    * that never carry one, and `undefined` for a model that does not.
    */
   styled?(m: M): string | undefined;
+  /**
+   * The display columns of each row of the region (`expected_columns`, lib/column-range.ts), for a
+   * model read from part of its rows because something beside it on the same rows moves on its own.
+   * Absent on the kinds that never carry one, and `undefined` for a model that does not: whole rows.
+   */
+  columns?(m: M): ColumnRange | undefined;
 }
 
 /** The shape of the contract table: one row of comparators per interactive block kind. */
@@ -136,6 +143,7 @@ export const DIALOG_CONTRACT: DialogContract = {
     signature: (m) => m.signature,
     region: (m) => m.signature,
     styled: (m) => m.styledSignature,
+    columns: (m) => m.bindColumns,
   },
   wizard: {
     // Every wizard key commits too — a digit selects AND advances; Left/Right change the step.
