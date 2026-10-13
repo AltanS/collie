@@ -6,9 +6,11 @@ import {
   configFilePaths,
   hostFilePerms,
   readConfigFiles,
+  tightenPrivateFile,
   type ConfigFileLayer,
   type Environment,
   type FilePerms,
+  type PrivateFileVerdict,
 } from "./config-source.ts";
 import { HOST, type Host } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
@@ -616,6 +618,15 @@ const diskFilePerms: FilePerms = hostFilePerms(HOST, {
     }
   },
 }, (path, repair) => secretFileVerdict(path, { repair }));
+
+/**
+ * Hold another private file the bridge reads at owner-only, by the rule `.env` and `config.toml` follow:
+ * tighten in place and say so, never refuse. `sources.json` (M55) is the one caller, because a `url`
+ * entry there carries a bearer token.
+ */
+export function holdPrivateFile(path: string, repairAcl = false): PrivateFileVerdict {
+  return tightenPrivateFile(path, diskFilePerms, repairAcl);
+}
 
 export function loadConfig(env: Environment = process.env): Config {
   const stateDir = resolveStateDir(env);

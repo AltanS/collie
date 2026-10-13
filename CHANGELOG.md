@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program's conversations, tabs and workspaces can be closed from the phone.** The program declares the `close` cap, Collie draws its usual close controls, and the program decides what a close means on its side.
 - **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 - **History lists a durable program's conversations, open and closed.** The program keeps the record and serves it, a closed conversation opens read-only on the phone, and a Reopen button brings it back when the program allows it. The peer's own log is a cache, and it resumes where it stopped after a restart.
+- **A `sources.json` beside `.env` lists the durable programs one Collie runs.** Each entry has a name, the kind `durable`, and a socket, or a URL with its token. A wrong entry stops the bridge with one line that names the entry and the field, and the file is held at mode 600 like `.env`.
 
 ### Changed
 
