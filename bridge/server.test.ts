@@ -2659,7 +2659,9 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
 
   test("the real Herdr adapter publishes every capability — nothing changes for its operators", () => {
     const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
-    for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(true);
+    // The three controls of a durable program (M51 spec 08) are the program's to declare, never Herdr's.
+    const program = new Set(["steerTurn", "abortTurn", "starters"]);
+    for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(!program.has(cap));
     expect(wire.notes).toEqual({});
   });
 

@@ -1,8 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+
+import { __resetOperatorCommands } from "@/lib/operator-config";
+import { server } from "@/test/setup";
 
 import { SpaceStrip } from "./space-strip";
-import type { AgentView, WorkspaceView } from "@/lib/types";
+import type { AgentView, MuxCapability, WorkspaceView } from "@/lib/types";
 
 const ws: WorkspaceView = {
   workspaceId: "w1",
@@ -140,5 +144,36 @@ describe("SpaceStrip — chip status is host-qualified", () => {
       />,
     );
     expect(screen.getByText(/needs you/i)).toBeInTheDocument();
+  });
+});
+
+describe("SpaceStrip on a program that offers starters", () => {
+  function serve(capabilities: Partial<Record<MuxCapability, boolean>>): void {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "durable", capabilities, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+  }
+
+  beforeEach(() => __resetOperatorCommands());
+
+  it("draws the '+' for declared starters though no space can be made by hand", async () => {
+    serve({ createSpace: false, starters: true });
+    const onNewSpace = vi.fn();
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected={null} onSelect={vi.fn()} onNewSpace={onNewSpace} />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "New space" }));
+    expect(onNewSpace).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides it when the program declared neither", async () => {
+    serve({ createSpace: false, starters: false });
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected={null} onSelect={vi.fn()} onNewSpace={vi.fn()} />);
+    await screen.findByRole("button", { name: "All" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "New space" })).toBeNull());
   });
 });

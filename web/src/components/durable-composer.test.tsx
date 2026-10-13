@@ -1,20 +1,43 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/setup";
 import { loadDraft } from "@/lib/drafts";
 import { asJsonObject, type JsonObject } from "@/lib/json";
+import { __resetOperatorCommands } from "@/lib/operator-config";
 import { useStatus } from "@/lib/status";
-import type { Ask } from "@/lib/types";
+import type { Ask, MuxCapability } from "@/lib/types";
 import { DurableComposer, type DurableComposerProps } from "./durable-composer";
 
 // The composer of a pane with no screen against stubbed send and abort routes (ADR 0101): what each
 // request names, and what each answer does to the draft.
 
 type Sent = JsonObject;
+
+/** Serve the program's declared caps on `/api/config`, the way the bridge publishes them. */
+function declares(caps: Partial<Record<MuxCapability, boolean>>): void {
+  server.use(
+    http.get("/api/config", () =>
+      HttpResponse.json({
+        push: false,
+        vapidPublicKey: "",
+        mux: { name: "durable", capabilities: caps, unsupportedKeys: [], notes: {} },
+      }),
+    ),
+  );
+}
+
+beforeEach(() => {
+  __resetOperatorCommands();
+  declares({ steerTurn: true, abortTurn: true });
+});
+
+const steerButton = () => screen.findByRole("button", { name: /Steer the running turn/ });
+const stopButton = () => screen.findByRole("button", { name: "Stop the running turn" });
 
 function stub(route: "send" | "abort", reply: (n: number) => Response): Sent[] {
   const seen: Sent[] = [];
@@ -196,40 +219,149 @@ describe("send", () => {
 });
 
 describe("steer", () => {
-  it.each(["idle", "blocked", "done"] as const)("is hidden while the pane is %s", (status) => {
+  it.each(["idle", "blocked", "done"] as const)("stays in the belt but is dimmed and off while the pane is %s", async (status) => {
     draw({ status });
-    expect(screen.queryByRole("button", { name: /Steer the running turn/ })).toBeNull();
+    const button = await steerButton();
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("is shown while the pane is working", () => {
+  it("is live while the pane is working", async () => {
     draw({ status: "working" });
-    expect(screen.getByRole("button", { name: /Steer the running turn/ })).toBeInTheDocument();
+    expect(await steerButton()).toBeEnabled();
   });
 
   it("marks the send as a steer, and switches off after it", async () => {
     const seen = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
     draw({ status: "working" });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Steer the running turn/ }));
-    expect(screen.getByRole("button", { name: /Steer the running turn/ })).toHaveAttribute("aria-pressed", "true");
+    await user.click(await steerButton());
+    expect(await steerButton()).toHaveAttribute("aria-pressed", "true");
     await user.type(field(), "left please");
     await user.click(sendButton());
     await waitFor(() => expect(seen).toHaveLength(1));
     expect(seen[0]).toMatchObject({ steer: true, text: "left please", turnId: "turn-7" });
     await waitFor(() => expect(screen.getByRole("button", { name: /Steer the running turn/ })).toHaveAttribute("aria-pressed", "false"));
   });
+
+  it("reads as off when the turn ends under a pressed switch, and the send is not a steer", async () => {
+    const seen = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const user = userEvent.setup();
+    function Ending() {
+      const [status, setStatus] = useState<DurableComposerProps["status"]>("working");
+      return (
+        <>
+          <DurableComposer
+            paneId="c1"
+            turnId="turn-7"
+            status={status}
+            locked={false}
+            lockedWhy=""
+            offline={false}
+            display={{ open: false, onToggle: vi.fn() }}
+            onSent={vi.fn()}
+            onReload={vi.fn()}
+          />
+          <button type="button" onClick={() => setStatus("idle")}>
+            end the turn
+          </button>
+        </>
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Ending /> }])} />);
+    await user.click(await steerButton());
+    expect(await steerButton()).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "end the turn" }));
+    expect(await steerButton()).toHaveAttribute("aria-pressed", "false");
+    await user.type(field(), "next");
+    await user.click(sendButton());
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]).not.toHaveProperty("steer");
+  });
+});
+
+describe("the program's section of the belt", () => {
+  const group = () => screen.findByRole("group", { name: "Harness shortcuts" });
+
+  it("holds Steer, then Stop, in that order", async () => {
+    draw({ status: "working" });
+    const section = await group();
+    const names = within(section)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(["Steer the running turn instead of starting a new one", "Stop the running turn"]);
+  });
+
+  it("draws only the controls the program declared a cap for", async () => {
+    declares({ steerTurn: false, abortTurn: true });
+    draw({ status: "working" });
+    expect(await stopButton()).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Steer the running turn/ })).toBeNull();
+  });
+
+  it("draws no section for a program that declares neither, and for a bridge that said nothing", async () => {
+    declares({});
+    draw({ status: "working" });
+    // The Display button is on the belt, so the config has been read once the section would have come.
+    await screen.findByRole("button", { name: "Display settings" });
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Harness shortcuts" })).toBeNull());
+    expect(screen.queryByRole("button", { name: "Stop the running turn" })).toBeNull();
+  });
+
+  it("keeps the field where it is: the belt above it is the same in every state", async () => {
+    // jsdom lays nothing out, so the fixed offset is pinned structurally: everything that stands
+    // before the field is the same elements in idle and working, with Steer and Stop in both.
+    const stand = async (status: DurableComposerProps["status"]) => {
+      const { unmount } = render(
+        <RouterProvider
+          router={createMemoryRouter([
+            {
+              path: "/",
+              element: (
+                <DurableComposer
+                  paneId="c1"
+                  turnId="turn-7"
+                  status={status}
+                  locked={false}
+                  lockedWhy=""
+                  offline={false}
+                  display={{ open: false, onToggle: vi.fn() }}
+                  onSent={vi.fn()}
+                  onReload={vi.fn()}
+                />
+              ),
+            },
+          ])}
+        />,
+      );
+      await stopButton();
+      const root = document.querySelector<HTMLElement>('[data-slot="durable-composer"]')!;
+      const box = root.querySelector('[data-slot="composer-box"]')!;
+      const before = [...root.children].slice(0, [...root.children].indexOf(box)).map((c) => c.getAttribute("data-slot"));
+      const buttons = within(root).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+      unmount();
+      return { before, buttons };
+    };
+    const idle = await stand("idle");
+    const working = await stand("working");
+    // Only the belt stands before the field: no row of its own comes and goes between them.
+    expect(idle.before).toEqual(["composer-actions"]);
+    expect(working.before).toEqual(idle.before);
+    expect(working.buttons).toEqual(idle.buttons);
+    expect(idle.buttons).toContain("Stop the running turn");
+  });
 });
 
 describe("stop", () => {
-  it("is shown while a turn runs or waits, and not when the pane is idle", () => {
+  it("stays in the belt but is dimmed when the pane is idle", async () => {
     draw({ status: "idle" });
-    expect(screen.queryByRole("button", { name: "Stop the running turn" })).toBeNull();
+    expect(await stopButton()).toBeDisabled();
   });
 
   it("posts the abort route with the turn id and a request id", async () => {
     const seen = stub("abort", () => HttpResponse.json({ ok: true, outcome: "ok" }));
     const { onReload } = draw({ status: "working" });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Stop the running turn" }));
+    await userEvent.setup().click(await stopButton());
     await waitFor(() => expect(seen).toHaveLength(1));
     expect(seen[0]).toMatchObject({ turnId: "turn-7" });
     expect(String(seen[0]!.requestId)).toMatch(/^[0-9a-f-]{36}$/u);
@@ -240,9 +372,14 @@ describe("stop", () => {
   it("a stale abort reloads the pane and says nothing was stopped", async () => {
     stub("abort", () => HttpResponse.json({ ok: false, outcome: "stale", turnId: "turn-8", askIds: [] }, { status: 409 }));
     const { onReload } = draw({ status: "working" });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Stop the running turn" }));
+    await userEvent.setup().click(await stopButton());
     await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent(/nothing was stopped/));
     expect(onReload).toHaveBeenCalled();
+  });
+
+  it("is dimmed on a saved pane", async () => {
+    draw({ status: "working", offline: true });
+    expect(await stopButton()).toBeDisabled();
   });
 });
 
@@ -250,7 +387,7 @@ describe("stop, maybe applied", () => {
   it("reads the pane and says the stop may already be applied", async () => {
     stub("abort", () => HttpResponse.json({ ok: false, outcome: "maybe-applied" }));
     const { onReload } = draw({ status: "working" });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Stop the running turn" }));
+    await userEvent.setup().click(await stopButton());
     await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("The stop may already be applied. Check the chat."));
     expect(onReload).toHaveBeenCalled();
   });

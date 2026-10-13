@@ -89,6 +89,20 @@ export function muxCapability(cfg: MuxConfig | null, capability: MuxCapability):
 }
 
 /**
+ * Whether a bridge SAID a capability is present. The opposite default to {@link muxCapability}'s, and
+ * only for the program's own controls (`steerTurn`, `abortTurn`, `starters`).
+ *
+ * The fail-open rule above protects controls that already work from a stale cache. These three are
+ * the other way round: they are drawn for a durable program's pane alone, a bridge older than the
+ * field has no such button to protect, and a Steer or Stop that a program never declared would send
+ * a request the program refuses. So an unanswered capability is ABSENT here, and the control is
+ * drawn only when a bridge said `true`.
+ */
+export function muxDeclared(cfg: MuxConfig | null, capability: MuxCapability): boolean {
+  return cfg?.capabilities?.[capability] === true;
+}
+
+/**
  * Whether a chord may be sent, given the multiplexer's refused-key list.
  *
  * A key is NOT a capability: `sendKeys` is one door, and behind it each multiplexer has its own
@@ -188,6 +202,11 @@ export function scopedMuxConfig(lead: MuxConfig | null, member: MuxConfig | null
  */
 export function useMuxCapability(capability: MuxCapability, scope?: Scope): MuxCapabilityState {
   return muxCapability(useScopedMuxConfig(scope), capability);
+}
+
+/** {@link muxDeclared}, asked of the machine the scope names. A program's controls come through here. */
+export function useMuxDeclared(capability: MuxCapability, scope?: Scope): boolean {
+  return muxDeclared(useScopedMuxConfig(scope), capability);
 }
 
 /**

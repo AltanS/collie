@@ -25,7 +25,7 @@
 // version we do, the adapter is `unreachable` with a detail that says why. It never answers an
 // empty census for those cases. A program that is up with no panes is a real, empty snapshot.
 
-import { declareCapabilities, type MuxCapabilityDeclaration } from "../capabilities.ts";
+import { declareCapabilities, type MuxCapability, type MuxCapabilityDeclaration } from "../capabilities.ts";
 import { namesCurrent, type TurnView } from "../../durable/control.ts";
 import { DurableLogs } from "../../durable/log.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
@@ -240,10 +240,19 @@ const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and co
  * screen, a key or a new shell is absent, and the program pushes nothing, so both push capabilities
  * are absent too. `idlePollMs` is the transport's slowest census: a change the program did not
  * announce is seen within it.
+ *
+ * `steerTurn`, `abortTurn` and `starters` are the PROGRAM'S OWN `caps.steer`, `caps.abort` and
+ * `caps.starters` from `hello` (WIRE.md section 4), so a program that declares a cap gets the control
+ * on the phone and one that does not gets none. `caps` is null until the first good read; then all
+ * three read absent, which is the fail-closed direction.
  */
-function durableCapabilities(idlePollMs: number): MuxCapabilityDeclaration {
+function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxCapabilityDeclaration {
+  const supports: MuxCapability[] = ["agentDetection", "agentSessionRef"];
+  if (caps?.steer === true) supports.push("steerTurn");
+  if (caps?.abort === true) supports.push("abortTurn");
+  if (caps?.starters === true) supports.push("starters");
   return declareCapabilities({
-    supports: ["agentDetection", "agentSessionRef"],
+    supports,
     spaces: "many",
     topologyLatency: { kind: "bounded", ms: idlePollMs },
     notes: {
@@ -266,8 +275,14 @@ export class DurableMux implements MuxAdapter {
   readonly mux = DURABLE_MUX;
   readonly logo = DURABLE_LOGO_SVG;
 
-  /** What this adapter declares; its `topologyLatency` is its transport's slowest census. */
-  readonly capabilities: MuxCapabilityDeclaration;
+  /**
+   * What this adapter declares; its `topologyLatency` is its transport's slowest census. The program's
+   * three controls follow the caps of the last good read, and that read is kept through a dropped one
+   * or a restart (see {@link held}), so a blip does not take the buttons off the phone.
+   */
+  get capabilities(): MuxCapabilityDeclaration {
+    return durableCapabilities(this.budget.idlePollMs, this.kept?.session.caps ?? null);
+  }
 
   /** The cadence and budgets of this adapter's transport, one row of {@link DURABLE_BUDGETS}. */
   readonly budget: DurableBudget;
@@ -300,7 +315,6 @@ export class DurableMux implements MuxAdapter {
     this.budget = DURABLE_BUDGETS[transport.kind ?? "socket"];
     this.watchDials = transport.kind === "https";
     this.watchCadenceMs = this.budget.idlePollMs;
-    this.capabilities = durableCapabilities(this.budget.idlePollMs);
     this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program(), this.budget.readTimeoutMs);
   }
 

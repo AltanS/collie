@@ -1,12 +1,11 @@
 import { useRef, useState } from "react";
-import { Check, Loader2, Send, Settings2, Square, Wind } from "lucide-react";
+import { Check, Loader2, Send, Settings2 } from "lucide-react";
 
 import { ActionsRow, type Hand } from "@/components/actions-row";
-import { Collapse } from "@/components/ui/collapse";
+import { useDurableBarItems } from "@/components/harness-bar";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
-import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import { abortPane, apiErrorStatus, sendToPane, type ControlResult } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -44,9 +43,16 @@ import { mintRequestId } from "@/lib/worktree-name";
 //     the oldest open ask), and a request id minted for the intent. A STALE name comes back 409: the
 //     pane is read again, the person is told the turn moved, and THE DRAFT STAYS, so nothing typed on
 //     a phone thumb is lost to a race.
-//   * STEER is a switch beside the field, drawn only while the pane is working: it says the text is
-//     for the turn that is running. It is off after every send.
-//   * STOP posts the abort route with the same name. It is drawn while a turn runs or waits.
+//   * STEER is a switch in the program's section of the belt: it says the text is for the turn that
+//     is running. It is dimmed and reads as off while no turn runs, and it is off after every send.
+//   * STOP posts the abort route with the same name. It is in the same section, and dimmed while
+//     there is nothing to stop.
+//
+// STEER AND STOP NEVER COME AND GO (M51 spec 08). They used to share a row above the field that
+// opened and closed with the pane's state, and the field jumped with it. They are the program's own
+// section of the belt now (components/harness-bar.tsx `DurableBar`), drawn from the caps the program
+// declares (`caps.steer`, `caps.abort`), and a button that cannot act is dimmed in place. The field
+// is the same height in every state.
 //
 // A RETRY IS THE SAME INTENT. After an unknown outcome (a dropped reply, a 504) "send again" carries
 // the SAME request id while the text, the switch and the name are unchanged, so the bridge answers
@@ -118,6 +124,7 @@ export function DurableComposer({
   const sendIntent = useRef<IntentId | null>(null);
   const stopIntent = useRef<IntentId | null>(null);
 
+  const barItems = useDurableBarItems(scope);
   const target = controlTarget({ turnId, asks });
   const canSteer = steerOffered(status);
   const canStop = stopOffered(status, target);
@@ -201,40 +208,19 @@ export function DurableComposer({
         ]}
         agent={undefined}
         mine={[]}
+        durable={{
+          items: barItems,
+          state: {
+            steer: { pressed: steer, offered: canSteer && !off, onPressedChange: setSteer },
+            stop: { offered: canStop && !off, busy: stopping, onStop: () => void stop() },
+          },
+        }}
         onRun={() => Promise.resolve(false)}
         disabled={locked}
         handle={pullHandle}
         changes={changesPill}
         hand={hand}
       />
-      {/* Steer and Stop share a row that opens only while they have something to say. Through
-          `Collapse`, the one sanctioned way an in-flow row arrives (DESIGN.md §1). */}
-      <Collapse open={canSteer || canStop}>
-        <div data-slot="durable-controls" className={cn("flex items-center gap-2 pb-1", hand === "left" && "flex-row-reverse")}>
-          {canSteer ? (
-            <ToggleButton
-              pressed={steer}
-              onPressedChange={setSteer}
-              label={t("durable.composer.steerAria")}
-              text={t("durable.composer.steer")}
-              icon={<Wind className="size-4" />}
-            />
-          ) : null}
-          {canStop ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 gap-1.5"
-              disabled={off || stopping}
-              aria-label={t("durable.composer.stopAria")}
-              onClick={() => void stop()}
-            >
-              {stopping ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4" />}
-              {t("durable.composer.stop")}
-            </Button>
-          ) : null}
-        </div>
-      </Collapse>
       <div
         data-slot="composer-box"
         className={cn(

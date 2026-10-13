@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
+
 ## [1.21.0] - 2026-10-13
 
 ### Added
