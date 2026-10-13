@@ -26,33 +26,80 @@ export interface ReceiptRecord {
 }
 
 /**
+ * What a store answers for a request id it dropped past its cap: the digest the id was used for, and no reply.
+ * A repeat of that id is refused with an unknown outcome (a 5xx, WIRE.md 7.6) and never runs again.
+ */
+export interface DroppedReceipt {
+  dropped: true;
+  digest: string;
+}
+
+/** The receipts of one pane share a cap. A starter's receipts share the group `starter`. */
+export const STARTER_GROUP = "starter";
+
+/** How many receipts a store keeps per group (per pane, and the starters), newest first. */
+export const RECEIPTS_PER_GROUP = 1000;
+
+/**
  * Where finished request ids are kept. The wire asks for at least the last 500 of an epoch, and SHOULD keep them
  * across a restart: a store on disk or in a database does, the memory store does not. Either method may return a
  * promise. Only successes reach `put`.
+ *
+ * A store with a cap keeps the newest {@link RECEIPTS_PER_GROUP} per `group` (the pane id, or {@link STARTER_GROUP}),
+ * drops the older ones in the same write, and remembers each dropped id as a {@link DroppedReceipt}.
  */
 export interface ReceiptStore {
-  get(requestId: string): ReceiptRecord | undefined | Promise<ReceiptRecord | undefined>;
-  put(requestId: string, record: ReceiptRecord): void | Promise<void>;
+  get(requestId: string): ReceiptRecord | DroppedReceipt | undefined | Promise<ReceiptRecord | DroppedReceipt | undefined>;
+  put(requestId: string, record: ReceiptRecord, group: string): void | Promise<void>;
 }
 
-/** The default store: a map that drops its oldest ids past `limit`. Gone when the process ends. */
+/** Is this what a store answers for an id it dropped? */
+export const isDropped = (kept: ReceiptRecord | DroppedReceipt | undefined): kept is DroppedReceipt => kept !== undefined && "dropped" in kept;
+
+/**
+ * The default store: a map per group that drops its oldest receipts past `limit` (per group). Gone when the process
+ * ends. The ids it dropped are kept as their digest only, at most `limit * 10` per group, so a repeat of one is
+ * refused; past that the oldest of them go too, and the act's own check (a closed ask, a turn that moved) is
+ * what is left.
+ */
 export class MemoryReceiptStore implements ReceiptStore {
-  private readonly map = new Map<string, ReceiptRecord>();
+  private readonly groups = new Map<string, Map<string, ReceiptRecord>>();
+  private readonly dropped = new Map<string, Map<string, string>>();
+  private readonly where = new Map<string, string>();
   /** Never below 500 (WIRE.md 7.6). */
-  constructor(private readonly limit = LIMITS.requestIds * 2) {
+  constructor(private readonly limit = RECEIPTS_PER_GROUP) {
     if (limit < LIMITS.requestIds) throw new RangeError(`the request id memory must hold at least ${LIMITS.requestIds} ids`);
   }
+  /** Receipts kept, over every group. Dropped ids do not count. */
   get size() {
-    return this.map.size;
+    let n = 0;
+    for (const group of this.groups.values()) n += group.size;
+    return n;
   }
-  get(requestId: string) {
-    return this.map.get(requestId);
+  get(requestId: string): ReceiptRecord | DroppedReceipt | undefined {
+    const group = this.where.get(requestId);
+    if (group === undefined) return undefined;
+    const kept = this.groups.get(group)?.get(requestId);
+    if (kept !== undefined) return kept;
+    const digest = this.dropped.get(group)?.get(requestId);
+    return digest === undefined ? undefined : { dropped: true, digest };
   }
-  put(requestId: string, record: ReceiptRecord) {
-    this.map.set(requestId, record);
-    for (const id of this.map.keys()) {
-      if (this.map.size <= this.limit) return;
-      this.map.delete(id);
+  put(requestId: string, record: ReceiptRecord, group = "") {
+    const live = this.groups.get(group) ?? new Map<string, ReceiptRecord>();
+    this.groups.set(group, live);
+    const gone = this.dropped.get(group) ?? new Map<string, string>();
+    this.dropped.set(group, gone);
+    live.set(requestId, record);
+    this.where.set(requestId, group);
+    for (const [id, old] of live) {
+      if (live.size <= this.limit) break;
+      live.delete(id);
+      gone.set(id, old.digest);
+    }
+    for (const id of gone.keys()) {
+      if (gone.size <= this.limit * 10) break;
+      gone.delete(id);
+      this.where.delete(id);
     }
   }
 }
@@ -75,14 +122,15 @@ export class Receipts {
   private readonly flying = new Map<string, Flying>();
   constructor(private readonly store: ReceiptStore = new MemoryReceiptStore()) {}
 
-  async run<T extends object>(requestId: string, digest: string, act: () => Promise<T>): Promise<T & { replayed?: true }> {
+  /** `group`: the pane id, or {@link STARTER_GROUP}. The store caps its receipts per group. */
+  async run<T extends object>(requestId: string, digest: string, act: () => Promise<T>, group = ""): Promise<T & { replayed?: true }> {
     const have = this.flying.get(requestId);
     if (have) {
       if (have.digest !== digest) throw new HttpError(409, "request-id-reused");
       return { ...((await have.promise).reply as T), replayed: true };
     }
     // The entry is in the map before the first await, so a repeat that arrives a moment later waits for this one.
-    const entry: Flying = { digest, promise: this.first(requestId, digest, act) };
+    const entry: Flying = { digest, promise: this.first(requestId, digest, act, group) };
     this.flying.set(requestId, entry);
     try {
       const { reply, replayed } = await entry.promise;
@@ -92,14 +140,18 @@ export class Receipts {
     }
   }
 
-  private async first(requestId: string, digest: string, act: () => Promise<object>) {
+  private async first(requestId: string, digest: string, act: () => Promise<object>, group: string) {
     const kept = await this.store.get(requestId);
     if (kept) {
       if (kept.digest !== digest) throw new HttpError(409, "request-id-reused");
+      // Dropped past the cap: the reply is gone, so it cannot be replayed, and running it again could run it
+      // twice. A 5xx leaves the outcome unknown (WIRE.md 7.6): the phone offers the same id again, and it is
+      // refused again, never run.
+      if (isDropped(kept)) throw new HttpError(500, "receipt-dropped", { message: "this request id is older than the receipts this program keeps; it does not run again" });
       return { reply: kept.reply, replayed: true };
     }
     const reply = await act();
-    await this.store.put(requestId, { digest, reply });
+    await this.store.put(requestId, { digest, reply }, group);
     return { reply, replayed: false };
   }
 }

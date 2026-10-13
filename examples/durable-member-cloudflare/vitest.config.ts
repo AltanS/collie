@@ -13,6 +13,8 @@ export default defineConfig({
         bindings: {
           // A test value, not a secret. At least 32 bytes, as the Worker demands.
           COLLIE_TOKEN: "test-token-not-a-secret-0123456789abcdef",
+          // The second token of a rotation, a test value too. Both are taken while it is set.
+          COLLIE_TOKEN_NEXT: "test-next-token-not-a-secret-0123456789ab",
           DM_STEP_MS: "0",
           DM_SLOW_MS: "3000",
           DM_HELPER_MS: "0",

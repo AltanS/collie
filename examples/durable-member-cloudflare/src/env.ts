@@ -5,6 +5,11 @@ export interface Env {
   MEMBER: DurableObjectNamespace<Member>;
   /** The bearer token. A secret, at least 32 bytes. Unset or shorter: every request is refused. */
   COLLIE_TOKEN?: string;
+  /**
+   * The next bearer token, a secret, set only while a rotation runs. A request with either token is taken. When the
+   * peer uses the new one, move it to COLLIE_TOKEN and unset this (README, "Rotate the token").
+   */
+  COLLIE_TOKEN_NEXT?: string;
   /** An OpenRouter model id. Unset: the scripted model. */
   REAL_MODEL?: string;
   /** Your OpenRouter key, a secret. Pi reads it (through process.env) only when REAL_MODEL is set. */

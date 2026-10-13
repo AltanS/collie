@@ -166,7 +166,8 @@ second program needs it. Copy the folder into your program. It imports nothing f
 
 The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
 `Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids
-so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. It imports no
+so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. The store keeps
+the newest 1000 per pane; a repeat of an older id gets a 500, an unknown outcome, and runs nothing. It imports no
 runtime module, so the same core serves the
 [Cloudflare example](../durable-member-cloudflare/README.md) from a Durable Object. `sdk/server.ts` is the
 transport for Bun: the private socket and the descendant check. It accepts connections with `Bun.listen`

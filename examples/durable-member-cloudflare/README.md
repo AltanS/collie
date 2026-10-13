@@ -95,9 +95,15 @@ keeps them out.
   wakes nothing. A token shorter than 32 bytes, or none at all, makes the Worker refuse every request.
 - **Make the token random.** `openssl rand -hex 32` gives 32 random bytes as 64 characters. Keep it in two
   places only: the Worker's secret and the peer's `.env`.
-- **Rotate it by setting it again.** Run `bunx wrangler secret put COLLIE_TOKEN` with a new value, put the
-  same value in the peer's `COLLIE_DURABLE_TOKEN`, and restart the peer. Until both sides change, the old
-  token works. Setting a secret deploys a new version of the Worker, which restarts the Durable Object.
+- **Rotate it without a lockout.** The Worker takes `COLLIE_TOKEN` and, while it is set,
+  `COLLIE_TOKEN_NEXT`. Both are checked hashed and in constant time. Rotate in three steps:
+  1. Set `COLLIE_TOKEN_NEXT` to the new value: `bunx wrangler secret put COLLIE_TOKEN_NEXT`. Both tokens
+     now work.
+  2. Put the new value in the peer's `COLLIE_DURABLE_TOKEN`, and restart the peer.
+  3. Move the value to `COLLIE_TOKEN` (`bunx wrangler secret put COLLIE_TOKEN`), then unset
+     `COLLIE_TOKEN_NEXT` (`bunx wrangler secret delete COLLIE_TOKEN_NEXT`). Only the new token works now.
+
+  Each secret you set or delete deploys a new version of the Worker, which restarts the Durable Object.
 - **Cloudflare sees the text.** TLS ends at Cloudflare's edge. Transcripts and tool output sit in the
   Durable Object's storage, and a real model's key sits in your Worker's secrets.
 - **Everything in the Worker can read the secrets.** With `nodejs_compat`, each binding, the token
@@ -107,7 +113,9 @@ keeps them out.
   front of the Worker, at Cloudflare. Collie does not send Access's two headers yet, so this example
   stops at the bearer token.
 - **Allow and Deny only.** With the token as the only gate, an always-allow answer from whoever holds it
-  would let every later call through. The example offers no always-allow.
+  would let every later call through. The example offers no always-allow, and it refuses one: its core
+  is made with `allowAlways: false`, so an ask with an `allow-always` option is a `TypeError` when the
+  program raises it.
 
 ## Cost
 
@@ -155,6 +163,7 @@ Prices are from Cloudflare's pricing pages, read on 2026-10-13. Check them befor
 | Name | Kind | Default | What it does |
 | --- | --- | --- | --- |
 | `COLLIE_TOKEN` | secret, required | none | The bearer token, at least 32 bytes. `.dev.vars` for `wrangler dev`, `wrangler secret put COLLIE_TOKEN` after a deploy. Missing or shorter: every request gets 401. |
+| `COLLIE_TOKEN_NEXT` | secret | not set | The next token, while a rotation runs (see [The trust model](#the-trust-model)). A request with either token is taken. Shorter than 32 bytes: ignored. |
 | `REAL_MODEL` | var | not set | An OpenRouter model id. Not set means the scripted model. |
 | `OPENROUTER_API_KEY` | secret | not set | Your OpenRouter key, read only when `REAL_MODEL` is set. |
 | `DM_STEP_MS` | var | `400` | The pause before each scripted answer. |
@@ -195,7 +204,9 @@ The files here:
 - `src/member.ts` is the program: the Durable Object that opens Pi, lays out the panes and serves the wire.
 - `src/storage.ts` is the one place where Pi Durable meets the Durable Object's SQLite.
 - `src/receipts.ts` keeps the request ids in a `collie_receipts` table, so a retry after a restart still
-  runs once. The core's `ReceiptStore` interface is two methods.
+  runs once. It keeps the newest 1000 per pane and drops older ones in the same transaction; a repeat of a
+  dropped id gets a 500, an unknown outcome, and runs nothing. The core's `ReceiptStore` interface is two
+  methods.
 
 ## Test
 

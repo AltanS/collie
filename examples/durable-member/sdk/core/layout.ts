@@ -294,6 +294,7 @@ export class Pane implements PaneHandle {
   ask(input: AskInput, opts: { signal?: AbortSignal } = {}): Promise<Answer> {
     // Revision 1 on every raise: a tool call raised again after a restart has the same options by construction.
     const ask = cleanAsk({ ...input, id: input.id ?? askIdFor(this.id, input.toolCallId), revision: 1 });
+    this.refuseAllowAlways(ask.options);
     if (this.asks.has(ask.id)) throw new TypeError(`ask id already open: ${ask.id}`);
     return new Promise<Answer>((resolve, reject) => {
       const open: OpenAsk = { ask, openedAt: Date.now(), resolve, reject };
@@ -307,11 +308,21 @@ export class Pane implements PaneHandle {
     });
   }
 
+  /** A core made with `allowAlways: false` takes no `allow-always` option: over TLS the token is the only gate. */
+  private refuseAllowAlways(options: readonly { effect: string }[]): void {
+    if (this.store.allowAlways || !options.some((o) => o.effect === "allow-always")) return;
+    throw new TypeError(
+      "an ask option with effect allow-always is refused: this program is reached over TLS with a token (WIRE.md 1B), so it offers Allow and Deny only",
+    );
+  }
+
   updateAsk(askId: string, patch: Partial<Pick<AskInput, "title" | "reason" | "tool" | "options">>): boolean {
     const open = this.asks.get(askId);
     if (!open) return false;
     const { ask } = open;
-    open.ask = cleanAsk({ ...ask, ...patch, revision: ask.revision + 1 });
+    const next = cleanAsk({ ...ask, ...patch, revision: ask.revision + 1 });
+    this.refuseAllowAlways(next.options);
+    open.ask = next;
     this.append({ type: "ask", ask: open.ask });
     this.touch();
     return true;
@@ -389,6 +400,8 @@ export class Store {
   constructor(
     readonly tailLimit = DEFAULT_TAIL,
     receipts?: ReceiptStore,
+    /** False: an ask option with effect `allow-always` is a TypeError (a program behind TLS, WIRE.md 1B). */
+    readonly allowAlways = true,
   ) {
     this.receipts = new Receipts(receipts);
   }

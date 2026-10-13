@@ -1,6 +1,7 @@
 // The program: the same ticket triage as ../durable-member/app.ts, in one Durable Object. Pi Durable keeps the
 // conversations in the object's SQLite (storage.ts), the SDK core serves Collie's wire (core.handle), and the
-// request ids go to a `collie_receipts` table, so a retry after a restart still runs once.
+// request ids go to a `collie_receipts` table, so a retry after a restart still runs once. The newest 1000 per pane
+// are kept (receipts.ts).
 //
 // The constructor runs on every start of the object: after a deploy, an eviction or a hibernation. Each start is
 // a new epoch, so Collie reads every pane again (WIRE.md section 8). An ask that waited is raised again before
@@ -55,7 +56,9 @@ export class Member extends DurableObject<Env> {
     const { env } = this;
     const sql = this.ctx.storage.sql;
     sql.exec("CREATE TABLE IF NOT EXISTS collie_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, note TEXT NOT NULL)");
-    const core = createCore({ hostName: HOST_NAME, receipts: new SqliteReceiptStore(sql) });
+    // Over TLS the token is the only gate, so this program offers Allow and Deny only: an `allow-always` option is
+    // a TypeError when an ask is raised (WIRE.md 1B, ADR 0103).
+    const core = createCore({ hostName: HOST_NAME, receipts: new SqliteReceiptStore(this.ctx.storage), allowAlways: false });
     this.core = core;
     const stepMs = ms(env.DM_STEP_MS, 400);
 

@@ -7,7 +7,10 @@
 import { env as bindings, exports } from "cloudflare:workers";
 import { abortAllDurableObjects, listDurableObjectIds, runInDurableObject } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
+import { HttpError, Receipts } from "../../durable-member/sdk/core/index.ts";
 import type { Env } from "../src/env.ts";
+import { DROPPED_KEPT, RECEIPTS_KEPT, SqliteReceiptStore } from "../src/receipts.ts";
+import { tokenAccepted } from "../src/token.ts";
 
 const env = bindings as unknown as Env;
 const worker = (exports as unknown as { default: Fetcher }).default;
@@ -78,6 +81,17 @@ describe("the bearer token", () => {
     expect((await call("GET", "/hello")).status).toBe(200);
     expect((await call("GET", "/hello", { token: null, headers: { authorization: `bearer ${TOKEN}` } })).status).toBe(200);
     expect(await listDurableObjectIds(env.MEMBER)).toHaveLength(1); // one program, one object
+  });
+  test("a rotation: COLLIE_TOKEN and COLLIE_TOKEN_NEXT both pass while both are set, and nothing else does", async () => {
+    const next = env.COLLIE_TOKEN_NEXT!;
+    expect((await call("GET", "/hello", { token: next })).status).toBe(200);
+    expect((await call("GET", "/hello", { token: `${next}x` })).status).toBe(401);
+    const asked = (token: string) => new Request("https://member.example/", { headers: { authorization: `Bearer ${token}` } });
+    expect(await tokenAccepted(asked(TOKEN), TOKEN, undefined)).toBe(true);
+    expect(await tokenAccepted(asked(next), TOKEN, undefined)).toBe(false); // the rotation ended: the old next is refused
+    expect(await tokenAccepted(asked(next), undefined, next)).toBe(true);
+    expect(await tokenAccepted(asked("short"), TOKEN, "short")).toBe(false); // a next under 32 bytes is never used
+    expect(await tokenAccepted(asked(""), undefined, undefined)).toBe(false);
   });
 });
 
@@ -206,5 +220,27 @@ describe("a restart", () => {
     expect((await call("POST", `/pane/${paneId}/answer`, { body: tap })).body).toEqual({ result: "taken", replayed: true });
     await waitFor("the ticket to finish", async () => (await paneOf(paneId)).state === "idle");
     expect((await notes()).length).toBe(notesBefore + 1); // the tool ran once
+  });
+});
+
+describe("the receipts cap", () => {
+  test("the newest 1000 per pane are kept; replaying the first of 1001 is refused (an unknown outcome) and runs nothing", async () => {
+    await runInDurableObject(env.MEMBER.getByName("main"), async (_o, state) => {
+      const store = new SqliteReceiptStore(state.storage);
+      for (let i = 0; i <= RECEIPTS_KEPT; i++) store.put(`cap-${i}`, { digest: `d${i}`, reply: { ok: true } }, "cap-pane");
+      store.put("cap-other", { digest: "d", reply: { ok: true } }, "cap-other-pane");
+      expect(store.get("cap-0")).toEqual({ dropped: true, digest: "d0" });
+      expect(store.get("cap-1")).toEqual({ digest: "d1", reply: { ok: true } });
+      expect(store.get("cap-other")).toEqual({ digest: "d", reply: { ok: true } }); // another pane keeps its own
+      const kept = state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM collie_receipts WHERE grp = 'cap-pane' AND dropped = 0").one().n;
+      expect(kept).toBe(RECEIPTS_KEPT);
+      let runs = 0;
+      const receipts = new Receipts(store);
+      const replay = receipts.run("cap-0", "d0", async () => (runs++, { ok: true }), "cap-pane");
+      await expect(replay).rejects.toBeInstanceOf(HttpError);
+      await expect(receipts.run("cap-0", "d0", async () => (runs++, { ok: true }), "cap-pane")).rejects.toMatchObject({ status: 500, code: "receipt-dropped" });
+      expect(runs).toBe(0);
+      expect(DROPPED_KEPT).toBe(10 * RECEIPTS_KEPT);
+    });
   });
 });

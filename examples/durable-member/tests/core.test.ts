@@ -6,7 +6,17 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { api, type Dial } from "./client.ts";
-import { askIdFor, createCore, digestOf, MemoryReceiptStore, type ReceiptRecord, Receipts, type ReceiptStore, safeId } from "../sdk/core/index.ts";
+import {
+  askIdFor,
+  createCore,
+  digestOf,
+  MemoryReceiptStore,
+  RECEIPTS_PER_GROUP,
+  type ReceiptRecord,
+  Receipts,
+  type ReceiptStore,
+  safeId,
+} from "../sdk/core/index.ts";
 import { sha256Hex } from "../sdk/core/hash.ts";
 import { protocolSuite } from "./protocol-suite.ts";
 
@@ -60,11 +70,47 @@ describe("the core alone", () => {
     expect(runs).toBe(1);
   });
 
-  test("the memory store keeps at least 500 ids and drops the oldest past its limit", () => {
+  test("the memory store keeps at least 500 ids per pane, and remembers the ids it dropped past its limit", () => {
     expect(() => new MemoryReceiptStore(499)).toThrow("500");
     const m = new MemoryReceiptStore(500);
-    for (let i = 0; i < 600; i++) m.put(`r${i}`, { digest: "d", reply: {} });
-    expect([m.size, m.get("r99"), m.get("r100")?.digest]).toEqual([500, undefined, "d"]);
+    for (let i = 0; i < 600; i++) m.put(`r${i}`, { digest: "d", reply: {} }, "p");
+    m.put("q0", { digest: "d", reply: {} }, "q");
+    expect([m.size, m.get("r99"), m.get("r100")?.digest, m.get("q0")?.digest]).toEqual([501, { dropped: true, digest: "d" }, "d", "d"]);
+    expect(m.get("never")).toBeUndefined();
+  });
+
+  test("receipts cap: the newest 1000 per pane are kept; replaying the first of 1001 is refused (an unknown outcome) and runs nothing", async () => {
+    const core = createCore({ hostName: "cap" });
+    let stops = 0;
+    const tab = core.workspace("w", { title: "W" }).tab("t", { title: "T" });
+    for (const id of ["p", "q"]) tab.pane(id, { title: id, harness: "x" }).onAbort(() => void stops++);
+    core.ready();
+    const d: Dial = { handler: (r) => core.handle(r), version: 1 };
+    const turn = (await api.snapshot(d)).body.panes[0]!.turnId;
+    for (let i = 0; i <= RECEIPTS_PER_GROUP; i++) expect((await api.abort(d, "p", { turnId: turn, requestId: `cap-${i}` })).status).toBe(200);
+    const other = (await api.snapshot(d)).body.panes[1]!.turnId;
+    expect((await api.abort(d, "q", { turnId: other, requestId: "q-0" })).status).toBe(200);
+    const replay = await api.abort(d, "p", { turnId: turn, requestId: "cap-0" });
+    expect([replay.status, replay.body.code]).toEqual([500, "receipt-dropped"]);
+    expect((await api.abort(d, "p", { turnId: turn, requestId: "cap-1" })).body).toEqual({ ok: true, replayed: true }); // the newest 1000 replay
+    expect((await api.abort(d, "q", { turnId: other, requestId: "q-0" })).body).toEqual({ ok: true, replayed: true }); // another pane keeps its own
+    expect(stops).toBe(0); // the panes are idle: nothing ran, the first time or after
+  });
+
+  test("a core made with allowAlways false refuses an allow-always option, naming WIRE.md 1B; the default takes it", () => {
+    const options = [
+      { id: "allow", label: "Allow", effect: "allow" as const },
+      { id: "always", label: "Always", effect: "allow-always" as const },
+    ];
+    const raise = (allowAlways?: boolean) => {
+      const core = createCore(allowAlways === undefined ? { hostName: "a" } : { hostName: "a", allowAlways });
+      const pane = core.workspace("w", { title: "W" }).tab("t", { title: "T" }).pane("p", { title: "P", harness: "x" });
+      return () => void pane.ask({ kind: "permission", toolCallId: "c", itemId: "c", title: "write_note", options }).catch(() => {});
+    };
+    expect(raise(false)).toThrow(TypeError);
+    expect(raise(false)).toThrow("WIRE.md 1B");
+    expect(raise()).not.toThrow();
+    expect(raise(true)).not.toThrow();
   });
 
   test("after a restart (a new core, a new epoch) the same tool call asks under the same id, and an answer to it is taken", async () => {

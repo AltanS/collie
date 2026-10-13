@@ -651,6 +651,16 @@ describe("starters (WIRE.md sections 7.6 and 7.7)", () => {
     expect(program.requests.filter((request) => request.method === "POST")).toHaveLength(3);
   });
 
+  // M50 spec 14: the examples keep the newest 1000 receipts per pane, and answer a repeat of a dropped id with a
+  // 500 `receipt-dropped`. The adapter must read that as an unknown outcome, so the phone offers the same id
+  // again and nothing is sent a second time by itself.
+  test("a 500 receipt-dropped (a program that capped its receipts) is an unknown outcome, never a retry", async () => {
+    const { adapter, program } = await rig();
+    program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "receipt-dropped" }, { status: 500 }) : undefined);
+    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unknown", detail: "program answered 500" });
+    expect(program.requests.filter((request) => request.method === "POST")).toHaveLength(1);
+  });
+
   test("a 503 starting is unreachable: nothing ran", async () => {
     const { adapter, program } = await rig();
     program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "starting" }, { status: 503 }) : undefined);
