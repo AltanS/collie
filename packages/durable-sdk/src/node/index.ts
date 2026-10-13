@@ -1,11 +1,11 @@
-// The SDK for a Node program (Node 22.18 or later, which runs this TypeScript as it is). The same `openCollie` as the
-// Bun entry, served by node:http on the private Unix socket (WIRE.md 1A): the folder 0700, the socket 0600, a stale
-// socket cleared, a live one refused.
+// The SDK for a Node program (`@colliepwa/durable-sdk/node`, Node 22.18 or later). The root import picks this entry on
+// any runtime but Bun. The same `openCollie` as the Bun entry, served by node:http on the private Unix socket
+// (WIRE.md 1A): the folder 0700, the socket 0600, a stale socket cleared, a live one refused.
 //
 // ONE THING IS MISSING ON NODE: the descendant check. It reads the peer's process id off the socket (SO_PEERCRED),
 // and Node has no way to read it. So any process of this user can act through the socket, including a tool the
 // agent runs. The entry writes one line saying so at start. Run the agent's tools in a sandbox that cannot reach the
-// socket, or run the program on Bun (`../index.ts`), where the check runs.
+// socket, or run the program on Bun (`../bun/index.ts`), where the check runs.
 
 import { rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";

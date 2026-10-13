@@ -92,9 +92,9 @@ tell whether a program does. A program that refuses answers 403 `caller-refused`
 tool would let every later call through without a question.
 
 **A program on Node cannot run the descendant check.** The check reads the caller's process id off the
-socket (`SO_PEERCRED`), and Node has no way to read it. The example SDK's Node entry
-(`examples/durable-member/sdk/node`) serves the same wire on the same private socket without the
-check, and writes one line at start that says so. Such a program SHOULD run the agent's tools in a
+socket (`SO_PEERCRED`), and Node has no way to read it. The SDK's Node entry
+(`@colliepwa/durable-sdk/node`, `packages/durable-sdk/src/node`) serves the same wire on the same
+private socket without the check, and writes one line at start that says so. Such a program SHOULD run the agent's tools in a
 sandbox that cannot reach the socket. Bun on Linux can read the caller, and the SDK's Bun entry runs
 the check there.
 

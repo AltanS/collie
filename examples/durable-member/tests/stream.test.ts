@@ -8,7 +8,7 @@ import { PaneRegistry, Mapper, PARTIAL_MS } from "../pi-durable/index.ts";
 import { LONG_ANSWER_START, longAnswer } from "../script.ts";
 import type { AgentEvent, MessageChange, SnapshotEvent } from "@earendil-works/pi-durable";
 import { api, type Dial } from "./client.ts";
-import type { Item, ProgramEvent } from "../sdk/core/types.ts";
+import type { Item, ProgramEvent } from "../../../packages/durable-sdk/src/core/types.ts";
 import { allEvents, cleanup, firstAsk, latestItems, pane, tmp, waitFor } from "./util.ts";
 
 const SLOW_MS = 4000;

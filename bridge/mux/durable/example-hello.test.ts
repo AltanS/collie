@@ -8,7 +8,7 @@ import { DurableSocketClient } from "./client.ts";
 import type { DurableEventSink } from "./events.ts";
 import type { DurableEvent } from "./protocol.ts";
 
-// THE 12-LINE FIRST PROGRAM, DRIVEN BY THE REAL ADAPTER (M55 spec 04). `examples/durable-member/hello.ts` is the first thing a
+// THE 10-LINE FIRST PROGRAM, DRIVEN BY THE REAL ADAPTER (M55 spec 04). `examples/durable-member/hello.ts` is the first thing a
 // builder runs: one pane, one choice ask, "Deploy to staging?". This starts it on a socket in a fresh temp folder, then runs the
 // adapter and its socket client against it: hello with the one cap, the snapshot, the open ask, an answer, and the program's exit.
 //

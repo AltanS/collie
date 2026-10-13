@@ -1,7 +1,8 @@
-// The SDK core: the layout a program shows, and the wire that serves it, as `handle(request)`. It imports no
-// runtime module (no Bun, no Node, no Cloudflare), so it runs wherever a web `Request` does. A server hands each
-// request to `core.handle`: `../server.ts` does it over a private Unix socket in Bun, `../node/index.ts` in Node, and
-// `experiments/durable-member-cloudflare` does it in a Durable Object. No Pi Durable import here either.
+// The SDK core (`@colliepwa/durable-sdk/core`): the layout a program shows, and the wire that serves it, as
+// `handle(request)`. It imports no runtime module (no Bun, no Node, no Cloudflare), so it runs wherever a web `Request`
+// does. A server hands each request to `core.handle`: `../server.ts` does it over a private Unix socket in Bun,
+// `../node/index.ts` in Node, and `experiments/durable-member-cloudflare` does it in a Durable Object. No Pi Durable
+// import here either.
 
 import { type CallInfo, type CoreState, handle } from "./handle.ts";
 import { Store, type WorkspaceHandle } from "./layout.ts";
@@ -62,6 +63,10 @@ export {
 } from "./rules.ts";
 export * from "./types.ts";
 export { argumentsView, type Approval, type ApprovalOptions, callSummary, requireApproval } from "./approval.ts";
+export { SDK_VERSION } from "./version.ts";
+
+/** The durable wire version this SDK speaks (WIRE.md section 2). The package's own version is {@link SDK_VERSION}. */
+export const WIRE_VERSION = 1;
 
 /** Every cap the SDK can serve, on. `history` among them, which a program serves once `history()` has a provider. */
 export const ALL_CAPS: Readonly<Required<Omit<Caps, "terminal">>> = {

@@ -4,9 +4,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, lstatSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { api } from "./client.ts";
-import { Receipts } from "../sdk/core/receipts.ts";
-import { type AskInput, cut, openCollie, type PaneHandle, type PermissionAskInput } from "../sdk/index.ts";
-import { withNarrowUmask } from "../sdk/socket.ts";
+import { Receipts } from "../../../packages/durable-sdk/src/core/receipts.ts";
+import { type AskInput, cut, openCollie, type PaneHandle, type PermissionAskInput } from "../../../packages/durable-sdk/src/index.ts";
+import { withNarrowUmask } from "../../../packages/durable-sdk/src/socket.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";
 
 afterAll(cleanup);

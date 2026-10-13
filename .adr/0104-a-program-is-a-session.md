@@ -79,6 +79,7 @@ model.
   in the file, so the file is mode 0600, and no verb prints it.
 - A program that is slow or down makes only its own session `unreachable`. The terminal sessions
   are not held up by it, because each session has its own poller.
-- The wire stays experimental. This decision does not make it stable, and it does not publish the SDK.
+- The wire stays experimental. This decision does not make it stable, and it does not publish the SDK;
+  [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md) does, under the dist-tag `experimental`.
 - Revisit this decision if the exit above fires, or if a second kind of source (a hook, a local
   socket for a coding agent) needs a field that `kind` and `name` cannot carry.

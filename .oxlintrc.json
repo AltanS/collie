@@ -227,6 +227,36 @@
       "rules": {
         "anti-slop/no-module-mocking": "off"
       }
+    },
+    {
+      // The durable SDK (M55 spec 10, ADR 0105) came from the durable example, which `examples/**` kept out of
+      // lint: it is written to the wire (WIRE.md), not to this codebase's rules. Moved under `packages/`, it is linted, and
+      // these are the rules its source broke on the day it moved, each turned off for `packages/durable-sdk/src/` only.
+      // core/ IS the parser of the wire's untrusted JSON (every `typeof`, `unknown` and dictionary type sits in its own
+      // cleaning of a request body or a program's input), the control-character regexes are that cleaning, and the spread
+      // copies are deliberate (a loop that deletes from the collection it walks). Any rule not named here applies in full.
+      "files": [
+        "**/packages/durable-sdk/src/**/*.ts"
+      ],
+      "rules": {
+        "anti-slop/require-safety-comment-for-type-assertion": "off",
+        "anti-slop/no-runtime-typeof": "off",
+        "anti-slop/no-conditional-empty-object-spread": "off",
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unsafe-dictionary-type": "off",
+        "anti-slop/no-known-value-widening": "off",
+        "anti-slop/no-unknown-returns": "off",
+        "anti-slop/no-chained-type-assertions": "off",
+        "anti-slop/no-reflect-get": "off",
+        "anti-slop/no-object-parameters": "off",
+        "unicorn/no-useless-spread": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "eslint/no-control-regex": "off",
+        "eslint/no-shadow": "off",
+        "oxc/no-map-spread": "off",
+        "promise/no-multiple-resolved": "off",
+        "promise/always-return": "off"
+      }
     }
   ]
 }

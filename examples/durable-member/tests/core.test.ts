@@ -16,8 +16,8 @@ import {
   Receipts,
   type ReceiptStore,
   safeId,
-} from "../sdk/core/index.ts";
-import { sha256Hex } from "../sdk/core/hash.ts";
+} from "../../../packages/durable-sdk/src/core/index.ts";
+import { sha256Hex } from "../../../packages/durable-sdk/src/core/hash.ts";
 import { protocolSuite } from "./protocol-suite.ts";
 
 protocolSuite({
@@ -29,8 +29,8 @@ protocolSuite({
 });
 
 describe("the core alone", () => {
-  test("no file in sdk/core imports a runtime module: no node:, bun, cloudflare: or a package", () => {
-    const dir = new URL("../sdk/core/", import.meta.url).pathname;
+  test("no file in the SDK core imports a runtime module: no node:, bun, cloudflare: or a package", () => {
+    const dir = new URL("../../../packages/durable-sdk/src/core/", import.meta.url).pathname;
     for (const f of readdirSync(dir)) {
       const code = readFileSync(join(dir, f), "utf8");
       const specifiers = [...code.matchAll(/(?:^|\n)\s*(?:import|export)[^;]*?from\s+"([^"]+)"/g)].map((m) => m[1]!);

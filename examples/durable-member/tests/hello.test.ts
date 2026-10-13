@@ -15,7 +15,7 @@ describe("hello.ts", () => {
     const code = readFileSync(HELLO, "utf8").split("\n").filter((line) => line.trim() !== "" && !line.trim().startsWith("//"));
     expect(code.length).toBeLessThanOrEqual(20);
     const imports = code.filter((line) => line.startsWith("import "));
-    expect(imports).toEqual(['import { openCollie } from "./sdk/index.ts";']);
+    expect(imports).toEqual(['import { openCollie } from "../../packages/durable-sdk/src/index.ts";']);
   });
 
   test("one declared cap, one choice ask 'Deploy to staging?' with Yes and No, and the answer ends the program", async () => {

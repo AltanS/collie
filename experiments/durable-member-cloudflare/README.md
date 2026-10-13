@@ -259,7 +259,7 @@ account. No test calls Workers AI.
 The contract is [`WIRE.md`](../../bridge/mux/durable/WIRE.md), section 1B for this transport. This folder
 reuses three parts of the local example by relative path, so copy both folders:
 
-- **The SDK core** (`../../examples/durable-member/sdk/core/`). `createCore()` returns the layout handles and
+- **The SDK core** (`../../packages/durable-sdk/src/core/`). `createCore()` returns the layout handles and
   `core.handle(request)`, the whole wire as one function from a `Request` to a `Response`. It imports no
   runtime module. The Durable Object's `fetch` is one line that calls it.
 - **The Pi glue and the script** (`../../examples/durable-member/pi-durable/index.ts`, `../../examples/durable-member/script.ts`).

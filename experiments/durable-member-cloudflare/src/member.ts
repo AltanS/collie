@@ -31,7 +31,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { PiHarness, type PiHarnessContext } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
-import { type CollieCore, createCore, type TabHandle } from "../../../examples/durable-member/sdk/core/index.ts";
+import { type CollieCore, createCore, type TabHandle } from "../../../packages/durable-sdk/src/core/index.ts";
 import {
   ASKING_TOOLS,
   askTools,

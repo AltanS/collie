@@ -1,11 +1,12 @@
 # Durable member: a Pi Durable program in your crew
 
-Two programs that speak the durable socket wire to Collie. `hello.ts` is 12 lines of code and asks one question.
+Two programs that speak the durable socket wire to Collie. `hello.ts` is 10 lines of code and asks one question.
 `app.ts` is a small support desk built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable):
 it answers made-up support tickets for an online shop and shows each conversation to Collie. A Collie peer
 with `COLLIE_MUX=durable` lists those conversations as panes, so you can read them on the phone and answer
 their questions there. The wire is experimental and may change in any minor release of Collie
-([`WIRE.md`](../../bridge/mux/durable/WIRE.md)). This folder is example code to read and copy. It is not a package.
+([`WIRE.md`](../../bridge/mux/durable/WIRE.md)). This folder is example code to read and copy. The SDK it uses is
+the npm package [`@colliepwa/durable-sdk`](../../packages/durable-sdk/README.md).
 
 ## Start here: hello.ts
 
@@ -17,10 +18,11 @@ bun install --frozen-lockfile
 bun hello.ts
 ```
 
-The program prints `listening /run/user/1000/hello/app.sock` and waits. This is all of it:
+The program prints `listening /run/user/1000/hello/app.sock` and waits. This is all of it, with the import a
+program of your own writes:
 
 ```ts
-import { openCollie } from "./sdk/index.ts";
+import { openCollie } from "@colliepwa/durable-sdk";
 
 const socket = process.env.COLLIE_DURABLE_SOCKET ?? `${process.env.XDG_RUNTIME_DIR}/hello/app.sock`;
 const collie = await openCollie({ socket, hostName: "hello", caps: { asks: true } });
@@ -236,13 +238,19 @@ The contract is [`WIRE.md`](../../bridge/mux/durable/WIRE.md). The decisions beh
 [ADR 0101](../../.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) (send and stop) and
 [ADR 0102](../../.adr/0102-starters-are-launcher-rows.md) (starters).
 
-The SDK in `sdk/` is not published, and there is no package. It ships here as example code until a
-second program needs it. Copy the folder into your program.
+The SDK is the package `@colliepwa/durable-sdk`, experimental, under the npm dist-tag `experimental`:
+
+```sh
+npm install @colliepwa/durable-sdk@experimental    # or: bun add @colliepwa/durable-sdk@experimental
+```
+
+The programs in this folder import the package's source from `../../packages/durable-sdk/src` instead, so they run
+from a clone with no build. The code below, and the paths in the rest of this section, are the package's.
 
 ### Quickstart: one approval
 
 ```ts
-import { openCollie, requireApproval } from "./sdk/index.ts"; // on Node: "./sdk/node/index.ts"
+import { openCollie, requireApproval } from "@colliepwa/durable-sdk"; // one import for Node and Bun
 
 // The socket path comes from COLLIE_DURABLE_SOCKET, the same variable the Collie peer reads.
 const collie = await openCollie({ hostName: "my-agent", caps: { asks: true } });
@@ -264,7 +272,7 @@ on the phone gets 409 `decided` with the first outcome, and nothing runs twice.
 
 ### The parts
 
-The SDK imports nothing from Pi Durable outside `sdk/pi/`, and a test checks that:
+The SDK imports nothing from Pi Durable outside its `./pi` entry, and a test checks that:
 
 - `openCollie({ socket, hostName })` opens the socket and returns handles for workspaces, tabs and
   panes. Call `ready()` once every pane is shown, so Collie never sees a half-empty layout.
@@ -272,7 +280,7 @@ The SDK imports nothing from Pi Durable outside `sdk/pi/`, and a test checks tha
   the phone's answer. `onSend()` and `onAbort()` take the phone's text and Stop.
 - An item `{ kind: "reply" | "thinking" | "notice" | "markdown", partial: true }` is text still growing: write the same
   `id` again as it grows (not faster than every 250 ms), and once more with the final text and no `partial`. A
-  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.15). `sdk/pi/index.ts` does both.
+  `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.15). The `./pi` entry does both.
 - `ask()` takes `expiresAt` (a `Date` or an ISO string). Past it the ask closes as decided by `timeout`, and the
   `ask()` promise rejects with `AskClosed` whose `decidedBy` is `timeout`. `pane.decideAsk(askId, answer?)` closes
   an open ask as decided by the program: with an answer the `ask()` promise resolves with it, without one it rejects.
@@ -290,7 +298,7 @@ The SDK imports nothing from Pi Durable outside `sdk/pi/`, and a test checks tha
   `onRename({ kind, id, title }, requestId)`, `onClose({ kind, id, paneIds }, requestId)` and
   `onReopen({ id, paneId? }, requestId)`. Pass `hooks` to `openCollie` or `createCore`. The per-pane
   handlers (`pane.onSend`, `pane.onAbort`) stay the first choice, and a hook is the fallback for a pane that
-  has none: a pane with neither is 409 `not-supported`. Every payload type is exported from `sdk/core/types.ts`.
+  has none: a pane with neither is 409 `not-supported`. Every payload type is exported from the package (`src/core/types.ts`).
 - The phone can give a workspace or a tab a new name (`rename` cap, on by default). The SDK sets the title and
   raises `rev`. `hooks.onRename` can keep the name, or return `false` to refuse it with 422. Set
   `caps: { rename: false }` to take no rename at all. The layout is made again on every start, so a program
@@ -309,32 +317,32 @@ The SDK imports nothing from Pi Durable outside `sdk/pi/`, and a test checks tha
   one, oldest first, or `undefined` for one it does not know. Each hands back its own cursor as `next`, at most
   512 bytes of printable ASCII. Once a provider is set, each pane's `sessionId` is its pane id; pass
   `sessionId` to `tab.pane()` to name another, or `null` when it cannot stay the same across a restart.
-  `sdk/pi/index.ts` has `piHistory`, which reads every entry of every Pi conversation and maps it with the
+  The `./pi` entry has `piHistory`, which reads every entry of every Pi conversation and maps it with the
   same mapper as the live pane, and `app.ts` and the Cloudflare example use it.
 - The phone can bring a closed conversation back (`reopen` cap, on by default). `hooks.onReopen({ id, paneId? },
   requestId)` shows it again under the same pane id, or returns `false` to refuse with 422. Without a hook the SDK
   puts back a pane it closed in this process. `app.ts` takes the id off `closed.json` and shows it, and the
   Cloudflare example deletes it from its archive table. Set `caps: { reopen: false }` to take no reopen.
 
-The SDK has two parts. `sdk/core/` is the layout and the wire as one function, `handle(request)`: a web
+The SDK has two parts. `./core` (`src/core/`) is the layout and the wire as one function, `handle(request)`: a web
 `Request` in, a `Response` out. It cleans every string and cuts it to its byte cap, and keeps the request ids
 so a repeat runs once, in a `ReceiptStore` you can swap for one that outlives the process. The store keeps
 the newest 1000 per pane; a repeat of an older id gets a 500, an unknown outcome, and runs nothing. It imports no
 runtime module, so the same core serves the
-[Cloudflare example](../../experiments/durable-member-cloudflare/README.md) (parked under experiments) from a Durable Object. `sdk/server.ts` is the
+[Cloudflare example](../../experiments/durable-member-cloudflare/README.md) (parked under experiments) from a Durable Object. `src/server.ts` is the
 transport for Bun: the private socket and the descendant check. It accepts connections with `Bun.listen`
 and parses them with `node:http`, because only a `Bun.listen` socket gives the file descriptor that
-`SO_PEERCRED` needs. `Bun.serve({ unix })` shows no peer. `sdk/http.ts` is that `node:http` part on its own:
+`SO_PEERCRED` needs. `Bun.serve({ unix })` shows no peer. `src/http.ts` is that `node:http` part on its own:
 `wireListener(core)` is a request listener for any `node:http` server, and a host that serves web requests
 itself passes `core.handle` straight to it. Closing the server lets the replies in flight go out first, for
 at most 2 s.
 
-`sdk/node/index.ts` is the same `openCollie` for Node 22.18 or later, which runs this TypeScript as it is. It
+`./node` (`src/node/index.ts`) is the same `openCollie` for Node 22.18 or later, and the root import picks it on Node. It
 listens with `node:http` on the same private socket. It cannot run the descendant check, because Node cannot
 read the caller of a socket, and it writes one line at start that says so (WIRE.md 1A). Run the agent's tools
 in a sandbox that cannot reach the socket.
 
-`sdk/pi/index.ts` is the glue for Pi Durable. It shows a conversation as a pane, turns a risky tool call
+`./pi` (`src/pi/index.ts`) is the glue for Pi Durable. It shows a conversation as a pane, turns a risky tool call
 into an ask, and runs a helper conversation as a tool. It imports nothing from this example: the words it
 shows (the two questions, the items under a solved ticket) come in as options. It is written against
 `@earendil-works/pi-durable` 1.1.0, because it uses `entries({ order })` and `scanConversations`; on 1.0.x

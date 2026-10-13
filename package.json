@@ -11,6 +11,7 @@
     "build": "bun run cli/main.ts build",
     "build:web": "cd web && bun run build",
     "build:cli": "bun run scripts/build-cli.ts",
+    "sdk:build": "bun scripts/sdk-build.ts",
     "web:dev": "cd web && bun run dev",
     "lint": "oxlint --max-warnings 0",
     "lint:fix": "oxlint --fix --max-warnings 0",

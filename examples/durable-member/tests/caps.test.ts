@@ -2,7 +2,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { api, type Dial } from "./client.ts";
-import { CAPS, cut, openCollie, safeId, idOk } from "../sdk/index.ts";
+import { CAPS, cut, openCollie, safeId, idOk } from "../../../packages/durable-sdk/src/index.ts";
 import { cleanup, tmp } from "./util.ts";
 
 afterAll(cleanup);

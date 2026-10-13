@@ -1,4 +1,4 @@
-// What `openCollie` takes and gives, the same for the Bun entry (../index.ts) and the Node entry (node/index.ts).
+// What `openCollie` takes and gives, the same for the Bun entry (bun/index.ts) and the Node entry (node/index.ts).
 // No runtime import: each entry brings its own server.
 
 import { type CollieCore, type CoreOptions, createCore } from "./core/index.ts";

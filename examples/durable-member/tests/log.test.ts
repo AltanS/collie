@@ -2,8 +2,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { api, call, type Dial } from "./client.ts";
-import { type AskInput, openCollie, type ProgramEvent } from "../sdk/index.ts";
-import { Store } from "../sdk/core/layout.ts";
+import { type AskInput, openCollie, type ProgramEvent } from "../../../packages/durable-sdk/src/index.ts";
+import { Store } from "../../../packages/durable-sdk/src/core/layout.ts";
 import { cleanup, tmp } from "./util.ts";
 
 afterAll(cleanup);
