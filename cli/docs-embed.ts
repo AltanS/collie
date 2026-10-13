@@ -25,10 +25,11 @@ import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
 import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
-import glossary from "../docs/glossary.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
+import sessions from "../docs/sessions.md" with { type: "text" };
+import terminology from "../docs/terminology.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
@@ -50,7 +51,7 @@ export interface DocPage {
 }
 
 /**
- * The sixteen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
+ * The seventeen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -96,7 +97,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "durable-programs",
-    purpose: "Show a durable agent program on your phone: attach it, sessions and sources, what it can do",
+    purpose: "Show your own agent program on your phone: attach it, what it can do, and what to check",
     text: durablePrograms,
   },
   {
@@ -105,8 +106,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: upgrading,
   },
   {
+    name: "sessions",
+    purpose: "What a session is, and where sessions come from: a terminal or a program",
+    text: sessions,
+  },
+  {
     name: "multiplexers",
-    purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each backend can answer",
+    purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each terminal can answer",
     text: multiplexers,
   },
   {
@@ -125,9 +131,9 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: deployment,
   },
   {
-    name: "glossary",
-    purpose: "Collie's parts in plain words: instance, mux, pane, crew, lead, and the durable terms",
-    text: glossary,
+    name: "terminology",
+    purpose: "Collie's words in plain words, beside the names other tools use",
+    text: terminology,
   },
   {
     name: "troubleshooting",

@@ -35,17 +35,18 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program's conversations, tabs and workspaces can be closed from the phone.** The program declares the `close` cap, Collie draws its usual close controls, and the program decides what a close means on its side.
 - **A durable program's workspace can be renamed from the phone.** The space sheet gets a Rename row when the program takes renames.
 - **History lists a durable program's conversations, open and closed.** The program keeps the record and serves it, a closed conversation opens read-only on the phone, and a Reopen button brings it back when the program allows it. The peer's own log is a cache, and it resumes where it stopped after a restart.
-- **`collie durable attach` adds a program to your Collie.** One command writes the source, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
+- **`collie durable attach` adds a program to your Collie.** One command writes the entry in `sources.json`, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
 
 ### Changed
 
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
 - **The durable SDK has typed hooks.** `onSend`, `onAbort` and `onRename` take typed payloads with the request id, so a program handles each action in one named place.
 - **The Cloudflare example runs on Cloudflare's PiHarness.** A job that is evicted mid-run wakes itself by alarm and continues, and a real model comes from a Workers AI binding with no key in the Worker. The Collie wire, the asks and the receipts are unchanged.
-- **Docs: a glossary, and a page on durable programs in your crew.** The glossary names Collie's parts in plain words. The durable page explains why a program gets a Collie of its own and how the crew joins it.
+- **Docs: a Terminology page, and a page on durable programs in your crew.** The Terminology page names Collie's parts in plain words. The durable page explains why a program gets a Collie of its own and how the crew joins it.
 - **A durable program's home is its conversation list.** The phone opens on the program's conversations, open and closed, with the state and the open-question count on each row, and one tap opens one. The pane header is two lines: the title, and the running step or the subtitle. The bar fills by the steps that are done.
 - **A durable machine's home is one list of conversations, the way a messaging app lists its chats.** What waits on you comes first, then the other open conversations, then the closed ones under the label Closed. The filter chips, the item counts and the bar on each row are gone, and the line under a name shows the open question, else the program's line. With only a durable machine on the phone there is no tab bar. A conversation's header no longer opens pane settings, its sheet offers Close conversation and no Pin, and the belt drops Switch and Files. A closed conversation's view carries its name, and the New page shows the program's starters as a list under the heading New conversation.
 - **The durable examples are a small support desk.** Each ticket carries a customer's name and its topic, the question reads "Save this note to the ticket?" with Save and Don't save, Escalate says so on the line under the name, a look-up is named after its customer and closes once it answered, and the starters are Sign-in problem, Double charge and Address change. The Bun and the Cloudflare example share the same script, and the wire ids are unchanged.
+- **The docs start with sessions.** A new Sessions group explains what a session is and where it comes from, a terminal or a program, and a Terminology page lists Collie's words beside the names other tools use.
 
 ### Fixed
 
@@ -53,7 +54,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
-- **The durable page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The glossary gains Source and Session card, and the Cloudflare example is named as parked.
+- **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a 20-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.
 
 ## [1.21.0] - 2026-10-13
 

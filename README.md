@@ -73,7 +73,7 @@ data without installation.
 ## Motivation
 
 I wanted to check on my agents from my phone. The usual route is [Termux](https://termux.dev) to SSH
-in and attach to the terminal multiplexer session. Driving a TUI through on-screen controls is
+in and attach to the tmux or zellij session. Driving a TUI through on-screen controls is
 clumsy: special keys are fiddly, `Ctrl`/`Esc`/arrows require awkward chords, and simple text input
 fights the soft keyboard. I wanted a mobile interface instead of a terminal shoehorned onto a
 touchscreen. Collie lets you tap the agent that needs input, type normally, and send `Esc` or
@@ -137,6 +137,14 @@ and that is the only way to install it on a phone.
 | [**Install in five minutes**](./docs/five-minute-install.md) | The recommended setup, step by step: Tailscale, Herdr and Collie on your computer, then a paired phone with Collie on its home screen |
 | [**Claude Code in tmux or Herdr, on your phone**](./docs/claude-code-on-your-phone.md) | Keep Claude Code running in tmux or Herdr when SSH drops. Manage sessions, start new agents and worktrees, approve prompts, and send Esc or Ctrl from your phone with push alerts. |
 
+### Sessions
+
+| | |
+| --- | --- |
+| [**Sessions**](./docs/sessions.md) | What a session is, where sessions come from, a terminal or a program, and what the phone shows for each |
+| [**Terminals**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios or Tern, what each can answer, and agent beacons. Experimental for tmux, zellij, tuios and Tern; bug reports wanted |
+| [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: attach it with `collie durable attach`, what it can do on the phone, and what to check when it does not appear |
+
 ### Reference
 
 | | |
@@ -148,13 +156,11 @@ and that is the only way to install it on a phone.
 | [**Changes**](./docs/changes.md) | The Files screen: a workspace's folder with its changes marked, the changed files and their diffs, and the last commit, from the pane or the dashboard's Files tab. Read-only git, nested repos, and the two settings that decide how far it looks |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
-| [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios, Tern or a durable agent program, what each backend can answer, and agent beacons. Experimental for tmux, zellij, tuios, Tern and durable; bug reports wanted |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
-| [**Durable programs**](./docs/durable-programs.md) | Show a durable agent program on your phone: attach it with `collie durable attach`, how sessions and sources work, and what it can do on the phone |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
-| [**Glossary**](./docs/glossary.md) | Collie's parts in plain words: instance, mux, pane, tab, workspace, session, harness, crew, lead, and the durable terms |
+| [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, program, harness, crew, lead, and more |
 | **For an AI coding agent in your terminal** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·

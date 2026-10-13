@@ -199,8 +199,8 @@ Key security boundaries and risks:
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
   [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
-- **A single instance exposes all sessions.** By default, one Collie process fronts every
-  multiplexer session discovered under Herdr's configuration root, including sandbox sessions
+- **A single instance exposes all Herdr sessions.** By default, one Collie process fronts every
+  Herdr session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
 - **Writes are recorded to `<state-dir>/audit.log`**, which is `~/.local/state/collie/audit.log`
   unless `COLLIE_STATE_DIR` moves it. The server logs all incoming keystrokes,
