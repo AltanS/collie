@@ -865,6 +865,7 @@ export class UpdateStateStore {
   private pushedAt: string | null = null;
   private dismissed: string | null = null;
   private dismissedCrew: string | null = null;
+  private dismissedCrewStamp: number | null = null;
   private readonly file: string;
 
   constructor(private readonly cfg: Config) {
@@ -881,12 +882,17 @@ export class UpdateStateStore {
       const pushed = rec === null ? undefined : rec.lastPushedAt;
       const closed = rec === null ? undefined : rec.dismissedVersion;
       const closedCrew = rec === null ? undefined : rec.dismissedCrewVersion;
+      const closedCrewAt = rec === null ? undefined : rec.dismissedCrewAt;
       this.lastVersion = typeof last === "string" ? last : null;
       // A record written before M17/08 carries neither dismissal. Both read as "nothing dismissed",
       // which is the band's own default — an operator who closed the band on an older build simply
       // sees it once more.
       this.dismissed = typeof closed === "string" ? closed : null;
       this.dismissedCrew = typeof closedCrew === "string" ? closedCrew : null;
+      // A crew close written before 1.21.1 carries no stamp. It reads as null, which the band takes
+      // as "covers every run of that version": the close the operator made still holds.
+      this.dismissedCrewStamp =
+        typeof closedCrewAt === "number" && Number.isFinite(closedCrewAt) ? closedCrewAt : null;
       // A LEGACY record carries no timestamp. It reads as "no push yet" — the window opens at once
       // rather than crashing the monitor or pinning it shut for a day.
       this.pushedAt = typeof pushed === "string" ? pushed : null;
@@ -915,6 +921,12 @@ export class UpdateStateStore {
     return this.dismissedCrew;
   }
 
+  /** When the crew notice was closed (epoch ms, this machine's clock), or null when it never was or
+   *  the record predates the stamp. */
+  dismissedCrewAt(): number | null {
+    return this.dismissedCrewStamp;
+  }
+
   async setLastNotified(version: string, pushedAt: string): Promise<void> {
     this.lastVersion = version;
     this.pushedAt = pushedAt;
@@ -936,9 +948,14 @@ export class UpdateStateStore {
     scope: DismissScope,
     version: string,
     notified?: { version: string; pushedAt: string },
+    at?: number,
   ): Promise<void> {
-    if (scope === "offer") this.dismissed = version;
-    else this.dismissedCrew = version;
+    if (scope === "offer") {
+      this.dismissed = version;
+    } else {
+      this.dismissedCrew = version;
+      this.dismissedCrewStamp = at ?? null;
+    }
     if (notified !== undefined) {
       this.lastVersion = notified.version;
       this.pushedAt = notified.pushedAt;
@@ -955,6 +972,7 @@ export class UpdateStateStore {
       lastPushedAt: this.pushedAt,
       dismissedVersion: this.dismissed,
       dismissedCrewVersion: this.dismissedCrew,
+      dismissedCrewAt: this.dismissedCrewStamp,
     };
     const tmp = `${this.file}.tmp`;
     await writeFile(tmp, JSON.stringify(body, null, 2), { mode: 0o600 });
@@ -1008,11 +1026,16 @@ export interface UpdateStore {
   dismissedVersion(): string | null;
   /** The version whose quiet CREW notice was closed, or null. */
   dismissedCrewVersion(): string | null;
-  /** Record a dismissal, folding the digest snooze into the same write when one is asked for. */
+  /** When that crew close was made (epoch ms), or null. A crew run that settles AFTER it is a new
+   *  run, and the band may name it again. */
+  dismissedCrewAt(): number | null;
+  /** Record a dismissal, folding the digest snooze into the same write when one is asked for. `at`
+   *  stamps a crew close; the offer scope ignores it. */
   setDismissed(
     scope: DismissScope,
     version: string,
     notified?: { version: string; pushedAt: string },
+    at?: number,
   ): Promise<void>;
 }
 
@@ -1277,6 +1300,9 @@ export class UpdateMonitor {
       scope,
       version,
       snoozes ? { version, pushedAt: this.nowIso() } : undefined,
+      // THE CREW CLOSE IS STAMPED (1.21.1). It covers the run the operator read, and a later run of
+      // the same version settles after this stamp, so the band can name a fresh failure again.
+      scope === "crew" ? this.deps.now() : undefined,
     );
   }
 
@@ -1349,6 +1375,10 @@ export class UpdateMonitor {
     // must carry NO `run` key rather than one whose value is `undefined`. The same for the package
     // command, which most installs have none of.
     if (run !== null) status.run = run;
+    // When the crew notice was closed, on the same rule: absent when it never was, or when the close
+    // predates the stamp. The band reads it beside `dismissedCrewVersion`.
+    const crewClosedAt = this.deps.store.dismissedCrewAt();
+    if (crewClosedAt !== null) status.dismissedCrewAt = crewClosedAt;
     // The link change (M27/06), on the same rule: absent when there is nothing to say, which is
     // every solo install, every ordinary release and every check that has not run yet.
     if (this.linkChange !== null) status.linkChange = this.linkChange;

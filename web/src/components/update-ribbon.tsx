@@ -120,6 +120,9 @@ export function UpdateRibbon() {
     bundleInstalling: stage === "installing",
     dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
     dismissedCrewVersion: dismissedIn("crew", justDismissed, update?.dismissedCrewVersion),
+    // A tap in THIS tab covers the run on screen, whatever it settled at, so it carries no stamp. The
+    // bridge's stamp takes over on the next poll.
+    dismissedCrewAt: justDismissed?.scope === "crew" ? null : (update?.dismissedCrewAt ?? null),
     crew,
     now: Date.now(),
   });

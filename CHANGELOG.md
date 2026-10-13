@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The red "Could not update" row closes when you tap its ✕.** After a crew update that left a machine behind, for example one that was offline, the ✕ recorded the close but the row stayed on every screen. It now goes away and stays away. A later run that fails again, or a newer version, shows it again. A machine that was not reached still counts as "Could not update", because the run is over and nothing is still trying. The Updates page offers "Try <name> again".
+
 ## [1.21.0] - 2026-10-13
 
 ### Added

@@ -160,6 +160,9 @@ const UPDATE_INFO_KEYS = {
   // band is read next. Optional here: a bridge older than the fields sends neither.
   dismissedVersion: true,
   dismissedCrewVersion: true,
+  // When the crew notice was closed (1.21.1). Optional, and absent until a crew close is made, so a
+  // solo payload carries no such key.
+  dismissedCrewAt: true,
   // The peer legs of a run this machine has no record of, and that run's settle stamp (M20/09,
   // M20/01). Both optional and both ABSENT on a solo install: a machine with no crew has no legs,
   // so the solo payload is byte-identical to what it was.
@@ -252,6 +255,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "current",
       // The two bands the operator can close (M17/08) — optional here, because a bridge older than
       // the fields sends neither.
+      "dismissedCrewAt",
       "dismissedCrewVersion",
       "dismissedVersion",
       "installKind",

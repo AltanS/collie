@@ -140,6 +140,9 @@ export interface RibbonInput {
   /** The version whose quiet CREW notice was closed (`update.dismissedCrewVersion`). A separate
    *  decision, so a separate input — see {@link DismissScope}. */
   dismissedCrewVersion: string | null;
+  /** When that crew close was made (`update.dismissedCrewAt`), or null for a close that covers every
+   *  run of its version: an optimistic tap in this tab, or a close written before the stamp. */
+  dismissedCrewAt?: number | null;
   /**
    * The crew census (`GET /api/update/check`'s `crew`, held by `lib/update-run-store.ts`). Read for
    * ONE thing: a failed leg whose member the census now shows level stops being named here (see
@@ -407,6 +410,30 @@ function targetOf(input: RibbonInput, to: string | null): string | null {
   return to ?? input.update?.latest ?? null;
 }
 
+/**
+ * HAS THE OPERATOR ALREADY PUT THIS FAILED RUN DOWN? (1.21.1)
+ *
+ * The close was recorded on the bridge from M17/08 on, keyed by the run's target version, and then
+ * nothing read it: M28/01 moved the moving-peer states to the update screen and took the one line
+ * that compared `dismissedCrewVersion` with them, while the failed-leg branch above it never had
+ * one. So the ✕ posted, the bridge wrote `dismissedCrewVersion`, and the red row stayed. Seen on the
+ * release lane on 2026-10-13, a 1.21.0 crew run that settled with minibuch unreachable.
+ *
+ * A close covers ONE run. The version must match, and the run must have settled no later than the
+ * close: a retry of the same version that settles afterwards is a new run, and its failure is a new
+ * sentence. A close with no stamp covers every run of its version (see {@link RibbonInput}).
+ */
+export function crewFailureDismissed(
+  target: string | null,
+  settledAt: number | null,
+  input: Pick<RibbonInput, "dismissedCrewVersion" | "dismissedCrewAt">,
+): boolean {
+  if (target === null || target !== input.dismissedCrewVersion) return false;
+  const closedAt = input.dismissedCrewAt ?? null;
+  if (closedAt === null || settledAt === null) return true;
+  return settledAt <= closedAt;
+}
+
 /** The whole band, decided once. See the precedence in this file's header. */
 export function ribbonView(input: RibbonInput): RibbonView {
   const run = input.update?.run;
@@ -422,15 +449,24 @@ export function ribbonView(input: RibbonInput): RibbonView {
   // ONLY WHILE THE MEMBER IS STILL BEHIND. A leg's member that the census now shows level, typically
   // because it levelled itself after the run gave up on it, is not a machine the operator can do
   // anything about, so the sentence goes when the census says so (`readRun`'s `failed`).
+  //
+  // AND ONLY UNTIL THE OPERATOR PUTS IT DOWN (1.21.1). `dismissTarget` gives this state a close, so
+  // this branch must honour it, or the ✕ is a button that does nothing. A closed failure falls
+  // through to the states below it, so a stale bundle or a newer offer still shows.
+  //
+  // An UNREACHABLE member is a failure here, not a wait. The run settled and gave up on it: nothing
+  // is still trying, and the Updates page carries "Try <name> again". "Could not update <name>" is
+  // true of it, and the reason that follows says it was not reached.
   {
     const reading = readRun({ update: input.update, crew: input.crew, now: input.now });
-    if (reading.failed !== null) {
+    const target = targetOf(input, run?.to ?? null);
+    if (reading.failed !== null && !crewFailureDismissed(target, reading.settledAt, input)) {
       const reason = reading.failed.reason ?? t("settings.updateCard.peer.unknownReason");
       return {
         kind: "peer-failed",
         name: reading.failed.name,
         reason: truncateWords(reason, REASON_BUDGET),
-        target: targetOf(input, run?.to ?? null),
+        target,
       };
     }
   }

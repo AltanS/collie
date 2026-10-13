@@ -885,6 +885,15 @@ export interface UpdateStatus {
    * the other down with it, even when both name the same version.
    */
   dismissedCrewVersion: string | null;
+  /**
+   * When the crew notice above was closed, epoch ms on this machine's clock (1.21.1). Absent when
+   * none was, or when the close was written before the stamp existed.
+   *
+   * It is what lets a close cover ONE run: a crew run that settles after it is a new run of the
+   * same version, and the band may name its failure again. Absent reads as "covers every run of
+   * that version", which is what a close made before the stamp meant.
+   */
+  dismissedCrewAt?: number;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /**

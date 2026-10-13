@@ -706,6 +706,13 @@ export interface UpdateInfo {
    */
   dismissedCrewVersion?: string | null;
   /**
+   * When that crew close was made, epoch ms on the bridge's clock (1.21.1). Absent when none was, on
+   * an older bridge, and on a close written before the stamp: all three read as "the close covers
+   * every run of that version". A crew run that settles AFTER the stamp is a new run, and its failure
+   * may be named again.
+   */
+  dismissedCrewAt?: number | null;
+  /**
    * The release ahead changes the crew wire, and by how much — absent when it does not (M27/06).
    *
    * Absent on a solo install, absent when the release speaks the wire this install already speaks,

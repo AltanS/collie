@@ -370,6 +370,9 @@ const UPDATE_STATUS_KEYS = {
   // is the whole point: a dismissal kept per browser is a dismissal that holds in one browser.
   dismissedVersion: true,
   dismissedCrewVersion: true,
+  // When the crew notice was closed (1.21.1). Optional, and absent until a crew close is made, so the
+  // golden bodies below carry no such key.
+  dismissedCrewAt: true,
   // The release ahead changes the crew wire (M27/06). Optional, and ABSENT on a solo instance by
   // construction: there is no link to change, so the golden bodies below carry no such key.
   linkChange: true,
@@ -486,6 +489,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "current",
       // The two bands the operator can close (M17/08): this host's offer, and the quiet notice about
       // a machine a package manager owns. Required and null when nothing was closed.
+      "dismissedCrewAt",
       "dismissedCrewVersion",
       "dismissedVersion",
       "installKind",
