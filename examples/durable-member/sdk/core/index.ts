@@ -26,6 +26,9 @@ export {
   STARTER_GROUP,
 } from "./receipts.ts";
 export {
+  ANSWER_TEXT_BYTES,
+  ANSWER_TEXT_DEFAULT,
+  ANSWER_TEXT_MAX,
   assertId,
   BADGE_COUNT_MAX,
   BADGE_TEXT_MAX,
@@ -40,6 +43,8 @@ export {
   PROGRESS_LABEL_MAX,
   PROGRESS_STEPS_MAX,
   LINK_LABEL_MAX,
+  maxLengthOf,
+  PLACEHOLDER_MAX,
   progressOf,
   RENAME_TITLE_MAX,
   renameTitleOf,

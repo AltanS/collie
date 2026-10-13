@@ -369,8 +369,9 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
 
 /**
  * The pane routes: `GET /api/pane/:id` and its actions. `answer` (ADR 0100) is
- * `POST /api/pane/:id/answer` with `{ requestId, askId, revision, optionId, note? }`: a person's tap
- * answers one open ask of a pane whose adapter raises asks as data, once per request id. It answers
+ * `POST /api/pane/:id/answer` with `{ requestId, askId, revision }` and exactly one of `optionId` (a
+ * permission, with an optional `note`), `optionIds` (a choice), `text` (a text ask) or `values` (a form): a
+ * person's tap answers one open ask of a pane whose adapter raises asks as data, once per request id. It answers
  * `taken` or `too-late` (200), `stale` with the ask as it is now (409), `unknown` (504, the receipt
  * stays so the same request id may be sent again), or `refused` (409, `unsupported` for a pane whose
  * adapter takes no answers). See `bridge/durable/answer.ts`.

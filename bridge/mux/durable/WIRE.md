@@ -325,9 +325,16 @@ interface Ask {
    * call raised again after a restart has the same id. A random one is allowed.
    */
   id: string;
-  /** The only kind in version 1. A reader shows an ask of another kind as not answerable. */
-  kind: "permission";
-  /** The program's id for the tool call. The same across a restart. */
+  /**
+   * What the person is asked (section 7.12). A reader shows an ask of another kind as not answerable.
+   * `permission` is the tool-call question of version 1. `choice`, `text` and `form` are the others.
+   */
+  kind: "permission" | "choice" | "text" | "form";
+  /**
+   * The program's id for what the ask is about. The same across a restart. For a `permission` it is the
+   * tool call. For any other kind it is any id of the program's own that is stable across a restart, such
+   * as the id of the step that asks. The adapter keys its one push per question on it (ADR 0100).
+   */
   toolCallId: string;
   /** Starts at 1. Rises when the program changes this ask in place. */
   revision: number;
@@ -335,8 +342,19 @@ interface Ask {
   title: string;
   /** The item this ask belongs to, usually the tool item. The card sits under it. */
   itemId: string;
-  /** At least one, at most 6. */
+  /**
+   * A `permission`: at least one, at most 6, each with an `effect`. A `choice`: 1 to 8, none with an
+   * `effect`. A `text` and a `form`: none, and the member may be left out.
+   */
   options: Option[];
+  /** A `choice` only: more than one option may be picked. Default false. */
+  multiple?: boolean;
+  /** A `text` only: the hint in the empty field. At most 60 characters. */
+  placeholder?: string;
+  /** A `text` only: the most characters the answer may have, 1 to 2000. Default 500. */
+  maxLength?: number;
+  /** A `form` only: 1 to 6 fields. */
+  fields?: Field[];
   /** Longer text under the title. */
   reason?: string;
   /** The call itself, when the program wants it drawn. */
@@ -353,7 +371,20 @@ interface Option {
   /** Unique inside its ask. */
   id: string;
   label: string;
-  effect: "allow" | "allow-always" | "deny" | "cancel";
+  /** On a `permission` option only. A `choice` option, and an option of a form field, has none. */
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+interface Field {
+  /** Unique inside its ask. The key of the field's value in the answer. */
+  id: string;
+  label: string;
+  kind: "text" | "choice" | "toggle";
+  required?: boolean;
+  /** A `choice` field: 1 to 8 options, none with an `effect`. A pick answers with the option's `id`. */
+  options?: Option[];
+  /** A `text` field: 1 to 2000 characters. Default 500. */
+  maxLength?: number;
 }
 
 // ── items and events ──────────────────────────────────────────────────────────
@@ -417,7 +448,15 @@ interface AnswerRequest {
   askId: string;
   /** The revision the phone saw. */
   revision: number;
-  answer: { optionId: string; note?: string };
+  /**
+   * Exactly one shape, by the kind of the ask (section 7.12): `optionId` for a `permission`, `optionIds`
+   * for a `choice` (one id when it is not `multiple`), `text` for a `text` ask, `values` for a `form`.
+   */
+  answer:
+    | { optionId: string; note?: string }
+    | { optionIds: string[] }
+    | { text: string }
+    | { values: Record<string, string | string[] | boolean> };
 }
 
 interface AnswerReply {
@@ -652,13 +691,15 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 
 - An ask is open from its `ask` event until its `ask-closed` event. While any ask is open, the pane
   state is `waiting`.
-- An answer names `askId`, the `revision` the phone saw, and an `optionId`.
+- An answer names `askId`, the `revision` the phone saw, and what the person chose: an `optionId`, or
+  for the other kinds of ask what section 7.12 says.
   - The ask id is not open on this pane: 200 `{ "result": "too-late" }`. This covers an ask already
     answered, one closed by a stop, and, for a program that mints a random id per raise, every id
     from before a restart.
   - The ask is open and `revision` is not its current one: 409 `stale`, with `ask` in its current
     form.
-  - `optionId` is not one of the options: 400 `bad-option`.
+  - `optionId` is not one of the options: 400 `bad-option`. The same code for an id in `optionIds` or
+    in a choice field of a form that the ask does not offer (section 7.12).
   - Otherwise the program resolves the ask, closes it with `by: "phone"`, and answers
     `{ "result": "taken" }`. The tool then runs or is denied, as the option says.
 - Only an answer on this route closes an ask with `by: "phone"`. The program MUST NOT answer its own
@@ -821,6 +862,36 @@ abort.
   tildes gets an invisible character in front of it, because the markdown reader ends a block at any such
   line; the code is unchanged to the eye.
 
+### 7.12 More kinds of ask
+
+- `Ask.kind` is `permission`, `choice`, `text` or `form`. Every kind has the same `id`, `toolCallId`,
+  `revision`, `title`, `itemId`, `reason` and `cleaned`, the same id rule, and the same lifecycle: open from
+  its `ask` event to its `ask-closed`, answered once by id and revision, with a request id. The pane is
+  `waiting` while any ask of any kind is open. Nothing else about an ask depends on its kind, so the
+  adapter's push guard keys every kind the same way, one push per `(host, toolCallId)`.
+- A `permission` is unchanged. Its answer is `{ optionId, note? }`, and `allow-always` is an option of a
+  `permission` and of nothing else, because no other kind has an `effect`.
+- A `choice` offers 1 to 8 options and answers `{ optionIds }`: a list of 1 to 8 distinct ids of the ask's
+  options. With `multiple` false the list holds one id; the program answers 400 `bad-body` for more. An id
+  the ask does not offer is 400 `bad-option`.
+- A `text` ask answers `{ text }`: 1 to `maxLength` characters (default 500, at most 2000). The adapter
+  refuses a text over 8000 bytes before it sends, which is 2000 characters at four bytes each. The program
+  checks the ask's own `maxLength` and answers 400 `bad-body` for a text over it or an empty one.
+- A `form` has 1 to 6 fields and answers `{ values }`: an object whose keys are field ids. A `text` field's
+  value is a string of at most its `maxLength`. A `choice` field's value is one option id of that field. A
+  `toggle` field's value is a boolean. A required field must have a value. A key that is no field, a value
+  of the wrong type, a missing required field and a text over its `maxLength` are 400 `bad-body`; a pick
+  the field does not offer is 400 `bad-option`. A list of ids is a legal value on the wire, for a program
+  that builds a multiple choice field; this version's phone sends one id.
+- The adapter cleans every string of an ask (section 6). A `placeholder` and a field `label` read as a
+  title does: a field label is cut at 128 bytes, a placeholder at 60 characters. A `choice` option, a
+  field, a field option or a repeated id that breaks a rule is dropped alone; a `maxLength` that is not a
+  whole number from 1 to 2000 reads as the default. An ask of a kind the adapter does not know is listed
+  and is not answerable.
+- The adapter checks the id rule on every id in an answer, and the byte cap on every text, before it
+  sends. It keeps no answer text: the receipt holds ids and a digest, so the same request id with another
+  text is refused (`request-id-reused`) without the words being stored.
+
 ## 8. Restart and epoch
 
 1. Every start of the program makes a new random `epoch`, at least 128 bits, never reused. `rev`
@@ -928,3 +999,8 @@ document. The version number stays 1; the spike's shapes are not supported.
 22. **`Item` gains the kinds `markdown`, `code` and `link`** (sections 4, 6 and 7.11). Added before
     version 1 shipped, so the version stays 1. An older adapter drops an item of a kind it does not
     know.
+23. **`Ask.kind` gains `choice`, `text` and `form`, and `AnswerRequest.answer` gains the shapes
+    `{ optionIds }`, `{ text }` and `{ values }`** (sections 3, 4 and 7.12). `Option.effect` becomes
+    optional (a `permission` still has it), and `Ask` gains `multiple`, `placeholder`, `maxLength` and
+    `fields`. Added before version 1 shipped, so the version stays 1. An older adapter shows an ask of a
+    kind it does not know as not answerable.

@@ -33,6 +33,10 @@ export const CAPS = {
 
 /** List caps. */
 export const LIMITS = {
+  /** Options of a `choice` ask or of a choice field (WIRE.md 7.12). A `permission` has `options`. */
+  choiceOptions: 8,
+  /** Fields of a `form` ask. */
+  formFields: 6,
   workspaces: 64,
   tabs: 256,
   panes: 256,
@@ -181,6 +185,23 @@ export function badgeOf(value: { count: number } | { text: string }): { count: n
   }
   const word = shortLine(text, BADGE_TEXT_MAX);
   return word === undefined ? undefined : { text: word };
+}
+
+/** The longest `placeholder` of a text ask, in characters. WIRE.md 7.12. */
+export const PLACEHOLDER_MAX = 60;
+/** The largest `maxLength` of a text ask or field. */
+export const ANSWER_TEXT_MAX = 2000;
+/** The `maxLength` of a text ask or field that names none. */
+export const ANSWER_TEXT_DEFAULT = 500;
+/** The most bytes of an answer's text or field value: {@link ANSWER_TEXT_MAX} characters at four bytes each. */
+export const ANSWER_TEXT_BYTES = ANSWER_TEXT_MAX * 4;
+
+/** A `maxLength` as a program passes it: a whole number from 1 to 2000, else a RangeError (WIRE.md 7.12). */
+export function maxLengthOf(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > ANSWER_TEXT_MAX) {
+    throw new RangeError(`a maxLength is a whole number from 1 to ${ANSWER_TEXT_MAX} (WIRE.md 7.12)`);
+  }
+  return value;
 }
 
 /** The longest code language, in characters. WIRE.md 7.11. */

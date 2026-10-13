@@ -59,8 +59,9 @@ import {
   type MuxWorktreeOpened,
   type MuxWorktreeScope,
 } from "../types.ts";
+import type { JsonObject } from "../../json.ts";
 import type { AnswerRequest, Ask, ControlRequest } from "../../types.ts";
-import { byteLength, CAPS, isWireId, RENAME_TITLE_MAX, renameTitleOf, REPLY_CAPS } from "./clean.ts";
+import { ANSWER_TEXT_BYTES, byteLength, CAPS, isWireId, RENAME_TITLE_MAX, renameTitleOf, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
   DurableOutcomeUnknown,
@@ -172,6 +173,45 @@ export const FAILURES_TO_UNREACHABLE = 2;
 
 /** The longest note an answer may carry, in bytes (WIRE.md section 6). */
 export const NOTE_MAX_BYTES = 2048;
+
+/** The ids an answer carries, each of which must pass the id rule before the answer leaves. A form's keys are field ids; a choice field's value ids are option ids. */
+function answerIds(answer: AnswerRequest): string[] {
+  if ("optionId" in answer) return [answer.optionId];
+  if ("optionIds" in answer) return answer.optionIds;
+  if ("values" in answer) {
+    const found: string[] = [];
+    for (const [key, value] of Object.entries(answer.values)) {
+      found.push(key);
+      if (Array.isArray(value)) found.push(...value);
+    }
+    return found;
+  }
+  return [];
+}
+
+/** The refusal for an answer over its caps (WIRE.md 7.12), or null. Nothing leaves for a body the program would answer 400. */
+function answerTooLong(answer: AnswerRequest): string | null {
+  if ("optionId" in answer) {
+    return answer.note !== undefined && byteLength(answer.note) > NOTE_MAX_BYTES ? `The note is longer than ${String(NOTE_MAX_BYTES)} bytes.` : null;
+  }
+  if ("text" in answer) return byteLength(answer.text) > ANSWER_TEXT_BYTES ? `The text is longer than ${String(ANSWER_TEXT_BYTES)} bytes.` : null;
+  if ("values" in answer) {
+    for (const value of Object.values(answer.values)) {
+      if (value === true || value === false || Array.isArray(value)) continue;
+      if (byteLength(value) > ANSWER_TEXT_BYTES) return `A field is longer than ${String(ANSWER_TEXT_BYTES)} bytes.`;
+    }
+    return null;
+  }
+  return null;
+}
+
+/** The `answer` member of the POST body: the one shape the phone sent, and nothing else. */
+function answerOf(answer: AnswerRequest): JsonObject {
+  if ("optionId" in answer) return answer.note === undefined ? { optionId: answer.optionId } : { optionId: answer.optionId, note: answer.note };
+  if ("optionIds" in answer) return { optionIds: answer.optionIds };
+  if ("text" in answer) return { text: answer.text };
+  return { values: answer.values };
+}
 
 /** The refusal detail for a program that has not laid out its panes yet. */
 export const STARTING = "starting";
@@ -535,13 +575,13 @@ export class DurableMux implements MuxAdapter {
    */
   async answerAsk(paneId: string, answer: AnswerRequest): Promise<MuxOutcome<MuxAnswerResult>> {
     // The id rule, checked before anything leaves, so the program never sees a `bad-id` from us.
-    for (const id of [paneId, answer.requestId, answer.askId, answer.optionId]) {
+    const ids = [paneId, answer.requestId, answer.askId, ...answerIds(answer)];
+    for (const id of ids) {
       if (!isWireId(id)) return muxRefused("An id in the answer breaks the id rule.");
     }
     if (!Number.isSafeInteger(answer.revision) || answer.revision < 1) return muxRefused("The revision is not a whole number from 1.");
-    if (answer.note !== undefined && byteLength(answer.note) > NOTE_MAX_BYTES) {
-      return muxRefused(`The note is longer than ${String(NOTE_MAX_BYTES)} bytes.`);
-    }
+    const tooLong = answerTooLong(answer);
+    if (tooLong !== null) return muxRefused(tooLong);
     const session = this.current;
     if (session === null) return muxUnreachable(STARTING);
     if (!session.caps.asks) return muxRefused("This program takes no answers.");
@@ -550,7 +590,7 @@ export class DurableMux implements MuxAdapter {
       requestId: answer.requestId,
       askId: answer.askId,
       revision: answer.revision,
-      answer: answer.note === undefined ? { optionId: answer.optionId } : { optionId: answer.optionId, note: answer.note },
+      answer: answerOf(answer),
     };
     let reply: DurableReply;
     try {

@@ -244,3 +244,37 @@ describe("two risky calls in one message", () => {
     expect(await openAsks(d, id)).toEqual([]);
   });
 });
+
+// A ticket that asks questions: the note (a permission), then which queue (a choice), then one line (a text ask).
+describe("a ticket with questions", () => {
+  test("the choice and the text ask are answered by their own shapes, one after the other, and the reply uses both", async () => {
+    const id = (await api.start(d, "ask-questions")).body.paneId;
+    const permission = await waitFor("the note's ask", async () => (await openAsks(d, id)).find((a) => a.kind === "permission"));
+    expect((await api.answer(d, id, permission.id, "allow")).body).toEqual({ result: "taken" });
+
+    const choice = await waitFor("the choice", async () => (await openAsks(d, id)).find((a) => a.kind === "choice"));
+    expect(choice).toMatchObject({ title: "Which queue?", options: [{ id: "billing" }, { id: "access" }, { id: "other" }] });
+    expect(choice.options.every((o) => !("effect" in o))).toBe(true);
+    expect(choice.toolCallId).toBe(choice.itemId);
+    expect((await pane(d, id))!.state).toBe("waiting");
+    expect((await pane(d, id))!.badge).toEqual({ count: 1 });
+    // The wrong shape for a choice is refused and the ask stays open.
+    expect((await api.answerWith(d, id, choice.id, { text: "billing" })).status).toBe(400);
+    expect((await api.answerWith(d, id, choice.id, { optionIds: ["access"] })).body).toEqual({ result: "taken" });
+    expect((await api.answerWith(d, id, choice.id, { optionIds: ["billing"] })).body).toEqual({ result: "too-late" });
+
+    const text = await waitFor("the text ask", async () => (await openAsks(d, id)).find((a) => a.kind === "text"));
+    expect(text).toMatchObject({ title: "One line for the customer", placeholder: "We are looking into it", maxLength: 280 });
+    expect((await api.answerWith(d, id, text.id, { text: "x".repeat(281) })).body.code).toBe("bad-body");
+    expect((await api.answerWith(d, id, text.id, { text: "We are on it." })).body).toEqual({ result: "taken" });
+
+    const reply = await waitFor("the reply", async () =>
+      (await allEvents(d, id)).find((e) => e.type === "item" && e.item.kind === "reply" && e.item.text.startsWith("Questions answered.")),
+    );
+    expect((reply as { item: { text: string } }).item.text).toBe("Questions answered. customer line: We are on it.");
+    expect((await pane(d, id))!.badge).toBeUndefined();
+    const tools = (await allEvents(d, id)).flatMap((e) => (e.type === "item" && e.item.kind === "tool" ? [`${e.item.tool.name}:${e.item.status}`] : []));
+    expect(tools).toContain("ask_queue:done");
+    expect(tools).toContain("ask_customer:done");
+  });
+});

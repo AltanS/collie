@@ -24,7 +24,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import { type Collie, openCollie, SOCKET_ENV } from "./sdk/index.ts";
-import { PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "./pi-durable/index.ts";
+import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "./pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "./script.ts";
 
 export interface AppOptions {
@@ -87,7 +87,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   });
   const triageTools: Extension = defineExtension({
     name: "triage-tools",
-    tools: [writeNote, spawnHelperTool({ panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
+    tools: [writeNote, ...askTools({ panes }), spawnHelperTool({ panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
   });
   const registry = createRegistry();
   registry.install(triageTools);
@@ -130,6 +130,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   collie.starters([
     { id: "new-triage", label: "New triage", run: startTriage("") },
     { id: "two-notes", label: "Two notes at once (faux only)", run: startTriage("TWO: ") },
+    { id: "ask-questions", label: "A choice and a line of text (faux only)", run: startTriage("ASK: ") },
   ]);
 
   // A first start opens one ticket, so the phone has something to show and one ask to answer.
@@ -139,7 +140,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   // Continue any run the last process left unfinished, and wait for the asks it raises again: Pi re-runs a
   // waiting hook, which asks under the same id (the SDK derives it from the tool call). Only then is the layout
   // complete, so the first snapshot after a restart carries every open ask.
-  const reRaised = panes.reRaised(risky);
+  const reRaised = panes.reRaised(new Set([...risky, ...ASKING_TOOLS]));
   harness.resume();
   await reRaised;
   collie.ready(); // the layout is complete: only now may Collie see a snapshot

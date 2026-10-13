@@ -38,6 +38,10 @@ export const CAPS = {
   panes: 256,
   openAsksPerPane: 50,
   optionsPerAsk: 6,
+  /** Options of a `choice` ask, and of a `choice` field of a form (WIRE.md 7.12). */
+  choiceOptions: 8,
+  /** Fields of a `form` ask. */
+  formFields: 6,
   starters: 50,
   /** Events in one plain events reply. */
   eventsPerReply: 1000,
@@ -210,6 +214,20 @@ export function shortLine(text: string, maxChars: number): string | undefined {
   if (symbols.length <= maxChars) return cleaned;
   return `${symbols.slice(0, maxChars - 1).join("")}${ELLIPSIS}`;
 }
+
+// ── Ask kinds (WIRE.md section 7.12) ──────────────────────────────────────────
+
+/** The longest `placeholder` of a `text` ask, in characters (code points). */
+export const PLACEHOLDER_MAX = 60;
+
+/** The largest `maxLength` of a `text` ask or a text field, in characters. */
+export const ANSWER_TEXT_MAX = 2000;
+
+/** The `maxLength` a text ask or a text field has when the program names none. */
+export const ANSWER_TEXT_DEFAULT = 500;
+
+/** The most bytes a text answer may take: {@link ANSWER_TEXT_MAX} characters at four bytes each. */
+export const ANSWER_TEXT_BYTES = ANSWER_TEXT_MAX * 4;
 
 // ── Rich items (WIRE.md section 7.11) ─────────────────────────────────────────
 

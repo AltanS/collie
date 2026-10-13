@@ -90,7 +90,10 @@ names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows
   follow-up takes ten seconds, so you have time to steer it or press Stop. Stop ends the turn, and
   Chat shows a short "stopped" note.
 - **Starters on the New page.** "New triage" opens another ticket. "Two notes at once" makes the
-  model ask two questions at the same time.
+  model ask two questions at the same time. "A choice and a line of text" asks after its note
+  which queue the ticket goes to (a `choice`, three buttons) and then for one line to send to the
+  customer (a `text` ask). A third kind, `form`, takes up to six fields; see `pane.ask()` in the SDK
+  and WIRE.md section 7.12.
 
 ## A real model
 

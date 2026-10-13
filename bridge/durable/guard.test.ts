@@ -312,6 +312,30 @@ describe("the push path", () => {
     expect(raised).toEqual(["p"]);
   });
 
+  test("a choice, a text ask and a form are keyed and pushed like a permission: one ask, one push, none twice", () => {
+    let now = START;
+    const push = new AskPush(new AskGuardStore(null), () => now);
+    const raised: string[] = [];
+    const raise = (pane: AskPushPane) => raised.push(pane.paneId);
+    const kinds: Ask[] = [
+      { ...wireAsk("a1", "c1"), kind: "choice", options: [{ id: "x", label: "X" }], multiple: true },
+      { ...wireAsk("a2", "c2"), kind: "text", options: [], maxLength: 500 },
+      { ...wireAsk("a3", "c3"), kind: "form", options: [], fields: [{ id: "f", label: "F", kind: "toggle" }] },
+    ];
+    push.observe(H, kinds.map((entry, index) => ({ paneId: `p${String(index)}`, asks: [entry] })), raise);
+    expect(raised).toEqual(["p0", "p1", "p2"]);
+    now += 1_000;
+    // The program restarts and raises each again under a new ask id: a re-ask is shown, not pushed.
+    push.observe(H, kinds.map((entry, index) => ({ paneId: `p${String(index)}`, asks: [{ ...entry, id: `${entry.id}-again` }] })), raise);
+    expect(raised).toEqual(["p0", "p1", "p2"]);
+  });
+
+  test("a pane with asks of every kind at once is raised once, and the cap counts asks, not kinds", () => {
+    const g = guard();
+    const asks = [ask({ id: "perm" }), ask({ id: "pick" }), ask({ id: "line" }), ask({ id: "form" }), ask({ id: "extra" })];
+    expect(g.decide("p", asks)).toEqual(["push", "push", "push", "show-quiet", "show-quiet"]);
+  });
+
   test("the breaker calls flood once, and the summary names the host and nothing a program wrote", () => {
     let now = START;
     const push = new AskPush(new AskGuardStore(null, { ...DEFAULT_GUARD_LIMITS, pushPerHostHour: 2 }), () => now);

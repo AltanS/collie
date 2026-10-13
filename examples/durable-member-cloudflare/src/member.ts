@@ -22,7 +22,7 @@ import {
   Harness,
 } from "@earendil-works/pi-durable";
 import { type CollieCore, createCore } from "../../durable-member/sdk/core/index.ts";
-import { PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "../../durable-member/pi-durable/index.ts";
+import { ASKING_TOOLS, askTools, PaneRegistry, riskGuard, showConversation, spawnHelperTool, subtitleFor } from "../../durable-member/pi-durable/index.ts";
 import { INSTRUCTIONS, REAL_INSTRUCTIONS, useScriptedModel } from "../../durable-member/script.ts";
 import type { Env } from "./env.ts";
 import { SqliteReceiptStore } from "./receipts.ts";
@@ -107,7 +107,7 @@ export class Member extends DurableObject<Env> {
     let harness!: Harness;
     const triageTools: Extension = defineExtension({
       name: "triage-tools",
-      tools: [writeNote, spawnHelperTool({ panes: this.panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
+      tools: [writeNote, ...askTools({ panes: this.panes }), spawnHelperTool({ panes: this.panes, harness: () => harness, tab: helpers, model, without: () => [triageTools] })],
     });
     const registry = createRegistry();
     registry.install(triageTools);
@@ -152,6 +152,7 @@ export class Member extends DurableObject<Env> {
     core.starters([
       { id: "new-triage", label: "New triage", run: startTriage("") },
       { id: "two-notes", label: "Two notes at once (faux only)", run: startTriage("TWO: ") },
+      { id: "ask-questions", label: "A choice and a line of text (faux only)", run: startTriage("ASK: ") },
     ]);
 
     // The first start opens one ticket, so the phone has an ask to answer. Later starts show what storage holds.
@@ -160,7 +161,7 @@ export class Member extends DurableObject<Env> {
     // Continue any run the last start left unfinished, and wait for the asks it raises again (Pi re-runs a
     // waiting hook, which asks under the same id). Only then is the layout complete: the first snapshot after a
     // wake carries every open ask, by contract and not by timing.
-    const reRaised = this.panes.reRaised(risky);
+    const reRaised = this.panes.reRaised(new Set([...risky, ...ASKING_TOOLS]));
     harness.resume();
     await reRaised;
     core.ready(); // the layout is complete: only now may Collie see a snapshot

@@ -195,7 +195,18 @@ export interface AgentView {
 export interface AskOption {
   id: string;
   label: string;
-  effect: "allow" | "allow-always" | "deny" | "cancel";
+  /** A permission option has one. The options of a choice and of a form's choice field have none. */
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** One field of a form ask. Mirrors `AskField` in bridge/types.ts. */
+export interface AskField {
+  id: string;
+  label: string;
+  kind: "text" | "choice" | "toggle";
+  required?: true;
+  options?: AskOption[];
+  maxLength?: number;
 }
 
 /** The tool call an ask is about. Mirrors `AskTool` in bridge/types.ts. */
@@ -214,6 +225,14 @@ export interface Ask {
   title: string;
   itemId: string;
   options: AskOption[];
+  /** A choice ask only: more than one option may be picked. */
+  multiple?: true;
+  /** A text ask only. */
+  placeholder?: string;
+  /** A text ask only: the most characters. Absent reads as 500. */
+  maxLength?: number;
+  /** A form ask only. */
+  fields?: AskField[];
   reason?: string;
   tool?: AskTool;
   /** Present when the bridge cut or changed the program's title or reason. Such an ask offers no "Always allow". */

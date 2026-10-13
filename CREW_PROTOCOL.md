@@ -662,6 +662,16 @@ updated machines, so build skew is the steady state (§7), and this section is t
   `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION`
   stays `2`, no new route, no new verb and no new header.
 
+- **An ask gained kinds: `Ask.kind` may be `choice`, `text` or `form`, with optional `multiple`,
+  `placeholder`, `maxLength` and `fields`** (added 2026-10-13, M53; `bridge/mux/durable/WIRE.md` section
+  7.12). They ride in the `asks` list a durable pane already carries. `Ask.options[].effect` became
+  optional, because only a `permission` option has one. The answer route took three more body shapes
+  (`optionIds`, `text`, `values`) beside `optionId`; `/api/pane/:id/answer` is a phone route, not a crew
+  route, and a lead forwards it to a peer pane as it does today. Additive-optional with the closed reading
+  this section requires: an older phone or an older peer shows an ask of a kind it does not know as not
+  answerable, and nothing in `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives.
+  `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

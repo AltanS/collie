@@ -23,7 +23,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
-import { parseAsk, type AnswerResult } from "./ask";
+import { parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
   ActionResponse,
@@ -1231,11 +1231,12 @@ function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
 /**
  * POST /api/pane/:id/answer: a person's tap answers one ask. `requestId` is minted per tap and reused
  * only by "Try again" after an `unknown`; `revision` is the one the card showed. Never called by
- * anything but a tap (ADR 0100 point 4).
+ * anything but a tap (ADR 0100 point 4). The body carries exactly one of `optionId` (a permission),
+ * `optionIds` (a choice), `text` or `values` (a form), by the kind of the ask.
  */
 export async function answerAsk(
   paneId: string,
-  answer: { requestId: string; askId: string; revision: number; optionId: string },
+  answer: { requestId: string; askId: string; revision: number } & AskAnswer,
   scope?: Scope,
 ): Promise<AnswerResult> {
   const body = await req<JsonObject>(

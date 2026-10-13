@@ -71,6 +71,11 @@ export const api = {
     const answer = { optionId, ...(o.note === undefined ? {} : { note: o.note }) };
     return call(d, "POST", `/pane/${enc(pane)}/answer`, { requestId: o.requestId ?? mint(), askId, revision, answer });
   },
+  /** An answer of any shape (WIRE.md 7.12): `{ optionIds }`, `{ text }` or `{ values }`. `revision` as for `answer`. */
+  answerWith: async (d: Dial, pane: string, askId: string, answer: object, o: { revision?: number; requestId?: string } = {}) => {
+    const revision = o.revision ?? (await paneNow(d, pane))?.openAsks.find((a) => a.id === askId)?.revision ?? 1;
+    return call(d, "POST", `/pane/${enc(pane)}/answer`, { requestId: o.requestId ?? mint(), askId, revision, answer });
+  },
   /** Neither `turnId` nor `askId` given: the pane's current `turnId`, from the snapshot. */
   send: async (d: Dial, pane: string, text: string, o: { steer?: boolean; turnId?: string; askId?: string; requestId?: string } = {}) => {
     const target = o.turnId || o.askId ? { turnId: o.turnId, askId: o.askId } : { turnId: (await paneNow(d, pane))?.turnId };

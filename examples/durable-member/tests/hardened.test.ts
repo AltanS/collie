@@ -5,7 +5,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, statSync, symlinkSync, wri
 import { join } from "node:path";
 import { api } from "./client.ts";
 import { Receipts } from "../sdk/core/receipts.ts";
-import { type AskInput, cut, openCollie, type PaneHandle } from "../sdk/index.ts";
+import { type AskInput, cut, openCollie, type PaneHandle, type PermissionAskInput } from "../sdk/index.ts";
 import { withNarrowUmask } from "../sdk/socket.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";
 
@@ -242,7 +242,7 @@ describe("cleaned asks and invisible characters", () => {
     c.ready();
     return { c, p, d: { socket: c.address, version: 1 } };
   };
-  const input = (id: string, over: Partial<AskInput> = {}): AskInput => ({ id, kind: "permission", toolCallId: id, itemId: id, title: "plain", options, ...over });
+  const input = (id: string, over: Partial<PermissionAskInput> = {}): AskInput => ({ id, kind: "permission", toolCallId: id, itemId: id, title: "plain", options, ...over });
 
   test("cleaning removes zero-width, joiner, byte order mark and tag characters", () => {
     expect(cut("a​‌‍⁠﻿b\u{e0041}\u{e007f}c‮d", 100)).toBe("abcd");
@@ -258,7 +258,7 @@ describe("cleaned asks and invisible characters", () => {
       ["long-reason", { reason: "y".repeat(5000) }],
       ["bidi", { title: "ok ‮ txt.exe" }],
       ["control", { title: "a\u0007b" }],
-    ] as [string, Partial<AskInput>][]) {
+    ] as [string, Partial<PermissionAskInput>][]) {
       p.ask(input(id, over)).catch(() => {});
     }
     p.ask(input("clean", { reason: "line one\nline two\ttab" })).catch(() => {});

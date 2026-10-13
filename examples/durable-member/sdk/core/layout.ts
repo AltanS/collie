@@ -5,15 +5,43 @@
 
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
-import { assertId, badgeOf, bytes, CAPS, cut, cwdOf, hrefOf, langOf, LIMITS, LINK_LABEL_MAX, progressOf, shortLine, subtitleOf, tsOf } from "./rules.ts";
+import {
+  ANSWER_TEXT_DEFAULT,
+  assertId,
+  badgeOf,
+  bytes,
+  CAPS,
+  cut,
+  cwdOf,
+  hrefOf,
+  langOf,
+  LIMITS,
+  LINK_LABEL_MAX,
+  maxLengthOf,
+  PLACEHOLDER_MAX,
+  progressOf,
+  shortLine,
+  subtitleOf,
+  tsOf,
+} from "./rules.ts";
 import type {
   Answer,
   AnswerResult,
   Ask,
   AskInput,
   Badge,
+  ChoiceAnswer,
+  ChoiceAskInput,
   ClosedBy,
+  Field,
+  FormAnswer,
+  FormAskInput,
   Item,
+  Option,
+  PermissionAnswer,
+  PermissionAskInput,
+  TextAnswer,
+  TextAskInput,
   PaneInfo,
   Progress,
   PaneState,
@@ -44,8 +72,14 @@ export class AskClosed extends Error {
     super(`ask closed: ${by}`);
   }
 }
-/** The phone sent an answer that is not one of the options. The server maps it to 400. */
-export class BadAnswer extends Error {}
+/** The phone sent an answer that picks an id the ask does not offer. The server maps it to 400 `bad-option`. */
+export class BadAnswer extends Error {
+  readonly code: "bad-option" | "bad-body" = "bad-option";
+}
+/** The phone sent an answer of the wrong shape for the ask: a text over its `maxLength`, a missing required field. 400 `bad-body`. */
+export class BadAnswerBody extends BadAnswer {
+  override readonly code = "bad-body";
+}
 
 // ── cleaning ──────────────────────────────────────────────────────────────────
 
@@ -72,31 +106,96 @@ export function cleanItem(item: Item): Item {
   return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true) };
 }
 
-function cleanAsk(input: AskInput & { id: string; revision: number }): Ask {
-  if (input.kind !== "permission") throw new TypeError("an ask has kind permission in version 1");
+/** An ask as `cleanAsk` takes it: an input with its id and revision set, or an open ask patched. */
+type AskDraft = Pick<Ask, "id" | "revision" | "toolCallId" | "title" | "itemId" | "reason" | "tool" | "cleaned" | "multiple" | "placeholder" | "maxLength" | "fields"> & {
+  kind: string;
+  options?: Option[];
+};
+
+/** Ids of a list are unique and pass the id rule. `what` names them in the error. */
+function checkIds(list: readonly { id: string }[], what: string): void {
+  const seen = new Set<string>();
+  for (const entry of list) {
+    assertId(entry.id, `${what} id`);
+    if (seen.has(entry.id)) throw new TypeError(`${what} id used twice: ${entry.id}`);
+    seen.add(entry.id);
+  }
+}
+
+/** The options of a `choice` ask or of a choice field: 1 to 8, no effect (WIRE.md 7.12). */
+function cleanPlainOptions(raw: readonly Option[] | undefined, what: string): Option[] {
+  if (!Array.isArray(raw) || raw.length === 0) throw new TypeError(`${what} needs at least one option (WIRE.md 7.12)`);
+  if (raw.length > LIMITS.choiceOptions) throw new RangeError(`${what} has at most ${LIMITS.choiceOptions} options (WIRE.md 7.12)`);
+  checkIds(raw, "option");
+  return raw.map((o) => {
+    if (o.effect !== undefined) throw new TypeError(`${what} option has no effect: only a permission option does (WIRE.md 7.12)`);
+    return { id: o.id, label: cut(o.label, CAPS.optionLabel) };
+  });
+}
+
+function cleanField(raw: Field): Field {
+  assertId(raw.id, "field id");
+  if (raw.kind !== "text" && raw.kind !== "choice" && raw.kind !== "toggle") throw new TypeError(`a field has kind text, choice or toggle (WIRE.md 7.12): ${String(raw.kind)}`);
+  const field: Field = { id: raw.id, label: cut(raw.label, CAPS.optionLabel), kind: raw.kind };
+  if (raw.required === true) field.required = true;
+  if (raw.kind === "text") {
+    if (raw.options !== undefined) throw new TypeError("a text field has no options (WIRE.md 7.12)");
+    if (raw.maxLength !== undefined) field.maxLength = maxLengthOf(raw.maxLength);
+  } else if (raw.kind === "toggle") {
+    if (raw.options !== undefined || raw.maxLength !== undefined) throw new TypeError("a toggle field has no options and no maxLength (WIRE.md 7.12)");
+  } else {
+    if (raw.maxLength !== undefined) throw new TypeError("a choice field has no maxLength (WIRE.md 7.12)");
+    field.options = cleanPlainOptions(raw.options, "a choice field");
+  }
+  return field;
+}
+
+function cleanAsk(input: AskDraft): Ask {
+  const kind = input.kind;
+  if (kind !== "permission" && kind !== "choice" && kind !== "text" && kind !== "form") {
+    throw new TypeError(`an ask has kind permission, choice, text or form (WIRE.md 7.12): ${String(kind)}`);
+  }
   assertId(input.id, "ask id");
   assertId(input.toolCallId, "ask toolCallId");
   assertId(input.itemId, "ask itemId");
   if (!Number.isSafeInteger(input.revision) || input.revision < 1) throw new RangeError("an ask revision starts at 1");
-  if (!Array.isArray(input.options) || input.options.length === 0) throw new TypeError("an ask needs at least one option");
-  const seen = new Set<string>();
-  const options = input.options.slice(0, LIMITS.options).map((o) => {
-    assertId(o.id, "option id");
-    if (seen.has(o.id)) throw new TypeError(`option id used twice: ${o.id}`);
-    seen.add(o.id);
-    if (!["allow", "allow-always", "deny", "cancel"].includes(o.effect)) throw new TypeError(`bad option effect: ${o.effect}`);
-    return { id: o.id, label: cut(o.label, CAPS.optionLabel), effect: o.effect };
-  });
+  const extra: Partial<Pick<Ask, "multiple" | "placeholder" | "maxLength" | "fields">> = {};
+  let options: Option[] = [];
+  if (kind === "permission") {
+    if (!Array.isArray(input.options) || input.options.length === 0) throw new TypeError("an ask needs at least one option");
+    checkIds(input.options, "option");
+    options = input.options.slice(0, LIMITS.options).map((o) => {
+      if (!["allow", "allow-always", "deny", "cancel"].includes(String(o.effect))) throw new TypeError(`bad option effect: ${String(o.effect)}`);
+      return { id: o.id, label: cut(o.label, CAPS.optionLabel), effect: o.effect };
+    });
+  } else if (kind === "choice") {
+    options = cleanPlainOptions(input.options, "a choice ask");
+    if (input.multiple === true) extra.multiple = true;
+  } else if (kind === "text") {
+    if (input.options !== undefined && input.options.length > 0) throw new TypeError("a text ask has no options (WIRE.md 7.12)");
+    if (input.placeholder !== undefined) {
+      const hint = shortLine(input.placeholder, PLACEHOLDER_MAX);
+      if (hint !== undefined) extra.placeholder = hint;
+    }
+    if (input.maxLength !== undefined) extra.maxLength = maxLengthOf(input.maxLength);
+  } else {
+    if (input.options !== undefined && input.options.length > 0) throw new TypeError("a form ask has fields, not options (WIRE.md 7.12)");
+    if (!Array.isArray(input.fields) || input.fields.length === 0) throw new TypeError("a form ask needs at least one field (WIRE.md 7.12)");
+    if (input.fields.length > LIMITS.formFields) throw new RangeError(`a form ask has at most ${LIMITS.formFields} fields (WIRE.md 7.12)`);
+    checkIds(input.fields, "field");
+    extra.fields = input.fields.map(cleanField);
+  }
   const title = cut(input.title, CAPS.askTitle);
   const ask: Ask = {
     id: input.id,
-    kind: "permission",
+    kind,
     toolCallId: input.toolCallId,
     revision: input.revision,
     title,
     itemId: input.itemId,
     options,
   };
+  Object.assign(ask, extra);
   // `cleaned` (WIRE.md section 4): the title or the reason is not what the program passed in. It stays once set.
   let cleaned = input.cleaned === true || title !== String(input.title ?? "");
   if (input.reason !== undefined && input.reason !== null) {
@@ -106,6 +205,74 @@ function cleanAsk(input: AskInput & { id: string; revision: number }): Ask {
   if (cleaned) ask.cleaned = true;
   if (input.tool) ask.tool = cleanTool(input.tool);
   return ask;
+}
+
+/** What a program may change in an open ask (WIRE.md 7.12). Its kind and its ids stay. */
+export interface AskPatch {
+  title?: string;
+  reason?: string;
+  tool?: ToolCall;
+  options?: Option[];
+  placeholder?: string;
+  maxLength?: number;
+  fields?: Field[];
+}
+
+const has = <K extends string>(answer: Answer, key: K): answer is Extract<Answer, Record<K, unknown>> => key in answer;
+
+/** The characters of a string, counted as the wire counts them (code points). */
+const lengthOf = (text: string): number => [...text].length;
+
+/**
+ * Whether the phone's answer fits the ask (WIRE.md 7.3 and 7.12): an id the ask does not offer is `BadAnswer`; the wrong
+ * shape for the kind, a text over its `maxLength`, a missing required field, or a pick count the ask does not take
+ * is `BadAnswerBody`.
+ */
+function checkAnswer(ask: Ask, answer: Answer): void {
+  if (ask.kind === "choice") {
+    if (!has(answer, "optionIds")) throw new BadAnswerBody("a choice ask takes optionIds");
+    const ids = answer.optionIds;
+    if (ids.length === 0 || new Set(ids).size !== ids.length) throw new BadAnswerBody("optionIds are one or more distinct ids");
+    if (ids.some((id) => !ask.options.some((o) => o.id === id))) throw new BadAnswer("unknown option");
+    if (ids.length > 1 && ask.multiple !== true) throw new BadAnswerBody("this choice takes one option");
+    return;
+  }
+  if (ask.kind === "text") {
+    if (!has(answer, "text")) throw new BadAnswerBody("a text ask takes text");
+    const size = lengthOf(answer.text);
+    if (size < 1 || size > (ask.maxLength ?? ANSWER_TEXT_DEFAULT)) throw new BadAnswerBody("the text is empty or over the ask's maxLength");
+    return;
+  }
+  if (ask.kind === "form") {
+    if (!has(answer, "values")) throw new BadAnswerBody("a form ask takes values");
+    checkForm(ask.fields ?? [], answer.values);
+    return;
+  }
+  if (!has(answer, "optionId")) throw new BadAnswerBody("a permission takes an optionId");
+  if (!ask.options.some((o) => o.id === answer.optionId)) throw new BadAnswer("unknown option");
+}
+
+/** The values of a form against its fields. */
+function checkForm(fields: readonly Field[], values: FormAnswer["values"]): void {
+  for (const key of Object.keys(values)) {
+    if (!fields.some((f) => f.id === key)) throw new BadAnswerBody(`no field ${key}`);
+  }
+  for (const field of fields) {
+    const value = values[field.id];
+    if (value === undefined) {
+      if (field.required === true) throw new BadAnswerBody(`field ${field.id} is required`);
+      continue;
+    }
+    if (field.kind === "toggle") {
+      if (value !== true && value !== false) throw new BadAnswerBody(`field ${field.id} is a toggle`);
+    } else if (value === true || value === false || Array.isArray(value)) {
+      throw new BadAnswerBody(`field ${field.id} takes one string`);
+    } else if (field.kind === "text") {
+      if (lengthOf(value) > (field.maxLength ?? ANSWER_TEXT_DEFAULT) || (field.required === true && value === "")) throw new BadAnswerBody(`field ${field.id} is over its maxLength or empty`);
+    } else if (!(field.options ?? []).some((o) => o.id === value)) {
+      throw new BadAnswer("unknown option");
+    }
+  }
 }
 
 function cleanEvent(e: ProgramEvent): ProgramEvent {
@@ -166,9 +333,16 @@ export interface PaneHandle {
    * Sets the pane to `waiting`, emits `ask`, resolves with the phone's answer. Without an `id`, the ask id comes
    * from the pane and the tool call ({@link askIdFor}), so it is the same after a restart.
    */
+  ask(ask: PermissionAskInput, opts?: { signal?: AbortSignal }): Promise<PermissionAnswer>;
+  /** A `choice` ask (WIRE.md 7.12): resolves with `{ optionIds }`, one id unless the ask is `multiple`. */
+  ask(ask: ChoiceAskInput, opts?: { signal?: AbortSignal }): Promise<ChoiceAnswer>;
+  /** A `text` ask: resolves with `{ text }`. */
+  ask(ask: TextAskInput, opts?: { signal?: AbortSignal }): Promise<TextAnswer>;
+  /** A `form` ask: resolves with `{ values }`, keyed by field id. */
+  ask(ask: FormAskInput, opts?: { signal?: AbortSignal }): Promise<FormAnswer>;
   ask(ask: AskInput, opts?: { signal?: AbortSignal }): Promise<Answer>;
   /** Change an open ask in place. Its revision rises by one. False when the ask is not open. */
-  updateAsk(askId: string, patch: Partial<Pick<AskInput, "title" | "reason" | "tool" | "options">>): boolean;
+  updateAsk(askId: string, patch: AskPatch): boolean;
   onSend(fn: (text: string, o: SendContext) => void | Promise<void>): void;
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>): void;
   close(): void;
@@ -352,6 +526,11 @@ export class Pane implements PaneHandle {
     this.touch();
   }
 
+  ask(ask: PermissionAskInput, opts?: { signal?: AbortSignal }): Promise<PermissionAnswer>;
+  ask(ask: ChoiceAskInput, opts?: { signal?: AbortSignal }): Promise<ChoiceAnswer>;
+  ask(ask: TextAskInput, opts?: { signal?: AbortSignal }): Promise<TextAnswer>;
+  ask(ask: FormAskInput, opts?: { signal?: AbortSignal }): Promise<FormAnswer>;
+  ask(ask: AskInput, opts?: { signal?: AbortSignal }): Promise<Answer>;
   ask(input: AskInput, opts: { signal?: AbortSignal } = {}): Promise<Answer> {
     // Revision 1 on every raise: a tool call raised again after a restart has the same options by construction.
     const ask = cleanAsk({ ...input, id: input.id ?? askIdFor(this.id, input.toolCallId), revision: 1 });
@@ -370,14 +549,14 @@ export class Pane implements PaneHandle {
   }
 
   /** A core made with `allowAlways: false` takes no `allow-always` option: over TLS the token is the only gate. */
-  private refuseAllowAlways(options: readonly { effect: string }[]): void {
+  private refuseAllowAlways(options: readonly { effect?: string }[]): void {
     if (this.store.allowAlways || !options.some((o) => o.effect === "allow-always")) return;
     throw new TypeError(
       "an ask option with effect allow-always is refused: this program is reached over TLS with a token (WIRE.md 1B), so it offers Allow and Deny only",
     );
   }
 
-  updateAsk(askId: string, patch: Partial<Pick<AskInput, "title" | "reason" | "tool" | "options">>): boolean {
+  updateAsk(askId: string, patch: AskPatch): boolean {
     const open = this.asks.get(askId);
     if (!open) return false;
     const { ask } = open;
@@ -401,13 +580,14 @@ export class Pane implements PaneHandle {
 
   /**
    * The phone answers (WIRE.md 7.3). The caller has checked the revision. A closed or unknown ask is
-   * `too-late`; an option that is not offered throws `BadAnswer`. An ask raised again after a restart has its
+   * `too-late`; an option that is not offered throws `BadAnswer` (400 `bad-option`), and an answer of the wrong
+   * shape for the ask's kind throws `BadAnswerBody` (400 `bad-body`, WIRE.md 7.12). An ask raised again after a restart has its
    * old id, so an answer to the id the phone saw before the wake lands here.
    */
   answer(askId: string, answer: Answer): AnswerResult {
     const open = this.asks.get(askId);
     if (!open) return "too-late";
-    if (!open.ask.options.some((o) => o.id === answer.optionId)) throw new BadAnswer("unknown option");
+    checkAnswer(open.ask, answer);
     open.resolve(answer);
     this.closeAsk(askId, "phone");
     return "taken";

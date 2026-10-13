@@ -373,6 +373,60 @@ export function riskGuard(o: Risky): Extension {
   });
 }
 
+/** The names of the tools that ask the phone a question of their own, so a restart waits for their asks too. */
+export const ASKING_TOOLS: ReadonlySet<string> = new Set(["ask_queue", "ask_customer"]);
+
+export const QUEUES = [
+  { id: "billing", label: "Billing" },
+  { id: "access", label: "Access" },
+  { id: "other", label: "Other" },
+];
+
+/**
+ * `ask_queue` (a choice) and `ask_customer` (a text ask): tools whose whole job is a question for the person on the
+ * phone (WIRE.md 7.12). The ask sits under the tool's own item, and `replay: "safe"` means a rerun after a crash asks
+ * again under the same id. The scripted ticket that starts with `ASK:` calls them after its note.
+ */
+export function askTools(o: { panes: PaneRegistry }) {
+  const ask = async <A>(api: { conversationId: ConversationId; callId: string }, raise: (pane: PaneHandle, id: string) => Promise<A>): Promise<A> => {
+    const pane = o.panes.get(api.conversationId);
+    if (!pane) throw new Error("no pane to ask on");
+    const id = safeId(api.callId);
+    const pending = raise(pane, id);
+    markAsks(pane);
+    o.panes.asked(id);
+    try {
+      return await pending;
+    } finally {
+      markAsks(pane);
+    }
+  };
+  const reply = (text: string) => ({ content: [{ type: "text" as const, text }] });
+  const queue = defineTool({
+    name: "ask_queue",
+    description: "Ask the person which queue the ticket goes to.",
+    parameters: Type.Object({}),
+    replay: "safe",
+    execute: async (_args, api) => {
+      const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: "Which queue?", options: QUEUES }));
+      return reply(`queue: ${answer.optionIds.join(", ")}`);
+    },
+  });
+  const customer = defineTool({
+    name: "ask_customer",
+    description: "Ask the person for one line to send to the customer.",
+    parameters: Type.Object({}),
+    replay: "safe",
+    execute: async (_args, api) => {
+      const answer = await ask(api, (pane, id) =>
+        pane.ask({ kind: "text", toolCallId: id, itemId: id, title: "One line for the customer", placeholder: "We are looking into it", maxLength: 280 }),
+      );
+      return reply(`customer line: ${clip(answer.text)}`);
+    },
+  });
+  return [queue, customer];
+}
+
 export interface HelperOptions {
   panes: PaneRegistry;
   harness: () => Harness;

@@ -6,13 +6,15 @@
 
 import { BadAnswer, type Pane, type Store } from "./layout.ts";
 import { digestOf, HttpError, RENAME_GROUP, STARTER_GROUP } from "./receipts.ts";
-import { assertId, bytes, CAPS, cut, idOk, renameTitleOf } from "./rules.ts";
+import { ANSWER_TEXT_BYTES, assertId, bytes, CAPS, cut, idOk, LIMITS, renameTitleOf } from "./rules.ts";
 import {
+  type Answer,
   type AnswerReply,
   type AnswerRequest,
   type Caps,
   type ControlReply,
   type EventsReply,
+  type FormAnswer,
   type Hello,
   PROTOCOL_RANGE,
   type RenameRequest,
@@ -80,6 +82,62 @@ function idField(body: Record<string, unknown>, name: string): string {
   if (typeof v !== "string") throw badBody(`${name} must be a string`);
   if (!idOk(v)) throw new HttpError(400, "bad-id", { message: `${name} breaks the id rule` });
   return v;
+}
+
+/**
+ * The `answer` member of an answer request, read for its shape (WIRE.md 7.12): exactly one of `optionId` (with an
+ * optional `note`), `optionIds`, `text` or `values`. A wrong type or an over-cap string is 400 `bad-body`, an id that
+ * breaks the id rule 400 `bad-id`. Whether the shape fits THIS ask is the pane's to say, once the ask is known to be open.
+ */
+function answerOf(raw: unknown): Answer {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw badBody("answer must be an object");
+  const answer = raw as Record<string, unknown>;
+  const named = ["optionId", "optionIds", "text", "values"].filter((key) => answer[key] !== undefined);
+  if (named.length !== 1) throw badBody("answer names exactly one of optionId, optionIds, text and values");
+  if (named[0] === "optionId") {
+    const optionId = idField(answer, "optionId");
+    const note = answer.note;
+    if (note !== undefined && note !== null && (typeof note !== "string" || bytes(note) > CAPS.note)) throw badBody("note must be a string of at most 2048 bytes");
+    return typeof note === "string" ? { optionId, note } : { optionId };
+  }
+  if (answer.note !== undefined && answer.note !== null) throw badBody("only an optionId answer has a note");
+  if (named[0] === "optionIds") {
+    const ids = answer.optionIds;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > LIMITS.choiceOptions) throw badBody(`optionIds is a list of 1 to ${LIMITS.choiceOptions} ids`);
+    for (const id of ids) {
+      if (typeof id !== "string") throw badBody("optionIds are strings");
+      if (!idOk(id)) throw new HttpError(400, "bad-id", { message: "an id in optionIds breaks the id rule" });
+    }
+    return { optionIds: ids as string[] };
+  }
+  if (named[0] === "text") {
+    const text = answer.text;
+    if (typeof text !== "string" || text === "" || bytes(text) > ANSWER_TEXT_BYTES) throw badBody(`text must be 1 to ${ANSWER_TEXT_BYTES} bytes`);
+    return { text };
+  }
+  const values = answer.values;
+  if (typeof values !== "object" || values === null || Array.isArray(values)) throw badBody("values must be an object");
+  const out: FormAnswer["values"] = {};
+  const entries = Object.entries(values as Record<string, unknown>);
+  if (entries.length < 1 || entries.length > LIMITS.formFields) throw badBody(`values holds 1 to ${LIMITS.formFields} fields`);
+  for (const [key, value] of entries) {
+    if (!idOk(key)) throw new HttpError(400, "bad-id", { message: "a field id in values breaks the id rule" });
+    if (typeof value === "boolean") out[key] = value;
+    else if (typeof value === "string") {
+      if (bytes(value) > ANSWER_TEXT_BYTES) throw badBody(`a field value is at most ${ANSWER_TEXT_BYTES} bytes`);
+      out[key] = value;
+    } else if (Array.isArray(value) && value.length <= LIMITS.choiceOptions && value.every((id) => typeof id === "string")) {
+      for (const id of value as string[]) if (!idOk(id)) throw new HttpError(400, "bad-id", { message: "an id in values breaks the id rule" });
+      out[key] = value as string[];
+    } else throw badBody("a field value is a string, a list of ids or a boolean");
+  }
+  return { values: out };
+}
+
+/** The answer as a stable value for the receipt's digest: keys sorted, so the same form is the same payload. */
+function canonical(answer: Answer): unknown {
+  if ("values" in answer) return { values: Object.keys(answer.values).toSorted().map((key) => [key, answer.values[key]]) };
+  return answer;
 }
 
 /** Exactly one of `turnId` and `askId`. */
@@ -187,23 +245,21 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
 
     if (verb === "answer") {
       const askId = idField(body, "askId");
-      const { revision, answer } = body as Partial<AnswerRequest>;
+      const { revision } = body as Partial<AnswerRequest>;
       if (!Number.isSafeInteger(revision) || (revision as number) < 0) throw badBody("revision must be a non-negative integer");
-      if (typeof answer !== "object" || answer === null || Array.isArray(answer)) throw badBody("answer must be an object");
-      const optionId = idField(answer as unknown as Record<string, unknown>, "optionId");
-      const note = (answer as { note?: unknown }).note;
-      if (note !== undefined && note !== null && (typeof note !== "string" || bytes(note) > CAPS.note)) throw badBody("note must be a string of at most 2048 bytes");
+      const answer = answerOf(body.answer);
+      // The digest of a permission answer is what it always was: the option and the note. The other shapes add theirs.
+      const bound = "optionId" in answer ? { optionId: answer.optionId, note: answer.note ?? null } : { answer: canonical(answer) };
       return json(
         200,
-        await once<AnswerReply>({ askId, revision, optionId, note: typeof note === "string" ? note : null }, async () => {
+        await once<AnswerReply>({ askId, revision, ...bound }, async () => {
           const open = pane.asks.get(askId);
           if (!open) return { result: "too-late" }; // answered or stopped (a re-raised ask keeps its id across a restart)
           if (open.ask.revision !== revision) throw stale(pane, { ask: open.ask });
           try {
-            const given = typeof note === "string" ? { optionId, note } : { optionId };
-            return { result: pane.answer(askId, given) };
+            return { result: pane.answer(askId, answer) };
           } catch (e) {
-            if (e instanceof BadAnswer) throw new HttpError(400, "bad-option");
+            if (e instanceof BadAnswer) throw new HttpError(400, e.code);
             throw e;
           }
         }),

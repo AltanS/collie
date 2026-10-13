@@ -3,7 +3,7 @@
 // agree, so the core is the wire and the socket is only its transport.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
-import { type AskInput, type Caps, type CoreOptions, idOk, type PaneHandle, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
+import { type AskInput, type Caps, type CoreOptions, idOk, type PaneHandle, type PermissionAskInput, type Starter, type WorkspaceHandle } from "../sdk/core/index.ts";
 import { cleanup, waitFor } from "./util.ts";
 
 /** A program with no layout yet, and the dial that reaches it. */
@@ -37,7 +37,7 @@ export function protocolSuite(transport: Transport) {
       { id: "deny", label: "Deny", effect: "deny" as const },
     ];
     let n = 0;
-    const askInput = (over: Partial<AskInput> = {}): AskInput => ({
+    const askInput = (over: Partial<PermissionAskInput> = {}): AskInput => ({
       kind: "permission",
       toolCallId: `call-${++n}`,
       title: "write_note wants to write /tmp/notes.txt",
@@ -684,6 +684,167 @@ export function protocolSuite(transport: Transport) {
         expect((await paneInfo("marks3")).badge).toEqual({ text: "a-very-long…" }); // a refused value changes nothing
         p.subtitle("   "); // nothing is left of it: cleared
         expect(await paneInfo("marks3")).not.toHaveProperty("subtitle");
+      });
+    });
+
+    describe("more kinds of ask (WIRE.md 7.12)", () => {
+      const QUEUES = [
+        { id: "billing", label: "Billing" },
+        { id: "access", label: "Access" },
+        { id: "other", label: "Other" },
+      ];
+      let k = 0;
+      const base = () => ({ toolCallId: `tc-kind-${++k}`, itemId: `item-kind-${k}`, title: "A question" });
+      const openOf = async (pane: string) => (await paneInfo(pane)).openAsks[0]!;
+
+      test("choice: the ask lists plain options, the pane waits, and optionIds resolve it once", async () => {
+        const p = mk("kc1");
+        const pending = p.ask({ ...base(), kind: "choice", options: QUEUES });
+        const ask = await openOf("kc1");
+        expect(ask).toMatchObject({ kind: "choice", options: QUEUES });
+        expect(ask.options.every((option) => !("effect" in option))).toBe(true);
+        expect((await paneInfo("kc1")).state).toBe("waiting");
+        const requestId = "11111111-1111-4111-8111-111111111111";
+        expect((await api.answerWith(d, "kc1", ask.id, { optionIds: ["access"] }, { requestId })).body).toEqual({ result: "taken" });
+        expect((await api.answerWith(d, "kc1", ask.id, { optionIds: ["access"] }, { requestId })).body).toEqual({ result: "taken", replayed: true });
+        expect(await pending).toEqual({ optionIds: ["access"] });
+        expect((await paneInfo("kc1")).state).toBe("idle");
+      });
+      test("choice: several picks need multiple; an id the ask does not offer is bad-option; the wrong shape is bad-body; the ask stays open", async () => {
+        const p = mk("kc2");
+        const single = p.ask({ ...base(), kind: "choice", options: QUEUES });
+        const one = await openOf("kc2");
+        const two = await api.answerWith(d, "kc2", one.id, { optionIds: ["billing", "access"] });
+        expect([two.status, two.body.code]).toEqual([400, "bad-body"]);
+        const unknown = await api.answerWith(d, "kc2", one.id, { optionIds: ["nope"] });
+        expect([unknown.status, unknown.body.code]).toEqual([400, "bad-option"]);
+        for (const answer of [{ optionId: "billing" }, { text: "billing" }, { optionIds: [] }, { optionIds: ["billing", "billing"] }, { optionIds: "billing" }, {}]) {
+          expect((await api.answerWith(d, "kc2", one.id, answer)).status).toBe(400);
+        }
+        expect((await paneInfo("kc2")).openAsks).toHaveLength(1);
+        await api.answerWith(d, "kc2", one.id, { optionIds: ["other"] });
+        expect(await single).toEqual({ optionIds: ["other"] });
+
+        const m = mk("kc3");
+        const multi = m.ask({ ...base(), kind: "choice", options: QUEUES, multiple: true });
+        const many = await openOf("kc3");
+        expect(many.multiple).toBe(true);
+        expect((await api.answerWith(d, "kc3", many.id, { optionIds: ["billing", "other"] })).body).toEqual({ result: "taken" });
+        expect(await multi).toEqual({ optionIds: ["billing", "other"] });
+      });
+      test("text ask: placeholder and maxLength are carried, a text over maxLength or empty is bad-body, a good one resolves", async () => {
+        const p = mk("kt1");
+        const pending = p.ask({ ...base(), kind: "text", placeholder: "one line", maxLength: 12 });
+        const ask = await openOf("kt1");
+        expect(ask).toMatchObject({ kind: "text", placeholder: "one line", maxLength: 12, options: [] });
+        for (const text of ["", "x".repeat(13), 7, null]) {
+          expect((await api.answerWith(d, "kt1", ask.id, { text })).status).toBe(400);
+        }
+        expect((await paneInfo("kt1")).openAsks).toHaveLength(1);
+        expect((await api.answerWith(d, "kt1", ask.id, { text: "all fixed ✓" })).body).toEqual({ result: "taken" });
+        expect(await pending).toEqual({ text: "all fixed ✓" });
+      });
+      test("text ask: maxLength is in characters, not bytes, and absent reads as 500", async () => {
+        const p = mk("kt2");
+        const pending = p.ask({ ...base(), kind: "text" });
+        const ask = await openOf("kt2");
+        expect(ask).not.toHaveProperty("maxLength");
+        expect((await api.answerWith(d, "kt2", ask.id, { text: "x".repeat(501) })).status).toBe(400);
+        expect((await api.answerWith(d, "kt2", ask.id, { text: "é".repeat(500) })).body).toEqual({ result: "taken" });
+        expect(await pending).toEqual({ text: "é".repeat(500) });
+      });
+      test("form: fields are carried, required and types are checked, and values resolve it once", async () => {
+        const p = mk("kf1");
+        const fields = [
+          { id: "summary", label: "Summary", kind: "text" as const, required: true, maxLength: 40 },
+          { id: "queue", label: "Queue", kind: "choice" as const, options: QUEUES },
+          { id: "urgent", label: "Urgent", kind: "toggle" as const },
+        ];
+        const pending = p.ask({ ...base(), kind: "form", fields });
+        const ask = await openOf("kf1");
+        expect(ask).toMatchObject({ kind: "form", options: [], fields });
+        const wrong = [
+          { code: "bad-body", values: { queue: "billing" } }, // a required field is missing
+          { code: "bad-body", values: { summary: "x".repeat(41) } },
+          { code: "bad-body", values: { summary: "x", nope: "y" } },
+          { code: "bad-body", values: { summary: "x", urgent: "yes" } },
+          { code: "bad-body", values: { summary: "x", queue: ["billing"] } },
+          { code: "bad-option", values: { summary: "x", queue: "nope" } },
+        ];
+        for (const { code, values } of wrong) {
+          const reply = await api.answerWith(d, "kf1", ask.id, { values });
+          expect([reply.status, reply.body.code]).toEqual([400, code]);
+        }
+        expect((await paneInfo("kf1")).openAsks).toHaveLength(1);
+        const values = { summary: "Cannot log in", queue: "access", urgent: true };
+        expect((await api.answerWith(d, "kf1", ask.id, { values })).body).toEqual({ result: "taken" });
+        expect(await pending).toEqual({ values });
+      });
+      test("every kind keeps the stable id and the revision rule: the id comes from the pane and toolCallId, and a stale revision is 409", async () => {
+        const p = mk("kc4");
+        const input = { toolCallId: "tc-stable", itemId: "item-stable", title: "Which queue?", kind: "choice" as const, options: QUEUES };
+        const pending = p.ask(input);
+        const ask = await openOf("kc4");
+        expect(ask.id).toMatch(/^[0-9a-f]{32}$/);
+        expect(p.updateAsk(ask.id, { title: "Which queue now?" })).toBe(true);
+        const stale = await api.answerWith(d, "kc4", ask.id, { optionIds: ["billing"] }, { revision: 1 });
+        expect([stale.status, stale.body.code]).toEqual([409, "stale"]);
+        expect(stale.body.ask).toMatchObject({ kind: "choice", revision: 2, title: "Which queue now?", options: QUEUES });
+        await api.answerWith(d, "kc4", ask.id, { optionIds: ["billing"] });
+        expect(await pending).toEqual({ optionIds: ["billing"] });
+      });
+      test("the receipt is bound to the payload: one request id with another text, pick or form is 409 request-id-reused", async () => {
+        const p = mk("kt3");
+        const pending = p.ask({ ...base(), kind: "text" });
+        const ask = await openOf("kt3");
+        const requestId = "22222222-2222-4222-8222-222222222222";
+        expect((await api.answerWith(d, "kt3", ask.id, { text: "first" }, { requestId })).body).toEqual({ result: "taken" });
+        const other = await api.answerWith(d, "kt3", ask.id, { text: "second" }, { requestId });
+        expect([other.status, other.body.code]).toEqual([409, "request-id-reused"]);
+        const shape = await api.answerWith(d, "kt3", ask.id, { optionIds: ["first"] }, { requestId });
+        expect([shape.status, shape.body.code]).toEqual([409, "request-id-reused"]);
+        await pending;
+
+        const f = mk("kf2");
+        const form = f.ask({ ...base(), kind: "form", fields: [{ id: "a", label: "A", kind: "text" }, { id: "b", label: "B", kind: "toggle" }] });
+        const open = await openOf("kf2");
+        const id = "33333333-3333-4333-8333-333333333333";
+        await api.answerWith(d, "kf2", open.id, { values: { a: "1", b: true } }, { requestId: id });
+        // The same form with its keys in another order is the same payload.
+        expect((await api.answerWith(d, "kf2", open.id, { values: { b: true, a: "1" } }, { requestId: id })).body).toEqual({ result: "taken", replayed: true });
+        expect((await api.answerWith(d, "kf2", open.id, { values: { a: "2", b: true } }, { requestId: id })).body.code).toBe("request-id-reused");
+        await form;
+      });
+      test("the core refuses a bad ask at layout time with the section to read: a TypeError, or a RangeError for a count", () => {
+        const p = mk("kv1");
+        const refuse = (input: object, kind: ErrorConstructor = TypeError) => expect(() => void p.ask({ ...base(), ...input } as never)).toThrow(kind);
+        refuse({ kind: "slider" });
+        refuse({ kind: "choice", options: [] });
+        refuse({ kind: "choice", options: Array.from({ length: 9 }, (_, i) => ({ id: `o${i}`, label: "O" })) }, RangeError);
+        refuse({ kind: "choice", options: [{ id: "a", label: "A" }, { id: "a", label: "A again" }] });
+        refuse({ kind: "choice", options: [{ id: "a", label: "A", effect: "allow" }] });
+        refuse({ kind: "choice", options: [{ id: "bad id", label: "A" }] });
+        refuse({ kind: "text", options: [{ id: "a", label: "A" }] });
+        refuse({ kind: "text", maxLength: 0 }, RangeError);
+        refuse({ kind: "text", maxLength: 2001 }, RangeError);
+        refuse({ kind: "text", maxLength: 1.5 }, RangeError);
+        refuse({ kind: "form", fields: [] });
+        refuse({ kind: "form", fields: Array.from({ length: 7 }, (_, i) => ({ id: `f${i}`, label: "F", kind: "toggle" })) }, RangeError);
+        refuse({ kind: "form", fields: [{ id: "a", label: "A", kind: "dial" }] });
+        refuse({ kind: "form", fields: [{ id: "a", label: "A", kind: "choice" }] });
+        refuse({ kind: "form", fields: [{ id: "a", label: "A", kind: "toggle", options: [{ id: "x", label: "X" }] }] });
+        refuse({ kind: "form", fields: [{ id: "a", label: "A", kind: "text" }, { id: "a", label: "A", kind: "text" }] });
+        refuse({ kind: "form", fields: [{ id: "a", label: "A", kind: "toggle" }], options: [{ id: "x", label: "X" }] });
+        expect(p.openAsks).toHaveLength(0);
+      });
+      test("a placeholder and every label are cleaned and cut", async () => {
+        const p = mk("kv2");
+        void p.ask({ ...base(), kind: "text", placeholder: `  hint\u200b${"é".repeat(100)}` });
+        void p.ask({ ...base(), kind: "form", fields: [{ id: "f", label: `a\u0000${"x".repeat(300)}`, kind: "toggle" }] });
+        const [text, form] = (await paneInfo("kv2")).openAsks;
+        expect([...(text?.placeholder ?? "")]).toHaveLength(60);
+        expect(text?.placeholder?.startsWith("hint")).toBe(true);
+        expect(Buffer.byteLength(form?.fields?.[0]?.label ?? "")).toBeLessThanOrEqual(128);
       });
     });
 
