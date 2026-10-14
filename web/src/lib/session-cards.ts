@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { leadHost, sessionsOnHost } from "@/lib/hosts";
+import { leadHost } from "@/lib/hosts";
 import { normalizeHost, normalizeSession, scopeKey, type Scope } from "@/lib/scope";
 import type { ServerSummary, SessionState, SessionSummary } from "@/lib/types";
 
@@ -119,16 +119,61 @@ export function sessionState(card: Pick<SessionSummary, "state" | "reachable">):
 }
 
 /**
- * The program sessions on the machine a scope addresses, in the registry's order. These are the
- * spaces the dashboard's Spaces list adds after the terminal spaces. Empty on every snapshot with no
- * program session, which is every snapshot a bridge older than M55 sends.
+ * The program sessions the dashboard's Programs section lists (M55 spec 13): every one in the snapshot,
+ * on this machine and on each member of a crew, in the snapshot's order (the lead's own first). One
+ * section for all machines. Empty on every snapshot with no program session, which is every snapshot a
+ * bridge older than M55 sends, and the section then draws nothing.
  */
-export function programSessionsOnHost(
-  sessions: readonly SessionSummary[],
-  scope: { host?: string },
-  servers: readonly ServerSummary[] | undefined,
-): SessionSummary[] {
-  return sessionsOnHost(sessions, scope, servers).filter((s) => isProgramSession(s));
+export function programSessions(sessions: readonly SessionSummary[]): SessionSummary[] {
+  return sessions.filter((s) => isProgramSession(s));
+}
+
+/**
+ * The address a program row opens: the session by name, on the machine that runs it. The lead's own
+ * programs carry the lead's id on a crew snapshot and no host on a solo one; both open with no host, the
+ * bare URL a scope on the lead has.
+ */
+export function programScope(session: Pick<SessionSummary, "name" | "host">, servers: readonly ServerSummary[] | undefined): Scope {
+  const host = normalizeHost(session.host);
+  return { host: host === undefined || host === leadHost(servers) ? undefined : host, session: session.name };
+}
+
+/** A program session's two counts on the dashboard (M55 spec 13). */
+export interface ProgramCounts {
+  /** Its open conversations: the live panes the program holds. */
+  open: number;
+  /** Its conversations that wait on you with a question. */
+  waiting: number;
+}
+
+/**
+ * A program session's counts, read off the summary the snapshot already carries for every session, so
+ * the dashboard asks nothing more of the bridge. `agents` is the session's live panes, which are the open
+ * conversations the conversation list draws first (lib/conversation-list.ts). `blocked` is the panes that
+ * wait on a person, and the durable adapter reads a pane with an open question as blocked
+ * (bridge/mux/durable/protocol.ts), so it is the list's "waiting" rows. Both are zero unless the session
+ * is ready: an unreachable session's last poll failed, and a starting one has said nothing yet.
+ */
+export function programCounts(card: Pick<SessionSummary, "agents" | "blocked" | "state" | "reachable">): ProgramCounts {
+  if (sessionState(card) !== "ready") return { open: 0, waiting: 0 };
+  return { open: card.agents, waiting: card.blocked };
+}
+
+/**
+ * Whether the Programs section sits above the spaces (M55 spec 13): yes when any program has at least
+ * one conversation that waits on you, else it sits below them. Read off the counts the rows draw, so the
+ * section moves on the snapshot that changes a count, and only when a row says why.
+ */
+export function programsAbove(programs: readonly SessionSummary[]): boolean {
+  return programs.some((s) => programCounts(s).waiting > 0);
+}
+
+/**
+ * The programs the needs-you filter keeps: those with at least one conversation that waits on you, read
+ * off the same counts the rows draw. Empty when nothing waits, and the section then draws nothing.
+ */
+export function waitingPrograms(programs: readonly SessionSummary[]): SessionSummary[] {
+  return programs.filter((s) => programCounts(s).waiting > 0);
 }
 
 /** Test seam: forget every card. */

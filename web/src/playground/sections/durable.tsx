@@ -6,9 +6,11 @@
 // DEV-ONLY, unreachable from the app entry.
 
 import { ConversationList } from "@/components/conversation-list";
+import { ProgramSection } from "@/components/program-section";
 import { SpaceOverview } from "@/components/space-overview";
 import { mergeConversations } from "@/lib/conversation-list";
-import type { AgentView, DurableConversationRow, SessionSummary, WorkspaceView } from "@/lib/types";
+import { programsAbove } from "@/lib/session-cards";
+import type { AgentView, DurableConversationRow, ServerSummary, SessionSummary, WorkspaceView } from "@/lib/types";
 
 import { TS, homeSolo, type PaneFixture } from "../fixtures";
 import { PaneRouter } from "../harness";
@@ -19,7 +21,7 @@ export const DEF: SectionDef = {
   id: "durable",
   title: "Durable home",
   intent:
-    "A durable program this collie carries is one more space in the dashboard's Spaces list, after the terminal spaces: its name with an Experimental badge, its runtime and where it runs under it, and its state as the shared mark, with Starting or Unreachable said in words. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done.",
+    "A durable program this collie or a crew member carries is a row of the dashboard's Programs section, apart from the Spaces list: its name with an Experimental badge, its runtime and where it runs under it (and the member, on another machine), its state as the shared mark, and at the right its open conversations and, when any, the ones that wait on you in the needs-you ink. Starting or Unreachable is said in words there instead. The section sits above the spaces while a question waits, below them otherwise, and draws nothing with no program. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done.",
 };
 
 const MIN = 60_000;
@@ -120,26 +122,53 @@ function programSession(name: string, over: Partial<SessionSummary>): SessionSum
   };
 }
 
-/** Two program sessions: one ready, one that does not answer. */
-const PROGRAMS: SessionSummary[] = [
-  programSession("desk", {}),
+/** Card 1: two ready programs, nothing waits. */
+const PROGRAMS_QUIET: SessionSummary[] = [
+  programSession("desk", { agents: 3, working: 1 }),
+  programSession("billing", { mux: "acme-billing", where: "remote", agents: 1 }),
+];
+
+/** Card 2: the same two, and two conversations of desk wait on you. */
+const PROGRAMS_WAITING: SessionSummary[] = [
+  programSession("desk", { agents: 3, working: 1, blocked: 2 }),
+  programSession("billing", { mux: "acme-billing", where: "remote", agents: 1 }),
+];
+
+/** Card 3: one program that does not answer. */
+const PROGRAMS_UNREACHABLE: SessionSummary[] = [
   programSession("billing", { mux: "acme-billing", where: "remote", state: "unreachable", reachable: false }),
 ];
 
-/** The real Spaces list, open, over one terminal space and the program sessions given. */
-function Spaces({ programs }: { programs: SessionSummary[] }) {
+/** Card 4: a crew of two machines, each running a program. */
+const CREW: ServerSummary[] = [
+  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS },
+  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS },
+];
+const PROGRAMS_CREW: SessionSummary[] = [
+  programSession("desk", { host: "bluefin", agents: 3, working: 1 }),
+  programSession("support", { host: "minibuch", agents: 2, blocked: 1 }),
+];
+
+/**
+ * The bottom of the dashboard: the real Spaces list, open, over one terminal space, and the real
+ * Programs section above or below it, placed by the same rule the home route uses (`programsAbove`).
+ */
+function Dashboard({ programs, servers }: { programs: SessionSummary[]; servers?: ServerSummary[] }) {
+  const above = programsAbove(programs);
+  const section = <ProgramSection programs={programs} servers={servers} onOpen={() => {}} />;
   return (
     <div className="mx-auto w-full max-w-[390px] rounded-sm border border-rule bg-background">
+      {above && section}
       <SpaceOverview
         workspaces={[TERMINAL_SPACE]}
         agents={[]}
+        host={servers === undefined ? undefined : "bluefin"}
         onOpen={() => {}}
         onNewSpace={() => {}}
         open
         onOpenChange={() => {}}
-        programs={programs}
-        onOpenProgram={() => {}}
       />
+      {!above && section}
     </div>
   );
 }
@@ -147,21 +176,38 @@ function Spaces({ programs }: { programs: SessionSummary[] }) {
 export function DurableSection() {
   return (
     <Section def={DEF}>
-      <Group title="A program is a space">
+      <Group title="Programs">
         <Card
-          state="program-spaces"
-          label="One terminal space, then two program spaces: ready and unreachable"
-          reach="open the dashboard of a collie that carries a durable program beside its multiplexer (a source in sources.json)."
-          note="Drawn from fixed session cards. The terminal row is the list's own; each program row is its name, the Experimental badge, and its runtime and place under it."
+          state="programs-below"
+          label="1: no waiting question, the Programs section below the spaces"
+          reach="open the dashboard of a collie that carries durable programs beside its multiplexer (sources in sources.json), while no conversation waits on you."
+          note="Drawn from fixed session cards over the real Spaces list. Each row: name, Experimental badge, runtime and place, the open conversations at the right."
         >
-          <Spaces programs={PROGRAMS} />
+          <Dashboard programs={PROGRAMS_QUIET} />
         </Card>
         <Card
-          state="program-spaces-none"
-          label="No program session: the Spaces list as before"
-          reach="open the dashboard of a collie with no source."
+          state="programs-above"
+          label="2: one program with two waiting, the section above the spaces"
+          reach="the same dashboard while two conversations of one program wait on you with a question."
+          note="On the dashboard the section moves above Launch and the Spaces on the snapshot that brings the first waiting question, and back under the Spaces on the one that clears the last."
         >
-          <Spaces programs={[]} />
+          <Dashboard programs={PROGRAMS_WAITING} />
+        </Card>
+        <Card
+          state="programs-unreachable"
+          label="3: one program unreachable"
+          reach="stop a remote program, or take its URL offline, and open the dashboard."
+          note="No counts: the word Unreachable in the muted ink where they would be. The row still opens the program's list."
+        >
+          <Dashboard programs={PROGRAMS_UNREACHABLE} />
+        </Card>
+        <Card
+          state="programs-crew"
+          label="4: two machines, one section"
+          reach="open the dashboard of a crew whose lead and member each run a program."
+          note="The member's program names the member after its place; the lead's own names no machine. A waiting question on any machine moves the one section."
+        >
+          <Dashboard programs={PROGRAMS_CREW} servers={CREW} />
         </Card>
       </Group>
 

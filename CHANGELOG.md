@@ -57,6 +57,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The phone asks each space what it can do.** A control asks the space it acts in, so a durable program beside a terminal gets only the controls it declares. The snapshot carries the answer for each space, and a bridge without it is asked as before.
 - **A durable program is a space of its own on the phone.** Its name, its runtime and an Experimental mark sit on the row, and one tap opens its conversations. Your terminal spaces look as before.
 - **The docs start with sessions.** A new Sessions group explains what a session is and where it comes from, a terminal or a program, and a Terminology page lists Collie's words beside the names other tools use.
+- **A program's row counts its conversations.** It shows the open conversations and, when any wait on you, how many, in the needs-you colour. A program that is starting or unreachable says so in their place, and the row still opens.
+- **Programs have their own section on the dashboard.** A program is no longer a row at the end of the space list. The Programs section shows each program with its open conversations and its waiting questions, and it moves above the spaces when a question waits.
+- **The playground shows the Programs section in four numbered cards.** Card 1 has nothing waiting, card 2 has two questions waiting and the section on top, card 3 has an unreachable program, and card 4 has two machines.
+- **Tests pin the Programs section.** They cover each row state, the section above and below the spaces, the move on a new snapshot, a crew of two machines, and no Programs header with no program.
+- **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
 
 ### Fixed
 
@@ -79,6 +84,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The ten-line program names one cap.** `hello.ts` says `caps: { asks: true }` and leaves the rest to the SDK's default of false.
 - **The Programs page installs the SDK from npm.** The quickstart runs `npm install @colliepwa/durable-sdk@experimental` and a ten-line program that imports the package, and says that on Node a program cannot read who connects to its socket. ADR 0105 records the package: its name, the `experimental` dist-tag, one import, optional Pi peers, who publishes, and the exit it shares with ADR 0104.
 - **The ChatGPT sign-in steps match Pi 1.1.0.** The login runs in the data folder from the pinned copy, shows no menu, needs a `chmod 600`, and a stored sign-in wins over the environment key.
+- **Sessions and Programs say where a program shows on the phone.** Both pages say a program has its own Programs section, with its runtime and the count of questions waiting, and that the section moves above your spaces when a question waits.
+- **A comment in the space overview reads without a dash.** House style, no code change.
 
 ## [1.21.0] - 2026-10-13
 

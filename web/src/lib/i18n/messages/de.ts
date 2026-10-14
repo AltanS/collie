@@ -590,6 +590,18 @@ export const de: Dictionary = {
   // TODO wordsmith
   "space.program.state.unreachable": "Unreachable",
   // TODO wordsmith
+  "space.program.member": "{line}, {member}",
+  // TODO wordsmith
+  "space.program.open.one": "{count} open conversation",
+  // TODO wordsmith
+  "space.program.open.other": "{count} open conversations",
+  // TODO wordsmith
+  "space.program.waiting.one": "{count} conversation waits on you",
+  // TODO wordsmith
+  "space.program.waiting.other": "{count} conversations wait on you",
+  // TODO wordsmith
+  "home.programs.title": "Programs",
+  // TODO wordsmith
   "conversations.unsupported": "This program does not keep a list of its conversations.",
   // TODO wordsmith
   "conversations.unreachable": "The program did not answer. Try again in a moment.",
