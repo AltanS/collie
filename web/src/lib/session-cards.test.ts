@@ -1,4 +1,4 @@
-import { programCounts, programScope, programSessions, programsAbove } from "@/lib/session-cards";
+import { programCounts, programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import type { ServerSummary, SessionSummary } from "@/lib/types";
 
 // The Programs section's rules (M55 spec 13), as pure functions over the snapshot's session summaries.
@@ -60,5 +60,18 @@ describe("programScope", () => {
   it("opens the lead's own program with no host, and a member's on the member", () => {
     expect(programScope(program("desk", { host: "bluefin" }), CREW)).toEqual({ host: undefined, session: "desk" });
     expect(programScope(program("support", { host: "minibuch" }), CREW)).toEqual({ host: "minibuch", session: "support" });
+  });
+});
+
+describe("waitingPrograms", () => {
+  it("keeps only the ready programs with a conversation that waits, in order", () => {
+    const list = [
+      program("desk", { agents: 3, blocked: 2 }),
+      program("quiet", { agents: 1 }),
+      program("down", { state: "unreachable", blocked: 1 }),
+      program("support", { agents: 1, blocked: 1 }),
+    ];
+    expect(waitingPrograms(list).map((s) => s.name)).toEqual(["desk", "support"]);
+    expect(waitingPrograms([program("quiet")])).toEqual([]);
   });
 });

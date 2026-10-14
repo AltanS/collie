@@ -168,6 +168,14 @@ export function programsAbove(programs: readonly SessionSummary[]): boolean {
   return programs.some((s) => programCounts(s).waiting > 0);
 }
 
+/**
+ * The programs the needs-you filter keeps: those with at least one conversation that waits on you, read
+ * off the same counts the rows draw. Empty when nothing waits, and the section then draws nothing.
+ */
+export function waitingPrograms(programs: readonly SessionSummary[]): SessionSummary[] {
+  return programs.filter((s) => programCounts(s).waiting > 0);
+}
+
 /** Test seam: forget every card. */
 export function __resetSessionCards(): void {
   cards.clear();

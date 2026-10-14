@@ -48,7 +48,7 @@ import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
-import { programScope, programSessions, programsAbove } from "@/lib/session-cards";
+import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -194,6 +194,9 @@ export function HomeRoute() {
   // them otherwise, and moves on the snapshot that changes that count.
   const programs = useMemo(() => programSessions(data.sessions ?? []), [data.sessions]);
   const programsFirst = programsAbove(programs);
+  // With the needs-you filter on, the section keeps only the programs that wait on you, in the slot it
+  // takes above Launch when a question waits, and draws nothing when none does.
+  const programsWaiting = useMemo(() => waitingPrograms(programs), [programs]);
   const openProgram = (session: SessionSummary) => nav.down(homePath(programScope(session, data.servers)));
 
   // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
@@ -356,6 +359,9 @@ export function HomeRoute() {
           {/* Launch and the Spaces navigator belong to the whole herd, so they sit under the Dashboard
               with the needs-you switch off. The filtered list and the other tabs are narrower, and
               a launcher under them would read as part of that list. */}
+          {view === "dashboard" && needsYouOnly && !screenless && (
+            <ProgramSection programs={programsWaiting} servers={data.servers} onOpen={openProgram} />
+          )}
           {view === "dashboard" && !needsYouOnly && !screenless && (
             <>
               {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}

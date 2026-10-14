@@ -288,6 +288,25 @@ describe("Programs section: one row per program session, apart from the Spaces l
     expect(programRows()).toHaveLength(1);
   });
 
+  it("with the needs-you filter on, lists only the programs that wait, and nothing when none waits", async () => {
+    declares(TERMINAL_CAPS);
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ spacesOpen: true, needsYouOnly: true }));
+    const quiet = { ...DESK, name: "quiet", agents: 2 };
+    let blocked = 2;
+    const snapshot = () => homeData([...TERMINAL_CARDS, { ...DESK, agents: 3, blocked }, quiet, BILLING]);
+    const { container, router } = renderHome(snapshot(), "/", snapshot);
+    await waitFor(() => expect(programSection()).not.toBeNull());
+    expect(programRows().map((r) => r.querySelector('[data-slot="program-space-name"]')?.textContent)).toEqual(["desk"]);
+    // The filter hides Launch and the Spaces list; the section stays.
+    expect(container.querySelector("#spaces-body")).toBeNull();
+    expect(programsHeading(container)).toBe(true);
+
+    blocked = 0;
+    await router.revalidate();
+    await waitFor(() => expect(programSection()).toBeNull());
+    expect(programsHeading(container)).toBe(false);
+  });
+
   it("in a crew, one section lists every machine's programs, names the member, and opens it on its machine", async () => {
     declares(TERMINAL_CAPS);
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: true, items: [] })));
