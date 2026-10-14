@@ -43,8 +43,9 @@ interface SpaceOverviewProps {
 }
 
 // The dashboard's navigator: everything you might act on comes first. The program sessions are not
-// listed here; they have the dashboard's Programs section (M55 spec 13, `program-section.tsx`). It folds to a single line — with 45 spaces that's the difference between a dashboard and a
-// scroll — and expands to a filterable list in the multiplexer's own space order.
+// listed here; they have the dashboard's Programs section (M55 spec 13, `program-section.tsx`). It
+// folds to a single line, which with 45 spaces is the difference between a dashboard and a scroll, and
+// expands to a filterable list in the multiplexer's own space order.
 // A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
 // every render is a new reference, which defeats memoisation downstream for no benefit here.
 const NO_PANES: AgentView[] = [];
