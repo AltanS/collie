@@ -144,8 +144,9 @@ describe("pi adapter routing", () => {
   // still holds and the draft reads back, so each fixture must pass both reads.
   it.each([
     ["pi--v120-idle-padded.txt", null],
-    ["pi--v120-draft-padded.txt", "Add unit tests for the parser"],
-    ["pi--v120-draft-padded-multiline.txt", "Add unit tests for the parser and verify edge cases"],
+    ["pi--v120-draft-unpadded.txt", "hello from the probe"],
+    ["pi--v120-draft-padded.txt", "hello from the probe"],
+    ["pi--v120-draft-padded-multiline.txt", "line one line two"],
     ["pi--v120-slash-palette-padded.txt", "/"],
   ])("keeps a pi pane with editor padding sendable: %s", (name, draft) => {
     const lines = load(name);
