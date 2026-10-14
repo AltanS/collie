@@ -233,6 +233,12 @@ export const PARTIAL_MS = 250;
 /** A text or thinking block of the answer being written, as far as it has come. */
 type LiveBlock = Block;
 
+/** A block for the live answer: a copy, because the deltas grow it in place and Pi's own message stays as Pi wrote it. */
+const liveCopy = (block: Block): LiveBlock => ({ ...block });
+
+/** A step's state from whether it is done and whether it runs now. */
+const stepState = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
+
 /** The assistant message Pi is generating now, and which of its blocks the wire has seen. */
 interface LiveMessage {
   /** The id every item of this message gets, the one the finished message gets too: its timestamp. */
@@ -307,13 +313,12 @@ export class Mapper {
   /** The three steps of a ticket as the first run reaches them: read it, save a note, reply. */
   private steps(): Progress {
     const { user, note, noted, reply } = this.seen;
-    const state = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
     return {
       kind: "steps",
       steps: [
-        { label: "Read the ticket", state: state(user && (note || reply), !user || !note) },
-        { label: "Save a note", state: state(noted || reply, note || user) },
-        { label: "Reply", state: state(reply, noted) },
+        { label: "Read the ticket", state: stepState(user && (note || reply), !user || !note) },
+        { label: "Save a note", state: stepState(noted || reply, note || user) },
+        { label: "Reply", state: stepState(reply, noted) },
       ],
     };
   }
@@ -408,7 +413,7 @@ export class Mapper {
     this.live = undefined;
     const content = message.content;
     if (message.role !== "assistant" || !Array.isArray(content)) return;
-    const blocks = content.map((b) => ({ ...b }));
+    const blocks = content.map(liveCopy);
     this.live = { id: messageId(message.timestamp), ts: new Date(message.timestamp).toISOString(), blocks, shown: new Set(), lastWrite: 0 };
   }
 
@@ -422,7 +427,7 @@ export class Mapper {
         case "thinking_start":
         case "toolcall_start":
         case "block":
-          live.blocks[c.contentIndex] = { ...c.block };
+          live.blocks[c.contentIndex] = liveCopy(c.block);
           break;
         case "text_delta": {
           const b = live.blocks[c.contentIndex];
@@ -435,7 +440,7 @@ export class Mapper {
           break;
         }
         case "message":
-          live.blocks = c.message.content.map((b) => ({ ...b }));
+          live.blocks = c.message.content.map(liveCopy);
           break;
         case "toolcall_delta":
           break; // a tool call is shown whole, when its message ends
@@ -815,6 +820,9 @@ export interface AskToolWords {
   reply: { question: string; placeholder?: string };
 }
 
+/** A tool's answer to the model: one text block. */
+const toolReply = (text: string) => ({ content: [{ type: "text" as const, text }] });
+
 /**
  * `ask_queue` (a choice: which team takes the ticket) and `ask_customer` (a text ask: the line for the customer):
  * tools whose whole job is a question for the person on the phone (WIRE.md 7.14). The ask sits under the tool's own
@@ -836,7 +844,6 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
       markAsks(pane);
     }
   };
-  const reply = (text: string) => ({ content: [{ type: "text" as const, text }] });
   const queue = defineTool({
     name: "ask_queue",
     description: "Ask the person which team takes the ticket.",
@@ -844,7 +851,7 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
     replay: "safe",
     execute: async (_args, api) => {
       const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: team.question, options: team.options }));
-      return reply(answer.optionIds.map((picked) => team.options.find((option) => option.id === picked)?.label ?? picked).join(", "));
+      return toolReply(answer.optionIds.map((picked) => team.options.find((option) => option.id === picked)?.label ?? picked).join(", "));
     },
   });
   const customer = defineTool({
@@ -858,7 +865,7 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
         if (line.placeholder !== undefined) input.placeholder = line.placeholder;
         return pane.ask(input);
       });
-      return reply(clip(answer.text));
+      return toolReply(clip(answer.text));
     },
   });
   return [queue, customer];

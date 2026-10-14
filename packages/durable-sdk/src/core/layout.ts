@@ -709,7 +709,8 @@ export class Pane implements PaneHandle {
    * host that put its timers to sleep.
    */
   sweep(now = Date.now()) {
-    for (const [id, open] of [...this.asks]) {
+    // A Map walk survives `closeAsk` deleting the entry it stands on.
+    for (const [id, open] of this.asks) {
       if (open.ask.expiresAt !== undefined && Date.parse(open.ask.expiresAt) <= now) this.closeAsk(id, "stopped", "timeout", new AskClosed("stopped", "timeout"));
     }
   }
@@ -869,7 +870,8 @@ export class Pane implements PaneHandle {
 
   close() {
     this.closed = true;
-    for (const id of [...this.asks.keys()]) this.closeAsk(id, "stopped", "program", new AskClosed("stopped", "program"));
+    // A Map walk survives `closeAsk` deleting the entry it stands on.
+    for (const id of this.asks.keys()) this.closeAsk(id, "stopped", "program", new AskClosed("stopped", "program"));
     this.store.panes.delete(this.id);
     this.store.rememberClosed(this);
     this.store.rev++;

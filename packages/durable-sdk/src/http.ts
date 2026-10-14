@@ -47,7 +47,8 @@ export function wireListener(core: CollieCore, refuseAct?: (req: IncomingMessage
   const idle = new Set<() => void>();
   const done = () => {
     inFlight -= 1;
-    if (inFlight === 0) for (const wake of [...idle]) wake();
+    // A Set walk survives `wake` deleting the entry it stands on.
+    if (inFlight === 0) for (const wake of idle) wake();
   };
   const listener: RequestListener = (req, res) => {
     inFlight += 1;
