@@ -1354,10 +1354,13 @@ export function AgentChat({
           ? await submitPromptOption({ ...base, option: action.option })
           : await submitPromptFeedback({ ...base, text: action.text });
       if (result.status === "sent") {
-        setStatus(
-          action.kind === "feedback" ? t("chat.status.feedbackSent") : t("chat.status.sent"),
-          "success",
-        );
+        const sentStatus =
+          action.kind === "option"
+            ? t("chat.status.sent")
+            : prompt.feedback?.purpose === "answer"
+              ? t("chat.status.answerSent")
+              : t("chat.status.feedbackSent");
+        setStatus(sentStatus, "success");
         await showAfterSend();
       } else if (result.status === "changed") {
         // Which step refused, for a person with the console open (`why` is a diagnosis, never UI

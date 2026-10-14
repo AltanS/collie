@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2, MessageSquarePlus } from "lucide-react";
 
 import type {
@@ -9,6 +9,7 @@ import type {
   PromptSubjectLine,
   StyledLine,
 } from "@/lib/blocks";
+import type { PromptFeedback } from "@/lib/harness/prompt-model";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
@@ -195,6 +196,9 @@ function SubjectBody({ lines }: { lines: PromptSubjectLine[] }) {
 
 interface FeedbackCopy {
   offer: string | null;
+  /** The offer that opens the editor prefilled with what the field holds; `answer` rows only. */
+  change: string | null;
+  textAria: string;
   editorLabel: string;
   placeholder: string;
   help: string;
@@ -204,14 +208,31 @@ interface FeedbackCopy {
   typedPrefix: string;
 }
 
-// Copy is purpose-aware: Claude's plan-approval input is deny-with-feedback; Grok's `z` row is
-// a custom answer. Missing purpose is Claude (the only row submitPromptFeedback will type into).
+// Copy is purpose-aware: Claude's plan-approval input is deny-with-feedback; AskUserQuestion's field
+// is the question's answer; Grok's `z` row and a permission amend note are read, never typed into.
+// Missing purpose is Claude's plan input.
 // A function (not a module-level object) for the same locale-freshness reason as familyCaption.
 function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
+  if (purpose === "answer") {
+    return {
+      offer: t("prompt.feedback.answer.offer"),
+      change: t("prompt.feedback.answer.change"),
+      textAria: t("prompt.feedback.answer.textAria"),
+      editorLabel: t("prompt.feedback.answer.editorLabel"),
+      placeholder: t("prompt.feedback.answer.placeholder"),
+      help: t("prompt.feedback.answer.help"),
+      send: t("prompt.feedback.answer.send"),
+      sending: t("prompt.feedback.answer.sending"),
+      focused: t("prompt.feedback.answer.focused"),
+      typedPrefix: t("prompt.feedback.answer.typedPrefix"),
+    };
+  }
   if (purpose === "free-text") {
-    // No phone composer: the Claude plan-feedback send path is the wrong recipe for this row.
+    // No phone composer: neither Claude recipe fits this row.
     return {
       offer: null,
+      change: null,
+      textAria: "",
       editorLabel: "",
       placeholder: "",
       help: "",
@@ -223,6 +244,8 @@ function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
   }
   return {
     offer: t("prompt.feedback.planChange.offer"),
+    change: null,
+    textAria: t("prompt.feedback.planChange.textAria"),
     editorLabel: t("prompt.feedback.planChange.editorLabel"),
     placeholder: t("prompt.feedback.planChange.placeholder"),
     help: t("prompt.feedback.planChange.help"),
@@ -231,6 +254,99 @@ function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
     focused: t("prompt.feedback.planChange.focused"),
     typedPrefix: t("prompt.feedback.planChange.typedPrefix"),
   };
+}
+
+/** What the terminal's field holds, read-only: the copy's prefix, then the text in the content face. */
+function TypedFieldCard({ prefix, text }: { prefix: string; text: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+      <MessageSquarePlus
+        className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+        aria-label={t("prompt.feedback.typedAria")}
+      />
+      <span className="min-w-0 flex-1 text-xs text-foreground/90">
+        {prefix}
+        <span className="font-content">{text}</span>
+      </span>
+    </div>
+  );
+}
+
+interface AnswerFieldSurfaceProps {
+  field: PromptFeedback;
+  copy: FeedbackCopy;
+  /** Our own answer send is in flight. */
+  ours: boolean;
+  /** Any send of this card is in flight: Cancel must not race it. */
+  anySending: boolean;
+  editorOpen: boolean;
+  draft: string;
+  onDraft: (value: string) => void;
+  /** Open the editor holding `prefill`. */
+  onOpen: (prefill: string) => void;
+  onCancel: () => void;
+  onSend: () => void;
+  /** The card cannot send right now (read-only, offline, a send in flight). A focused terminal field
+   *  does not lock this surface: the recipe reaches the field itself (lib/answer-field.ts). */
+  locked: boolean;
+  busyIcon: ReactNode;
+}
+
+/**
+ * AskUserQuestion's `Type something.` field (ADR 0104), below the options: our own send in flight,
+ * else the editor, else what the field holds with an offer to change it, else the focused banner with
+ * the offer, else the offer alone.
+ */
+function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
+  const { field, copy, locked } = props;
+  if (props.ours) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        {props.busyIcon}
+        {copy.sending}
+      </div>
+    );
+  }
+  if (props.editorOpen) {
+    return (
+      <InlineEditor
+        id="ask-answer-text"
+        label={copy.editorLabel}
+        value={props.draft}
+        onChange={props.onDraft}
+        maxLength={FEEDBACK_MAX_LENGTH}
+        placeholder={copy.placeholder}
+        help={copy.help}
+        textAriaLabel={copy.textAria}
+        sendLabel={copy.send}
+        cancelLabel={t("prompt.feedback.cancel")}
+        onSend={props.onSend}
+        onCancel={props.onCancel}
+        sendDisabled={locked || props.draft.trim().length === 0}
+        cancelDisabled={props.anySending}
+        busy={false}
+        busyAriaLabel={t("prompt.sendingAria")}
+      />
+    );
+  }
+  if (field.text !== "") {
+    return (
+      <>
+        <TypedFieldCard prefix={copy.typedPrefix} text={field.text} />
+        <InlineEditorOffer label={copy.change ?? ""} disabled={locked} onClick={() => props.onOpen(field.text)} />
+      </>
+    );
+  }
+  return (
+    <>
+      {field.focused ? (
+        <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
+          {copy.focused}
+        </div>
+      ) : null}
+      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => props.onOpen("")} />
+    </>
+  );
 }
 
 // Native, tappable rendering of a Claude single-choice dialog. Every visible string — the subject,
@@ -269,12 +385,13 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   const feedback = prompt.feedback;
   const terminalFocused = feedback?.focused ?? false;
   const locked = Boolean(disabled) || offline || sending !== null || terminalFocused;
-  const feedbackCopy = feedback
-    ? feedbackCopyFor(feedback.purpose === "free-text" ? "free-text" : "plan-change")
-    : null;
+  const isAnswer = feedback?.purpose === "answer";
+  // The answer recipe reaches a focused field itself, so the terminal's focus locks the options only.
+  const answerLocked = Boolean(disabled) || offline || sending !== null;
+  const feedbackCopy = feedback ? feedbackCopyFor(feedback.purpose ?? "plan-change") : null;
 
   async function press(id: string, action: PromptBlockAction): Promise<boolean> {
-    if (locked) return false;
+    if (action.kind === "feedback" && isAnswer ? answerLocked : locked) return false;
     setSending(id);
     try {
       // A handler that returns nothing is taken at its word (the presentational tests inject one);
@@ -351,7 +468,25 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           first: the choreography focuses the row and fills it, so from the moment Send is pressed the
           screen is briefly indistinguishable from "someone at the terminal is typing" — and saying
           that to the person who just pressed the button would be a lie about their own action. */}
-      {feedback && feedbackCopy && sending === "feedback" ? (
+      {feedback && feedbackCopy && isAnswer ? (
+        <AnswerFieldSurface
+          field={feedback}
+          copy={feedbackCopy}
+          ours={sending === "feedback"}
+          anySending={sending !== null}
+          editorOpen={editorOpen}
+          draft={draft}
+          onDraft={setDraft}
+          onOpen={(prefill) => {
+            setDraft(prefill);
+            setEditorOpen(true);
+          }}
+          onCancel={() => setEditorOpen(false)}
+          onSend={() => void sendFeedback()}
+          locked={answerLocked}
+          busyIcon={busyIcon}
+        />
+      ) : feedback && feedbackCopy && sending === "feedback" ? (
         <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           {busyIcon}
           {feedbackCopy.sending}
@@ -364,16 +499,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           ) : null}
         </div>
       ) : feedback && feedbackCopy && feedback.text !== "" ? (
-        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-          <MessageSquarePlus
-            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-            aria-label={t("prompt.feedback.typedAria")}
-          />
-          <span className="min-w-0 flex-1 text-xs text-foreground/90">
-            {feedbackCopy.typedPrefix}
-            <span className="font-content">{feedback.text}</span>
-          </span>
-        </div>
+        <TypedFieldCard prefix={feedbackCopy.typedPrefix} text={feedback.text} />
       ) : feedback && feedbackCopy && feedbackCopy.offer && editorOpen ? (
         <InlineEditor
           id="plan-feedback-text"
@@ -383,7 +509,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           maxLength={FEEDBACK_MAX_LENGTH}
           placeholder={feedbackCopy.placeholder}
           help={feedbackCopy.help}
-          textAriaLabel={t("prompt.feedback.planChange.textAria")}
+          textAriaLabel={feedbackCopy.textAria}
           sendLabel={feedbackCopy.send}
           cancelLabel={t("prompt.feedback.cancel")}
           onSend={() => void sendFeedback()}

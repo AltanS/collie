@@ -996,6 +996,21 @@ Every key behaviour named below was sent one keystroke at a time and read back.
 | `claude--v2283-shell-before-first-frame.txt` | The shell prompt with `claude-danger` typed, read while herdr already reported the agent as `claude` (about 0.3 s before the first frame) |
 | `claude--v2283-shell-after-exit.txt` | The shell prompt just after Claude exited, still reported as `claude` (about 0.5 s) |
 
+## AskUserQuestion field corpus (captured 2026-10-14, Claude Code 2.1.299, herdr 0.9.4, Windows, throwaway Herdr pane)
+
+The `Type something.` field typed into, cleared and re-answered, one keystroke at a time, for
+[`ASK_FIELD_NOTES.md`](../../lib/grammar/ASK_FIELD_NOTES.md) and ADR 0104. A 157-column pane in a
+scratch folder, trimmed to the last 30 rows, home path scrubbed. Every answer named below was read
+back from the session journal.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2299-ask-field-single-focused-empty.txt` | Single question, `4` pressed: pointer on the empty `4. Type something.`, footer gains `ctrl+g to edit in Notepad`. Answers nothing |
+| `claude--v2299-ask-field-single-focused-typed.txt` | The field focused, holding `Teal, like the sea`. `Enter` answered with it |
+| `claude--v2299-ask-field-single-typed-off-row.txt` | The same text, `Up`: pointer on `3. Blue`. The field's digit now SUBMITS the held text |
+| `claude--v2299-ask-field-single-focused-wrapped.txt` | Focused, a value wrapped to two display lines (continuation indented five columns) |
+| `claude--v2299-ask-field-single-focused-three-lines.txt` | Focused, a value wrapped to three display lines; three `ctrl+u` emptied it from the end |
+
 ## Draft-frame and modal-edge corpus (captured 2026-09-26, Claude Code 2.1.283, herdr 0.9.0, throwaway Herdr panes)
 
 Two screens the phone read wrong. A draft holding a pasted rule or shell prompt hid its own input

@@ -100,7 +100,7 @@ describe("the amend note (Tab on Yes or No) is a field, never a button", () => {
 describe("AskUserQuestion's 'Type something.' row is found by position, typed or not", () => {
   it("pointer on the empty field: modelled as focused, so no button can type a digit into it", () => {
     const model = detectPromptSelect(fixtureLines("claude--v2283-ask-type-something-focused.txt"))!;
-    expect(model.feedback).toEqual({ key: "4", focused: true, text: "", purpose: "free-text" });
+    expect(model.feedback).toEqual({ key: "4", focused: true, text: "", purpose: "answer", pointer: "on" });
     expect(model.options.map((o) => o.label)).not.toContain("Type something.");
   });
 
@@ -110,14 +110,15 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
       key: "4",
       focused: true,
       text: "my own answer second line of my answer",
-      purpose: "free-text",
+      purpose: "answer",
+      pointer: "on",
     });
     expect(model.options.map((o) => o.label)).toEqual(["Apple", "Banana", "Orange", "Chat about this"]);
   });
 
   it("typed, pointer moved off: the field shows its value and the answers stay pressable", () => {
     const model = detectPromptSelect(fixtureLines("claude--v2283-ask-type-something-typed-off-row.txt"))!;
-    expect(model.feedback).toEqual({ key: "3", focused: false, text: "1", purpose: "free-text" });
+    expect(model.feedback).toEqual({ key: "3", focused: false, text: "1", purpose: "answer", pointer: "above" });
     expect(model.options.map((o) => o.label)).toEqual(["Apple", "Banana", "Chat about this"]);
   });
 

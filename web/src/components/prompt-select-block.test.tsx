@@ -771,6 +771,57 @@ describe("PromptSelectBlock — Grok's z row is not Claude's plan-feedback compo
   });
 });
 
+// ADR 0104: AskUserQuestion's `Type something.` field is typed into from the phone. Real 2.1.299
+// captures: the field empty (pointer on row 1), holding text with the pointer elsewhere, and focused.
+describe("PromptSelectBlock — AskUserQuestion's answer field", () => {
+  const OFFER = "Type your own answer";
+
+  it("the offer opens an empty editor", async () => {
+    const model = fixtureModel("claude--select-menu.txt");
+    expect(model.feedback?.purpose).toBe("answer");
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Send answer" })).toBeDisabled();
+  });
+
+  it("with text in the field: shows it, and Change opens the editor holding it", async () => {
+    const model = fixtureModel("claude--v2299-ask-field-single-typed-off-row.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    expect(screen.getByText(/In the answer field:/)).toHaveTextContent("In the answer field: Teal, like the sea");
+    await user.click(screen.getByRole("button", { name: "Change this answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Teal, like the sea");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Teal, like the sea" });
+  });
+
+  it("focused and empty: the banner AND the offer, with the options locked", async () => {
+    const model = fixtureModel("claude--v2299-ask-field-single-focused-empty.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    expect(screen.getByText(/The answer field has the keyboard in the terminal/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Red/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Navy");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Navy" });
+  });
+
+  it("keeps the draft on screen when a send is refused", async () => {
+    const model = fixtureModel("claude--select-menu.txt");
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={() => false} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
+  });
+});
+
 // M46 spec 11: a card drawn from cached state is readable and cannot be answered. With a `paneId`
 // the card enables only while the bridge has answered a read for that pane lately; a parent that drew
 // the screen from the cache says `stale`. Nothing is queued: a tap on a disabled option sends nothing.

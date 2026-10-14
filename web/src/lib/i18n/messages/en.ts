@@ -579,6 +579,7 @@ export const en = {
   "settings.paneOrder.description":
     "Activity puts the pane where something last happened at the top of the dashboard and the switcher. Cache puts the one whose prompt cache dies soonest there. Place keeps the order your terminal has.",
   "chat.status.feedbackSent": "Feedback sent",
+  "chat.status.answerSent": "Answer sent",
   "chat.status.sent": "Sent",
   "chat.status.menuChanged": "Menu changed, refreshing",
   "chat.status.askChanged": "The dialog changed; the card shows the new one",
@@ -834,6 +835,17 @@ export const en = {
   "prompt.feedback.freeText.focused":
     "The free-text row has the keyboard in the terminal. These buttons would type into it instead of answering. They resume when it closes.",
   "prompt.feedback.freeText.typedPrefix": "A custom answer is being written in the terminal: ",
+  "prompt.feedback.answer.offer": "Type your own answer",
+  "prompt.feedback.answer.change": "Change this answer",
+  "prompt.feedback.answer.editorLabel": "Your answer",
+  "prompt.feedback.answer.textAria": "Answer text",
+  "prompt.feedback.answer.placeholder": "Write your answer…",
+  "prompt.feedback.answer.help": "Typed into the question's answer field and sent as your answer.",
+  "prompt.feedback.answer.send": "Send answer",
+  "prompt.feedback.answer.sending": "Typing your answer…",
+  "prompt.feedback.answer.focused":
+    "The answer field has the keyboard in the terminal, so these buttons would type into it. You can still send your own answer below.",
+  "prompt.feedback.answer.typedPrefix": "In the answer field: ",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane settings",
@@ -1560,6 +1572,9 @@ export const en = {
   "promptAction.feedback.empty": "Nothing to send",
   "promptAction.feedback.boxNotOpened": "The feedback box didn't open. Check the pane",
   "promptAction.feedback.notArrived": "The feedback didn't arrive. Nothing was submitted",
+  "promptAction.answer.fieldNotReached": "Couldn't reach the answer field. Nothing was sent",
+  "promptAction.answer.notCleared": "Couldn't clear the answer field. Nothing was sent",
+  "promptAction.answer.notArrived": "Your answer didn't arrive in the field. Nothing was submitted",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Busy: another recording is still transcribing. Try again in a moment.",

@@ -53,8 +53,10 @@ Enter to select · Tab/Arrow keys to navigate · Esc to cancel
 - Answering the LAST question advances to the **Submit review step**.
 - Revisiting an answered question: the chosen row gains a trailing ` ✔` (`2. UI ✔`) and the `❯`
   pointer RESETS to row 1 (it does not point at the chosen row).
-- `N. Type something.` — free-text answer for the current question (typed via composer, not a
-  button). `N. Chat about this` — **aborts the ENTIRE wizard**: the tool call resolves as
+- `N. Type something.` — a text field: the current question's own answer, typed into the field and
+  answered with `Enter` (which also advances). The phone types it through the card's editor, never
+  the composer, and never a button: its digit focuses an EMPTY field but answers with a filled
+  one's text. The keystroke detail is in [`ASK_FIELD_NOTES.md`](./ASK_FIELD_NOTES.md). `N. Chat about this` — **aborts the ENTIRE wizard**: the tool call resolves as
   "User declined to answer questions" immediately (verified). It is an escape, not an answer.
 
 ## The Submit review step

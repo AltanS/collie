@@ -533,6 +533,7 @@ export const de: Dictionary = {
   "settings.paneOrder.description":
     "Aktivität stellt das Pane mit dem letzten Ereignis an den Anfang des Dashboards und des Umschalters. Cache stellt das Pane dorthin, dessen Prompt-Cache zuerst kalt wird. Ort behält die Reihenfolge deines Terminals.",
   "chat.status.feedbackSent": "Feedback gesendet",
+  "chat.status.answerSent": "Antwort gesendet",
   "chat.status.sent": "Gesendet",
   "chat.status.menuChanged": "Menü geändert, Aktualisierung läuft",
   "chat.status.askChanged": "Der Dialog hat sich geändert; die Karte zeigt den neuen Stand",
@@ -759,6 +760,17 @@ export const de: Dictionary = {
   "prompt.feedback.freeText.focused":
     "Die Freitextzeile hat den Fokus im Terminal. Tastatureingaben schreiben in das Feld, anstatt Aktionen auszulösen. Nach dem Schließen sind die Schaltflächen wieder aktiv.",
   "prompt.feedback.freeText.typedPrefix": "Eigene Eingabe im Terminal: ",
+  "prompt.feedback.answer.offer": "Eigene Antwort eingeben",
+  "prompt.feedback.answer.change": "Diese Antwort ändern",
+  "prompt.feedback.answer.editorLabel": "Eigene Antwort",
+  "prompt.feedback.answer.textAria": "Antworttext",
+  "prompt.feedback.answer.placeholder": "Antwort eingeben…",
+  "prompt.feedback.answer.help": "Wird in das Antwortfeld der Frage eingegeben und als Antwort gesendet.",
+  "prompt.feedback.answer.send": "Antwort senden",
+  "prompt.feedback.answer.sending": "Antwort wird eingegeben…",
+  "prompt.feedback.answer.focused":
+    "Das Antwortfeld hat im Terminal die Tastatur, daher würden diese Schaltflächen hineinschreiben. Eine eigene Antwort lässt sich unten trotzdem senden.",
+  "prompt.feedback.answer.typedPrefix": "Im Antwortfeld: ",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane-Einstellungen",
@@ -1471,6 +1483,9 @@ export const de: Dictionary = {
   "promptAction.feedback.empty": "Keine Daten zum Senden.",
   "promptAction.feedback.boxNotOpened": "Das Feedback-Feld hat sich nicht geöffnet. Pane prüfen.",
   "promptAction.feedback.notArrived": "Das Feedback ist nicht angekommen. Es wurde nichts gesendet.",
+  "promptAction.answer.fieldNotReached": "Das Antwortfeld war nicht erreichbar. Es wurde nichts gesendet.",
+  "promptAction.answer.notCleared": "Das Antwortfeld ließ sich nicht leeren. Es wurde nichts gesendet.",
+  "promptAction.answer.notArrived": "Die Antwort ist nicht im Feld angekommen. Es wurde nichts abgeschickt.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Eine andere Transkription läuft noch. Bitte kurz warten und erneut versuchen.",
