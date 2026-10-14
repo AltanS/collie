@@ -833,6 +833,63 @@ describe("PromptSelectBlock — AskUserQuestion's answer field", () => {
     await user.click(screen.getByRole("button", { name: "Send answer" }));
     expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
   });
+
+  // The open editor hides the field's own card, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    const holding = (model: PromptModel, text: string): PromptModel => ({ ...model, feedback: { ...model.feedback!, text } });
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const model = fixtureModel("claude--select-menu.txt");
+      const onAction = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<PromptSelectBlock prompt={holding(model, "Desk words")} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal now holds “Desk words”. Send again to replace it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Phone words" });
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const model = fixtureModel("claude--v2299-ask-field-single-typed-off-row.txt");
+      const onAction = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<PromptSelectBlock prompt={holding(model, "")} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal was emptied. Send again to fill it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Teal, like the sea");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Teal, like the sea" });
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const model = fixtureModel("claude--select-menu.txt");
+      const onAction = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<PromptSelectBlock prompt={holding(model, "")} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Phone words" });
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
 });
 
 // M46 spec 11: a card drawn from cached state is readable and cannot be answered. With a `paneId`

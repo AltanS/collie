@@ -10,7 +10,13 @@ import type {
   StyledLine,
 } from "@/lib/blocks";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
-import { AnswerFieldSurface, TypedFieldCard, answerFieldCopy, type FeedbackCopy } from "@/components/answer-field-surface";
+import {
+  AnswerFieldSurface,
+  TypedFieldCard,
+  answerFieldCopy,
+  useAnswerEditor,
+  type FeedbackCopy,
+} from "@/components/answer-field-surface";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { RawMirror } from "@/components/raw-mirror";
@@ -260,8 +266,10 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   const live = useLive(paneId ?? "", scope);
   const offline = stale === true || (paneId !== undefined && !live);
   const [sending, setSending] = useState<string | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [draft, setDraft] = useState("");
+  // One editor for whichever field this dialog carries: a dialog's field is either an answer or a plan
+  // change, never both. The plan-change editor shows only over an empty field, so the editor's
+  // seen-text check never holds a plan-change Send back.
+  const editor = useAnswerEditor();
   const feedback = prompt.feedback;
   const terminalFocused = feedback?.focused ?? false;
   const locked = Boolean(disabled) || offline || sending !== null || terminalFocused;
@@ -283,12 +291,11 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   }
 
   async function sendFeedback() {
-    const text = draft.trim();
-    if (text.length === 0) return;
+    if (!feedback) return;
     // The editor closes only on a send that actually landed. A refused one (the guard saw the dialog
     // move) would otherwise throw away up to FEEDBACK_MAX_LENGTH characters someone thumb-typed on a
     // phone — the longest text this app ever asks anyone to type — with no way to get them back.
-    if (await press("feedback", { kind: "feedback", text })) setEditorOpen(false);
+    await editor.send(feedback, (text) => press("feedback", { kind: "feedback", text }), isAnswer ? answerLocked : locked);
   }
 
   const busyIcon = (
@@ -354,14 +361,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           copy={feedbackCopy}
           ours={sending === "feedback"}
           anySending={sending !== null}
-          editorOpen={editorOpen}
-          draft={draft}
-          onDraft={setDraft}
-          onOpen={(prefill) => {
-            setDraft(prefill);
-            setEditorOpen(true);
-          }}
-          onCancel={() => setEditorOpen(false)}
+          editor={editor}
           onSend={() => void sendFeedback()}
           locked={answerLocked}
           busyIcon={busyIcon}
@@ -381,12 +381,12 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
         </div>
       ) : feedback && feedbackCopy && feedback.text !== "" ? (
         <TypedFieldCard prefix={feedbackCopy.typedPrefix} text={feedback.text} />
-      ) : feedback && feedbackCopy && feedbackCopy.offer && editorOpen ? (
+      ) : feedback && feedbackCopy && feedbackCopy.offer && editor.editorOpen ? (
         <InlineEditor
           id="plan-feedback-text"
           label={feedbackCopy.editorLabel}
-          value={draft}
-          onChange={setDraft}
+          value={editor.draft}
+          onChange={editor.setDraft}
           maxLength={FEEDBACK_MAX_LENGTH}
           placeholder={feedbackCopy.placeholder}
           help={feedbackCopy.help}
@@ -394,8 +394,8 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           sendLabel={feedbackCopy.send}
           cancelLabel={t("prompt.feedback.cancel")}
           onSend={() => void sendFeedback()}
-          onCancel={() => setEditorOpen(false)}
-          sendDisabled={locked || draft.trim().length === 0}
+          onCancel={editor.cancel}
+          sendDisabled={locked || editor.draft.trim().length === 0}
           cancelDisabled={sending !== null}
           busy={sending === "feedback"}
           busyAriaLabel={t("prompt.sendingAria")}
@@ -404,10 +404,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
         <InlineEditorOffer
           label={feedbackCopy.offer}
           disabled={locked}
-          onClick={() => {
-            setDraft("");
-            setEditorOpen(true);
-          }}
+          onClick={() => editor.open("", feedback.text)}
         />
       ) : null}
     </PromptPanel>

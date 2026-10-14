@@ -710,6 +710,8 @@ export const it: Dictionary = {
   "prompt.feedback.answer.focused":
     "Il campo di risposta ha la tastiera nel terminale, quindi questi pulsanti scriverebbero al suo interno. Puoi comunque inviare la tua risposta qui sotto.",
   "prompt.feedback.answer.typedPrefix": "Nel campo di risposta: ",
+  "prompt.feedback.answer.fieldMoved": "Il campo di risposta nel terminale ora contiene «{text}». Invia di nuovo per sostituirlo.",
+  "prompt.feedback.answer.fieldEmptied": "Il campo di risposta nel terminale è stato svuotato. Invia di nuovo per riempirlo.",
   "paneSettings.title": "Impostazioni riquadro",
   "paneSettings.cacheWatch.label": "Avvisami prima che la cache di questo riquadro scada",
   "paneSettings.cacheWatch.hint": "circa {minutes} minuti prima della scadenza",

@@ -767,6 +767,8 @@ export const zh: Dictionary = {
   "prompt.feedback.answer.sending": "正在输入你的回答…",
   "prompt.feedback.answer.focused": "回答栏正在终端中占用键盘，这些按钮会把内容输入到栏中。你仍可以在下方发送自己的回答。",
   "prompt.feedback.answer.typedPrefix": "回答栏中：",
+  "prompt.feedback.answer.fieldMoved": "终端中的回答栏现在是“{text}”。再次发送即可替换。",
+  "prompt.feedback.answer.fieldEmptied": "终端中的回答栏已被清空。再次发送即可填入。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane 设置",

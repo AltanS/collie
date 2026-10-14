@@ -743,6 +743,8 @@ export const ru: Dictionary = {
   "prompt.feedback.answer.focused":
     "Поле ответа удерживает клавиатуру в терминале, поэтому эти кнопки печатали бы в него. Свой ответ всё равно можно отправить ниже.",
   "prompt.feedback.answer.typedPrefix": "В поле ответа: ",
+  "prompt.feedback.answer.fieldMoved": "В поле ответа в терминале теперь «{text}». Отправьте ещё раз, чтобы заменить.",
+  "prompt.feedback.answer.fieldEmptied": "Поле ответа в терминале очищено. Отправьте ещё раз, чтобы заполнить его.",
   "paneSettings.title": "Настройки панели",
   "paneSettings.cacheWatch.label": "Предупреждать перед тем, как кэш этой панели остынет",
   "paneSettings.cacheWatch.hint": "примерно за {minutes} мин до истечения",

@@ -709,6 +709,8 @@ export const pt: Dictionary = {
   "prompt.feedback.answer.focused":
     "O campo de resposta está com o teclado no terminal, então estes botões digitariam nele. Você ainda pode enviar sua própria resposta abaixo.",
   "prompt.feedback.answer.typedPrefix": "No campo de resposta: ",
+  "prompt.feedback.answer.fieldMoved": "O campo de resposta no terminal agora contém “{text}”. Envie novamente para substituí-lo.",
+  "prompt.feedback.answer.fieldEmptied": "O campo de resposta no terminal foi esvaziado. Envie novamente para preenchê-lo.",
   "paneSettings.title": "Configurações do painel",
   "paneSettings.cacheWatch.label": "Avisar antes que o cache deste painel expire",
   "paneSettings.cacheWatch.hint": "cerca de {minutes} minutos antes de expirar",

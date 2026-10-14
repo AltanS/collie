@@ -785,6 +785,8 @@ export const es: Dictionary = {
   "prompt.feedback.answer.focused":
     "El campo de respuesta tiene el teclado en el terminal, así que estos botones escribirían en él. Aun así puedes enviar tu propia respuesta abajo.",
   "prompt.feedback.answer.typedPrefix": "En el campo de respuesta: ",
+  "prompt.feedback.answer.fieldMoved": "El campo de respuesta del terminal ahora contiene «{text}». Envía de nuevo para reemplazarlo.",
+  "prompt.feedback.answer.fieldEmptied": "El campo de respuesta del terminal se vació. Envía de nuevo para rellenarlo.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Configuración del pane",

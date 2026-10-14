@@ -709,6 +709,8 @@ export const tr: Dictionary = {
   "prompt.feedback.answer.focused":
     "Yanıt alanı terminalde klavyeyi tutuyor, bu düğmeler alana yazardı. Yine de kendi yanıtınızı aşağıdan gönderebilirsiniz.",
   "prompt.feedback.answer.typedPrefix": "Yanıt alanında: ",
+  "prompt.feedback.answer.fieldMoved": "Terminaldeki yanıt alanında artık “{text}” var. Değiştirmek için yeniden gönderin.",
+  "prompt.feedback.answer.fieldEmptied": "Terminaldeki yanıt alanı boşaltıldı. Doldurmak için yeniden gönderin.",
   "paneSettings.title": "Bölme ayarları",
   "paneSettings.cacheWatch.label": "Bu bölmenin önbelleği soğumadan önce beni uyar",
   "paneSettings.cacheWatch.hint": "süresi dolmadan yaklaşık {minutes} dakika önce",

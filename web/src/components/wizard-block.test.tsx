@@ -173,6 +173,65 @@ describe("WizardBlock — the answer field", () => {
     await user.click(screen.getByRole("button", { name: "Send answer" }));
     expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
   });
+
+  // The open editor hides the field's own card, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    function holding(wizard: WizardModel, text: string): WizardModel {
+      if (wizard.phase !== "question" || !wizard.field) throw new Error("fixture has no answer field");
+      return { ...wizard, field: { ...wizard.field, text } };
+    }
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const wizard = fixtureModel("claude--wizard-q1.txt");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<WizardBlock wizard={wizard} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<WizardBlock wizard={holding(wizard, "Desk words")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      // The stepper's own live region is a `status` too, so the notice is found by its words.
+      expect(
+        screen.getByText("The answer field in the terminal now holds “Desk words”. Send again to replace it."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const wizard = fixtureModel("claude--v2299-ask-field-wizard-revisit-typed.txt");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<WizardBlock wizard={wizard} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<WizardBlock wizard={holding(wizard, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByText("The answer field in the terminal was emptied. Send again to fill it.")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mango");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Mango");
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const wizard = fixtureModel("claude--wizard-q1.txt");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<WizardBlock wizard={wizard} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<WizardBlock wizard={holding(wizard, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+      expect(screen.queryByText(/The answer field in the terminal/)).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe("WizardBlock — review (Submit) step presentation", () => {

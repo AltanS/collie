@@ -777,6 +777,8 @@ export const ja: Dictionary = {
   "prompt.feedback.answer.sending": "回答を入力中...",
   "prompt.feedback.answer.focused": "ターミナルで回答欄がキーボードを使用中のため、これらのボタンは回答欄に入力されてしまいます。下から自分の回答を送信することはできます。",
   "prompt.feedback.answer.typedPrefix": "回答欄の内容: ",
+  "prompt.feedback.answer.fieldMoved": "ターミナルの回答欄の内容が「{text}」になりました。もう一度送信すると置き換えます。",
+  "prompt.feedback.answer.fieldEmptied": "ターミナルの回答欄が空になりました。もう一度送信すると入力します。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "ペイン設定",

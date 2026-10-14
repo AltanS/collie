@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Loader2, MessageSquarePlus } from "lucide-react";
 
 /**
@@ -41,6 +41,9 @@ export interface InlineEditorProps {
   busy: boolean;
   /** Names the spinner, e.g. "Sending feedback…". */
   busyAriaLabel: string;
+  /** Something the caller must say before the person sends again, drawn between the label and the
+   *  field. The caller owns its words and its semantics (a `role="status"` element, say). */
+  notice?: ReactNode;
 }
 
 export function InlineEditor({
@@ -60,6 +63,7 @@ export function InlineEditor({
   cancelDisabled,
   busy,
   busyAriaLabel,
+  notice,
 }: InlineEditorProps) {
   // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
   // mount of the element, and it gives assistive tech no chance to announce the surrounding panel
@@ -79,6 +83,7 @@ export function InlineEditor({
         <MessageSquarePlus className="size-3.5 shrink-0" />
         {label}
       </label>
+      {notice}
       <textarea
         id={id}
         ref={ref}
