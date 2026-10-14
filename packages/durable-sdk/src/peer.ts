@@ -22,14 +22,16 @@ export type Relation = "self" | "descendant" | "other" | "unknown";
 const SOL_SOCKET = 1;
 const SO_PEERCRED = 17;
 
-let getsockopt: ((fd: number, level: number, name: number, value: number, length: number) => number) | undefined;
-let pointer: ((v: ArrayBufferView) => number) | undefined;
-if (typeof Bun !== "undefined" && process.platform === "linux") {
+type Pointer = import("bun:ffi").Pointer;
+
+let getsockopt: ((fd: number, level: number, name: number, value: Pointer, length: Pointer) => number) | undefined;
+let pointer: ((v: Int32Array | Uint32Array) => Pointer) | undefined;
+if ("Bun" in globalThis && process.platform === "linux") {
   try {
     const ffi = await import("bun:ffi");
     const lib = ffi.dlopen("libc.so.6", { getsockopt: { args: ["i32", "i32", "i32", "ptr", "ptr"], returns: "i32" } });
-    getsockopt = lib.symbols.getsockopt as unknown as typeof getsockopt;
-    pointer = ffi.ptr as unknown as typeof pointer;
+    getsockopt = lib.symbols.getsockopt;
+    pointer = ffi.ptr;
   } catch {
     getsockopt = undefined;
   }

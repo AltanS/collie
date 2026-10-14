@@ -4,11 +4,11 @@
 // No runtime import, like the rest of core/.
 
 import { AskClosed, askIdFor, type PaneHandle } from "./layout.ts";
-import { CAPS, cut, safeId } from "./rules.ts";
-import type { DecidedBy } from "./types.ts";
+import { CAPS, cut, isRecord, safeId } from "./rules.ts";
+import type { DecidedBy, Json, PermissionAskInput } from "./types.ts";
 
 /** The arguments of a call in one line, as `name(key: value, key: value)`, each value as JSON, cut to `max` bytes. */
-export function callSummary(name: string, args: unknown, max: number = CAPS.summary): string {
+export function callSummary(name: string, args: Json | undefined, max: number = CAPS.summary): string {
   return cut(`${name}(${argumentsView(args)})`, max);
 }
 
@@ -16,10 +16,10 @@ export function callSummary(name: string, args: unknown, max: number = CAPS.summ
  * The arguments as the card shows them: an object as `key: value` pairs with each value as JSON, anything else as its
  * JSON. A value JSON cannot write (a cycle, a bigint) reads `(cannot be shown)`, never something softer.
  */
-export function argumentsView(args: unknown): string {
+export function argumentsView(args: Json | undefined): string {
   try {
-    if (typeof args === "object" && args !== null && !Array.isArray(args)) {
-      return Object.entries(args as Record<string, unknown>)
+    if (isRecord(args)) {
+      return Object.entries(args)
         .map(([key, value]) => `${key}: ${JSON.stringify(value) ?? "undefined"}`)
         .join(", ");
     }
@@ -63,31 +63,29 @@ export interface Approval {
  * "<toolName> needs a yes". Nothing on it comes from the model's prose. A deny, a timeout, a stop and an abort all
  * return `approved: false`; only Allow from the phone returns true.
  */
-export async function requireApproval(toolName: string, args: unknown, o: ApprovalOptions): Promise<Approval> {
+export async function requireApproval(toolName: string, args: Json | undefined, o: ApprovalOptions): Promise<Approval> {
   const name = cut(toolName, CAPS.toolName).trim();
   if (name === "") throw new TypeError("requireApproval needs the tool's name: the card is built from it");
   const toolCallId = safeId(o.toolCallId);
   const summary = callSummary(name, args);
   const shown = `${name}(${argumentsView(args)})`;
   const expiresAt = o.timeoutMs === undefined ? undefined : new Date(Date.now() + o.timeoutMs);
-  const pending = o.pane.ask(
-    {
-      kind: "permission",
-      toolCallId,
-      itemId: o.itemId === undefined ? toolCallId : safeId(o.itemId),
-      title: `${name} wants to run`,
-      tool: { kind: "other", name, summary },
-      push: { title: `${name} needs a yes`, line: summary },
-      options: [
-        { id: "allow", label: o.labels?.allow ?? "Allow", effect: "allow" },
-        { id: "deny", label: o.labels?.deny ?? "Deny", effect: "deny" },
-      ],
-      // The card says "Text shortened" when the person cannot see the whole call.
-      ...(summary !== shown ? { cleaned: true as const } : {}),
-      ...(expiresAt === undefined ? {} : { expiresAt }),
-    },
-    o.signal === undefined ? {} : { signal: o.signal },
-  );
+  const input: PermissionAskInput = {
+    kind: "permission",
+    toolCallId,
+    itemId: o.itemId === undefined ? toolCallId : safeId(o.itemId),
+    title: `${name} wants to run`,
+    tool: { kind: "other", name, summary },
+    push: { title: `${name} needs a yes`, line: summary },
+    options: [
+      { id: "allow", label: o.labels?.allow ?? "Allow", effect: "allow" },
+      { id: "deny", label: o.labels?.deny ?? "Deny", effect: "deny" },
+    ],
+  };
+  // The card says "Text shortened" when the person cannot see the whole call.
+  if (summary !== shown) input.cleaned = true;
+  if (expiresAt !== undefined) input.expiresAt = expiresAt;
+  const pending = o.pane.ask(input, o.signal === undefined ? {} : { signal: o.signal });
   const askId = askIdFor(o.pane.id, toolCallId);
   try {
     const answer = await pending;

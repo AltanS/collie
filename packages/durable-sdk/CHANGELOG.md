@@ -12,3 +12,5 @@ release may change the API.
   `node:http` server, which cannot run that check, on Node 22.18 or later. `./bun` and `./node` force one.
 - **`./pi` for Pi Durable 1.1.** The Pi Durable glue, with `@earendil-works/pi-durable`, `pi-ai` and `chord` 1.1 as
   optional peers. `./core` is the wire without a transport.
+- **Decoded JSON in, not `unknown`.** The public functions take `Json | undefined` instead of `unknown`, and `Json` and
+  `JsonObject` are exported, so a consumer passes decoded JSON.

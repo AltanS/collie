@@ -14,12 +14,12 @@ export function toRequest(req: IncomingMessage): Request {
   const headers = new Headers();
   for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) headers.append(req.rawHeaders[i]!, req.rawHeaders[i + 1]!);
   const method = req.method ?? "GET";
-  const hasBody = method !== "GET" && method !== "HEAD";
-  return new Request(new URL(req.url ?? "/", "http://localhost").href, {
-    method,
-    headers,
-    ...(hasBody ? { body: Readable.toWeb(req) as ReadableStream<Uint8Array>, duplex: "half" } : {}),
-  } as RequestInit);
+  const init: RequestInit = { method, headers };
+  if (method !== "GET" && method !== "HEAD") {
+    init.body = Readable.toWeb(req);
+    init.duplex = "half";
+  }
+  return new Request(new URL(req.url ?? "/", "http://localhost").href, init);
 }
 
 /** A web `Response` written to node:http's response. */
@@ -47,7 +47,8 @@ export function wireListener(core: CollieCore, refuseAct?: (req: IncomingMessage
   const idle = new Set<() => void>();
   const done = () => {
     inFlight -= 1;
-    if (inFlight === 0) for (const wake of [...idle]) wake();
+    // A Set walk survives `wake` deleting the entry it stands on.
+    if (inFlight === 0) for (const wake of idle) wake();
   };
   const listener: RequestListener = (req, res) => {
     inFlight += 1;
@@ -74,15 +75,16 @@ export function wireListener(core: CollieCore, refuseAct?: (req: IncomingMessage
     listener,
     drained(ms = DRAIN_MS) {
       if (inFlight === 0) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        const wake = () => {
-          clearTimeout(timer);
-          idle.delete(wake);
-          resolve();
-        };
-        const timer = setTimeout(wake, ms);
-        idle.add(wake);
-      });
+      // One `wake` per call: the timer and the idle walk both call it, and whichever comes first cancels the other.
+      const { promise, resolve } = Promise.withResolvers<void>();
+      const wake = () => {
+        clearTimeout(timer);
+        idle.delete(wake);
+        resolve();
+      };
+      const timer = setTimeout(wake, ms);
+      idle.add(wake);
+      return promise;
     },
   };
 }

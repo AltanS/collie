@@ -4,11 +4,12 @@
 import { chmodSync, lstatSync, mkdirSync, rmSync, type Stats } from "node:fs";
 import { connect } from "node:net";
 import { dirname, isAbsolute } from "node:path";
-import { bytes, CAPS } from "./core/rules.ts";
+import { bytes, CAPS, isText } from "./core/rules.ts";
+import type { Json } from "./core/types.ts";
 
 /** The socket path must be absolute and at most 103 bytes. */
-export function checkSocketPath(path: unknown): string {
-  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("the socket path must be absolute (set COLLIE_DURABLE_SOCKET)");
+export function checkSocketPath(path: Json | undefined): string {
+  if (!isText(path) || !isAbsolute(path)) throw new Error("the socket path must be absolute (set COLLIE_DURABLE_SOCKET)");
   if (bytes(path) > CAPS.socketPath) throw new Error(`the socket path is over ${CAPS.socketPath} bytes (the sun_path limit): ${path}`);
   return path;
 }
@@ -30,7 +31,7 @@ export function preparePrivateDir(dir: string): void {
   try {
     have = lstatSync(dir);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
   }
   if (!have) {
     mkdirSync(dirname(dir), { recursive: true, mode: 0o755 }); // folders above need no more than "not writable by others"
@@ -76,7 +77,7 @@ export async function clearStaleSocket(path: string, probeMs = 1000): Promise<vo
   try {
     old = lstatSync(path);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    if (e instanceof Error && "code" in e && e.code === "ENOENT") return;
     throw e;
   }
   if (!old.isSocket()) throw new Error(`${path} exists and is not a socket`);

@@ -43,7 +43,10 @@ import {
   type ProgressStep,
   safeId,
   type TabHandle,
+  type TextAskInput,
 } from "../core/index.ts";
+import { isList, isRecord, isText } from "../core/rules.ts";
+import type { Json } from "../core/types.ts";
 
 /** An item without its id and stamp: the shape a {@link ReplyExtras} hands back. */
 type ItemBody = Item extends infer T ? (T extends Item ? Omit<T, "id" | "ts"> : never) : never;
@@ -67,7 +70,7 @@ export const RE_RAISE_MS = 5000;
 export class PaneRegistry {
   private panes = new Map<ConversationId, PaneHandle>();
   /** The stop of each conversation's event stream. */
-  private stops = new Map<ConversationId, () => Promise<unknown>>();
+  private stops = new Map<ConversationId, () => Promise<void>>();
   /** Tool calls shown as running, by item id, with the tool's name. */
   private readonly running = new Map<string, string>();
   /** A start waiting for these call ids: each settles when the call asks or ends. */
@@ -78,7 +81,7 @@ export class PaneRegistry {
   has(id: ConversationId) {
     return this.panes.has(id);
   }
-  set(id: ConversationId, pane: PaneHandle, stop: () => Promise<unknown>) {
+  set(id: ConversationId, pane: PaneHandle, stop: () => Promise<void>) {
     this.panes.set(id, pane);
     this.stops.set(id, stop);
   }
@@ -129,9 +132,10 @@ export class PaneRegistry {
    * When the window ends first, `log` gets one line naming the calls that did not ask, and the start goes on.
    * Such an ask is not lost: when its hook runs later it is raised under the same id, and the next read lists it.
    */
-  reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS, log: (line: string) => void = (line) => console.warn(line)): Promise<void> {
+  async reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS, log: (line: string) => void = (line) => console.warn(line)): Promise<void> {
+    // Everything up to the first `await` runs in the call, so the risky calls are read before `resume()`.
     const ids = [...this.running].filter(([, name]) => risky.has(name)).map(([id]) => id);
-    if (ids.length === 0) return Promise.resolve();
+    if (ids.length === 0) return;
     const missing = new Set(ids);
     const each = ids.map(
       (id) =>
@@ -144,18 +148,17 @@ export class PaneRegistry {
     );
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), ms)));
-    return Promise.race([Promise.all(each).then(() => "all" as const), late])
-      .then((how) => {
-        if (how === "all") return;
-        log(
-          `collie: ${missing.size} of ${ids.length} waiting asks were not raised again within ${ms} ms of the start; ` +
-            `the layout is ready without them, and each is listed under its old id once its hook runs (${[...missing].join(", ")})`,
-        );
-      })
-      .finally(() => {
-        clearTimeout(timer);
-        for (const id of ids) this.waits.delete(id);
-      });
+    try {
+      const how = await Promise.race([Promise.all(each).then(() => "all" as const), late]);
+      if (how === "all") return;
+      log(
+        `collie: ${missing.size} of ${ids.length} waiting asks were not raised again within ${ms} ms of the start; ` +
+          `the layout is ready without them, and each is listed under its old id once its hook runs (${[...missing].join(", ")})`,
+      );
+    } finally {
+      clearTimeout(timer);
+      for (const id of ids) this.waits.delete(id);
+    }
   }
 
   /** Stop every event stream. Call before `harness.close()`. */
@@ -193,6 +196,7 @@ export const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
 /** The Pi conversation a pane id names, the inverse of {@link paneIdOf}, or undefined for any other id. */
 export function conversationOfPaneId(paneId: string): ConversationId | undefined {
   const match = /^conv-(\d{1,15})$/.exec(paneId);
+  // SAFETY: a ConversationId is Pi's brand on its own conversation number, and these digits are one paneIdOf wrote; a number Pi does not know finds no conversation.
   return match === null ? undefined : (Number(match[1]) as ConversationId);
 }
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -203,20 +207,21 @@ const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
  * would say `{"note":"Order 5521 was charged twice."}`, and `refund(order: "5521", amount: 40)` for a call with more.
  * Without a name, the arguments' JSON. Cut at 200 characters.
  */
-export function summaryOf(args: unknown, name?: string): string {
-  if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+export function summaryOf(args: Json | undefined, name?: string): string {
+  if (isRecord(args)) {
     const values = Object.values(args);
-    if (values.length === 1 && typeof values[0] === "string") return clip(values[0]);
+    const first = values[0];
+    if (values.length === 1 && isText(first)) return clip(first);
     if (name !== undefined) return clip(`${name}(${argumentsView(args)})`);
   }
   return clip(JSON.stringify(args) ?? "");
 }
 
-type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown };
-const textOf = (content: unknown): string =>
-  typeof content === "string"
+type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: Json };
+const textOf = (content: string | readonly Block[]): string =>
+  isText(content)
     ? content
-    : (content as Block[])
+    : content
         .filter((b) => b.type === "text")
         .map((b) => b.text ?? "")
         .join("");
@@ -227,6 +232,12 @@ export const PARTIAL_MS = 250;
 
 /** A text or thinking block of the answer being written, as far as it has come. */
 type LiveBlock = Block;
+
+/** A block for the live answer: a copy, because the deltas grow it in place and Pi's own message stays as Pi wrote it. */
+const liveCopy = (block: Block): LiveBlock => ({ ...block });
+
+/** A step's state from whether it is done and whether it runs now. */
+const stepState = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
 
 /** The assistant message Pi is generating now, and which of its blocks the wire has seen. */
 interface LiveMessage {
@@ -241,7 +252,7 @@ interface LiveMessage {
 }
 
 /** The item id of an assistant message's block. The timestamp is known when generation starts, the entry id is not. */
-const messageId = (timestamp: unknown) => safeId(`m${String(timestamp)}`);
+const messageId = (timestamp: number) => safeId(`m${String(timestamp)}`);
 
 /** What the mapper writes to: a pane, or a list of items when it reads a conversation's history back (`piHistory`). */
 export type MapperTarget = Pick<PaneHandle, "event" | "progress" | "state">;
@@ -293,19 +304,21 @@ export class Mapper {
    * reply's and each extra's key, so a replay after a restart writes the same items again, not more.
    */
   private summary(replyId: string, ts: string, text: string) {
-    for (const { key, item } of this.extras?.(text) ?? []) this.item({ ...item, id: safeId(`${replyId}:${key}`), ts } as Item);
+    for (const { key, item } of this.extras?.(text) ?? []) {
+      // SAFETY: `item` is an Item of one kind without its id and stamp (ItemBody), so with both back it is an Item of that kind.
+      this.item({ ...item, id: safeId(`${replyId}:${key}`), ts } as Item);
+    }
   }
 
   /** The three steps of a ticket as the first run reaches them: read it, save a note, reply. */
   private steps(): Progress {
     const { user, note, noted, reply } = this.seen;
-    const state = (done: boolean, running: boolean): ProgressStep["state"] => (done ? "done" : running ? "running" : "todo");
     return {
       kind: "steps",
       steps: [
-        { label: "Read the ticket", state: state(user && (note || reply), !user || !note) },
-        { label: "Save a note", state: state(noted || reply, note || user) },
-        { label: "Reply", state: state(reply, noted) },
+        { label: "Read the ticket", state: stepState(user && (note || reply), !user || !note) },
+        { label: "Save a note", state: stepState(noted || reply, note || user) },
+        { label: "Reply", state: stepState(reply, noted) },
       ],
     };
   }
@@ -375,13 +388,7 @@ export class Mapper {
         this.requested(e.record);
         // An abort appends no entry and no item. The input settles, and the wire says so with `settled`.
         if (e.record.type !== "input" || (e.record.status !== "done" && e.record.status !== "unanswered")) return;
-        return this.pane.event({
-          type: "settled",
-          inputId: safeId(e.record.id),
-          ...(e.record.requestId === undefined ? {} : { requestId: safeId(e.record.requestId) }),
-          status: e.record.status === "done" ? "answered" : "unanswered",
-          ...(e.record.status === "unanswered" ? { reason: e.record.reason } : {}),
-        });
+        return this.pane.event(this.settled(e.record));
       case "task_failed":
         return this.item({ id: safeId(`fail:${e.taskId}`), kind: "notice", text: `${e.kind} failed: ${e.message}` });
       case "auto_retry_start":
@@ -389,11 +396,24 @@ export class Mapper {
     }
   }
 
+  /** The `settled` event of an input that was answered or left unanswered. The pane cleans it and fixes its order. */
+  private settled(record: Extract<SubmissionRecord, { type: "input" }>): Extract<ProgramEvent, { type: "settled" }> {
+    const event: Extract<ProgramEvent, { type: "settled" }> = {
+      type: "settled",
+      inputId: safeId(record.id),
+      status: record.status === "done" ? "answered" : "unanswered",
+    };
+    if (record.requestId !== undefined) event.requestId = safeId(record.requestId);
+    if (record.status === "unanswered") event.reason = record.reason;
+    return event;
+  }
+
   /** An answer begins. The start of one that is already whole is followed by its end, and draws nothing in between. */
-  private start(message: { role: string; timestamp: number; content: unknown }) {
+  private start(message: { role: string; timestamp: number; content: string | readonly Block[] }) {
     this.live = undefined;
-    if (message.role !== "assistant" || !Array.isArray(message.content)) return;
-    const blocks = (message.content as Block[]).map((b) => ({ ...b }));
+    const content = message.content;
+    if (message.role !== "assistant" || !Array.isArray(content)) return;
+    const blocks = content.map(liveCopy);
     this.live = { id: messageId(message.timestamp), ts: new Date(message.timestamp).toISOString(), blocks, shown: new Set(), lastWrite: 0 };
   }
 
@@ -407,7 +427,7 @@ export class Mapper {
         case "thinking_start":
         case "toolcall_start":
         case "block":
-          live.blocks[c.contentIndex] = { ...c.block };
+          live.blocks[c.contentIndex] = liveCopy(c.block);
           break;
         case "text_delta": {
           const b = live.blocks[c.contentIndex];
@@ -420,7 +440,7 @@ export class Mapper {
           break;
         }
         case "message":
-          live.blocks = (c.message.content as Block[]).map((b) => ({ ...b }));
+          live.blocks = c.message.content.map(liveCopy);
           break;
         case "toolcall_delta":
           break; // a tool call is shown whole, when its message ends
@@ -475,10 +495,12 @@ export class Mapper {
     const id = m.role === "assistant" ? messageId(m.timestamp) : safeId(`e${e.id}`);
     if (m.role === "user") {
       const requestId = this.requests.get(id);
-      return this.item({ id, ts, kind: "user", text: textOf(m.content), ...(requestId === undefined ? {} : { requestId }) });
+      const user: Extract<Item, { kind: "user" }> = { id, ts, kind: "user", text: textOf(m.content) };
+      if (requestId !== undefined) user.requestId = requestId;
+      return this.item(user);
     }
     if (m.role === "assistant") {
-      (m.content as Block[]).forEach((b, i) => {
+      m.content.forEach((b, i) => {
         if (b.type === "text") {
           this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
           this.summary(safeId(`${id}:${i}`), ts, b.text ?? "");
@@ -501,8 +523,9 @@ export class Mapper {
       return;
     }
     if (m.role === "toolResult") {
-      const diagnostics = (e.data as { diagnostics?: { code?: string }[] } | undefined)?.diagnostics ?? [];
-      const denied = diagnostics.some((d) => d.code === "blocked");
+      const data = e.data;
+      const diagnostics = isRecord(data) && isList(data.diagnostics) ? data.diagnostics : [];
+      const denied = diagnostics.some((d) => isRecord(d) && d.code === "blocked");
       const callId = safeId(m.toolCallId);
       const have = this.tools.get(callId);
       const tool: Extract<Item, { kind: "tool" }> = {
@@ -520,9 +543,10 @@ export class Mapper {
 
 /**
  * How a pane's send reaches Pi. Left out, it is `conversation.submit`. A host that must see every input passes its
- * own: the Cloudflare example's PiHarness schedules the session's wake job in its `submit`.
+ * own: the Cloudflare example's PiHarness schedules the session's wake job in its `submit`. The SDK waits for it and
+ * reads nothing from what it resolves to, which for Pi's own `submit` is its `Submission`.
  */
-export type Submit = (conversation: Conversation, input: { content: string; whenBusy: "steer" | "followUp"; requestId?: string }) => Promise<unknown>;
+export type Submit = (conversation: Conversation, input: { content: string; whenBusy: "steer" | "followUp"; requestId?: string }) => Promise<object | void>;
 
 /**
  * Show a conversation as a pane. Safe to call twice for one conversation: the second call returns
@@ -537,7 +561,8 @@ export async function showConversation(
   const have = opts.panes.get(conversation.id);
   if (have) return have;
   const ctx = opts.ctx ?? ctx0;
-  const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
+  // The SDK reads `cwd` through its path rule only, which takes an empty or absent one alike.
+  const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", cwd: loc.cwd });
   if (loc.subtitle) pane.subtitle(loc.subtitle);
   const mapper = new Mapper(pane, opts.panes, loc.progress === true, Date.now, loc.extras);
 
@@ -563,7 +588,9 @@ export async function showConversation(
   }
 
   const stream = await watchEvents(harness, conversation.id, ctx);
-  opts.panes.set(conversation.id, pane, () => stream.stop());
+  opts.panes.set(conversation.id, pane, async () => {
+    await stream.stop();
+  });
   mapper.snapshot(stream.snapshot, true);
   stream.start(async (events) => {
     mapper.applyAll(events);
@@ -634,8 +661,9 @@ function cursorText(cursor: Cursor): string {
 function cursorFrom(text: string): Cursor | undefined {
   try {
     const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Cursor) : undefined;
+    const parsed: Json = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
+    // SAFETY: JSON.parse writes no undefined value, so a JSON object is a record of JSON values, which is Pi's Cursor. Pi reads its fields.
+    return isRecord(parsed) ? (parsed as Cursor) : undefined;
   } catch {
     return undefined;
   }
@@ -792,6 +820,9 @@ export interface AskToolWords {
   reply: { question: string; placeholder?: string };
 }
 
+/** A tool's answer to the model: one text block. */
+const toolReply = (text: string) => ({ content: [{ type: "text" as const, text }] });
+
 /**
  * `ask_queue` (a choice: which team takes the ticket) and `ask_customer` (a text ask: the line for the customer):
  * tools whose whole job is a question for the person on the phone (WIRE.md 7.14). The ask sits under the tool's own
@@ -813,7 +844,6 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
       markAsks(pane);
     }
   };
-  const reply = (text: string) => ({ content: [{ type: "text" as const, text }] });
   const queue = defineTool({
     name: "ask_queue",
     description: "Ask the person which team takes the ticket.",
@@ -821,7 +851,7 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
     replay: "safe",
     execute: async (_args, api) => {
       const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: team.question, options: team.options }));
-      return reply(answer.optionIds.map((picked) => team.options.find((option) => option.id === picked)?.label ?? picked).join(", "));
+      return toolReply(answer.optionIds.map((picked) => team.options.find((option) => option.id === picked)?.label ?? picked).join(", "));
     },
   });
   const customer = defineTool({
@@ -830,10 +860,12 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
     parameters: Type.Object({}),
     replay: "safe",
     execute: async (_args, api) => {
-      const answer = await ask(api, (pane, id) =>
-        pane.ask({ kind: "text", toolCallId: id, itemId: id, title: line.question, ...(line.placeholder === undefined ? {} : { placeholder: line.placeholder }), maxLength: 280 }),
-      );
-      return reply(clip(answer.text));
+      const answer = await ask(api, (pane, id) => {
+        const input: TextAskInput = { kind: "text", toolCallId: id, itemId: id, title: line.question, maxLength: 280 };
+        if (line.placeholder !== undefined) input.placeholder = line.placeholder;
+        return pane.ask(input);
+      });
+      return toolReply(clip(answer.text));
     },
   });
   return [queue, customer];
@@ -869,23 +901,23 @@ export function spawnHelperTool(o: HelperOptions) {
         const existing = (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0];
         if (existing) return existing.id;
         const created = await tx.createConversation({ ownership: { kind: "task", taskId: api.taskId } });
-        await configure(tx, created.id, { ...(o.model ? { model: o.model } : {}), extensions: { remove: o.without() } });
+        const extensions = { remove: o.without() };
+        await configure(tx, created.id, o.model ? { model: o.model, extensions } : { extensions });
         return created.id;
       }, ctx);
       const harness = o.harness();
       const conversation = (await harness.conversation(child, ctx))!;
       const look = o.look(args.task);
-      const pane = await showConversation({ tab: o.tab, title: look.title, ...(look.subtitle === undefined ? {} : { subtitle: look.subtitle }) }, harness, conversation, {
-        panes: o.panes,
-        ctx,
-      });
+      const loc: PaneLocation = { tab: o.tab, title: look.title };
+      if (look.subtitle !== undefined) loc.subtitle = look.subtitle;
+      const pane = await showConversation(loc, harness, conversation, { panes: o.panes, ctx });
       await api.details({ conversationId: child }, ctx);
       const handle = (await api.conversation(child, ctx))!;
       const request = { type: "input", content: args.task, requestId: `helper:${api.taskId}` } as const;
       const settled = await (await handle.submit(request, ctx)).wait(ctx);
       if (settled.status !== "done" || settled.type !== "input") throw new Error(`helper failed: ${settled.status}`);
       const entry = await api.commit((tx) => tx.entry(AssistantEntry, settled.answer), ctx);
-      const text = textOf((entry?.model?.[0] as { content?: unknown } | undefined)?.content ?? "");
+      const text = textOf(entry?.model?.[0]?.content ?? "");
       await o.done?.(child, pane);
       return { content: [{ type: "text", text }], details: { conversationId: child } };
     },

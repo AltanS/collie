@@ -17,8 +17,8 @@ export class Conn extends Duplex {
 
   constructor(private readonly sock: BunSocket) {
     super({ allowHalfOpen: true });
-    // `fd` is on the object, not yet in Bun's types.
-    this.peer = peerOf((sock as unknown as { fd: number }).fd);
+    // SAFETY: Bun puts the accepted connection's `fd` on every socket `Bun.listen` hands over; its types do not declare it yet.
+    this.peer = peerOf((sock as BunSocket & { fd: number }).fd);
     this.relation = this.peer ? relationOf(this.peer.pid) : "unknown";
   }
 

@@ -3,17 +3,18 @@
 
 import { sha256Hex } from "./hash.ts";
 import { LIMITS } from "./rules.ts";
+import type { Json, Problem } from "./types.ts";
 
 /** A digest of what a request asks for. The same request id with another digest is `request-id-reused`. */
-export const digestOf = (payload: unknown): string => sha256Hex(JSON.stringify(payload));
+export const digestOf = (payload: Json): string => sha256Hex(JSON.stringify(payload));
 
 /** An error the server answers with a status and a `Problem` body. */
 export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
   /** More fields of the `Problem`: `message`, `turnId`, `askIds`, `ask`, `range`. */
-  readonly extra: Record<string, unknown>;
-  constructor(status: number, code: string, extra: Record<string, unknown> = {}) {
+  readonly extra: Omit<Problem, "code">;
+  constructor(status: number, code: string, extra: Omit<Problem, "code"> = {}) {
     super(code);
     this.status = status;
     this.code = code;
@@ -143,6 +144,7 @@ export class Receipts {
     const have = this.flying.get(requestId);
     if (have) {
       if (have.digest !== digest) throw new HttpError(409, "request-id-reused");
+      // SAFETY: the digest names the route and the payload, so the reply under this id and digest came from the same act, which returns T.
       return { ...((await have.promise).reply as T), replayed: true };
     }
     // The entry is in the map before the first await, so a repeat that arrives a moment later waits for this one.
@@ -150,6 +152,7 @@ export class Receipts {
     this.flying.set(requestId, entry);
     try {
       const { reply, replayed } = await entry.promise;
+      // SAFETY: a replayed reply was kept under this id and digest, and the digest names the route, so the act that made it returns T too.
       return replayed ? { ...(reply as T), replayed: true } : (reply as T);
     } finally {
       if (this.flying.get(requestId) === entry) this.flying.delete(requestId);

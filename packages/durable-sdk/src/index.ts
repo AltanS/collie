@@ -14,6 +14,6 @@ export { wireListener, type WireListener } from "./http.ts";
 /** Open the socket on the runtime this program runs on: the Bun server on Bun, the node:http server elsewhere. */
 export async function openCollie(o: OpenOptions): Promise<Collie> {
   // Each server loads only on its own runtime, so Node never reads the Bun server's file.
-  const entry = typeof Bun === "undefined" ? await import("./node/index.ts") : await import("./bun/index.ts");
+  const entry = "Bun" in globalThis ? await import("./bun/index.ts") : await import("./node/index.ts");
   return entry.openCollie(o);
 }

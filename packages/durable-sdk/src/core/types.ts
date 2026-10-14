@@ -1,6 +1,16 @@
 // Wire types of the durable socket wire, version 1. They follow WIRE.md section 4 shape for shape.
 // A local copy: the SDK stays free of the collie/ import chain, which a published package could not carry.
 
+/**
+ * A JSON value, as `JSON.parse` returns it. A request body is read as one, and so is what a model hands a program
+ * untyped (a tool call's arguments). The readers in rules.ts turn it into the types below.
+ */
+export type Json = null | boolean | number | string | readonly Json[] | JsonObject;
+/** A JSON object. A key it does not have reads as undefined. */
+export interface JsonObject {
+  readonly [key: string]: Json | undefined;
+}
+
 export type PaneState = "working" | "waiting" | "idle";
 /** The old name, kept for the program side. */
 export type AgentState = PaneState;
