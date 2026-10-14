@@ -1089,6 +1089,127 @@ describe("update", () => {
     expect(h.io.stdout.join("\n")).not.toContain("NEW MAJOR");
   });
 
+
+  // ── One update at a time on this machine ───────────────────────────────────
+  // 2026-10-14: two detached updaters for one run built into one tree. The in-place path took no lock
+  // and wrote its record only at the very end, so the second runner found nothing to stop it.
+
+  const LOCK = `${STATE}/update.lock`;
+  const MANAGED_UPDATE: Scripted["answers"] = [
+    ...MANAGED,
+    [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
+    [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+    ...SHALLOW,
+  ];
+  const APPLY = `${ROOT}$ PATH=/fake:$PATH /fake/bun ${ROOT}/cli/main.ts _apply-update`;
+
+  test("an in-place run refuses while another updater holds the lock, and fetches nothing", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    h.files.write(LOCK, JSON.stringify({ pid: 999, at: NOW }));
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie update" : null);
+    expect(await cmdUpdate(h.deps, ["--to-tag", "v0.32.0", "--run-id", "r-1"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("another update is in flight");
+    expect(h.io.stderr.join("\n")).toContain("This update does not start a second one. Wait for it to finish.");
+    expect(gitRuns(h.exec)).toEqual([]);
+    expect(h.exec.calls.some((c) => c.includes("_apply-update"))).toBe(false);
+    // The other runner's lock is left exactly as it was.
+    expect(JSON.parse(h.files.read(LOCK) ?? "{}").pid).toBe(999);
+  });
+
+  test("an in-place run refuses beside a live in-flight record another process wrote", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    const record = reduce(
+      reduce(idleRun(NOW), { kind: "begin", from: "0.31.1", to: "0.32.0", pid: 999, runId: "r-1" }, NOW),
+      { kind: "stage" },
+      NOW,
+    );
+    h.files.write(`${STATE}/update.json`, `${JSON.stringify(record)}\n`);
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie update" : null);
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("another update is in flight");
+    expect(gitRuns(h.exec)).toEqual([]);
+    expect(h.files.read(LOCK)).toBeNull();
+  });
+
+  test("a young lock whose updater is gone says when it clears and where to remove it", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    h.files.write(LOCK, JSON.stringify({ pid: 999, at: NOW - 1_000 }));
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const said = h.io.stderr.join("\n");
+    expect(said).toMatch(/If that update is gone, the lock clears at \d\d:\d\d, or remove .*update\.lock\./);
+    expect(said).not.toContain("Wait for it to finish");
+    expect(said.slice(said.indexOf("This update"))).not.toContain("—");
+  });
+
+  test("a lock another runner wrote between the check and the take is not ours: refuse, leave it", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    const write = h.files.write.bind(h.files);
+    h.files.write = (path, text, mode) => {
+      write(path, text, mode);
+      // The rival's write lands just after ours and wins.
+      if (path === LOCK) write(path, JSON.stringify({ pid: 999, at: NOW }), mode);
+    };
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie update" : null);
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("This update does not start a second one.");
+    expect(gitRuns(h.exec)).toEqual([]);
+    expect(JSON.parse(h.files.read(LOCK) ?? "{}").pid).toBe(999);
+  });
+
+  test("the run does not remove a lock another pid wrote while it worked", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    const runIn = h.deps.exec.runIn.bind(h.deps.exec);
+    h.deps.exec.runIn = (...a) => {
+      h.files.write(LOCK, JSON.stringify({ pid: 999, at: NOW }));
+      return runIn(...a);
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(JSON.parse(h.files.read(LOCK) ?? "{}").pid).toBe(999);
+  });
+
+  test("an in-place run holds the lock while it works and drops it when it succeeds", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    const seen: (number | null)[] = [];
+    const runIn = h.deps.exec.runIn.bind(h.deps.exec);
+    h.deps.exec.runIn = (...a) => {
+      // The child is a separate process; the lock on disk is the PARENT's, and the child does not read it.
+      seen.push(JSON.parse(h.files.read(LOCK) ?? "null")?.pid ?? null);
+      return runIn(...a);
+    };
+    expect(await cmdUpdate(h.deps, ["--run-id", "r-1"])).toBe(EXIT.OK);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((pid) => pid === FAKE_PID)).toBe(true);
+    expect(h.files.read(LOCK)).toBeNull();
+  });
+
+  test("an in-place run drops the lock when the apply child fails", async () => {
+    const h = harness({ installed: "0.31.1", answers: [...MANAGED_UPDATE, [APPLY, { code: 1 }]] });
+    expect(await cmdUpdate(h.deps, ["--run-id", "r-1"])).toBe(EXIT.FAIL);
+    expect(h.exec.calls).toContain(APPLY);
+    expect(h.files.read(LOCK)).toBeNull();
+  });
+
+  test("an in-place run drops the lock when the checkout will not advance", async () => {
+    const h = harness({ answers: [[`${GIT} rev-parse --show-prefix`, { code: 128 }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.files.read(LOCK)).toBeNull();
+  });
+
+  test("an in-place no-op drops the lock too", async () => {
+    const h = noop();
+    stamp(h, "0.32.0");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(false);
+    expect(h.files.read(LOCK)).toBeNull();
+  });
+
+  test("a lock whose updater is gone and long stale does not block an in-place run", async () => {
+    const h = harness({ installed: "0.31.1", answers: MANAGED_UPDATE });
+    h.files.write(LOCK, JSON.stringify({ pid: 999, at: NOW - STALE_AFTER_MS - 1 }));
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.files.read(LOCK)).toBeNull();
+  });
+
 });
 
 // ── The fork guard (M14/02 amendment §1) ─────────────────────────────────────
@@ -2588,6 +2709,39 @@ describe("the update state file and its lock", () => {
     expect(h.link.ops).toEqual([]);
   });
 
+  test("a live in-flight record of another process stops a binary update before it stages anything", async () => {
+    const h = binaryHarness();
+    const record = reduce(
+      reduce(idleRun(NOW), { kind: "begin", from: "1.0.0", to: NEW, pid: 999, runId: "r-1" }, NOW),
+      { kind: "stage" },
+      NOW,
+    );
+    h.files.write(RUN_FILE, `${JSON.stringify(record)}\n`);
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie update" : null);
+    const before = h.files.ops.length;
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("This update does not start a second one. Wait for it to finish.");
+    expect(h.files.ops.slice(before)).toEqual([]);
+    expect(h.link.ops).toEqual([]);
+    expect(h.exec.ran).toEqual([]);
+    expect(JSON.parse(h.files.read(RUN_FILE) ?? "{}").pid).toBe(999);
+  });
+
+  test("a live in-flight record of another process stops a staged checkout update before it stages", async () => {
+    const h = stagedHarness();
+    const record = reduce(
+      reduce(idleRun(NOW), { kind: "begin", from: "1.0.0", to: "1.1.0", pid: 999, runId: "r-1" }, NOW),
+      { kind: "stage" },
+      NOW,
+    );
+    h.files.write(RUN_FILE, `${JSON.stringify(record)}\n`);
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie update" : null);
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("This update does not start a second one. Wait for it to finish.");
+    expect(h.exec.ran).toEqual([]);
+    expect(JSON.parse(h.files.read(RUN_FILE) ?? "{}").pid).toBe(999);
+  });
+
   test("a lock older than ten minutes whose updater is gone no longer blocks a retry", () => {
     const now = 2_000_000_000_000;
     const held = { pid: 999, at: now - STALE_AFTER_MS - 1 };
@@ -2595,6 +2749,12 @@ describe("the update state file and its lock", () => {
     expect(lockVerdict(held, now, false, STALE_AFTER_MS).ok).toBe(true);
     // A YOUNG lock with a dead pid still holds: a retry must not race the tail of a finishing run.
     expect(lockVerdict({ pid: 999, at: now - 1_000 }, now, false, STALE_AFTER_MS).ok).toBe(false);
+  });
+
+  test("a live pid holds a lock 59 minutes old, and a lock 61 minutes old is a reused pid", () => {
+    const now = 2_000_000_000_000;
+    expect(lockVerdict({ pid: 999, at: now - 59 * 60_000 }, now, true, STALE_AFTER_MS).ok).toBe(false);
+    expect(lockVerdict({ pid: 999, at: now - 61 * 60_000 }, now, true, STALE_AFTER_MS).ok).toBe(true);
   });
 
   test("the updater dies mid-flight: the stale marker reads as interrupted and the retry proceeds", async () => {

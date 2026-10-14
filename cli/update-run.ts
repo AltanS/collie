@@ -2,6 +2,7 @@ import { type Host } from "../bridge/host.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import {
   inFlight,
+  LOCK_MAX_HOLD_MS,
   parseUpdateLock,
   parseUpdateRun,
   resolveUpdateRun,
@@ -213,7 +214,9 @@ export type LockVerdict =
 /**
  * May a new run start?
  *
- * A lock whose pid is alive holds, whatever its age — a long build is not a stuck one. A lock older
+ * A lock whose pid is alive holds while it is younger than {@link LOCK_MAX_HOLD_MS} — a long build is
+ * not a stuck one. Past that bound it does not hold even with a live pid: a build runs minutes, so an
+ * hour-old live pid is a pid the machine reused after a crash or reboot, not an update. A lock older
  * than ten minutes whose pid is gone does not hold: it is the crash, the kill or the reboot, and the
  * same single rule `bridge/update-run.ts` reads a stale marker with. A YOUNG lock with a dead pid
  * still holds, so a retry cannot race the tail of a run that is only just finishing.
@@ -221,6 +224,7 @@ export type LockVerdict =
 export function lockVerdict(held: UpdateLock | null, now: number, alive: boolean, staleAfterMs: number): LockVerdict {
   if (held === null) return { ok: true };
   if (!alive && now - held.at >= staleAfterMs) return { ok: true };
+  if (now - held.at >= LOCK_MAX_HOLD_MS) return { ok: true };
   const who = alive ? `pid ${held.pid} is still running it` : `pid ${held.pid} took it`;
   return {
     ok: false,

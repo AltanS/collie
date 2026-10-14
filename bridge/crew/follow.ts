@@ -115,7 +115,8 @@ export type FollowRefusal =
   | "no-turn"
   | "preflight-red"
   | "tag-does-not-resolve"
-  | "already-running";
+  | "already-running"
+  | "already-started";
 
 /** What the peer decided, and the sentence that goes in the record beside it. */
 export type FollowDecision =
@@ -349,6 +350,19 @@ export class CrewFollower {
    * its own sentence, and keying on that would put a line on the journal every minute for an hour.
    */
   private logged: string | null = null;
+  /**
+   * The updater THIS process started, in memory, set only when `start` answered `ok`.
+   *
+   * **The record on disk cannot be the memory here.** On 2026-10-14 a peer on an in-place checkout
+   * spawned two detached updaters one second apart, with the same run id. The lead sweeps about once
+   * a second and keeps sending the same turn; the preflight takes about a second; and the in-place
+   * updater writes no run record until the very end of its run, so the next sweep found nothing on
+   * disk, passed every guard (the rate limit reads the record) and spawned again. The two updaters
+   * then built into the same tree and broke each other's rename. What stops the second spawn is this
+   * field: a different run id, a different tag, or an hour ({@link FOLLOW_ATTEMPT_INTERVAL_MS}) is
+   * a new question, and a `start` that failed leaves it empty so a later sweep may try again.
+   */
+  private started: { readonly runId: string; readonly tag: string; readonly at: number } | null = null;
 
   constructor(private readonly deps: CrewFollowerDeps) {
     this.now = deps.now ?? Date.now;
@@ -396,6 +410,20 @@ export class CrewFollower {
     );
   }
 
+  /** The refusal for a follow this process already acted on, or `null` when the way is clear. */
+  private alreadyStarted(d: { readonly tag: string; readonly runId: string }): FollowDecision | null {
+    const s = this.started;
+    if (s === null || s.runId !== d.runId || s.tag !== d.tag) return null;
+    const age = this.now() - s.at;
+    // A negative age means the clock moved back; the latch is then expired, not held for ever.
+    if (age < 0 || age >= FOLLOW_ATTEMPT_INTERVAL_MS) return null;
+    const seconds = Math.max(0, Math.round(age / 1000));
+    return refuse(
+      "already-started",
+      `this machine already started the updater for ${d.tag} in this run ${seconds} s ago; it does not start a second one`,
+    );
+  }
+
   /**
    * One sweep's worth of headers. Never throws and never awaits on the request path: the router
    * hands the headers over and answers its snapshot, exactly as it does today.
@@ -422,6 +450,13 @@ export class CrewFollower {
       this.record(guarded, mine);
       return;
     }
+    // An updater this process already started for this very run is not decided again: no preflight
+    // subprocess runs for it, and no second spawn follows.
+    const again = this.alreadyStarted(guarded);
+    if (again !== null) {
+      this.record(again, mine);
+      return;
+    }
     this.deciding = true;
     void this.decide(facts, mine);
   }
@@ -431,10 +466,19 @@ export class CrewFollower {
   private async decide(facts: FollowFacts, mine: boolean): Promise<void> {
     try {
       const decision = await followDecision(facts, { preflight: this.deps.preflight });
+      // Checked again here, before the decision is written down. `observe`'s `deciding` flag already
+      // prevents overlap, so this is a second line of defence and not the first.
+      const again = decision.kind === "follow" ? this.alreadyStarted(decision) : null;
+      if (again !== null) {
+        this.record(again, mine);
+        return;
+      }
       this.record(decision, mine);
       if (decision.kind === "follow") {
         const started = this.deps.start({ tag: decision.tag, runId: decision.runId });
-        if (!started.ok) {
+        if (started.ok) {
+          this.started = { runId: decision.runId, tag: decision.tag, at: this.now() };
+        } else {
           this.record(refuse("preflight-red", `the updater could not be started: ${started.reason}`), mine);
         }
       }
