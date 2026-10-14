@@ -39,7 +39,7 @@ describe("detectWizard — question phase", () => {
       { label: "Workflow", answered: false, current: false },
     ]);
     expect(model!.question).toBe("Which focus area should we work on?");
-    // "4. Type something." is a free-text row → stays with the composer, not a button.
+    // "4. Type something." is the answer field → modelled as `field`, never an option button.
     expect(model!.options.map((o) => o.label)).toEqual(["Parser", "UI", "Tests", "Chat about this"]);
     // Wizard digits fire ALONE (instant select + advance) — no trailing Enter.
     expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"], ["5"]]);
