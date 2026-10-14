@@ -91,6 +91,7 @@ export function StatusDot({
   stale,
   live = false,
   glide,
+  backed = false,
   className,
 }: {
   status: AgentStatus;
@@ -122,7 +123,8 @@ export function StatusDot({
    * mounts several `StatusDot`s at once (tab chip, space chip, pane chip, pane header, agent card,
    * overview) and each one used to ping on its own unsynchronized clock — three or more on one phone
    * screen read as blinking, not as "alive". Only the ONE dot the operator is actually watching a
-   * pane through moves: the pane chip and the pane header's agent badge. Every other call site shows
+   * pane through moves: the pane chip. The pane header's agent badge turned too until 2026-10-14; over
+   * the agent's tile a turning half-disc read as a loading spinner, so it holds still. Every other call site shows
    * a still mark for the same "working" state — the half-filled shape still says it, without the
    * motion. The turn REPLACED the old opacity breathe (issue 420): a shape that turns is read at any
    * size and by any eye, an opacity fade is not.
@@ -130,6 +132,13 @@ export function StatusDot({
   live?: boolean;
   /** The dot's `data-glide` part name, where it flies in a glide (lib/glide.ts). */
   glide?: string;
+  /**
+   * Paint the surface disc behind EVERY shape, not only the resting rings. For a dot that sits ON
+   * something drawn, the pane header's badge on the agent's tile: unbacked, the tile showed through
+   * the empty half of the working mark and around the triangle, and with the badge's halo it read as
+   * a broken coin (2026-10-14). Paint only: the box is the same with or without it.
+   */
+  backed?: boolean;
   className?: string;
 }) {
   const turning = live && status === "working" && stale !== true;
@@ -151,7 +160,7 @@ export function StatusDot({
       {/* The ring's inside, in the surface colour and a hair smaller than the ring's outer edge, so
           it is filled and never shows the ground through. Paint only: it is absolute, the box does
           not change with the state. */}
-      {RESTING.has(status) && <span aria-hidden className={cn("absolute inset-px rounded-full", surface)} />}
+      {(backed || RESTING.has(status)) && <span aria-hidden className={cn("absolute inset-px rounded-full", surface)} />}
       <StatusGlyph status={status} turning={turning} />
     </span>
   );
