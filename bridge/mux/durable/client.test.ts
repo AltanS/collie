@@ -352,11 +352,20 @@ describe.skipIf(SOCKET_ONLY_SKIP)("the request", () => {
 
   test("a body that never ends is cut at the byte cap while it streams, not after", async () => {
     const program = await startProgram();
+    // Bun 1.3.14 keeps pulling the body after the client has gone, at hundreds of MB a second, so the
+    // body stops at four times the bound: such a runtime fails here instead of exhausting the machine.
+    // The bound is what proves the cut happens while streaming; keep it below the ceiling.
+    const bound = 16 * 1024 * 64;
+    const ceiling = 4 * bound;
     let sent = 0;
     program.override = () =>
       new Response(
         new ReadableStream<Uint8Array>({
           pull(controller) {
+            if (sent >= ceiling) {
+              controller.close();
+              return;
+            }
             sent += 1024;
             controller.enqueue(new Uint8Array(1024));
           },
@@ -364,8 +373,8 @@ describe.skipIf(SOCKET_ONLY_SKIP)("the request", () => {
       );
     const err = await refusal(new DurableSocketClient(program.socketPath).get({ ...hello, timeoutMs: 5000 }));
     expect(err.detail).toBe("too-large");
-    // The program stopped being read soon after the cap, which an endless body proves by ending at all.
-    expect(sent).toBeLessThan(16 * 1024 * 64);
+    // The program stopped being read soon after the cap, long before the ceiling.
+    expect(sent).toBeLessThan(bound);
   });
 
   test("a POST whose reply trickles past the deadline has an unknown outcome", async () => {
