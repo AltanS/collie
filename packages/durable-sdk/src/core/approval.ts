@@ -5,7 +5,7 @@
 
 import { AskClosed, askIdFor, type PaneHandle } from "./layout.ts";
 import { CAPS, cut, isRecord, safeId } from "./rules.ts";
-import type { DecidedBy, Json } from "./types.ts";
+import type { DecidedBy, Json, PermissionAskInput } from "./types.ts";
 
 /** The arguments of a call in one line, as `name(key: value, key: value)`, each value as JSON, cut to `max` bytes. */
 export function callSummary(name: string, args: Json | undefined, max: number = CAPS.summary): string {
@@ -70,24 +70,22 @@ export async function requireApproval(toolName: string, args: Json | undefined, 
   const summary = callSummary(name, args);
   const shown = `${name}(${argumentsView(args)})`;
   const expiresAt = o.timeoutMs === undefined ? undefined : new Date(Date.now() + o.timeoutMs);
-  const pending = o.pane.ask(
-    {
-      kind: "permission",
-      toolCallId,
-      itemId: o.itemId === undefined ? toolCallId : safeId(o.itemId),
-      title: `${name} wants to run`,
-      tool: { kind: "other", name, summary },
-      push: { title: `${name} needs a yes`, line: summary },
-      options: [
-        { id: "allow", label: o.labels?.allow ?? "Allow", effect: "allow" },
-        { id: "deny", label: o.labels?.deny ?? "Deny", effect: "deny" },
-      ],
-      // The card says "Text shortened" when the person cannot see the whole call.
-      ...(summary !== shown ? { cleaned: true as const } : {}),
-      ...(expiresAt === undefined ? {} : { expiresAt }),
-    },
-    o.signal === undefined ? {} : { signal: o.signal },
-  );
+  const input: PermissionAskInput = {
+    kind: "permission",
+    toolCallId,
+    itemId: o.itemId === undefined ? toolCallId : safeId(o.itemId),
+    title: `${name} wants to run`,
+    tool: { kind: "other", name, summary },
+    push: { title: `${name} needs a yes`, line: summary },
+    options: [
+      { id: "allow", label: o.labels?.allow ?? "Allow", effect: "allow" },
+      { id: "deny", label: o.labels?.deny ?? "Deny", effect: "deny" },
+    ],
+  };
+  // The card says "Text shortened" when the person cannot see the whole call.
+  if (summary !== shown) input.cleaned = true;
+  if (expiresAt !== undefined) input.expiresAt = expiresAt;
+  const pending = o.pane.ask(input, o.signal === undefined ? {} : { signal: o.signal });
   const askId = askIdFor(o.pane.id, toolCallId);
   try {
     const answer = await pending;

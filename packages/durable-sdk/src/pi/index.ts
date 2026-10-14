@@ -43,8 +43,9 @@ import {
   type ProgressStep,
   safeId,
   type TabHandle,
+  type TextAskInput,
 } from "../core/index.ts";
-import { isRecord, isText } from "../core/rules.ts";
+import { isList, isRecord, isText } from "../core/rules.ts";
 import type { Json } from "../core/types.ts";
 
 /** An item without its id and stamp: the shape a {@link ReplyExtras} hands back. */
@@ -195,6 +196,7 @@ export const paneIdOf = (id: ConversationId) => safeId(`conv-${id}`);
 /** The Pi conversation a pane id names, the inverse of {@link paneIdOf}, or undefined for any other id. */
 export function conversationOfPaneId(paneId: string): ConversationId | undefined {
   const match = /^conv-(\d{1,15})$/.exec(paneId);
+  // SAFETY: a ConversationId is Pi's brand on its own conversation number, and these digits are one paneIdOf wrote; a number Pi does not know finds no conversation.
   return match === null ? undefined : (Number(match[1]) as ConversationId);
 }
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -296,7 +298,10 @@ export class Mapper {
    * reply's and each extra's key, so a replay after a restart writes the same items again, not more.
    */
   private summary(replyId: string, ts: string, text: string) {
-    for (const { key, item } of this.extras?.(text) ?? []) this.item({ ...item, id: safeId(`${replyId}:${key}`), ts } as Item);
+    for (const { key, item } of this.extras?.(text) ?? []) {
+      // SAFETY: `item` is an Item of one kind without its id and stamp (ItemBody), so with both back it is an Item of that kind.
+      this.item({ ...item, id: safeId(`${replyId}:${key}`), ts } as Item);
+    }
   }
 
   /** The three steps of a ticket as the first run reaches them: read it, save a note, reply. */
@@ -378,13 +383,7 @@ export class Mapper {
         this.requested(e.record);
         // An abort appends no entry and no item. The input settles, and the wire says so with `settled`.
         if (e.record.type !== "input" || (e.record.status !== "done" && e.record.status !== "unanswered")) return;
-        return this.pane.event({
-          type: "settled",
-          inputId: safeId(e.record.id),
-          ...(e.record.requestId === undefined ? {} : { requestId: safeId(e.record.requestId) }),
-          status: e.record.status === "done" ? "answered" : "unanswered",
-          ...(e.record.status === "unanswered" ? { reason: e.record.reason } : {}),
-        });
+        return this.pane.event(this.settled(e.record));
       case "task_failed":
         return this.item({ id: safeId(`fail:${e.taskId}`), kind: "notice", text: `${e.kind} failed: ${e.message}` });
       case "auto_retry_start":
@@ -392,11 +391,24 @@ export class Mapper {
     }
   }
 
+  /** The `settled` event of an input that was answered or left unanswered. The pane cleans it and fixes its order. */
+  private settled(record: Extract<SubmissionRecord, { type: "input" }>): Extract<ProgramEvent, { type: "settled" }> {
+    const event: Extract<ProgramEvent, { type: "settled" }> = {
+      type: "settled",
+      inputId: safeId(record.id),
+      status: record.status === "done" ? "answered" : "unanswered",
+    };
+    if (record.requestId !== undefined) event.requestId = safeId(record.requestId);
+    if (record.status === "unanswered") event.reason = record.reason;
+    return event;
+  }
+
   /** An answer begins. The start of one that is already whole is followed by its end, and draws nothing in between. */
-  private start(message: { role: string; timestamp: number; content: unknown }) {
+  private start(message: { role: string; timestamp: number; content: string | readonly Block[] }) {
     this.live = undefined;
-    if (message.role !== "assistant" || !Array.isArray(message.content)) return;
-    const blocks = (message.content as Block[]).map((b) => ({ ...b }));
+    const content = message.content;
+    if (message.role !== "assistant" || !Array.isArray(content)) return;
+    const blocks = content.map((b) => ({ ...b }));
     this.live = { id: messageId(message.timestamp), ts: new Date(message.timestamp).toISOString(), blocks, shown: new Set(), lastWrite: 0 };
   }
 
@@ -423,7 +435,7 @@ export class Mapper {
           break;
         }
         case "message":
-          live.blocks = (c.message.content as Block[]).map((b) => ({ ...b }));
+          live.blocks = c.message.content.map((b) => ({ ...b }));
           break;
         case "toolcall_delta":
           break; // a tool call is shown whole, when its message ends
@@ -478,10 +490,12 @@ export class Mapper {
     const id = m.role === "assistant" ? messageId(m.timestamp) : safeId(`e${e.id}`);
     if (m.role === "user") {
       const requestId = this.requests.get(id);
-      return this.item({ id, ts, kind: "user", text: textOf(m.content), ...(requestId === undefined ? {} : { requestId }) });
+      const user: Extract<Item, { kind: "user" }> = { id, ts, kind: "user", text: textOf(m.content) };
+      if (requestId !== undefined) user.requestId = requestId;
+      return this.item(user);
     }
     if (m.role === "assistant") {
-      (m.content as Block[]).forEach((b, i) => {
+      m.content.forEach((b, i) => {
         if (b.type === "text") {
           this.item({ id: safeId(`${id}:${i}`), ts, kind: "reply", text: b.text ?? "" });
           this.summary(safeId(`${id}:${i}`), ts, b.text ?? "");
@@ -504,8 +518,9 @@ export class Mapper {
       return;
     }
     if (m.role === "toolResult") {
-      const diagnostics = (e.data as { diagnostics?: { code?: string }[] } | undefined)?.diagnostics ?? [];
-      const denied = diagnostics.some((d) => d.code === "blocked");
+      const data = e.data;
+      const diagnostics = isRecord(data) && isList(data.diagnostics) ? data.diagnostics : [];
+      const denied = diagnostics.some((d) => isRecord(d) && d.code === "blocked");
       const callId = safeId(m.toolCallId);
       const have = this.tools.get(callId);
       const tool: Extract<Item, { kind: "tool" }> = {
@@ -541,7 +556,8 @@ export async function showConversation(
   const have = opts.panes.get(conversation.id);
   if (have) return have;
   const ctx = opts.ctx ?? ctx0;
-  const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", ...(loc.cwd ? { cwd: loc.cwd } : {}) });
+  // The SDK reads `cwd` through its path rule only, which takes an empty or absent one alike.
+  const pane = loc.tab.pane(loc.paneId ?? paneIdOf(conversation.id), { title: loc.title, harness: "pi", cwd: loc.cwd });
   if (loc.subtitle) pane.subtitle(loc.subtitle);
   const mapper = new Mapper(pane, opts.panes, loc.progress === true, Date.now, loc.extras);
 
@@ -641,6 +657,7 @@ function cursorFrom(text: string): Cursor | undefined {
   try {
     const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
     const parsed: Json = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
+    // SAFETY: JSON.parse writes no undefined value, so a JSON object is a record of JSON values, which is Pi's Cursor. Pi reads its fields.
     return isRecord(parsed) ? (parsed as Cursor) : undefined;
   } catch {
     return undefined;
@@ -836,9 +853,11 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
     parameters: Type.Object({}),
     replay: "safe",
     execute: async (_args, api) => {
-      const answer = await ask(api, (pane, id) =>
-        pane.ask({ kind: "text", toolCallId: id, itemId: id, title: line.question, ...(line.placeholder === undefined ? {} : { placeholder: line.placeholder }), maxLength: 280 }),
-      );
+      const answer = await ask(api, (pane, id) => {
+        const input: TextAskInput = { kind: "text", toolCallId: id, itemId: id, title: line.question, maxLength: 280 };
+        if (line.placeholder !== undefined) input.placeholder = line.placeholder;
+        return pane.ask(input);
+      });
       return reply(clip(answer.text));
     },
   });
@@ -875,16 +894,16 @@ export function spawnHelperTool(o: HelperOptions) {
         const existing = (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0];
         if (existing) return existing.id;
         const created = await tx.createConversation({ ownership: { kind: "task", taskId: api.taskId } });
-        await configure(tx, created.id, { ...(o.model ? { model: o.model } : {}), extensions: { remove: o.without() } });
+        const extensions = { remove: o.without() };
+        await configure(tx, created.id, o.model ? { model: o.model, extensions } : { extensions });
         return created.id;
       }, ctx);
       const harness = o.harness();
       const conversation = (await harness.conversation(child, ctx))!;
       const look = o.look(args.task);
-      const pane = await showConversation({ tab: o.tab, title: look.title, ...(look.subtitle === undefined ? {} : { subtitle: look.subtitle }) }, harness, conversation, {
-        panes: o.panes,
-        ctx,
-      });
+      const loc: PaneLocation = { tab: o.tab, title: look.title };
+      if (look.subtitle !== undefined) loc.subtitle = look.subtitle;
+      const pane = await showConversation(loc, harness, conversation, { panes: o.panes, ctx });
       await api.details({ conversationId: child }, ctx);
       const handle = (await api.conversation(child, ctx))!;
       const request = { type: "input", content: args.task, requestId: `helper:${api.taskId}` } as const;

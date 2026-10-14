@@ -31,7 +31,7 @@ export function preparePrivateDir(dir: string): void {
   try {
     have = lstatSync(dir);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
   }
   if (!have) {
     mkdirSync(dirname(dir), { recursive: true, mode: 0o755 }); // folders above need no more than "not writable by others"
@@ -77,7 +77,7 @@ export async function clearStaleSocket(path: string, probeMs = 1000): Promise<vo
   try {
     old = lstatSync(path);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    if (e instanceof Error && "code" in e && e.code === "ENOENT") return;
     throw e;
   }
   if (!old.isSocket()) throw new Error(`${path} exists and is not a socket`);

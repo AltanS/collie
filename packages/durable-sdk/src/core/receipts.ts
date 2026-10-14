@@ -144,6 +144,7 @@ export class Receipts {
     const have = this.flying.get(requestId);
     if (have) {
       if (have.digest !== digest) throw new HttpError(409, "request-id-reused");
+      // SAFETY: the digest names the route and the payload, so the reply under this id and digest came from the same act, which returns T.
       return { ...((await have.promise).reply as T), replayed: true };
     }
     // The entry is in the map before the first await, so a repeat that arrives a moment later waits for this one.
@@ -151,6 +152,7 @@ export class Receipts {
     this.flying.set(requestId, entry);
     try {
       const { reply, replayed } = await entry.promise;
+      // SAFETY: a replayed reply was kept under this id and digest, and the digest names the route, so the act that made it returns T too.
       return replayed ? { ...(reply as T), replayed: true } : (reply as T);
     } finally {
       if (this.flying.get(requestId) === entry) this.flying.delete(requestId);

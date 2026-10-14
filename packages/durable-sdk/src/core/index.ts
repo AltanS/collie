@@ -148,7 +148,9 @@ export function createCore(o: CoreOptions): CollieCore {
   const store = new Store(o.tailLimit, o.receipts, o.allowAlways ?? true);
   // The alias fills `onRename` only when the hooks do not set it.
   const alias = o.onRename;
-  const hooks: ProgramHooks = { ...(alias ? { onRename: (target: RenameTarget) => alias(target) } : {}), ...o.hooks };
+  const fromAlias: ProgramHooks = {};
+  if (alias) fromAlias.onRename = (target: RenameTarget) => alias(target);
+  const hooks: ProgramHooks = { ...fromAlias, ...o.hooks };
   store.hooks = hooks;
   const state: CoreState = {
     store,
@@ -156,8 +158,8 @@ export function createCore(o: CoreOptions): CollieCore {
     // Left out: everything on, history once a provider is set. Given: exactly the caps it names as true.
     caps: o.caps === undefined ? { ...ALL_CAPS, history: false, terminal: false } : { ...NO_CAPS, ...o.caps, terminal: false },
     hooks,
-    ...(o.warn === undefined ? {} : { warn: o.warn }),
   };
+  if (o.warn !== undefined) state.warn = o.warn;
   return {
     epoch: store.epoch,
     workspace: (id, w) => store.workspace(id, w),

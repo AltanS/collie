@@ -6,6 +6,9 @@
 import { randomHex, sha256Hex } from "./hash.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
 import { ACTION_ICONS } from "./types.ts";
+
+/** The icon names the phone draws, for a lookup by any string. */
+const ICON_NAMES: ReadonlySet<string> = new Set(ACTION_ICONS);
 import {
   actionLabelOf,
   ANSWER_TEXT_DEFAULT,
@@ -63,6 +66,7 @@ import type {
   Snapshot,
   Starter,
   ToolCall,
+  Workspace,
 } from "./types.ts";
 
 export const DEFAULT_TAIL = 500;
@@ -113,23 +117,40 @@ function cleanTool(t: ToolCall): ToolCall {
   return out;
 }
 
+type CodeItem = Extract<Item, { kind: "code" }>;
+type LinkItem = Extract<Item, { kind: "link" }>;
+type UserItem = Extract<Item, { kind: "user" }>;
+
+/** What every cleaned item starts with: its id, and its stamp when it has a valid one. */
+interface ItemHead {
+  id: string;
+  ts?: string;
+}
+
 export function cleanItem(item: Item): Item {
   assertId(item.id, "item id");
   const ts = tsOf(item.ts);
-  const head = { id: item.id, ...(ts ? { ts } : {}) };
+  const head: ItemHead = { id: item.id };
+  if (ts) head.ts = ts;
   if (item.kind === "tool") return { ...head, kind: "tool", tool: cleanTool(item.tool), status: item.status };
   if (item.kind === "markdown") return { ...head, kind: "markdown", text: cut(item.text, CAPS.richText, true), ...partialOf(item) };
   if (item.kind === "code") {
-    const lang = item.lang === undefined ? undefined : langOf(item.lang);
-    return { ...head, kind: "code", ...(lang === undefined ? {} : { lang }), text: cut(item.text, CAPS.richText, true) };
+    // A part of its own, so `lang` keeps its place between `kind` and `text`.
+    const lang: Pick<CodeItem, "lang"> = {};
+    if (item.lang !== undefined) lang.lang = langOf(item.lang);
+    return { ...head, kind: "code", ...lang, text: cut(item.text, CAPS.richText, true) };
   }
   if (item.kind === "link") {
     const label = item.label === undefined ? undefined : shortLine(item.label, LINK_LABEL_MAX);
-    return { ...head, kind: "link", href: hrefOf(item.href), ...(label === undefined ? {} : { label }) };
+    const link: LinkItem = { ...head, kind: "link", href: hrefOf(item.href) };
+    if (label !== undefined) link.label = label;
+    return link;
   }
   if (item.kind === "user") {
     if (item.requestId !== undefined) assertId(item.requestId, "item requestId");
-    return { ...head, kind: "user", text: cut(item.text, CAPS.text, true), ...(item.requestId === undefined ? {} : { requestId: item.requestId }) };
+    const user: UserItem = { ...head, kind: "user", text: cut(item.text, CAPS.text, true) };
+    if (item.requestId !== undefined) user.requestId = item.requestId;
+    return user;
   }
   return { ...head, kind: item.kind, text: cut(item.text, CAPS.text, true), ...partialOf(item) };
 }
@@ -340,6 +361,8 @@ function checkForm(fields: readonly Field[], values: FormAnswer["values"]): void
 }
 
 function cleanEvent(e: ProgramEvent): ProgramEvent {
+  // Read before the switch: past the last case the types say nothing is left, and a caller past the types still sent a type.
+  const named = e.type;
   switch (e.type) {
     case "item":
       return { type: "item", item: cleanItem(e.item) };
@@ -355,7 +378,7 @@ function cleanEvent(e: ProgramEvent): ProgramEvent {
     case "synced":
       return { type: e.type };
     default:
-      throw new TypeError(`a program may not append a ${(e as { type: string }).type} event`);
+      throw new TypeError(`a program may not append a ${named} event`);
   }
 }
 
@@ -541,7 +564,9 @@ export class Pane implements PaneHandle {
         size += n;
       }
       const next = after + events.length;
-      return { events, next, ...(next < this.total ? { more: true as const } : {}) };
+      const reply: Omit<EventsReply, "epoch"> = { events, next };
+      if (next < this.total) reply.more = true;
+      return reply;
     }
     // The newest items that fit: at most 2000, and inside the reply budget with room for the asks.
     const asks = this.openAsks;
@@ -560,7 +585,9 @@ export class Pane implements PaneHandle {
     for (const ask of asks) events.push({ type: "ask", ask });
     events.push({ type: "state", state: this.effective }, { type: "synced" });
     const trimmed = all.length - kept.length;
-    return { events, next: this.total, reset: true, ...(trimmed > 0 ? { trimmed } : {}) };
+    const reply: Omit<EventsReply, "epoch"> = { events, next: this.total, reset: true };
+    if (trimmed > 0) reply.trimmed = trimmed;
+    return reply;
   }
 
   /** What the phone sees: waiting while any ask is open, else the program's own state. */
@@ -579,6 +606,14 @@ export class Pane implements PaneHandle {
   }
 
   info(): PaneInfo {
+    // Two parts of their own, so each field keeps its place in the snapshot: `actions` before `sessionId`, the rest after.
+    const actions: Pick<PaneInfo, "actions"> = {};
+    if (this.actionList.length > 0) actions.actions = this.actionList.map((a) => ({ ...a }));
+    const rest: Pick<PaneInfo, "cwd" | "subtitle" | "badge" | "progress"> = {};
+    if (this.cwd) rest.cwd = this.cwd;
+    if (this.subtitleText !== undefined) rest.subtitle = this.subtitleText;
+    if (this.badgeValue !== undefined) rest.badge = this.badgeValue;
+    if (this.progressValue !== undefined) rest.progress = this.progressValue;
     return {
       id: this.id,
       workspaceId: this.workspaceId,
@@ -589,13 +624,10 @@ export class Pane implements PaneHandle {
       lastActiveAt: this.lastActiveAt,
       turnId: this.turnId,
       openAsks: this.openAsks,
-      ...(this.actionList.length > 0 ? { actions: this.actionList.map((a) => ({ ...a })) } : {}),
+      ...actions,
       // The conversation id the program's history serves this pane under (WIRE.md 7.16), or null.
       sessionId: this.sessionId,
-      ...(this.cwd ? { cwd: this.cwd } : {}),
-      ...(this.subtitleText === undefined ? {} : { subtitle: this.subtitleText }),
-      ...(this.badgeValue === undefined ? {} : { badge: this.badgeValue }),
-      ...(this.progressValue === undefined ? {} : { progress: this.progressValue }),
+      ...rest,
     };
   }
 
@@ -771,13 +803,11 @@ export class Pane implements PaneHandle {
       const label = actionLabelOf(given.label);
       if (label === "" || seen.has(id)) continue;
       seen.add(id);
-      next.push({
-        id,
-        label,
-        ...(given.icon !== undefined && (ACTION_ICONS as readonly string[]).includes(given.icon) ? { icon: given.icon } : {}),
-        ...(given.busy === true ? { busy: true } : {}),
-        ...(given.disabled === true ? { disabled: true } : {}),
-      });
+      const action: PaneAction = { id, label };
+      if (given.icon !== undefined && ICON_NAMES.has(given.icon)) action.icon = given.icon;
+      if (given.busy === true) action.busy = true;
+      if (given.disabled === true) action.disabled = true;
+      next.push(action);
     }
     if (JSON.stringify(next) === JSON.stringify(this.actionList)) return;
     this.actionList = next;
@@ -811,13 +841,16 @@ export class Pane implements PaneHandle {
 
   /** This pane as a hook sees it. */
   get ref(): PaneRef {
+    // A part of its own, so `cwd` keeps its place before `turnId`.
+    const cwd: Pick<PaneRef, "cwd"> = {};
+    if (this.cwd) cwd.cwd = this.cwd;
     return {
       id: this.id,
       workspaceId: this.workspaceId,
       tabId: this.tabId,
       title: this.title,
       harness: this.harness,
-      ...(this.cwd ? { cwd: this.cwd } : {}),
+      ...cwd,
       turnId: this.turnId,
     };
   }
@@ -889,7 +922,9 @@ export class Store {
     if (id.includes(":")) throw new TypeError(`a workspace id may not hold ":" (it joins tab ids): ${id}`);
     if (!this.workspaces.has(id)) {
       const cwd = cwdOf(o.cwd);
-      this.workspaces.set(id, { id, title: cut(o.title, CAPS.title), ...(cwd ? { cwd } : {}) });
+      const workspace: Workspace = { id, title: cut(o.title, CAPS.title) };
+      if (cwd) workspace.cwd = cwd;
+      this.workspaces.set(id, workspace);
       this.rev++;
     }
     return {

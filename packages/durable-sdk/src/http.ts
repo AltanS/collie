@@ -14,12 +14,12 @@ export function toRequest(req: IncomingMessage): Request {
   const headers = new Headers();
   for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) headers.append(req.rawHeaders[i]!, req.rawHeaders[i + 1]!);
   const method = req.method ?? "GET";
-  const hasBody = method !== "GET" && method !== "HEAD";
-  return new Request(new URL(req.url ?? "/", "http://localhost").href, {
-    method,
-    headers,
-    ...(hasBody ? { body: Readable.toWeb(req) as ReadableStream<Uint8Array>, duplex: "half" } : {}),
-  } as RequestInit);
+  const init: RequestInit = { method, headers };
+  if (method !== "GET" && method !== "HEAD") {
+    init.body = Readable.toWeb(req);
+    init.duplex = "half";
+  }
+  return new Request(new URL(req.url ?? "/", "http://localhost").href, init);
 }
 
 /** A web `Response` written to node:http's response. */

@@ -24,6 +24,7 @@ import {
 } from "./rules.ts";
 import {
   type Answer,
+  type ActionContext,
   type AnswerReply,
   type Caps,
   type ControlReply,
@@ -38,6 +39,7 @@ import {
   type Problem,
   PROTOCOL_RANGE,
   type ProgramHooks,
+  type ReopenTarget,
   type Snapshot,
   type StarterReply,
   type VersionRefusal,
@@ -394,7 +396,9 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
           if (!row) throw new HttpError(404, "no-such-action");
           // A dimmed button takes no tap, and a request for one is the program's refusal, not an act.
           if (row.disabled === true || row.busy === true) throw new HttpError(422, "action-refused", { message: "The action is not available now." });
-          const accepted = await pane.act({ actionId, ...(turnId === undefined ? {} : { turnId }), requestId });
+          const turn: Pick<ActionContext, "turnId"> = {};
+          if (turnId !== undefined) turn.turnId = turnId;
+          const accepted = await pane.act({ actionId, ...turn, requestId });
           if (!accepted) throw new HttpError(422, "action-refused");
           return { ok: true };
         }),
@@ -509,8 +513,10 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
         if (where?.open === true) return { ok: true };
         const known = where !== undefined || (store.history !== undefined && (await store.history.items(id, undefined, 1)) !== undefined);
         if (!known) throw new HttpError(404, "no-such-target");
+        const target: ReopenTarget = { id };
+        if (where !== undefined) target.paneId = where.paneId;
         // Only `false` refuses: a hook that shows the conversation again and returns nothing accepts it.
-        if ((await state.hooks.onReopen?.({ id, ...(where === undefined ? {} : { paneId: where.paneId }) }, requestId)) === false) throw new HttpError(422, "reopen-refused");
+        if ((await state.hooks.onReopen?.(target, requestId)) === false) throw new HttpError(422, "reopen-refused");
         // The SDK's own default: put back the pane it closed in this process, when the hook did not show one.
         if (store.paneOfConversation(id)?.open !== true) store.reopen(id);
         if (store.paneOfConversation(id)?.open !== true) throw new HttpError(422, "reopen-refused", { message: "The program did not show the conversation again." });
