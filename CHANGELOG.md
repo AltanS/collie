@@ -23,6 +23,21 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.21.3] - 2026-10-14
+
+A bugfix release, not urgent. You need it if you use pi with `editorPaddingX` above 0, Claude Code 2.1.299 with a task list, or a crew peer that listens on loopback.
+
+### Fixed
+
+- **A message to a pi editor with padding is sent again.** With pi's `editorPaddingX` setting above 0, Collie showed "the message didn't reach the input box" and never pressed Enter. The reader now knows a padded draft by pi's cursor cell and the padding on every row. Padding 0 is unchanged. This started in 1.20.1. Thanks @jrswab (#442). ([76811421](https://github.com/AltanS/collie/commit/76811421))
+- **A Claude question with the task list under it shows as its card.** Claude Code 2.1.299 draws the task list under a question's key hints in a session with tasks, so Collie could not read the question, and a long list hid it. The question now shows as its usual card, and tapping an answer works. While the question is open, the task list is not shown on the phone. It returns when Claude works again. Thanks @leftos (#436). ([397f816b](https://github.com/AltanS/collie/commit/397f816b))
+- **Doctor accepts a loopback bind on a peer behind a tunnel.** A peer that reaches its lead on loopback, through an ssh tunnel or on the same host, no longer reports `bind` as an error, and `crew update` no longer skips that member. Thanks @OowhitecatoO (#437). ([3798e6b1](https://github.com/AltanS/collie/commit/3798e6b1))
+- **A message is not typed into pi's settings pickers.** The /settings and /scoped-models screens of pi 1.2.0 read as a ready editor, so a message sent from the phone would have gone into their search row. Collie now holds the send while they are open. ([2b1e4c44](https://github.com/AltanS/collie/commit/2b1e4c44))
+
+### Changed
+
+- **Collie is tested on Bun 1.4.0 and newer.** The update preflight now warns on an older Bun when you build from source. Nothing is blocked. A test that took 20 GB on Bun 1.3.14 now fails there instead. Thanks @OowhitecatoO (#438, #439). ([09ba7b79](https://github.com/AltanS/collie/commit/09ba7b79)) ([866ae2cf](https://github.com/AltanS/collie/commit/866ae2cf))
+
 ## [1.21.2] - 2026-10-14
 
 ### Changed
