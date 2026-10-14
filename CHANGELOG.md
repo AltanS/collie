@@ -93,6 +93,19 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Sessions and Programs say where a program shows on the phone.** Both pages say a program has its own Programs section, with its runtime and the count of questions waiting, and that the section moves above your spaces when a question waits.
 - **A comment in the space overview reads without a dash.** House style, no code change.
 
+## [1.21.2] - 2026-10-14
+
+### Changed
+
+- **A launcher row started in a new workspace names the workspace after its folder.** The row's own name now goes on the tab, as it already did when you open the row beside a pane. Before, a row such as "Claude danger" became the name of the workspace, and the phone cannot rename a workspace yet. A name already in use gets a number, such as `app-2`. Existing workspaces keep their names, a one-off command still names its workspace after the command word, and on a crew each member names its own workspaces by the version it runs. ([2e91f43c](https://github.com/AltanS/collie/commit/2e91f43c))
+
+### Fixed
+
+- **A long message that ends with photos is sent to Claude.** Claude turns every image path at the end of a long paste into its own image mark. Collie counted only the last one, so it never pressed Enter and the message stayed in the input box. The check now follows Claude's own rule, probed live on Claude Code 2.1.299, and waits until the photos are attached before it presses Enter. ([e94848d4](https://github.com/AltanS/collie/commit/e94848d4))
+- **A pane launched on a crew member shows up on the phone within seconds.** The lead refreshed its copy of a member's panes only every 12 seconds, so a new Claude there stayed a shell or stayed missing. A launch, a new tab or space, and a close or rename forwarded to a member now keep the lead on its fast cadence for a few polls, as a reply already did. ([cee70af6](https://github.com/AltanS/collie/commit/cee70af6))
+- **The working mark on the pane header's agent icon no longer spins.** The mark sat on the icon with nothing behind it, so the icon showed through the half-filled working mark and it turned like a loading spinner. It now has a solid backing and holds still; the pane chip below keeps the turn. ([ce8d8adf](https://github.com/AltanS/collie/commit/ce8d8adf))
+- **A new photo is no longer sent twice when the draft already holds an old photo code.** A draft could carry an `[Image #1]` with no photo behind it, for example text copied from a closed pane. The next photo was numbered 1 again, so Send put its path in twice and the message stalled. A new photo now takes a number above every code already in the text. ([e32ecb57](https://github.com/AltanS/collie/commit/e32ecb57))
+
 ## [1.21.1] - 2026-10-14
 
 **Urgent.** A crew member installed from a git checkout can end up half updated, still on the old version.

@@ -1956,8 +1956,8 @@ export function AgentChat({
                         status={agent.status}
                         label={statusLabel(agent.status)}
                         stale={connecting}
-                        live
                         surface="bg-background"
+                        backed
                         glide="dot"
                         className="absolute -bottom-1 -right-1 size-3 rounded-full ring-2 ring-background"
                       />

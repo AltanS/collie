@@ -38,10 +38,8 @@
 const PLACEHOLDER = /\[Pastedtext#\d+(?:\+(\d+)lines)?\]/g;
 
 /**
- * Claude's token for an image file whose path arrived in a paste, whitespace-stripped. Claude lifts
- * an image path off the END of a paste, or off a line of its own, and attaches the file instead
- * (live-probed 2026-10-03: `<1,500 chars> /x.png` → `[Image #8][Pasted text #9]`; the same path at
- * the start or the middle stayed inside the paste).
+ * Claude's token for an image file whose path arrived in a paste, whitespace-stripped. How Claude
+ * picks those paths is {@link liftedPaste}.
  */
 const IMAGE_TOKEN = /\[Image#\d+\]/g;
 
@@ -53,26 +51,41 @@ const IMAGE_TOKEN = /\[Image#\d+\]/g;
  */
 const UPLOAD_PATH_TAIL = String.raw`[\\/]uploads[\\/][A-Za-z0-9_-]+-[0-9a-z]+-[0-9a-f]{8}\.(?:png|jpe?g|gif|webp)`;
 const UPLOAD_ROOT = String.raw`(?:/|[A-Za-z]:[\\/])`;
-/** A path with no whitespace in it, as the last whitespace-separated token of a send. */
-const UPLOAD_TOKEN = new RegExp(`^${UPLOAD_ROOT}\\S*${UPLOAD_PATH_TAIL}$`, "i");
-/** A path that is a whole line on its own; the directories may hold spaces (a Windows profile name). */
-const UPLOAD_LINE = new RegExp(`^${UPLOAD_ROOT}.*${UPLOAD_PATH_TAIL}$`, "i");
+/** A whole piece of a paste that is one upload path; the directories may hold spaces (a Windows
+ *  profile name). */
+const UPLOAD_PIECE = new RegExp(`^${UPLOAD_ROOT}.*${UPLOAD_PATH_TAIL}$`, "i");
+/** Where Claude cuts a paste into pieces: at each newline, and at a space that comes right before
+ *  an absolute path. */
+const PIECE_CUT = new RegExp(`\\r?\\n| (?=${UPLOAD_ROOT})`);
 
 /**
- * How many upload image paths in a send Claude could have lifted into an {@link IMAGE_TOKEN}: one per
- * line that is nothing but such a path, plus the last whitespace-separated token of the text when it
- * is one and does not already stand on a line of its own. A path in the middle of a line stays inside
- * the paste (live-probed 2026-10-03), and a prose mention of `shot.png` is no path at all.
+ * What Claude keeps of a paste after it takes the image paths out. Claude cuts the paste at each
+ * newline and at each space before an absolute path. When some pieces are image files, it attaches
+ * each one as an `[Image #N]` and keeps the other pieces, joined by newlines, as the paste. When no
+ * piece is an image, the paste stays as it was sent.
+ *
+ * Live-probed 2026-10-14 (Claude Code 2.1.299, a 1,400-character paste with six newlines):
+ *   `<text> P`          → `[Image #2][Pasted text #3 +6 lines]`
+ *   `<text> P P`        → `[Image #7] [Image #8][Pasted text #9 +6 lines]`, the 2026-10-14
+ *                         minibuch send that stalled, because only one trailing path was counted
+ *   `<text> /usr/x P`   → `[Image #14][Pasted text #15 +7 lines]`, the kept pieces gain a newline
+ *   `<300 chars> P\n<rest>` and `<300 chars> P P\n<rest>` → one or two images, `+7 lines`
+ *   `P <text>`, `P P <text>` → no image, or one: the piece `P <text>` is not a path
+ *   `<text> P word`, `<300 chars> P <rest>` → no image
+ *
+ * Only Collie's own upload paths count. Claude also takes other image files it finds on disk, and
+ * a token for one of those makes the send unprovable, which stalls it rather than guessing.
  */
+export function liftedPaste(sent: string): { images: number; text: string } {
+  const pieces = sent.split(PIECE_CUT);
+  const kept = pieces.filter((piece) => !UPLOAD_PIECE.test(piece.trim()));
+  const images = pieces.length - kept.length;
+  return images === 0 ? { images, text: sent } : { images, text: kept.join("\n") };
+}
+
+/** How many upload image paths in a send Claude lifts into an {@link IMAGE_TOKEN}. */
 export function liftableImagePaths(sent: string): number {
-  const lines = sent.split(/\r?\n/);
-  let count = lines.filter((line) => UPLOAD_LINE.test(line.trim())).length;
-  // The last NON-BLANK line: after a trailing newline the final line is empty, and a path that is
-  // already counted as a whole line above must not be counted again as the trailing token.
-  const last = (lines.findLast((line) => line.trim() !== "") ?? "").trim();
-  const lastToken = sent.trimEnd().split(/\s+/).pop() ?? "";
-  if (!UPLOAD_LINE.test(last) && UPLOAD_TOKEN.test(lastToken)) count += 1;
-  return count;
+  return liftedPaste(sent).images;
 }
 
 /**
@@ -190,26 +203,31 @@ function scan(stripped: string): Scan {
  * and rejecting a shape we cannot read would convert working sends into permanent stalls, which is the
  * worse failure of the two.
  *
- * An `[Image #N]` token beside the paste is Claude having lifted an image path out of it. It counts
- * only while the send holds at least that many liftable paths ({@link liftableImagePaths}: an upload
- * path standing alone on its line or ending the text), and it may take one newline with it each,
- * so rule 3 becomes `S − images ≤ Σ M ≤ S`.
+ * An `[Image #N]` token beside the paste is Claude having lifted an image path out of it. The tokens
+ * must then match {@link liftedPaste} exactly: as many images as it finds, and every rule above runs
+ * against the paste it says Claude kept, not against the send.
  *
  * Anything inconsistent returns false and the caller keeps today's behaviour: no submit key, draft
  * kept, "didn't reach the input box". Guessing here would fire Enter at a screen we cannot read.
  */
 export function pasteCarriesSend(sent: string, draft: string): boolean {
   const { draft: d, images } = liftImages(stripWhitespace(draft));
-  if (images > liftableImagePaths(sent)) return false;
-  const s = stripWhitespace(sent);
+  const lift = liftedPaste(sent);
+  if (images > 0 && images !== lift.images) return false;
+  // A send that goes as one bracketed paste and carries upload paths Claude will lift is not proven
+  // until the image tokens are on screen: read before them, the token alone would let Enter go before
+  // the photos are attached. Wait for the next read rather than judge the paste as sent.
+  if (images === 0 && lift.images > 0 && collapsesAsPaste(sent)) return false;
+  const pasted = images === 0 ? sent : lift.text;
+  const s = stripWhitespace(pasted);
   const { tokens, lines, fragments, trailing } = scan(d);
   if (tokens === 0) return false;
 
-  const newlines = countNewlines(sent);
-  if (newlines === 0 && sent.length < MIN_COLLAPSIBLE_LENGTH) return false;
+  if (countNewlines(sent) === 0 && sent.length < MIN_COLLAPSIBLE_LENGTH) return false;
 
+  const newlines = countNewlines(pasted);
   if (lines > newlines) return false;
-  if (fragments.length === 0) return lines >= newlines - images;
+  if (fragments.length === 0) return lines === newlines;
 
   // The draft ends in literal text, so the last thing the screen shows IS the last thing that
   // arrived — and it therefore has to be the last thing we sent. Anything else means bytes are still

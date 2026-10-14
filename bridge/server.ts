@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { isIP } from "node:net";
 import { homedir, networkInterfaces } from "node:os";
-import { dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
@@ -29,7 +29,7 @@ import {
   UNKNOWN_PATH,
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
+import { keysDeliverable, MUX_CAPABILITIES, supportsCapability, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import { muxUnsupported } from "./mux/types.ts";
 import type { MuxAdapter, MuxAck, MuxGrid, MuxHistoryPage, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
@@ -552,6 +552,23 @@ export function isPaneInput(pathname: string, method: string): boolean {
   if (method !== "POST") return false;
   const action = pathname.match(PANE_ROUTE)?.[2];
   return action === "reply" || action === "keys";
+}
+
+/**
+ * Does this request change what a machine HAS: a launch, a new space or tab, or a pane or tab closed
+ * or renamed? On the owning host each of those settles itself (`settleTopology`). Forwarded to a
+ * member, the member settles and the lead does not: the lead sees the member only through its sweep,
+ * which rides the primary engine's tick, so a pane launched on a member stayed a shell, or missing,
+ * on the phone for up to one idle interval (12 s; minibuch, 2026-10-14). The forward branch gives
+ * these the same hot spell an input buys.
+ */
+const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab"]);
+export function isTopologyWrite(pathname: string, method: string): boolean {
+  if (method !== "POST") return false;
+  if (TOPOLOGY_CREATES.has(pathname)) return true;
+  if (TAB_ACTION_ROUTE.test(pathname)) return true;
+  const action = pathname.match(PANE_ROUTE)?.[2];
+  return action === "close" || action === "rename";
 }
 
 /** Answer `res`, and when it landed, tell `engine` an input was written (§ isPaneInput). */
@@ -2247,8 +2264,8 @@ export function startServer(opts: {
             // An input forwarded to a member makes the member's engine hot there, and the LEAD's
             // too: the lead sees the member's panes only through its sweep, which rides this
             // engine's tick (CREW_PROTOCOL.md §10.1), so a cold lead would show the member's answer
-            // up to one idle interval late.
-            const input = isPaneInput(pathname, req.method);
+            // up to one idle interval late. A topology write is the same case (§ isTopologyWrite).
+            const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method);
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.
@@ -5975,6 +5992,15 @@ function askedFolder(raw: JsonValue | undefined, home: string): string | undefin
   return isAbsolute(expanded) ? expanded : join(home, expanded);
 }
 
+/** `name`, or `name-2`, `name-3`, … : the first one no space on this machine already carries. */
+export function freeSpaceName(name: string, spaces: readonly { label: string }[]): string {
+  const taken = new Set(spaces.map((space) => space.label));
+  if (!taken.has(name)) return name;
+  let n = 2;
+  while (taken.has(`${name}-${n}`)) n++;
+  return `${name}-${n}`;
+}
+
 /** The half of a launch that touches the multiplexer, run at most once per `requestId`. */
 async function runLaunch(
   herdr: MuxAdapter,
@@ -5994,13 +6020,29 @@ async function runLaunch(
 ): Promise<CreateResponse> {
   const { row, besidePane, cwd } = job;
   const label = row?.label;
+  // A row or an agent started in a NEW space names the space after its folder, the way Herdr names a
+  // space opened by hand, and puts its own name on the tab, as the tab path already does. Named after
+  // the row, a "Claude danger" row became the name of the operator's workspace, which the phone cannot
+  // rename (2026-10-14). A one-off run keeps ADR 0095's rule: its space is named after the command word.
+  // The name must also be free: tmux refuses a second session of the same name, so a second launch
+  // from one folder would fail there, and on Herdr two equal names cannot be told apart.
+  const folder = basename(cwd);
+  const folderNamed = !besidePane && row !== undefined && job.kind !== "run" && folder !== "";
   const outcome = besidePane
     ? await herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd })
-    : await herdr.createSpace({ cwd, label });
+    : await herdr.createSpace({ cwd, label: folderNamed ? freeSpaceName(folder, engine.current().workspaces) : label });
   if (!outcome.ok) {
     return { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) };
   }
   const created = outcome.value;
+  if (folderNamed && label !== undefined && supportsCapability(herdr.capabilities, "renameTab")) {
+    // Best effort: a tab left with the multiplexer's own name costs a label, never the launch.
+    try {
+      await herdr.renameTab(created.tabId, label);
+    } catch {
+      // Swallowed: the pane exists and the command is about to be typed; the tab name is cosmetic.
+    }
+  }
   if (row !== undefined) {
     const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, job.kind === "run" ? "run" : "launch");
     if (!sent.ok) {

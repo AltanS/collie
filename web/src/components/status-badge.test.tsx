@@ -113,10 +113,18 @@ describe("StatusDot — the glyph", () => {
     }
   });
 
+  // The pane header's badge sits on the agent's tile: unbacked, the tile showed through the working
+  // mark's empty half and around the triangle (2026-10-14).
+  it("backs every shape with its surface when asked, and only the resting rings when not", () => {
+    for (const status of STATUSES) {
+      const { container } = render(<StatusDot status={status} surface="bg-card" backed />);
+      expect(container.querySelector(".bg-card")).not.toBeNull();
+    }
+  });
+
   it("turns the working mark and dims when the reading is frozen, and does both again in reverse", () => {
     // A "working" mark turns (rotation only, `.status-turn`) ONLY when the caller opts in with
-    // `live` — the pane chip and the pane header's agent badge, the two spots where the operator is
-    // actually watching one pane. While the connection is not live that turn is a lie twice over:
+    // `live` — the pane chip, the spot where the operator is actually watching one pane. While the connection is not live that turn is a lie twice over:
     // the reading is the LAST snapshot's, and an animation is the one thing on a page that says
     // "this is arriving now". So stale removes the turn AND dims, together — dimming one mark of a
     // pair and animating the other would leave a frozen reading looking half live.
