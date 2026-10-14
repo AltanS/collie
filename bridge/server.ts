@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { isIP } from "node:net";
 import { homedir, networkInterfaces } from "node:os";
-import { dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
@@ -29,7 +29,7 @@ import {
   UNKNOWN_PATH,
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { keysDeliverable, MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
+import { keysDeliverable, MUX_CAPABILITIES, supportsCapability, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
@@ -5752,6 +5752,15 @@ function askedFolder(raw: JsonValue | undefined, home: string): string | undefin
   return isAbsolute(expanded) ? expanded : join(home, expanded);
 }
 
+/** `name`, or `name-2`, `name-3`, … : the first one no space on this machine already carries. */
+export function freeSpaceName(name: string, spaces: readonly { label: string }[]): string {
+  const taken = new Set(spaces.map((space) => space.label));
+  if (!taken.has(name)) return name;
+  let n = 2;
+  while (taken.has(`${name}-${n}`)) n++;
+  return `${name}-${n}`;
+}
+
 /** The half of a launch that touches the multiplexer, run at most once per `requestId`. */
 async function runLaunch(
   herdr: MuxAdapter,
@@ -5771,13 +5780,29 @@ async function runLaunch(
 ): Promise<CreateResponse> {
   const { row, besidePane, cwd } = job;
   const label = row?.label;
+  // A row or an agent started in a NEW space names the space after its folder, the way Herdr names a
+  // space opened by hand, and puts its own name on the tab, as the tab path already does. Named after
+  // the row, a "Claude danger" row became the name of the operator's workspace, which the phone cannot
+  // rename (2026-10-14). A one-off run keeps ADR 0095's rule: its space is named after the command word.
+  // The name must also be free: tmux refuses a second session of the same name, so a second launch
+  // from one folder would fail there, and on Herdr two equal names cannot be told apart.
+  const folder = basename(cwd);
+  const folderNamed = !besidePane && row !== undefined && job.kind !== "run" && folder !== "";
   const outcome = besidePane
     ? await herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd })
-    : await herdr.createSpace({ cwd, label });
+    : await herdr.createSpace({ cwd, label: folderNamed ? freeSpaceName(folder, engine.current().workspaces) : label });
   if (!outcome.ok) {
     return { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) };
   }
   const created = outcome.value;
+  if (folderNamed && label !== undefined && supportsCapability(herdr.capabilities, "renameTab")) {
+    // Best effort: a tab left with the multiplexer's own name costs a label, never the launch.
+    try {
+      await herdr.renameTab(created.tabId, label);
+    } catch {
+      // Swallowed: the pane exists and the command is about to be typed; the tab name is cosmetic.
+    }
+  }
   if (row !== undefined) {
     const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, job.kind === "run" ? "run" : "launch");
     if (!sent.ok) {

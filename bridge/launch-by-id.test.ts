@@ -21,6 +21,7 @@ import {
   type MuxOutcome,
   type MuxSpaceRequest,
 } from "./mux/types.ts";
+import { declareCapabilities } from "./mux/capabilities.ts";
 
 // `POST /api/launch` by id, with a request id and a receipt (ADR 0091). The claims:
 //
@@ -59,7 +60,13 @@ class FakeMux {
   readonly spaces: MuxSpaceRequest[] = [];
   readonly texts: Array<[string, string]> = [];
   readonly closes: string[] = [];
+  readonly tabRenames: Array<[string, string]> = [];
+  // What a launch asks: a new space, and the tab rename that follows it (a fake with no `capabilities`
+  // would throw in `supportsCapability`).
+  capabilities = declareCapabilities({ supports: ["createSpace", "createTab", "renameTab"], topologyLatency: { kind: "push" } });
   failText = false;
+  /** `renameTab` throws, as an adapter that fails mid-call would. */
+  renameThrows = false;
   gate: Promise<void> | null = null;
   private n = 0;
 
@@ -68,6 +75,10 @@ class FakeMux {
     if (this.gate) await this.gate;
     this.n++;
     return muxOk({ paneId: `w${this.n}:p1`, spaceId: `w${this.n}`, spaceLabel: request.label ?? "shell", tabId: `w${this.n}:t1`, cwd: request.cwd ?? "/" });
+  }
+  renameTab(tabId: string, label: string): Promise<MuxAck> {
+    this.tabRenames.push([tabId, label]);
+    return this.renameThrows ? Promise.reject(new Error("rename failed")) : Promise.resolve(muxAck());
   }
   readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
     return Promise.resolve(muxOk({ paneId, text: "$ ", truncated: false, revision: 1 }));
@@ -89,8 +100,8 @@ class FakeMux {
 }
 
 function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
-  // SAFETY: a launch from the dashboard reaches createSpace, readGrid, typeText, sendKeys, closePane
-  // (on a failed send) and refresh — the six FakeMux implements.
+  // SAFETY: a launch from the dashboard reaches createSpace, renameTab, readGrid, typeText, sendKeys,
+  // closePane (on a failed send) and refresh, plus the `capabilities` declaration — what FakeMux implements.
   return fake as MuxAdapter;
 }
 
@@ -125,7 +136,30 @@ describe("POST /api/launch — by id", () => {
     const { status, body } = await run(mux, { harness: "claude", cwd: "/home/op/src/app" });
     expect(status).toBe(200);
     expect(body?.ok).toBe(true);
-    expect(mux.spaces).toEqual([{ cwd: "/home/op/src/app", label: "Claude Code" }]);
+    // The space takes the folder's name, the way Herdr names one opened by hand; the tab takes the harness's.
+    expect(mux.spaces).toEqual([{ cwd: "/home/op/src/app", label: "app" }]);
+    expect(mux.tabRenames).toEqual([["w1:t1", "Claude Code"]]);
+    expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+  });
+
+  test("an adapter that declares no renameTab still launches, and no rename is asked", async () => {
+    const mux = new FakeMux();
+    mux.capabilities = declareCapabilities({ supports: ["createSpace", "createTab"], topologyLatency: { kind: "push" } });
+    const { status, body } = await run(mux, { harness: "claude", cwd: "/home/op/src/app" });
+    expect(status).toBe(200);
+    expect(body?.ok).toBe(true);
+    expect(mux.spaces).toEqual([{ cwd: "/home/op/src/app", label: "app" }]);
+    expect(mux.tabRenames).toEqual([]);
+    expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+  });
+
+  test("a tab rename that throws does not fail the launch", async () => {
+    const mux = new FakeMux();
+    mux.renameThrows = true;
+    const { status, body } = await run(mux, { harness: "claude", cwd: "/home/op/src/app" });
+    expect(status).toBe(200);
+    expect(body?.ok).toBe(true);
+    expect(mux.tabRenames).toEqual([["w1:t1", "Claude Code"]]);
     expect(mux.texts).toEqual([["w1:p1", "claude"]]);
   });
 

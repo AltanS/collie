@@ -17,6 +17,7 @@ import {
   type LauncherSources,
 } from "./launcher-adds.ts";
 import { AddedLauncherStore, memoryAddedIo, type AddedLauncher } from "./launchers-added.ts";
+import { declareCapabilities } from "./mux/capabilities.ts";
 import { muxAck, muxOk, type MuxAck, type MuxAdapter, type MuxCreatedPane, type MuxGrid, type MuxOutcome, type MuxSpaceRequest } from "./mux/types.ts";
 import { DEFAULT_SWITCHES, type LauncherSwitches } from "./operator-launchers.ts";
 import { FORGET_DEVICE_PATH, launch, launchersRoute, serveAddedLauncherRoute, type AddedRouteCaller } from "./server.ts";
@@ -335,6 +336,10 @@ describe("serveAddedLauncherRoute", () => {
 
 class FakeMux {
   readonly texts: string[] = [];
+  readonly capabilities = declareCapabilities({ supports: ["createSpace", "createTab", "renameTab"], topologyLatency: { kind: "push" } });
+  renameTab(): Promise<MuxAck> {
+    return Promise.resolve(muxAck());
+  }
   createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     return Promise.resolve(muxOk({ paneId: "w1:p1", spaceId: "w1", spaceLabel: request.label ?? "", tabId: "w1:t1", cwd: request.cwd ?? "/" }));
   }
@@ -357,8 +362,8 @@ class FakeMux {
 }
 
 function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
-  // SAFETY: a dashboard launch reaches createSpace, readGrid, typeText, sendKeys, closePane and
-  // refresh, the six FakeMux implements.
+  // SAFETY: a dashboard launch reaches createSpace, renameTab, readGrid, typeText, sendKeys, closePane
+  // and refresh, plus the `capabilities` declaration, which FakeMux implements.
   return fake as MuxAdapter;
 }
 
