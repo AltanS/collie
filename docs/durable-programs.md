@@ -45,7 +45,7 @@ Use the path your program printed. Add `--restart` to the first command to resta
 
 ## Attach a program
 
-Each program you attach is one entry in `sources.json`, in the config folder next to `.env`, mode `0600`. The phone shows it as one space with the name you gave it, its runtime and an Experimental badge. A conversation of the program is a pane in that space. Your terminals look and work as before. A name is lower case letters, digits and hyphens, at most 32, and not the name of a Herdr, tmux or zellij session.
+Each program you attach is one entry in `sources.json`, in the config folder next to `.env`, mode `0600`. The phone shows it in its own Programs section, with the name you gave it, its runtime, the count of questions waiting and an Experimental badge, and the section moves above your spaces when a question waits. A conversation of the program is one of its panes. Your terminals look and work as before. A name is lower case letters, digits and hyphens, at most 32, and not the name of a Herdr, tmux or zellij session.
 
 A program that you deployed behind TLS takes a URL and a token. Put the token in an environment variable, and name the variable. The token never goes on the command line:
 
