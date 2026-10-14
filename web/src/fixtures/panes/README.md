@@ -173,6 +173,21 @@ collide with the PR 397 corpus above.
 | `pi--<v>-questionnaire-tabs-answered.txt` | Back on `Color` with both questions answered (`■ Color   ■ Size`) | walk, captioned |
 | `pi--<v>-questionnaire-submit-incomplete.txt` | The `Submit` tab with `Unanswered: Size` | raw, Escape card |
 | `pi--<v>-questionnaire-submit-ready.txt` | The `Submit` tab with both answers and `Press Enter to submit` | wizard review |
+
+## Stock pi editor padding (issue 442, derived, not captured)
+
+pi's `editorPaddingX` setting (pi-tui `components/editor.js`, in the 1.1.0 package already, set from
+pi 1.2.0's settings) pads every editor row it draws, the draft rows and the slash palette rows, with
+that many spaces on each side. The four files below are NOT captures. Each one is a `pi--v110-*`
+capture whose editor rows (and palette rows) were indented by hand with the padding the source adds,
+keeping the width: the same bytes, the cursor cell moved with the text.
+
+| Fixture | Derived from | Padding | Reads as |
+| --- | --- | --- | --- |
+| `pi--v120-idle-padded.txt` | `pi--v110-idle.txt` | 1 | composer |
+| `pi--v120-draft-padded.txt` | `pi--v110-draft.txt` | 1 | composer, draft read back |
+| `pi--v120-draft-padded-multiline.txt` | `pi--v110-draft-multiline.txt` | 2 | composer, draft read back |
+| `pi--v120-slash-palette-padded.txt` | `pi--v110-slash-palette.txt` | 1 | composer with palette, draft `/` |
 | `pi--<v>-questionnaire-answer-editor.txt` | The free-text editor of a tab page | raw, Escape card |
 
 What each footer means, and the source lines behind it: [`pi/ASK_NOTES.md`](../../lib/harness/pi/ASK_NOTES.md).
