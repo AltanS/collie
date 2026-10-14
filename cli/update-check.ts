@@ -177,12 +177,11 @@ const DISK_RED_KB = 500 * 1024;
 const DISK_AMBER_KB = 1024 * 1024;
 
 /**
- * The oldest Bun this tree's own code is known to run on — the version its crew transport was
- * measured against (`bridge/crew/transport.ts`). Below it is AMBER rather than red: nothing here has
- * observed a failure at an older Bun, and a preflight that refuses on a guess is one the operator
- * learns to override.
+ * The oldest Bun this tree's own code is known to run on: the oldest one the whole test suite
+ * passes on (1.3.14 fails seven backend test files, and one of them exhausts memory). Below it is
+ * AMBER rather than red: a preflight that refuses on a guess is one the operator learns to override.
  */
-const MIN_BUN = "1.3.14";
+const MIN_BUN = "1.4.0";
 
 /**
  * Rewrite a remedy that names Collie's own self-update command, and ONLY such a remedy.
