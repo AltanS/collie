@@ -645,6 +645,17 @@ updated machines, so build skew is the steady state (§7), and this section is t
   not know reads as absent. Nothing in `bridge/crew/merge.ts` changes, for the reason the `cache`
   bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
 
+- **A pane gained an optional `suggestions`** (added 2026-10-14, issue #433). It lists, in order, up
+  to three next prompts the pane's agent suggested, read from the pane's Herdr tokens on the machine
+  the pane lives on. Additive-optional with the closed reading this section requires: **absent means
+  no suggestions, and the phone draws no chips**, exactly as before the field. An older peer omits it,
+  and an older lead passes it through untouched. A lead under `COLLIE_REDACT` drops each suggestion
+  the secret mask would change from every pane, its own and its members', because it is
+  program-written text, and keeps the rest; an older lead does not know the field, so it passes a
+  newer member's `suggestions` through as the member sent them, even when it redacts. Nothing in
+  `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION`
+  stays `2`, no new route, no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

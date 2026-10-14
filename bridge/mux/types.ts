@@ -243,6 +243,14 @@ export interface MuxPane extends MuxIdentity {
    */
   readonly hint?: string;
   /**
+   * The next prompts the agent in this pane suggested, in its order: one to three, absent when none.
+   *
+   * Presentation, and only presentation: untrusted text a program wrote, cleaned by the adapter,
+   * which the phone renders and does not interpret. A tap puts one in the composer as a draft and
+   * never sends it. Its presence or absence changes no capability, no grammar and no sort.
+   */
+  readonly suggestions?: readonly string[];
+  /**
    * Content revision from the multiplexer's snapshot — changes when the pane's screen changes.
    * Herdr provides this natively; tmux and zellij can only derive it per-read, so it is absent
    * from their snapshot and optional here.

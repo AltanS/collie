@@ -1,6 +1,7 @@
 import type { JsonObject } from "../../json.ts";
 import type { AgentStatus } from "../../types.ts";
 import { dialHerdr, type DialMode, type SockHandle } from "../../dial.ts";
+import { stripAnsi } from "../../journal/text.ts";
 import { decodeReplyLine, decodeStreamLine, type EventData } from "../../wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +154,13 @@ export interface WirePane {
     max_offset_from_bottom: number;
     viewport_rows: number;
   } | null;
+  /**
+   * Named strings a process reported on its pane (herdr 0.9.4, `herdr pane report-metadata --token
+   * NAME=VALUE`). Herdr cuts each value to 80 code points. Absent or `{}` when none are set.
+   *
+   * Collie reads only `suggestion_1..3` ({@link paneSuggestions}) and carries nothing else.
+   */
+  tokens?: Record<string, string> | null;
 }
 
 /**
@@ -223,6 +231,41 @@ export function paneAgentSession(raw: WirePane["agent_session"]): PaneAgentSessi
   if (typeof raw.value !== "string" || raw.value === "") return null;
   const agent = typeof raw.agent === "string" && raw.agent !== "" ? raw.agent : undefined;
   return { kind: raw.kind, value: raw.value, agent };
+}
+
+/** The pane tokens an agent writes its suggested next prompts to, in display order. */
+const SUGGESTION_TOKENS = ["suggestion_1", "suggestion_2", "suggestion_3"] as const;
+
+/** Herdr's own cap on a token value, in code points. Re-applied here, because the wire is untrusted. */
+const SUGGESTION_MAX_CODE_POINTS = 80;
+
+/** Control and format characters, and the two line separators: none belongs in one line of text. */
+const HIDDEN_CHAR = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+
+/**
+ * The suggested next prompts off a raw pane's `tokens`, in order, cleaned. Empty when there are none.
+ *
+ * A token value is text a program wrote, like a terminal title, so it is cleaned here at the wire
+ * boundary: escapes stripped, whitespace collapsed to single spaces, control and format characters
+ * removed, cut to 80 code points. A missing name, a non-string value or a value empty after cleaning
+ * is skipped, so the list keeps the agent's order and has no holes.
+ */
+export function paneSuggestions(raw: WirePane["tokens"]): string[] {
+  if (typeof raw !== "object" || raw === null) return [];
+  const suggestions: string[] = [];
+  for (const name of SUGGESTION_TOKENS) {
+    const value = raw[name];
+    if (typeof value !== "string") continue;
+    // A hidden character that is also whitespace (a newline, a tab) becomes a space, so two words it
+    // separated stay two words; any other one goes. Then every run of whitespace is one space.
+    const text = stripAnsi(value)
+      .replace(HIDDEN_CHAR, (c) => (/\s/.test(c) ? " " : ""))
+      .replace(/\s+/g, " ")
+      .trim();
+    const capped = [...text].slice(0, SUGGESTION_MAX_CODE_POINTS).join("").trimEnd();
+    if (capped !== "") suggestions.push(capped);
+  }
+  return suggestions;
 }
 
 /** Wire params of `tab.create`. `focus` is always false — never yank the desktop TUI's focus. */

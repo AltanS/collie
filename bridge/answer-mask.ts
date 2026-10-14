@@ -1,7 +1,7 @@
 // ── ONE MASK PER ANSWER, WHICHEVER BRIDGE MADE THE ANSWER ───────────────────────────────────────
 // The answers that carry text a pane or an agent wrote, each with the mask `bridge/redact.ts` puts on
 // it before a phone reads it: the mirror, a History page, a Chat body, a Changes diff, a Files body,
-// and a pane's program-set title in the snapshot. Two callers use them and must agree to the byte:
+// and a pane's program-set title and suggestions in the snapshot. Two callers use them and must agree to the byte:
 // this bridge's own routes (server.ts), when the answer is made here, and a crew lead re-masking what
 // a member sent (`bridge/crew/mask.ts`), because a member one release behind sent it unmasked. One
 // function per answer, so the two cannot drift: a field masked here is masked on both paths.
@@ -52,20 +52,32 @@ export function maskFileBody<TAnswer extends FilesListing | FileReadAnswer>(answ
   return { ...answer, text: redactText(answer.text) };
 }
 
+/** The text on a pane record that a program in the pane wrote, rather than the operator. */
+type PaneProgramText = { terminalTitle?: string; suggestions?: readonly string[] };
+
 /**
- * A pane with the title a program in it set masked. Any program can write that title, so it can
- * hold a path, a command or a key; the operator's own label is not touched.
+ * A pane with the text a program in it wrote masked. Any program can write its title, so the title
+ * can hold a path, a command or a key; it is masked. The agent's suggested prompts are the same kind
+ * of text, but a masked suggestion would put the mask into the operator's draft, so a suggestion the
+ * mask would change is dropped and the rest pass as they are; with none left the key goes too. The
+ * operator's own label is not touched.
  */
-export function maskTerminalTitle<P extends { terminalTitle?: string }>(pane: P): P {
-  return pane.terminalTitle === undefined ? pane : { ...pane, terminalTitle: redactText(pane.terminalTitle) };
+export function maskPaneText<P extends PaneProgramText>(
+  pane: P,
+): Omit<P, "suggestions"> & { suggestions?: readonly string[] } {
+  const { suggestions, ...rest } = pane;
+  const titled = pane.terminalTitle === undefined ? rest : { ...rest, terminalTitle: redactText(pane.terminalTitle) };
+  const kept = suggestions?.filter((s) => redactText(s) === s) ?? [];
+  return kept.length === 0 ? titled : { ...titled, suggestions: kept };
 }
 
 /**
- * A snapshot with every pane's program-set title masked. The lead's merged snapshot carries its
- * members' panes as the members sent them, so a member that does not mask sent its titles in clear.
+ * A snapshot with every pane's program-written text masked ({@link maskPaneText}). The lead's merged
+ * snapshot carries its members' panes as the members sent them, so a member that does not mask sent
+ * its titles and suggestions in clear.
  */
 export function maskSnapshotTitles<
-  S extends { agents: readonly { terminalTitle?: string }[]; shellPanes: readonly { terminalTitle?: string }[] },
+  S extends { agents: readonly PaneProgramText[]; shellPanes: readonly PaneProgramText[] },
 >(snapshot: S): S {
-  return { ...snapshot, agents: snapshot.agents.map(maskTerminalTitle), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };
+  return { ...snapshot, agents: snapshot.agents.map(maskPaneText), shellPanes: snapshot.shellPanes.map(maskPaneText) };
 }

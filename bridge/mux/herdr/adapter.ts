@@ -64,6 +64,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   HerdrClient,
   paneAgentSession,
+  paneSuggestions,
   type CreatedShell,
   type HerdrRpc,
   type HerdrWorktreeCreate,
@@ -701,6 +702,9 @@ function toMuxPane(
   // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server predates
   // `scroll`, so an older Herdr reads as "unknown" rather than "zero".
   if (raw.scroll) pane.readableLines = raw.scroll.max_offset_from_bottom + raw.scroll.viewport_rows;
+  // The next prompts the agent suggested, from its pane's `suggestion_N` tokens. Omitted when none.
+  const suggestions = paneSuggestions(raw.tokens);
+  if (suggestions.length > 0) pane.suggestions = suggestions;
   pane.revision = raw.revision;
   return pane;
 }

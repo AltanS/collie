@@ -334,6 +334,10 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension either: the newest turn of a pane whose adapter takes guarded controls
   // (ADR 0101). Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
   turnId: true,
+  // Not a crew dimension: the next prompts the agent in the pane suggested (#433), read off the
+  // pane's own record and absent when it suggested none. Absent on every pane in this baseline, so
+  // no golden byte moved.
+  suggestions: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -469,6 +473,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "sessionName",
       "soleTabName",
       "status",
+      "suggestions",
       "tabId",
       "tabLabel",
       "tabPosition",

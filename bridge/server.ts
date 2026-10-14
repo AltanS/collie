@@ -131,8 +131,8 @@ import {
   maskFileBody,
   maskHistoryPage,
   maskPaneRead,
+  maskPaneText,
   maskSnapshotTitles,
-  maskTerminalTitle,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import { redactAnsi } from "./redact.ts";
@@ -1377,9 +1377,10 @@ export function startServer(opts: {
     // nothing. No entry means no key at all, which renders as nothing.
     const withActivity = (from: SessionRuntime, p: AgentView): AgentView => {
       const a = activity.get(from.name, p.paneId);
-      // The title is the one string here a program in the pane writes, so it is masked like the
-      // mirror (bridge/redact.ts) before it reaches the phone and the phone's cache.
-      const titled = cfg.redact ? maskTerminalTitle(p) : p;
+      // The title and the suggestions are the strings here a program in the pane writes, so the
+      // title is masked like the mirror (bridge/redact.ts) and a suggestion the mask would change is
+      // dropped before it reaches the phone and the phone's cache.
+      const titled = cfg.redact ? maskPaneText(p) : p;
       const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);

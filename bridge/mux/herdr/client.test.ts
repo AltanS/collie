@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { toPipeName } from "../../dial.ts";
 import type { JsonObject } from "../../json.ts";
-import { HerdrClient, WORKTREE_TIMEOUT_MS } from "./client.ts";
+import { HerdrClient, paneSuggestions, WORKTREE_TIMEOUT_MS } from "./client.ts";
 
 // The per-call budget (ADR 0089). Every Herdr call gets the client's own budget, 5 s in production,
 // except the two worktree calls, which run `git worktree add` before they answer and get
@@ -139,5 +139,53 @@ describe("HerdrClient processInfo", () => {
   test("a pane with no foreground group answers without the key", async () => {
     const client = new HerdrClient(await lateHerdr({ process_info: { pane_id: "w9:p1" } }), 1_000);
     await expect(client.processInfo("w9:p1")).resolves.toEqual({ pane_id: "w9:p1" });
+  });
+});
+
+// A pane's `suggestion_1..3` tokens (herdr 0.9.4) are text a program wrote. The helper is the wire
+// boundary: everything downstream gets a clean, ordered list or nothing.
+describe("paneSuggestions", () => {
+  const ESC = String.fromCodePoint(0x1b);
+
+  test("no tokens, null tokens and an empty map all read as no suggestions", () => {
+    expect(paneSuggestions(undefined)).toEqual([]);
+    expect(paneSuggestions(null)).toEqual([]);
+    expect(paneSuggestions({})).toEqual([]);
+  });
+
+  test("keeps the agent's order and skips a gap", () => {
+    expect(paneSuggestions({ suggestion_2: "Rewrite it" })).toEqual(["Rewrite it"]);
+    expect(paneSuggestions({ suggestion_3: "c", suggestion_1: "a", suggestion_2: "b" })).toEqual(["a", "b", "c"]);
+  });
+
+  test("reads only suggestion_1..3: other tokens and a fourth suggestion are ignored", () => {
+    expect(
+      paneSuggestions({ task: "setup-herdr", suggestion_1: "run the tests", suggestion_4: "never shown" }),
+    ).toEqual(["run the tests"]);
+  });
+
+  test("a value that is not a string is skipped", () => {
+    // Parsed, as the client does with a reply: a newer or broken server may send any value.
+    expect(paneSuggestions(JSON.parse('{"suggestion_1":42,"suggestion_2":null,"suggestion_3":"ok"}'))).toEqual(["ok"]);
+  });
+
+  test("strips escapes, control and format characters, and collapses whitespace", () => {
+    expect(
+      paneSuggestions({
+        suggestion_1: `${ESC}[31mrun${ESC}[0m the\ntests\u0007`,
+        suggestion_2: "  fix\u200b the\t\tbuild\u202e  ",
+      }),
+    ).toEqual(["run the tests", "fix the build"]);
+  });
+
+  test("cuts a value past 80 code points, counting an emoji as one", () => {
+    const long = "🐕".repeat(100);
+    const [cut] = paneSuggestions({ suggestion_1: long });
+    expect([...cut!].length).toBe(80);
+    expect(cut).toBe("🐕".repeat(80));
+  });
+
+  test("a value that is empty after cleaning is dropped, so all-empty is none", () => {
+    expect(paneSuggestions({ suggestion_1: "", suggestion_2: "   ", suggestion_3: `${ESC}[0m\u200b` })).toEqual([]);
   });
 });

@@ -295,6 +295,8 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // A finished sentence for the operator, composed server-side and carried through untouched. It is
   // presentation: nothing in this engine reads it, and it never reaches `agent` or `status` above.
   if (pane.hint) view.hint = pane.hint;
+  // The agent's suggested next prompts: presentation too, carried through untouched like the hint.
+  if (pane.suggestions) view.suggestions = pane.suggestions;
   return view;
 }
 

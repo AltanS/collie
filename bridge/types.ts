@@ -125,6 +125,15 @@ export interface AgentView {
    */
   hint?: string;
   /**
+   * The next prompts the agent in this pane suggested, in its order: one to three, absent when none.
+   *
+   * PRESENTATION AND NOTHING ELSE, like {@link hint}: untrusted text a program wrote, which the
+   * client renders as text and never interprets. A tap fills a draft and never sends. Under
+   * `COLLIE_REDACT` a suggestion the mask would change is dropped (`maskPaneText`), because a
+   * masked draft is no use.
+   */
+  suggestions?: readonly string[];
+  /**
    * Epoch ms of this agent's last observed status transition (bridge/activity.ts). The only thing
    * that can make a pane read as unseen. Absent until the ledger has an entry, and on the very
    * first poll after a fresh install.

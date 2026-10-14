@@ -96,6 +96,15 @@ export interface AgentView {
    */
   hint?: string;
   /**
+   * The next prompts the agent in this pane suggested, in its order: one to three, absent when none
+   * (and always absent when the bridge masks text). Untrusted text a program wrote.
+   *
+   * RENDER IT AS TEXT, NEVER INTERPRET IT. The Chat view draws each one as a chip; a tap puts its
+   * text in the composer as a draft and never sends it. Text only, never markup — the same XSS
+   * boundary as `paneLabel`.
+   */
+  suggestions?: string[];
+  /**
    * Epoch ms of this agent's last status transition, as the bridge observed it. Absent on an older
    * bridge — which is exactly why triage degrades cleanly; see `triage()`.
    */

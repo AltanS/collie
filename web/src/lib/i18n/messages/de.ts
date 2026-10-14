@@ -419,6 +419,7 @@ export const de: Dictionary = {
   "chat.stream.queued": "Wartet auf Senden",
   "chat.pin.label": "Deine Eingabe",
   "chat.pin.earlier": "Die Frage liegt weiter zurück · Ältere Einträge laden",
+  "chat.suggestions.label": "Vorschläge",
   "chat.stream.sendNow": "Jetzt senden",
   "chat.stream.sendNowAria": "Jetzt senden, die wartenden Nachrichten",
   "chat.stream.loadOlderFailed": "Ältere Beiträge konnten nicht geladen werden",

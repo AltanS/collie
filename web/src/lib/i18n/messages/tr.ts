@@ -346,6 +346,7 @@ export const tr: Dictionary = {
   "chat.stream.queued": "Göndermek için bekleniyor",
   "chat.pin.label": "İsteminiz",
   "chat.pin.earlier": "Soru daha geride · Daha eskileri yükle",
+  "chat.suggestions.label": "Öneriler",
   "chat.stream.sendNow": "Şimdi gönder",
   "chat.stream.sendNowAria": "Şimdi gönder, bekleyen mesajlar",
   "chat.stream.loadOlderFailed": "Önceki turlar yüklenemedi",
