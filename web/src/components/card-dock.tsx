@@ -69,6 +69,9 @@ export interface CardDockProps {
   ) => boolean | void | Promise<boolean | void>;
   /** Injected handler for a wizard tap, one race-guarded keystroke per control (lib/wizard-action.ts). */
   onWizardAction?: (keys: string[], wizard: WizardModel) => void | Promise<void>;
+  /** Injected handler for an answer typed into a wizard step's field (lib/wizard-action.ts); resolves
+   *  whether it was sent, so the card keeps a refused draft. */
+  onWizardAnswer?: (text: string, wizard: WizardModel) => Promise<boolean>;
   /** Injected handler for a preview-dialog tap (lib/preview-action.ts). */
   onPreviewAction?: (action: PreviewBlockAction, preview: PreviewSelectModel) => void | Promise<void>;
   /** Injected handler for a multi-select tap (lib/multi-select-action.ts). */
@@ -114,6 +117,7 @@ function liftedCard({
   blocks,
   onPromptAction,
   onWizardAction,
+  onWizardAnswer,
   onPreviewAction,
   onMultiSelectAction,
   onMenuAction,
@@ -145,7 +149,11 @@ function liftedCard({
         wizard={wizardBlock.wizard}
         lines={wizardBlock.lines}
         disabled={promptDisabled || !onWizardAction}
+        paneId={paneId}
+        scope={scope}
+        stale={stale}
         onAction={(keys) => onWizardAction?.(keys, wizardBlock.wizard)}
+        onAnswer={onWizardAnswer ? (text) => onWizardAnswer(text, wizardBlock.wizard) : undefined}
       />
     );
   }

@@ -99,7 +99,7 @@ import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { StatusDot } from "@/components/status-badge";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
-import { submitWizardKeys } from "@/lib/wizard-action";
+import { submitWizardAnswer, submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { submitMenuKeys } from "@/lib/menu-action";
@@ -1413,6 +1413,41 @@ export function AgentChat({
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
+  // Send an answer typed on the phone into a wizard step's field (ADR 0104): the shared recipe
+  // reaches, clears and fills the field, then one bound Enter answers the step and advances it.
+  // Resolves whether it was sent, so the card keeps a refused draft on screen.
+  const handleWizardAnswer = useCallback(
+    async (answer: string, wizard: WizardModel) => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return false;
+      }
+      const result = await submitWizardAnswer({
+        paneId,
+        scope,
+        requestedLines,
+        detectedRevision: shown.revision,
+        agent: agent?.agent,
+        wizard,
+        text: answer,
+      });
+      if (result.status === "sent") {
+        setStatus(t("chat.status.answerSent"), "success");
+        await showAfterSend();
+      } else if (result.status === "changed") {
+        // Which step refused, for a person with the console open (`why` is a diagnosis, never UI text).
+        if (result.why !== undefined) console.info("collie: answer refused", result.why);
+        setStatus(t("chat.status.wizardChanged"), "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
+      }
+      return result.status === "sent";
+    },
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+  );
+
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
   // Same guard-first shape as the two handlers above, but the choreography behind an intent is
   // MULTI-step (digit→verify→Enter; n→verify→type→Escape — see lib/preview-action.ts and
@@ -2686,6 +2721,7 @@ export function AgentChat({
               blocks={blocks}
               onPromptAction={handlePromptAction}
               onWizardAction={handleWizardAction}
+              onWizardAnswer={handleWizardAnswer}
               onPreviewAction={handlePreviewAction}
               onMultiSelectAction={handleMultiSelectAction}
               onMenuAction={handleMenuAction}

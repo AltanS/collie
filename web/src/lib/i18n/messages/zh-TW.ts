@@ -749,6 +749,7 @@ export const zhTW: Dictionary = {
   "prompt.feedback.answer.textAria": "回答內容",
   "prompt.feedback.answer.placeholder": "寫下你的回答…",
   "prompt.feedback.answer.help": "輸入到問題的回答欄中，並作為你的回答傳送。",
+  "prompt.feedback.answer.helpWizard": "輸入到此問題的回答欄中。傳送後即作答並前往下一個問題。",
   "prompt.feedback.answer.send": "傳送回答",
   "prompt.feedback.answer.sending": "正在輸入你的回答…",
   "prompt.feedback.answer.focused": "回答欄正在終端機中佔用鍵盤，這些按鈕會把內容輸入到欄中。你仍可以在下方傳送自己的回答。",

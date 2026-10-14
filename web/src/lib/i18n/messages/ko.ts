@@ -759,6 +759,7 @@ export const ko: Dictionary = {
   "prompt.feedback.answer.textAria": "답변 내용",
   "prompt.feedback.answer.placeholder": "답변을 입력하세요…",
   "prompt.feedback.answer.help": "질문의 답변 칸에 입력되어 답변으로 전송됩니다.",
+  "prompt.feedback.answer.helpWizard": "이 질문의 답변 칸에 입력됩니다. 보내면 답변되고 다음 질문으로 넘어갑니다.",
   "prompt.feedback.answer.send": "답변 보내기",
   "prompt.feedback.answer.sending": "답변 입력 중…",
   "prompt.feedback.answer.focused": "터미널에서 답변 칸이 키보드를 사용 중이라 이 버튼을 누르면 칸에 입력됩니다. 아래에서 직접 답변을 보낼 수는 있습니다.",

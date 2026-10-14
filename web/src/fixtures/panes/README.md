@@ -1010,6 +1010,12 @@ back from the session journal.
 | `claude--v2299-ask-field-single-typed-off-row.txt` | The same text, `Up`: pointer on `3. Blue`. The field's digit now SUBMITS the held text |
 | `claude--v2299-ask-field-single-focused-wrapped.txt` | Focused, a value wrapped to two display lines (continuation indented five columns) |
 | `claude--v2299-ask-field-single-focused-three-lines.txt` | Focused, a value wrapped to three display lines; three `ctrl+u` emptied it from the end |
+| `claude--v2299-ask-field-wizard-focused-empty.txt` | Three-question wizard, step 1, field's digit pressed: focused and empty, no advance |
+| `claude--v2299-ask-field-wizard-focused-typed.txt` | The same field holding `Mango`. `Enter` answered and advanced to step 2 |
+| `claude--v2299-ask-field-wizard-revisit-typed.txt` | Step 1 revisited after answering by typing: `3. Mango ✔`, pointer on row 1 |
+| `claude--v2299-ask-field-wizard-revisit-focused.txt` | Then `Down` × 2: `❯ 3. Mango  ✔`, focused, caret at the end |
+| `claude--v2299-ask-field-wizard-revisit-cleared.txt` | Then `ctrl+u ctrl+k`: `❯ 3. Type something. ✔`, empty |
+| `claude--v2299-ask-field-wizard-review-typed.txt` | The review step listing typed answers (`→ Mango`, `→ Lisbon`) beside a picked one |
 
 ## Draft-frame and modal-edge corpus (captured 2026-09-26, Claude Code 2.1.283, herdr 0.9.0, throwaway Herdr panes)
 

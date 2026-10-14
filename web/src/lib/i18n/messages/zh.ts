@@ -750,6 +750,7 @@ export const zh: Dictionary = {
   "prompt.feedback.answer.textAria": "回答内容",
   "prompt.feedback.answer.placeholder": "写下你的回答…",
   "prompt.feedback.answer.help": "输入到问题的回答栏中，并作为你的回答发送。",
+  "prompt.feedback.answer.helpWizard": "输入到此问题的回答栏中。发送后即作答并进入下一个问题。",
   "prompt.feedback.answer.send": "发送回答",
   "prompt.feedback.answer.sending": "正在输入你的回答…",
   "prompt.feedback.answer.focused": "回答栏正在终端中占用键盘，这些按钮会把内容输入到栏中。你仍可以在下方发送自己的回答。",

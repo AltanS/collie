@@ -766,6 +766,8 @@ export const es: Dictionary = {
   "prompt.feedback.answer.placeholder": "Escribe tu respuesta...",
   "prompt.feedback.answer.help":
     "Se escribe en el campo de respuesta de la pregunta y se envía como tu respuesta.",
+  "prompt.feedback.answer.helpWizard":
+    "Se escribe en el campo de respuesta de esta pregunta. Al enviarla, se responde y se pasa a la siguiente.",
   "prompt.feedback.answer.send": "Enviar respuesta",
   "prompt.feedback.answer.sending": "Escribiendo tu respuesta...",
   "prompt.feedback.answer.focused":

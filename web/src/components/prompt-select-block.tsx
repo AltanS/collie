@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Loader2, MessageSquarePlus } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 import type {
   PromptFamily,
@@ -9,8 +9,8 @@ import type {
   PromptSubjectLine,
   StyledLine,
 } from "@/lib/blocks";
-import type { PromptFeedback } from "@/lib/harness/prompt-model";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
+import { AnswerFieldSurface, TypedFieldCard, answerFieldCopy, type FeedbackCopy } from "@/components/answer-field-surface";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { RawMirror } from "@/components/raw-mirror";
@@ -194,39 +194,12 @@ function SubjectBody({ lines }: { lines: PromptSubjectLine[] }) {
   );
 }
 
-interface FeedbackCopy {
-  offer: string | null;
-  /** The offer that opens the editor prefilled with what the field holds; `answer` rows only. */
-  change: string | null;
-  textAria: string;
-  editorLabel: string;
-  placeholder: string;
-  help: string;
-  send: string;
-  sending: string;
-  focused: string;
-  typedPrefix: string;
-}
-
 // Copy is purpose-aware: Claude's plan-approval input is deny-with-feedback; AskUserQuestion's field
 // is the question's answer; Grok's `z` row and a permission amend note are read, never typed into.
 // Missing purpose is Claude's plan input.
 // A function (not a module-level object) for the same locale-freshness reason as familyCaption.
 function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
-  if (purpose === "answer") {
-    return {
-      offer: t("prompt.feedback.answer.offer"),
-      change: t("prompt.feedback.answer.change"),
-      textAria: t("prompt.feedback.answer.textAria"),
-      editorLabel: t("prompt.feedback.answer.editorLabel"),
-      placeholder: t("prompt.feedback.answer.placeholder"),
-      help: t("prompt.feedback.answer.help"),
-      send: t("prompt.feedback.answer.send"),
-      sending: t("prompt.feedback.answer.sending"),
-      focused: t("prompt.feedback.answer.focused"),
-      typedPrefix: t("prompt.feedback.answer.typedPrefix"),
-    };
-  }
+  if (purpose === "answer") return answerFieldCopy(t("prompt.feedback.answer.help"));
   if (purpose === "free-text") {
     // No phone composer: neither Claude recipe fits this row.
     return {
@@ -254,99 +227,6 @@ function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
     focused: t("prompt.feedback.planChange.focused"),
     typedPrefix: t("prompt.feedback.planChange.typedPrefix"),
   };
-}
-
-/** What the terminal's field holds, read-only: the copy's prefix, then the text in the content face. */
-function TypedFieldCard({ prefix, text }: { prefix: string; text: string }) {
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-      <MessageSquarePlus
-        className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-        aria-label={t("prompt.feedback.typedAria")}
-      />
-      <span className="min-w-0 flex-1 text-xs text-foreground/90">
-        {prefix}
-        <span className="font-content">{text}</span>
-      </span>
-    </div>
-  );
-}
-
-interface AnswerFieldSurfaceProps {
-  field: PromptFeedback;
-  copy: FeedbackCopy;
-  /** Our own answer send is in flight. */
-  ours: boolean;
-  /** Any send of this card is in flight: Cancel must not race it. */
-  anySending: boolean;
-  editorOpen: boolean;
-  draft: string;
-  onDraft: (value: string) => void;
-  /** Open the editor holding `prefill`. */
-  onOpen: (prefill: string) => void;
-  onCancel: () => void;
-  onSend: () => void;
-  /** The card cannot send right now (read-only, offline, a send in flight). A focused terminal field
-   *  does not lock this surface: the recipe reaches the field itself (lib/answer-field.ts). */
-  locked: boolean;
-  busyIcon: ReactNode;
-}
-
-/**
- * AskUserQuestion's `Type something.` field (ADR 0104), below the options: our own send in flight,
- * else the editor, else what the field holds with an offer to change it, else the focused banner with
- * the offer, else the offer alone.
- */
-function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
-  const { field, copy, locked } = props;
-  if (props.ours) {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        {props.busyIcon}
-        {copy.sending}
-      </div>
-    );
-  }
-  if (props.editorOpen) {
-    return (
-      <InlineEditor
-        id="ask-answer-text"
-        label={copy.editorLabel}
-        value={props.draft}
-        onChange={props.onDraft}
-        maxLength={FEEDBACK_MAX_LENGTH}
-        placeholder={copy.placeholder}
-        help={copy.help}
-        textAriaLabel={copy.textAria}
-        sendLabel={copy.send}
-        cancelLabel={t("prompt.feedback.cancel")}
-        onSend={props.onSend}
-        onCancel={props.onCancel}
-        sendDisabled={locked || props.draft.trim().length === 0}
-        cancelDisabled={props.anySending}
-        busy={false}
-        busyAriaLabel={t("prompt.sendingAria")}
-      />
-    );
-  }
-  if (field.text !== "") {
-    return (
-      <>
-        <TypedFieldCard prefix={copy.typedPrefix} text={field.text} />
-        <InlineEditorOffer label={copy.change ?? ""} disabled={locked} onClick={() => props.onOpen(field.text)} />
-      </>
-    );
-  }
-  return (
-    <>
-      {field.focused ? (
-        <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
-          {copy.focused}
-        </div>
-      ) : null}
-      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => props.onOpen("")} />
-    </>
-  );
 }
 
 // Native, tappable rendering of a Claude single-choice dialog. Every visible string — the subject,
