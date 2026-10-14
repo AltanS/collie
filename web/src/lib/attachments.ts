@@ -134,6 +134,18 @@ export function markerFor(attachment: Pick<MarkedAttachment, "n" | "kind">): str
 }
 
 /**
+ * The number the next chip takes: `next`, or one past the highest marker number already in `text`
+ * when that is higher. A marker can stand in the text with no chip behind it (text copied from
+ * another pane, or typed), and a new chip that reused its number would make it a twin: Send swaps
+ * every copy of a chip's marker for its path, so the photo went in twice (minibuch, 2026-10-14).
+ */
+export function nextMarkerNumber(text: string, next: number): number {
+  let highest = 0;
+  for (const m of text.matchAll(/\[(?:Image|File) #(\d+)\]/g)) highest = Math.max(highest, Number(m[1]));
+  return Math.max(next, highest + 1);
+}
+
+/**
  * Put a marker into the draft at `caret` (the end when there is none), padded so it never welds to
  * a word: a space before it unless the text there already ends in whitespace, and a space after it
  * unless the text there already starts with some. Returns the new text and where the caret goes,

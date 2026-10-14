@@ -7,6 +7,7 @@ import {
   insertMarker,
   markerFor,
   markerMissing,
+  nextMarkerNumber,
   removeMarker,
   shortName,
   limitMb,
@@ -219,5 +220,21 @@ describe("shortName", () => {
     expect(shortName("screenshot-2026-09-22.png")).toBe("screenshot-20…");
     expect(shortName("screenshot-2026-09-22.png")).toHaveLength(14);
     expect(shortName("a.png")).toBe("a.png");
+  });
+});
+
+describe("nextMarkerNumber — a new chip never twins a marker already in the text", () => {
+  it("keeps the counter when the text holds no higher marker", () => {
+    expect(nextMarkerNumber("", 1)).toBe(1);
+    expect(nextMarkerNumber("see [Image #1]", 2)).toBe(2);
+  });
+
+  it("steps past a marker with no chip behind it, of either kind", () => {
+    expect(nextMarkerNumber("look at this [Image #1]", 1)).toBe(2);
+    expect(nextMarkerNumber("[File #4] and [Image #2]", 1)).toBe(5);
+  });
+
+  it("ignores what is not a marker", () => {
+    expect(nextMarkerNumber("[Image 3] [Image #x] Image #9", 1)).toBe(1);
   });
 });
