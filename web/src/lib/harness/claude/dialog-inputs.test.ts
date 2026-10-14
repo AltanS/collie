@@ -122,10 +122,14 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
     expect(model.options.map((o) => o.label)).toEqual(["Apple", "Banana", "Chat about this"]);
   });
 
-  it("multi-select with the pointer on the field is not claimed (a toggle would type into it)", () => {
+  it("multi-select with the pointer on the field is claimed, its field focused and never an option", () => {
     const lines = fixtureLines("claude--v2283-multiselect-type-something-focused.txt");
-    expect(detectMultiSelect(lines)).toBeNull();
-    expect(kinds(buildBlocks(lines, { agent: "claude" }))).not.toContain("multi-select");
+    const model = detectMultiSelect(lines);
+    if (model?.phase !== "checkbox") throw new Error("the focused multi-select is not claimed");
+    expect(model.field).toMatchObject({ n: 4, focused: true, text: "", checked: false, pointer: "on" });
+    expect(model.pointer).toBe("field");
+    expect(model.options.map((o) => o.n)).not.toContain(4);
+    expect(kinds(buildBlocks(lines, { agent: "claude" }))).toContain("multi-select");
   });
 
   it("a wizard step with the pointer on the field is claimed, its field focused and never an option", () => {

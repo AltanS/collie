@@ -750,6 +750,8 @@ export const zhTW: Dictionary = {
   "prompt.feedback.answer.placeholder": "寫下你的回答…",
   "prompt.feedback.answer.help": "輸入到問題的回答欄中，並作為你的回答傳送。",
   "prompt.feedback.answer.helpWizard": "輸入到此問題的回答欄中。傳送後即作答並前往下一個問題。",
+  "prompt.feedback.answer.helpMulti":
+    "將你的回答新增為已勾選的選項；完成後點按提交（或下一步）。",
   "prompt.feedback.answer.send": "傳送回答",
   "prompt.feedback.answer.sending": "正在輸入你的回答…",
   "prompt.feedback.answer.focused": "回答欄正在終端機中佔用鍵盤，這些按鈕會把內容輸入到欄中。你仍可以在下方傳送自己的回答。",
@@ -1462,6 +1464,7 @@ export const zhTW: Dictionary = {
   "promptAction.answer.fieldNotReached": "無法移到回答欄，未傳送任何內容",
   "promptAction.answer.notCleared": "無法清空回答欄，未傳送任何內容",
   "promptAction.answer.notArrived": "回答未出現在回答欄中，未提交任何內容",
+  "promptAction.answer.notTicked": "回答已輸入，但其所在列未被勾選。請在卡片上檢查。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "系統忙碌中，另一段錄音正在轉錄。請稍後再試。",

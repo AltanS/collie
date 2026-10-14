@@ -692,6 +692,8 @@ export const tr: Dictionary = {
   "prompt.feedback.answer.help": "Sorunun yanıt alanına yazılır ve yanıtınız olarak gönderilir.",
   "prompt.feedback.answer.helpWizard":
     "Bu sorunun yanıt alanına yazılır. Göndermek soruyu yanıtlar ve sonraki soruya geçer.",
+  "prompt.feedback.answer.helpMulti":
+    "Yanıtınızı işaretli bir seçenek olarak ekler; bitirdiğinizde Gönder'e (veya İleri'ye) dokunun.",
   "prompt.feedback.answer.send": "Yanıtı gönder",
   "prompt.feedback.answer.sending": "Yanıtınız yazılıyor…",
   "prompt.feedback.answer.focused":
@@ -1353,6 +1355,7 @@ export const tr: Dictionary = {
   "promptAction.answer.fieldNotReached": "Yanıt alanına ulaşılamadı, hiçbir şey gönderilmedi",
   "promptAction.answer.notCleared": "Yanıt alanı temizlenemedi, hiçbir şey gönderilmedi",
   "promptAction.answer.notArrived": "Yanıtınız alana ulaşmadı, hiçbir şey gönderilmedi",
+  "promptAction.answer.notTicked": "Yanıt yazıldı ama satırı işaretlenmedi. Kartta kontrol edin.",
   "stt.error.busy": "Meşgul; başka bir kaydın metne dönüştürülmesi hâlâ sürüyor. Birazdan tekrar deneyin.",
   "stt.error.tooLong": "Bu kayıt çok uzun, daha kısa bir kayıt yapın.",
   "stt.error.badFormat": "Bu tarayıcı Collie uygulamasının iletemeyeceği bir biçim kaydetti.",

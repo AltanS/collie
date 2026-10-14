@@ -693,6 +693,8 @@ export const it: Dictionary = {
     "Viene digitata nel campo di risposta della domanda e inviata come tua risposta.",
   "prompt.feedback.answer.helpWizard":
     "Digitata nel campo di risposta di questa domanda. L'invio risponde e passa alla domanda successiva.",
+  "prompt.feedback.answer.helpMulti":
+    "Aggiunge la tua risposta come scelta spuntata; tocca Invia (o Avanti) quando hai finito.",
   "prompt.feedback.answer.send": "Invia risposta",
   "prompt.feedback.answer.sending": "Digitazione della risposta…",
   "prompt.feedback.answer.focused":
@@ -1355,6 +1357,7 @@ export const it: Dictionary = {
     "Impossibile raggiungere il campo di risposta: nulla è stato inviato",
   "promptAction.answer.notCleared": "Impossibile svuotare il campo di risposta: nulla è stato inviato",
   "promptAction.answer.notArrived": "La risposta non è arrivata nel campo: nulla è stato inviato",
+  "promptAction.answer.notTicked": "La risposta è stata digitata, ma la sua riga non è stata spuntata. Controllala sulla scheda.",
   "stt.error.busy": "Occupato: un'altra registrazione è ancora in trascrizione. Riprova tra poco.",
   "stt.error.tooLong": "Questa registrazione è troppo lunga: creane una più breve.",
   "stt.error.badFormat": "Questo browser ha registrato un formato che Collie non può trasmettere.",

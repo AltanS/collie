@@ -751,6 +751,8 @@ export const zh: Dictionary = {
   "prompt.feedback.answer.placeholder": "写下你的回答…",
   "prompt.feedback.answer.help": "输入到问题的回答栏中，并作为你的回答发送。",
   "prompt.feedback.answer.helpWizard": "输入到此问题的回答栏中。发送后即作答并进入下一个问题。",
+  "prompt.feedback.answer.helpMulti":
+    "将你的回答添加为已勾选的选项；完成后点按提交（或下一步）。",
   "prompt.feedback.answer.send": "发送回答",
   "prompt.feedback.answer.sending": "正在输入你的回答…",
   "prompt.feedback.answer.focused": "回答栏正在终端中占用键盘，这些按钮会把内容输入到栏中。你仍可以在下方发送自己的回答。",
@@ -1466,6 +1468,7 @@ export const zh: Dictionary = {
   "promptAction.answer.fieldNotReached": "无法定位到回答栏，未发送任何内容",
   "promptAction.answer.notCleared": "无法清空回答栏，未发送任何内容",
   "promptAction.answer.notArrived": "回答未出现在回答栏中，未提交任何内容",
+  "promptAction.answer.notTicked": "回答已输入，但其所在行未被勾选。请在卡片上检查。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "系统繁忙，另一段录音正在转写。请稍后重试。",

@@ -768,6 +768,8 @@ export const es: Dictionary = {
     "Se escribe en el campo de respuesta de la pregunta y se envía como tu respuesta.",
   "prompt.feedback.answer.helpWizard":
     "Se escribe en el campo de respuesta de esta pregunta. Al enviarla, se responde y se pasa a la siguiente.",
+  "prompt.feedback.answer.helpMulti":
+    "Añade tu respuesta como una opción marcada; toca Enviar (o Siguiente) cuando termines.",
   "prompt.feedback.answer.send": "Enviar respuesta",
   "prompt.feedback.answer.sending": "Escribiendo tu respuesta...",
   "prompt.feedback.answer.focused":
@@ -1488,6 +1490,7 @@ export const es: Dictionary = {
   "promptAction.answer.fieldNotReached": "No se pudo llegar al campo de respuesta. No se envió nada.",
   "promptAction.answer.notCleared": "No se pudo vaciar el campo de respuesta. No se envió nada.",
   "promptAction.answer.notArrived": "Tu respuesta no llegó al campo. No se envió nada.",
+  "promptAction.answer.notTicked": "La respuesta se escribió, pero su fila no se marcó. Revísala en la tarjeta.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Ocupado. Hay otra transcripción en curso. Reintenta en unos segundos.",

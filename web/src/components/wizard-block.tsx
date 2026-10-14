@@ -139,6 +139,7 @@ export function WizardBlock({ wizard, lines, onAction, onAnswer, disabled, paneI
                 onSend={() => void sendAnswer()}
                 locked={answerLocked}
                 busyIcon={busyIcon}
+                showTyped
               />
             ) : null
           }

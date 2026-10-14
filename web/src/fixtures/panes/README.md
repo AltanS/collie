@@ -1016,6 +1016,14 @@ back from the session journal.
 | `claude--v2299-ask-field-wizard-revisit-focused.txt` | Then `Down` × 2: `❯ 3. Mango  ✔`, focused, caret at the end |
 | `claude--v2299-ask-field-wizard-revisit-cleared.txt` | Then `ctrl+u ctrl+k`: `❯ 3. Type something. ✔`, empty |
 | `claude--v2299-ask-field-wizard-review-typed.txt` | The review step listing typed answers (`→ Mango`, `→ Lisbon`) beside a picked one |
+| `claude--v2299-ask-field-multi-ticked-empty.txt` | multiSelect after `1` and `4`: `[✔] Cheese`, `[✔] Type something` (the digit ticks, never focuses), pointer on row 1 |
+| `claude--v2299-ask-field-multi-focused-typed.txt` | `Down` × 3 and a paste: `❯ 4. [✔] Pineapple`, focused |
+| `claude--v2299-ask-field-multi-focused-unticked.txt` | `Enter` on that row: `❯ 4. [ ] Pineapple` (Enter toggles; the text stays) |
+| `claude--v2299-ask-field-multi-focused-cleared.txt` | `ctrl+u ctrl+k`: `❯ 4. [ ] Type something`, cleared and unticked |
+| `claude--v2299-ask-field-multi-pointer-submit.txt` | A typed, unticked `4. [ ] Mushroom` with the pointer on `Submit` |
+| `claude--v2299-ask-field-wizmulti-focused-empty.txt` | Two-question wizard, step 1 multiSelect (advance row `Next`): pointer on the empty, ticked field |
+| `claude--v2299-ask-field-wizmulti-focused-typed.txt` | The same field holding `Pineapple`, ticked |
+| `claude--v2299-ask-field-wizmulti-focused-unticked.txt` | `Enter` on it: `[ ] Pineapple` |
 
 ## Draft-frame and modal-edge corpus (captured 2026-09-26, Claude Code 2.1.283, herdr 0.9.0, throwaway Herdr panes)
 

@@ -75,15 +75,24 @@ export interface AnswerFieldSurfaceProps {
    *  does not lock this surface: the recipe reaches the field itself (lib/answer-field.ts). */
   locked: boolean;
   busyIcon: ReactNode;
+  /** Show what a filled field holds as a read-only card. False where the card already shows the text
+   *  elsewhere (a multi-select question draws it as one of its checkbox rows). */
+  showTyped: boolean;
 }
 
 /**
  * AskUserQuestion's `Type something.` field (ADR 0104), below a card's options: our own send in
  * flight, else the editor, else what the field holds with an offer to change it, else the focused
- * banner with the offer, else the offer alone. Shared by the single-question card and the wizard step.
+ * banner with the offer, else the offer alone. Shared by the single-question card, the wizard step and
+ * the multi-select question.
  */
 export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
   const { field, copy, locked } = props;
+  const focusedBanner = field.focused ? (
+    <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
+      {copy.focused}
+    </div>
+  ) : null;
   if (props.ours) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -117,18 +126,14 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
   if (field.text !== "") {
     return (
       <>
-        <TypedFieldCard prefix={copy.typedPrefix} text={field.text} />
+        {props.showTyped ? <TypedFieldCard prefix={copy.typedPrefix} text={field.text} /> : focusedBanner}
         <InlineEditorOffer label={copy.change ?? ""} disabled={locked} onClick={() => props.onOpen(field.text)} />
       </>
     );
   }
   return (
     <>
-      {field.focused ? (
-        <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
-          {copy.focused}
-        </div>
-      ) : null}
+      {focusedBanner}
       <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => props.onOpen("")} />
     </>
   );

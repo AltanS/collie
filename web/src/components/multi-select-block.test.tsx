@@ -225,3 +225,58 @@ describe("MultiSelectBlock — as a step of a wizard", () => {
     expect(screen.queryByRole("list", { name: "Questions" })).not.toBeInTheDocument();
   });
 });
+
+// The question's own answer field (ADR 0104): a typed answer is one more ticked choice, so the card
+// shows it as a checkbox row; while the field has the keyboard in the terminal a digit is typed into
+// it and `Left` moves its caret, so every toggle, the escape and the step arrows lock.
+describe("MultiSelectBlock — the answer field", () => {
+  const OFFER = "Type your own answer";
+  const capture = (name: string) => fixtureModel(`claude--v2299-ask-field-${name}.txt`);
+
+  it("the offer opens the editor, which says the answer becomes a ticked choice", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-ticked-empty")} onAction={vi.fn()} onAnswer={vi.fn()} />);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("");
+    expect(screen.getByText(/Adds your answer as a ticked choice/)).toBeInTheDocument();
+  });
+
+  it("a typed field is a checkbox row of its own, and Change opens the editor holding it", async () => {
+    const onAction = vi.fn();
+    const onAnswer = vi.fn(() => true);
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-pointer-submit")} onAction={onAction} onAnswer={onAnswer} />);
+    const row = screen.getByRole("checkbox", { name: /Mushroom/ });
+    expect(row).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByText(/In the answer field:/)).not.toBeInTheDocument();
+    await user.click(row);
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "toggle", n: 4 });
+    await user.click(screen.getByRole("button", { name: "Change this answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mushroom");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAnswer).toHaveBeenCalledWith("Mushroom");
+  });
+
+  it("a focused field locks the options, its own row, the escape and the step arrows, not Next", () => {
+    render(<MultiSelectBlock multi={capture("wizmulti-focused-typed")} onAction={vi.fn()} onAnswer={vi.fn()} />);
+    expect(screen.getByText(/The answer field has the keyboard in the terminal/)).toBeInTheDocument();
+    for (const name of [/Cheese/, /Olives/, /Basil/, /Pineapple/]) {
+      expect(screen.getByRole("checkbox", { name })).toBeDisabled();
+    }
+    for (const name of [/Chat about this/, /Previous step/, /Next step/]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: /^Next$/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Change this answer" })).toBeEnabled();
+  });
+
+  it("keeps the draft on screen when the answer is refused", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-ticked-empty")} onAction={vi.fn()} onAnswer={() => false} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
+  });
+});
