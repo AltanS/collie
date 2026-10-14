@@ -3,17 +3,18 @@
 
 import { sha256Hex } from "./hash.ts";
 import { LIMITS } from "./rules.ts";
+import type { Json, Problem } from "./types.ts";
 
 /** A digest of what a request asks for. The same request id with another digest is `request-id-reused`. */
-export const digestOf = (payload: unknown): string => sha256Hex(JSON.stringify(payload));
+export const digestOf = (payload: Json): string => sha256Hex(JSON.stringify(payload));
 
 /** An error the server answers with a status and a `Problem` body. */
 export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
   /** More fields of the `Problem`: `message`, `turnId`, `askIds`, `ask`, `range`. */
-  readonly extra: Record<string, unknown>;
-  constructor(status: number, code: string, extra: Record<string, unknown> = {}) {
+  readonly extra: Omit<Problem, "code">;
+  constructor(status: number, code: string, extra: Omit<Problem, "code"> = {}) {
     super(code);
     this.status = status;
     this.code = code;

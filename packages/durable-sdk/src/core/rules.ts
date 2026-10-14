@@ -2,7 +2,7 @@
 // runtime import: this file runs in Bun and in a Cloudflare Worker.
 
 import { sha256Hex } from "./hash.ts";
-import type { Progress, ProgressStep } from "./types.ts";
+import type { Json, JsonObject, Progress, ProgressStep } from "./types.ts";
 
 /** Bytes per field. UTF-8 bytes, not code points. */
 export const CAPS = {
@@ -74,29 +74,61 @@ export function bytes(s: string): number {
   return n;
 }
 
+// ── Reading untyped input ──────────────────────────────────────────────────────
+// A request body, a model's tool arguments and a value a JavaScript caller passes past the types all arrive here
+// unchecked. The guards below are the one place a `typeof` reads such a value: each is a type predicate, so the
+// check IS the decode, and every reader after them branches on what they established.
+
+/** A string. */
+export function isText(value: Json | undefined): value is string {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- the rule's allowInTypeGuards case: in a type guard, "external values must be decoded into meaningful types at their I/O boundary".
+  return typeof value === "string";
+}
+
+/** A JSON object: not null and not a list. */
+export function isRecord(value: Json | undefined): value is JsonObject {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- the rule's allowInTypeGuards case: in a type guard, "external values must be decoded into meaningful types at their I/O boundary".
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A list. */
+export function isList(value: Json | undefined): value is readonly Json[] {
+  return Array.isArray(value);
+}
+
+/** `true` or `false`. */
+export function isFlag(value: Json | undefined): value is boolean {
+  return value === true || value === false;
+}
+
+/** A whole number no larger than 2^53 - 1 either way. */
+export function isSafeInteger(value: Json | undefined): value is number {
+  return Number.isSafeInteger(value);
+}
+
 // The mux id rule (isValidMuxId): control characters, whitespace, `/`, `?` and `#` are out.
 const UNSAFE_ID_CHAR = /[\p{C}\s/?#]/u;
 
 /** 1 to 128 bytes, no control character, no whitespace, none of `/`, `?` or `#`. */
-export function idOk(id: unknown): boolean {
-  return typeof id === "string" && id.length > 0 && bytes(id) <= CAPS.id && !UNSAFE_ID_CHAR.test(id);
+export function idOk(id: Json | undefined): boolean {
+  return isText(id) && id.length > 0 && bytes(id) <= CAPS.id && !UNSAFE_ID_CHAR.test(id);
 }
 
 /** A history cursor: 1 to 512 bytes of printable ASCII with no space (WIRE.md 7.16). */
-export function cursorOk(cursor: unknown): cursor is string {
-  return typeof cursor === "string" && cursor.length > 0 && cursor.length <= CAPS.historyCursor && /^[\x21-\x7e]+$/.test(cursor);
+export function cursorOk(cursor: Json | undefined): cursor is string {
+  return isText(cursor) && cursor.length > 0 && cursor.length <= CAPS.historyCursor && /^[\x21-\x7e]+$/.test(cursor);
 }
 
-export function assertId(id: unknown, what: string): string {
-  if (!idOk(id)) throw new TypeError(`${what} breaks the id rule (1-128 bytes, no control character, no whitespace, no / ? #): ${JSON.stringify(id)}`);
-  return id as string;
+export function assertId(id: Json | undefined, what: string): string {
+  if (!isText(id) || !idOk(id)) throw new TypeError(`${what} breaks the id rule (1-128 bytes, no control character, no whitespace, no / ? #): ${JSON.stringify(id)}`);
+  return id;
 }
 
 /**
  * An id a program may use for something it did not mint itself (a tool call id from a model, say).
  * A valid id comes back unchanged. Anything else maps to a valid id, the same one every time.
  */
-export function safeId(raw: unknown): string {
+export function safeId(raw: Json | undefined): string {
   const s = String(raw ?? "");
   if (idOk(s)) return s;
   const hash = sha256Hex(s).slice(0, 16);
@@ -120,7 +152,7 @@ const INVISIBLE = /[\u200b-\u200f\u061c\u202a-\u202e\u2060\u2066-\u2069\ufeff\u{
  * Clean a display string, then cut it to `max` bytes at the last whole code point that leaves room
  * for the 3-byte `…`. Multi-line fields keep `\n` and `\t`; every other string keeps neither.
  */
-export function cut(text: unknown, max: number, multiline = false): string {
+export function cut(text: Json | undefined, max: number, multiline = false): string {
   const clean = String(text ?? "")
     .replace(multiline ? CONTROLS_MULTILINE : CONTROLS, "")
     .replace(INVISIBLE, "");
@@ -140,8 +172,8 @@ export function cut(text: unknown, max: number, multiline = false): string {
  * An absolute path inside the cap, else undefined (it reads as absent). Absolute is the POSIX rule, a leading
  * `/`, which is what `node:path` says on Linux, the one system the local example runs on.
  */
-export function cwdOf(cwd: unknown): string | undefined {
-  if (typeof cwd !== "string" || cwd === "" || bytes(cwd) > CAPS.cwd || HAS_CONTROL.test(cwd)) return undefined;
+export function cwdOf(cwd: Json | undefined): string | undefined {
+  if (!isText(cwd) || cwd === "" || bytes(cwd) > CAPS.cwd || HAS_CONTROL.test(cwd)) return undefined;
   return cwd.startsWith("/") ? cwd : undefined;
 }
 
@@ -154,8 +186,8 @@ export const RENAME_TITLE_MAX = 120;
  * characters are not refused; `cut` removes them like it does from every display string, and a title
  * that is nothing but those reads as empty and is refused too.
  */
-export function renameTitleOf(title: unknown): string | undefined {
-  if (typeof title !== "string") return undefined;
+export function renameTitleOf(title: Json | undefined): string | undefined {
+  if (!isText(title)) return undefined;
   const trimmed = title.trim();
   if (trimmed === "" || HAS_CONTROL.test(trimmed) || [...trimmed].length > RENAME_TITLE_MAX) return undefined;
   const clean = cut(trimmed, CAPS.title).trim();
@@ -170,7 +202,7 @@ export const BADGE_TEXT_MAX = 12;
 export const BADGE_COUNT_MAX = 9999;
 
 /** Clean a display string capped in characters: controls and invisibles out, trimmed, cut with `…` as the last character. Empty after cleaning: undefined. */
-export function shortLine(text: unknown, maxChars: number): string | undefined {
+export function shortLine(text: Json | undefined, maxChars: number): string | undefined {
   const clean = cut(text, maxChars * 4 + 3).trim();
   if (clean === "") return undefined;
   const symbols = [...clean];
@@ -178,7 +210,7 @@ export function shortLine(text: unknown, maxChars: number): string | undefined {
 }
 
 /** A pane's subtitle as the wire carries it (WIRE.md 7.11), or undefined when nothing is left of it. */
-export function subtitleOf(text: unknown): string | undefined {
+export function subtitleOf(text: Json | undefined): string | undefined {
   return shortLine(text, SUBTITLE_MAX);
 }
 
@@ -187,11 +219,12 @@ export function subtitleOf(text: unknown): string | undefined {
  * 12 characters. A program that passes a count out of range or a shape with both keys made a mistake: it is a TypeError
  * here, so the wire never carries what the adapter would drop. A text with nothing left after cleaning is undefined.
  */
-export function badgeOf(value: { count: number } | { text: string }): { count: number } | { text: string } | undefined {
-  const { count, text } = value as { count?: unknown; text?: unknown };
+export function badgeOf(value: { count?: number; text?: string }): { count: number } | { text: string } | undefined {
+  const { count, text } = value;
   if ((count === undefined) === (text === undefined)) throw new TypeError("a badge has exactly one of count and text");
   if (count !== undefined) {
-    if (typeof count !== "number" || !Number.isInteger(count) || count < 0 || count > BADGE_COUNT_MAX) {
+    // `Number.isInteger` is false for anything but a number, so a caller past the types that passes a string is refused too.
+    if (!Number.isInteger(count) || count < 0 || count > BADGE_COUNT_MAX) {
       throw new RangeError(`a badge count is an integer from 0 to ${BADGE_COUNT_MAX}`);
     }
     return { count };
@@ -210,8 +243,8 @@ export const ANSWER_TEXT_DEFAULT = 500;
 export const ANSWER_TEXT_BYTES = ANSWER_TEXT_MAX * 4;
 
 /** A `maxLength` as a program passes it: a whole number from 1 to 2000, else a RangeError (WIRE.md 7.14). */
-export function maxLengthOf(value: unknown): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > ANSWER_TEXT_MAX) {
+export function maxLengthOf(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > ANSWER_TEXT_MAX) {
     throw new RangeError(`a maxLength is a whole number from 1 to ${ANSWER_TEXT_MAX} (WIRE.md 7.14)`);
   }
   return value;
@@ -227,8 +260,8 @@ export const LINK_LABEL_MAX = 120;
 const LANG_RULE = /^[A-Za-z0-9_+#.-]+$/u;
 
 /** A code item's language (WIRE.md 7.13): 1 to 24 of letters, digits and `_ + # . -`. Anything else is a TypeError, because the adapter would drop the name. */
-export function langOf(lang: unknown): string {
-  const trimmed = typeof lang === "string" ? lang.trim() : "";
+export function langOf(lang: Json | undefined): string {
+  const trimmed = isText(lang) ? lang.trim() : "";
   if (trimmed.length < 1 || trimmed.length > LANG_MAX || !LANG_RULE.test(trimmed)) {
     throw new TypeError(`a code language is 1 to ${LANG_MAX} of letters, digits and _ + # . -`);
   }
@@ -240,8 +273,8 @@ export function langOf(lang: unknown): string {
  * and no whitespace, control or invisible character. Anything else is a TypeError, because the adapter would drop the
  * whole item.
  */
-export function hrefOf(href: unknown): string {
-  const text = typeof href === "string" ? href : "";
+export function hrefOf(href: Json | undefined): string {
+  const text = isText(href) ? href : "";
   const bad = text === "" || text.length > HREF_MAX || /\s/u.test(text) || cut(text, HREF_MAX * 4) !== text;
   if (!bad && URL.canParse(text)) {
     const url = new URL(text);
@@ -257,6 +290,10 @@ export const PROGRESS_LABEL_MAX = 60;
 
 const STEP_STATES: ReadonlySet<string> = new Set(["done", "running", "todo"]);
 
+function isStepState(value: Json | undefined): value is ProgressStep["state"] {
+  return isText(value) && STEP_STATES.has(value);
+}
+
 /**
  * A pane's progress as the wire carries it (WIRE.md 7.12). Steps past the 12th are left out. A program that passes an
  * unknown kind, no steps, a step with an unknown state or with no label left, or a value outside 0 to 100 made a
@@ -264,22 +301,23 @@ const STEP_STATES: ReadonlySet<string> = new Set(["done", "running", "todo"]);
  * label with nothing left after cleaning is left out alone.
  */
 export function progressOf(value: Progress): Progress {
-  const { kind } = value as { kind?: unknown };
-  if (kind === "steps") {
-    const list = (value as { steps?: unknown }).steps;
+  if (value.kind === "steps") {
+    const list = value.steps;
     if (!Array.isArray(list) || list.length === 0) throw new TypeError("a steps progress has at least one step");
-    const steps = list.slice(0, PROGRESS_STEPS_MAX).map((entry: { label?: unknown; state?: unknown }) => {
+    const steps = list.slice(0, PROGRESS_STEPS_MAX).map((entry) => {
       const label = shortLine(entry?.label, PROGRESS_LABEL_MAX);
-      if (label === undefined || typeof entry.state !== "string" || !STEP_STATES.has(entry.state)) {
+      const state = entry.state;
+      if (label === undefined || !isStepState(state)) {
         throw new TypeError("a step has a label and a state of done, running or todo");
       }
-      return { label, state: entry.state as ProgressStep["state"] };
+      return { label, state };
     });
     return { kind: "steps", steps };
   }
-  if (kind === "percent") {
-    const { value: percent, label: text } = value as { value?: unknown; label?: unknown };
-    if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0 || percent > 100) {
+  if (value.kind === "percent") {
+    const { value: percent, label: text } = value;
+    // `Number.isFinite` is false for anything but a number, so a caller past the types that passes a string is refused too.
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
       throw new RangeError("a percent progress has a value from 0 to 100");
     }
     const label = text === undefined ? undefined : shortLine(text, PROGRESS_LABEL_MAX);
@@ -292,7 +330,7 @@ export function progressOf(value: Progress): Progress {
 export const ACTION_LABEL_MAX = 16;
 
 /** A belt action label: cleaned, trimmed and cut to {@link ACTION_LABEL_MAX} characters. Empty when nothing is left. */
-export function actionLabelOf(label: unknown): string {
+export function actionLabelOf(label: Json | undefined): string {
   return [...cut(label, CAPS.title).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
 }
 
@@ -300,27 +338,33 @@ export function actionLabelOf(label: unknown): string {
 export const PUSH_TITLE_MAX = 60;
 export const PUSH_LINE_MAX = 120;
 
+/** The push words of an ask, each part cleaned and cut. A part with nothing left is absent. */
+export interface PushText {
+  title?: string;
+  line?: string;
+}
+
 /**
  * The words a program wants a notification for its ask to use (WIRE.md section 6): each cleaned, trimmed and cut
  * to its limit in characters. A part that is empty once cleaned is left out; undefined when neither is left.
  */
-export function pushTextOf(push: unknown): { title?: string; line?: string } | undefined {
-  if (typeof push !== "object" || push === null) return undefined;
-  const out: { title?: string; line?: string } = {};
-  const title = pushPartOf(Reflect.get(push, "title"), PUSH_TITLE_MAX);
-  const line = pushPartOf(Reflect.get(push, "line"), PUSH_LINE_MAX);
+export function pushTextOf(push: Json | undefined): PushText | undefined {
+  if (!isRecord(push)) return undefined;
+  const out: PushText = {};
+  const title = pushPartOf(push.title, PUSH_TITLE_MAX);
+  const line = pushPartOf(push.line, PUSH_LINE_MAX);
   if (title !== "") out.title = title;
   if (line !== "") out.line = line;
   return out.title === undefined && out.line === undefined ? undefined : out;
 }
 
-function pushPartOf(value: unknown, max: number): string {
-  if (typeof value !== "string") return "";
+function pushPartOf(value: Json | undefined, max: number): string {
+  if (!isText(value)) return "";
   return [...cut(value, CAPS.askTitle).trim()].slice(0, max).join("").trim();
 }
 
 const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/;
 /** ISO 8601 with a zone, at most 40 bytes, else undefined (it reads as absent). */
-export function tsOf(ts: unknown): string | undefined {
-  return typeof ts === "string" && bytes(ts) <= CAPS.ts && ISO.test(ts) ? ts : undefined;
+export function tsOf(ts: Json | undefined): string | undefined {
+  return isText(ts) && bytes(ts) <= CAPS.ts && ISO.test(ts) ? ts : undefined;
 }

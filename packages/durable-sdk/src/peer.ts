@@ -24,7 +24,7 @@ const SO_PEERCRED = 17;
 
 let getsockopt: ((fd: number, level: number, name: number, value: number, length: number) => number) | undefined;
 let pointer: ((v: ArrayBufferView) => number) | undefined;
-if (typeof Bun !== "undefined" && process.platform === "linux") {
+if ("Bun" in globalThis && process.platform === "linux") {
   try {
     const ffi = await import("bun:ffi");
     const lib = ffi.dlopen("libc.so.6", { getsockopt: { args: ["i32", "i32", "i32", "ptr", "ptr"], returns: "i32" } });

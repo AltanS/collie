@@ -6,13 +6,26 @@
 
 import { BadAnswer, cleanConversationRow, cleanItem, type Pane, type Store } from "./layout.ts";
 import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, REOPEN_GROUP, STARTER_GROUP } from "./receipts.ts";
-import { ANSWER_TEXT_BYTES, assertId, bytes, CAPS, cursorOk, cut, idOk, LIMITS, renameTitleOf } from "./rules.ts";
+import {
+  ANSWER_TEXT_BYTES,
+  assertId,
+  bytes,
+  CAPS,
+  cursorOk,
+  cut,
+  idOk,
+  isFlag,
+  isList,
+  isRecord,
+  isSafeInteger,
+  isText,
+  LIMITS,
+  renameTitleOf,
+} from "./rules.ts";
 import {
   type Answer,
   type AnswerReply,
-  type AnswerRequest,
   type Caps,
-  type CloseRequest,
   type ControlReply,
   type ConversationItemsReply,
   type ConversationsReply,
@@ -20,10 +33,12 @@ import {
   type FormAnswer,
   type Hello,
   type Item,
+  type Json,
+  type JsonObject,
+  type Problem,
   PROTOCOL_RANGE,
   type ProgramHooks,
-  type RenameRequest,
-  type SendRequest,
+  type Snapshot,
   type StarterReply,
   type VersionRefusal,
 } from "./types.ts";
@@ -51,11 +66,14 @@ export interface CallInfo {
   refuseAct?: () => void;
 }
 
-const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+/** Every body the wire answers with (WIRE.md section 4). */
+type ReplyBody = Hello | Snapshot | EventsReply | Problem | AnswerReply | ControlReply | StarterReply | ConversationsReply | ConversationItemsReply;
+
+const json = (status: number, body: ReplyBody, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 /** A body is one JSON object. Over 64 KiB is 413: the rest is read and dropped so the client sees the answer. */
-async function readBody(request: Request): Promise<Record<string, unknown>> {
+async function readBody(request: Request): Promise<JsonObject> {
   let size = 0;
   const chunks: Uint8Array[] = [];
   if (request.body) {
@@ -75,22 +93,22 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
     all.set(c, at);
     at += c.byteLength;
   }
-  let body: unknown;
+  let body: Json;
   try {
     body = JSON.parse(new TextDecoder().decode(all));
   } catch {
     throw new HttpError(400, "bad-json");
   }
-  if (typeof body !== "object" || body === null || Array.isArray(body)) throw new HttpError(400, "bad-body", { message: "the body is one JSON object" });
-  return body as Record<string, unknown>;
+  if (!isRecord(body)) throw new HttpError(400, "bad-body", { message: "the body is one JSON object" });
+  return body;
 }
 
 const badBody = (why: string) => new HttpError(400, "bad-body", { message: cut(why, CAPS.message) });
 
 /** A field that is present, a string, and follows the id rule. Missing or not a string: bad-body. Breaks the rule: bad-id. */
-function idField(body: Record<string, unknown>, name: string): string {
+function idField(body: JsonObject, name: string): string {
   const v = body[name];
-  if (typeof v !== "string") throw badBody(`${name} must be a string`);
+  if (!isText(v)) throw badBody(`${name} must be a string`);
   if (!idOk(v)) throw new HttpError(400, "bad-id", { message: `${name} breaks the id rule` });
   return v;
 }
@@ -100,59 +118,66 @@ function idField(body: Record<string, unknown>, name: string): string {
  * optional `note`), `optionIds`, `text` or `values`. A wrong type or an over-cap string is 400 `bad-body`, an id that
  * breaks the id rule 400 `bad-id`. Whether the shape fits THIS ask is the pane's to say, once the ask is known to be open.
  */
-function answerOf(raw: unknown): Answer {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw badBody("answer must be an object");
-  const answer = raw as Record<string, unknown>;
+function answerOf(raw: Json | undefined): Answer {
+  if (!isRecord(raw)) throw badBody("answer must be an object");
+  const answer = raw;
   const named = ["optionId", "optionIds", "text", "values"].filter((key) => answer[key] !== undefined);
   if (named.length !== 1) throw badBody("answer names exactly one of optionId, optionIds, text and values");
   if (named[0] === "optionId") {
     const optionId = idField(answer, "optionId");
     const note = answer.note;
-    if (note !== undefined && note !== null && (typeof note !== "string" || bytes(note) > CAPS.note)) throw badBody("note must be a string of at most 2048 bytes");
-    return typeof note === "string" ? { optionId, note } : { optionId };
+    if (note !== undefined && note !== null && (!isText(note) || bytes(note) > CAPS.note)) throw badBody("note must be a string of at most 2048 bytes");
+    return isText(note) ? { optionId, note } : { optionId };
   }
   if (answer.note !== undefined && answer.note !== null) throw badBody("only an optionId answer has a note");
   if (named[0] === "optionIds") {
     const ids = answer.optionIds;
-    if (!Array.isArray(ids) || ids.length < 1 || ids.length > LIMITS.choiceOptions) throw badBody(`optionIds is a list of 1 to ${LIMITS.choiceOptions} ids`);
+    if (!isList(ids) || ids.length < 1 || ids.length > LIMITS.choiceOptions) throw badBody(`optionIds is a list of 1 to ${LIMITS.choiceOptions} ids`);
+    const optionIds: string[] = [];
     for (const id of ids) {
-      if (typeof id !== "string") throw badBody("optionIds are strings");
+      if (!isText(id)) throw badBody("optionIds are strings");
       if (!idOk(id)) throw new HttpError(400, "bad-id", { message: "an id in optionIds breaks the id rule" });
+      optionIds.push(id);
     }
-    return { optionIds: ids as string[] };
+    return { optionIds };
   }
   if (named[0] === "text") {
     const text = answer.text;
-    if (typeof text !== "string" || text === "" || bytes(text) > ANSWER_TEXT_BYTES) throw badBody(`text must be 1 to ${ANSWER_TEXT_BYTES} bytes`);
+    if (!isText(text) || text === "" || bytes(text) > ANSWER_TEXT_BYTES) throw badBody(`text must be 1 to ${ANSWER_TEXT_BYTES} bytes`);
     return { text };
   }
   const values = answer.values;
-  if (typeof values !== "object" || values === null || Array.isArray(values)) throw badBody("values must be an object");
+  if (!isRecord(values)) throw badBody("values must be an object");
   const out: FormAnswer["values"] = {};
-  const entries = Object.entries(values as Record<string, unknown>);
+  const entries = Object.entries(values);
   if (entries.length < 1 || entries.length > LIMITS.formFields) throw badBody(`values holds 1 to ${LIMITS.formFields} fields`);
   for (const [key, value] of entries) {
     if (!idOk(key)) throw new HttpError(400, "bad-id", { message: "a field id in values breaks the id rule" });
-    if (typeof value === "boolean") out[key] = value;
-    else if (typeof value === "string") {
+    if (isFlag(value)) out[key] = value;
+    else if (isText(value)) {
       if (bytes(value) > ANSWER_TEXT_BYTES) throw badBody(`a field value is at most ${ANSWER_TEXT_BYTES} bytes`);
       out[key] = value;
-    } else if (Array.isArray(value) && value.length <= LIMITS.choiceOptions && value.every((id) => typeof id === "string")) {
-      for (const id of value as string[]) if (!idOk(id)) throw new HttpError(400, "bad-id", { message: "an id in values breaks the id rule" });
-      out[key] = value as string[];
+    } else if (isList(value) && value.length <= LIMITS.choiceOptions && value.every(isText)) {
+      for (const id of value) if (!idOk(id)) throw new HttpError(400, "bad-id", { message: "an id in values breaks the id rule" });
+      out[key] = [...value];
     } else throw badBody("a field value is a string, a list of ids or a boolean");
   }
   return { values: out };
 }
 
+/** A form answer as a list of `[field id, value]` pairs, keys sorted. */
+type CanonicalForm = {
+  values: [string, FormAnswer["values"][string]][];
+};
+
 /** The answer as a stable value for the receipt's digest: keys sorted, so the same form is the same payload. */
-function canonical(answer: Answer): unknown {
+function canonical(answer: Answer): Exclude<Answer, FormAnswer> | CanonicalForm {
   if ("values" in answer) return { values: Object.keys(answer.values).toSorted().map((key) => [key, answer.values[key]]) };
   return answer;
 }
 
 /** Exactly one of `turnId` and `askId`. */
-function targetOf(body: Record<string, unknown>): { turnId: string } | { askId: string } {
+function targetOf(body: JsonObject): { turnId: string } | { askId: string } {
   const hasTurn = body.turnId !== undefined && body.turnId !== null;
   const hasAsk = body.askId !== undefined && body.askId !== null;
   if (hasTurn === hasAsk) throw badBody("exactly one of turnId and askId");
@@ -160,7 +185,7 @@ function targetOf(body: Record<string, unknown>): { turnId: string } | { askId: 
 }
 
 /** 409 `stale` with the pane's current turn and open ask ids. */
-function stale(pane: Pane, extra: Record<string, unknown> = {}): HttpError {
+function stale(pane: Pane, extra: Pick<Problem, "ask"> = {}): HttpError {
   return new HttpError(409, "stale", { turnId: pane.turnId, askIds: pane.openAskIds, ...extra });
 }
 
@@ -180,7 +205,13 @@ const decode = (s: string): string | undefined => {
  * The paging of a history route (WIRE.md 7.16): `after` is the cursor the last page named, or absent for the first
  * page; `limit` a whole number from 1, cut to `max`, and `max` when absent. Anything else is 400 `bad-cursor`.
  */
-function pageOf(url: URL, max: number): { after: string | undefined; limit: number } {
+/** One page request of a history route. */
+interface PageRequest {
+  after: string | undefined;
+  limit: number;
+}
+
+function pageOf(url: URL, max: number): PageRequest {
   const after = url.searchParams.get("after");
   const limitText = url.searchParams.get("limit");
   if (after !== null && !cursorOk(after)) throw new HttpError(400, "bad-cursor");
@@ -213,7 +244,7 @@ const sameTag = (header: string | null, etag: string) => header !== null && head
  * and this program's range. A Collie that speaks none of this program's versions sends one `hello` with its own version
  * per start of the program, so the program can name the mismatch: the core writes it once per version, in one line.
  */
-function versionRefusal(state: CoreState, version: number | undefined): { refusal?: VersionRefusal } {
+function versionRefusal(state: CoreState, version: number | undefined): Pick<Problem, "refusal"> {
   if (version === undefined || !Number.isSafeInteger(version)) return {};
   const refusal: VersionRefusal = { code: "version", collie: [version, version], program: [PROTOCOL_RANGE.min, PROTOCOL_RANGE.max] };
   const warned = (state.warned ??= new Set());
@@ -302,12 +333,12 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
     const body = await readBody(request);
     const requestId = idField(body, "requestId");
     // The receipt is bound to the payload: the same id with another pane, ask, revision, option, note, turn or text is 409.
-    const once = <T extends object>(payload: object, act: () => Promise<T>) => store.receipts.run(requestId, digestOf({ verb, pane: pane.id, ...payload }), act, pane.id);
+    const once = <T extends object>(payload: JsonObject, act: () => Promise<T>) => store.receipts.run(requestId, digestOf({ verb, pane: pane.id, ...payload }), act, pane.id);
 
     if (verb === "answer") {
       const askId = idField(body, "askId");
-      const { revision } = body as Partial<AnswerRequest>;
-      if (!Number.isSafeInteger(revision) || (revision as number) < 0) throw badBody("revision must be a non-negative integer");
+      const revision = body.revision;
+      if (!isSafeInteger(revision) || revision < 0) throw badBody("revision must be a non-negative integer");
       const answer = answerOf(body.answer);
       // The digest of a permission answer is what it always was: the option and the note. The other shapes add theirs.
       const bound = "optionId" in answer ? { optionId: answer.optionId, note: answer.note ?? null } : { answer: canonical(answer) };
@@ -336,9 +367,9 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
 
     if (verb === "send") {
       const target = targetOf(body);
-      const { text, steer } = body as Partial<SendRequest>;
-      if (typeof text !== "string" || text === "" || bytes(text) > CAPS.sendText) throw badBody("text must be 1 to 32768 bytes");
-      if (steer !== undefined && steer !== null && typeof steer !== "boolean") throw badBody("steer must be a boolean");
+      const { text, steer } = body;
+      if (!isText(text) || text === "" || bytes(text) > CAPS.sendText) throw badBody("text must be 1 to 32768 bytes");
+      if (steer !== undefined && steer !== null && !isFlag(steer)) throw badBody("steer must be a boolean");
       return json(
         200,
         await once<ControlReply>({ ...target, text, steer: steer === true }, async () => {
@@ -388,7 +419,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
     call.refuseAct?.();
     const body = await readBody(request);
     const requestId = idField(body, "requestId");
-    const { kind } = body as Partial<RenameRequest>;
+    const { kind } = body;
     if (kind !== "workspace" && kind !== "tab") throw badBody("kind must be workspace or tab");
     const id = idField(body, "id");
     const title = renameTitleOf(body.title);
@@ -411,7 +442,7 @@ async function route(request: Request, state: CoreState, call: CallInfo): Promis
     call.refuseAct?.();
     const body = await readBody(request);
     const requestId = idField(body, "requestId");
-    const { kind } = body as Partial<CloseRequest>;
+    const { kind } = body;
     if (kind !== "pane" && kind !== "tab" && kind !== "workspace") throw badBody("kind must be pane, tab or workspace");
     const id = idField(body, "id");
     if (!caps.close) throw new HttpError(409, "not-supported");

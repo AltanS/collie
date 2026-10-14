@@ -4,11 +4,12 @@
 import { chmodSync, lstatSync, mkdirSync, rmSync, type Stats } from "node:fs";
 import { connect } from "node:net";
 import { dirname, isAbsolute } from "node:path";
-import { bytes, CAPS } from "./core/rules.ts";
+import { bytes, CAPS, isText } from "./core/rules.ts";
+import type { Json } from "./core/types.ts";
 
 /** The socket path must be absolute and at most 103 bytes. */
-export function checkSocketPath(path: unknown): string {
-  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("the socket path must be absolute (set COLLIE_DURABLE_SOCKET)");
+export function checkSocketPath(path: Json | undefined): string {
+  if (!isText(path) || !isAbsolute(path)) throw new Error("the socket path must be absolute (set COLLIE_DURABLE_SOCKET)");
   if (bytes(path) > CAPS.socketPath) throw new Error(`the socket path is over ${CAPS.socketPath} bytes (the sun_path limit): ${path}`);
   return path;
 }

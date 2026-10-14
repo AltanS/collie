@@ -41,6 +41,7 @@ import type {
   ClosedBy,
   ConversationRow,
   DecidedBy,
+  EventsReply,
   Field,
   FormAnswer,
   FormAskInput,
@@ -283,8 +284,6 @@ export interface AskPatch {
   fields?: Field[];
 }
 
-const has = <K extends string>(answer: Answer, key: K): answer is Extract<Answer, Record<K, unknown>> => key in answer;
-
 /** The characters of a string, counted as the wire counts them (code points). */
 const lengthOf = (text: string): number => [...text].length;
 
@@ -295,7 +294,7 @@ const lengthOf = (text: string): number => [...text].length;
  */
 function checkAnswer(ask: Ask, answer: Answer): void {
   if (ask.kind === "choice") {
-    if (!has(answer, "optionIds")) throw new BadAnswerBody("a choice ask takes optionIds");
+    if (!("optionIds" in answer)) throw new BadAnswerBody("a choice ask takes optionIds");
     const ids = answer.optionIds;
     if (ids.length === 0 || new Set(ids).size !== ids.length) throw new BadAnswerBody("optionIds are one or more distinct ids");
     if (ids.some((id) => !ask.options.some((o) => o.id === id))) throw new BadAnswer("unknown option");
@@ -303,17 +302,17 @@ function checkAnswer(ask: Ask, answer: Answer): void {
     return;
   }
   if (ask.kind === "text") {
-    if (!has(answer, "text")) throw new BadAnswerBody("a text ask takes text");
+    if (!("text" in answer)) throw new BadAnswerBody("a text ask takes text");
     const size = lengthOf(answer.text);
     if (size < 1 || size > (ask.maxLength ?? ANSWER_TEXT_DEFAULT)) throw new BadAnswerBody("the text is empty or over the ask's maxLength");
     return;
   }
   if (ask.kind === "form") {
-    if (!has(answer, "values")) throw new BadAnswerBody("a form ask takes values");
+    if (!("values" in answer)) throw new BadAnswerBody("a form ask takes values");
     checkForm(ask.fields ?? [], answer.values);
     return;
   }
-  if (!has(answer, "optionId")) throw new BadAnswerBody("a permission takes an optionId");
+  if (!("optionId" in answer)) throw new BadAnswerBody("a permission takes an optionId");
   if (!ask.options.some((o) => o.id === answer.optionId)) throw new BadAnswer("unknown option");
 }
 
@@ -530,7 +529,7 @@ export class Pane implements PaneHandle {
    * at most 8 MiB, with `more` when it stopped early. A stale epoch, a cursor older than the tail or a
    * cursor past the count gets `reset: true` and the whole current view of the pane.
    */
-  eventsAfter(after: number, staleEpoch: boolean): { events: SessionEvent[]; next: number; reset?: true; more?: true; trimmed?: number } {
+  eventsAfter(after: number, staleEpoch: boolean): Omit<EventsReply, "epoch"> {
     const start = this.total - this.tail.length;
     if (!staleEpoch && after >= start && after <= this.total) {
       const events: SessionEvent[] = [];

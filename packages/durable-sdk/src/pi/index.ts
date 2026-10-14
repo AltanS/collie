@@ -44,6 +44,8 @@ import {
   safeId,
   type TabHandle,
 } from "../core/index.ts";
+import { isRecord, isText } from "../core/rules.ts";
+import type { Json } from "../core/types.ts";
 
 /** An item without its id and stamp: the shape a {@link ReplyExtras} hands back. */
 type ItemBody = Item extends infer T ? (T extends Item ? Omit<T, "id" | "ts"> : never) : never;
@@ -67,7 +69,7 @@ export const RE_RAISE_MS = 5000;
 export class PaneRegistry {
   private panes = new Map<ConversationId, PaneHandle>();
   /** The stop of each conversation's event stream. */
-  private stops = new Map<ConversationId, () => Promise<unknown>>();
+  private stops = new Map<ConversationId, () => Promise<void>>();
   /** Tool calls shown as running, by item id, with the tool's name. */
   private readonly running = new Map<string, string>();
   /** A start waiting for these call ids: each settles when the call asks or ends. */
@@ -78,7 +80,7 @@ export class PaneRegistry {
   has(id: ConversationId) {
     return this.panes.has(id);
   }
-  set(id: ConversationId, pane: PaneHandle, stop: () => Promise<unknown>) {
+  set(id: ConversationId, pane: PaneHandle, stop: () => Promise<void>) {
     this.panes.set(id, pane);
     this.stops.set(id, stop);
   }
@@ -203,20 +205,21 @@ const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
  * would say `{"note":"Order 5521 was charged twice."}`, and `refund(order: "5521", amount: 40)` for a call with more.
  * Without a name, the arguments' JSON. Cut at 200 characters.
  */
-export function summaryOf(args: unknown, name?: string): string {
-  if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+export function summaryOf(args: Json | undefined, name?: string): string {
+  if (isRecord(args)) {
     const values = Object.values(args);
-    if (values.length === 1 && typeof values[0] === "string") return clip(values[0]);
+    const first = values[0];
+    if (values.length === 1 && isText(first)) return clip(first);
     if (name !== undefined) return clip(`${name}(${argumentsView(args)})`);
   }
   return clip(JSON.stringify(args) ?? "");
 }
 
-type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown };
-const textOf = (content: unknown): string =>
-  typeof content === "string"
+type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: Json };
+const textOf = (content: string | readonly Block[]): string =>
+  isText(content)
     ? content
-    : (content as Block[])
+    : content
         .filter((b) => b.type === "text")
         .map((b) => b.text ?? "")
         .join("");
@@ -241,7 +244,7 @@ interface LiveMessage {
 }
 
 /** The item id of an assistant message's block. The timestamp is known when generation starts, the entry id is not. */
-const messageId = (timestamp: unknown) => safeId(`m${String(timestamp)}`);
+const messageId = (timestamp: number) => safeId(`m${String(timestamp)}`);
 
 /** What the mapper writes to: a pane, or a list of items when it reads a conversation's history back (`piHistory`). */
 export type MapperTarget = Pick<PaneHandle, "event" | "progress" | "state">;
@@ -520,9 +523,10 @@ export class Mapper {
 
 /**
  * How a pane's send reaches Pi. Left out, it is `conversation.submit`. A host that must see every input passes its
- * own: the Cloudflare example's PiHarness schedules the session's wake job in its `submit`.
+ * own: the Cloudflare example's PiHarness schedules the session's wake job in its `submit`. The SDK waits for it and
+ * reads nothing from what it resolves to, which for Pi's own `submit` is its `Submission`.
  */
-export type Submit = (conversation: Conversation, input: { content: string; whenBusy: "steer" | "followUp"; requestId?: string }) => Promise<unknown>;
+export type Submit = (conversation: Conversation, input: { content: string; whenBusy: "steer" | "followUp"; requestId?: string }) => Promise<object | void>;
 
 /**
  * Show a conversation as a pane. Safe to call twice for one conversation: the second call returns
@@ -563,7 +567,9 @@ export async function showConversation(
   }
 
   const stream = await watchEvents(harness, conversation.id, ctx);
-  opts.panes.set(conversation.id, pane, () => stream.stop());
+  opts.panes.set(conversation.id, pane, async () => {
+    await stream.stop();
+  });
   mapper.snapshot(stream.snapshot, true);
   stream.start(async (events) => {
     mapper.applyAll(events);
@@ -634,8 +640,8 @@ function cursorText(cursor: Cursor): string {
 function cursorFrom(text: string): Cursor | undefined {
   try {
     const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Cursor) : undefined;
+    const parsed: Json = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
+    return isRecord(parsed) ? (parsed as Cursor) : undefined;
   } catch {
     return undefined;
   }
@@ -885,7 +891,7 @@ export function spawnHelperTool(o: HelperOptions) {
       const settled = await (await handle.submit(request, ctx)).wait(ctx);
       if (settled.status !== "done" || settled.type !== "input") throw new Error(`helper failed: ${settled.status}`);
       const entry = await api.commit((tx) => tx.entry(AssistantEntry, settled.answer), ctx);
-      const text = textOf((entry?.model?.[0] as { content?: unknown } | undefined)?.content ?? "");
+      const text = textOf(entry?.model?.[0]?.content ?? "");
       await o.done?.(child, pane);
       return { content: [{ type: "text", text }], details: { conversationId: child } };
     },
