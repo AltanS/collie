@@ -851,7 +851,7 @@ function bindCheck(deps: DoctorDeps, mode: string, leadOnLoopback: boolean): Fin
   const shown = bindIsWildcard(host) ? "0.0.0.0/:: (COLLIE_HOST empty)" : host;
   if (mode === "peer" && isLoopbackBind(host)) {
     if (leadOnLoopback) {
-      return ok("bind", `${shown} (mode peer, and the lead is dialled on loopback: a tunnel or this host)`);
+      return ok("bind", `${shown} (mode peer: this peer listens on loopback, and it reaches its lead on loopback too, so the lead sits on this host or at the end of a tunnel)`);
     }
     const suggestion = tailnetName(deps.exec) ?? "<address the lead can dial>";
     return bad(

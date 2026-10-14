@@ -401,6 +401,7 @@ describe("preflight — the bun check", () => {
     const at = (version: string) =>
       bunCheck(harness({ answers: [["/fake/bun --version", { stdout: `${version}\n` }]] }).deps);
     expect(at("1.3.14").verdict).toBe("amber");
+    expect(at("1.3.14").reason).toContain("bun 1.3.14 is older than 1.4.0");
     expect(at("1.4.0").verdict).toBe("green");
   });
 

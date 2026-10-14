@@ -696,7 +696,7 @@ describe("collie doctor — the local checks", () => {
         }),
       );
       expect(byCheck.get("bind")?.status, address).toBe("ok");
-      expect(byCheck.get("bind")?.detail, address).toContain("dialled on loopback");
+      expect(byCheck.get("bind")?.detail, address).toContain("reaches its lead on loopback too");
     }
   });
 

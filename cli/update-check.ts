@@ -395,7 +395,7 @@ export function bunCheck(deps: UpdateCheckDeps): PreflightCheck {
   }
   const { bun } = readiness;
   if (compareSemver(bun.version, MIN_BUN) < 0) {
-    return amber("bun", `bun ${bun.version} is older than the ${MIN_BUN} this build was measured on`);
+    return amber("bun", `bun ${bun.version} is older than ${MIN_BUN}, the oldest Bun Collie is tested on; the update goes on`);
   }
   if (bun.onPath) return green("bun", `bun ${bun.version}`);
   return green("bun", `bun ${bun.version} at ${bun.path} — off this PATH, and that is the one an update runs`);
