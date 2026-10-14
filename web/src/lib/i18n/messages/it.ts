@@ -525,6 +525,8 @@ export const it: Dictionary = {
   // TODO wordsmith
   "space.program.waiting.other": "{count} conversations wait on you",
   // TODO wordsmith
+  "home.programs.title": "Programs",
+  // TODO wordsmith
   "conversations.unsupported": "This program does not keep a list of its conversations.",
   // TODO wordsmith
   "conversations.unreachable": "The program did not answer. Try again in a moment.",

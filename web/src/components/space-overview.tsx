@@ -3,7 +3,6 @@ import { FolderPlus, LayoutGrid, Loader2, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { ProgramSpaceRow } from "@/components/program-space-row";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
 import { StatusDot } from "@/components/status-badge";
@@ -13,7 +12,7 @@ import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
 import { statusLabel } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
-import type { AgentView, SessionSummary, WorkspaceView } from "@/lib/types";
+import type { AgentView, WorkspaceView } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -41,22 +40,14 @@ interface SpaceOverviewProps {
    * there (M55). Omit and the lead's primary session is asked, as before.
    */
   scope?: Scope;
-  /**
-   * The program sessions on this machine (M55 spec 02), each drawn as one more space after the
-   * terminal spaces. Omit, or pass none, and the list is the terminal spaces alone, as it was.
-   */
-  programs?: readonly SessionSummary[];
-  /** Open a program session's home, by its session name. */
-  onOpenProgram?: (name: string) => void;
 }
 
-// The dashboard's navigator, and the LAST section on the page: everything you might act on comes
-// first. It folds to a single line — with 45 spaces that's the difference between a dashboard and a
+// The dashboard's navigator: everything you might act on comes first. The program sessions are not
+// listed here; they have the dashboard's Programs section (M55 spec 13, `program-section.tsx`). It folds to a single line — with 45 spaces that's the difference between a dashboard and a
 // scroll — and expands to a filterable list in the multiplexer's own space order.
 // A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
 // every render is a new reference, which defeats memoisation downstream for no benefit here.
 const NO_PANES: AgentView[] = [];
-const NO_PROGRAMS: readonly SessionSummary[] = [];
 
 export function SpaceOverview({
   workspaces,
@@ -69,8 +60,6 @@ export function SpaceOverview({
   open,
   onOpenChange,
   scope,
-  programs = NO_PROGRAMS,
-  onOpenProgram,
 }: SpaceOverviewProps) {
   // Ephemeral view state, like SpaceRoute's tab selection — a filter you typed yesterday should not
   // greet you today with most of your spaces missing.
@@ -98,11 +87,6 @@ export function SpaceOverview({
   const rows = query.trim()
     ? visible.map((space) => ({ space, depth: 0 as const }))
     : nestWorktrees(visible);
-  // The program sessions sort after the terminal spaces, and the filter reads their names the way it
-  // reads a space's label. With none, every count below is the terminal spaces' alone, as before.
-  const q = query.trim().toLowerCase();
-  const shownPrograms = q === "" ? programs : programs.filter((p) => p.name.toLowerCase().includes(q));
-  const total = workspaces.length + programs.length;
 
   return (
     <section className="flex flex-col gap-2 px-4 py-4">
@@ -110,7 +94,7 @@ export function SpaceOverview({
         label={t("space.overview.title")}
         // While filtering, the count reports what you can SEE — a header reading (45) above four
         // rows makes you doubt the filter rather than trust it.
-        count={query.trim() ? visible.length + shownPrograms.length : total}
+        count={query.trim() ? visible.length : workspaces.length}
         open={open}
         onToggle={onOpenChange}
         controls="spaces-body"
@@ -167,7 +151,7 @@ export function SpaceOverview({
           {/* A ROW of the group, not a card inside it — a bordered box inside a bordered group is
               a box in a box. Opaque background, not transparent, so the rows scroll UNDER it while
               it is stuck. */}
-          {total > 1 && (
+          {workspaces.length > 1 && (
             <label className="sticky top-0 z-10 flex items-center gap-2 bg-background px-3.5 py-2">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <input
@@ -184,11 +168,11 @@ export function SpaceOverview({
             </label>
           )}
 
-          {total === 0 ? (
+          {workspaces.length === 0 ? (
             <p className="px-3.5 py-6 text-center text-sm text-muted-foreground">
               {t("space.overview.empty.none")}
             </p>
-          ) : visible.length === 0 && shownPrograms.length === 0 ? (
+          ) : visible.length === 0 ? (
             <p className="px-3.5 py-6 text-center text-sm text-muted-foreground">
               {t("space.overview.empty.noMatch", { query })}
             </p>
@@ -267,9 +251,6 @@ export function SpaceOverview({
               );
             })
           )}
-          {shownPrograms.map((session) => (
-            <ProgramSpaceRow key={`program:${session.name}`} session={session} onOpen={(s) => onOpenProgram?.(s.name)} />
-          ))}
         </ListGroup>
       )}
     </section>

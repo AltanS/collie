@@ -627,6 +627,7 @@ export const en = {
   "space.program.open.other": "{count} open conversations",
   "space.program.waiting.one": "{count} conversation waits on you",
   "space.program.waiting.other": "{count} conversations wait on you",
+  "home.programs.title": "Programs",
   "conversations.unsupported": "This program does not keep a list of its conversations.",
   "conversations.unreachable": "The program did not answer. Try again in a moment.",
   "conversations.loadFailed": "Couldn't load the conversations. Try again.",

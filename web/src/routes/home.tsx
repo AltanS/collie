@@ -9,6 +9,7 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { DurableHome } from "@/components/durable-home";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
+import { ProgramSection } from "@/components/program-section";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
 import { StatusArea } from "@/components/status-area";
@@ -47,7 +48,7 @@ import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
-import { programSessionsOnHost } from "@/lib/session-cards";
+import { programScope, programSessions, programsAbove } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -99,7 +100,8 @@ function ChangesTabBody({
 // order (lib/pane-groups.ts, ADR 0063); urgency is a mark on a row and a heading and one summary
 // line on top, never a position. The operator may ask for Activity or Cache order instead, with the
 // order select under that line (ADR 0071): one ranked list, read once and held. The Spaces navigator sits
-// last, under the thing it navigates to.
+// under the thing it navigates to, and the Programs section (M55 spec 13) sits after it, or above Launch
+// while a program has a question that waits on you.
 // Launchers sit directly above Spaces: they are one-tap act-on-able actions like the herd above
 // them, but they CREATE rather than triage, so they sit under the herd and above the navigator
 // their new Space will appear in. Tapping an agent opens its pane; tapping a space drills into
@@ -185,14 +187,14 @@ export function HomeRoute() {
     () => ambientPanes(data.agents, data.shellPanes, data.scope, data.servers, data.sessions),
     [data.agents, data.shellPanes, data.scope, data.servers, data.sessions],
   );
-  // THE PROGRAM SESSIONS ON THIS MACHINE (M55 spec 02): each is one more space in the Spaces list,
-  // after the terminal spaces, and a tap opens its home, the conversation list. None on a snapshot
-  // with no program session, which leaves the list as it was.
-  const programs = useMemo(
-    () => programSessionsOnHost(data.sessions ?? [], data.scope, data.servers),
-    [data.sessions, data.scope, data.servers],
-  );
-  const openProgram = (name: string) => nav.down(homePath({ host: data.scope.host, session: name }));
+  // THE PROGRAMS SECTION (M55 spec 13): every program session in the snapshot, this machine's and each
+  // crew member's, in a section of its own, and a tap opens its home, the conversation list, on the
+  // machine that runs it. None on a snapshot with no program session, and the section then draws
+  // nothing. It sits above the spaces while any program has a conversation that waits on you, below
+  // them otherwise, and moves on the snapshot that changes that count.
+  const programs = useMemo(() => programSessions(data.sessions ?? []), [data.sessions]);
+  const programsFirst = programsAbove(programs);
+  const openProgram = (session: SessionSummary) => nav.down(homePath(programScope(session, data.servers)));
 
   // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
   // top / Unpin first, then the writes. The sheet writes with the PANE's scope, for the reason a tap
@@ -356,6 +358,8 @@ export function HomeRoute() {
               a launcher under them would read as part of that list. */}
           {view === "dashboard" && !needsYouOnly && !screenless && (
             <>
+              {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}
+              {programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
               <SpaceOverview
                 workspaces={isolateSpaces(data.workspaces, prefs.isolatedSpace)}
@@ -368,9 +372,8 @@ export function HomeRoute() {
                 open={spacesOpen}
                 onOpenChange={setSpacesOpen}
                 scope={data.scope}
-                programs={programs}
-                onOpenProgram={openProgram}
               />
+              {!programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
             </>
           )}
         </main>

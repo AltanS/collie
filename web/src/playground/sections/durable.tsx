@@ -6,6 +6,7 @@
 // DEV-ONLY, unreachable from the app entry.
 
 import { ConversationList } from "@/components/conversation-list";
+import { ProgramSection } from "@/components/program-section";
 import { SpaceOverview } from "@/components/space-overview";
 import { mergeConversations } from "@/lib/conversation-list";
 import type { AgentView, DurableConversationRow, SessionSummary, WorkspaceView } from "@/lib/types";
@@ -137,9 +138,8 @@ function Spaces({ programs }: { programs: SessionSummary[] }) {
         onNewSpace={() => {}}
         open
         onOpenChange={() => {}}
-        programs={programs}
-        onOpenProgram={() => {}}
       />
+      <ProgramSection programs={programs} onOpen={() => {}} />
     </div>
   );
 }

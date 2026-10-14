@@ -58,6 +58,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A durable program is a space of its own on the phone.** Its name, its runtime and an Experimental mark sit on the row, and one tap opens its conversations. Your terminal spaces look as before.
 - **The docs start with sessions.** A new Sessions group explains what a session is and where it comes from, a terminal or a program, and a Terminology page lists Collie's words beside the names other tools use.
 - **A program's row counts its conversations.** It shows the open conversations and, when any wait on you, how many, in the needs-you colour. A program that is starting or unreachable says so in their place, and the row still opens.
+- **Programs have their own section on the dashboard.** A program is no longer a row at the end of the space list. The Programs section shows each program with its open conversations and its waiting questions, and it moves above the spaces when a question waits.
 
 ### Fixed
 
