@@ -192,7 +192,9 @@ function typeAnswer(tapped: string, text = "Kiwi") {
 const CLEAR = ["ctrl+u", "ctrl+k"];
 
 describe("submitMultiSelectIntent — type an answer into the field", () => {
-  it("an empty field: never its digit (it toggles), a Down walk, type, no Enter (ticked), park on Submit", async () => {
+  // The park ends on the option row above the field: from `Submit` an option's digit does nothing
+  // (ASK_FIELD_NOTES.md § Multi-select), so a park there would leave every checkbox tap dead.
+  it("an empty field: never its digit (it toggles), a Down walk, type, no Enter (ticked), park Up on the option above", async () => {
     const tapped = fieldBuffer("opt3", "", true);
     script(
       tapped, // entry guard
@@ -200,18 +202,18 @@ describe("submitMultiSelectIntent — type an answer into the field", () => {
       fieldBuffer("field", "", true), // the walk lands
       fieldBuffer("field", "", true), // the reach proof
       fieldBuffer("field", "Kiwi", true), // typing into it kept it ticked
-      fieldBuffer("submit", "Kiwi", true), // the park lands on Submit
+      fieldBuffer("opt3", "Kiwi", true), // the park lands on the option above the field
     );
     expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
-    expect(keysSent()).toEqual([["Down"], ["Down"]]);
+    expect(keysSent()).toEqual([["Down"], ["Up"]]);
     expect(keysSent()).not.toContainEqual(["4"]);
     expect(keysSent()).not.toContainEqual(["Enter"]);
     expect(mockSendReply.mock.calls).toEqual([["w1:p1", "Kiwi", false, undefined]]);
-    // The park's Down is bound to the read that proved the text.
+    // The park's Up is bound to the read that proved the text.
     expect(mockSendKeys.mock.calls[1]![3]).toBe(model(fieldBuffer("field", "Kiwi", true)).regionSignature);
   });
 
-  it("replaces a filled field from Submit: an Up walk, a clear, the text, then the park", async () => {
+  it("replaces a filled field from Submit: an Up walk, a clear, the text, then the park Up", async () => {
     const tapped = fieldBuffer("submit", "Mushroom", false);
     script(
       tapped, // entry guard
@@ -220,11 +222,34 @@ describe("submitMultiSelectIntent — type an answer into the field", () => {
       fieldBuffer("field", "Mushroom", false), // the reach proof
       fieldBuffer("field", "", false), // one clear round emptied (and unticked) it
       fieldBuffer("field", "Kiwi", true), // typing into the empty field ticked it
-      fieldBuffer("submit", "Kiwi", true),
+      fieldBuffer("opt3", "Kiwi", true),
     );
     expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
-    expect(keysSent()).toEqual([["Up"], CLEAR, ["Down"]]);
+    expect(keysSent()).toEqual([["Up"], CLEAR, ["Up"]]);
     expect(keysSent()).not.toContainEqual(["4"]);
+    expect(keysSent()).not.toContainEqual(["Down"]);
+  });
+
+  it("a wrapped field: the park spends one Up per caret line, within its bound, and never Enter", async () => {
+    const tapped = fieldBuffer("field", "", true);
+    const typed = fieldBuffer("field", "Mushroom and", true, "pineapple");
+    const proof = model(typed);
+    expect(proof.phase === "checkbox" && proof.field?.lines).toBe(2);
+    const text = proof.phase === "checkbox" ? (proof.field?.text ?? "") : "";
+    // The first Up moves the caret up a visual line and repaints nothing, so the park's poll reads the
+    // same screen until it gives up; the second Up leaves the field for the option above it.
+    const caretMoveReads = Array.from({ length: 8 }, () => typed);
+    script(tapped, tapped, typed, ...caretMoveReads, fieldBuffer("opt3", "Mushroom and", true, "pineapple"));
+    expect(await typeAnswer(tapped, text)).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["Up"]]);
+  });
+
+  it("a park that never reaches the option row still reports sent, after its bound of Ups and no Enter", async () => {
+    const tapped = fieldBuffer("field", "", true);
+    script(tapped, tapped, fieldBuffer("field", "Kiwi", true));
+    expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
+    // One line of text: the bound is its lines plus three.
+    expect(keysSent()).toEqual([["Up"], ["Up"], ["Up"], ["Up"]]);
   });
 
   it("a typed field that reads unticked: exactly ONE Enter, bound, then the tick verified", async () => {
@@ -237,10 +262,10 @@ describe("submitMultiSelectIntent — type an answer into the field", () => {
       fieldBuffer("field", "", false),
       fieldBuffer("field", "Kiwi", false), // typed, but unticked
       fieldBuffer("field", "Kiwi", true), // the Enter ticked it
-      fieldBuffer("submit", "Kiwi", true),
+      fieldBuffer("opt3", "Kiwi", true),
     );
     expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
-    expect(keysSent()).toEqual([["Up"], CLEAR, ["Enter"], ["Down"]]);
+    expect(keysSent()).toEqual([["Up"], CLEAR, ["Enter"], ["Up"]]);
     expect(mockSendKeys.mock.calls[2]![3]).toBe(model(fieldBuffer("field", "Kiwi", false)).regionSignature);
   });
 
@@ -262,9 +287,9 @@ describe("submitMultiSelectIntent — type an answer into the field", () => {
 
   it("a park that sees the field change refuses", async () => {
     const tapped = fieldBuffer("field", "", true);
-    script(tapped, tapped, fieldBuffer("field", "Kiwi", true), fieldBuffer("submit", "Kiwis", true));
+    script(tapped, tapped, fieldBuffer("field", "Kiwi", true), fieldBuffer("opt3", "Kiwis", true));
     expect(await typeAnswer(tapped)).toEqual({ status: "changed", why: "park: drift" });
-    expect(keysSent()).toEqual([["Down"]]);
+    expect(keysSent()).toEqual([["Up"]]);
   });
 
   it("a dialog with no field refuses before any read", async () => {

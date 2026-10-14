@@ -279,4 +279,64 @@ describe("MultiSelectBlock — the answer field", () => {
     await user.click(screen.getByRole("button", { name: "Send answer" }));
     expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
   });
+
+  // The open editor hides what the field holds, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    function holding(multi: MultiSelectModel, text: string): MultiSelectModel {
+      if (multi.phase !== "checkbox" || !multi.field) throw new Error("capture has no answer field");
+      return { ...multi, field: { ...multi.field, text } };
+    }
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const multi = capture("multi-ticked-empty");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<MultiSelectBlock multi={holding(multi, "Desk words")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal now holds “Desk words”. Send again to replace it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const multi = capture("multi-pointer-submit");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<MultiSelectBlock multi={holding(multi, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal was emptied. Send again to fill it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mushroom");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Mushroom");
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const multi = capture("multi-ticked-empty");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<MultiSelectBlock multi={holding(multi, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
 });

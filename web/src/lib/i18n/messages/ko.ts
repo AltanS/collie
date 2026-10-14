@@ -766,6 +766,8 @@ export const ko: Dictionary = {
   "prompt.feedback.answer.sending": "답변 입력 중…",
   "prompt.feedback.answer.focused": "터미널에서 답변 칸이 키보드를 사용 중이라 이 버튼을 누르면 칸에 입력됩니다. 아래에서 직접 답변을 보낼 수는 있습니다.",
   "prompt.feedback.answer.typedPrefix": "답변 칸 내용: ",
+  "prompt.feedback.answer.fieldMoved": "터미널의 답변 칸에 이제 “{text}”이(가) 들어 있습니다. 다시 보내면 바꿉니다.",
+  "prompt.feedback.answer.fieldEmptied": "터미널의 답변 칸이 비워졌습니다. 다시 보내면 채웁니다.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "창 설정",

@@ -81,6 +81,9 @@ The submitted result was `"Which fruit?"="Kiwi", "Which drink?"="Tea", "Which ci
 | field focused, holding text | `ctrl+u` `ctrl+k` | empty AND **unticked** |
 | field focused | `Left` | moves the caret (also on a wizard step) |
 | field focused | `Down` | onto `Submit` / `Next` |
+| pointer on `Submit` | an option's digit | **nothing**: no row toggles (the footer still shows `ctrl+g`) |
+| pointer on an option row | an option's digit | toggles that option, pointer stays |
+| pointer on `Submit` | `Up` | onto the field, focused; `Up` again leaves it for the option above |
 
 Submit → review → `1` gave `"Which toppings?"="Cheese, Mushroom"`; on a wizard step, Next → the next
 question, and the result was `"Which toppings?"="Pineapple", "Which size?"="Small"`.

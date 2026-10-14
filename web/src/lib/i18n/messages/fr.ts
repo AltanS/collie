@@ -700,6 +700,8 @@ export const fr: Dictionary = {
   "prompt.feedback.answer.focused":
     "Le champ de réponse a le clavier dans le terminal, donc ces boutons y écriraient. Vous pouvez quand même envoyer votre propre réponse ci-dessous.",
   "prompt.feedback.answer.typedPrefix": "Dans le champ de réponse : ",
+  "prompt.feedback.answer.fieldMoved": "Le champ de réponse du terminal contient maintenant « {text} ». Envoyez à nouveau pour le remplacer.",
+  "prompt.feedback.answer.fieldEmptied": "Le champ de réponse du terminal a été vidé. Envoyez à nouveau pour le remplir.",
   "paneSettings.title": "Paramètres du volet",
   "paneSettings.cacheWatch.label": "M'avertir avant que le cache de ce volet ne devienne froid",
   "paneSettings.cacheWatch.hint": "environ {minutes} minutes avant expiration",

@@ -850,6 +850,8 @@ export const en = {
   "prompt.feedback.answer.focused":
     "The answer field has the keyboard in the terminal, so these buttons would type into it. You can still send your own answer below.",
   "prompt.feedback.answer.typedPrefix": "In the answer field: ",
+  "prompt.feedback.answer.fieldMoved": "The answer field in the terminal now holds “{text}”. Send again to replace it.",
+  "prompt.feedback.answer.fieldEmptied": "The answer field in the terminal was emptied. Send again to fill it.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane settings",

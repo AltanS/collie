@@ -775,6 +775,8 @@ export const de: Dictionary = {
   "prompt.feedback.answer.focused":
     "Das Antwortfeld hat im Terminal die Tastatur, daher würden diese Schaltflächen hineinschreiben. Eine eigene Antwort lässt sich unten trotzdem senden.",
   "prompt.feedback.answer.typedPrefix": "Im Antwortfeld: ",
+  "prompt.feedback.answer.fieldMoved": "Das Antwortfeld im Terminal enthält jetzt „{text}“. Erneut senden, um es zu ersetzen.",
+  "prompt.feedback.answer.fieldEmptied": "Das Antwortfeld im Terminal wurde geleert. Erneut senden, um es zu füllen.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane-Einstellungen",

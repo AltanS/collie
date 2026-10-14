@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { MessageSquarePlus } from "lucide-react";
 
 import { InlineEditor, InlineEditorOffer } from "@/components/ui/inline-editor";
@@ -56,6 +56,84 @@ export function TypedFieldCard({ prefix, text }: { prefix: string; text: string 
   );
 }
 
+/** A card's answer editor: whether it is open, its draft, and the field text it was opened over. */
+export interface AnswerEditor {
+  editorOpen: boolean;
+  draft: string;
+  setDraft: (value: string) => void;
+  /** What the field came to hold while the editor hid it, once a Send has found it; null otherwise. */
+  moved: string | null;
+  /** Open the editor holding `prefill`, over a field that reads `fieldText` right now. */
+  open: (prefill: string, fieldText: string) => void;
+  cancel: () => void;
+  /**
+   * Send the trimmed draft through `onAnswer`, unless the field no longer holds what the person last
+   * saw. The open editor replaces the field's own card on screen, so text typed at the desk meanwhile
+   * was never seen here, and the recipe would clear it (ADR 0104 rule 3: clear only what was seen).
+   * Then nothing is sent: the change is shown in the editor and becomes what was seen, so the next
+   * Send replaces it. The editor closes only on a send `onAnswer` reports as landed.
+   */
+  send: (
+    field: { text: string },
+    onAnswer: (text: string) => boolean | Promise<boolean>,
+    locked: boolean,
+  ) => Promise<void>;
+}
+
+/** The state of one card's answer editor; see {@link AnswerEditor}. */
+export function useAnswerEditor(): AnswerEditor {
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [seenText, setSeenText] = useState("");
+  const [moved, setMoved] = useState<string | null>(null);
+
+  function open(prefill: string, fieldText: string) {
+    setDraft(prefill);
+    setSeenText(fieldText);
+    setMoved(null);
+    setEditorOpen(true);
+  }
+
+  function cancel() {
+    setEditorOpen(false);
+    setMoved(null);
+  }
+
+  async function send(
+    field: { text: string },
+    onAnswer: (text: string) => boolean | Promise<boolean>,
+    locked: boolean,
+  ) {
+    const text = draft.trim();
+    if (text.length === 0 || locked) return;
+    if (field.text !== seenText) {
+      setSeenText(field.text);
+      setMoved(field.text);
+      return;
+    }
+    if (await onAnswer(text)) {
+      setEditorOpen(false);
+      setMoved(null);
+    }
+  }
+
+  return { editorOpen, draft, setDraft, moved, open, cancel, send };
+}
+
+/** The editor's notice for a field that changed under it, as text nodes. */
+function FieldMovedNotice({ text }: { text: string }) {
+  return (
+    <p
+      role="status"
+      className="rounded-md border border-dashed border-status-working/50 px-2 py-1.5 text-xs leading-snug text-status-working"
+    >
+      {text === ""
+        ? t("prompt.feedback.answer.fieldEmptied")
+        : t("prompt.feedback.answer.fieldMoved", { text })}
+    </p>
+  );
+}
+
 export interface AnswerFieldSurfaceProps {
   /** The terminal's field as the card's model reads it. */
   field: { focused: boolean; text: string };
@@ -64,12 +142,7 @@ export interface AnswerFieldSurfaceProps {
   ours: boolean;
   /** Any send of this card is in flight: Cancel must not race it. */
   anySending: boolean;
-  editorOpen: boolean;
-  draft: string;
-  onDraft: (value: string) => void;
-  /** Open the editor holding `prefill`. */
-  onOpen: (prefill: string) => void;
-  onCancel: () => void;
+  editor: AnswerEditor;
   onSend: () => void;
   /** The card cannot send right now (read-only, offline, a send in flight). A focused terminal field
    *  does not lock this surface: the recipe reaches the field itself (lib/answer-field.ts). */
@@ -87,7 +160,7 @@ export interface AnswerFieldSurfaceProps {
  * the multi-select question.
  */
 export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
-  const { field, copy, locked } = props;
+  const { field, copy, locked, editor } = props;
   const focusedBanner = field.focused ? (
     <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
       {copy.focused}
@@ -101,13 +174,13 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
       </div>
     );
   }
-  if (props.editorOpen) {
+  if (editor.editorOpen) {
     return (
       <InlineEditor
         id="ask-answer-text"
         label={copy.editorLabel}
-        value={props.draft}
-        onChange={props.onDraft}
+        value={editor.draft}
+        onChange={editor.setDraft}
         maxLength={FEEDBACK_MAX_LENGTH}
         placeholder={copy.placeholder}
         help={copy.help}
@@ -115,11 +188,12 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
         sendLabel={copy.send}
         cancelLabel={t("prompt.feedback.cancel")}
         onSend={props.onSend}
-        onCancel={props.onCancel}
-        sendDisabled={locked || props.draft.trim().length === 0}
+        onCancel={editor.cancel}
+        sendDisabled={locked || editor.draft.trim().length === 0}
         cancelDisabled={props.anySending}
         busy={false}
         busyAriaLabel={t("prompt.sendingAria")}
+        notice={editor.moved === null ? null : <FieldMovedNotice text={editor.moved} />}
       />
     );
   }
@@ -127,14 +201,18 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
     return (
       <>
         {props.showTyped ? <TypedFieldCard prefix={copy.typedPrefix} text={field.text} /> : focusedBanner}
-        <InlineEditorOffer label={copy.change ?? ""} disabled={locked} onClick={() => props.onOpen(field.text)} />
+        <InlineEditorOffer
+          label={copy.change ?? ""}
+          disabled={locked}
+          onClick={() => editor.open(field.text, field.text)}
+        />
       </>
     );
   }
   return (
     <>
       {focusedBanner}
-      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => props.onOpen("")} />
+      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => editor.open("", "")} />
     </>
   );
 }

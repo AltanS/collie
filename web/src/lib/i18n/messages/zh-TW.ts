@@ -756,6 +756,8 @@ export const zhTW: Dictionary = {
   "prompt.feedback.answer.sending": "正在輸入你的回答…",
   "prompt.feedback.answer.focused": "回答欄正在終端機中佔用鍵盤，這些按鈕會把內容輸入到欄中。你仍可以在下方傳送自己的回答。",
   "prompt.feedback.answer.typedPrefix": "回答欄中：",
+  "prompt.feedback.answer.fieldMoved": "終端機中的回答欄現在是「{text}」。再次傳送即可取代。",
+  "prompt.feedback.answer.fieldEmptied": "終端機中的回答欄已被清空。再次傳送即可填入。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "窗格設定",

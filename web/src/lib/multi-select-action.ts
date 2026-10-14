@@ -30,7 +30,9 @@
 // neutral contract in harness/multi-select-model.ts, wired to this kind by harness/dialog-contract.ts.
 //
 // The `type` intent (ADR 0104) is the shared answer recipe (lib/answer-field.ts), then one bound
-// `Enter` only if the typed row reads unticked, then a park of the pointer on the advance row.
+// `Enter` only if the typed row reads unticked, then a park of the pointer on the option row above the
+// field. Not on the advance row: with the pointer on `Submit`/`Next` an option's digit does nothing
+// (ASK_FIELD_NOTES.md § Multi-select), so every checkbox tap after the answer would be dead.
 
 import { fillAnswerField, type FieldAccess } from "./answer-field";
 import { type MultiSelectModel } from "./blocks";
@@ -59,7 +61,8 @@ export type MultiSelectIntent =
   //                                 the declared `submitKeys`)
   | { kind: "cancel" } //            review: back out (digit 2, pointer walk + Enter, or `cancelKeys`)
   | { kind: "back" } //              review: back to the checkbox screen (the declared `backKeys`)
-  | { kind: "type"; text: string }; // checkbox: type an answer into the field, tick it, park on advance
+  | { kind: "type"; text: string }; // checkbox: type an answer into the field, tick it, park on the
+  //                                 option row above it
 
 /** The multi-select identity comparators, part of the neutral contract
  *  (harness/multi-select-model.ts). Re-exported under their original names so existing call sites and
@@ -313,8 +316,8 @@ function multiFieldAccess(tapped: Checkbox): FieldAccess<"multi-select"> {
 /**
  * Answer the question in the person's own words (ADR 0104): the shared recipe (lib/answer-field.ts)
  * walks onto the field, clears what the person saw in it, types `text` and proves it arrived; then the
- * row is ticked if it reads unticked, and the pointer parked on the advance row. Nothing commits: the
- * person still taps Submit or Next.
+ * row is ticked if it reads unticked, and the pointer parked on the option row above the field, where
+ * the options' digits toggle again. Nothing commits: the person still taps Submit or Next.
  */
 async function runTypeAnswer(args: GuardArgs, text: string): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox" || !args.multi.field) return { status: "changed" };
@@ -325,7 +328,7 @@ async function runTypeAnswer(args: GuardArgs, text: string): Promise<ActionResul
   const ours = fieldOn(filled.proof)?.text ?? "";
   const ticked = await tickField(args, filled.proof, ours, sleep);
   if (!ticked.ok) return ticked.result;
-  return parkOnAdvance(args, ticked.proof, ours, sleep);
+  return parkAboveField(args, ticked.proof, ours, sleep);
 }
 
 /**
@@ -350,25 +353,28 @@ async function tickField(args: GuardArgs, proof: MultiSelectModel, ours: string,
 }
 
 /**
- * Walk the pointer off the focused field onto the advance row, so the card's toggles work again (a
- * focused field types every digit): `Down`, bound to the read that showed where the pointer was, then a
- * poll until the screen moved, until a read shows the pointer on the advance row with our text still
- * in the field and ticked. A Down inside a wrapped value moves the caret first, so the bound is the
- * field's lines plus slack. A read that drifted or shows the field changed refuses; a park that runs
- * out of steps still reports `sent`: the answer is in and ticked, and the card's focused lock covers
- * the rest.
+ * Walk the pointer off the focused field onto the option row directly above it, so the card's toggles
+ * work again: a focused field types every digit, and with the pointer on `Submit`/`Next` an option's
+ * digit does nothing (ASK_FIELD_NOTES.md § Multi-select). `Up`, bound to the read that showed where
+ * the pointer was, then a poll until the screen moved, until a read shows the pointer on an option
+ * above the field with our text still in it and ticked. An `Up` inside a wrapped value moves the caret
+ * up a visual line first, so the bound is the field's lines plus slack. A read that drifted or shows
+ * the field changed refuses; a park that runs out of steps still reports `sent`: the answer is in and
+ * ticked, and the card's focused lock covers the rest. Never an `Enter`: on the field it would untick.
  */
-async function parkOnAdvance(args: GuardArgs, proof: MultiSelectModel, ours: string, sleep: Sleep): Promise<ActionResult> {
+async function parkAboveField(args: GuardArgs, proof: MultiSelectModel, ours: string, sleep: Sleep): Promise<ActionResult> {
   const bound = (fieldOn(proof)?.lines ?? 1) + 3;
   let current = proof;
   for (let step = 0; step < bound; step++) {
-    if (current.phase === "checkbox" && current.pointer === "advance") return { status: "sent" };
-    const sent = await sendBoundKeys(args, ["Down"], current.regionSignature);
+    if (current.phase === "checkbox" && current.pointer === "option" && current.field?.pointer === "above") {
+      return { status: "sent" };
+    }
+    const sent = await sendBoundKeys(args, ["Up"], current.regionSignature);
     if (sent.status !== "sent") return sent;
     const before = current.regionSignature;
     const moved = await pollDialog({ ...target(args), sleep }, (m) => m.regionSignature !== before);
     if (moved.status === "drifted") return { status: "changed", why: "park: drift" };
-    // A caret move inside a wrapped value repaints nothing: the next Down goes from the same read.
+    // A caret move inside a wrapped value repaints nothing: the next Up goes from the same read.
     if (moved.status === "timeout") continue;
     const field = fieldOn(moved.model);
     if (field === undefined || field.text !== ours || !field.checked) return { status: "changed", why: "park: drift" };

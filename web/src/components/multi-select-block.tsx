@@ -4,7 +4,7 @@ import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MultiSelectModel, StyledLine } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
-import { AnswerFieldSurface, answerFieldCopy } from "@/components/answer-field-surface";
+import { AnswerFieldSurface, answerFieldCopy, useAnswerEditor } from "@/components/answer-field-surface";
 import { AnswerList } from "@/components/answer-list";
 import { KeyBadge, optionSurface, PromptPanel, QuestionHeading } from "@/components/option-button";
 import { WizardStepper } from "@/components/wizard-stepper";
@@ -65,8 +65,7 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
   const live = useLive(paneId ?? "", scope);
   const offline = stale === true || (paneId !== undefined && !live);
   const [sending, setSending] = useState<string | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [draft, setDraft] = useState("");
+  const editor = useAnswerEditor();
   const locked = Boolean(disabled) || sending !== null;
   const answerLocked = locked || offline;
 
@@ -80,13 +79,13 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
     }
   }
 
-  async function sendAnswer() {
-    const text = draft.trim();
-    if (text.length === 0 || answerLocked || !onAnswer) return;
+  // Resolves whether the answer landed: the editor closes only then, so a refused one keeps what was
+  // thumb-typed.
+  async function runAnswer(text: string): Promise<boolean> {
+    if (!onAnswer) return false;
     setSending("answer");
     try {
-      // The editor closes only on a send that landed: a refused one keeps what was thumb-typed.
-      if (await onAnswer(text)) setEditorOpen(false);
+      return await onAnswer(text);
     } finally {
       setSending(null);
     }
@@ -103,22 +102,16 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
       />
     );
   }
+  const field = multi.field;
   const answerField =
-    multi.field && onAnswer ? (
+    field && onAnswer ? (
       <AnswerFieldSurface
-        field={multi.field}
+        field={field}
         copy={answerFieldCopy(t("prompt.feedback.answer.helpMulti"))}
         ours={sending === "answer"}
         anySending={sending !== null}
-        editorOpen={editorOpen}
-        draft={draft}
-        onDraft={setDraft}
-        onOpen={(prefill) => {
-          setDraft(prefill);
-          setEditorOpen(true);
-        }}
-        onCancel={() => setEditorOpen(false)}
-        onSend={() => void sendAnswer()}
+        editor={editor}
+        onSend={() => void editor.send(field, runAnswer, answerLocked)}
         locked={answerLocked}
         busyIcon={<SpinnerSm />}
         showTyped={false}
