@@ -734,6 +734,8 @@ export const ru: Dictionary = {
   "prompt.feedback.answer.textAria": "Текст ответа",
   "prompt.feedback.answer.placeholder": "Напишите свой ответ…",
   "prompt.feedback.answer.help": "Вводится в поле ответа на вопрос и отправляется как ваш ответ.",
+  "prompt.feedback.answer.helpWizard":
+    "Вводится в поле ответа на этот вопрос. Отправка отвечает на него и переходит к следующему вопросу.",
   "prompt.feedback.answer.send": "Отправить ответ",
   "prompt.feedback.answer.sending": "Ввод ответа…",
   "prompt.feedback.answer.focused":

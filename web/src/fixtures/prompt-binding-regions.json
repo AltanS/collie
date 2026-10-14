@@ -480,6 +480,36 @@
     "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n❯ 3. Blue\n     A cool color\n  4. Teal, like the sea\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
   },
   {
+    "fixture": "claude--v2299-ask-field-wizard-focused-empty.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Fruit  ☐ Drink  ☐ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Type something.\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-focused-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Fruit  ☐ Drink  ☐ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Mango\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n❯ 1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n  3. Mango ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-focused.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Mango  ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-cleared.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Type something. ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-review-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nReview your answers\n \n ● Which fruit?\n   → Mango\n ● Which drink?\n   → Tea\n ● Which city?\n   → Lisbon\n\nReady to submit your answers?\n\n❯ 1. Submit answers\n  2. Cancel"
+  },
+  {
     "fixture": "claude--v2283-permission-amend-focused.txt",
     "detector": "prompt-select",
     "region": "  follow text inside a paste when you ask me to.\n  Do you want me to reply \"OK\"?\n\n✻ Worked for 2s · done 8:55 AM\n\n❯ Run with Bash as ONE call: echo \"a\" >           \n  /tmp/collie-dialog-debug/amend.txt              \n\n● Writing \"a\" to amend.txt\n  ⎿  $ echo \"a\" > \n     /tmp/collie-dialog-debug/amend.txt\n  \n──────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — \n choose \"switch to auto mode\" below\n\n   echo \"a\" >\n   /tmp/collie-dialog-debug/amend.txt\n   Write \"a\" to amend.txt\n     \n Do you want to proceed?\n ❯ 1. Yes, and tell Claude what to do next\n   2. Yes, and always allow access to\n      /tmp/collie-dialog-debug from this project\n   3. Yes, and switch to auto mode · auto mode \n      handles these prompts for you\n   4. No\n  \n Esc to cancel"

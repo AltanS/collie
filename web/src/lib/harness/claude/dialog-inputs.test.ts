@@ -133,7 +133,7 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
     expect(kinds(buildBlocks(lines, { agent: "claude" }))).not.toContain("unread-dialog");
   });
 
-  it("a wizard step with the pointer on the field is not claimed either", () => {
+  it("a wizard step with the pointer on the field is claimed, its field focused and never an option", () => {
     const text = readFileSync(join(PANES_DIR, "claude--v2283-wizard-two-line-question.txt"), "utf8");
     // Move the pointer from "1. Apple" onto "4. Type something." the way Down×3 repaints it. The
     // pointer is the `❯ ` just before "1. "; the first `❯` in the file is an old prompt row.
@@ -143,7 +143,10 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
       .replace(`\n  ${grey}4. Type something.`, `\n❯ ${grey}4. Type something.`);
     expect(moved).not.toBe(text);
     expect(detectWizard(splitLines(parseAnsi(text)))).not.toBeNull();
-    expect(detectWizard(splitLines(parseAnsi(moved)))).toBeNull();
+    const focused = detectWizard(splitLines(parseAnsi(moved)));
+    if (focused?.phase !== "question") throw new Error("the focused step is not claimed as a question");
+    expect(focused.field).toMatchObject({ key: "4", focused: true, text: "", chosen: false, pointer: "on" });
+    expect(focused.options.map((o) => o.keys[0])).not.toContain("4");
   });
 });
 

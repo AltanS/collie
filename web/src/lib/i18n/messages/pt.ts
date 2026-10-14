@@ -700,6 +700,8 @@ export const pt: Dictionary = {
   "prompt.feedback.answer.textAria": "Texto da resposta",
   "prompt.feedback.answer.placeholder": "Escreva sua resposta…",
   "prompt.feedback.answer.help": "Digitada no campo de resposta da pergunta e enviada como sua resposta.",
+  "prompt.feedback.answer.helpWizard":
+    "Digitada no campo de resposta desta pergunta. Enviar responde a ela e passa para a próxima pergunta.",
   "prompt.feedback.answer.send": "Enviar resposta",
   "prompt.feedback.answer.sending": "Digitando sua resposta…",
   "prompt.feedback.answer.focused":

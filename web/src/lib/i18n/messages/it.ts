@@ -701,6 +701,8 @@ export const it: Dictionary = {
   "prompt.feedback.answer.placeholder": "Scrivi la tua risposta…",
   "prompt.feedback.answer.help":
     "Viene digitata nel campo di risposta della domanda e inviata come tua risposta.",
+  "prompt.feedback.answer.helpWizard":
+    "Digitata nel campo di risposta di questa domanda. L'invio risponde e passa alla domanda successiva.",
   "prompt.feedback.answer.send": "Invia risposta",
   "prompt.feedback.answer.sending": "Digitazione della risposta…",
   "prompt.feedback.answer.focused":

@@ -700,6 +700,8 @@ export const tr: Dictionary = {
   "prompt.feedback.answer.textAria": "Yanıt metni",
   "prompt.feedback.answer.placeholder": "Yanıtınızı yazın…",
   "prompt.feedback.answer.help": "Sorunun yanıt alanına yazılır ve yanıtınız olarak gönderilir.",
+  "prompt.feedback.answer.helpWizard":
+    "Bu sorunun yanıt alanına yazılır. Göndermek soruyu yanıtlar ve sonraki soruya geçer.",
   "prompt.feedback.answer.send": "Yanıtı gönder",
   "prompt.feedback.answer.sending": "Yanıtınız yazılıyor…",
   "prompt.feedback.answer.focused":

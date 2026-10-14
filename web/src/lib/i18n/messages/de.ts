@@ -776,6 +776,8 @@ export const de: Dictionary = {
   "prompt.feedback.answer.textAria": "Antworttext",
   "prompt.feedback.answer.placeholder": "Antwort eingeben…",
   "prompt.feedback.answer.help": "Wird in das Antwortfeld der Frage eingegeben und als Antwort gesendet.",
+  "prompt.feedback.answer.helpWizard":
+    "Wird in das Antwortfeld dieser Frage eingegeben. Senden beantwortet sie und geht zur nächsten Frage.",
   "prompt.feedback.answer.send": "Antwort senden",
   "prompt.feedback.answer.sending": "Antwort wird eingegeben…",
   "prompt.feedback.answer.focused":

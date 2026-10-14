@@ -852,6 +852,8 @@ export const en = {
   "prompt.feedback.answer.textAria": "Answer text",
   "prompt.feedback.answer.placeholder": "Write your answer…",
   "prompt.feedback.answer.help": "Typed into the question's answer field and sent as your answer.",
+  "prompt.feedback.answer.helpWizard":
+    "Typed into this question's answer field. Sending answers it and moves to the next question.",
   "prompt.feedback.answer.send": "Send answer",
   "prompt.feedback.answer.sending": "Typing your answer…",
   "prompt.feedback.answer.focused":
