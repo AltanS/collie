@@ -1146,8 +1146,9 @@ describe("update", () => {
     const write = h.files.write.bind(h.files);
     h.files.write = (path, text, mode) => {
       write(path, text, mode);
-      // The rival's write lands just after ours and wins.
-      if (path === LOCK) write(path, JSON.stringify({ pid: 999, at: NOW }), mode);
+      // The rival's write lands just after ours and wins. Matched by name, not by `=== LOCK`: on
+      // Windows the code joins the path with backslashes.
+      if (path.endsWith("update.lock")) write(path, JSON.stringify({ pid: 999, at: NOW }), mode);
     };
     h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie update" : null);
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
