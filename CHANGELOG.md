@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A long message with two images at its end reaches Claude again.** Claude turns every image path at the end of a long paste into its own image mark. Collie counted only the last one, so it never pressed Enter and the message stayed in the input box. The check now follows Claude's own rule, probed live on Claude Code 2.1.299.
+
 ## [1.21.1] - 2026-10-14
 
 **Urgent.** A crew member installed from a git checkout can end up half updated, still on the old version.

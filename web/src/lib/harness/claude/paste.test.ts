@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { collapsesAsPaste, isPastePlaceholderOnly, liftableImagePaths, pasteCarriesSend } from "./paste";
+import { collapsesAsPaste, isPastePlaceholderOnly, liftableImagePaths, liftedPaste, pasteCarriesSend } from "./paste";
 
 // The paste-placeholder grammar (.adr/0010). Every shape below was live-probed on 2026-08-06 in the
 // collie-demo sandbox; the rejections are the load-bearing half — a `true` here fires the submit key
@@ -152,6 +152,56 @@ describe("pasteCarriesSend — an image path Claude lifted out of the paste", ()
     );
   });
 
+  // The 2026-10-14 minibuch stall: two images attached at the end of a long message became two
+  // trailing paths, Claude lifted both, and only the last one was counted, so Enter never came.
+  it("accepts two tokens for two paths ending the text, the shape that stalled on 2026-10-14", () => {
+    const body = multiline(6) + "x".repeat(1100);
+    expect(pasteCarriesSend(`${body} ${shot} ${shot2}`, "[Image #7] [Image #8][Pasted text #9 +6 lines]")).toBe(true);
+    expect(pasteCarriesSend(`${body}\n${shot} ${shot2}`, "[Image #10] [Image #11][Pasted text #12 +6 lines]")).toBe(true);
+  });
+
+  it("accepts the extra newline Claude adds when another absolute path sits before the image", () => {
+    const body = multiline(6) + "x".repeat(1100);
+    expect(pasteCarriesSend(`${body} /usr/share/thing ${shot}`, "[Image #14][Pasted text #15 +7 lines]")).toBe(true);
+    expect(pasteCarriesSend(`${body} a / b ${shot}`, "[Image #21][Pasted text #22 +7 lines]")).toBe(true);
+    // The same token with the count of the send as typed is not what Claude shows; refuse it.
+    expect(pasteCarriesSend(`${body} /usr/share/thing ${shot}`, "[Image #14][Pasted text #15 +6 lines]")).toBe(false);
+  });
+
+  it("accepts a path that ends a line in the middle of the paste", () => {
+    const body = multiline(6) + "x".repeat(1100);
+    const send = `${body.slice(0, 300)} ${shot}\n${body.slice(300)}`;
+    expect(pasteCarriesSend(send, "[Image #16][Pasted text #17 +7 lines]")).toBe(true);
+  });
+
+  it("waits for the image tokens of a bracketed send before the paste token alone can vouch for it", () => {
+    // Read before Claude attached the photos: the paste token is there, the image tokens are not yet.
+    expect(pasteCarriesSend(`${long} ${shot}`, "[Pasted text #9]")).toBe(false);
+    expect(pasteCarriesSend(`${long} ${shot}`, "[Image #8][Pasted text #9]")).toBe(true);
+  });
+
+  it("accepts a stale image code left in the text beside a real photo; it stays inside the paste", () => {
+    // The 2026-10-14 draft after the numbering fix: the stale `[Image #1]` is literal text, the new
+    // photo is #2 and its path ends the send.
+    const body = multiline(6) + "x".repeat(1100);
+    expect(pasteCarriesSend(`${body} [Image #1] ${shot}`, "[Image #2][Pasted text #3 +6 lines]")).toBe(true);
+  });
+
+  it("stalls on every broken copy of a good draft: a token dropped or added, M off by one", () => {
+    const body = multiline(6) + "x".repeat(1100);
+    const send = `${body} ${shot} ${shot2}`;
+    expect(pasteCarriesSend(send, "[Image #7] [Image #8][Pasted text #9 +6 lines]")).toBe(true);
+    expect(pasteCarriesSend(send, "[Image #8][Pasted text #9 +6 lines]")).toBe(false);
+    expect(pasteCarriesSend(send, "[Image #6] [Image #7] [Image #8][Pasted text #9 +6 lines]")).toBe(false);
+    expect(pasteCarriesSend(send, "[Image #7] [Image #8][Pasted text #9 +5 lines]")).toBe(false);
+    expect(pasteCarriesSend(send, "[Image #7] [Image #8][Pasted text #9 +7 lines]")).toBe(false);
+    expect(pasteCarriesSend(send, "[Image #7] [Image #8]")).toBe(false);
+  });
+
+  it("rejects fewer image tokens than the send had liftable paths", () => {
+    expect(pasteCarriesSend(`${long} ${shot} ${shot2}`, "[Image #8][Pasted text #9]")).toBe(false);
+  });
+
   it("rejects an image token the send had no image path for", () => {
     expect(pasteCarriesSend(`${long} /tmp/notes.txt`, "[Image #8][Pasted text #9]")).toBe(false);
   });
@@ -187,7 +237,15 @@ describe("liftableImagePaths — only the paths Claude lifts, in the shape Colli
     expect(liftableImagePaths(`a\n${p}\nb`)).toBe(1);
     expect(liftableImagePaths(`a ${p}`)).toBe(1);
     expect(liftableImagePaths(`a\n${p}`)).toBe(1);
-    expect(liftableImagePaths(`${p}\nmid ${p}\nend ${p}`)).toBe(2);
+    expect(liftableImagePaths(`${p}\nmid ${p}\nend ${p}`)).toBe(3);
+  });
+
+  it("counts every path in a run at the end, and the first of two paths that open the text", () => {
+    expect(liftableImagePaths(`a ${p} ${p}`)).toBe(2);
+    expect(liftableImagePaths(`a  ${p}`)).toBe(1);
+    expect(liftableImagePaths(`${p} ${p} words after`)).toBe(1);
+    expect(liftableImagePaths(`${p} words after`)).toBe(0);
+    expect(liftableImagePaths(`a ${p} word`)).toBe(0);
   });
 
   it("counts a path once when the send ends in one or two newlines", () => {
@@ -201,6 +259,19 @@ describe("liftableImagePaths — only the paths Claude lifts, in the shape Colli
     expect(liftableImagePaths("look at screenshot.png please")).toBe(0);
     expect(liftableImagePaths("see /tmp/shot.png")).toBe(0);
     expect(liftableImagePaths(`before ${p} after`)).toBe(0);
+  });
+});
+
+describe("liftedPaste — the paste Claude keeps", () => {
+  const p = "/s/uploads/w1_p1-mf3x9q-0a1b2c3d.png";
+
+  it("keeps the send whole when nothing is lifted", () => {
+    expect(liftedPaste("one /usr/x\ntwo")).toEqual({ images: 0, text: "one /usr/x\ntwo" });
+  });
+
+  it("joins the kept pieces with newlines once a path is lifted", () => {
+    expect(liftedPaste(`one /usr/x ${p}`)).toEqual({ images: 1, text: "one\n/usr/x" });
+    expect(liftedPaste(`one\n${p}\ntwo`)).toEqual({ images: 1, text: "one\ntwo" });
   });
 });
 
