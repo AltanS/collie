@@ -18,7 +18,8 @@
 // re-derivation (`dialogDetector` goes through `adapter.buildBlocks`) and the unread-dialog probes
 // therefore all read the same rows, so a tap's signature is identical on both sides and the bridge's
 // binding check sees a region that ends one row above the buffer's end, well inside its tail window
-// (`DEFAULT_PROMPT_TAIL_LINES`). No grammar learns about the rule.
+// (`DEFAULT_PROMPT_TAIL_LINES`). No grammar learns about the rule. Its sibling repair,
+// task-checklist.ts, takes off the task checklist 2.1.299 draws below this rule, and runs first.
 //
 // FAIL CLOSED. Exactly ONE trailing row is dropped, and only when all of these hold:
 //   1. the last non-blank row is a horizontal rule: a run of `─`, optionally followed by one short
