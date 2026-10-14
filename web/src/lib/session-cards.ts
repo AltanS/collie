@@ -131,6 +131,27 @@ export function programSessionsOnHost(
   return sessionsOnHost(sessions, scope, servers).filter((s) => isProgramSession(s));
 }
 
+/** A program session's two counts on the dashboard (M55 spec 13). */
+export interface ProgramCounts {
+  /** Its open conversations: the live panes the program holds. */
+  open: number;
+  /** Its conversations that wait on you with a question. */
+  waiting: number;
+}
+
+/**
+ * A program session's counts, read off the summary the snapshot already carries for every session, so
+ * the dashboard asks nothing more of the bridge. `agents` is the session's live panes, which are the open
+ * conversations the conversation list draws first (lib/conversation-list.ts). `blocked` is the panes that
+ * wait on a person, and the durable adapter reads a pane with an open question as blocked
+ * (bridge/mux/durable/protocol.ts), so it is the list's "waiting" rows. Both are zero unless the session
+ * is ready: an unreachable session's last poll failed, and a starting one has said nothing yet.
+ */
+export function programCounts(card: Pick<SessionSummary, "agents" | "blocked" | "state" | "reachable">): ProgramCounts {
+  if (sessionState(card) !== "ready") return { open: 0, waiting: 0 };
+  return { open: card.agents, waiting: card.blocked };
+}
+
 /** Test seam: forget every card. */
 export function __resetSessionCards(): void {
   cards.clear();

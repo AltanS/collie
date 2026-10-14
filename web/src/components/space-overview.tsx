@@ -268,7 +268,7 @@ export function SpaceOverview({
             })
           )}
           {shownPrograms.map((session) => (
-            <ProgramSpaceRow key={`program:${session.name}`} session={session} onOpen={(name) => onOpenProgram?.(name)} />
+            <ProgramSpaceRow key={`program:${session.name}`} session={session} onOpen={(s) => onOpenProgram?.(s.name)} />
           ))}
         </ListGroup>
       )}
