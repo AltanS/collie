@@ -11,16 +11,17 @@ import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
 import { __resetOperatorCommands, getMuxConfig } from "@/lib/operator-config";
 import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
-import type { AgentView, MuxCapability, MuxConfig, SessionSummary } from "@/lib/types";
+import type { AgentView, MuxCapability, MuxConfig, ServerSummary, SessionSummary } from "@/lib/types";
 import { fixtureAgents, fixtureSessions, fixtureShellPanes, fixtureTabs, fixtureWorkspaces } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 import { DetailRoute } from "./detail";
 import { HomeRoute } from "./home";
 
-// A PROGRAM IS A SESSION, ON THE PHONE (M55 spec 02), through the real home route: a durable program the
-// collie carries is one more space in the Spaces list, a tap opens its conversation list, and a snapshot
-// with no program session renders exactly as it did before the session card existed.
+// A PROGRAM IS A SESSION, ON THE PHONE (M55 spec 02, spec 13), through the real home route: a durable
+// program the collie carries is a row of the dashboard's Programs section, which sits above the spaces
+// while a question waits and below them otherwise, a tap opens its conversation list, and a snapshot with
+// no program session renders exactly as it did before the session card existed.
 
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
 vi.mock("@/components/crew-tab", () => ({ CrewTab: () => <div data-testid="crew-tab" /> }));
@@ -95,18 +96,23 @@ function homeData(sessions: SessionSummary[], scope: HomeData["scope"] = {}): Ho
   };
 }
 
-function renderHome(data: HomeData, initialPath = "/") {
+function renderHome(data: HomeData, initialPath = "/", read: () => HomeData = () => data) {
   // The root loader files the cards on every snapshot (lib/loaders.ts `toHomeData`); a test loader does
-  // what it does.
-  noteSessionCards(data.sessions, data.servers);
+  // what it does. `read` stands for a bridge whose next snapshot differs, asked on each revalidation.
+  const first = data;
+  noteSessionCards(first.sessions, first.servers);
   const router = createMemoryRouter(
     [
       {
         id: ROOT_ROUTE_ID,
         path: "/",
-        loader: () => data,
+        loader: () => {
+          const next = read();
+          noteSessionCards(next.sessions, next.servers);
+          return next;
+        },
         element: withHeaderHost(
-          <CrewProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={1500}>
+          <CrewProvider servers={first.servers} sessions={first.sessions} ts={first.ts} pollMs={1500}>
             <HomeRoute />
           </CrewProvider>,
         ),
@@ -144,6 +150,14 @@ async function spacesShown(): Promise<void> {
 }
 
 const programRows = () => [...document.querySelectorAll<HTMLElement>('[data-slot="program-space"]')];
+const programSection = () => document.querySelector<HTMLElement>('[data-slot="program-section"]');
+/** Whether any heading on the page reads "Programs". */
+const programsHeading = (container: HTMLElement) =>
+  [...container.querySelectorAll("h2, h3")].some((h) => (h.textContent ?? "").includes("Programs"));
+/** The section wrapping the Spaces list's body. */
+const spacesSection = () => document.querySelector("#spaces-body")!.closest("section")!;
+/** Whether `a` comes before `b` in the document. */
+const precedes = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
 describe("session card: a snapshot with no program session renders as before", () => {
   it("the dashboard, the Spaces list and the tab bar are the same markup with and without terminal cards", async () => {
@@ -160,6 +174,10 @@ describe("session card: a snapshot with no program session renders as before", (
     expect(markup(after.container)).toBe(old);
     expect(programRows()).toHaveLength(0);
     expect(document.querySelector('[data-slot="experimental-badge"]')).toBeNull();
+    // No program, no Programs section: not even its header (M55 spec 13).
+    expect(programSection()).toBeNull();
+    expect(programsHeading(before.container)).toBe(false);
+    expect(programsHeading(after.container)).toBe(false);
   });
 
   it("a named terminal session's view is the same markup with and without its card", async () => {
@@ -177,6 +195,7 @@ describe("session card: a snapshot with no program session renders as before", (
     const after = renderHome(homeData(TERMINAL_CARDS, scope), "/?s=collie-demo");
     await spacesShown();
     expect(markup(after.container)).toBe(old);
+    expect(programsHeading(after.container)).toBe(false);
   });
 
   it("the space strip is the same markup with and without the session's card", async () => {
@@ -202,7 +221,7 @@ describe("session card: a snapshot with no program session renders as before", (
   });
 });
 
-describe("program space: one space per program session, after the terminal spaces", () => {
+describe("Programs section: one row per program session, apart from the Spaces list", () => {
   it("draws each program session as a row with its name, the Experimental badge, its runtime and its place", async () => {
     declares(TERMINAL_CAPS);
     renderHome(homeData([...TERMINAL_CARDS, DESK, BILLING]));
@@ -212,6 +231,7 @@ describe("program space: one space per program session, after the terminal space
 
     const desk = rows[0]!;
     expect(within(desk).getByText("Experimental")).toBeInTheDocument();
+    expect(desk.querySelector('[data-slot="program-space-open"]')?.textContent).toBe("00 open conversations");
     expect(desk.querySelector('[data-slot="program-space-line"]')?.textContent).toBe("pi-durable, local");
     // Ready says nothing on screen; the word is there for a screen reader.
     expect(desk.querySelector('[data-slot="program-space-state"]')).toBeNull();
@@ -223,15 +243,72 @@ describe("program space: one space per program session, after the terminal space
     expect(billing.querySelector('[data-slot="program-space-line"]')?.textContent).toBe("acme-billing, remote");
   });
 
-  it("sorts after every terminal space", async () => {
+  it("lists the programs under a Programs header, and never in the Spaces list", async () => {
     declares(TERMINAL_CAPS);
-    const { container } = renderHome(homeData([...TERMINAL_CARDS, DESK]));
+    const { container } = renderHome(homeData([...TERMINAL_CARDS, DESK, BILLING]));
     await spacesShown();
-    const body = container.querySelector("#spaces-body")!;
-    const buttons = [...body.querySelectorAll("button")];
-    const deskAt = buttons.findIndex((b) => b.dataset.slot === "program-space");
-    const lastSpace = buttons.map((b) => b.textContent ?? "").findLastIndex((text) => fixtureWorkspaces.some((w) => text.includes(w.label)));
-    expect(deskAt).toBeGreaterThan(lastSpace);
+    expect(programsHeading(container)).toBe(true);
+    expect(programSection()!.querySelectorAll('[data-slot="program-space"]')).toHaveLength(2);
+    expect(container.querySelector("#spaces-body")!.querySelector('[data-slot="program-space"]')).toBeNull();
+    // A program is never shown twice.
+    expect(programRows()).toHaveLength(2);
+  });
+
+  it("sits below the spaces while no question waits", async () => {
+    declares(TERMINAL_CAPS);
+    renderHome(homeData([...TERMINAL_CARDS, { ...DESK, agents: 3 }, BILLING]));
+    await spacesShown();
+    expect(precedes(spacesSection(), programSection()!)).toBe(true);
+  });
+
+  it("sits above the spaces while any program has a question waiting", async () => {
+    declares(TERMINAL_CAPS);
+    renderHome(homeData([...TERMINAL_CARDS, { ...DESK, agents: 3, blocked: 2 }, BILLING]));
+    await spacesShown();
+    expect(precedes(programSection()!, spacesSection())).toBe(true);
+    const waiting = programRows()[0]!.querySelector('[data-slot="program-space-waiting"]');
+    expect(waiting).toHaveClass("text-status-blocked");
+  });
+
+  it("moves on the snapshot that changes the waiting count, both ways", async () => {
+    declares(TERMINAL_CAPS);
+    let blocked = 0;
+    const snapshot = () => homeData([...TERMINAL_CARDS, { ...DESK, agents: 2, blocked }]);
+    const { router } = renderHome(snapshot(), "/", snapshot);
+    await spacesShown();
+    expect(precedes(spacesSection(), programSection()!)).toBe(true);
+
+    blocked = 1;
+    await router.revalidate();
+    await waitFor(() => expect(precedes(programSection()!, spacesSection())).toBe(true));
+
+    blocked = 0;
+    await router.revalidate();
+    await waitFor(() => expect(precedes(spacesSection(), programSection()!)).toBe(true));
+    expect(programRows()).toHaveLength(1);
+  });
+
+  it("in a crew, one section lists every machine's programs, names the member, and opens it on its machine", async () => {
+    declares(TERMINAL_CAPS);
+    server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: true, items: [] })));
+    const servers: ServerSummary[] = [
+      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+    ];
+    const sessions = [
+      ...TERMINAL_CARDS.map((s) => ({ ...s, host: "bluefin" })),
+      { ...DESK, host: "bluefin" },
+      { ...DESK, name: "support", host: "minibuch" },
+    ];
+    const { router } = renderHome({ ...homeData(sessions), servers });
+    await spacesShown();
+    const rows = programRows();
+    expect(rows.map((r) => r.querySelector('[data-slot="program-space-line"]')?.textContent)).toEqual([
+      "pi-durable, local",
+      "pi-durable, local, minibuch",
+    ]);
+    await userEvent.click(rows[1]!);
+    await waitFor(() => expect(router.state.location.search).toBe("?h=minibuch&s=support"));
   });
 
   it("a starting session says so on its row", async () => {
@@ -257,8 +334,9 @@ describe("program space: one space per program session, after the terminal space
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: true, items: [] })));
     renderHome(homeData([...TERMINAL_CARDS, DESK], { session: "desk" }), "/?s=desk");
     await waitFor(() => expect(document.querySelector('[data-slot="conversation-list"]')).not.toBeNull());
-    // No Spaces list and no Files tab on a session with no screen.
+    // No Spaces list, no Programs section and no Files tab on a session with no screen.
     expect(document.querySelector("#spaces-body")).toBeNull();
+    expect(programSection()).toBeNull();
     expect(screen.queryByRole("tab", { name: "Files" })).toBeNull();
   });
 
