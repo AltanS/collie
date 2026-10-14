@@ -78,6 +78,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable SDK cleans text by code point, the way the bridge does.** `cut` walks a string twice, controls out and then the invisible characters, with the same `isControl` and `isInvisible` tests as the bridge's `clean.ts`, so no regular expression holds a control character. The cleaned text is the same, and the request router no longer shares its name with a variable inside it.
 - **The durable SDK's promises resolve once, in plain sight.** `drained()` builds its promise with `Promise.withResolvers`, and the start's wait for asks raised again is an `async` function with `try` and `finally`, so oxlint's promise rules hold. Both wait and log as before.
 - **The durable SDK passes the root lint with no override.** Untyped input is `Json` and goes through named guards, and the package picks its runtime with `"Bun" in globalThis`.
+- **The parked Cloudflare example pins a patched sharp.** Dependabot alert 1: an npm override in the example's package.json lifts sharp from 0.35.4 to 0.35.5 under miniflare (its exact pin blocks a plain update), and the Cloudflare pins do not move.
 
 ### Docs
 
