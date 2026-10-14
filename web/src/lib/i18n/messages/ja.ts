@@ -532,6 +532,7 @@ export const ja: Dictionary = {
   "settings.paneOrder.description":
     "アクティビティは最後に何かが起きたペインをダッシュボードと切り替え画面の先頭に置きます。キャッシュはプロンプトキャッシュが最も早く切れるペインを先頭に置きます。場所はターミナルの並び順のままにします。",
   "chat.status.feedbackSent": "フィードバックを送信しました",
+  "chat.status.answerSent": "回答を送信しました",
   "chat.status.sent": "送信完了",
   "chat.status.menuChanged": "メニューが変更されました。更新中",
   "chat.status.askChanged": "ダイアログが変更されました。カードには新しいものが表示されます",
@@ -763,6 +764,16 @@ export const ja: Dictionary = {
   "prompt.feedback.freeText.focused":
     "ターミナル側で自由入力行にフォーカスがあります。ボタン操作は行内に入力されるため、閉じるまで無効化されます。",
   "prompt.feedback.freeText.typedPrefix": "ターミナルに直接入力中: ",
+  "prompt.feedback.answer.offer": "自分で回答を入力",
+  "prompt.feedback.answer.change": "この回答を変更",
+  "prompt.feedback.answer.editorLabel": "あなたの回答",
+  "prompt.feedback.answer.textAria": "回答本文",
+  "prompt.feedback.answer.placeholder": "回答を入力してください...",
+  "prompt.feedback.answer.help": "質問の回答欄に入力され、回答として送信されます。",
+  "prompt.feedback.answer.send": "回答を送信",
+  "prompt.feedback.answer.sending": "回答を入力中...",
+  "prompt.feedback.answer.focused": "ターミナルで回答欄がキーボードを使用中のため、これらのボタンは回答欄に入力されてしまいます。下から自分の回答を送信することはできます。",
+  "prompt.feedback.answer.typedPrefix": "回答欄の内容: ",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "ペイン設定",
@@ -1493,6 +1504,9 @@ export const ja: Dictionary = {
   "promptAction.feedback.empty": "送信するデータがありません",
   "promptAction.feedback.boxNotOpened": "フィードバック欄が開きませんでした。ペインの状態を確認してください。",
   "promptAction.feedback.notArrived": "フィードバックが届きませんでした。送信は実行されていません。",
+  "promptAction.answer.fieldNotReached": "回答欄に移動できませんでした。何も送信されていません。",
+  "promptAction.answer.notCleared": "回答欄を消去できませんでした。何も送信されていません。",
+  "promptAction.answer.notArrived": "回答が回答欄に表示されませんでした。何も送信されていません。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "別の音声を文字起こし中です。しばらく待ってから再試行してください。",

@@ -269,6 +269,46 @@ describe("submitPromptFeedback — the states it refuses BEFORE touching the pan
   });
 });
 
+// ADR 0104: AskUserQuestion's `answer` row runs the shared recipe (lib/answer-field.ts) and then ONE
+// Enter, bound to the read that proved the text. Real 2.1.299 captures of one dialog: the field holding
+// text with the pointer on Blue, then focused holding it, then focused and empty after a clear.
+describe("submitPromptFeedback — an AskUserQuestion answer row", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+  const capture = (name: string) => readFileSync(join(PANES, name), "utf8");
+  const offRow = capture("claude--v2299-ask-field-single-typed-off-row.txt");
+  const focusedTyped = capture("claude--v2299-ask-field-single-focused-typed.txt");
+  const focusedEmpty = capture("claude--v2299-ask-field-single-focused-empty.txt");
+  const answered = focusedEmpty.replace("Type something.", "Navy");
+  const detect = (text: string) => detectPromptSelect(splitLines(parseAnsi(text)))!;
+
+  it("walks onto the filled field, clears it, types, and ends with one bound Enter", async () => {
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(offRow)) // entry guard
+      .mockResolvedValueOnce(paneWith(offRow)) // the walk's first read
+      .mockResolvedValueOnce(paneWith(focusedTyped)) // Down landed on the field
+      .mockResolvedValueOnce(paneWith(focusedTyped)) // the reach proof
+      .mockResolvedValueOnce(paneWith(focusedEmpty)) // one clear round emptied it
+      .mockResolvedValue(paneWith(answered)); // our text arrived
+
+    const res = await submitPromptFeedback({ ...base, prompt: detect(offRow), text: "Navy" });
+
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"], ["ctrl+u", "ctrl+k"], ["Enter"]]);
+    expect(mockSendKeys.mock.calls.at(-1)).toEqual(["w1:p1", ["Enter"], undefined, detect(answered).signature]);
+    expect(mockSendReply.mock.calls).toEqual([["w1:p1", "Navy", false, undefined]]);
+  });
+
+  it("sends no Enter when the recipe stops", async () => {
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(focusedEmpty)) // entry guard
+      .mockResolvedValueOnce(paneWith(focusedEmpty)) // the reach proof
+      .mockResolvedValue(paneWith(focusedEmpty)); // the text never arrives
+    const res = await submitPromptFeedback({ ...base, prompt: detect(focusedEmpty), text: "Navy" });
+    expect(res).toEqual({ status: "error", error: t("promptAction.answer.notArrived") });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+});
+
 describe("submitPromptFeedback — the stopping points once it has started writing", () => {
   it("types NOTHING if focus never lands: the digit's pointer move is the only side effect", async () => {
     mockFetchPane
