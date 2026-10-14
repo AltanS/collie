@@ -128,8 +128,9 @@ export interface AgentView {
    * The next prompts the agent in this pane suggested, in its order: one to three, absent when none.
    *
    * PRESENTATION AND NOTHING ELSE, like {@link hint}: untrusted text a program wrote, which the
-   * client renders as text and never interprets. A tap fills a draft and never sends. Dropped
-   * entirely under `COLLIE_REDACT` (`maskPaneText`), because a masked draft is no use.
+   * client renders as text and never interprets. A tap fills a draft and never sends. Under
+   * `COLLIE_REDACT` a suggestion the mask would change is dropped (`maskPaneText`), because a
+   * masked draft is no use.
    */
   suggestions?: readonly string[];
   /**

@@ -649,9 +649,10 @@ updated machines, so build skew is the steady state (§7), and this section is t
   to three next prompts the pane's agent suggested, read from the pane's Herdr tokens on the machine
   the pane lives on. Additive-optional with the closed reading this section requires: **absent means
   no suggestions, and the phone draws no chips**, exactly as before the field. An older peer omits it,
-  and an older lead passes it through untouched. A lead under `COLLIE_REDACT` drops it from every
-  pane, its own and its members', because it is program-written text; an older lead does not know
-  the field, so it passes a newer member's `suggestions` through even when it redacts. Nothing in
+  and an older lead passes it through untouched. A lead under `COLLIE_REDACT` drops each suggestion
+  the secret mask would change from every pane, its own and its members', because it is
+  program-written text, and keeps the rest; an older lead does not know the field, so it passes a
+  newer member's `suggestions` through as the member sent them, even when it redacts. Nothing in
   `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION`
   stays `2`, no new route, no new verb and no new header.
 

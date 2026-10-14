@@ -58,12 +58,17 @@ type PaneProgramText = { terminalTitle?: string; suggestions?: readonly string[]
 /**
  * A pane with the text a program in it wrote masked. Any program can write its title, so the title
  * can hold a path, a command or a key; it is masked. The agent's suggested prompts are the same kind
- * of text, but a masked suggestion is useless as a draft, so they are dropped, key and all. The
+ * of text, but a masked suggestion would put the mask into the operator's draft, so a suggestion the
+ * mask would change is dropped and the rest pass as they are; with none left the key goes too. The
  * operator's own label is not touched.
  */
-export function maskPaneText<P extends PaneProgramText>(pane: P): Omit<P, "suggestions"> {
-  const { suggestions: _suggestions, ...rest } = pane;
-  return pane.terminalTitle === undefined ? rest : { ...rest, terminalTitle: redactText(pane.terminalTitle) };
+export function maskPaneText<P extends PaneProgramText>(
+  pane: P,
+): Omit<P, "suggestions"> & { suggestions?: readonly string[] } {
+  const { suggestions, ...rest } = pane;
+  const titled = pane.terminalTitle === undefined ? rest : { ...rest, terminalTitle: redactText(pane.terminalTitle) };
+  const kept = suggestions?.filter((s) => redactText(s) === s) ?? [];
+  return kept.length === 0 ? titled : { ...titled, suggestions: kept };
 }
 
 /**

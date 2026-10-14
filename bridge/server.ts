@@ -1361,8 +1361,8 @@ export function startServer(opts: {
     const withActivity = (from: SessionRuntime, p: AgentView): AgentView => {
       const a = activity.get(from.name, p.paneId);
       // The title and the suggestions are the strings here a program in the pane writes, so the
-      // title is masked like the mirror (bridge/redact.ts) and the suggestions are dropped before
-      // they reach the phone and the phone's cache.
+      // title is masked like the mirror (bridge/redact.ts) and a suggestion the mask would change is
+      // dropped before it reaches the phone and the phone's cache.
       const titled = cfg.redact ? maskPaneText(p) : p;
       const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
       const key = p.agentSession?.value;
