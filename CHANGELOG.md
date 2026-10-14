@@ -59,6 +59,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The docs start with sessions.** A new Sessions group explains what a session is and where it comes from, a terminal or a program, and a Terminology page lists Collie's words beside the names other tools use.
 - **A program's row counts its conversations.** It shows the open conversations and, when any wait on you, how many, in the needs-you colour. A program that is starting or unreachable says so in their place, and the row still opens.
 - **Programs have their own section on the dashboard.** A program is no longer a row at the end of the space list. The Programs section shows each program with its open conversations and its waiting questions, and it moves above the spaces when a question waits.
+- **The playground shows the Programs section in four numbered cards.** Card 1 has nothing waiting, card 2 has two questions waiting and the section on top, card 3 has an unreachable program, and card 4 has two machines.
 
 ### Fixed
 
