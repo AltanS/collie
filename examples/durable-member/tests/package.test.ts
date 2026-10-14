@@ -83,7 +83,7 @@ describe("the versions", () => {
 });
 
 describe("the root import", () => {
-  test("picks the Bun server on Bun and the Node server elsewhere, by `"Bun" in globalThis`, loading only the one it takes", () => {
+  test("picks the Bun server on Bun and the Node server elsewhere, by `\"Bun\" in globalThis`, loading only the one it takes", () => {
     const code = readFileSync(`${PKG_DIR}src/index.ts`, "utf8");
     expect(code).toContain('"Bun" in globalThis ? await import("./bun/index.ts") : await import("./node/index.ts")');
     // No static import of either server, so Node never loads the Bun one.
