@@ -13,6 +13,7 @@ import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { RawMirror } from "@/components/raw-mirror";
+import { InlineEditor, InlineEditorOffer } from "@/components/ui/inline-editor";
 import { hasResizeObserver } from "@/lib/env";
 import { useLive } from "@/lib/liveness";
 import type { Scope } from "@/lib/scope";
@@ -264,14 +265,6 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   const offline = stale === true || (paneId !== undefined && !live);
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
-  // mount of the element, so re-opening the editor after a cancel would leave the field unfocused —
-  // and it gives assistive tech no chance to announce the surrounding panel first.
-  const editorRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (editorOpen) editorRef.current?.focus();
-  }, [editorOpen]);
-
   const [draft, setDraft] = useState("");
   const feedback = prompt.feedback;
   const terminalFocused = feedback?.focused ?? false;
@@ -382,59 +375,33 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           </span>
         </div>
       ) : feedback && feedbackCopy && feedbackCopy.offer && editorOpen ? (
-        <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
-          <label
-            htmlFor="plan-feedback-text"
-            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-          >
-            <MessageSquarePlus className="size-3.5 shrink-0" />
-            {feedbackCopy.editorLabel}
-          </label>
-          <textarea
-            id="plan-feedback-text"
-            ref={editorRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            maxLength={FEEDBACK_MAX_LENGTH}
-            rows={3}
-            aria-label={t("prompt.feedback.planChange.textAria")}
-            placeholder={feedbackCopy.placeholder}
-            className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          />
-          <p className="text-[11px] leading-snug text-muted-foreground">{feedbackCopy.help}</p>
-          <div className="flex items-center justify-end gap-1.5">
-            <button
-              type="button"
-              disabled={sending !== null}
-              onClick={() => setEditorOpen(false)}
-              className="rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
-            >
-              {t("prompt.feedback.cancel")}
-            </button>
-            <button
-              type="button"
-              disabled={locked || draft.trim().length === 0}
-              onClick={() => void sendFeedback()}
-              className="flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/15 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
-            >
-              {sending === "feedback" ? busyIcon : null}
-              {feedbackCopy.send}
-            </button>
-          </div>
-        </div>
+        <InlineEditor
+          id="plan-feedback-text"
+          label={feedbackCopy.editorLabel}
+          value={draft}
+          onChange={setDraft}
+          maxLength={FEEDBACK_MAX_LENGTH}
+          placeholder={feedbackCopy.placeholder}
+          help={feedbackCopy.help}
+          textAriaLabel={t("prompt.feedback.planChange.textAria")}
+          sendLabel={feedbackCopy.send}
+          cancelLabel={t("prompt.feedback.cancel")}
+          onSend={() => void sendFeedback()}
+          onCancel={() => setEditorOpen(false)}
+          sendDisabled={locked || draft.trim().length === 0}
+          cancelDisabled={sending !== null}
+          busy={sending === "feedback"}
+          busyAriaLabel={t("prompt.sendingAria")}
+        />
       ) : feedback && feedbackCopy && feedbackCopy.offer ? (
-        <button
-          type="button"
+        <InlineEditorOffer
+          label={feedbackCopy.offer}
           disabled={locked}
           onClick={() => {
             setDraft("");
             setEditorOpen(true);
           }}
-          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
-        >
-          <MessageSquarePlus className="size-3.5 shrink-0" />
-          {feedbackCopy.offer}
-        </button>
+        />
       ) : null}
     </PromptPanel>
   );
