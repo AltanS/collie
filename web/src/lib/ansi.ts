@@ -51,8 +51,8 @@ function ansiVar(n: number): string {
 
 /** The mirror's own ground, for inverse video that names no colours of its own. Byte-exact matches
  *  for --background / --foreground's dark halves, and for MIRROR_SPACE in components/ansi-output. */
-const MIRROR_BG = "#0a0a0a";
-const MIRROR_FG = "#fafafa";
+export const MIRROR_BG = "#0a0a0a";
+export const MIRROR_FG = "#fafafa";
 
 // One axis of xterm's 6x6x6 colour cube: level 0 is black, the rest start at 55 and step by 40.
 const cubeLevel = (x: number): number => (x === 0 ? 0 : 55 + x * 40);

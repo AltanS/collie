@@ -6,6 +6,7 @@ import { splitLines } from "../blocks";
 import { describeAdapterConformance } from "./conformance";
 import { buildBlocks } from "./index";
 import { piAdapter } from "./pi";
+import { draftCarriesSend } from "../reply-action";
 import { adapterFor } from "./registry";
 
 const PANES = join(import.meta.dirname, "../../fixtures/panes");
@@ -26,6 +27,7 @@ describeAdapterConformance(piAdapter, {
   // cannot find on the screen, so the write goes out unbound.
   unboundComposerFixtures: [
     "pi--v110-slash-palette.txt",
+    "pi--v120-slash-palette-padded.txt",
     "pi--omo-v5130-panel-draft.txt",
     "pi--omo-v5130-panel-phantom.txt",
     "pi--omo-v5130-panel-running.txt",
@@ -135,6 +137,23 @@ describe("pi adapter routing", () => {
     expect(piAdapter.composerReady?.(idle)).toBe(true);
     expect(piAdapter.extractInputDraft(load(draftName))).toBe("collie stock pi draft probe");
     expect(buildBlocks(idle, { agent: "pi" }).every((block) => block.kind === "raw")).toBe(true);
+  });
+
+  // Issue 442: with `editorPaddingX` above 0 the typed draft opens with a space. The guarded send
+  // (lib/reply-action.ts) types only on a ready composer and presses Enter only when composerReady
+  // still holds and the draft reads back, so each fixture must pass both reads.
+  it.each([
+    ["pi--v120-idle-padded.txt", null],
+    ["pi--v120-draft-padded.txt", "Add unit tests for the parser"],
+    ["pi--v120-draft-padded-multiline.txt", "Add unit tests for the parser and verify edge cases"],
+    ["pi--v120-slash-palette-padded.txt", "/"],
+  ])("keeps a pi pane with editor padding sendable: %s", (name, draft) => {
+    const lines = load(name);
+    expect(piAdapter.composerReady?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBe(draft);
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
+    expect(buildBlocks(lines, { agent: "pi" }).every((block) => block.kind === "raw")).toBe(true);
+    if (draft !== null) expect(draftCarriesSend(draft, piAdapter.extractInputDraft(lines))).toBe(true);
   });
 
   it.each(["pi--v0871-narrow-idle.txt", "pi--v110-stock-narrow-idle.txt", "pi--v0871-question-answered.txt"])(
