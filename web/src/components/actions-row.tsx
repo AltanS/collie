@@ -794,11 +794,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, hand = "righ
                 <Layers className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
-                    glyph it overlaps. */}
+                    glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the
+                    Layers glyph itself, and its disc bit into the glyph's corner. */}
                 {handle.alert === true && (
                   <StatusDot
                     status="blocked"
-                    className="pointer-events-none absolute top-0.5 right-0.5 size-3 rounded-full bg-chrome ring-2 ring-chrome"
+                    className="pointer-events-none absolute top-0.5 right-0.5 size-2.5 rounded-full bg-chrome ring-2 ring-chrome"
                   />
                 )}
               </Button>
