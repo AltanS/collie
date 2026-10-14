@@ -539,6 +539,23 @@ export function isPaneInput(pathname: string, method: string): boolean {
   return action === "reply" || action === "keys";
 }
 
+/**
+ * Does this request change what a machine HAS: a launch, a new space or tab, or a pane or tab closed
+ * or renamed? On the owning host each of those settles itself (`settleTopology`). Forwarded to a
+ * member, the member settles and the lead does not: the lead sees the member only through its sweep,
+ * which rides the primary engine's tick, so a pane launched on a member stayed a shell, or missing,
+ * on the phone for up to one idle interval (12 s; minibuch, 2026-10-14). The forward branch gives
+ * these the same hot spell an input buys.
+ */
+const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab"]);
+export function isTopologyWrite(pathname: string, method: string): boolean {
+  if (method !== "POST") return false;
+  if (TOPOLOGY_CREATES.has(pathname)) return true;
+  if (TAB_ACTION_ROUTE.test(pathname)) return true;
+  const action = pathname.match(PANE_ROUTE)?.[2];
+  return action === "close" || action === "rename";
+}
+
 /** Answer `res`, and when it landed, tell `engine` an input was written (§ isPaneInput). */
 export function afterPaneInput(engine: Pick<StateEngine, "noteInput">, res: Response): Response {
   if (res.ok) engine.noteInput();
@@ -2162,8 +2179,8 @@ export function startServer(opts: {
             // An input forwarded to a member makes the member's engine hot there, and the LEAD's
             // too: the lead sees the member's panes only through its sweep, which rides this
             // engine's tick (CREW_PROTOCOL.md §10.1), so a cold lead would show the member's answer
-            // up to one idle interval late.
-            const input = isPaneInput(pathname, req.method);
+            // up to one idle interval late. A topology write is the same case (§ isTopologyWrite).
+            const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method);
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.

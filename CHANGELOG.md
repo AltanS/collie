@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A long message with two images at its end reaches Claude again.** Claude turns every image path at the end of a long paste into its own image mark. Collie counted only the last one, so it never pressed Enter and the message stayed in the input box. The check now follows Claude's own rule, probed live on Claude Code 2.1.299.
+- **A pane launched on a crew member shows up on the phone within seconds.** The lead refreshed its copy of a member's panes only every 12 seconds, so a new Claude there stayed a shell or stayed missing. A launch, a new tab or space, and a close or rename forwarded to a member now keep the lead on its fast cadence for a few polls, as a reply already did.
 
 ## [1.21.1] - 2026-10-14
 
