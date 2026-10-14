@@ -1,0 +1,24 @@
+[0m[38;2;0;163;219m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[1m[38;2;216;108;216mModel Configuration[0m                                                                                                    
+[0m[38;2;157;157;157mSession-only. Ctrl+S to save to settings.[0m                                                                              
+
+> [0m[7m [0m                                                                                                                    
+
+[0m[38;2;216;108;216m→ ✓ anthropic/claude-fable-5[0m[38;2;157;157;157m [openrouter][0m                                                                              
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-fable-5.1[0m[38;2;157;157;157m [openrouter][0m                                                                            
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-haiku-4.5[0m[38;2;157;157;157m [openrouter][0m                                                                            
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-haiku-5.5[0m[38;2;157;157;157m [openrouter][0m                                                                            
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-opus-4.1[0m[38;2;157;157;157m [openrouter][0m                                                                             
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-opus-4.5[0m[38;2;157;157;157m [openrouter][0m                                                                             
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-opus-4.6[0m[38;2;157;157;157m [openrouter][0m                                                                             
+  [0m[38;2;216;108;216m✓ [0manthropic/claude-opus-4.7[0m[38;2;157;157;157m [openrouter][0m                                                                             
+[0m[38;2;157;157;157m  (1/393)[0m                                                                                                              
+
+[0m[38;2;157;157;157m  Model Name: Anthropic: Claude Fable 5[0m                                                                                
+
+[0m[38;2;0;187;111m  Model catalogs refreshed.[0m                                                                                            
+[0m[38;2;127;127;127m  Enter toggle · Ctrl+A all · Ctrl+X clear · Ctrl+P provider · Alt+Up/Alt+Down reorder · Ctrl+S save · all enabled[0m     
+[0m[38;2;0;163;219m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;127;127;127m/tmp/collie-pi-padding-probe/work[0m
+[0m[38;2;127;127;127m0.0%/262k (auto)                                                                          moonshotai/kimi-k2.6 • medium[0m

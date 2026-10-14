@@ -1,0 +1,21 @@
+[0m[38;2;0;163;219m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+> [0m[7m [0m                                                                                                                    
+
+[0m[38;2;216;108;216m→ Auto-compact                    [0m  [0m[38;2;216;108;216mtrue[0m
+  Show images                       [0m[38;2;157;157;157mtrue[0m
+  Image width                       [0m[38;2;157;157;157m60[0m
+  Auto-resize images                [0m[38;2;157;157;157mtrue[0m
+  Block images                      [0m[38;2;157;157;157mfalse[0m
+  Skill commands                    [0m[38;2;157;157;157mtrue[0m
+  Show hardware cursor              [0m[38;2;157;157;157mfalse[0m
+  Editor padding                    [0m[38;2;157;157;157m2[0m
+  Output padding                    [0m[38;2;157;157;157m1[0m
+  Autocomplete max items            [0m[38;2;157;157;157m5[0m
+[0m[38;2;127;127;127m  (1/34)[0m
+
+[0m[38;2;127;127;127m  Automatically compact context when it gets too large[0m
+
+[0m[38;2;127;127;127m  Type to search · Enter/Space to change · Esc to cancel[0m
+[0m[38;2;0;163;219m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;127;127;127m/tmp/collie-pi-padding-probe/work[0m
+[0m[38;2;127;127;127m0.0%/262k (auto)                                                                          moonshotai/kimi-k2.6 • medium[0m

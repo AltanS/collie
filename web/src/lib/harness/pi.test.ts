@@ -73,6 +73,24 @@ describe("pi adapter routing", () => {
     expect(buildBlocks(lines, { agent: "pi" }).map((block) => block.kind)).toContain("unread-dialog");
   });
 
+  // pi 1.2.0's /settings and /scoped-models were read as a ready editor (found capturing padded screens
+  // for #442). They hold the send now, as an unread dialog: the phone shows the raw mirror and the
+  // printed keys, the same block as pi's /model. The options are NOT readable as a pointed list yet, so
+  // nothing here is answerable; a raw modal that blocks sending is the 1.21.3 scope.
+  it.each([
+    "pi--v120-settings-padded2.txt",
+    "pi--v120-scoped-models-padded2.txt",
+  ])("holds the send on %s as an unread, unanswerable dialog, the same block kind as /model", (name) => {
+    const lines = load(name);
+    const kinds = (l: typeof lines) => buildBlocks(l, { agent: "pi" }).map((block) => block.kind);
+    expect(piAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBeNull();
+    expect(kinds(lines)).toContain("unread-dialog");
+    expect(kinds(lines)).toEqual(kinds(load("pi--v110-core-selector.txt")));
+  });
+
   // Issue 416: a default OmO install, whose last status row is a plain badge, and its slash
   // commands, whose completion list stands under the editor.
   it.each([

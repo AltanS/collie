@@ -194,6 +194,12 @@ editor's top rule, so the welcome banner above is gone. The footer is pi 1.2.0's
 | `pi--v120-draft-padded-multiline.txt` | `line one` and `line two` on two rows | 2 | composer, draft read back |
 | `pi--v120-slash-palette-padded.txt` | `/` typed: the palette of six rows under the bottom rule | 1 | composer with palette, draft `/` |
 | `pi--v120-draft-unpadded.txt` | `hello from the probe` typed | 0 | composer, the control |
+| `pi--v120-settings-padded2.txt` | `/settings`, main list: a `> ` search row, `→ Auto-compact` option rows, a `(1/34)` counter, the hint `Type to search · Enter/Space to change · Esc to cancel` | 2 | raw modal, holds the send (`listDialogHint`) |
+| `pi--v120-scoped-models-padded2.txt` | `/scoped-models`: the `Model Configuration` title, a `> ` search row, `✓` model rows, a `(1/393)` counter, the hint `Enter toggle · Ctrl+A all · ... · all enabled` | 2 | raw modal, holds the send (`listDialogHint`) |
+
+The last two are real pi 1.2.0 captures too (Herdr 0.9.4, padding 2, the dialog named in the table), cut
+to the top rule like the rest. Before 1.21.3 both read as a ready composer; their search row looks like
+an editor. They are unread dialogs: nothing on the phone answers them.
 
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 

@@ -90,6 +90,9 @@ const RAW_MODALS = new Set([
   "pi--omo-v5130-panel-picker-tree.txt",
   "pi--v110-stock-picker-resume.txt",
   "pi--v110-stock-picker-tree.txt",
+  // pi 1.2.0's /settings and /scoped-models, told by their hint rows (listDialogHint, footer.ts).
+  "pi--v120-settings-padded2.txt",
+  "pi--v120-scoped-models-padded2.txt",
   ...["v0871", "v110"].flatMap((v) => [
     `pi--${v}-question-other-focused.txt`,
     `pi--${v}-question-answer-editor.txt`,
@@ -392,6 +395,46 @@ describe("piModalOnScreen", () => {
     const lines = load("pi--omo-v5130-question-banner.txt");
     expect(piModalOnScreen(lines)).toBe(false);
     expect(piAdapter.composerReady?.(lines)).toBe(true);
+  });
+});
+
+// pi 1.2.0's /settings and /scoped-models draw a search input row (`> ` and the cursor cell) that read
+// as a ready editor. Their hint rows are not all key/action pairs, so listDialogHint names them.
+describe("pi 1.2.0 list dialogs (found capturing #442)", () => {
+  it.each([
+    ["pi--v120-settings-padded2.txt", "Type to search · Enter/Space to change · Esc to cancel"],
+    ["pi--v120-scoped-models-padded2.txt", "Enter toggle · Ctrl+A all"],
+  ])("%s: a modal is on screen, and its hint row is not a pair row", (name, hint) => {
+    const lines = load(name);
+    expect(lines.some((l) => lineText(l).includes(hint))).toBe(true);
+    expect(keyHintPairs(lineText(lines.find((l) => lineText(l).includes(hint))!).trim())).toBeLessThan(2);
+    expect(piModalOnScreen(lines)).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+    expect(piAdapter.extractInputDraft(lines)).toBeNull();
+  });
+
+  it("matches the stable fragment: a longer or shorter row still holds the send", () => {
+    const settings = raw("pi--v120-settings-padded2.txt");
+    expect(piModalOnScreen(linesOf(replaceLast(settings, " · Esc to cancel", "")))).toBe(true);
+    const scoped = raw("pi--v120-scoped-models-padded2.txt");
+    expect(piModalOnScreen(linesOf(replaceLast(scoped, " · all enabled", "")))).toBe(true);
+    expect(piModalOnScreen(linesOf(replaceLast(scoped, " · Ctrl+X clear", "")))).toBe(true);
+  });
+
+  it("is false once the fragment is gone: the search row alone is an editor", () => {
+    const settings = raw("pi--v120-settings-padded2.txt");
+    expect(piModalOnScreen(linesOf(replaceLast(settings, "Type to search", "Type to look")))).toBe(false);
+    const scoped = raw("pi--v120-scoped-models-padded2.txt");
+    expect(piModalOnScreen(linesOf(replaceLast(scoped, "Enter toggle", "Enter flip")))).toBe(false);
+  });
+
+  it("is false when the hint words are a draft: typed text is never painted", () => {
+    const stock = raw("pi--v120-draft-padded.txt");
+    for (const text of ["Type to search · Enter/Space to change · Esc to cancel", "Enter toggle · Ctrl+A all · Ctrl+S save"]) {
+      const lines = linesOf(replaceLast(stock, "hello from the probe", text));
+      expect(piModalOnScreen(lines)).toBe(false);
+      expect(piAdapter.composerReady?.(lines)).toBe(true);
+    }
   });
 });
 
