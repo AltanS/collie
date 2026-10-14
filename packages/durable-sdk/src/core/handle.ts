@@ -276,7 +276,7 @@ export function hello(state: CoreState): Hello {
 /** Serve one request of the wire. Never throws: a named error becomes its `Problem`, anything else a 500 `internal`. */
 export async function handle(request: Request, state: CoreState, call: CallInfo = {}): Promise<Response> {
   try {
-    return await route(request, state, call);
+    return await dispatch(request, state, call);
   } catch (e) {
     if (e instanceof HttpError) return json(e.status, { code: e.code, ...e.extra });
     console.error("session server error:", e);
@@ -284,7 +284,7 @@ export async function handle(request: Request, state: CoreState, call: CallInfo 
   }
 }
 
-async function route(request: Request, state: CoreState, call: CallInfo): Promise<Response> {
+async function dispatch(request: Request, state: CoreState, call: CallInfo): Promise<Response> {
   const { store, caps } = state;
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean); // session v1 ...

@@ -141,21 +141,50 @@ export function safeId(raw: Json | undefined): string {
   return `${head}~${hash}`;
 }
 
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
-const CONTROLS_MULTILINE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
-const HAS_CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+const TAB = 0x09;
+const NEWLINE = 0x0a;
+
+/** A C0 control, DEL or a C1 control: U+0000 to U+001F and U+007F to U+009F. */
+function isControl(codePoint: number): boolean {
+  return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+}
+
 // Direction marks and overrides, zero-width characters, the word joiner, the byte order mark, and the tag
 // characters (U+E0000 to U+E007F, which can carry a whole invisible sentence). WIRE.md section 6, step 2.
-const INVISIBLE = /[\u200b-\u200f\u061c\u202a-\u202e\u2060\u2066-\u2069\ufeff\u{e0000}-\u{e007f}]/gu;
+function isInvisible(codePoint: number): boolean {
+  return (
+    (codePoint >= 0x200b && codePoint <= 0x200f) ||
+    codePoint === 0x061c ||
+    (codePoint >= 0x202a && codePoint <= 0x202e) ||
+    codePoint === 0x2060 ||
+    (codePoint >= 0x2066 && codePoint <= 0x2069) ||
+    codePoint === 0xfeff ||
+    (codePoint >= 0xe0000 && codePoint <= 0xe007f)
+  );
+}
+
+/** The characters of `text` that `keep` lets through, walked by code point. A lone surrogate is one character. */
+function keepOnly(text: string, keep: (codePoint: number) => boolean): string {
+  let out = "";
+  for (const ch of text) if (keep(ch.codePointAt(0) ?? 0)) out += ch;
+  return out;
+}
+
+/** True when `text` holds a control character. */
+function hasControl(text: string): boolean {
+  for (const ch of text) if (isControl(ch.codePointAt(0) ?? 0)) return true;
+  return false;
+}
 
 /**
  * Clean a display string, then cut it to `max` bytes at the last whole code point that leaves room
  * for the 3-byte `…`. Multi-line fields keep `\n` and `\t`; every other string keeps neither.
  */
 export function cut(text: Json | undefined, max: number, multiline = false): string {
-  const clean = String(text ?? "")
-    .replace(multiline ? CONTROLS_MULTILINE : CONTROLS, "")
-    .replace(INVISIBLE, "");
+  // Controls go first and invisible characters second, in two walks: two halves of a pair that meet once a control
+  // between them is gone make one character, and that character is read in the second walk.
+  const visible = keepOnly(String(text ?? ""), (codePoint) => !isControl(codePoint) || (multiline && (codePoint === TAB || codePoint === NEWLINE)));
+  const clean = keepOnly(visible, (codePoint) => !isInvisible(codePoint));
   if (bytes(clean) <= max) return clean;
   let out = "";
   let used = 0;
@@ -173,7 +202,7 @@ export function cut(text: Json | undefined, max: number, multiline = false): str
  * `/`, which is what `node:path` says on Linux, the one system the local example runs on.
  */
 export function cwdOf(cwd: Json | undefined): string | undefined {
-  if (!isText(cwd) || cwd === "" || bytes(cwd) > CAPS.cwd || HAS_CONTROL.test(cwd)) return undefined;
+  if (!isText(cwd) || cwd === "" || bytes(cwd) > CAPS.cwd || hasControl(cwd)) return undefined;
   return cwd.startsWith("/") ? cwd : undefined;
 }
 
@@ -189,7 +218,7 @@ export const RENAME_TITLE_MAX = 120;
 export function renameTitleOf(title: Json | undefined): string | undefined {
   if (!isText(title)) return undefined;
   const trimmed = title.trim();
-  if (trimmed === "" || HAS_CONTROL.test(trimmed) || [...trimmed].length > RENAME_TITLE_MAX) return undefined;
+  if (trimmed === "" || hasControl(trimmed) || [...trimmed].length > RENAME_TITLE_MAX) return undefined;
   const clean = cut(trimmed, CAPS.title).trim();
   return clean === "" ? undefined : clean;
 }
