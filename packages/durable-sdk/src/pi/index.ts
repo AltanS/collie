@@ -132,9 +132,10 @@ export class PaneRegistry {
    * When the window ends first, `log` gets one line naming the calls that did not ask, and the start goes on.
    * Such an ask is not lost: when its hook runs later it is raised under the same id, and the next read lists it.
    */
-  reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS, log: (line: string) => void = (line) => console.warn(line)): Promise<void> {
+  async reRaised(risky: ReadonlySet<string>, ms = RE_RAISE_MS, log: (line: string) => void = (line) => console.warn(line)): Promise<void> {
+    // Everything up to the first `await` runs in the call, so the risky calls are read before `resume()`.
     const ids = [...this.running].filter(([, name]) => risky.has(name)).map(([id]) => id);
-    if (ids.length === 0) return Promise.resolve();
+    if (ids.length === 0) return;
     const missing = new Set(ids);
     const each = ids.map(
       (id) =>
@@ -147,18 +148,17 @@ export class PaneRegistry {
     );
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), ms)));
-    return Promise.race([Promise.all(each).then(() => "all" as const), late])
-      .then((how) => {
-        if (how === "all") return;
-        log(
-          `collie: ${missing.size} of ${ids.length} waiting asks were not raised again within ${ms} ms of the start; ` +
-            `the layout is ready without them, and each is listed under its old id once its hook runs (${[...missing].join(", ")})`,
-        );
-      })
-      .finally(() => {
-        clearTimeout(timer);
-        for (const id of ids) this.waits.delete(id);
-      });
+    try {
+      const how = await Promise.race([Promise.all(each).then(() => "all" as const), late]);
+      if (how === "all") return;
+      log(
+        `collie: ${missing.size} of ${ids.length} waiting asks were not raised again within ${ms} ms of the start; ` +
+          `the layout is ready without them, and each is listed under its old id once its hook runs (${[...missing].join(", ")})`,
+      );
+    } finally {
+      clearTimeout(timer);
+      for (const id of ids) this.waits.delete(id);
+    }
   }
 
   /** Stop every event stream. Call before `harness.close()`. */

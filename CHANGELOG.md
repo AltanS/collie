@@ -71,6 +71,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable SDK states why each type assertion holds, and builds optional fields in statements.** Every `as` left in `packages/durable-sdk/src/` carries a `SAFETY:` line, the double casts in `conn.ts` and `peer.ts` are gone, and an optional field is added only when present rather than spread from an empty object. Each field keeps its place in the snapshot, the events and the items, so the wire is byte for byte the same.
 - **The durable SDK walks its maps without copying them first, and keeps its small helpers at module scope.** The loops that close asks and wake waiters walk the live Map or Set, which survives deleting the entry it stands on. The step state, the tool reply and the copy of a live answer block are named functions at the top of `./pi`, so oxlint's unicorn and oxc rules hold without an override.
 - **The durable SDK cleans text by code point, the way the bridge does.** `cut` walks a string twice, controls out and then the invisible characters, with the same `isControl` and `isInvisible` tests as the bridge's `clean.ts`, so no regular expression holds a control character. The cleaned text is the same, and the request router no longer shares its name with a variable inside it.
+- **The durable SDK's promises resolve once, in plain sight.** `drained()` builds its promise with `Promise.withResolvers`, and the start's wait for asks raised again is an `async` function with `try` and `finally`, so oxlint's promise rules hold. Both wait and log as before.
 
 ### Docs
 

@@ -75,15 +75,16 @@ export function wireListener(core: CollieCore, refuseAct?: (req: IncomingMessage
     listener,
     drained(ms = DRAIN_MS) {
       if (inFlight === 0) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        const wake = () => {
-          clearTimeout(timer);
-          idle.delete(wake);
-          resolve();
-        };
-        const timer = setTimeout(wake, ms);
-        idle.add(wake);
-      });
+      // One `wake` per call: the timer and the idle walk both call it, and whichever comes first cancels the other.
+      const { promise, resolve } = Promise.withResolvers<void>();
+      const wake = () => {
+        clearTimeout(timer);
+        idle.delete(wake);
+        resolve();
+      };
+      const timer = setTimeout(wake, ms);
+      idle.add(wake);
+      return promise;
     },
   };
 }
