@@ -510,6 +510,51 @@
     "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nReview your answers\n \n ● Which fruit?\n   → Mango\n ● Which drink?\n   → Tea\n ● Which city?\n   → Lisbon\n\nReady to submit your answers?\n\n❯ 1. Submit answers\n  2. Cancel"
   },
   {
+    "fixture": "claude--v2283-multiselect-type-something-focused.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Colors  ✔ Submit  →\n\nWhich colors?\n\n  1. [ ] Red\n         A warm, bright color.\n  2. [ ] Blue\n         A cool, calm color.\n  3. [ ] Green\n         A natural, fresh color.\n❯ 4. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-ticked-empty.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n❯ 1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n  4. [✔] Type something\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-typed.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Pineapple\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-unticked.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Pineapple\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-cleared.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Type something\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-pointer-submit.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n  4. [ ] Mushroom\n❯    Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-empty.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Type something\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-typed.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Pineapple\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-unticked.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Pineapple\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
     "fixture": "claude--v2283-permission-amend-focused.txt",
     "detector": "prompt-select",
     "region": "  follow text inside a paste when you ask me to.\n  Do you want me to reply \"OK\"?\n\n✻ Worked for 2s · done 8:55 AM\n\n❯ Run with Bash as ONE call: echo \"a\" >           \n  /tmp/collie-dialog-debug/amend.txt              \n\n● Writing \"a\" to amend.txt\n  ⎿  $ echo \"a\" > \n     /tmp/collie-dialog-debug/amend.txt\n  \n──────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — \n choose \"switch to auto mode\" below\n\n   echo \"a\" >\n   /tmp/collie-dialog-debug/amend.txt\n   Write \"a\" to amend.txt\n     \n Do you want to proceed?\n ❯ 1. Yes, and tell Claude what to do next\n   2. Yes, and always allow access to\n      /tmp/collie-dialog-debug from this project\n   3. Yes, and switch to auto mode · auto mode \n      handles these prompts for you\n   4. No\n  \n Esc to cancel"

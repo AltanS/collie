@@ -702,6 +702,8 @@ export const pt: Dictionary = {
   "prompt.feedback.answer.help": "Digitada no campo de resposta da pergunta e enviada como sua resposta.",
   "prompt.feedback.answer.helpWizard":
     "Digitada no campo de resposta desta pergunta. Enviar responde a ela e passa para a próxima pergunta.",
+  "prompt.feedback.answer.helpMulti":
+    "Adiciona sua resposta como uma opção marcada; toque em Enviar (ou Próxima) quando terminar.",
   "prompt.feedback.answer.send": "Enviar resposta",
   "prompt.feedback.answer.sending": "Digitando sua resposta…",
   "prompt.feedback.answer.focused":
@@ -1384,6 +1386,7 @@ export const pt: Dictionary = {
   "promptAction.answer.fieldNotReached": "Não foi possível chegar ao campo de resposta: nada foi enviado",
   "promptAction.answer.notCleared": "Não foi possível limpar o campo de resposta: nada foi enviado",
   "promptAction.answer.notArrived": "Sua resposta não chegou ao campo: nada foi enviado",
+  "promptAction.answer.notTicked": "A resposta foi digitada, mas a linha dela não foi marcada. Confira no cartão.",
   "stt.error.busy": "Ocupado: outra gravação ainda está transcrevendo. Tente novamente em instantes.",
   "stt.error.tooLong": "Essa gravação é longa demais: grave uma mais curta.",
   "stt.error.badFormat": "Este navegador gravou em um formato que o Collie não pode reenviar.",

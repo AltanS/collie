@@ -703,6 +703,8 @@ export const fr: Dictionary = {
     "Saisie dans le champ de réponse de la question et envoyée comme votre réponse.",
   "prompt.feedback.answer.helpWizard":
     "Saisie dans le champ de réponse de cette question. L'envoi y répond et passe à la question suivante.",
+  "prompt.feedback.answer.helpMulti":
+    "Ajoute votre réponse comme un choix coché ; touchez Envoyer (ou Suivant) quand vous avez fini.",
   "prompt.feedback.answer.send": "Envoyer la réponse",
   "prompt.feedback.answer.sending": "Saisie de votre réponse…",
   "prompt.feedback.answer.focused":
@@ -1385,6 +1387,7 @@ export const fr: Dictionary = {
   "promptAction.answer.fieldNotReached": "Impossible d'atteindre le champ de réponse : rien n'a été envoyé",
   "promptAction.answer.notCleared": "Impossible de vider le champ de réponse : rien n'a été envoyé",
   "promptAction.answer.notArrived": "Votre réponse n'est pas arrivée dans le champ : rien n'a été soumis",
+  "promptAction.answer.notTicked": "La réponse a été saisie, mais sa ligne n'a pas été cochée. Vérifiez-la sur la carte.",
   "stt.error.busy": "Occupé : un autre enregistrement est encore en cours de transcription. Réessayez dans un instant.",
   "stt.error.tooLong": "Cet enregistrement est trop long : faites-en un plus court.",
   "stt.error.badFormat": "Ce navigateur a enregistré dans un format que Collie ne peut pas relayer.",

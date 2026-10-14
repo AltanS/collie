@@ -1,0 +1,30 @@
+ 
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mCall AskUserQuestion once more with ONE question: 'Which tree?' header 'Tree' options Oak, Pine. multiSelect false. Then reply with only the exact tool [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mresult verbatim.3[0m[48;2;55;55;55m                                                                                                                                        [0m
+
+[0m[38;2;153;153;153m● [0mUser declined to answer questions
+[0m[38;2;153;153;153m  ⎿  · Which tree? (Oak / Pine)[0m
+
+[0m[38;2;153;153;153m✻ Worked for 2s · done 1:54 AM[0m
+ 
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mone two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty one two three four [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mfive six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty one two three four five six seven eight[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twentyCall AskUserQuestion once with ONE question, multiSelect [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mTRUE: 'Which toppings?' header 'Toppings' options Cheese, Olives, Basil. Then reply with only the exact tool result verbatim.[0m[48;2;55;55;55m                            [0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m← [0m[38;2;0;0;0m[48;2;177;185;249m ☒ Toppings  [0m✔ Submit  →
+  
+[0m[1m[38;2;255;255;255mWhich toppings?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;78;186;101m[✔] [0m[38;2;177;185;249mCheese[0m
+         [0m[38;2;153;153;153mMelted cheese[0m
+  [0m[38;2;153;153;153m2. [0m[ ] Olives
+         [0m[38;2;153;153;153mSliced olives[0m
+  [0m[38;2;153;153;153m3. [0m[ ] Basil
+         [0m[38;2;153;153;153mFresh basil leaves[0m
+  [0m[38;2;153;153;153m4. [0m[38;2;78;186;101m[✔] [0m[38;2;153;153;153mType something[0m
+     [0m[1mSubmit[0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this                                                                                                                   
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

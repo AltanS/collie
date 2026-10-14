@@ -771,6 +771,8 @@ export const ja: Dictionary = {
   "prompt.feedback.answer.placeholder": "回答を入力してください...",
   "prompt.feedback.answer.help": "質問の回答欄に入力され、回答として送信されます。",
   "prompt.feedback.answer.helpWizard": "この質問の回答欄に入力されます。送信すると回答され、次の質問に進みます。",
+  "prompt.feedback.answer.helpMulti":
+    "回答をチェック済みの選択肢として追加します。終わったら送信（または次へ）をタップしてください。",
   "prompt.feedback.answer.send": "回答を送信",
   "prompt.feedback.answer.sending": "回答を入力中...",
   "prompt.feedback.answer.focused": "ターミナルで回答欄がキーボードを使用中のため、これらのボタンは回答欄に入力されてしまいます。下から自分の回答を送信することはできます。",
@@ -1508,6 +1510,7 @@ export const ja: Dictionary = {
   "promptAction.answer.fieldNotReached": "回答欄に移動できませんでした。何も送信されていません。",
   "promptAction.answer.notCleared": "回答欄を消去できませんでした。何も送信されていません。",
   "promptAction.answer.notArrived": "回答が回答欄に表示されませんでした。何も送信されていません。",
+  "promptAction.answer.notTicked": "回答は入力されましたが、その行にチェックが入りませんでした。カードで確認してください。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "別の音声を文字起こし中です。しばらく待ってから再試行してください。",

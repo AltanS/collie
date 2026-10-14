@@ -76,6 +76,9 @@ export interface CardDockProps {
   onPreviewAction?: (action: PreviewBlockAction, preview: PreviewSelectModel) => void | Promise<void>;
   /** Injected handler for a multi-select tap (lib/multi-select-action.ts). */
   onMultiSelectAction?: (action: MultiSelectIntent, multi: MultiSelectModel) => void | Promise<void>;
+  /** Injected handler for an answer typed into a multi-select question's field
+   *  (lib/multi-select-action.ts `type`); resolves whether it was sent, so the card keeps a refused draft. */
+  onMultiSelectAnswer?: (text: string, multi: MultiSelectModel) => Promise<boolean>;
   /** Injected handler for a generic-menu tap (lib/menu-action.ts). */
   onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
   /** Injected handler for the unread-dialog card's one declared key (.adr/0053). */
@@ -120,6 +123,7 @@ function liftedCard({
   onWizardAnswer,
   onPreviewAction,
   onMultiSelectAction,
+  onMultiSelectAnswer,
   onMenuAction,
   onUnreadDialogAction,
   promptDisabled,
@@ -175,7 +179,11 @@ function liftedCard({
         multi={multiBlock.multi}
         lines={multiBlock.lines}
         disabled={promptDisabled || !onMultiSelectAction}
+        paneId={paneId}
+        scope={scope}
+        stale={stale}
         onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
+        onAnswer={onMultiSelectAnswer ? (text) => onMultiSelectAnswer(text, multiBlock.multi) : undefined}
       />
     );
   }

@@ -736,6 +736,8 @@ export const ru: Dictionary = {
   "prompt.feedback.answer.help": "Вводится в поле ответа на вопрос и отправляется как ваш ответ.",
   "prompt.feedback.answer.helpWizard":
     "Вводится в поле ответа на этот вопрос. Отправка отвечает на него и переходит к следующему вопросу.",
+  "prompt.feedback.answer.helpMulti":
+    "Добавляет ваш ответ как отмеченный вариант; когда закончите, нажмите «Отправить» (или «Далее»).",
   "prompt.feedback.answer.send": "Отправить ответ",
   "prompt.feedback.answer.sending": "Ввод ответа…",
   "prompt.feedback.answer.focused":
@@ -1448,6 +1450,7 @@ export const ru: Dictionary = {
   "promptAction.answer.fieldNotReached": "Не удалось перейти к полю ответа: ничего не отправлено",
   "promptAction.answer.notCleared": "Не удалось очистить поле ответа: ничего не отправлено",
   "promptAction.answer.notArrived": "Ответ не появился в поле: ничего не отправлено",
+  "promptAction.answer.notTicked": "Ответ введён, но его строка не отмечена. Проверьте её на карточке.",
   "stt.error.busy": "Занято: другая запись ещё расшифровывается. Повторите через минуту.",
   "stt.error.tooLong": "Запись слишком длинная: запишите более короткую.",
   "stt.error.badFormat": "Браузер записал аудио в формате, который Collie не может передать.",

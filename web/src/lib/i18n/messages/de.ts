@@ -778,6 +778,8 @@ export const de: Dictionary = {
   "prompt.feedback.answer.help": "Wird in das Antwortfeld der Frage eingegeben und als Antwort gesendet.",
   "prompt.feedback.answer.helpWizard":
     "Wird in das Antwortfeld dieser Frage eingegeben. Senden beantwortet sie und geht zur nächsten Frage.",
+  "prompt.feedback.answer.helpMulti":
+    "Fügt deine Antwort als angekreuzte Auswahl hinzu; tippe auf Absenden (oder Weiter), wenn du fertig bist.",
   "prompt.feedback.answer.send": "Antwort senden",
   "prompt.feedback.answer.sending": "Antwort wird eingegeben…",
   "prompt.feedback.answer.focused":
@@ -1519,6 +1521,7 @@ export const de: Dictionary = {
   "promptAction.answer.fieldNotReached": "Das Antwortfeld war nicht erreichbar. Es wurde nichts gesendet.",
   "promptAction.answer.notCleared": "Das Antwortfeld ließ sich nicht leeren. Es wurde nichts gesendet.",
   "promptAction.answer.notArrived": "Die Antwort ist nicht im Feld angekommen. Es wurde nichts abgeschickt.",
+  "promptAction.answer.notTicked": "Die Antwort wurde eingegeben, aber ihre Zeile wurde nicht angekreuzt. Prüfe sie auf der Karte.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Eine andere Transkription läuft noch. Bitte kurz warten und erneut versuchen.",

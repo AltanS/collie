@@ -1568,6 +1568,41 @@ export function AgentChat({
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
+  // An answer typed into a multi-select question's own field (ADR 0104): the `type` intent, under the
+  // same per-pane lock as every multi-select tap. It ticks the answer and leaves Submit/Next to the
+  // person. Resolves whether it was sent, so the card keeps a refused draft in its editor.
+  const handleMultiSelectAnswer = useCallback(
+    async (answer: string, multi: MultiSelectModel) => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return false;
+      }
+      const result = await submitMultiSelectIntent({
+        paneId,
+        scope,
+        requestedLines,
+        detectedRevision: shown.revision,
+        agent: agent?.agent,
+        multi,
+        intent: { kind: "type", text: answer },
+      });
+      if (result.status === "sent") {
+        setStatus(t("chat.status.answerSent"), "success");
+        await showAfterSend();
+      } else if (result.status === "changed") {
+        // Which step refused, for a person with the console open (`why` is a diagnosis, never UI text).
+        if (result.why !== undefined) console.info("collie: answer refused", result.why);
+        setStatus(t("chat.status.selectionChanged"), "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
+      }
+      return result.status === "sent";
+    },
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+  );
+
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
   // shape as the handlers above; the arrow taps pass `nav`, which swaps the guard's signature check
   // for an identity-only one (moving the highlight is the tap's own effect — see lib/menu-action.ts).
@@ -2773,6 +2808,7 @@ export function AgentChat({
               onWizardAnswer={handleWizardAnswer}
               onPreviewAction={handlePreviewAction}
               onMultiSelectAction={handleMultiSelectAction}
+              onMultiSelectAnswer={handleMultiSelectAnswer}
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
               promptDisabled={readOnly || gone}

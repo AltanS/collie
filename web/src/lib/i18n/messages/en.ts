@@ -854,6 +854,8 @@ export const en = {
   "prompt.feedback.answer.help": "Typed into the question's answer field and sent as your answer.",
   "prompt.feedback.answer.helpWizard":
     "Typed into this question's answer field. Sending answers it and moves to the next question.",
+  "prompt.feedback.answer.helpMulti":
+    "Adds your answer as a ticked choice; tap Submit (or Next) when you're done.",
   "prompt.feedback.answer.send": "Send answer",
   "prompt.feedback.answer.sending": "Typing your answer…",
   "prompt.feedback.answer.focused":
@@ -1611,6 +1613,7 @@ export const en = {
   "promptAction.answer.fieldNotReached": "Couldn't reach the answer field. Nothing was sent",
   "promptAction.answer.notCleared": "Couldn't clear the answer field. Nothing was sent",
   "promptAction.answer.notArrived": "Your answer didn't arrive in the field. Nothing was submitted",
+  "promptAction.answer.notTicked": "The answer was typed, but its row did not tick. Check it on the card.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Busy: another recording is still transcribing. Try again in a moment.",
