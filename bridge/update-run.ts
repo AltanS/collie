@@ -87,6 +87,13 @@ export const inFlight = (state: UpdateRunState): boolean => IN_FLIGHT.has(state)
  */
 export const STALE_AFTER_MS = 10 * 60 * 1000;
 
+/**
+ * The longest a lock may hold, even when its pid is alive. A build runs for minutes, so a lock an
+ * hour old whose pid answers is a pid the machine handed to some other process after a crash or a
+ * reboot, not an update.
+ */
+export const LOCK_MAX_HOLD_MS = 60 * 60 * 1000;
+
 /** The record, exactly as it is on disk. */
 export interface UpdateRun {
   readonly schema: number;
@@ -300,6 +307,7 @@ export function pidIsAlive(pid: number): boolean {
 export function updateLockHeld(
   stateDir: string,
   alive: (pid: number) => boolean = pidIsAlive,
+  now: () => number = Date.now,
 ): boolean {
   let text: string | null;
   try {
@@ -308,7 +316,8 @@ export function updateLockHeld(
     return false;
   }
   const lock = parseUpdateLock(text);
-  return lock !== null && alive(lock.pid);
+  // Alive AND young: past {@link LOCK_MAX_HOLD_MS} a live pid is a reused one.
+  return lock !== null && now() - lock.at < LOCK_MAX_HOLD_MS && alive(lock.pid);
 }
 
 /**

@@ -24,6 +24,7 @@ import {
   UPDATE_TURN_HEADER,
   UpdateTurns,
   UPSTREAM_CHECK_ID,
+  type CrewFollowerDeps,
   type FollowFacts,
   type TurnMember,
 } from "./follow.ts";
@@ -368,6 +369,108 @@ describe("the follower spawns the one updater there is", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(f.last()?.kind).toBe("refuse");
+  });
+});
+
+describe("the follower starts one updater per run", () => {
+  // 2026-10-14: a peer on an in-place checkout spawned two updaters one second apart with the same
+  // run id. The lead keeps sending the same turn, and the in-place updater writes no run record until
+  // the end, so nothing on disk told the second sweep that the first had already started.
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  const setup = (over: { start?: CrewFollowerDeps["start"] } = {}) => {
+    const clock = { now: NOW };
+    const starts: { tag: string; runId: string }[] = [];
+    const lines: string[] = [];
+    let preflights = 0;
+    const f = new CrewFollower({
+      installKind: "detached-checkout",
+      self: () => ({ version: "1.4.0", self: "attic" }),
+      run: () => null,
+      preflight: () => {
+        preflights += 1;
+        return Promise.resolve(green);
+      },
+      start:
+        over.start ??
+        ((a) => {
+          starts.push(a);
+          return { ok: true };
+        }),
+      now: () => clock.now,
+      log: (line) => lines.push(line),
+    });
+    return { f, clock, starts, lines, preflights: () => preflights };
+  };
+  const turn = (runId = RUN_ID) => ({ leadRelease: "1.4.1", turn: formatTurn("attic", runId) });
+
+  test("a second sweep with the same turn starts nothing and runs no preflight", async () => {
+    const { f, starts, lines, preflights } = setup();
+    f.observe(turn());
+    await settle();
+    expect(starts).toHaveLength(1);
+    expect(preflights()).toBe(1);
+    f.observe(turn());
+    f.observe(turn());
+    await settle();
+    expect(starts).toHaveLength(1);
+    expect(preflights()).toBe(1);
+    const last = f.last();
+    expect(last?.kind === "refuse" && last.reason).toBe("already-started");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("already-started");
+    expect(lines[1]).toContain("already started the updater for v1.4.1 in this run");
+  });
+
+  test("an updater that failed to start does not latch the run", async () => {
+    let ok = false;
+    const starts: { tag: string; runId: string }[] = [];
+    const { f } = setup({
+      start: (a) => {
+        starts.push(a);
+        return ok ? { ok: true } : { ok: false, reason: "systemd-run: no such unit" };
+      },
+    });
+    f.observe(turn());
+    await settle();
+    ok = true;
+    f.observe(turn());
+    await settle();
+    expect(starts).toHaveLength(2);
+  });
+
+  test("a new run id starts its own updater", async () => {
+    const { f, starts } = setup();
+    f.observe(turn());
+    await settle();
+    const other = "r-def";
+    f.observe(turn(other));
+    await settle();
+    expect(starts.map((s) => s.runId)).toEqual([RUN_ID, other]);
+  });
+
+  test("a clock that moves back frees the latch instead of holding it", async () => {
+    const { f, clock, starts } = setup();
+    f.observe(turn());
+    await settle();
+    clock.now -= 5_000;
+    f.observe(turn());
+    await settle();
+    expect(starts).toHaveLength(2);
+  });
+
+  test("after the attempt interval the same run may start again", async () => {
+    const { f, clock, starts } = setup();
+    f.observe(turn());
+    await settle();
+    clock.now += FOLLOW_ATTEMPT_INTERVAL_MS - 1;
+    f.observe(turn());
+    await settle();
+    expect(starts).toHaveLength(1);
+    clock.now += 1;
+    f.observe(turn());
+    await settle();
+    expect(starts).toHaveLength(2);
   });
 });
 

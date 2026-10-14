@@ -353,6 +353,26 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
     expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "crew");
     expect(screen.queryByText("the updates page")).not.toBeInTheDocument();
   });
+
+  // 1.21.1: the case above only proved the POST went out. The row itself never went away, because
+  // `ribbonView` never read the crew close. Seen on the release lane on 2026-10-13.
+  it("the ✕ puts the row down on the tap, and it stays down on the next read", async () => {
+    const user = userEvent.setup();
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "unreachable", reason: "minibuch was not reached" }];
+    const failed = info({ releaseAvailable: false, run: run("done", { peers, settledAt: Date.now() - 60_000 }) });
+    const { container } = await renderBand(failed);
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    await settleBand();
+    expect(band(container)).toBeNull();
+  });
+
+  it("another screen reading the recorded close draws no row", async () => {
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "unreachable", reason: "minibuch was not reached" }];
+    const { container } = await renderBand(
+      info({ releaseAvailable: false, dismissedCrewVersion: "1.5.0", run: run("done", { peers }) }),
+    );
+    expect(band(container)).toBeNull();
+  });
 });
 
 describe("a reload prompt does not look like an offer (M20/05)", () => {

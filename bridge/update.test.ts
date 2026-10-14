@@ -400,6 +400,7 @@ function fakeStore(
   let stamp = pushedAt;
   let dismissed: string | null = null;
   let dismissedCrew: string | null = null;
+  let dismissedCrewAt: number | null = null;
   const saved: string[] = [];
   const pushes: string[] = [];
   const closed: string[] = [];
@@ -422,10 +423,15 @@ function fakeStore(
     },
     dismissedVersion: () => dismissed,
     dismissedCrewVersion: () => dismissedCrew,
-    setDismissed: async (scope, v, notified) => {
+    dismissedCrewAt: () => dismissedCrewAt,
+    setDismissed: async (scope, v, notified, at) => {
       counter.writes += 1;
-      if (scope === "offer") dismissed = v;
-      else dismissedCrew = v;
+      if (scope === "offer") {
+        dismissed = v;
+      } else {
+        dismissedCrew = v;
+        dismissedCrewAt = at ?? null;
+      }
       closed.push(`${scope}:${v}`);
       if (notified !== undefined) {
         last = notified.version;
@@ -707,6 +713,7 @@ describe("UpdateMonitor", () => {
       lastPushedAt: store.lastPushedAt,
       dismissedVersion: store.dismissedVersion,
       dismissedCrewVersion: store.dismissedCrewVersion,
+      dismissedCrewAt: store.dismissedCrewAt,
       setDismissed: store.setDismissed,
       setLastNotified: async (v, at) => {
         order.push(`persist:${v}`);
@@ -1013,6 +1020,49 @@ describe("the dismissed version", () => {
     expect(store.lastNotified()).toBe(notified);
     expect(monitor.status().dismissedCrewVersion).toBe("0.12.0");
     expect(monitor.status().dismissedVersion).toBeNull(); // and the offer is untouched
+  });
+
+  it("a crew close is stamped with the monitor's clock, and the stamp rides the status (1.21.1)", async () => {
+    const { monitor } = makeMonitor();
+    await monitor.checkRelease();
+    // Nothing closed yet: the key is absent, never null, so a solo golden body is unchanged.
+    expect("dismissedCrewAt" in monitor.status()).toBe(false);
+
+    await monitor.dismiss("0.12.0", "crew");
+    expect(monitor.status().dismissedCrewAt).toBeNumber();
+
+    // An OFFER close is not a crew close and moves no crew stamp.
+    const crewAt = monitor.status().dismissedCrewAt;
+    await monitor.dismiss("0.12.0", "offer");
+    expect(monitor.status().dismissedCrewAt).toBe(crewAt);
+  });
+
+  it("round-trips the crew stamp through the store, and a record without one reads as null", async () => {
+    const cfg = await tempCfg();
+    const store = new UpdateStateStore(cfg);
+    await store.load();
+    expect(store.dismissedCrewAt()).toBeNull();
+    await store.setDismissed("crew", "1.21.0", undefined, 1_791_909_000_000);
+    const reloaded = new UpdateStateStore(cfg);
+    await reloaded.load();
+    expect(reloaded.dismissedCrewVersion()).toBe("1.21.0");
+    expect(reloaded.dismissedCrewAt()).toBe(1_791_909_000_000);
+
+    // The live release lane's record of 2026-10-13, written by 1.21.0: a version and no stamp.
+    const legacy = await tempCfg();
+    await Bun.write(
+      join(legacy.stateDir, "update-state.json"),
+      JSON.stringify({
+        lastNotified: "1.21.0",
+        lastPushedAt: "2026-10-13T16:14:27.462Z",
+        dismissedVersion: "1.18.1",
+        dismissedCrewVersion: "1.21.0",
+      }),
+    );
+    const old = new UpdateStateStore(legacy);
+    await old.load();
+    expect(old.dismissedCrewVersion()).toBe("1.21.0");
+    expect(old.dismissedCrewAt()).toBeNull();
   });
 
   it("a dismissed offer for a version that is not latest leaves lastNotified alone", async () => {

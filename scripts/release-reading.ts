@@ -16,6 +16,9 @@
 //   • `urgent` — present only when the release's CHANGELOG section opens with an `**Urgent.**` line
 //     (ADR 0046). It carries that line's own sentence, and it is why the phone keeps the daily
 //     digest cadence for a patch that must not wait a week.
+//   • `notes`: the section's bullets as the release page lists them: each bold lead, under its
+//     group (1.21.1). The Updates page shows them before the operator confirms. Leads only: the
+//     detail and the commit links stay on the release page, which the phone links to.
 //
 // The sidecar is the ONE release-level record the phone reads. It never reads a release body, so a
 // fact that has to reach an install before it updates has to be here or nowhere.
@@ -26,7 +29,7 @@
 import { readFileSync } from "node:fs";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
-import { parseUrgent } from "./release-notes.ts";
+import { parseSection, parseUrgent } from "./release-notes.ts";
 
 /** The document, exactly as it is published. `urgent` is absent, never null, when the release is an
  *  ordinary one — an absent key is what every reader before ADR 0046 already handles. */
@@ -34,6 +37,8 @@ export interface ReleaseReadingDocument {
 	version: string;
 	crewProtocol: number;
 	urgent?: { reason: string };
+	/** The section's groups, each as its bullets' bold leads. Absent when the section has none. */
+	notes?: { name: string; leads: string[] }[];
 }
 
 /** Build the document for one version out of the changelog and this build's own protocol number. */
@@ -48,6 +53,13 @@ export function buildReleaseReading(
 	const urgent = parseUrgent(changelog, version);
 	const doc: ReleaseReadingDocument = { version, crewProtocol };
 	if (urgent) doc.urgent = urgent;
+	// The same parse the release page is built from, so the phone and the page list the same lines.
+	// It throws on a section the page could not print, which stops the release here, one step
+	// before the notes step would have stopped it anyway.
+	const notes = parseSection(changelog, version)
+		.groups.filter((group) => group.leads.length > 0)
+		.map((group) => ({ name: group.name, leads: group.leads }));
+	if (notes.length > 0) doc.notes = notes;
 	return doc;
 }
 

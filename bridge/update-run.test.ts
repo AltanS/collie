@@ -6,12 +6,14 @@ import { join } from "node:path";
 import { standbyUpdateAnswer, STANDBY_UPDATE_PATH } from "./crew/standby.ts";
 import {
   inFlight,
+  LOCK_MAX_HOLD_MS,
   parseUpdateLock,
   parseUpdateRun,
   readUpdateRun,
   readsAsInterrupted,
   resolveUpdateRun,
   STALE_AFTER_MS,
+  updateLockHeld,
   updateLockPath,
   updateRunPath,
   UPDATE_RUN_SCHEMA,
@@ -101,6 +103,27 @@ describe("a stale marker", () => {
     expect(readUpdateRun(join(dir, "empty"), () => NOW, () => false)).toBeNull();
     // The lock lives beside it, under its own name — never merged into the record.
     expect(updateLockPath(dir)).toBe(join(dir, "update.lock"));
+  });
+});
+
+describe("the bridge's reading of the update lock", () => {
+  const MIN = 60_000;
+  const lockedAt = async (at: number): Promise<string> => {
+    const dir = await mkdtemp(join(tmpdir(), "collie-lock-"));
+    await writeFile(updateLockPath(dir), `${JSON.stringify({ pid: 999, at })}\n`);
+    return dir;
+  };
+
+  test("a live pid holds a lock 59 minutes old, and does not hold one 61 minutes old", async () => {
+    const young = await lockedAt(NOW - 59 * MIN);
+    const old = await lockedAt(NOW - 61 * MIN);
+    expect(updateLockHeld(young, () => true, () => NOW)).toBe(true);
+    expect(updateLockHeld(old, () => true, () => NOW)).toBe(false);
+    expect(LOCK_MAX_HOLD_MS).toBe(60 * MIN);
+  });
+
+  test("a dead pid never holds, whatever the age", async () => {
+    expect(updateLockHeld(await lockedAt(NOW - MIN), () => false, () => NOW)).toBe(false);
   });
 });
 

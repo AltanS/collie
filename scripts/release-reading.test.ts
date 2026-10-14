@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { parseReleaseReading } from "../bridge/update.ts";
 import { buildReleaseReading } from "./release-reading.ts";
 
 const ORDINARY = `# Changelog
@@ -36,11 +37,15 @@ const URGENT = `# Changelog
 `;
 
 describe("buildReleaseReading", () => {
-	test("an ordinary release carries the version and the protocol, and no urgent key", () => {
+	test("an ordinary release carries the version, the protocol and its notes, and no urgent key", () => {
 		const doc = buildReleaseReading(ORDINARY, "1.9.0", 2);
-		expect(doc).toEqual({ version: "1.9.0", crewProtocol: 2 });
+		expect(doc).toEqual({
+			version: "1.9.0",
+			crewProtocol: 2,
+			notes: [{ name: "Added", leads: ["The crew levels itself."] }],
+		});
 		// ABSENT, never null: an absent key is what every reader before ADR 0046 already handles.
-		expect(Object.keys(doc)).toEqual(["version", "crewProtocol"]);
+		expect(Object.keys(doc)).toEqual(["version", "crewProtocol", "notes"]);
 	});
 
 	test("an urgent release carries the line's own sentence", () => {
@@ -48,7 +53,13 @@ describe("buildReleaseReading", () => {
 			version: "1.9.1",
 			crewProtocol: 2,
 			urgent: { reason: "The cache reaper deletes live entries, take this today." },
+			notes: [{ name: "Fixed", leads: ["The cache reaper keeps live entries."] }],
 		});
+	});
+
+	test("a section with no bullets carries no notes key (1.21.1)", () => {
+		const empty = "# Changelog\n\n## [1.9.2] - 2026-09-21\n\nNothing but prose.\n";
+		expect(Object.keys(buildReleaseReading(empty, "1.9.2", 2))).toEqual(["version", "crewProtocol"]);
 	});
 
 	test("the sentence survives JSON, quotes and all", () => {
@@ -79,5 +90,16 @@ describe("the repository's own newest release", () => {
 		const doc = buildReleaseReading(changelog, newest ?? "", CREW_PROTOCOL_VERSION);
 		expect(doc.version).toBe(newest ?? "");
 		expect(Number.isInteger(doc.crewProtocol)).toBe(true);
+	});
+
+	test("its notes survive the trip to an installed Collie (1.21.1)", () => {
+		// The writer and the reader, end to end over JSON: what the release job publishes is what the
+		// update check keeps, so the Updates page lists the lines the release page lists.
+		const newest = /^## \[(\d[^\]]*)\] - (\d{4}-\d{2}-\d{2})/m.exec(changelog)?.[1] ?? "";
+		const doc = buildReleaseReading(changelog, newest, CREW_PROTOCOL_VERSION);
+		const read = parseReleaseReading(JSON.parse(JSON.stringify(doc)));
+		expect(doc.notes?.length ?? 0).toBeGreaterThan(0);
+		expect(read?.notes?.map((g) => g.name)).toEqual(doc.notes?.map((g) => g.name));
+		expect(read?.notes?.[0]?.leads[0]).toBe(doc.notes?.[0]?.leads[0]);
 	});
 });
