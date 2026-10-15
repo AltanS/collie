@@ -175,6 +175,9 @@ export const ru: Dictionary = {
   "settings.typeface.note.system": "Собственный шрифт вашего телефона. Ничего не скачивает.",
   "settings.typeface.note.grotesk": "Собственный голос Collie, отрисованный под логотип.",
   "settings.typeface.note.aldrich": "Одно начертание, поэтому жирный текст выглядит так же, как обычный.",
+  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Добавлен оператором этого collie.",
   "settings.fonts.title": "Шрифт терминала",
   "settings.fonts.description": "Зеркало терминала и поле черновика на этом устройстве.",

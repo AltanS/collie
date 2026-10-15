@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { TypefaceControl } from "@/components/typeface-control";
-import { __resetDesign, designPrefs } from "@/lib/design";
+import { SHIPPED_FONTS, __resetDesign, designPrefs } from "@/lib/design";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { BridgeConfig } from "@/lib/types";
 import { server } from "@/test/setup";
@@ -43,6 +43,9 @@ describe("TypefaceControl", () => {
       "System default",
       "Space Grotesk",
       "Aldrich",
+      "IBM Plex Sans",
+      "Geist",
+      "Atkinson Hyperlegible Next",
     ]);
     expect(select).toHaveValue("aldrich");
     // The default wears no class — that is what keeps JavaScript off the first-paint path for a
@@ -59,6 +62,18 @@ describe("TypefaceControl", () => {
 
     expect(document.documentElement).toHaveClass("font-grotesk");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "grotesk" });
+  });
+
+  it("picking IBM Plex Sans writes its class and its own note", async () => {
+    config({});
+    const user = userEvent.setup();
+    render(<TypefaceControl />);
+
+    await user.selectOptions(await screen.findByLabelText("Family"), "plex");
+
+    expect(document.documentElement).toHaveClass("font-plex");
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "plex" });
+    expect(screen.getByText("Calm and humanist, with a real bold and even-width figures.")).toBeInTheDocument();
   });
 
   it("swapping back to the default takes the class off again", async () => {
@@ -84,6 +99,9 @@ describe("TypefaceControl", () => {
       "System default",
       "Space Grotesk",
       "Aldrich",
+      "IBM Plex Sans",
+      "Geist",
+      "Atkinson Hyperlegible Next",
       "Departure Mono",
     ]);
 
@@ -104,7 +122,7 @@ describe("TypefaceControl", () => {
     render(<TypefaceControl />);
 
     const select = await screen.findByLabelText("Family");
-    expect(within(select).getAllByRole("option")).toHaveLength(3);
+    expect(within(select).getAllByRole("option")).toHaveLength(SHIPPED_FONTS.length);
   });
 
   // The offline / deleted-row case. The select must not silently show its first option ("System
@@ -131,5 +149,17 @@ describe("TypefaceControl", () => {
 
     await user.selectOptions(await screen.findByLabelText("Family"), "aldrich");
     expect(container.textContent).toContain("One weight");
+  });
+
+  // Geist is the daylight theme's face (M57). Its axis is real, so its note says the bold is drawn.
+  it("picks Geist with its own class and a note that its bold is real", async () => {
+    config({});
+    const user = userEvent.setup();
+    const { container } = render(<TypefaceControl />);
+
+    await user.selectOptions(await screen.findByLabelText("Family"), "geist");
+    expect(document.documentElement).toHaveClass("font-geist");
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "geist" });
+    expect(container.textContent).toContain("a real bold");
   });
 });
