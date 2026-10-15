@@ -225,8 +225,32 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   return { ok: true, theme };
 }
 
+/**
+ * The most refusals a result lists. A file with thousands of unknown keys must not become thousands
+ * of rows in Settings: the first ones say what is wrong, and one last row counts the rest.
+ */
+const MAX_REFUSALS = 25;
+
 function refuse(refusals: Refusal[]): ParsedTheme {
-  return { ok: false, refusals };
+  if (refusals.length <= MAX_REFUSALS) return { ok: false, refusals };
+  const rest = refusals.length - MAX_REFUSALS;
+  return {
+    ok: false,
+    refusals: [...refusals.slice(0, MAX_REFUSALS), { code: "json", path: "$", detail: `and ${rest} more` }],
+  };
+}
+
+/**
+ * True when the text holds a control character: below U+0020, U+007F, or the C1 range U+0080 to
+ * U+009F. A name or an author is shown in Settings and written into an export, and a line break or
+ * a NUL there is never what the author meant.
+ */
+function hasControlCharacter(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
 }
 
 function unknownKey(path: string): Refusal {
@@ -269,6 +293,10 @@ function readName(doc: JsonObject, refusals: Refusal[]): string | undefined {
     });
     return undefined;
   }
+  if (hasControlCharacter(name)) {
+    refusals.push({ code: "name", path: "name", detail: "The name holds a control character. Remove it." });
+    return undefined;
+  }
   return name;
 }
 
@@ -281,6 +309,10 @@ function readAuthor(doc: JsonObject, refusals: Refusal[]): string | undefined {
       path: "author",
       detail: `The author must be text of at most ${AUTHOR_MAX} characters.`,
     });
+    return undefined;
+  }
+  if (hasControlCharacter(author)) {
+    refusals.push({ code: "author", path: "author", detail: "The author holds a control character. Remove it." });
     return undefined;
   }
   return author === "" ? undefined : author;
