@@ -1,5 +1,6 @@
 import { basename, dirname } from "node:path";
 
+import type { SurfaceShadow } from "./surface/shadow.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
@@ -90,6 +91,8 @@ export interface SessionParts {
   notifications: NotificationCoordinator;
   /** Set for a program session only: what its card reads. Absent on every terminal session. */
   program?: ProgramProbe;
+  /** Set when Surface shadow mode is on (`COLLIE_SURFACE_SHADOW=1`), on terminal sessions only. */
+  surface?: SurfaceShadow;
 }
 
 /** A fully-built, running session runtime: its parts plus its identity in the registry. */

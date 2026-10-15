@@ -208,6 +208,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "multiSession",
   },
   {
+    key: "surface_shadow",
+    env: "COLLIE_SURFACE_SHADOW",
+    section: "bridge",
+    kind: "bool",
+    default: false,
+    doc: "Compute each agent pane's input surface beside the old readers and log every disagreement.",
+    configField: "surfaceShadow",
+  },
+  {
     key: "transcript",
     env: "COLLIE_TRANSCRIPT",
     section: "bridge",

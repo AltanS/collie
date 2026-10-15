@@ -379,6 +379,12 @@ export interface Config {
    */
   multiSession: boolean;
   /**
+   * Surface shadow mode (`COLLIE_SURFACE_SHADOW=1`, M56 spec 04): the bridge computes each agent pane's
+   * Surface from the screen on every poll beside the old readers, logs every disagreement and serves
+   * the Surface on the snapshot and on `GET /api/surface`. Off by default; nothing decides a send by it.
+   */
+  surfaceShadow: boolean;
+  /**
    * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
    * identically either way — this flag only informs the startup warnings: without `tailscale serve`
@@ -700,6 +706,7 @@ export function loadConfig(env: Environment = process.env): Config {
     vapidSubject: env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
+    surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };

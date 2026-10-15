@@ -210,6 +210,7 @@ import {
   updateStartCommand,
 } from "./update-action.ts";
 import { collieVersion, collieVersionBare } from "./version.ts";
+import { SurfaceShadow } from "./surface/shadow.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -1347,9 +1348,16 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     );
   }
 
+  // Surface shadow mode (M56 spec 04): each poll's agent panes are read once more and their Surface
+  // folded beside the old readers. Fired and not awaited, like the cache probe: a poll never waits on
+  // it, and `observe` never throws. A terminal session only; a program session has no screen.
+  const surface = cfg.surfaceShadow && endpoint.kind === "terminal" ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs }) : undefined;
+  if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
+
   engine.start();
   poker.start();
-  return built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
+  const parts = built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
+  return surface === undefined ? parts : { ...parts, surface };
 };
 
 const registry = new SessionRegistry({

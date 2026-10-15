@@ -130,6 +130,7 @@ import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
+import { maskSurface, surfaceRouteBody } from "./surface/shadow.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -1457,6 +1458,14 @@ export function startServer(opts: {
     //
     // The ORDER is the registry's own — primary first, then alphabetical — so it matches the
     // `sessions` array below and does not depend on which runtime happened to be spawned first.
+    // Surface shadow mode (M56 spec 04): an agent pane carries its newest Surface when the shadow has
+    // read it; every other pane, and every pane with the mode off, comes back as the same object. The
+    // ask's option labels are screen text, so they take the mirror's mask like a title does.
+    const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
+      const surface = from.surface?.surfaceOf(wire.paneId);
+      if (surface === undefined) return wire;
+      return { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
+    };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
       const wired = sources.map((from) => ({
@@ -1466,7 +1475,7 @@ export function startServer(opts: {
         // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
-          withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr),
+          withSurface(withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr), from),
         ),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
@@ -2342,6 +2351,22 @@ export function startServer(opts: {
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
         return withBuildHeader(json(out, req.headers.get("accept-encoding")), await buildId());
+      }
+
+      // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
+      // `GET /api/surface?pane=<id>` answers one pane's Surface with its harness's counters, and with
+      // no `pane` every pane and every counter, for the session `?session=` names. Gated like every
+      // read. With the mode off the route is not there: a 404 that says why.
+      if (pathname === "/api/surface" && req.method === "GET") {
+        const denied = guard(req, cfg, "read", pairingGate);
+        if (denied) return denied;
+        // This collie's own sessions only, like `/api/config`: the shadow is a local debugging aid and
+        // has no `?host=` branch to fall through.
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        if (rt.surface === undefined) return text("surface shadow mode is off (COLLIE_SURFACE_SHADOW=1 turns it on)", 404);
+        const answer = surfaceRouteBody(rt.surface, url.searchParams.get("pane"), cfg.redact);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
 
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────

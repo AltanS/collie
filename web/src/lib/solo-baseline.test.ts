@@ -140,6 +140,8 @@ const AGENT_VIEW_KEYS = {
   progress: true,
   // Not a crew dimension either: the belt buttons a durable program lists for a pane (M53 spec 07), present only on a pane that has some.
   actions: true,
+  // Not a crew dimension: the pane's input surface (M56 spec 04), present only while the bridge runs Surface shadow mode.
+  surface: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -256,6 +258,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "soleTabName",
       "status",
       "subtitle",
+      "surface",
       "tabId",
       "tabLabel",
       "tabPosition",

@@ -342,6 +342,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension either: the belt buttons of a pane whose program lists actions (M53 spec 07).
   // Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
   actions: true,
+  // Not a crew dimension: the pane's input surface (M56 spec 04). Only Surface shadow mode fills it,
+  // and it is off by default, so it is absent on every pane here and no golden byte moved.
+  surface: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -481,6 +484,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "soleTabName",
       "status",
       "subtitle",
+      "surface",
       "tabId",
       "tabLabel",
       "tabPosition",
@@ -781,6 +785,10 @@ describe("solo zero-tax — routes", () => {
       // whose operator never taps "Download to host" downloads nothing and writes nothing through it.
       "/api/stt/whistle",
       "/api/subscribe",
+      // Surface shadow mode's debug read (M56 spec 04): a SOLO route that legitimately extends this
+      // list, named here rather than exempted. Read-gated, this collie's own sessions only, and a 404
+      // unless the operator set COLLIE_SURFACE_SHADOW=1. It registers no crew route.
+      "/api/surface",
       "/api/tab",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
@@ -865,6 +873,7 @@ const CONFIG_KEYS = {
   vapidSubject: true,
   stateDir: true,
   multiSession: true,
+  surfaceShadow: true,
   skipServe: true,
   basePath: true,
   uploadExtraTypes: true,
@@ -911,6 +920,7 @@ describe("solo zero-tax — config", () => {
       "socketPath",
       "stateDir",
       "submitKeys",
+      "surfaceShadow",
       "tailscaleHosts",
       "ternBin",
       "themeFile",
@@ -991,6 +1001,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_SKIP_SERVE",
       "COLLIE_STATE_DIR",
       "COLLIE_SUBMIT_KEYS",
+      "COLLIE_SURFACE_SHADOW",
       "COLLIE_TAILSCALE_HOSTS",
       "COLLIE_TERN_BIN",
       "COLLIE_TMUX_BIN",
