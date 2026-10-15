@@ -95,7 +95,8 @@ for (const name of names) {
   if (free) row.free++;
   if (isModal(surface)) row.modal++;
   if (isModal(cuesAlone)) row.cuesModal++;
-  else if (label.state === "dialog" && label.harness !== IDLE_HARNESS && label.harness !== SHELL) cuesMisses.push(`${name} (${label.harness})`);
+  // A "-cut" fixture is a screen truncated on purpose: it hides the footer that proves the dialog, and its uncut sibling is in the set.
+  else if (label.state === "dialog" && label.harness !== IDLE_HARNESS && label.harness !== SHELL && !name.endsWith("-cut.txt")) cuesMisses.push(`${name} (${label.harness})`);
   const reason = unknownReason(surface);
   if (reason !== null) row.unknown.set(reason, (row.unknown.get(reason) ?? 0) + 1);
 

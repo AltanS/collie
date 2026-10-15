@@ -229,7 +229,8 @@ describe("the generic cues alone", () => {
   // rule and prints the column.
   const others = FIXTURES.filter((name) => {
     const label = labelOf(name);
-    return label.state === "dialog" && label.harness !== "claude" && label.harness !== "shell";
+    // A "-cut" fixture is a screen truncated on purpose: it hides the footer that proves the dialog, and its uncut sibling is in the set.
+    return label.state === "dialog" && label.harness !== "claude" && label.harness !== "shell" && !name.endsWith("-cut.txt");
   });
 
   it("cues alone: the set covers codex, pi, opencode, grok and omp", () => {
