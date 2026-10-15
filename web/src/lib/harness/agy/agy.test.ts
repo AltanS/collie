@@ -28,6 +28,9 @@ const NEUTRAL = new Set([
   "agy--slash-exact.txt",
   "agy--slash-partial.txt",
   "agy--slash-typed-arg.txt",
+  // The Conversations picker after a search that matched nothing: no highlighted row, so nothing to
+  // select. It stays raw, and the unread-dialog card offers Escape.
+  "agy--resume-picker-nomatch.txt",
 ]);
 
 // Claude captures agy's grammar still claims, by name. `isAlienBuffer` (markers.ts) keeps agy off a
@@ -385,5 +388,52 @@ describe("the slash-command completion popup is the live box, not a dialog (agy 
 
   it("reads a typed argument once the popup says No matches", () => {
     expect(agyAdapter.extractInputDraft!(read("agy--slash-typed-arg.txt"))).toBe("/model x");
+  });
+});
+
+describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => {
+  const read = (name: string) => splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  const menuOf = (name: string) => {
+    const block = buildBlocks(read(name), { agent: "agy" }).find((b) => b.kind === "menu");
+    return block?.kind === "menu" ? block.menu : null;
+  };
+
+  it.each(["agy--resume-picker.txt", "agy--resume-picker-search.txt"])(
+    "%s offers Up/Down, Select and Go back, and nothing that renames or deletes",
+    (name) => {
+      const menu = menuOf(name);
+      expect(menu?.title).toBe("Conversations");
+      expect(menu?.actions.map((a) => [a.label, a.keys.join("+"), a.cancel === true])).toEqual([
+        ["Select", "Enter", false],
+        ["Go back", "Escape", true],
+      ]);
+      expect(menu?.nav.upDown).toBe(true);
+      expect(agyAdapter.composerReady!(read(name))).toBe(false);
+    },
+  );
+
+  it("changes its signature when the highlight moves", () => {
+    expect(menuOf("agy--resume-picker-search-moved.txt")?.signature).not.toBe(
+      menuOf("agy--resume-picker-search.txt")?.signature,
+    );
+  });
+
+  it("starts the card at the title, so the box above stays in the mirror", () => {
+    const blocks = buildBlocks(read("agy--resume-picker.txt"), { agent: "agy" });
+    const menu = blocks.find((b) => b.kind === "menu");
+    expect(menu?.kind === "menu" && lineText(menu.lines[0]!).trim()).toBe("Conversations");
+  });
+
+  it("keeps a search with no match raw: no row to select, Escape on the unread-dialog card", () => {
+    const lines = read("agy--resume-picker-nomatch.txt");
+    expect(buildBlocks(lines, { agent: "agy" }).map((b) => b.kind)).toEqual(["unread-dialog"]);
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+  });
+
+  it("does not lift a list whose footer lost `enter Select`", () => {
+    const rows = read("agy--resume-picker.txt").map((l) => lineText(l).replace("enter Select", "enter Pick  "));
+    expect(rows.some((r) => r.includes("enter Pick"))).toBe(true);
+    const lines = splitLines(parseAnsi(rows.join("\n")));
+    expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu")).toBe(false);
   });
 });

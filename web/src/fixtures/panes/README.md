@@ -1766,11 +1766,25 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
 | `agy--slash-exact.txt` | agy 1.3.5, `/model` typed: the slash-command completion popup under the box's bottom rule, `> /model` highlighted, footer "↑/↓ Navigate · enter Select · tab Complete". Not a dialog; the draft reads `/model` | `done` |
 | `agy--slash-partial.txt` | `/mo` typed: five suggestions with `> /model` highlighted and `↓ 1 more`. Enter would run `/model`, so the draft must not read `/mo` | `done` |
 | `agy--slash-typed-arg.txt` | `/model x` typed: the popup says `No matches`; the draft reads `/model x` | `done` |
+| `agy--resume-picker.txt` | agy 1.3.5 `/resume`: the `CLI  Other` tab row, the `Conversations` title, `Type to search conversations...`, ten conversations with `> ` at column 0 on the first, the `[1-10 of 305 items]` pager and the two-row `Keyboard: ↑/↓ Navigate … enter Select … f4 Delete …` / `esc Go back / Clear search` footer. Lifts as a menu: Up/Down, Select (Enter), Go back (Escape) | `blocked` |
+| `agy--resume-picker-search.txt` | Same picker with `Reply with` typed: `Search: Reply with` and five matches, the first highlighted | `blocked` |
+| `agy--resume-picker-search-moved.txt` | Same search after Down: the highlight on the second match, so the menu signature differs | `blocked` |
+| `agy--resume-picker-nomatch.txt` | Same picker with `/resume` typed into its search: `No matching conversations.` and no highlighted row. Stays raw; the unread-dialog card offers Escape | `blocked` |
 
 The three `agy--slash-*` captures of 2026-10-15 are visible-screen reads of agy 1.3.5 in a throwaway
 Herdr session (`herdr pane read --source visible --format ansi`). The account email became
 `developer.user@corp.test` and the temporary project path `/tmp/collie-agy-sandbox`, as in the
 captures above; the popup lists agy's own commands only. Nothing was submitted while capturing.
+
+The four `agy--resume-picker*` captures of 2026-10-15 are reads of agy 1.3.5 in a throwaway Herdr session
+(`herdr pane read --source recent --format ansi`), with the same email and path swaps. In
+`agy--resume-picker.txt` the conversations below the three canary ones, and in the two search captures
+the two September rows below them, came from other local work:
+each title and folder name was replaced by an invented string of the same width, so every column
+keeps its place. In `agy--resume-picker-nomatch.txt` one sentence of the resumed canary turn's
+thought, which quoted a local instruction file, was deleted. Measured at the time: Down moved the highlight,
+a first Escape cleared a typed search and a second closed the picker, and Enter resumed the
+highlighted conversation (a canary run).
 
 
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is
