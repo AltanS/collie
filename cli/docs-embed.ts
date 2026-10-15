@@ -24,6 +24,7 @@ import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
 import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
+import durableProgramsOnThePhone from "../docs/durable-programs-on-the-phone.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
@@ -99,6 +100,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "durable-programs",
     purpose: "Show your own agent program on your phone: attach it, its tokens, its files, its versions",
     text: durablePrograms,
+  },
+  {
+    name: "durable-programs-on-the-phone",
+    purpose: "What a program's section, conversations, questions and receipts look like on the phone",
+    text: durableProgramsOnThePhone,
   },
   {
     name: "upgrading",

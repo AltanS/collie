@@ -86,6 +86,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **Programs on the phone has a page of its own.** `durable-programs-on-the-phone` covers the Programs section, the conversation list, the four kinds of question with their limits and every outcome of a tap, the receipts, the chat with your own line, the header and the belt, starters, the push caps, masking and the crew row, with five screenshots. The Programs page links it, and its Versions section now says a refused program shows the refusal sentence on its home and keeps the word Unreachable on its row.
 - **The docs have five phone screenshots of a program.** `scripts/docs-screens.sh programs` takes the Programs section with a waiting count, the conversation list, a permission card with its time left, a card decided in the program and a refused program's home from the playground, 390 px wide, into `docs/images/programs/`.
 - **The Crews page has a Programs in a crew section.** It says a member's programs show in the lead's one Programs section, that the lead runs the push and its caps while answers, controls, reopen and starter taps go to the member that owns the program and keep their receipts there, that a lead below 1.21.0 shows no question card, and when a durable-only member needs `--label`.
 - **`collie skill` tells an agent what a program is.** A new section "Programs (experimental)" gives the attach command, the three `collie durable` verbs, which of them an agent may run, and the `durable-` doctor rows to read when a program does not show.
