@@ -41,6 +41,41 @@ export const zh: Dictionary = {
   "settings.theme.option.light": "浅色",
   "settings.theme.option.dark": "深色",
 
+  "theme.title": "Theme", // TODO wordsmith
+  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
+  "theme.import": "Import", // TODO wordsmith
+  "theme.export": "Export", // TODO wordsmith
+  "theme.remove": "Remove", // TODO wordsmith
+  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
+  "theme.preview.title": "Import this theme?", // TODO wordsmith
+  "theme.preview.by": "By {author}", // TODO wordsmith
+  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
+  "theme.preview.halves.light": "Light only", // TODO wordsmith
+  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
+  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
+  "theme.preview.apply": "Apply", // TODO wordsmith
+  "theme.preview.cancel": "Cancel", // TODO wordsmith
+  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
+  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
+  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
+  "theme.refused.title": "This file was not imported", // TODO wordsmith
+  "theme.refused.close": "Close", // TODO wordsmith
+  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
+  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
+  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
+  "theme.export.title": "Copy this theme", // TODO wordsmith
+  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
+  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
+  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
+  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
+  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
+  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
+  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
+  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
+  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
+  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
+  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
+
   // --- settings.haptics ---
   "settings.haptics.title": "触觉反馈",
   "settings.haptics.description": "按键或快速回复时触发轻微震动。",

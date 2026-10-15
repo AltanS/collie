@@ -46,7 +46,7 @@ describe("ThemeControl", () => {
     const { ThemeControl } = await load("dark");
     render(<ThemeControl />);
 
-    const group = screen.getByRole("radiogroup", { name: "Theme" });
+    const group = screen.getByRole("radiogroup", { name: "Appearance" });
     const options = within(group).getAllByRole("radio");
     expect(options.map((o) => o.textContent)).toEqual(["System", "Light", "Dark"]);
     expect(options.map((o) => o.getAttribute("aria-checked"))).toEqual(["false", "false", "true"]);
