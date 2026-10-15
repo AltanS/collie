@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  composerBelowShadow,
   DEFAULT_PROMPT_TAIL_LINES,
   normalizePromptRegion,
   verifyExpectedPrompt,
@@ -14,6 +15,10 @@ import {
   styledRegionLines,
 } from "../web/src/lib/styled-region.ts";
 import { cropRawColumns, type ColumnRange } from "../web/src/lib/column-range.ts";
+import { parseAnsi } from "../web/src/lib/ansi.ts";
+import { splitLines } from "../web/src/lib/blocks.ts";
+import { detectQuestion as detectMuseQuestion } from "../web/src/lib/harness/muse/question.ts";
+import { detectCheckbox as detectMuseCheckbox } from "../web/src/lib/harness/muse/checkbox.ts";
 
 describe("normalizePromptRegion", () => {
   test("strips SGR sequences and normalizes CRLF and CR line endings", () => {
@@ -318,38 +323,81 @@ describe("a task checklist under the region", () => {
   });
 });
 
-// M56 spec 03. A dialog replaces the composer while it is up, so an input box drawn UNDER the matched
-// region means the dialog has closed and the region is a copy left in the transcript. The box is found
-// by the one input-frame module from the profiles' anchors; the bridge refuses with `composer_below`.
-describe("an input box under the region", () => {
+// M56 spec 03, SHADOW MODE. The idea: a dialog replaces the composer while it is up, so an input box
+// drawn UNDER the matched region would mean the dialog has closed. The premise is false for Muse, which
+// draws a live question above its own Claude-shaped box. So the frame module's answer is recorded in
+// the audit line (`composerBelowShadow`) and never refuses: `verifyPromptBinding` does not look at it.
+describe("an input box under the region (shadow only)", () => {
   const FIXTURE = "claude--permission-bash.txt";
   const { region } = REGIONS.find((r) => r.fixture === FIXTURE)!;
   const RULE = "─".repeat(40);
 
-  test("the live dialog binds", () => {
-    expect(verifyPromptBinding(readFileSync(join(FIXTURE_DIR, FIXTURE), "utf8"), region)).toEqual({ ok: true });
+  test("the live dialog binds and the shadow says nothing", () => {
+    const raw = readFileSync(join(FIXTURE_DIR, FIXTURE), "utf8");
+    expect(verifyPromptBinding(raw, region)).toEqual({ ok: true });
+    expect(composerBelowShadow(raw, region)).toBeUndefined();
   });
 
-  test("the same region with the composer back under it is refused", () => {
+  test("the same region with the composer back under it binds, and the shadow records it", () => {
     const fresh = [region, "", RULE, "❯\u00a0", RULE, "  ? for shortcuts"].join("\n");
-    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: false, reason: "composer_below" });
-    expect(verifyExpectedPrompt(fresh, region)).toEqual({ ok: false, reason: "composer_below" });
+    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: true });
+    expect(verifyExpectedPrompt(fresh, region)).toEqual({ ok: true });
+    expect(composerBelowShadow(fresh, region)).toBe("composer_below");
   });
 
   test("a draft in that box changes nothing", () => {
     const fresh = [region, RULE, "❯ yes please", RULE].join("\n");
-    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: false, reason: "composer_below" });
+    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: true });
+    expect(composerBelowShadow(fresh, region)).toBe("composer_below");
   });
 
   test("an echoed box ABOVE the live region is not the composer", () => {
     const fresh = [RULE, "❯ an old prompt", RULE, region].join("\n");
-    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: true });
+    expect(composerBelowShadow(fresh, region)).toBeUndefined();
   });
 
-  test("a half box under the region (no bottom edge) is no frame, so the text check decides", () => {
+  test("a half box under the region (no bottom edge) is no frame", () => {
     const fresh = [region, RULE, "❯ "].join("\n");
-    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: true });
+    expect(composerBelowShadow(fresh, region)).toBeUndefined();
   });
+
+  test("a region the text check refuses gives no shadow", () => {
+    const fresh = [RULE, "❯ ", RULE].join("\n");
+    expect(verifyPromptBinding(fresh, region).ok).toBe(false);
+    expect(composerBelowShadow(fresh, region)).toBeUndefined();
+  });
+});
+
+// The case that kept composer_below out of the verdict: every live Muse question draws Claude's own
+// input box under the question, and a tap on it must bind.
+describe("a live Muse question binds with the input box under it", () => {
+  const MUSE_ASKS = [
+    "muse--ask-color.txt",
+    "muse--ask-color-moved.txt",
+    "muse--ask-season.txt",
+    "muse--ask-multi-q1.txt",
+    "muse--ask-multi-q2.txt",
+    "muse--ask-multi-review.txt",
+    "muse--ask-drinks.txt",
+    "muse--ask-toppings.txt",
+    "muse--ask-toppings-147.txt",
+    "muse--ask-toppings-147-moved.txt",
+    "muse--ask-toppings-checked.txt",
+    "muse--ask-toppings-review.txt",
+  ];
+
+  for (const fixture of MUSE_ASKS) {
+    test(fixture, () => {
+      const raw = readFileSync(join(FIXTURE_DIR, fixture), "utf8");
+      const lines = splitLines(parseAnsi(raw));
+      const region = detectMuseQuestion(lines)?.signature ?? detectMuseCheckbox(lines)?.regionSignature;
+      expect(region).toBeDefined();
+      expect(verifyPromptBinding(raw, region!)).toEqual({ ok: true });
+      expect(verifyExpectedPrompt(raw, region!)).toEqual({ ok: true });
+      // The shadow sees the box and says so; that is exactly why it is not a refusal.
+      expect(composerBelowShadow(raw, region!)).toBe("composer_below");
+    });
+  }
 });
 
 // ADR 0080 point 7. The text check strips every SGR escape, so a pointer drawn only as a background

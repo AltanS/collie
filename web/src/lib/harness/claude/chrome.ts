@@ -269,7 +269,7 @@ interface InputBox {
  *     wrapped-draft continuation, so a draft holding a pasted rule or shell prompt keeps its box
  *     (ADR 0048 addendum 2026-09-26). The bound buys no safety on its own; the checks below do.
  *  2. NO FRAME MARK UNDER THE BOX: the tail holds no border, no rule shaped like a top border and no
- *     "❯"-led line (isFrameMark, chevron-only and indent-blind) — a select dialog's "❯ 1. Yes" row,
+ *     "❯"-led line (isFrameMark, chevron-only and indent-blind), a select dialog's "❯ 1. Yes" row,
  *     or a second box, refuses. One exception, for a statusline that draws such a row itself (a
  *     starship-style "❯ ~/src on main", a "─ main ───" separator): an un-numbered "❯"-led row or a
  *     labelled rule is stepped over (isStatuslineFrameMark), but the box is then kept only when every
@@ -475,7 +475,7 @@ interface TailReading {
  *     <bottom border>
  *     <statusline>         (statusline + hint rows together, 0..below.maxRows, by position)
  *     <hint line>
- *     <blank>              (optional — separates the background-agents footer, if present)
+ *     <blank>              (optional, separates the background-agents footer, if present)
  *     <● main>             (0..below.footerMaxRows footer lines, matched by position not content)
  *     <◯ agent …>
  */

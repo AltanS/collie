@@ -1166,6 +1166,33 @@ describe("pane write prompt binding", () => {
     });
   });
 
+  // M56 spec 03, shadow mode: an input box under the bound region is recorded in the audit line and
+  // never refuses (bridge/prompt-binding.ts composerBelowShadow says why: Muse draws a live question
+  // above its own box).
+  describe("an input box under the region (shadow)", () => {
+    const RULE = "─".repeat(40);
+    const REGION = ["Do you want to proceed?", "❯ 1. Yes", "  2. No"].join("\n");
+
+    test("the keys go, and the audit records shadow composer_below", async () => {
+      const client = new FakePaneClient();
+      client.text = [REGION, "", RULE, "❯ ", RULE, "  ? for shortcuts"].join("\n");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(200);
+      expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { checked: true, passed: true, shadow: "composer_below" } });
+    });
+
+    test("no box under the region leaves no shadow key", async () => {
+      const client = new FakePaneClient();
+      client.text = [RULE, "❯ an old prompt", RULE, REGION].join("\n");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(200);
+      expect(entries[0]?.detail).not.toHaveProperty("promptBinding.shadow");
+    });
+  });
+
   // `expected_columns` (web/src/lib/column-range.ts): the columns of each row the phone read its
   // region from, for a dialog beside something that moves on its own (Oh My Pi's side panel). The
   // fresh read is cut to those columns before it is compared. Same single read.

@@ -176,14 +176,15 @@ and lives only in the action layer.**
    records `styled: "skipped_unknown_version"` in the audit entry (`styled: "checked"` otherwise; no
    key when the phone sent none). A newer phone must not have every tap refused by an older bridge.
    **A refusal says why.** The `409 prompt_changed` body carries an optional `reason`, the bridge's
-   reason code and never pane content: `not_found`, `not_in_tail`, `empty`, `composer_below`,
-   `style_empty`, `style_not_found`, `style_misaligned` (and `read_failed`, which is a 502 with its
-   own code). `composer_below` (added 2026-10-15, M56 spec 03) means a harness input box, found by
-   the one input-frame module from the profiles' anchors, is drawn under the matched region: the
-   dialog has closed and the region is a copy in the transcript. The
+   reason code and never pane content: `not_found`, `not_in_tail`, `empty`, `style_empty`,
+   `style_not_found`, `style_misaligned` (and `read_failed`, which is a 502 with its own code). The
    phone's `sendBoundKeys` turns it into `why: "bridge: <reason>"` on the `changed` result, and the
    walk keeps that more specific `why` rather than the step's name. It is a diagnosis for the console,
    not UI text.
+   A passing binding may carry `shadow: "composer_below"` in its audit entry (added 2026-10-15, M56
+   spec 03): a harness input box, found by the one input-frame module, is drawn under the matched
+   region. It is recorded only and never refuses, because Muse draws a live question above its own
+   box, so the box under the region does not prove the dialog closed.
    The field is honoured only with `expected_prompt` (alone it is `400 bad expected_styled`) and is
    capped at four times `expected_prompt`'s cap; a region larger than the cap gets `400` and the tap
    reports an error, the same as the text cap. `promptsEqual` compares `styledSignature`;

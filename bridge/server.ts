@@ -105,8 +105,10 @@ import {
   type RecentRunSurface,
 } from "./recent-runs.ts";
 import {
+  composerBelowShadow,
   DEFAULT_PROMPT_TAIL_LINES,
   verifyPromptBinding,
+  type BindingShadow,
   type PromptBindingVerdict,
   type StyledOutcome,
 } from "./prompt-binding.ts";
@@ -4458,7 +4460,16 @@ type PromptBindingCheck =
       // `styled` is present only when the phone sent `expected_styled`: `checked`, or
       // `skipped_unknown_version` when the text check alone decided (ADR 0080 point 7). `columns` is
       // present only when the phone sent `expected_columns`.
-      audit: { checked: true; passed: true; expected: string; styled?: StyledOutcome; columns?: ColumnRange };
+      // `shadow` is present only when a shadow check would have refused (M56 spec 03,
+      // `composerBelowShadow`). It never refuses; the audit line carries it for the counters.
+      audit: {
+        checked: true;
+        passed: true;
+        expected: string;
+        styled?: StyledOutcome;
+        columns?: ColumnRange;
+        shadow?: BindingShadow;
+      };
     }
   | {
       ok: false;
@@ -4563,6 +4574,15 @@ async function checkPromptBinding(
   // Assigned, never conditionally spread: a bound send without `expected_styled` records no `styled` key.
   if (result.styled !== undefined) passed.styled = result.styled;
   if (columns !== undefined) passed.columns = columns;
+  // Shadow mode only: a box under the region is recorded, never refused (composerBelowShadow says why).
+  // A throw in the shadow check must never cost the tap, so it records nothing then.
+  let shadow: BindingShadow | undefined;
+  try {
+    shadow = composerBelowShadow(freshText, expected, columns);
+  } catch {
+    shadow = undefined;
+  }
+  if (shadow !== undefined) passed.shadow = shadow;
   return { ok: true, audit: passed };
 }
 

@@ -67,12 +67,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
 - **The phone finds Claude's input box through the frame module.** The chrome reader keeps its exports and its modal checks, and takes the box, the draft, ghost text and the statusline run from `findInputFrame`. The statusline and footer bounds and the placeholder text now come from the Claude profile. Every pane fixture reads exactly as before.
 - **The bridge reads a Claude session name off the same input frame.** A box in shell mode (`!`) now counts as an unnamed box, so an old name goes, and a rule over a prompt with no bottom edge on screen says nothing.
+- **The audit line notes an input box under a tapped dialog, and the tap still goes through.** The bridge's binding check looks for an input box under the dialog's region with the frame module and records `shadow: "composer_below"` on a passing tap. It never refuses, because Muse draws a live question above its own input box.
 
 ### Fixed
 
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.
-- **A tap on a dialog is refused when the composer is back under it.** The bridge's binding check looks for an input box under the dialog's region with the frame module and refuses with `composer_below`, so a tap bound to a dialog that has closed cannot land in the composer.
 
 ### Packaging
 
