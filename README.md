@@ -151,6 +151,7 @@ and that is the only way to install it on a phone.
 | | |
 | --- | --- |
 | [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
+| [**Troubleshooting a program**](./docs/durable-programs-troubleshooting.md) | A program that does not show up or says Unreachable: the first checks, every reason and what fixes it, the doctor rows, and the cases that come up |
 
 ### Reference
 
