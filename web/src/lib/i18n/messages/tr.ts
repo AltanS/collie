@@ -415,6 +415,8 @@ export const tr: Dictionary = {
   "prompt.sendingAria": "Gönderiliyor",
   "prompt.reconnectNote": "Yanıtlamak için yeniden bağlanın.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Kabul edilmedi. Soru birazdan tekrar gösterilebilir.",

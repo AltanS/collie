@@ -490,6 +490,8 @@ export const de: Dictionary = {
   "prompt.sendingAria": "Wird gesendet",
   "prompt.reconnectNote": "Verbinde dich neu, um zu antworten.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Nicht angenommen. Die Frage wird möglicherweise gleich wieder angezeigt.",

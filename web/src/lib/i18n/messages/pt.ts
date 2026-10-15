@@ -415,6 +415,8 @@ export const pt: Dictionary = {
   "prompt.sendingAria": "Enviando",
   "prompt.reconnectNote": "Reconecte para responder.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Não aceita. A pergunta pode aparecer novamente em instantes.",

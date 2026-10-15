@@ -659,6 +659,12 @@ export interface SessionCard {
   where: "local" | "remote";
   state: SessionState;
   experimental: boolean;
+  /**
+   * A program only, and only while it is refused for its wire version (WIRE.md section 2): the one sentence
+   * that says why, for example "Program speaks wire v2, this Collie speaks v1; update one of them". Absent
+   * everywhere else.
+   */
+  notice?: string;
 }
 
 /** One entry of the snapshot's `sessions`: the summary, with the card when the instance runs a program. */

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/setup";
 import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { asJsonObject, type JsonObject } from "@/lib/json";
+import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
 import type { Ask } from "@/lib/types";
 import { AskCard } from "./ask-card";
 
@@ -592,8 +593,25 @@ describe("a card of a kind this version cannot answer", () => {
 
 describe("the receipts (M55 spec 14)", () => {
   afterEach(() => {
+    __resetSessionCards();
     resetCacheClockForTests();
     vi.useRealTimers();
+  });
+
+  it("a program's ask names the program in the caption; a terminal pane's keeps the plain caption", () => {
+    noteSessionCards(
+      [
+        { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0, kind: "terminal" },
+        { name: "desk", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 1, kind: "program", state: "ready" },
+      ],
+      undefined,
+    );
+    const { unmount } = draw({ scope: { session: "desk" } });
+    expect(screen.getByText("Needs your answer · desk")).toBeInTheDocument();
+    unmount();
+    draw();
+    expect(screen.getByText("Needs your answer")).toBeInTheDocument();
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument();
   });
 
   it("an ask with an expiry shows the time left under the title, and one without shows none", () => {

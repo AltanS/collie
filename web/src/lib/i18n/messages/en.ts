@@ -551,6 +551,7 @@ export const en = {
   "prompt.sendingAria": "Sending",
   "prompt.reconnectNote": "Reconnect to answer.",
   "ask.caption": "Needs your answer",
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Not taken. The question may show again in a moment.",

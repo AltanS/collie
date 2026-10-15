@@ -494,6 +494,8 @@ export interface SessionSummary {
   state?: SessionState;
   /** Whether the session wears the Experimental mark. */
   experimental?: boolean;
+  /** A program refused for its wire version: the one sentence that says why. Absent everywhere else. */
+  notice?: string;
 }
 
 /** {@link SessionSummary.kind}. */

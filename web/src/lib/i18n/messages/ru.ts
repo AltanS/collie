@@ -439,6 +439,8 @@ export const ru: Dictionary = {
   "prompt.sendingAria": "Отправка",
   "prompt.reconnectNote": "Переподключитесь для ответа.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Не принято. Вопрос может появиться снова через некоторое время.",

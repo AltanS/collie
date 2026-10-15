@@ -35,6 +35,7 @@ import {
 import { timeLeft } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
+import { isProgramSession, useSessionCard } from "@/lib/session-cards";
 import type { Ask, AskField, AskOption } from "@/lib/types";
 import { mintRequestId } from "@/lib/worktree-name";
 
@@ -60,6 +61,12 @@ import { mintRequestId } from "@/lib/worktree-name";
 // STRINGS FROM THE PROGRAM are React text nodes only, as every string in this app is. The bridge
 // cleaned and capped them; a card of a kind this version does not know is drawn with its words and
 // no buttons.
+//
+// THE RECEIPTS (M55 spec 14). The caption names the program that asks, by its session's name. An ask
+// with `expiresAt` shows the time left under its title, on the page's one shared clock
+// (lib/cache-clock.ts); past it the line says "Expired" and the buttons stay: the program answers the
+// tap with its own 409, and the next read drops the ask. A too-late answer says who decided first when
+// the program told: the program, the clock, or another answer.
 
 /** A transport error as an answer: a refusal the bridge made on purpose says so, anything else may have arrived. */
 function thrownAnswer(status: number | undefined, message: string): AnswerResult {
@@ -82,6 +89,9 @@ export interface AskCardProps {
 
 export function AskCard({ ask, paneId, scope, disabled = false, offline = false, onSettled }: AskCardProps) {
   useLocale();
+  const session = useSessionCard(scope);
+  // A program's ask names the program; a terminal pane's card keeps the plain caption.
+  const program = session !== null && isProgramSession(session) ? session.name : null;
   const [card, setCard] = useState<AskCardState>(() => freshCard(ask));
   // A newer form of this ask from the poll replaces the card, unless a tap is in flight (lib/ask.ts).
   // Adjusted during render, as React documents for state derived from a prop.
@@ -131,7 +141,7 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
 
   return (
     <PromptPanel ariaLabel={shown.title}>
-      <OptionGroupCaption>{t("ask.caption")}</OptionGroupCaption>
+      <OptionGroupCaption>{program !== null ? t("ask.captionNamed", { name: program }) : t("ask.caption")}</OptionGroupCaption>
       <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
         {shown.title}
       </p>

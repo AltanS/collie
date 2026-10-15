@@ -472,6 +472,8 @@ export const zhTW: Dictionary = {
   "prompt.sendingAria": "正在傳送",
   "prompt.reconnectNote": "請重新連線後再回答。",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "未被接受。該問題可能稍後會再次出現。",

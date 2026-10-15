@@ -483,6 +483,8 @@ export const ko: Dictionary = {
   "prompt.sendingAria": "전송 중",
   "prompt.reconnectNote": "다시 연결한 뒤 답하세요.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",

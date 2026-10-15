@@ -484,6 +484,8 @@ export const ja: Dictionary = {
   "prompt.sendingAria": "送信中",
   "prompt.reconnectNote": "再接続してから回答してください。",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "受け付けられませんでした。しばらくすると質問が再度表示される場合があります。",

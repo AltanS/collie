@@ -45,7 +45,7 @@ function emit(): void {
 /** What a card says, as one comparable string. The counts are left out: they move on every poll. */
 function signature(s: SessionSummary): string {
   const caps = s.caps === undefined ? "" : JSON.stringify(Object.entries(s.caps).toSorted(([a], [b]) => a.localeCompare(b)));
-  return [s.name, s.isPrimary, s.reachable, s.kind ?? "", s.mux ?? "", s.where ?? "", s.state ?? "", s.experimental ?? "", caps].join("\n");
+  return [s.name, s.isPrimary, s.reachable, s.kind ?? "", s.mux ?? "", s.where ?? "", s.state ?? "", s.experimental ?? "", caps, s.notice ?? ""].join("\n");
 }
 
 /** A host as the cards are filed under it: none for the lead, whether it is spelled or not. */
