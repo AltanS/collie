@@ -4,6 +4,9 @@ A theme is the look of the app: its colours, one typeface, and the mark in the h
 JSON file. Collie ships four. You can import more from a file, and you can export any theme to copy and
 edit. A theme is a setting of one device, kept in that browser, and it changes nothing on the bridge.
 
+Every theme has two halves. The light half is the set of colours for light mode. The dark half is the set
+for dark mode. A colour in a theme has a name, such as `background` or `primary`, and that name is a token.
+
 ## The four themes
 
 Each picture shows the Dashboard with the theme's mark in the header, light on the left and dark on the right.
@@ -42,26 +45,32 @@ that the Typeface card wins: choose another face there and it stays, until you p
 
 The mark is the small animal in the header. Each theme draws its own, in the same three states.
 
-Nightwatch draws a horned owl on a branch: at rest it sits still and blinks about every half minute, while Collie
-works it looks left and right with its ear tufts up, and when the connection is lost it sleeps with its eyes shut.
-Daylight draws a brown hare sitting in the sun: at rest it flicks one ear every 20 seconds, while Collie works the sun
-crosses the sky and the hare bounces, and when the connection is lost it sits in grey with its head turned away and
-its ears flat. Harbour draws a sea otter floating on its back with its stone: at rest it rises and falls on a slow
-48-second swell, while Collie works it juggles the stone, and when the connection is lost it dives and only the tip of
-its tail shows above the water. Collie keeps the dog.
+Nightwatch draws a horned owl on a branch. At rest it sits still and blinks about every half minute. While Collie
+works, it looks left and right with its ear tufts up. When the connection is lost, it sleeps with its eyes shut.
+
+Daylight draws a brown hare sitting in the sun. At rest it flicks one ear every 20 seconds. While Collie works, the
+sun crosses the sky and the hare bounces. When the connection is lost, it sits in grey with its head turned away
+and its ears flat.
+
+Harbour draws a sea otter floating on its back with its stone. At rest it rises and falls on a slow 48-second
+swell. While Collie works, it juggles the stone. When the connection is lost, it dives and only the tip of its
+tail shows above the water.
+
+Collie keeps the dog.
 
 The three states mean the same under every theme:
 
 | State | What it means |
 | --- | --- |
 | Idle | Connected and at rest. |
-| Loading | Collie is busy with something you asked for, or the connection has been in trouble for a while. |
+| Loading | Collie is busy with something you asked for. It also shows while a status round runs, which is a notice that an agent changed state. It shows too when the connection has been in trouble for a while. |
 | Lost | Collie has given up on the connection. The mark goes still and grey. |
 
 With reduced motion on, nothing moves, and loading still looks different from idle. An imported theme may
 name one shipped mark with `"mark"`, one of `collie`, `nightwatch`, `daylight` or `harbour`. It cannot bring
-artwork of its own. A file with no `mark` draws the dog. The import preview shows the file's mark at rest in both halves. The icon on your home screen, the splash your phone
-shows while Collie opens, and the website keep the Collie dog under every theme.
+artwork of its own. A file with no `mark` draws the dog. The import preview shows the file's mark at rest in
+both halves. The icon on your home screen, the splash your phone shows while Collie opens, and the website
+keep the Collie dog under every theme.
 
 ## Import a theme
 
@@ -71,15 +80,22 @@ shows while Collie opens, and the website keep the Collie dog under every theme.
 3. Tap **Apply** to keep the theme and switch to it, or **Cancel** to keep nothing.
 
 A **warning** is a contrast report line, such as "dark: status-blocked chip on card measures 3.9. The floor is
-4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours. A
-**refusal** means the file broke a rule. Collie lists every cause, keeps nothing, and applies nothing. The
-causes are an unknown key, a version Collie does not read, a value that is not a colour, a file over 64 KiB,
-a shipped id, a typeface or mark Collie does not ship, and a ninth theme.
+4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours. A **refusal** means the file broke a rule. Collie lists the causes, keeps nothing, and applies nothing. The list
+shows at most 25 causes. A file is refused for any of these:
 
-A theme changes colours and the typeface only. It cannot run code, load files or reach a server.
+- It is not a JSON object, or it is over 64 KiB.
+- It sets no colour.
+- It has an unknown key, a version Collie does not read, a value that is not a colour, or a typeface or mark Collie does not ship.
+- It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
+- It would be a ninth imported theme.
 
-A device holds up to eight imported themes. **Remove** deletes the imported theme that is on, and the app
-goes back to Collie.
+Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
+imported". Remove the old theme first, or change the `id`.
+
+A theme changes colours and the typeface only. It cannot run code, load files or reach a server. A theme may also name one of the shipped marks.
+
+A device holds up to eight imported themes. **Remove** works only while an imported theme is on. It deletes
+that theme, and the app goes back to Collie. The typeface stays as it was.
 
 ## Export and share a theme
 
@@ -112,7 +128,8 @@ A file has these keys, and no others. An unknown key anywhere is refused with it
 - `id` is 1 to 32 characters: lower-case letters, digits and hyphens, starting with a letter or a digit.
 - `name` is 1 to 40 characters, and `author` is up to 60. Neither may hold a control character.
 - `light` and `dark` are objects of tokens. Give one half or both. A half you leave out, and any token you
-  leave out, takes the value of the theme Collie. A token that only one half sets is filled for the other.
+  leave out, takes the value of the theme Collie. If only one half sets a token, the other half gets the value
+  of the theme Collie for that token.
 - `fonts.ui` is optional: `system`, `grotesk`, `aldrich`, `plex`, `geist` or `atkinson`.
 - `mark` is optional, one of the four shipped marks above.
 - `$schema` is allowed and ignored. The file is at most 64 KiB.
@@ -164,8 +181,9 @@ A theme changes the value of a colour. It cannot change anything else.
 
 ## The first paint and the status bar
 
-Your pick is on screen from the first frame. A small script reads it before the app loads, so a pinned
-theme does not flash the default first. The app checks the theme again when it loads. A stored theme that
+Your pick is on screen from the first frame. A small script reads it before the app loads, so a shipped theme
+does not flash the default first. An imported theme does the same, with one exception. If a token is set in
+only one half, that token shows the default colour for one frame. The app checks the theme again when it loads. A stored theme that
 fails the check is dropped, the device shows Collie, and the browser console says why. The status bar
 follows the theme's two page colours.
 

@@ -72,6 +72,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Geist joins the faces in the Typeface card.** It is a plain geometric face with a real bold from 400 to 700, bundled at 23 KB and fetched only when a reader picks it. It is the face of the new theme `daylight`.
 - **Atkinson Hyperlegible Next is a typeface choice.** The Braille Institute face for low vision joins the faces in the Typeface card, bundled in the app and subset to Latin. Its letters that are easy to confuse, such as I, l and 1, are drawn apart, and its bold is a real weight. It is the face of the theme Harbour.
 - **The owl's header frame leaves room for its raised tufts.** The header weight of the owl mark now crops 8 percent wider, so the tufts at the top of their lift keep clear of the edge instead of showing a flat cut at 40 px.
+- **A strip pill can be one choice of a set.** `Chip` takes `radio`, which gives it `role="radio"` and `aria-checked` in place of `aria-current`. The box and the look stay the same, so nothing in a strip moves.
 
 ### Fixed
 
