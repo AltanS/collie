@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-fonts";
 import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "@/lib/shipped-fonts";
+import { DEFAULT_THEME_ID, isThemeId } from "@/lib/theme/schema";
 
 // The device's own look — today one field, `font`, and the shape is an OBJECT on purpose.
 //
@@ -48,6 +49,13 @@ export interface DesignPrefs {
    * wholesale, including by removing a face the operator has deleted.
    */
   operatorFont?: OperatorFontFace;
+  /**
+   * The id of the colour theme this device wears (M57). Absent means the theme `collie`, which wears
+   * no attribute and no inline property. Only the SHAPE of the id is checked here, never whether a
+   * theme of that name exists: like `font`, a stale id is kept, so an imported theme that comes back
+   * tomorrow is honoured, and `lib/theme/store.ts` falls back to `collie` while it is gone.
+   */
+  theme?: string;
 }
 
 const DEFAULT_PREFS: DesignPrefs = { font: DEFAULT_FONT };
@@ -108,6 +116,8 @@ export function parseDesignPrefs(raw: string): DesignPrefs {
   const next: DesignPrefs = { font };
   const face = readOperatorFace(doc.operatorFont);
   if (face !== undefined) next.operatorFont = face;
+  const theme = asJsonString(doc.theme);
+  if (theme !== undefined && isThemeId(theme) && theme !== DEFAULT_THEME_ID) next.theme = theme;
   return next;
 }
 
@@ -163,10 +173,27 @@ export function setDesignFont(font: string, face?: OperatorFontFace): void {
   const next: DesignPrefs = { font };
   if (face !== undefined) next.operatorFont = face;
   // A shipped choice drops the mirror: keeping a face nobody is using would leave the next cold load
-  // injecting an `@font-face` for a font it does not render.
+  // injecting an `@font-face` for a font it does not render. The theme is another field entirely and
+  // survives a change of face.
+  if (prefs.theme !== undefined) next.theme = prefs.theme;
   prefs = next;
   persist();
   applyFontClass(prefs.font);
+  for (const fn of listeners) fn();
+}
+
+/**
+ * Choose a colour theme by id. The theme `collie` is the absence of the field, so a device that goes
+ * back to it stores exactly what a device that never chose stores. An id of the wrong shape is
+ * ignored. Every other field is kept as it is.
+ */
+export function setDesignTheme(id: string): void {
+  if (!isThemeId(id)) return;
+  const next: DesignPrefs = { font: prefs.font };
+  if (prefs.operatorFont !== undefined) next.operatorFont = prefs.operatorFont;
+  if (id !== DEFAULT_THEME_ID) next.theme = id;
+  prefs = next;
+  persist();
   for (const fn of listeners) fn();
 }
 

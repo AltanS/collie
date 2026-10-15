@@ -143,6 +143,11 @@ export function isThemeToken(value: string): value is ThemeToken {
   return THEME_TOKENS.some((token) => token === value);
 }
 
+/** True for a string shaped like a theme id. Says nothing about whether such a theme exists. */
+export function isThemeId(value: string): boolean {
+  return ID_PATTERN.test(value);
+}
+
 export function isShippedThemeId(value: string): value is ShippedThemeId {
   return SHIPPED_THEME_IDS.some((id) => id === value);
 }
@@ -355,10 +360,18 @@ function hasHalfRefusal(refusals: readonly Refusal[]): boolean {
 // declaration (`;`, `}`) fails the patterns below, which are anchored at both ends. The length cap
 // runs first so a huge string costs one comparison, not a regex walk.
 
-const COLOUR_MAX = 64;
+export const COLOUR_MAX = 64;
 const HEX = /^#([0-9a-f]{6}|[0-9a-f]{8})$/;
 const NUM = String.raw`(\d+(?:\.\d+)?|\.\d+)`;
 const OKLCH = new RegExp(String.raw`^oklch\( ?${NUM} ${NUM} ${NUM}(?: / ${NUM}(%)?)? ?\)$`);
+
+/**
+ * The two forms as ONE regex source, for `public/theme-init.js`, which cannot import this file and
+ * spells the same pattern as a literal. `src/theme-init.test.ts` reads both and fails on drift. It
+ * checks the shape of a normalised value only; the ranges (L up to 1, C up to 0.5, H up to 360) are
+ * `parseTheme`'s, and a stored value has already passed them.
+ */
+export const COLOUR_SOURCE = String.raw`^(?:#(?:[0-9a-f]{6}|[0-9a-f]{8})|oklch\( ?(?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+)(?: / (?:\d+(?:\.\d+)?|\.\d+)%?)? ?\))$`;
 
 interface Oklch {
   l: number;

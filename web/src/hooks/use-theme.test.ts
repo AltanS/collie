@@ -185,3 +185,42 @@ describe("theme cycling and class teardown", () => {
     expect(result.current.resolved).toBe("light"); // pinned wins over the OS
   });
 });
+
+describe("meta colours (M57)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    document.head.innerHTML = "";
+  });
+
+  // The default theme's browser-chrome colours are the two literals this file has always pinned. A
+  // theme that is not `collie` hands its own through setMetaColours; `collie` hands `undefined`.
+  it("meta colours for the default theme are the two literals", async () => {
+    await bootstrap(null);
+    const mod = await import("./use-theme");
+    expect(mod.metaColours()).toEqual({ light: "#f5f5f5", dark: "#0a0a0a" });
+  });
+
+  it("meta colours follow the theme's backgrounds, and come back for collie", async () => {
+    document.head.innerHTML =
+      '<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">' +
+      '<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">';
+    await bootstrap(null);
+    const mod = await import("./use-theme");
+    mod.setMetaColours({ light: "#eeeeee", dark: "#123456" });
+    expect(mod.metaColours()).toEqual({ light: "#eeeeee", dark: "#123456" });
+    const contents = () =>
+      [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
+    expect(contents()).toEqual(["#eeeeee", "#123456"]);
+    mod.setMetaColours(undefined);
+    expect(contents()).toEqual(["#f5f5f5", "#0a0a0a"]);
+  });
+
+  it("meta colours of the collie theme file are the same two literals", async () => {
+    const { toSrgbHex } = await import("@/lib/theme/schema");
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const file = JSON.parse(readFileSync(resolve(import.meta.dirname, "../themes/collie.json"), "utf8"));
+    expect(toSrgbHex(file.light.background)).toBe("#f5f5f5");
+    expect(toSrgbHex(file.dark.background)).toBe("#0a0a0a");
+  });
+});
