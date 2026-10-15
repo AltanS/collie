@@ -33,8 +33,8 @@ const STYLE =
   ".hb-otter{transform-origin:32px 46px}.hb-body{transform-origin:32px 46px}.hb-head{transform-origin:20px 35px}" +
   ".hb-paws{transform-origin:33px 40px}.hb-pebble{transform-origin:33px 35.5px}.hb-spin{transform-origin:33px 32px}" +
   ".hb-foot{transform-origin:44px 37px}.hb-tail{transform-origin:46px 43px}.hb-ripple{transform-origin:32px 46px;opacity:0}" +
-  // Idle: one slow swell, and a hind paw that twitches once every 28.8 s.
-  ".hb-rest .hb-otter{animation:cm-hb-float 7.2s ease-in-out infinite}" +
+  // Idle: one swell at the dog's 48 s scale, and a hind paw that twitches once every 28.8 s.
+  ".hb-rest .hb-otter{animation:cm-hb-float 48s ease-in-out infinite}" +
   ".hb-rest .hb-foot{animation:cm-hb-twitch 28.8s linear infinite}" +
   // Loading: ten parts on one 1.8 s clock. The `transform` and `opacity` beside each animation are
   // the still loading pose that reduced motion shows.

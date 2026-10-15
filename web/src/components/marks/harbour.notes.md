@@ -21,7 +21,7 @@ toy in its paws, not a machine turning.
 
 | state   | what it draws | motion | colour |
 | ------- | ------------- | ------ | ------ |
-| idle    | the otter on its back, the stone on its chest, two lines of water | a rise and fall of 0.7 units with a 0.8 degree rock, 7.2 s per swell; a hind paw twitches once every 28.8 s (about 1.4 s of it) | stone and water at a quieter mix of their tokens |
+| idle    | the otter on its back, the stone on its chest, two lines of water | a rise and fall of 0.7 units with a 0.8 degree rock, 48 s per swell; a hind paw twitches once every 28.8 s (about 1.4 s of it) | stone and water at a quieter mix of their tokens |
 | loading | the same otter juggling the stone: a high throw and a low one per 1.8 s | ten parts on one 1.8 s clock (below); squash at each catch, stretch at each throw | stone at full `--primary`, water at full `--status-info` |
 | lost    | the otter has dived: the tip of its tail above the water line, two rings, two bubbles | none | all ink is `var(--muted-foreground)`; no accent |
 
@@ -29,9 +29,11 @@ Under reduced motion every animation stops and the loading state shows a still p
 reads as working: the stone is up in the air, the paws are raised, the head looks up, the ripple
 ring shows and the accents are at full colour. Idle shows the otter at rest; lost is still anyway.
 
-The idle swell is 7.2 s, not the dog's 48 s drift, because the spec asks for "a small rise and fall
-at 6 to 8 s". It moves 0.7 of 64 units: 0.35 px at 40 px and 0.26 px at 24 px, under one device
-pixel on most phones. Nothing reacts to typing; nothing in the contract lets it.
+The idle swell is 48 s, the dog's drift scale. The spec asked for "a small rise and fall at
+6 to 8 s" and the designer drew it at 7.2 s; the lead asked for the dog's stillness. The merge pass
+shot the header mark's 44 px box twice, 3.6 s apart, at 390 px width: at 7.2 s, 323 of its 1,936
+pixels changed (1,249 at 3x), so the swell went to 48 s (2026-10-16). Nothing reacts to typing;
+nothing in the contract lets it.
 
 ## Keyframes
 
@@ -41,7 +43,7 @@ a mean of 1, so one round covers exactly one juggle cycle: the throw starts slow
 
 | keyframe        | duration | element        | what it moves |
 | --------------- | -------- | -------------- | ------------- |
-| `cm-hb-float`   | 7.2 s    | `.hb-otter`    | idle: the whole otter down 0.7 units and back, rocked 0.8 degrees |
+| `cm-hb-float`   | 48 s     | `.hb-otter`    | idle: the whole otter down 0.7 units and back, rocked 0.8 degrees |
 | `cm-hb-twitch`  | 28.8 s   | `.hb-foot`     | idle: the hind paw flexes three times at 61 to 66 per cent, still the rest of the cycle |
 | `cm-hb-toss`    | 1.8 s    | `.hb-pebble`   | the stone up 18 units and down, then up 10 and down; scale 1.26 x 0.74 at the catch, 0.84 x 1.2 at the throw; each segment has its own easing (slow at the top, fast at the bottom) |
 | `cm-hb-spin`    | 1.8 s    | `.hb-spin`     | the stone turns 360 degrees in the high throw and 180 in the low one (an ellipse, so 540 loops clean) |
@@ -95,5 +97,5 @@ hit by the reduced-motion rule.
 
 ## Size
 
-`harbour.tsx`: 14,549 bytes of source (budget 40,960; the dog is 70,516). No SMIL, no image, no
+`harbour.tsx`: 14,567 bytes of source (budget 40,960; the dog is 70,516). No SMIL, no image, no
 network, no animation library.

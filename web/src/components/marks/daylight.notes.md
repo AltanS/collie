@@ -82,7 +82,7 @@ silhouette the shadow reuses).
 
 ## Bytes and rules
 
-- `daylight.tsx`: 10,940 bytes of source. The dog is 70,516.
+- `daylight.tsx`: 10,931 bytes of source. The dog is 70,516.
 - CSS keyframes inside the svg's own `<style>` only. No SMIL, no `<image>`, no raster, no network,
   no animation library. No text in the drawing.
 - At 24 px the eye is about 2 px across, the ears about 2 px wide, and every knockout line about
