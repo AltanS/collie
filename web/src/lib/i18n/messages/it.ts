@@ -173,6 +173,7 @@ export const it: Dictionary = {
   "settings.typeface.note.system": "Il carattere del telefono. Non scarica nulla.",
   "settings.typeface.note.grotesk": "La voce di Collie, disegnata per il marchio.",
   "settings.typeface.note.aldrich": "Un solo spessore: il testo in grassetto appare uguale.",
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Aggiunto dal gestore di questo collie.",
   "settings.fonts.title": "Font del terminale",
   "settings.fonts.description": "Mirror del terminale e campo bozza, su questo dispositivo.",

@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { TypefaceControl } from "@/components/typeface-control";
-import { __resetDesign, designPrefs } from "@/lib/design";
+import { SHIPPED_FONTS, __resetDesign, designPrefs } from "@/lib/design";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { BridgeConfig } from "@/lib/types";
 import { server } from "@/test/setup";
@@ -43,6 +43,7 @@ describe("TypefaceControl", () => {
       "System default",
       "Space Grotesk",
       "Aldrich",
+      "Atkinson Hyperlegible Next",
     ]);
     expect(select).toHaveValue("aldrich");
     // The default wears no class — that is what keeps JavaScript off the first-paint path for a
@@ -84,6 +85,7 @@ describe("TypefaceControl", () => {
       "System default",
       "Space Grotesk",
       "Aldrich",
+      "Atkinson Hyperlegible Next",
       "Departure Mono",
     ]);
 
@@ -104,7 +106,7 @@ describe("TypefaceControl", () => {
     render(<TypefaceControl />);
 
     const select = await screen.findByLabelText("Family");
-    expect(within(select).getAllByRole("option")).toHaveLength(3);
+    expect(within(select).getAllByRole("option")).toHaveLength(SHIPPED_FONTS.length);
   });
 
   // The offline / deleted-row case. The select must not silently show its first option ("System

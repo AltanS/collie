@@ -53,6 +53,14 @@ export const FACES = {
     stack: '"Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, sans-serif',
     note: "8 KB. Squared industrial sans, single 400 weight — synthesis is off app-wide, so every 500 and 600 here renders at 400. The shipped DEFAULT since beta.49.",
   },
+  // Shipped with the theme `harbour` (M57). Self-hosted in index.css with its computed twin, like
+  // Aldrich above, so this switcher renders the bytes the app renders.
+  atkinson: {
+    label: "Atkinson Hyperlegible Next",
+    stack:
+      '"Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif, system-ui, sans-serif',
+    note: "23 KB. Drawn for the Braille Institute for low vision: I, l and 1, and 0 and O, are told apart. Real 400 to 700 weights.",
+  },
   // The three below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
   // shows the system face and the swap shifts layout. Declared in playground.css, never index.css.
   orbitron: {

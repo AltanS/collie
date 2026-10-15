@@ -173,6 +173,7 @@ export const tr: Dictionary = {
   "settings.typeface.note.system": "Telefonunuzun kendi yazı tipi. Hiçbir şey indirmez.",
   "settings.typeface.note.grotesk": "Collie'nin kendi sesi, işaretle eşleşecek şekilde çizildi.",
   "settings.typeface.note.aldrich": "Tek ağırlık, bu yüzden kalın metin normal metinle aynı görünür.",
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Bu collie'nin operatörü tarafından eklendi.",
   "settings.fonts.title": "Terminal yazı tipi",
   "settings.fonts.description": "Bu cihazdaki terminal yansıması ve taslak alanı.",

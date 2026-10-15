@@ -18,7 +18,7 @@
  * index.css's @theme block, which is the stack index.html preloads. A device that never opens the
  * setting runs no JavaScript before its first paint.
  */
-export const SHIPPED_FONTS = ["system", "grotesk", "aldrich"] as const;
+export const SHIPPED_FONTS = ["system", "grotesk", "aldrich", "atkinson"] as const;
 
 export type ShippedFont = (typeof SHIPPED_FONTS)[number];
 

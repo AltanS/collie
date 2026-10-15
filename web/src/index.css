@@ -722,6 +722,48 @@
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
 }
 
+/* Atkinson Hyperlegible Next, the face of the theme `harbour` (M57) and a Typeface choice of its
+ * own. Drawn for the Braille Institute for readers with low vision: open apertures, and letters
+ * that are hard to mistake for each other (I, l and 1; 0 and O; rn and m). That is the reason it
+ * sits beside a terminal palette, where a path or a hash is read one character at a time.
+ *
+ * REAL WEIGHTS. The upstream file is variable on wght 200-800; the subset is instanced to 400-700
+ * like Space Grotesk, so the 500 and 600 the app asks for are drawn, not synthesised. 23 KB, cut by
+ * the same scripts/build-ui-font.sh ranges and features (tnum kept). Not preloaded: it is fetched
+ * when a reader or a theme picks it.
+ *
+ * `unicode-range` is the subset's own Latin range, so Cyrillic and every other script skip this
+ * face and its stand-in and fall to the system stack.
+ *
+ * Atkinson Hyperlegible Next 2.001 is SIL OFL 1.1, from github.com/googlefonts/atkinson-hyperlegible-next
+ * at commit 7925f50f: public/fonts/LICENSE-atkinson-hyperlegible-next.txt. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+/* Its metric-matched stand-in, on the same terms as the two beside it: `local()` only, the same one
+   metric family, Latin only, and every number printed by scripts/build-ui-font.sh. The face is
+   close to Arial in width (98.99%) but its line box is taller, so the overrides are its own. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 98.99%;
+  ascent-override: 99.4%;
+  descent-override: 31.92%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
 /* Aldrich — the second SHIPPED face, and the one a reader picks deliberately. Built by the same
  * scripts/build-ui-font.sh run, subset to the same ranges, 8 KB.
  *
@@ -805,7 +847,7 @@
 
 /* ── The typeface setting: CSS owns every stack, JavaScript only swaps a class ───────────────────
  *
- * THE WHOLE MECHANISM IS THESE THREE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
+ * THE WHOLE MECHANISM IS THESE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
  * first paint and adds ONE class to <html>; `lib/design.ts` swaps it at runtime. Neither ever holds
  * a font list, sets a family, or writes a custom property — because a font stack in JavaScript is a
  * second source of truth for something this file already states, and the two would drift.
@@ -833,6 +875,12 @@
   --font-sans:
     "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-atkinson {
+  --font-sans:
+    "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
 /* An operator's own face (theme.toml, ADR 0033). The FAMILY NAME is the one thing this file cannot
