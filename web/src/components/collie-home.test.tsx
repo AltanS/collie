@@ -274,7 +274,7 @@ describe("CollieHome — the lost badge", () => {
 // `getAnimations`, so it is stubbed on the header box with one fake animation per keyframe the mark's
 // own stylesheet declares. The ramp must collect them (they are named `cm-`), rate them through the
 // round without throwing, and hand them back at rate 1.
-describe("CollieHome — the spin with every shipped mark", () => {
+describe("CollieHome, the spin with every shipped mark", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     clearStatus();
