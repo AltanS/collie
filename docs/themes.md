@@ -6,7 +6,7 @@ edit. A theme is a setting of one device, kept in that browser, and it changes n
 
 ## The four themes
 
-Each picture shows the Dashboard, light on the left and dark on the right.
+Each picture shows the Dashboard with the theme's mark in the header, light on the left and dark on the right.
 
 - **Collie** is the look the app has always had. It is the default, and picking it takes every theme
   back off. Its typeface is Aldrich.
@@ -16,17 +16,17 @@ Each picture shows the Dashboard, light on the left and dark on the right.
 - **Nightwatch** is for the on-call phone in bed. The dark half is true black with one dim amber, and the
   light half is a warm dusk paper. Its typeface is IBM Plex Sans.
 
-  ![The Nightwatch theme on the Dashboard, light and dark.](images/themes/nightwatch-home.png)
+  ![The Nightwatch theme on the Dashboard, with the owl in the header, light and dark.](images/themes/nightwatch-home.png)
 
 - **Daylight** is for direct sun and low vision. Body text is 7:1 or better, borders are stronger, and
   blocked is orange while done is blue, so the two stay apart without red and green. Its typeface is Geist.
 
-  ![The Daylight theme on the Dashboard, light and dark.](images/themes/daylight-home.png)
+  ![The Daylight theme on the Dashboard, with the hare in the header, light and dark.](images/themes/daylight-home.png)
 
 - **Harbour** is for people who live in a terminal. A cool blue-grey with one teal accent, in the key of
   Nord and Solarized, and code colours that read like an editor. Its typeface is Atkinson Hyperlegible Next.
 
-  ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
+  ![The Harbour theme on the Dashboard, with the otter in the header, light and dark.](images/themes/harbour-home.png)
 
 ## Pick a theme
 
@@ -42,16 +42,13 @@ that the Typeface card wins: choose another face there and it stays, until you p
 
 The mark is the small animal in the header. Each theme draws its own, in the same three states.
 
-Nightwatch draws a horned owl on a branch: at rest it sits still and blinks about every half minute, while
-Collie works it looks left and right with its ear tufts up, and when the connection is lost it sleeps with
-its eyes shut. Daylight draws a brown hare sitting in the sun: at rest it flicks one ear every 20 seconds,
-while Collie works the sun crosses the sky and the hare bounces, and when the connection is lost it sits in
-grey with its head turned away and its ears flat. Harbour draws a sea otter floating on its back with its
-stone: at rest it rises and falls on a slow 48-second swell, while Collie works it juggles the stone, and
-when the connection is lost it dives and only the tip of its tail shows above the water. Collie keeps the
-dog.
-
-The import preview shows the file's mark at rest, once on the light half and once on the dark half.
+Nightwatch draws a horned owl on a branch: at rest it sits still and blinks about every half minute, while Collie
+works it looks left and right with its ear tufts up, and when the connection is lost it sleeps with its eyes shut.
+Daylight draws a brown hare sitting in the sun: at rest it flicks one ear every 20 seconds, while Collie works the sun
+crosses the sky and the hare bounces, and when the connection is lost it sits in grey with its head turned away and
+its ears flat. Harbour draws a sea otter floating on its back with its stone: at rest it rises and falls on a slow
+48-second swell, while Collie works it juggles the stone, and when the connection is lost it dives and only the tip of
+its tail shows above the water. Collie keeps the dog.
 
 The three states mean the same under every theme:
 
@@ -59,11 +56,11 @@ The three states mean the same under every theme:
 | --- | --- |
 | Idle | Connected and at rest. |
 | Loading | Collie is busy with something you asked for, or the connection has been in trouble for a while. |
-| Lost | Collie has given up on the connection. The mark is still and looks asleep. |
+| Lost | Collie has given up on the connection. The mark goes still and grey. |
 
 With reduced motion on, nothing moves, and loading still looks different from idle. An imported theme may
 name one shipped mark with `"mark"`, one of `collie`, `nightwatch`, `daylight` or `harbour`. It cannot bring
-artwork of its own. A file with no `mark` draws the dog. The icon on your home screen, the splash your phone
+artwork of its own. A file with no `mark` draws the dog. The import preview shows the file's mark at rest in both halves. The icon on your home screen, the splash your phone
 shows while Collie opens, and the website keep the Collie dog under every theme.
 
 ## Import a theme
@@ -178,7 +175,5 @@ follows the theme's two page colours.
   tokens come from the theme Collie. Add the token to the half you want.
 - **The face did not change.** A theme writes its face once, when you pick it. If you chose another face in
   **Typeface** afterwards, that choice wins. Pick the face again, or pick the theme again.
-- **A warning says a check fails.** The colours are legal but hard to read in one place. Change that token,
-  or keep the theme.
 - **The theme is gone after clearing browser data.** Imported themes live in this browser only. Import the
   file again.
