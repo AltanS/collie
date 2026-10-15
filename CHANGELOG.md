@@ -84,6 +84,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **Terminology has the words a program brings.** Source, cap, hello, epoch, receipt, conversation, Programs section and wire each get an entry of two to four sentences and one link to the page that owns the word.
 - **The push page says what a program's pushes do.** A new section gives the three caps (3 a pane a minute, 10 and 30 for one program on one machine), the one summary push and the hour of silence, the program's own title and line, and that a restart shows a repeated question and does not push it again.
 - **The Programs quickstart states its platforms as a fact about the program.** The opening line reads "A program runs on Linux or macOS", so no page still opens with the old Linux-only requirement.
 - **The durable example attaches to the Collie you already run.** Its README drops the second instance it used to ask for and runs `collie durable attach` instead, keeps the `.env` form for a Collie with no terminal, and its crew section starts from an attached program. Two code comments now name the four `collie durable list` states and the six doctor rows.
