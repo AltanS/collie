@@ -1116,6 +1116,16 @@
    "version": "2.1.291",
    "state": "dialog"
   },
+  "claude-lab--menu-model-picker-v2300--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.300",
+   "state": "dialog"
+  },
+  "claude-lab--menu-model-picker-v2301--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "dialog"
+  },
   "claude-lab--menu-resume-picker--w83.txt": {
    "harness": "claude",
    "version": "2.1.291",
@@ -2891,6 +2901,16 @@
    "version": "omo-5.1.30",
    "state": "dialog"
   },
+  "pi--omo-v5130-nocolor-idle.txt": {
+   "harness": "pi",
+   "version": "omo-5.1.30",
+   "state": "idle"
+  },
+  "pi--omo-v5130-nocolor-question.txt": {
+   "harness": "pi",
+   "version": "omo-5.1.30",
+   "state": "dialog"
+  },
   "pi--omo-v5130-panel-draft.txt": {
    "harness": "pi",
    "version": "omo-5.1.30",
@@ -2906,7 +2926,22 @@
    "version": "omo-5.1.30",
    "state": "idle"
   },
+  "pi--omo-v5130-panel-picker-tree-cut.txt": {
+   "harness": "pi",
+   "version": "omo-5.1.30",
+   "state": "dialog"
+  },
   "pi--omo-v5130-panel-picker-tree.txt": {
+   "harness": "pi",
+   "version": "omo-5.1.30",
+   "state": "dialog"
+  },
+  "pi--omo-v5130-panel-question-cut-footer.txt": {
+   "harness": "pi",
+   "version": "omo-5.1.30",
+   "state": "dialog"
+  },
+  "pi--omo-v5130-panel-question-cut.txt": {
    "harness": "pi",
    "version": "omo-5.1.30",
    "state": "dialog"
@@ -3040,6 +3075,16 @@
    "harness": "pi",
    "version": "0.87.1",
    "state": "idle"
+  },
+  "pi--v0871-nocolor-draft.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "draft"
+  },
+  "pi--v0871-nocolor-question.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
   },
   "pi--v0871-question-answer-editor-typed.txt": {
    "harness": "pi",
