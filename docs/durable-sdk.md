@@ -329,8 +329,8 @@ history.
 | --- | --- |
 | `showConversation(loc, harness, conversation, o)` | Shows a conversation as a pane, history first, then live events. Send goes to Pi's `submit` with the request id, and Stop to its abort. Safe to call twice |
 | `PaneRegistry` | Which pane shows which conversation. After a restart, `reRaised(risky)` waits until each risky call without a result has asked again, so `ready()` comes after the asks |
-| `riskGuard({ panes, risky, words? })` | A Pi extension whose `beforeTool` hook turns a call to a tool in `risky` into an Allow and Deny card. A denied call is blocked |
-| `askTools({ panes, words })` | The support desk's two asking tools: `ask_queue`, a choice, and `ask_customer`, a text ask |
+| `riskGuard({ panes, risky, words?, timeoutMs?, onTimeout? })` | A Pi extension whose `beforeTool` hook turns a call to a tool in `risky` into an Allow and Deny card. A denied call is blocked. With `timeoutMs`, the card expires, a call nobody answered is blocked, and `onTimeout(tool, title)` lets the program log it |
+| `askTools({ panes, words, timeoutMs?, onTimeout? })` | The support desk's two asking tools: `ask_queue`, a choice, and `ask_customer`, a text ask. With `timeoutMs`, an unanswered ask expires and the tool returns "timed out" |
 | `spawnHelperTool(o)` | The tool `spawn_helper`: a child conversation shown as a new pane, which returns the helper's answer |
 | `piHistory({ harness, panes, describe })` | A `HistoryProvider` that reads every entry of every Pi conversation |
 | `firstMessageOf(conversation)` | The text of a conversation's first message, to name its pane |
