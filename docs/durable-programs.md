@@ -1,12 +1,23 @@
 # Programs (experimental)
 
-If you built an agent with Pi Durable or any long-running program, Collie can show it on your phone. Your program gets approval prompts, history and a chat view without any UI code. This is experimental: the wire may change, or the feature may be removed, in a later minor, and today only our examples speak it.
+> **Experimental.** The wire, the SDK and this page may change, or the feature may be removed, in a
+> later minor release. Today only Collie's own examples speak the wire. [The exit](#the-exit) says
+> what decides whether it stays.
 
-The wire carries a version header, so a program can refuse a version it does not know, and Collie accepts the previous version for one minor release. A program is one place a [session](sessions.md) can come from. The words are in [Terminology](terminology.md).
+If you built an agent with Pi Durable or any long-running program, Collie can show it on your
+phone. Your program gets approval prompts, history and a chat view without any UI code.
+
+A program is one place a [session](sessions.md) can come from, and each of its conversations is one
+session. The words are in [Terminology](terminology.md). Collie holds no model key: a program uses
+its own API key or a ChatGPT sign-in, and an Anthropic subscription may not be used through a
+third-party harness.
 
 ## Quickstart
 
-You need Linux, and Node 22.18 or later or Bun 1.4 or later. Install the SDK in your program's folder:
+A ten-line program, one `collie durable attach`, and a question card on your phone.
+
+A program runs on Linux or macOS, with Node 22.18 or later or Bun 1.4 or later. Install the SDK in
+your program's folder:
 
 ```bash
 npm install @colliepwa/durable-sdk@experimental
@@ -14,7 +25,9 @@ npm install @colliepwa/durable-sdk@experimental
 bun add @colliepwa/durable-sdk@experimental
 ```
 
-The package is experimental. It is published under the npm dist-tag `experimental`, never `latest`, and it follows the exit in [ADR 0104](../.adr/0104-a-program-is-a-session.md): if the durable wire goes, the package is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+The package is published under the npm dist-tag `experimental`, never `latest`, and it follows the
+exit in [ADR 0104](../.adr/0104-a-program-is-a-session.md): if the durable wire goes, the package
+is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
 
 Save this program as `hello.mjs`. It is ten lines:
 
@@ -32,29 +45,88 @@ console.log(`answer: ${answer.optionIds[0]}`);
 await collie.close();
 ```
 
-Run it with `node hello.mjs` or `bun hello.mjs`. It prints `listening /run/user/1000/hello/app.sock` and waits. On Node it first writes one more line: Node cannot read who connects to the program's socket, so any process of your user can answer its question. Bun can, and refuses an answer from the program itself or from a process it started. The same program is `examples/durable-member/hello.ts` in a clone of Collie.
+Run it with `node hello.mjs` or `bun hello.mjs`. It prints
+`listening /run/user/1000/hello/app.sock` and waits. The same program is
+`examples/durable-member/hello.ts` in a clone of Collie.
 
-In a second terminal, attach it to your Collie, then restart so Collie reads the new source:
+On Node it first writes one more line: Node cannot read who connects to the program's socket, so
+any process of your user can answer its question. Bun on Linux can, and refuses an answer from the
+program itself or from a process it started.
+
+On macOS, run it with Node. Bun there needs `callerCheck: "off"`, which this program does not set.
+macOS has no `XDG_RUNTIME_DIR`, so set `COLLIE_DURABLE_SOCKET` to an absolute path first.
+
+In a second terminal, attach it to your Collie, then restart so Collie reads the new entry:
 
 ```bash
 collie durable attach hello --socket /run/user/1000/hello/app.sock
 collie restart
 ```
 
-Use the path your program printed. Add `--restart` to the first command to restart in the same step. Open Collie on your phone. A space named `hello` appears, with an Experimental badge, and it holds one question card: "Deploy to staging?". Tap Yes or No. The program prints your answer and exits.
+Use the path your program printed. Add `--restart` to the first command to restart in the same
+step.
+
+Open Collie on your phone. A Programs section shows one row, `hello`, with an Experimental badge and
+one question waiting. Tap the row: it opens on the program's conversation list, where the
+conversation Deploy waits with "Deploy to staging?". Open it and tap Yes or No. The program prints
+your answer and exits.
 
 ## Attach a program
 
-Each program you attach is one entry in `sources.json`, in the config folder next to `.env`, mode `0600`. The phone shows it in its own Programs section, with the name you gave it, its runtime, the count of questions waiting and an Experimental badge, and the section moves above your spaces when a question waits. A conversation of the program is one of its panes. Your terminals look and work as before. A name is lower case letters, digits and hyphens, at most 32, and not the name of a Herdr, tmux or zellij session.
-
-A program that you deployed behind TLS takes a URL and a token. Put the token in an environment variable, and name the variable. The token never goes on the command line:
+Each program is one entry in `sources.json`, and `collie durable attach` writes it.
 
 ```bash
-export DESK_TOKEN=your-32-byte-random-token-here
-collie durable attach desk --url https://desk.example.com --token-env DESK_TOKEN
+collie durable attach desk --socket /run/user/1000/desk/app.sock
+export EDGE_TOKEN=your-32-byte-random-token-here
+collie durable attach edge --url https://edge.example.com --token-env EDGE_TOKEN
+collie restart
 ```
 
-`collie durable list` shows each entry and what the running bridge says of it. `collie durable detach desk` removes one. Both `attach` and `detach` only write the file. They print "restart to apply" until you restart, or give `--restart`.
+`sources.json` sits in the config folder beside your `.env`: the Herdr plugin config folder
+(`~/.config/herdr/plugins/config/herdr.collie/`) on a Herdr-managed install, else
+`~/.config/collie/`. `attach` prints the path it wrote. The two commands above write this file:
+
+```json
+[
+  { "name": "desk", "kind": "durable", "socket": "/run/user/1000/desk/app.sock" },
+  {
+    "name": "edge",
+    "kind": "durable",
+    "url": "https://edge.example.com",
+    "token": "your-32-byte-random-token-here"
+  }
+]
+```
+
+| field | what it holds |
+| --- | --- |
+| `name` | The program's name on the phone and the name of its log folder. 1 to 32 characters: lower case letters, digits and hyphens, starting with a letter or a digit. Unique in the file |
+| `kind` | `durable`, the one kind today |
+| `socket` | The absolute path of the program's private Unix socket on this machine. Not with `url` |
+| `url` | The address of a program you deployed behind TLS. Not with `socket`, and always with `token` |
+| `token` | The bearer token Collie sends to `url`. Only with `url` ([Tokens](#tokens)) |
+
+The bridge reads the file at start, so an entry takes effect after a restart. Your terminals look
+and work as before, beside the programs.
+
+Collie is strict about the file, because a program it skipped in silence would never appear:
+
+- **A field the table does not name stops the bridge.** So does a wrong `kind`, a name that breaks
+  the rule, a name used twice, both `socket` and `url`, neither, or a `url` with no `token`.
+- **A bad file stops the bridge at start with one line.** The line starts `[bridge] FATAL:` and
+  names the entry and the field. `collie logs` shows it. `attach` and `detach` also refuse to
+  overwrite a file they cannot read, so a typo never costs your other entries.
+- **The file is held at mode `0600`.** `attach` writes it that way. When the file is wider, the
+  bridge tightens it at start and says so in its log.
+- **A name may not be your terminal session's.** That is `default` on most installs, and on a
+  durable-only instance `default` is its own program's. The bridge stops at start and names the
+  entry.
+- **A program keeps its name against a Herdr session.** When a Herdr session has the name of a
+  program, the phone shows the program, hides that Herdr session, and the log says so once.
+
+`attach` checks the socket path, the URL and the token by the rules below. An entry written by hand
+is checked when the bridge reaches the program: a broken rule then shows the program as unreachable
+with the reason.
 
 ### Two ways to reach a program
 
@@ -65,17 +137,105 @@ collie durable attach desk --url https://desk.example.com --token-env DESK_TOKEN
 | Who can act as your phone | any process of your user | anyone who has the token |
 | How often Collie asks | every 1 s while a phone watches, else every 3 s | every 2 s while a phone watches, else every 10 s |
 
-The socket transport is for Linux and macOS. On Windows use the URL and the token. The socket path must be absolute and at most 103 bytes. Collie connects only when the socket is yours and has no group or other permission, because the socket carries no token and a private socket is the whole gate.
+The socket transport is for Linux and macOS. On Windows use the URL and the token. The socket path
+must be absolute and at most 103 bytes. Keep it under `$XDG_RUNTIME_DIR`, not `/tmp`: the Collie
+service on Linux runs with a private `/tmp`.
 
-The URL must start with `https://`. The one exception is `http://127.0.0.1:<port>` or `http://localhost:<port>`, with a port, for a program on the same machine. Collie refuses any other `http://` address, because the token would cross the network unencrypted. Make the token 32 random bytes or more, for example with `openssl rand -hex 32`, and give the program the same value. Collie sends it with every request and never prints it.
+Collie connects to a socket only when the whole path is private, because the socket carries no
+token. The socket is yours with no group or other permission. Its folder is yours with mode `0700`.
+No part of the path is a symlink, and no folder above it is writable by group or other, except a
+sticky one such as `/tmp`. The SDK makes the socket's folder with mode `0700` when it is not there.
 
-> **Caution.** Over https the token is the only gate. Anyone who has it can read every conversation and answer every question, and the host sees the text. A program reached this way should offer Allow and Deny only, never an always-allow.
+The URL must start with `https://`. The one exception is `http://127.0.0.1:<port>` or
+`http://localhost:<port>`, with a port, for a program on the same machine. Collie refuses any other
+`http://` address, because the token would cross the network unencrypted.
 
-Every poll over https is a request that your host may bill, and a "nothing changed" answer counts too. With no phone open the idle poll runs every 10 s, so Collie asks 8,640 times a day. Check what your host's plan allows for that.
+> **Caution.** Over https the token is the only gate. Anyone who has it can read every conversation
+> and answer every question, and the host sees the text. A program reached this way should offer
+> Allow and Deny only, never an always-allow.
+
+Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
+too. With no phone open the idle poll runs every 10 s, so Collie asks 8,640 times a day. Check what
+your host's plan allows for that.
+
+The Cloudflare example is parked and is not part of a release. It is in
+`experiments/durable-member-cloudflare/`.
+
+## The three verbs
+
+`attach`, `detach` and `list` change or read `sources.json`, and they restart nothing unless asked.
+
+```bash
+collie durable attach <name> --socket <path> [--restart]
+collie durable attach <name> --url <url> --token-env <VAR> [--restart]
+collie durable detach <name> [--restart]
+collie durable list
+```
+
+| verb | flags | what it prints | exit code |
+| --- | --- | --- | --- |
+| `attach <name>` | `--socket <path>`, or `--url <url>` with `--token-env <VAR>`. `--restart`. A flag takes its value as the next word or after `=` | `added <name> in <path>`, or `updated <name> in <path>` for a name already there. Then `restart to apply: collie restart` and the URL to open on your phone | `0` written. `2` a usage error, or a path, URL or token that breaks a rule. `1` the file cannot be read. With `--restart`, the code of the restart |
+| `detach <name>` | `--restart` | `removed <name> from <path>`, then `restart to apply: collie restart` | `0` removed. `2` a usage error. `3` no program by that name. `1` the file cannot be read. With `--restart`, the code of the restart |
+| `list` | none | One line per program: its name, `socket <path>` or `url <url> (token set)`, and its state. `no programs attached (<path>)` when the file is empty or missing | `0`. `1` the file cannot be read |
+
+`collie durable` with no verb, or with an unknown one, prints the usage and exits `2`. With
+`--restart`, `attach` and `detach` run the same restart as `collie restart`.
+
+`list` asks the running bridge about each entry and waits at most 3 s for it:
+
+| state | what it means |
+| --- | --- |
+| `ready` | The running bridge has loaded this entry. It is the bridge's word, not the program's: the program may still be unreachable. `collie doctor` asks the program |
+| `not loaded (restart to apply)` | The bridge started before you attached it. Run `collie restart` |
+| `refused (<status>)` | The bridge answered with this HTTP status instead of a state |
+| `bridge not answering` | No answer within 3 s: Collie is stopped, or busy. `collie status` shows whether it runs |
+
+When a program does not appear, run `collie doctor`, which names the failing check. The three usual
+causes are an entry not loaded yet (restart), a socket that is not private (`socket-not-private`),
+and a stale socket file left by a crash (`connection refused`: delete it and start the program).
+[Troubleshooting](troubleshooting.md) covers Collie as a whole.
+
+## Tokens
+
+A `url` entry carries its token, and the token is the whole gate.
+
+```bash
+openssl rand -hex 32
+```
+
+Make the token 32 random bytes or more, as above, and give the program the same value. `attach`
+reads it from the variable that `--token-env` names, so it is in no command line and no shell
+history. That variable must be set when you run `attach`.
+
+`attach` copies the value into `sources.json` in plain text. The file is therefore as secret as the
+token: Collie holds it at mode `0600`, and a backup or a sync of the config folder carries the
+token. Collie sends the token with every request, and never prints it: `list` says `(token set)`.
+
+| | the rule |
+| --- | --- |
+| Token | 32 to 4096 bytes after trimming, printable ASCII with no space |
+| URL | `https://`, or `http://127.0.0.1:<port>` or `http://localhost:<port>` with a port. At most 2048 bytes. No user name or password, no query, no fragment. The program's base only: Collie adds `/session/v1` itself |
+
+The token does not expire. To change it, re-run `attach` with the same name and the new token, then
+restart:
+
+```bash
+export EDGE_TOKEN=your-new-32-byte-random-token-here
+collie durable attach edge --url https://edge.example.com --token-env EDGE_TOKEN
+collie restart
+```
+
+`attach` prints `updated edge`. Give the program the new token before you restart Collie, or the
+phone says the program refused the token. A program may accept a second token while a rotation
+runs, so neither side is locked out. The parked Cloudflare example takes `COLLIE_TOKEN` and, while
+it is set, `COLLIE_TOKEN_NEXT` ([ADR 0103](../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)).
+Set the new token as `COLLIE_TOKEN_NEXT` on the program, re-run `attach` and restart Collie, then
+move the value to `COLLIE_TOKEN` and unset `COLLIE_TOKEN_NEXT`.
 
 ## A program alone in one Collie
 
-The older form still works for an instance with no terminal, such as a Windows host or a hosted program: set `COLLIE_MUX=durable` with `COLLIE_DURABLE_SOCKET`, or with `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN`, never both. Such an instance drives one program, and it names that program `default`. A URL without a token is a config error: Collie starts, names the error in its log, and shows the program as unreachable with that reason.
+An instance with no terminal, such as a Windows host or a hosted program, can drive one program
+from its `.env`.
 
 ```bash
 # a program on this machine, as you
@@ -88,86 +248,93 @@ COLLIE_DURABLE_URL=https://durable-member.example.com
 COLLIE_DURABLE_TOKEN=your-32-byte-random-token-here
 ```
 
-To change a token, deploy the new one to the program, set it in the `.env`, and run `collie restart`. A program on another machine is reached over https with a token, or by a Collie on that machine that joins your [crew](crew.md). A durable-only instance joins under its host name, so give it a name with `collie crew join <lead-address> --label durable` when it shares a host with the lead.
+Such an instance names its program `default`, and that program is its primary session. Entries in
+`sources.json` still run beside it, under other names.
 
-## Troubleshooting
+| `.env` | `config.toml` | what it holds |
+| --- | --- | --- |
+| `COLLIE_MUX=durable` | `[mux] mux` | Makes this instance durable-only |
+| `COLLIE_DURABLE_SOCKET` | `[mux] durable_socket` | The program's private socket. Not with the URL |
+| `COLLIE_DURABLE_URL` | `[mux] durable_url` | The program's address behind TLS. Always with the token |
+| `COLLIE_DURABLE_TOKEN` | `[mux] durable_token` | The bearer token for the URL. A file holding it must be mode `0600` |
 
-`collie doctor` names the failing check. The usual causes:
+Set the socket, or the URL with its token, never both. Both set, a URL without a token, or a token
+without a URL is a config error: Collie starts, names the error in its log, and shows the program as
+unreachable with that reason.
 
-- **Socket permission.** Collie connects only to a socket that you own and that has no group or other permission (mode `0600`). The path must be absolute and at most 103 bytes. The reason shows as `socket-not-private`.
-- **A stale socket file.** A program that crashed can leave its socket file behind, and Collie then sees `connection refused`. Delete the file and start the program again.
-- **A program restart with a question open.** An answer to a question from before the restart is `too-late`, and the card goes. A program that derives the question's id from its tool call raises the same question again, and the card comes back.
-- **A version mismatch.** The reason `incompatible` shows both ranges, and the program's home on the phone says which wire version each side speaks. Update the older side.
-- **An old lead.** With a lead older than 1.21.0, a program's pane is listed but its question is not: the pane shows "needs you" with a red dot, and no card appears. Update the lead.
+An older build kept a durable-only instance's logs directly in `<state>/durable/`. At the first
+start of this build they move once into `durable/default/`, with one line in the log.
 
-When Collie cannot reach a program, the rest of Collie starts anyway, and the program shows as unreachable with a reason:
+To change the token, deploy the new one to the program, set it in the `.env`, and run
+`collie restart`. A durable-only instance joins a [crew](crew.md) under its host name, so give it a
+name with `collie crew join <lead-address> --label durable` when it shares a host with the lead.
 
-| reason | what it means |
-| --- | --- |
-| `COLLIE_DURABLE_SOCKET is not set`, `must be an absolute path`, `is longer than 103 bytes` | the variable is missing or unusable |
-| `the private socket transport is not available on Windows` | on Windows use a URL and a token instead of the socket |
-| `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set` | set the socket, or the URL with its token, not both |
-| `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN` | the URL needs its token |
-| `COLLIE_DURABLE_URL uses plain http to <host>` | use `https://`; plain http is for 127.0.0.1 or localhost only |
-| `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32 bytes, for example 64 hex characters from openssl rand -hex 32` | make a longer token, and give the program the same one |
-| `token-refused` | the program answered 401 or 403: the two sides hold different tokens |
-| `no socket at <path>` | nothing listens there yet |
-| `socket-not-private` | the path is not a socket, is not yours, or has a group or other permission |
-| `connection refused`, `no answer within <n>ms` | a stale socket file, a program that hangs, or nothing at the URL yet |
-| `tls refused`, `the host name does not resolve` | the URL's certificate or name is wrong |
-| `incompatible: program speaks 2..3, this Collie speaks 1..1` | the version ranges do not meet. Update the older side |
-| `starting` | the program is up and says it is not ready yet. Collie asks again on the next poll |
+## Where Collie keeps a program's data
 
-`collie doctor` checks the same things in rows named `durable-env`, `durable-socket`, `durable-url`, `durable-token`, `durable-hello` and `durable-ready`, and names the failing check with a fix. With `sources.json`, a `sources` row says whether the file reads and is mode `0600`, and each program gets its own block of those rows, written `durable-socket:desk` for a program named `desk`. A `durable-lead` row warns when the lead runs a release below 1.21.0, which shows a program's panes without the question card. Update the lead.
+The program keeps the record of its conversations. Collie keeps a cache, its receipts and its push
+memory in its state folder.
 
-Collie holds no model key. A program uses an API key or a ChatGPT sign-in. An Anthropic subscription may not be used through a third-party harness.
+The state folder is `~/.local/state/collie/`, or `COLLIE_STATE_DIR` when that is set. `<program>` is
+the name in `sources.json`, or `default`. Each program's folder is mode `0700`, and each log is
+mode `0600`.
 
-A program's own buttons run with the program's rights, and the program, not Collie, enforces what an approved action does.
+| file | what it holds | how long |
+| --- | --- | --- |
+| `durable/<program>/<id>.jsonl` | Chat's copy of one live conversation, with `<id>` the conversation's id in base64url | Past 8 MiB it is cut to the newest 2000 messages. All the logs together stay under 256 MiB: the oldest conversation goes first, with one line in the log |
+| `durable/<program>/<id>.cursor.json` | Where Collie stopped reading, so it goes on there after a restart | As long as its log |
+| `answer-receipts.json` | Each answer a phone sent: its request id, the ids it answered and the outcome. No typed text | A week, at most the newest 1000. An answer still on its way stays at least a day |
+| `control-receipts.json` | Each send, steer, stop and belt action: its request id and the outcome. The text only as a digest | As above |
+| `starter-receipts.json` | Each starter tap and the conversation it opened | As above |
+| `durable-asks.json` | Which questions were pushed already, by host, program and tool call, so a restart pushes nothing twice | An hour after the question closed. At most 2000 |
 
-On Node, a program cannot read who connects on its socket. An agent that runs a shell as the same user could answer its own question, so put the agent's shell in a sandbox, or treat the card as a notice rather than a gate.
+The cache is why Chat opens fast and works while the program is slow. A closed conversation is
+always read from the program, never from the cache.
 
-The Cloudflare example is parked and is not part of a release. It is in `experiments/durable-member-cloudflare/`.
+A program keeps only the newest part of a long conversation. When it has dropped the start of a
+conversation before Collie read it, Chat shows one line in its place: "Older messages were left
+out: the program no longer keeps them." Nothing on your phone was lost: Collie never had those
+messages.
 
-## What a program can do on the phone
+## What the phone shows
 
-A program says what it can do in its hello. A cap it declares draws the control on the phone, and a
-cap it leaves out draws nothing. Today the caps are:
+A Programs section on the dashboard, and for each program a list of its conversations.
 
-- **asks.** The program raises a question: a yes or a no, a choice, a line of text, or a short form.
-  You answer it with one tap. The card names the program and shows the time left when the program
-  set one, and a question decided in the program or timed out leaves a line in the chat.
-- **starters.** The program lists starters, and they appear as rows on the New page.
-- **send.** You send text to a conversation.
-- **steer.** You steer text into a turn that is running.
-- **abort.** You stop a running turn.
-- **rename.** You give a tab or a workspace a new name. The program applies it or refuses it.
-- **close.** You close a conversation or a tab. The program decides what a close means.
-- **actions.** The program puts up to four buttons of its own in the belt, and a tap runs one once.
-- **history.** The program lists its conversations, open and closed, and serves the messages of each.
-- **reopen.** You bring a closed conversation back. The program shows it again or refuses.
+Each program is one row in the Programs section, with its name, an Experimental badge, its runtime
+and whether it runs here or elsewhere. On the right it counts its open conversations and, in the
+needs-you colour, those that wait on you. The section moves above your spaces while a question
+waits. A program that is starting or unreachable says so in place of the counts. Only a refused
+token has its own words on the phone; `collie doctor` names every other reason.
 
-A program gets no Terminal view and no typed keys, because it has no screen. It lays out its own tabs
-and workspaces, so you cannot make them by hand, and the phone has no control to close a workspace.
+Tap a row to open the program's conversation list, like the chat list of a messaging app. What waits
+on you comes first, then the other open conversations, then the closed ones under the label Closed.
+An open one opens in Chat, and a closed one opens read-only. A program says in its hello what it can
+do (`asks`, `starters`, `send`, `steer`, `abort`, `rename`, `close`, `actions`, `history`,
+`reopen`), and the phone draws a control only for what it said. A program has no screen, so it has
+no Terminal view and no typed keys. [Sessions](sessions.md#what-the-phone-shows) has more.
 
-## History
+A question card names the program and shows the time left when the program set one. A question
+decided in the program, or timed out, leaves a line in the chat.
 
-The program keeps the record of its conversations, and Collie lists it. A program that declares
-`history` serves every conversation it keeps, open and closed, newest first, and the messages of any
-of them, page by page.
+## Versions
 
-The home of a program is its conversation list, like the chat list of a messaging app. The
-back arrow of a conversation goes there. The list has no filters. The conversations that wait on you
-come first, then the other open ones, newest first, then the closed ones under the label Closed. Each
-row shows the title, the time of its last activity, and one line under the title: the question that
-waits on you when there is one, else the line the program gives the conversation. A mark says whether
-it works, waits on you (with the number of open questions beside the title) or is idle. When the phone
-shows only a program, the home has no tab bar, because a program has no files to browse and no
-second view. Tap an open conversation to go to it. Tap a closed one to read it. That view is read-only: it has no field to type in and no belt. When the program
-declares `reopen`, the view has a Reopen button, and the program shows the conversation again under
-the same name.
+Collie and a program agree on a wire version in the hello, and today there is one: version 1.
 
-Collie keeps its own copy of what it read for a live conversation, so Chat opens fast and works
-when the program is slow to answer. That copy is a cache: it keeps the newest 2000 messages or
-8 MiB of each conversation, and 256 MiB for the machine, and deletes the oldest conversation first,
-with one line in Collie's log for each file it deletes. A closed conversation is always read from the
-program, never from the copy. After a restart, Collie goes on reading where it stopped.
+Collie speaks `1..1`. When a version 2 ships, Collie will accept version 1 for one minor release
+after it, and the minor after that drops it. Today there is no previous version to accept.
+
+When the two ranges do not meet, Collie reads nothing more from the program. Its log gets one line
+for each range it refuses, such as
+`[durable] Program speaks wire v2, this Collie speaks v1; update one of them`. The program shows as
+unreachable with the reason `incompatible: program speaks 2..3, this Collie speaks 1..1`, and
+`collie doctor` shows both ranges. The program's home on the phone says which wire version each
+side speaks. Once per start of the program, Collie also sends it one `hello` with its own version, so
+the program can log the mismatch on its side. Update the older side.
+
+## The exit
+
+The feature stays only if someone outside this repository uses it.
+
+By the 1.24.0 release, one of two things must be true: a public repository that speaks the wire
+exists, or an outside issue or discussion about a durable program exists. If neither does, the
+durable code moves out of the release into `experiments/`, and this page goes
+([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)).

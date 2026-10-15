@@ -15,7 +15,8 @@
 ColliePWA is an open-source (MIT) mobile client for [Herdr](https://herdr.dev), with experimental
 support for [tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev). It is a
 self-hosted web app (PWA) for driving terminal AI agents such as Claude Code, Codex and OpenCode
-from your phone. Each instance connects to one multiplexer. It is served over Tailscale by default.
+from your phone. Each instance connects to one terminal multiplexer, and can show your own agent
+programs beside it. It is served over Tailscale by default.
 Open the URL on an iPhone or Android phone to see which agent needs input and respond directly from
 your mobile keyboard.
 
@@ -39,6 +40,7 @@ until explicitly configured.
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
+- **Programs**: a long-running agent program is a session on the phone, with approvals and history (experimental)
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
@@ -143,7 +145,12 @@ and that is the only way to install it on a phone.
 | --- | --- |
 | [**Sessions**](./docs/sessions.md) | What a session is, where sessions come from, a terminal or a program, and what the phone shows for each |
 | [**Terminals**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios or Tern, what each can answer, and agent beacons. Experimental for tmux, zellij, tuios and Tern; bug reports wanted |
-| [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: attach it with `collie durable attach`, what it can do on the phone, and what to check when it does not appear |
+
+### Programs
+
+| | |
+| --- | --- |
+| [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
 
 ### Reference
 

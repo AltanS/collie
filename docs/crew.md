@@ -222,12 +222,12 @@ TLS carrying the crew secret. A member is a full Collie with no front door, and 
 agents, journal, uploads and audit log. Management runs entirely through the CLI, with no Herdr UI
 actions. The wire itself is specified in [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md).
 
-A peer is one Collie instance, and one Collie instance mirrors one backend. A host that has more than
-one backend therefore runs more than one peer, each with its own port and state directory, and each
-joins the crew on its own. A Herdr and a program on the same host that run as separate instances are the
-example: the Herdr peer and a second peer with `COLLIE_MUX=durable` appear as two machines in the
-list. One Collie can also carry both, and then no second peer is needed
-([Programs](durable-programs.md#attach-a-program)).
+A peer is one Collie instance. One Collie carries one terminal multiplexer and every program
+attached to it, so a Herdr and a program on the same host need no second peer
+([Programs](durable-programs.md#attach-a-program)). A host with two terminal multiplexers runs one
+peer for each, and a durable-only instance (`COLLIE_MUX=durable`) is a peer of its own. Each such
+peer has its own port and state directory, joins the crew on its own, and appears as a machine of
+its own in the list.
 
 ![Code reaches a member over your own ssh, never over the crew link.](images/crew/crew-ssh-rides.svg)
 

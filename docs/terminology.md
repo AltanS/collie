@@ -67,7 +67,7 @@ One Collie that joined a crew. The two words mean the same thing. "Member" is th
 ## Question card (ask)
 
 A question that a program raises. The phone shows it as a card, and one tap answers it
-once. Collie never answers for you ([Programs](durable-programs.md#what-a-program-can-do-on-the-phone)).
+once. Collie never answers for you ([Programs](durable-programs.md#what-the-phone-shows)).
 
 ## Belt
 

@@ -277,7 +277,11 @@ export async function cmdDurableDetach(deps: DurableAttachDeps, args: readonly s
 /** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */
 const LIST_BUDGET_MS = 3000;
 
-/** What the running bridge says about one source: `ready`, `unreachable`, or the reason it has no say. */
+/**
+ * What the running bridge says about one source: `ready`, `not loaded (restart to apply)`,
+ * `refused (<status>)` or `bridge not answering`. `ready` means the bridge loaded the entry, not that
+ * the program answers; `collie doctor` asks the program.
+ */
 async function stateOf(deps: DurableAttachDeps, name: string): Promise<string> {
   const host = dialableBridgeHost(deps.ctx.env);
   const bracketed = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
