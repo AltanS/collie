@@ -367,6 +367,21 @@ describe("useActiveTheme", () => {
     expect(result.current).toMatchObject({ id: "collie", source: "shipped" });
   });
 
+  it("names the mark of the active theme, and the dog when the theme names none", async () => {
+    const { store } = await boot();
+    store.addImported(midnight());
+    store.addImported(midnight("owl", { name: "Owl", mark: "nightwatch" }));
+    const { result } = renderHook(() => store.useActiveTheme());
+    expect(result.current.mark).toBe("collie");
+
+    act(() => store.setActiveTheme("midnight"));
+    expect(result.current.theme.mark).toBeUndefined();
+    expect(result.current.mark).toBe("collie");
+
+    act(() => store.setActiveTheme("owl"));
+    expect(result.current.mark).toBe("nightwatch");
+  });
+
   it("follows the library", async () => {
     const { store } = await boot();
     const { result } = renderHook(() => store.useLibrary());
