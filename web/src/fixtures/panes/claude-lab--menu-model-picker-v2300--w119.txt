@@ -1,0 +1,29 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.300[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/m51lab/project[0m
+
+  Get to finished work sooner with Opus 5.5. Switch anytime with [0m[38;2;177;185;249m/model[0m.
+  [0m[38;2;153;153;153m1 more notice hidden[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55m/model[0m[48;2;55;55;55m                                                                                                               [0m
+
+[0m[38;2;177;185;249m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mSelect model[0m
+  [0m[38;2;153;153;153mSwitch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, [0m
+  [0m[38;2;153;153;153mspecify with --model.[0m
+
+  [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1.  [0m[38;2;78;186;101mDefault (recommended)[0m [0m[38;2;78;186;101m✔[0m  [0m[38;2;153;153;153mSonnet 5.5 · Efficient for routine tasks[0m
+    [0m[38;2;153;153;153m2.  [0mOpus 5.5                 [0m[38;2;153;153;153mFor complex work and everyday tasks[0m
+    [0m[38;2;153;153;153m3.  [0mFable 5.1                [0m[38;2;153;153;153mFor your toughest challenges[0m
+    [0m[38;2;153;153;153m4.  [0mSonnet 5.5               [0m[38;2;153;153;153mMost efficient for simpler tasks[0m
+    [0m[38;2;153;153;153m5.  [0mHaiku 5.5                [0m[38;2;153;153;153mFastest for quick answers[0m
+    [0m[38;2;153;153;153m6.  [0mHaiku 4.5                [0m[38;2;153;153;153mFastest for quick answers[0m
+    [0m[38;2;153;153;153m7.  [0mSonnet 5                 [0m[38;2;153;153;153mEfficient for routine tasks[0m
+    [0m[38;2;153;153;153m8.  [0mOpus 5                   [0m[38;2;153;153;153mBest for everyday, complex tasks[0m
+    [0m[38;2;153;153;153m9.  [0mFable 5                  [0m[38;2;153;153;153mMost capable for your hardest and longest-running tasks[0m
+  [0m[38;2;153;153;153m↓ 10. [0mOpus 4.8                 [0m[38;2;153;153;153mBest for everyday, complex tasks[0m
+     [0m[38;2;153;153;153m… +3 models[0m
+
+  [0m[38;2;215;119;87m●[0m[38;2;153;153;153m High effort[0m[38;2;80;80;80m ←/→ to adjust[0m
+
+  [0m[38;2;153;153;153mEnter to set as default · s to use this session only · Esc to cancel[0m

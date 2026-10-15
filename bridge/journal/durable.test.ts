@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DurableLogs, logFileName } from "../durable/log.ts";
 import type { DurableAsk, DurableEvent } from "../mux/durable/protocol.ts";
 import { chatParams, LiveWindows } from "./live.ts";
-import { createDurableReducer, durableJournal, parseDurableLog, STOPPED_TEXT } from "./durable.ts";
+import { createDurableReducer, DECIDED_IN_PROGRAM_TEXT, durableJournal, parseDurableLog, STOPPED_TEXT, TIMED_OUT_TEXT } from "./durable.ts";
 import { adapterFor, buildJournalRegistry, KNOWN_HARNESS_NAMES } from "./registry.ts";
 import { describeUnknowns, parseWith, unknownCount } from "./reduce.ts";
 import { TranscriptStore } from "./store.ts";
@@ -191,6 +191,37 @@ describe("the durable journal adapter: chat shape", () => {
       { type: "state", state: "idle" },
     ]);
     expect((await page()).entries.map((entry) => entry.uuid)).toEqual(["u1", "t1"]);
+  });
+
+  test("a question nobody tapped leaves one muted line: timed out or decided in the program, with its title", async () => {
+    const { logs, page } = await rig();
+    await logs.apply(PANE, [
+      text("u1", "go", "user"),
+      { type: "ask", ask: ask("a1") },
+      { type: "ask-closed", askId: "a1", by: "timeout" },
+      { type: "ask", ask: ask("a2") },
+      { type: "ask-closed", askId: "a2", by: "program" },
+      { type: "ask", ask: ask("a3") },
+      { type: "ask-closed", askId: "a3", by: "phone" },
+      { type: "ask", ask: ask("a4") },
+      { type: "ask-closed", askId: "a4", by: "stopped" },
+    ]);
+    const entries = (await page()).entries;
+    // The phone's own tap has its card, and a stop is the person's act: neither draws a line.
+    expect(entries.map((entry) => [entry.uuid, entry.role])).toEqual([
+      ["u1", "user"],
+      ["ask-closed:a1", "note"],
+      ["ask-closed:a2", "note"],
+    ]);
+    expect(firstText(entries[1])).toBe("Timed out before an answer: write_note wants to write /tmp/notes.txt");
+    expect(firstText(entries[2])).toBe("Decided in the program: write_note wants to write /tmp/notes.txt");
+  });
+
+  test("an older ask-closed row without a title draws the words alone, and the same row twice draws once", () => {
+    const row = (askId: string, by: string) => JSON.stringify({ k: "ask-closed", at: "2026-10-15T09:00:00.000Z", askId, by });
+    const entries = parseDurableLog(`${row("a1", "timeout")}\n${row("a2", "program")}\n${row("a1", "timeout")}\n${row("a3", "reset")}\n`);
+    expect(entries.map((entry) => firstText(entry))).toEqual([TIMED_OUT_TEXT, DECIDED_IN_PROGRAM_TEXT]);
+    expect(entries[0]?.ts).toBe("2026-10-15T09:00:00.000Z");
   });
 });
 

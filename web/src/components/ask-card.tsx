@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import { Check, Loader2 } from "lucide-react";
 
 import { OptionButton, OptionGroupCaption, optionSurface, PromptPanel } from "@/components/option-button";
@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { answerAsk, apiErrorStatus } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
+import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import {
   answerable,
   answered,
@@ -31,8 +32,11 @@ import {
   EMPTY_DRAFT,
   type FormDraft,
 } from "@/lib/ask";
+import { timeLeft } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
+import { onBridgeClock } from "@/lib/server-clock";
+import { isProgramSession, useSessionCard } from "@/lib/session-cards";
 import type { Ask, AskField, AskOption } from "@/lib/types";
 import { mintRequestId } from "@/lib/worktree-name";
 
@@ -58,6 +62,14 @@ import { mintRequestId } from "@/lib/worktree-name";
 // STRINGS FROM THE PROGRAM are React text nodes only, as every string in this app is. The bridge
 // cleaned and capped them; a card of a kind this version does not know is drawn with its words and
 // no buttons.
+//
+// THE RECEIPTS (M55 spec 14). The caption names the program that asks, by its session's name. An ask
+// with `expiresAt` shows the time left under its title, on the page's one shared clock
+// (lib/cache-clock.ts) moved onto the bridge's (lib/server-clock.ts): the bridge drops the ask at
+// `expiresAt`, so a phone whose own clock is off must not count to another moment. Past it the line
+// says "Expired" and the buttons stay: the estimate may be a second off, the program answers a late
+// tap with its own 409, and the next read drops the ask. A too-late answer says who decided first
+// when the program told: the program, the clock, or another answer.
 
 /** A transport error as an answer: a refusal the bridge made on purpose says so, anything else may have arrived. */
 function thrownAnswer(status: number | undefined, message: string): AnswerResult {
@@ -80,20 +92,16 @@ export interface AskCardProps {
 
 export function AskCard({ ask, paneId, scope, disabled = false, offline = false, onSettled }: AskCardProps) {
   useLocale();
+  const session = useSessionCard(scope);
+  // A program's ask names the program; a terminal pane's card keeps the plain caption.
+  const program = session !== null && isProgramSession(session) ? session.name : null;
   const [card, setCard] = useState<AskCardState>(() => freshCard(ask));
   // A newer form of this ask from the poll replaces the card, unless a tap is in flight (lib/ask.ts).
   // Adjusted during render, as React documents for state derived from a prop.
   const next = polled(card, ask);
   if (next !== card) setCard(next);
 
-  const shown = card.ask;
-  const options = visibleOptions(shown);
-  const canAnswer = answerable(shown);
   const busy = card.phase === "sending";
-  // Off for good in these phases: the answer was taken, or someone else made it, or it is refused.
-  // `unknown` leaves only "Try again" (the same intent); `stale` on an old machine cannot be tapped.
-  const settled = card.phase === "taken" || card.phase === "late" || card.phase === "maybe" || card.phase === "refused";
-  const frozen = disabled || offline || busy || settled || card.phase === "unknown" || (card.phase === "stale" && card.older);
 
   /** A press on a permission option's button. "Always allow" arms on the first press and posts on the second. */
   function onPress(option: AskOption) {
@@ -121,18 +129,59 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
     }
   }
 
+  return (
+    <AskCardFace
+      card={card}
+      program={program}
+      disabled={disabled}
+      offline={offline}
+      onPress={onPress}
+      onSend={(answer, again) => void send(answer, again)}
+    />
+  );
+}
+
+export interface AskCardFaceProps {
+  /** Where the card stands, as lib/ask.ts's own steps left it. */
+  card: AskCardState;
+  /** The program that asks, by its session's name, or null for a terminal pane: the caption names it. */
+  program: string | null;
+  disabled?: boolean;
+  offline?: boolean;
+  /** A press on a permission option's button. */
+  onPress: (option: AskOption) => void;
+  /** An answer to send. `again` is "Try again" after an unknown outcome, which reuses the tap's request id. */
+  onSend: (answer: AskAnswer, again: boolean) => void;
+}
+
+/**
+ * The card's face for one state, with no state of its own: {@link AskCard} holds the state and the one
+ * post, and hands each step here. The states playground draws a settled card through it, from a state the
+ * real steps of lib/ask.ts built, because a page with no bridge behind it cannot reach one by a tap.
+ */
+export function AskCardFace({ card, program, disabled = false, offline = false, onPress, onSend }: AskCardFaceProps) {
+  useLocale();
   // Taken closes the card. The program drops the ask from the next poll; until then nothing is drawn.
   if (card.phase === "taken") return null;
 
+  const shown = card.ask;
+  const options = visibleOptions(shown);
+  const canAnswer = answerable(shown);
+  const busy = card.phase === "sending";
+  // Off for good in these phases: the answer was taken, or someone else made it, or it is refused.
+  // `unknown` leaves only "Try again" (the same intent); `stale` on an old machine cannot be tapped.
+  const settled = card.phase === "late" || card.phase === "maybe" || card.phase === "refused";
+  const frozen = disabled || offline || busy || settled || card.phase === "unknown" || (card.phase === "stale" && card.older);
   const retryAnswer = card.phase === "unknown" ? card.answer : null;
   const note = noteFor(card, offline);
 
   return (
     <PromptPanel ariaLabel={shown.title}>
-      <OptionGroupCaption>{t("ask.caption")}</OptionGroupCaption>
+      <OptionGroupCaption>{program !== null ? t("ask.captionNamed", { name: program }) : t("ask.caption")}</OptionGroupCaption>
       <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
         {shown.title}
       </p>
+      {shown.expiresAt !== undefined ? <AskExpiry expiresAt={shown.expiresAt} /> : null}
       {shown.reason !== undefined ? (
         <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
           {shown.reason}
@@ -158,11 +207,11 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
         </p>
       ) : null}
       {canAnswer && shown.kind === "choice" ? (
-        <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => void send(answer, false)} />
+        <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => onSend(answer, false)} />
       ) : canAnswer && shown.kind === "text" ? (
-        <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => void send(answer, false)} />
+        <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
       ) : canAnswer && shown.kind === "form" ? (
-        <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => void send(answer, false)} />
+        <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
       ) : canAnswer ? (
         <div className="flex flex-col gap-1">
           {options.map((option) => {
@@ -198,7 +247,7 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
           variant="outline"
           className="h-11"
           disabled={disabled || offline}
-          onClick={() => void send(retryAnswer, true)}
+          onClick={() => onSend(retryAnswer, true)}
         >
           {t("ask.retry")}
         </Button>
@@ -207,12 +256,49 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
   );
 }
 
+/**
+ * The page clock moved onto the bridge's (lib/server-clock.ts): `expiresAt` is compared there, so a
+ * phone whose own clock is off still counts down to the moment the bridge drops the ask.
+ */
+function askClockNow(): number {
+  return onBridgeClock(cacheClockNow());
+}
+
+/**
+ * The time left on an ask, one muted line under its title. Its own component, so only a card with an
+ * expiry subscribes to the page clock: a terminal's card never ticks.
+ */
+function AskExpiry({ expiresAt }: { expiresAt: string }) {
+  const now = useSyncExternalStore(subscribeCacheClock, askClockNow, askClockNow);
+  const left = timeLeft(expiresAt, now);
+  if (left === null) return null;
+  return (
+    <p data-slot="ask-expiry" className="pl-0.5 text-xs leading-snug text-muted-foreground tabular-nums">
+      {left.kind === "expired" ? t("ask.expired") : t("ask.expiresIn", { time: left.text })}
+    </p>
+  );
+}
+
+/** The line a too-late answer says: who decided first when the program told, else the plain "not taken". */
+function lateNote(card: AskCardState): string {
+  switch (card.decided?.by) {
+    case "program":
+      return t("ask.decidedInProgram");
+    case "timeout":
+      return t("ask.timedOut");
+    case "phone":
+      return t("ask.late");
+    case undefined:
+      // Not "Already answered": after a wake the same question may come back under the same id.
+      return t("ask.notTaken");
+  }
+}
+
 /** The one line a phase says under the question, or null while the card is simply waiting for a tap. */
 function noteFor(card: AskCardState, offline: boolean): string | null {
   switch (card.phase) {
     case "late":
-      // Not "Already answered": after a wake the same question may come back under the same id.
-      return t("ask.notTaken");
+      return lateNote(card);
     case "stale":
       return card.older ? t("ask.stale.older") : t("ask.stale");
     case "unknown":

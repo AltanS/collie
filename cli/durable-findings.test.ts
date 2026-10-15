@@ -277,6 +277,13 @@ describe("doctor sources", () => {
     expect(row(findings, "sources").detail).toContain('entry "desk": set "socket" or "url", not both');
   });
 
+  test("with programs off one skipped row says so, and the file is not read", async () => {
+    const dir = configDir([{ name: "desk", kind: "durable", socket: "/s", url: "https://x.example", token: testToken() }]);
+    const findings = await sourcesFindings({ ctx: context({ COLLIE_PROGRAMS: "off" }, { configDir: dir }), crew: { mode: "solo", marker: null } });
+    expect(rows(findings)).toEqual([["sources", "skipped"]]);
+    expect(row(findings, "sources").detail).toBe("programs are off (COLLIE_PROGRAMS=off)");
+  });
+
   test("the lead row follows the blocks when the verb asks for it", async () => {
     const dir = configDir([{ name: "desk", kind: "durable", socket: "/nonexistent/d.sock" }]);
     const findings = await sourcesFindings({ ctx: context({}, { configDir: dir }), platform: "linux", mode: () => 0o600, crew: { mode: "solo", marker: null } });

@@ -1,4 +1,14 @@
-import { programCounts, programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
+import {
+  __resetSessionCards,
+  getSessionCard,
+  noteSessionCards,
+  programCounts,
+  programScope,
+  programSessions,
+  programsAbove,
+  subscribeSessionCards,
+  waitingPrograms,
+} from "@/lib/session-cards";
 import type { ServerSummary, SessionSummary } from "@/lib/types";
 
 // The Programs section's rules (M55 spec 13), as pure functions over the snapshot's session summaries.
@@ -73,5 +83,27 @@ describe("waitingPrograms", () => {
     ];
     expect(waitingPrograms(list).map((s) => s.name)).toEqual(["desk", "support"]);
     expect(waitingPrograms([program("quiet")])).toEqual([]);
+  });
+});
+
+describe("a card's signature", () => {
+  afterEach(() => __resetSessionCards());
+
+  it("changes with notice, so a program refused for its wire version re-renders, and the same card keeps its object", () => {
+    const heard = vi.fn();
+    const off = subscribeSessionCards(heard);
+    noteSessionCards([program("desk", { state: "unreachable", reachable: false })], undefined);
+    const plain = getSessionCard({ session: "desk" });
+    heard.mockClear();
+    // Only the counts moved: the same object, nobody told.
+    noteSessionCards([program("desk", { state: "unreachable", reachable: false, agents: 1 })], undefined);
+    expect(getSessionCard({ session: "desk" })).toBe(plain);
+    expect(heard).not.toHaveBeenCalled();
+    const sentence = "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.";
+    noteSessionCards([program("desk", { state: "unreachable", reachable: false, notice: sentence })], undefined);
+    expect(getSessionCard({ session: "desk" })).not.toBe(plain);
+    expect(getSessionCard({ session: "desk" })?.notice).toBe(sentence);
+    expect(heard).toHaveBeenCalledTimes(1);
+    off();
   });
 });

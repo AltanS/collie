@@ -1803,8 +1803,8 @@ function mux(deps: DoctorDeps): Finding {
   }
   if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
   if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
-  // A durable program is asked by the four `durable-*` rows, so this line defers to them as the
-  // Herdr line defers to `herdr-socket`.
+  // A durable program is asked by the six `durable-*` rows (and `durable-lead` in a crew), so this
+  // line defers to them as the Herdr line defers to `herdr-socket`.
   if (settings.name === DURABLE_MUX) return ok("mux", `${DURABLE_MUX}, see the durable-* lines${originSuffix(settings.origin)}`);
   // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
   // `acl` gives: a check that could not run must never render as one that did.

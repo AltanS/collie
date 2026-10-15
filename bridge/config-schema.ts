@@ -403,6 +403,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "muxEndpoint",
   },
   {
+    key: "programs",
+    env: "COLLIE_PROGRAMS",
+    section: "mux",
+    kind: "enum",
+    values: ["off"],
+    default: "",
+    doc: "Set to off and the bridge ignores sources.json: no program sessions, no Programs section on the phone.",
+  },
+  {
     key: "durable_socket",
     env: "COLLIE_DURABLE_SOCKET",
     section: "mux",

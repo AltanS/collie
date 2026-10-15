@@ -41,6 +41,42 @@ export const zhTW: Dictionary = {
   "settings.theme.option.light": "淺色",
   "settings.theme.option.dark": "深色",
 
+  "theme.title": "Theme", // TODO wordsmith
+  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
+  "theme.import": "Import", // TODO wordsmith
+  "theme.export": "Export", // TODO wordsmith
+  "theme.remove": "Remove", // TODO wordsmith
+  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
+  "theme.preview.title": "Import this theme?", // TODO wordsmith
+  "theme.preview.by": "By {author}", // TODO wordsmith
+  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
+  "theme.preview.halves.light": "Light only", // TODO wordsmith
+  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
+  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
+  "theme.preview.apply": "Apply", // TODO wordsmith
+  "theme.preview.cancel": "Cancel", // TODO wordsmith
+  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
+  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
+  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
+  "theme.refused.title": "This file was not imported", // TODO wordsmith
+  "theme.refused.close": "Close", // TODO wordsmith
+  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
+  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
+  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
+  "theme.export.title": "Copy this theme", // TODO wordsmith
+  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
+  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
+  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
+  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
+  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
+  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
+  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
+  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
+  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
+  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
+  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
+  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+
   // --- settings.haptics ---
   "settings.haptics.title": "觸覺回饋",
   "settings.haptics.description": "按鍵或快速回覆時觸發輕微震動。",
@@ -202,6 +238,9 @@ export const zhTW: Dictionary = {
   "settings.typeface.note.system": "使用系統內建字型，不需額外下載資源。",
   "settings.typeface.note.grotesk": "Collie 自訂無襯線字型，符合產品識別風格。",
   "settings.typeface.note.aldrich": "僅提供一種字重，粗體文字顯示效果與一般文字相同。",
+  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "由目前執行個體的管理員設定加入。",
 
   // --- settings.fonts ---
@@ -256,6 +295,10 @@ export const zhTW: Dictionary = {
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "唯讀模式，未授權",
   "composer.placeholder.noMuxSend": "無法直接輸入至此終端機",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "輸入終端機指令…",
   "composer.placeholder.shell": "輸入 Shell 指令…",
   "composer.placeholder.reply": "輸入回覆內容…",
@@ -280,6 +323,7 @@ export const zhTW: Dictionary = {
   "composer.attach.inFront": "您的文字中已缺少其標記，因此「傳送」會將 {name} 置於最前。",
   "composer.send.typeAnyway": "仍要輸入？",
   "composer.send.reallySend": "確認傳送？",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "停止向終端機輸入",
   "composer.send.sendAria": "傳送",
   "composer.send.reconnect": "請重新連線後再傳送",
@@ -429,6 +473,8 @@ export const zhTW: Dictionary = {
   "chat.mode.noChat": "{reason} 這裡維持終端機檢視。",
   "chat.stream.empty": "傳送一則訊息即可開始。",
   "chat.stream.working": "仍在處理…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "等待傳送",
   "chat.pin.label": "你的提問",
   "chat.pin.earlier": "提問在更早的紀錄裡 · 載入較早記錄",
@@ -496,9 +542,19 @@ export const zhTW: Dictionary = {
   "prompt.sendingAria": "正在傳送",
   "prompt.reconnectNote": "請重新連線後再回答。",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "未被接受。該問題可能稍後會再次出現。",
+  // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
+  "ask.expiresIn": "Expires in {time}",
+  // TODO wordsmith
+  "ask.expired": "Expired",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -595,6 +651,8 @@ export const zhTW: Dictionary = {
   "space.program.state.starting": "Starting",
   // TODO wordsmith
   "space.program.state.unreachable": "Unreachable",
+  // TODO wordsmith
+  "space.program.state.versionMismatch": "Version mismatch",
   // TODO wordsmith
   "space.program.member": "{line}, {member}",
   // TODO wordsmith

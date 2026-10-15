@@ -66,6 +66,33 @@ export function blockOwnsKeyboard(block: Block): boolean {
   return block.kind in DIALOG_CONTRACT;
 }
 
+/** What the composer calls a READ dialog in its placeholder ("Menu is waiting"). */
+export type DialogNoun = "menu" | "permission" | "question" | "dialog";
+
+/** The noun for the first dialog that owns the keyboard in these blocks, or null when none does. A
+ *  picker is a menu, a permission or trust prompt is a permission, every other pick or form is a
+ *  question, and a kind with no better word is "dialog". */
+export function dialogNounOf(blocks: readonly Block[]): DialogNoun | null {
+  for (const block of blocks) {
+    switch (block.kind) {
+      case "menu":
+        return "menu";
+      case "prompt-select":
+        return block.prompt.family === "permission" || block.prompt.family === "trust" ? "permission" : "question";
+      case "wizard":
+      case "preview-select":
+      case "multi-select":
+        return "question";
+      case "unread-dialog":
+        return "dialog";
+      case "raw":
+      case "autocomplete":
+        break;
+    }
+  }
+  return null;
+}
+
 /** Pull the typed model off a block of `kind`, or null when the block is a different kind. The one
  *  place that knows which field name each block uses for its payload. */
 export function dialogModelOf<K extends DialogKind>(block: Block, kind: K): DialogModels[K] | null {

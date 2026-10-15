@@ -143,6 +143,7 @@ export function PromptPanel({
       {raw !== undefined && !showRaw && (
         <button
           ref={terminalControlRef}
+          data-slot="card-view-toggle"
           type="button"
           aria-label={terminalAria}
           onClick={() => setShowRaw(true)}
@@ -157,6 +158,7 @@ export function PromptPanel({
           <RawMirror lines={raw} wrap={wrap} />
           <button
             ref={backControlRef}
+            data-slot="card-view-toggle"
             type="button"
             aria-label={backLabel}
             onClick={() => setShowRaw(false)}

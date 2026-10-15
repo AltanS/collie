@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef, ForegroundProcess } from "../journal/types.ts";
-import type { AgentStatus, AnswerRequest, Ask, ControlRequest, PaneAction } from "../types.ts";
+import type { AgentStatus, AnswerRequest, Ask, AskDecided, ControlRequest, PaneAction } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -998,10 +998,11 @@ export type MuxControlOutcome =
 /**
  * What a program said to one answer (ADR 0100). `taken` and `too-late` are final. `stale` carries
  * the ask's current form when the program sent one. `unknown` is an answer that may or may not have
- * landed: a timeout, a dropped connection or a 5xx after the request left.
+ * landed: a timeout, a dropped connection or a 5xx after the request left. `too-late` carries
+ * `decided` when the program said who decided first and when (a 409 `decided`, WIRE.md 7.3).
  */
 export type MuxAnswerResult =
   | { readonly kind: "taken"; readonly replayed: boolean }
-  | { readonly kind: "too-late"; readonly replayed: boolean }
+  | { readonly kind: "too-late"; readonly replayed: boolean; readonly decided?: AskDecided }
   | { readonly kind: "stale"; readonly ask: Ask | null }
   | { readonly kind: "unknown"; readonly detail: string };

@@ -15,7 +15,8 @@
 ColliePWA is an open-source (MIT) mobile client for [Herdr](https://herdr.dev), with experimental
 support for [tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev). It is a
 self-hosted web app (PWA) for driving terminal AI agents such as Claude Code, Codex and OpenCode
-from your phone. Each instance connects to one multiplexer. It is served over Tailscale by default.
+from your phone. Each instance connects to one terminal multiplexer, and can show your own agent
+programs beside it. It is served over Tailscale by default.
 Open the URL on an iPhone or Android phone to see which agent needs input and respond directly from
 your mobile keyboard.
 
@@ -39,6 +40,7 @@ until explicitly configured.
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
+- **Programs**: a long-running agent program is a session on the phone, with approvals and history (experimental)
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
@@ -143,7 +145,17 @@ and that is the only way to install it on a phone.
 | --- | --- |
 | [**Sessions**](./docs/sessions.md) | What a session is, where sessions come from, a terminal or a program, and what the phone shows for each |
 | [**Terminals**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios or Tern, what each can answer, and agent beacons. Experimental for tmux, zellij, tuios and Tern; bug reports wanted |
-| [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: attach it with `collie durable attach`, what it can do on the phone, and what to check when it does not appear |
+
+### Programs
+
+| | |
+| --- | --- |
+| [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
+| [**Programs on the phone**](./docs/durable-programs-on-the-phone.md) | What a program's section, conversations, questions and receipts look like |
+| [**Troubleshooting a program**](./docs/durable-programs-troubleshooting.md) | A program that does not show up or says Unreachable: the first checks, every reason and what fixes it, the doctor rows, and the cases that come up |
+| [**Security of a program**](./docs/durable-programs-security.md) | What a program can and cannot do, the trust rules of the socket and of the token, what Collie does to a program's text, and what the audit log keeps |
+| [**The durable SDK (experimental)**](./docs/durable-sdk.md) | The npm package `@colliepwa/durable-sdk`, part by part: its entries and runtimes, `openCollie`, the pane methods, the four kinds of question and `requireApproval`, hooks, history, caps, the helpers, the Pi glue and the versions |
+| [**The durable wire (experimental)**](./docs/durable-wire.md) | What travels between Collie and a program, for a builder: the routes, hello and the epoch, the life of an ask and the request ids, the socket and token transports, the limits and the version rule, with a link to `WIRE.md` for the exact rules |
 
 ### Reference
 
@@ -153,6 +165,7 @@ and that is the only way to install it on a phone.
 | [**Windows**](./docs/windows.md) | Windows 11 with Herdr: what is supported, installing with `install.ps1`, the unsigned binary, updating, long paths, and what is not tested |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device, the credential for every request |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies, launchers and typefaces; appearance, Zen mode, language |
+| [**Themes**](./docs/themes.md) | The four looks Collie ships, picking one in Settings, importing a theme file after a preview, exporting one to edit, and writing your own: the schema, the 43 colour tokens, the header mark, and what a theme cannot change |
 | [**Changes**](./docs/changes.md) | The Files screen: a workspace's folder with its changes marked, the changed files and their diffs, and the last commit, from the pane or the dashboard's Files tab. Read-only git, nested repos, and the two settings that decide how far it looks |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |

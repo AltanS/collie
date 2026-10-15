@@ -34,7 +34,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |
 | `ui/bottom-bar.tsx` | The band at the foot of a screen that holds its own controls: a rule above, the page colour, the safe area under the buttons. It owns the band and nothing in it. The Changes screen's Previous / Next pair, the Back it repeats on a phone (§12), and the New page's summary line and Start. |
-| `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). Space and tab strips. |
+| `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). `radio` makes it one choice of a set: `role="radio"` and `aria-checked` instead of `aria-current`, same box. Space and tab strips, and the theme strip in Settings. |
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
 | `ui/copyable-block.tsx` | Any block with a caller-supplied literal to copy. Owns an always-visible, opaque Copy icon over the block's top-right corner and the success or failure status, never the content's formatting. The icon itself confirms the outcome on every screen, including History and Files, which have no status line: a check (`--status-working`) or an X (`--status-blocked`) for 1.5s, then the Copy glyph again, in the same 24px box. Its transparent 44px tap target may extend beyond the block; it reserves no gutter or height and deliberately covers text beneath it. Without a clipboard API it draws the content alone. |
@@ -604,6 +604,12 @@ fails loudly.
   page. It is not "off-white for taste"; moving it re-opens that seam.
 - **`components/collie-mark.tsx` is GENERATED** from the sibling `collie-brand` repo. Never
   hand-edit it. Change the brand repo and regenerate.
+- **App code mounts `<ThemeMark/>`, not `<CollieMark/>`.** A theme names its header mark
+  (`mark`, a closed list in `lib/shipped-marks.ts`), and `ThemeMark` draws it from the static
+  registry in `components/marks/`. Every mark takes the contract in `components/marks/contract.ts`:
+  one inline `<svg>`, three states (`idle`, `loading`, `lost`) that mean the same in every theme,
+  CSS motion only. The call site keeps the box and the 44px tap target. Only the playground's brand
+  gallery and the typeface card mount the dog directly, because they show the dog on purpose.
 
 ---
 
@@ -690,6 +696,25 @@ Stated so nobody reads this document as a description of a clean tree.
    `menu-block.tsx` and `status-area.tsx:45` still draw edges at `border-border/60` or `/70`,
    which §4 measured at 1.09:1 in light. These are inside the agent-dialog blocks, which are
    the least-visited part of the restyle.
+6. **Literal colours that a theme cannot reach** (§13). Each one below paints the same under
+   every theme. Found 2026-10-15 for M57:
+
+   | Literal | What it should be |
+   | --- | --- |
+   | `ui/fab.tsx:73` `dark:bg-card dark:hover:bg-accent` | a token per state with no `dark:` switch; the switch picks a token by appearance, so a theme cannot choose the dark half's ground |
+   | `markdown-text.tsx:64` and `transcript-view.tsx:54` `bg-amber-300/70 dark:bg-amber-500/40` | a search highlight token |
+   | `ui/badge.tsx:13` `text-white` on `bg-destructive` | `text-destructive-foreground` |
+   | `harness-bar.tsx:182` `bg-white` | a token for the accent pill's ground |
+   | `file-preview.tsx:374` `bg-white` on the HTML frame | maybe deliberate: an HTML file draws on white, as in a browser; decide, then write it down |
+   | `idle-lock.tsx:43` `ring-white/10` | a ring token, or `ring-rule` |
+   | `chat-cards.tsx:1035` `border-white/10` | inside `MIRROR_SPACE`, so it is mirror ink (§8), not app chrome; it moves with the native-mirror work, not before |
+   | `playground/` `zinc-*` frames (`layout.tsx`, `sections/dashboard-nav.tsx`, `sections/update-screen.tsx`) | tokens; the playground shows themes too |
+
+   **The rule for closing one:** replace the literal with a token whose value in the theme
+   `collie` gives the same pixel, in light and in dark. If no token gives it, the fix needs a
+   new token, which is a new schema version (§13). These are not closed in M57, because that
+   milestone's exit test is a zero pixel diff of the current theme, and each fix needs its own
+   proof that it stays at zero.
 
 ---
 
@@ -853,3 +878,41 @@ carries its identity forward, not merely its position ([ADR 0069](./.adr/0069-a-
 never the swipe. Every other move stays what it was: a sideways move crossfades or slides, and the
 phone's own edge swipe plays the phone's own animation, never one of ours.
 
+## 13. Themes: a token is the only way a colour reaches a component
+
+From 1.22.0 a person can pick a theme or import one ([ADR 0106](./.adr/0106-a-theme-is-a-closed-file-of-named-tokens.md)).
+A theme is a closed JSON file of named colour tokens, a light half and a dark half, plus one UI
+face. It changes the VALUE of a token. It never changes which token a component uses.
+
+**So every colour a component draws is a token from the list below.** A theme reaches a token and
+nothing else. A literal colour in a component (`bg-white`, `text-white`, `amber-300`, `zinc-*`, an
+oklch or hex in a class) is now a theme bug: it paints the same under every theme. The literals
+that exist today are §10 gap 6. A `dark:` variant that switches between two tokens is the same bug
+in a quieter form, because it fixes which token each half uses. Write one token whose two values
+come from `light-dark()`.
+
+**The list, 43 tokens per half.**
+
+| Group | Tokens |
+| --- | --- |
+| Surfaces and inks (21) | `background` `foreground` `card` `card-foreground` `chrome` `primary` `primary-foreground` `secondary` `secondary-foreground` `muted` `muted-foreground` `accent` `accent-foreground` `control-on` `control-on-foreground` `destructive` `destructive-foreground` `border` `input` `rule` `ring` |
+| Status (6) | `status-blocked` `status-working` `status-done` `status-idle` `status-unknown` `status-info` |
+| Syntax (6) | `syntax-keyword` `syntax-string` `syntax-constant` `syntax-property` `syntax-entity` `syntax-comment` |
+| Host identity (10) | `host-0` to `host-9` |
+
+`popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
+
+**What a theme never reaches.** `--radius`, spacing, tap sizes, row heights, motion, and the
+meaning of a status: its icon and its word stay as the status components draw them. The
+terminal mirror keeps its own dark space and its ANSI palette (§8, ADR 0002); a theme does not
+tint it in schema version 1.
+
+**The rules a theme does not relax.** §4 still holds under every theme: chrome is the page
+colour with a rule, red marks harm, a raised panel is `card`. A shipped theme passes the contrast
+gate: every status chip at `/15` over `background` and `card` at 4.5:1 or better, body text at
+4.5:1 or better, `rule` against `background` at 1.3:1 or better, in both halves.
+
+**Adding a token is a schema change.** A new colour role that a component needs goes into the
+list only with a new schema version, and in the same change: `index.css`, every shipped theme
+file, the validator, and the list spelled in `public/theme-init.js`. The coupling test (§9) fails
+when the lists drift. Until then, reuse the nearest token; do not paint a literal.

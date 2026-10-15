@@ -76,3 +76,26 @@ describe("Chip — a name that says the act", () => {
     expect(container.querySelector("button")).not.toHaveAttribute("aria-describedby");
   });
 });
+
+describe("Chip: one choice of a set", () => {
+  it("is a radio with aria-checked, and not current, when it is told so", () => {
+    const { getAllByRole } = render(
+      <div role="radiogroup" aria-label="Theme">
+        <Chip label="collie" radio active onClick={() => {}} />
+        <Chip label="nightwatch" radio active={false} onClick={() => {}} />
+      </div>,
+    );
+    const [first, second] = getAllByRole("radio");
+    expect(first).toHaveAttribute("aria-checked", "true");
+    expect(second).toHaveAttribute("aria-checked", "false");
+    expect(first).not.toHaveAttribute("aria-current");
+  });
+
+  it("keeps aria-current and no role without the flag", () => {
+    const { container } = render(<Chip label="collie" active onClick={() => {}} />);
+    const button = container.querySelector("button")!;
+    expect(button).toHaveAttribute("aria-current", "true");
+    expect(button).not.toHaveAttribute("role");
+    expect(button).not.toHaveAttribute("aria-checked");
+  });
+});

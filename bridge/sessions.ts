@@ -6,6 +6,7 @@ import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
 import { DURABLE_MUX } from "./mux/durable/adapter.ts";
+import { versionNotice, type VersionRefusal } from "./mux/durable/protocol.ts";
 import { sourceWhere, type DurableSource } from "./sources.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { SessionCard, SessionEntry, SessionState, SessionSummary } from "./types.ts";
@@ -75,6 +76,8 @@ export interface ProgramProbe {
   phase(): SessionState;
   /** The program's hello `host.name`, cleaned, or `""` before one was read. */
   hostName(): string;
+  /** The version refusal of the program's last `hello` (WIRE.md section 2), or null while the two ranges meet. */
+  versionRefusal(): VersionRefusal | null;
 }
 
 /** What a session runs against: a terminal mux's endpoint, or a program the operator listed. */
@@ -387,7 +390,8 @@ export class SessionRegistry {
  *
  * A terminal session is `ready` while its last poll succeeded and `unreachable` otherwise; it has no
  * hello to wait for, so it is never `starting`. A program follows its adapter's own phase. `mux` for a
- * program is the name its hello gave, else `durable`.
+ * program is the name its hello gave, else `durable`. A program refused for its wire version carries
+ * `notice`, the one sentence that says why; no other card has the key, so their bytes stay as they were.
  */
 export function cardOf(rt: SessionRuntime, reachable: boolean): SessionCard {
   const caps = { ...rt.herdr.capabilities.supports };
@@ -395,7 +399,7 @@ export function cardOf(rt: SessionRuntime, reachable: boolean): SessionCard {
     return { name: rt.name, kind: "terminal", mux: rt.herdr.mux, caps, where: "local", state: reachable ? "ready" : "unreachable", experimental: false };
   }
   const named = rt.program?.hostName().trim() ?? "";
-  return {
+  const card: SessionCard = {
     name: rt.name,
     kind: "program",
     mux: named === "" ? DURABLE_MUX : named,
@@ -404,4 +408,7 @@ export function cardOf(rt: SessionRuntime, reachable: boolean): SessionCard {
     state: rt.program?.phase() ?? (reachable ? "ready" : "unreachable"),
     experimental: true,
   };
+  const refusal = rt.program?.versionRefusal() ?? null;
+  if (refusal !== null) card.notice = versionNotice(refusal);
+  return card;
 }

@@ -125,6 +125,22 @@ describe("answer: one shape for every outcome", () => {
     expect(gone.receipts.get(ID)?.state).toBe("too-late");
   });
 
+  test("too-late with who decided first: the response says it, the receipt keeps it, and a replay says it again", async () => {
+    const decided = { by: "program" as const, at: "2026-10-15T09:30:00.000Z" };
+    const dir = stateDir();
+    const store = new AnswerReceiptStore(dir);
+    await store.load();
+    const r = rig(new ScriptedAdapter([muxOk({ kind: "too-late", replayed: false, decided })]), store);
+    expect(await r.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "too-late", decided } });
+    expect(r.receipts.get(ID)).toMatchObject({ state: "too-late", decided });
+    // The receipt on disk keeps it across a restart, and the same request id is answered from it.
+    const reborn = new AnswerReceiptStore(dir);
+    await reborn.load();
+    expect(reborn.get(ID)?.decided).toEqual(decided);
+    const again = rig(new ScriptedAdapter([]), reborn);
+    expect(await again.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "too-late", decided, replayed: true } });
+  });
+
   test("stale: 409 with the ask in its current form, and nothing ran", async () => {
     const r = rig(new ScriptedAdapter([muxOk({ kind: "stale", ask: STALE_ASK })]));
     expect(await r.call("conv-02")).toEqual({ status: 409, body: { ok: false, outcome: "stale", ask: STALE_ASK } });

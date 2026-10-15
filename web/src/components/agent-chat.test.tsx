@@ -1090,12 +1090,28 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   it("does NOT focus the composer when a native prompt option is tapped", async () => {
     const user = userEvent.setup();
     renderChat({ text: MENU_TEXT });
-    const box = screen.getByPlaceholderText(/type a reply/i);
+    const box = screen.getByPlaceholderText(/is waiting/i);
     const yes = await screen.findByRole("button", { name: "Yes" });
 
     await user.click(yes);
     await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
     expect(box).not.toHaveFocus();
+  });
+
+  // The composer's "Answer the dialog" word is a way to the card: it focuses the card's first action
+  // button and sends nothing (M51 spec 10).
+  it("'Answer the dialog' focuses the card's first button and sends nothing", async () => {
+    const user = userEvent.setup();
+    renderChat({ text: MENU_TEXT });
+    const box = screen.getByPlaceholderText(/is waiting/i);
+
+    await user.type(box, "for after the dialog");
+    await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
+
+    const yes = await screen.findByRole("button", { name: "Yes" });
+    expect(yes).toHaveFocus();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(box).toHaveValue("for after the dialog");
   });
 
   it("DOES still focus the composer when the raw mirror text is tapped", async () => {

@@ -266,6 +266,14 @@ export interface Ask {
   tool?: AskTool;
   /** Present when the bridge cut or changed the program's title or reason. Such an ask offers no "Always allow". */
   cleaned?: true;
+  /** When the ask stops waiting, ISO 8601. The card shows the time left. Absent: it waits for a person. */
+  expiresAt?: string;
+}
+
+/** Who decided an ask first, and when, as a too-late answer says it. Mirrors `AskDecided` in bridge/types.ts. */
+export interface AskDecided {
+  by: "phone" | "program" | "timeout";
+  at: string;
 }
 
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */
@@ -495,6 +503,8 @@ export interface SessionSummary {
   state?: SessionState;
   /** Whether the session wears the Experimental mark. */
   experimental?: boolean;
+  /** A program refused for its wire version: the one sentence that says why. Absent everywhere else. */
+  notice?: string;
 }
 
 /** {@link SessionSummary.kind}. */

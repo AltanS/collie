@@ -23,9 +23,10 @@ import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
+import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
-import { parseAsk, type AnswerResult, type AskAnswer } from "./ask";
+import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
   ActionResponse,
@@ -395,7 +396,11 @@ function normaliseProxyRedirect(res: Response): Response {
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   // Every caller spells a root-absolute `/api/…`; the mount is applied here, once (ADR 0052).
   try {
-    return normaliseProxyRedirect(await fetch(mounted(path), { ...init, redirect: "manual" }));
+    const sentAt = Date.now();
+    const res = await fetch(mounted(path), { ...init, redirect: "manual" });
+    // The bridge's clock, off the `Date` header every response carries (lib/server-clock.ts).
+    noteServerDate(res.headers.get("date"), sentAt, Date.now());
+    return normaliseProxyRedirect(res);
   } catch (error) {
     throw deadlineError(error, init?.signal);
   }
@@ -1268,8 +1273,13 @@ function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
   switch (body.outcome) {
     case "taken":
       return body.replayed === true ? { outcome: "taken", replayed: true } : { outcome: "taken" };
-    case "too-late":
-      return body.replayed === true ? { outcome: "too-late", replayed: true } : { outcome: "too-late" };
+    case "too-late": {
+      const result: AnswerResult = { outcome: "too-late" };
+      const decided = decidedOf(body.decided);
+      if (decided !== undefined) result.decided = decided;
+      if (body.replayed === true) result.replayed = true;
+      return result;
+    }
     case "stale": {
       const ask = parseAsk(body.ask);
       return ask === undefined ? { outcome: "stale" } : { outcome: "stale", ask };

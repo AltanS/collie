@@ -4,6 +4,7 @@ import type { JsonValue } from "../bridge/json.ts";
 import { jsonRecord, jsonStringField } from "../bridge/stt/json.ts";
 import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { DURABLE_SOCKET_ENV, resolveSocketPath } from "../bridge/mux/durable/client.ts";
+import { PROGRAMS_OFF_NOTE, programsOff } from "../bridge/sources.ts";
 import {
   DURABLE_TOKEN_ENV,
   DURABLE_URL_ENV,
@@ -277,7 +278,11 @@ export async function cmdDurableDetach(deps: DurableAttachDeps, args: readonly s
 /** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */
 const LIST_BUDGET_MS = 3000;
 
-/** What the running bridge says about one source: `ready`, `unreachable`, or the reason it has no say. */
+/**
+ * What the running bridge says about one source: `loaded`, `not loaded (restart to apply)`,
+ * `refused (<status>)` or `bridge not answering`. `loaded` means the bridge loaded the entry, not that
+ * the program answers; `collie doctor` asks the program.
+ */
 async function stateOf(deps: DurableAttachDeps, name: string): Promise<string> {
   const host = dialableBridgeHost(deps.ctx.env);
   const bracketed = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
@@ -291,7 +296,7 @@ async function stateOf(deps: DurableAttachDeps, name: string): Promise<string> {
     );
     if (res.status === 404 || res.status === 400) return "not loaded (restart to apply)";
     if (!res.ok) return `refused (${String(res.status)})`;
-    return "ready";
+    return "loaded";
   } catch {
     return "bridge not answering";
   }
@@ -305,13 +310,14 @@ export async function cmdDurableList(deps: DurableAttachDeps): Promise<number> {
   }
   if (loaded.entries.length === 0) {
     deps.io.out(`no programs attached (${sourcesPath(deps.ctx)})`);
-    return EXIT.OK;
   }
   for (const e of loaded.entries) {
     // The token is in the entry and never in the line: the way in is shown, the credential is not.
     const way = e.socket !== undefined ? `socket ${e.socket}` : `url ${e.url ?? ""} (token set)`;
     deps.io.out(`${e.name}  ${way}  ${await stateOf(deps, e.name)}`);
   }
+  // The kill switch: the entries print as usual, and the last line says the bridge ignores them.
+  if (programsOff(deps.ctx.env)) deps.io.out(PROGRAMS_OFF_NOTE);
   return EXIT.OK;
 }
 

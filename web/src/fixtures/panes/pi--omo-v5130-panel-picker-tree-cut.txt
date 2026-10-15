@@ -1,0 +1,18 @@
+[0m[38;2;99;148;255m─────────────────────────────────────────────────────────────────────────────────────────────[0m                                
+ [0m[1m  Session Tree[0m                                                                              [0m[38;2;228;101;225mMEMORY  work-00392473[0m           
+[0m[38;2;160;160;160m  ↑/↓ move · ←/→ page · ctrl+←/→ branch · ctrl+x copy · ctrl+e edit · shift+l label[0m          [0m[38;2;160;160;160mfacts   2 queued[0m                
+[0m[38;2;160;160;160m  shift+t label time · filters ctrl+d/t/u/l/a · cycle ctrl+o/shift+ctrl+o[0m                                                    
+  [0m[38;2;160;160;160mType to search:[0m                                                                            [0m[38;2;160;160;160m…box/collie-pi-labs/omo-lab/work[0m
+[0m[38;2;99;148;255m─────────────────────────────────────────────────────────────────────────────────────────────[0m                                
+                                                                                                                             
+  [0m[38;2;228;101;225m• [senpi-task.usage]: [0m<omo-senpi-task> Background task results are automatically delivered:                                
+  [0m[38;2;228;101;225m• [environment-context]: [0m<environment_context>   <cwd>/home/demo/sandbox/collie-pi-labs/omo                                
+  [0m[38;2;228;101;225m• user: [0mstty size                                                                                                          
+  [0m[38;2;228;101;225m• [senpi.todo-first-turn]: [0m<system-reminder> This is the first request of the session. Befo                                
+  [0m[38;2;228;101;225m• [omo-onboarding:context]: [0mAnswer fully; greet in their language; offer a one-line tour. O                                
+  [0m[38;2;228;101;225m• [0m[38;2;160;160;160m[todo: {"op":"init","list":[{"phase":"Onboardin...][0m                                                                      
+  [0m[38;2;228;101;225m• [0m[38;2;0;194;0massistant: [0mI read this as **first-session onboarding** - user needs to understand OMO and                                
+  [0m[38;2;228;101;225m• [0m[38;2;160;160;160m[read: /home/demo/sandbox/collie-pi-labs/omo-lab/install/node_modules/omo-ai/plugin/skill[0m                                
+  [0m[38;2;228;101;225m• [0m[38;2;0;194;0massistant: [0mWelcome! 👋 I'm OmO, a specialized coding agent built on Senpi. I help you tac                                
+  [0m[38;2;228;101;225m• [0m[38;2;160;160;160m[todo: {"op":"done","task":"Read onboarding ski...][0m                                                                      
+  [0m[38;2;228;101;225m• [0m[38;2;0;194;0massistant: [0mI'm ready to walk through OmO's features, explore your work patterns from past                                

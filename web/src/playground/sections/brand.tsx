@@ -5,6 +5,10 @@
 import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
 import { CollieMark } from "@/components/collie-mark";
+import { MARKS, type MarkState } from "@/components/marks";
+import { ThemeMark } from "@/components/theme-mark";
+import { SHIPPED_MARKS, type ShippedMark } from "@/lib/shipped-marks";
+import { cn } from "@/lib/utils";
 import { homeSolo } from "../fixtures";
 import { RootRouter } from "../harness";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
@@ -22,6 +26,42 @@ export function BrandSection() {
     <Section def={DEF}>
       <Group title="Typeface">
         <TypefaceCard />
+      </Group>
+
+      <Group title="The theme's mark">
+        <Card
+          state="theme-mark-active"
+          label="ThemeMark, the active theme's mark"
+          reach="every in-app place that shows the header mark: the header, the boot splash, the idle cover, the agent start and the tour."
+          note="It draws the mark the active theme names in `mark`, and the dog when the theme names none. Pick a theme in Settings to change it."
+        >
+          <Stage>
+            <div className="flex flex-wrap items-end gap-6 p-4">
+              {MARK_STATES.map((state) => (
+                <div key={state} className="flex flex-col items-center gap-1.5">
+                  <ThemeMark size={40} weight="header" state={state} paper="var(--background)" />
+                  <span className="font-mono text-[10px] text-muted-foreground">40 {state}</span>
+                </div>
+              ))}
+            </div>
+          </Stage>
+        </Card>
+
+        <Card
+          state="theme-mark-gallery"
+          label="every shipped mark, in its three states"
+          reach="a theme file's `mark`. Each mark at 24, 40 and 64 in idle, loading and lost, on the light and the dark ground. Use the page's reduce-motion toggle for the still half."
+          note="Drawn from the same registry entry ThemeMark draws for that id: the dog for collie, the owl for nightwatch, the hare for daylight and the otter for harbour."
+          span={2}
+        >
+          <Stage>
+            <div className="flex flex-col gap-4 p-4">
+              {SHIPPED_MARKS.map((id) => (
+                <MarkRow key={id} id={id} />
+              ))}
+            </div>
+          </Stage>
+        </Card>
       </Group>
 
       <Group title="The mark">
@@ -170,6 +210,39 @@ function MarkSample({
         {loading ? " loading" : ""}
         {muted ? " muted" : ""}
       </span>
+    </div>
+  );
+}
+
+const MARK_STATES: readonly MarkState[] = ["idle", "loading", "lost"];
+const MARK_SIZES = [24, 40, 64] as const;
+
+/** One shipped mark: every size and state, on the light ground and on the dark one. */
+function MarkRow({ id }: { id: ShippedMark }) {
+  const Mark = MARKS[id];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="font-mono text-xs text-muted-foreground">{id}</span>
+      <div className="flex flex-wrap gap-2">
+        {(["light", "dark"] as const).map((half) => (
+          <div
+            key={half}
+            className={cn("flex items-end gap-4 rounded-lg border border-border bg-background p-3 text-foreground", half === "dark" && "dark")}
+            style={{ colorScheme: half }}
+          >
+            {MARK_STATES.map((state) =>
+              MARK_SIZES.map((size) => (
+                <div key={`${state}-${size}`} className="flex flex-col items-center gap-1">
+                  <Mark size={size} weight="header" state={state} paper="var(--background)" />
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {size} {state}
+                  </span>
+                </div>
+              )),
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -24,12 +24,18 @@ import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
 import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
+import durableProgramsOnThePhone from "../docs/durable-programs-on-the-phone.md" with { type: "text" };
+import durableProgramsSecurity from "../docs/durable-programs-security.md" with { type: "text" };
+import durableProgramsTroubleshooting from "../docs/durable-programs-troubleshooting.md" with { type: "text" };
+import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
+import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
 import sessions from "../docs/sessions.md" with { type: "text" };
 import terminology from "../docs/terminology.md" with { type: "text" };
+import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
@@ -51,7 +57,7 @@ export interface DocPage {
 }
 
 /**
- * The seventeen pages in an OPERATOR'S READING ORDER: the five-minute guide first, troubleshooting
+ * Every page in an OPERATOR'S READING ORDER: the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -97,8 +103,33 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "durable-programs",
-    purpose: "Show your own agent program on your phone: attach it, what it can do, and what to check",
+    purpose: "Show your own agent program on your phone: attach it, its tokens, its files, its versions",
     text: durablePrograms,
+  },
+  {
+    name: "durable-programs-on-the-phone",
+    purpose: "What a program's section, conversations, questions and receipts look like on the phone",
+    text: durableProgramsOnThePhone,
+  },
+  {
+    name: "durable-programs-troubleshooting",
+    purpose: "A program that does not show up or says Unreachable: first checks, every reason, doctor rows, cases",
+    text: durableProgramsTroubleshooting,
+  },
+  {
+    name: "durable-programs-security",
+    purpose: "What a program can and cannot do, the trust rules per transport, text cleaning, the audit log",
+    text: durableProgramsSecurity,
+  },
+  {
+    name: "durable-sdk",
+    purpose: "Every part of the npm package a program uses: entries, panes, questions, hooks, caps",
+    text: durableSdk,
+  },
+  {
+    name: "durable-wire",
+    purpose: "What travels between Collie and a program: routes, hello, asks, transports, limits",
+    text: durableWire,
   },
   {
     name: "upgrading",
@@ -119,6 +150,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "voice-and-push",
     purpose: "The microphone in the composer, and notifications when an agent waits on you",
     text: voiceAndPush,
+  },
+  {
+    name: "themes",
+    purpose: "Pick, import, export and write a theme: colours, one typeface and the header mark",
+    text: themes,
   },
   {
     name: "security",

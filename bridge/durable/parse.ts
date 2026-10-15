@@ -16,7 +16,7 @@
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { ANSWER_TEXT_BYTES, CAPS, PUSH_LINE_MAX, PUSH_TITLE_MAX, pushPartOf } from "../mux/durable/clean.ts";
-import type { AnswerPayload, AnswerRequest, AnswerValues, Ask, AskPushText, ControlRequest, ControlTarget } from "../types.ts";
+import type { AnswerPayload, AnswerRequest, AnswerValues, Ask, AskDecided, AskPushText, ControlRequest, ControlTarget } from "../types.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import type { AnswerReceipt, AnswerState } from "./answer.ts";
 import type { ControlAct, ControlReceipt, ControlState } from "./control.ts";
@@ -196,14 +196,31 @@ export function coerceControlReceipt(raw: JsonValue): ControlReceipt | null {
 export function coerceAnswerReceipt(raw: JsonValue): AnswerReceipt | null {
   const r = asRecord(raw);
   if (r === null) return null;
-  const { requestId, at, paneId, askId, revision, optionId, digest, state, detail, reason } = r;
+  const { requestId, at, paneId, askId, revision, optionId, digest, state, detail, reason, decided } = r;
   if (!isRequestId(requestId) || !isState(state) || !isTime(at)) return null;
   if (!isText(paneId) || !isText(askId) || !isText(optionId) || !isDigest(digest)) return null;
   if (typeof revision !== "number" || !Number.isSafeInteger(revision)) return null;
   const receipt: AnswerReceipt = { requestId, at, paneId, askId, revision, optionId, digest, state };
   if (isText(detail)) receipt.detail = detail;
   if (reason === "unsupported" || reason === "refused") receipt.reason = reason;
+  const first = decidedOf(decided);
+  if (state === "too-late" && first !== null) receipt.decided = first;
   return receipt;
+}
+
+const DECIDERS: ReadonlySet<string> = new Set(["phone", "program", "timeout"]);
+
+function isDecider(value: JsonValue | undefined): value is AskDecided["by"] {
+  return typeof value === "string" && DECIDERS.has(value);
+}
+
+/** A receipt's `decided`, or null when it is not one: a known word and a string time. */
+function decidedOf(value: JsonValue | undefined): AskDecided | null {
+  const r = asRecord(value);
+  if (r === null) return null;
+  const { by, at } = r;
+  if (!isDecider(by) || !isText(at) || at === "") return null;
+  return { by, at };
 }
 
 function readGuardEntry(value: JsonValue): GuardEntry | null {

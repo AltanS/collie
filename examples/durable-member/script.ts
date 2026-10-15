@@ -210,6 +210,7 @@ function scripted(messages: Msg[], slowMs: number, helperMs?: number) {
 
   if (kind === "double-charge") {
     if (name === "write_note" && last.isError) return say("The note was not saved, so I stopped here.");
+    if ((name === "ask_queue" || name === "ask_customer") && last.isError) return say("Nobody answered in time, so I stopped here.");
     if (name === "write_note") return call(fauxToolCall("ask_queue", {}));
     if (name === "ask_queue") return call(fauxToolCall("ask_customer", {}));
     if (name === "ask_customer") return say(`Handed to ${result("ask_queue")}. ${customer} gets your line: "${result("ask_customer")}"`);
