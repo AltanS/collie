@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "@/lib/json";
+import { SHIPPED_MARKS } from "@/lib/shipped-marks";
 
 import {
   SHIPPED_THEME_IDS,
@@ -11,6 +12,7 @@ import {
   fillHalves,
   isColour,
   lightDark,
+  markOf,
   parseTheme,
   toSrgbHex,
   type ParsedTheme,
@@ -290,6 +292,46 @@ describe("parseTheme", () => {
         expect(r.detail).not.toMatch(/\u2014/);
       }
     }
+  });
+});
+
+describe("the mark", () => {
+  it.each(SHIPPED_MARKS)("accepts the shipped mark %s", (mark) => {
+    const result = parseTheme(file({ mark }), CAP);
+    expect(result.ok && result.theme.mark).toBe(mark);
+    expect(result.ok && markOf(result.theme)).toBe(mark);
+  });
+
+  it("resolves a file without a mark to the collie mark", () => {
+    const result = parseTheme(file({}), CAP);
+    if (!result.ok) throw new Error("the plain file is refused");
+    expect("mark" in result.theme).toBe(false);
+    expect(markOf(result.theme)).toBe("collie");
+  });
+
+  it.each([["owl"], ["Collie"], [""], [1], [null], [{ id: "collie" }], [["collie"]]])(
+    "refuses the mark %j and names the value",
+    (mark) => {
+      const found = refusals(parseTheme(file({ mark }), CAP));
+      expect(found.map((r) => `${r.code} ${r.path}`)).toEqual(["mark mark"]);
+      expect(found[0]?.detail).toContain(JSON.stringify(mark));
+      expect(found[0]?.detail).toContain(SHIPPED_MARKS.join(", "));
+    },
+  );
+
+  it("cuts a long refused mark in the message", () => {
+    const found = refusals(parseTheme(file({ mark: "x".repeat(500) }), CAP));
+    expect(found[0]?.code).toBe("mark");
+    expect((found[0]?.detail ?? "").length).toBeLessThan(200);
+  });
+
+  it("keeps the mark on a round trip, and adds no key when there is none", () => {
+    const once = parseTheme(file({ mark: "harbour" }), CAP);
+    if (!once.ok) throw new Error("refused");
+    const twice = parseTheme(JSON.stringify(once.theme), CAP);
+    expect(twice).toEqual(once);
+    const plain = parseTheme(file({}), CAP);
+    expect(plain.ok && JSON.stringify(plain.theme)).not.toContain("mark");
   });
 });
 
