@@ -97,6 +97,8 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2283-plugin-marketplaces-updated--w120.txt",
     "claude--v2283-plugin-marketplaces-updated--w40.txt",
     "claude--v2283-plugin-marketplaces-updated--w82.txt",
+    "claude--v2301-hold-subagent.txt",
+    "claude--v2301-idle.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

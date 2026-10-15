@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Shipped in:** pending (1.21.0)
+- **Shipped in:** pending (1.22.0)
 - **Amends in scope:** [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md) points 3 and 4
 - **Trail:** people who run their Pi Durable programs on Cloudflare Durable Objects and want them in
   the crew, asked for on 2026-10-13 · [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md)

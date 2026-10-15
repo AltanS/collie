@@ -2067,3 +2067,23 @@ the only path on them is the lab folder, and nothing was altered.
 **Not captured.** The permission, plan and pick-many dialogs with the list under them; `✔` rows on a
 dialog screen (they appear in the unit tests, retyped from a real screen); and the idle screen, where
 the list is not drawn under the input box at all.
+
+## M56 lab checks (captured 2026-10-15, Codex 0.162.1 and Claude Code 2.1.301, herdr 0.9.4, private Herdr session)
+
+Read through `herdr pane read --source visible --format ansi --raw` from a throwaway session in a folder
+on disk. Panes were 82 columns wide (Claude) and 82 (Codex). Nothing was altered except the lab folder
+name in the path row (`~/sandbox/collie-lab/m56slice0/work`, the same length as the real one). No user
+name, account or e-mail address is on them. The Codex picker screens carry the model names the lab
+account offered.
+
+| Fixture | State / what's in it |
+|---|---|
+| `codex--v0162-idle.txt` | Codex 0.162.1 start screen and an empty input box (`›`), footer `GPT-6-Luna low · <cwd>` and the `← for agents · ? for shortcuts` hint row |
+| `codex--v0162-picker-model.txt` | `/model` picker, title `Select Model and Effort`, eight numbered rows, `› ` on the current one, footer `enter select · esc back`. The corpus had no 0.16x picker |
+| `codex--v0162-picker-permissions.txt` | `/permissions` picker, title `Update Model Permissions`, four numbered rows (`Ask for approval`, `Approve for me`, `Full Access`, `Read Only`), `› ` on the first |
+| `codex--v0162-resume-search.txt` | `/resume` list with the `Type to search` field, the filter row and the two-row key hint |
+| `claude--v2301-idle.txt` | Claude Code 2.1.301 fresh idle box: placeholder `Try "..."`, one footer row with the mode text and `◐ medium · /effort` on its right |
+| `claude--v2301-hold-subagent.txt` | A background subagent has a permission request pending (a PermissionRequest hook is holding it) and the main screen shows NO dialog: a free-looking box with a suggestion, `Waiting for 1 background agent to finish`, and the agents panel |
+
+The last one is the reason a hook ask cannot be derived from the screen: the screen says free while
+the request waits.

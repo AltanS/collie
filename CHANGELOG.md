@@ -138,6 +138,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Themes page.** `docs/themes.md` covers picking a theme, importing and exporting one, the header mark, writing a theme file with its 43 colour tokens, and what a theme cannot change. The Configure page names the six typefaces and says which card picks the light or the dark half.
 - **The Themes page describes the three animals.** It says what the owl, the hare and the otter each do in idle, loading and lost, and that the import preview shows the file's mark at rest on both halves.
 - **`collie docs themes` prints the Themes page.** The page was on disk and in the README but not in the binary's docs list, so the command did not know it. It is in the list now, and the drift guard in `cli/docs-embed.test.ts` stays green.
+- **The screen corpus holds six new captures.** Codex 0.162.1's idle box, `/model` picker, `/permissions` picker and `/resume` search, and Claude Code 2.1.301's idle box and the box a held subagent approval leaves with no dialog on the main screen.
 
 ## [1.21.3] - 2026-10-14
 

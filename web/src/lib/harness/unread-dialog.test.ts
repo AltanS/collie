@@ -238,7 +238,13 @@ const CARD_FIXTURES = {
   },
   codex: {
     // README: notes composer focused inside the ask card — a real dialog
-    modals: ["codex--ask-notes-focused.txt"],
+    modals: [
+      "codex--ask-notes-focused.txt",
+      // Codex 0.162.1 pickers: no grammar reads them yet, so the unread card covers them.
+      "codex--v0162-picker-model.txt",
+      "codex--v0162-picker-permissions.txt",
+      "codex--v0162-resume-search.txt",
+    ],
     notModals: [],
   },
   grok: {
