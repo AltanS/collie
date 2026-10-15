@@ -78,3 +78,54 @@ The action row above the composer. Its harness section holds the harness's own b
 
 A row on the New page that makes a new pane in a program
 ([Starters from a durable program](configure.md#starters-from-a-durable-program-experimental)).
+
+## Source
+
+The word `sources.json` uses for one program entry. You meet it only in that file name and its
+fields. Nothing on the phone says "source"; the phone says [program](#program)
+([Attach a program](durable-programs.md#attach-a-program)).
+
+## Cap
+
+One thing a program says it can do: `asks`, `starters`, `send`, `steer`, `abort`, `rename`, `close`,
+`actions`, `history` or `reopen`. The phone draws a control only for a cap the program named. The
+push limits are also called caps, and they are a different thing
+([Pushes from a program](voice-and-push.md#pushes-from-a-program)).
+
+## Hello
+
+The first thing a program tells Collie: the wire versions it speaks, its caps and its name. Collie
+reads nothing more from a program whose versions do not meet its own
+([Versions](durable-programs.md#versions)). A crew link has a hello of its own, between a lead and
+a member ([Crews](crew.md)).
+
+## Epoch
+
+A label a program makes each time it starts. A position in a conversation only counts inside one
+epoch. When the epoch changes, Collie reads the conversation again from the start
+([Programs](durable-programs.md)).
+
+## Receipt
+
+The record of one thing a phone asked a program to do: an answer, a send, a stop or a starter tap.
+It holds the request id and the outcome, and it lets a retry replay and not run twice. Collie keeps
+receipts in its state folder
+([Where Collie keeps a program's data](durable-programs.md#where-collie-keeps-a-programs-data)).
+
+## Conversation
+
+How the phone's Programs pages name a [session](#session) of a program. The conversation list
+shows what waits on you first, then the other open ones, then the closed ones
+([What the phone shows](durable-programs.md#what-the-phone-shows)).
+
+## Programs section
+
+The group on the dashboard that lists every program, one row each. It moves above your spaces while
+a question waits, and it shows nothing when no program is attached
+([What the phone shows](durable-programs.md#what-the-phone-shows)).
+
+## Wire
+
+The rules Collie and a program use to talk: a hello, then snapshots, events and answers. There is
+one version today, version 1. It runs over a private socket or over https with a token
+([Versions](durable-programs.md#versions)).
