@@ -76,10 +76,10 @@ the ring at .6, the glow at .6, and the tufts raised 8 degrees. Lost has no anim
 
 ## Size and markup
 
-- 12,677 bytes of source (the dog is 70,516). No SMIL, no image, no network, no library.
+- 12,681 bytes of source (the dog is 70,516). No SMIL, no image, no network, no library.
 - One `<svg>`: `<style>`, an optional `<title>`, one `<radialGradient>` whose id comes from
-  `useId`, and the drawing. `header` weight crops to the drawing (`1 -2 98 98`, room for a lifted
-  tuft); `full` gives it air (`-14 -16 128 128`).
+  `useId`, and the drawing. `header` weight crops to the drawing (`-3 -10 106 106`, room for the
+  tufts at the top of their lift: no ink in the top two pixel rows of the 40 px mark in any of 12 frames of a loop); `full` gives it air (`-14 -16 128 128`).
 - `cm-live` on the root while loading, so `markIsLive` and the hosts read the state as they do for
   the dog. The idle and lost classes sit on the inner group, so `className` stays the caller's.
 

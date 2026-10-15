@@ -71,6 +71,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **IBM Plex Sans is a typeface you can pick.** The Typeface card offers it. It is a calm humanist face with a real bold and tabular figures, bundled at 34 KB, and fetched only when someone picks it. A shipped theme uses it.
 - **Geist joins the faces in the Typeface card.** It is a plain geometric face with a real bold from 400 to 700, bundled at 23 KB and fetched only when a reader picks it. It is the face of the new theme `daylight`.
 - **Atkinson Hyperlegible Next is a typeface choice.** The Braille Institute face for low vision joins the faces in the Typeface card, bundled in the app and subset to Latin. Its letters that are easy to confuse, such as I, l and 1, are drawn apart, and its bold is a real weight. It is the face of the theme Harbour.
+- **The owl's header frame leaves room for its raised tufts.** The header weight of the Nightwatch mark now crops 8 percent wider, so the tufts at the top of their lift keep clear of the edge instead of showing a flat cut at 40 px.
 
 ### Fixed
 
