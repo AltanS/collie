@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-fonts";
+import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "@/lib/shipped-fonts";
 
 // The device's own look — today one field, `font`, and the shape is an OBJECT on purpose.
 //
@@ -23,21 +24,10 @@ import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-font
 
 const STORAGE_KEY = "collie:design:v1";
 
-/**
- * The shipped faces, and the only strings that may ever become a class name.
- *
- * A CLOSED LIST, checked on both the pre-paint path and this one. The stored value is attacker-
- * adjacent in exactly one narrow sense — it is a string from localStorage that is about to be
- * concatenated into `classList.add()` — and a closed list is the answer that cannot be got wrong,
- * where a sanitiser is one someone has to keep right.
- *
- * `aldrich` is the DEFAULT and adds no class at all: no class means the `--font-sans` already in
- * index.css's @theme block, which is the stack index.html preloads. A device that never opens the
- * setting runs no JavaScript before its first paint.
- */
-export const SHIPPED_FONTS = ["system", "grotesk", "aldrich"] as const;
-
-export type ShippedFont = (typeof SHIPPED_FONTS)[number];
+// The shipped faces live in `lib/shipped-fonts.ts`, a file with no imports, so the theme schema can
+// check `fonts.ui` against the same list without loading this module. Re-exported here so every
+// app import keeps reading them from `@/lib/design`.
+export { SHIPPED_FONTS, isShippedFont, type ShippedFont };
 
 /** The face a device gets before it says otherwise. */
 export const DEFAULT_FONT: ShippedFont = "aldrich";
@@ -64,11 +54,6 @@ const DEFAULT_PREFS: DesignPrefs = { font: DEFAULT_FONT };
 
 let prefs: DesignPrefs = load();
 const listeners = new Set<() => void>();
-
-/** True for a shipped key. Total over any string, which is the whole reason it exists. */
-export function isShippedFont(value: string): value is ShippedFont {
-  return SHIPPED_FONTS.some((font) => font === value);
-}
 
 /** True for a value the select may hold: a shipped key, or a namespaced operator basename. */
 export function isDesignFont(value: string): boolean {

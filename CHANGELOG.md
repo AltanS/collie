@@ -43,6 +43,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The phone shows the receipts of a program's question.** The ask card shows the time left, says who decided when an answer comes too late, names the program, and a question that timed out or was decided in the program leaves a line in the chat. A program refused for its wire version says why on its home.
 
 - **Themes have a decision record.** ADR 0106 says a theme is one closed JSON file with a version, a light half and a dark half of 43 colour tokens, and one UI face; anything outside the list is refused with a message. DESIGN.md gets section 13, which makes a token the only way a colour reaches a component, and section 10 lists the literal colours that a theme cannot reach yet.
+- **A theme file has a schema that Collie checks before it uses one.** Version 1 is one JSON file with an id, a name, a light and a dark half of 43 named colour tokens, and an optional bundled UI face. The check refuses an unknown key, an unknown version, a value that is not a hex or oklch colour, a file over its size cap, a shipped id, and a control character in the name or the author. It lists every reason at once, up to 25 and a count of the rest. The app does not read a theme yet.
+- **The current look is the theme `collie`, kept as data.** `web/src/themes/collie.json` holds the 43 token pairs of `index.css` value for value, and a test keeps the two equal. `scripts/build-themes.ts` writes `web/src/themes.css` from the shipped theme files, one block for each theme other than `collie`, and a test fails when the file is stale. With only `collie` the file holds no block, so nothing changes on screen.
 
 ### Changed
 
