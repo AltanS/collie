@@ -257,6 +257,10 @@ export const zh: Dictionary = {
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "只读模式，未授权",
   "composer.placeholder.noMuxSend": "无法直接输入至此终端",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "输入终端命令…",
   "composer.placeholder.shell": "输入 Shell 命令…",
   "composer.placeholder.reply": "输入回复内容…",
@@ -281,6 +285,7 @@ export const zh: Dictionary = {
   "composer.attach.inFront": "其标记已从文本中移除，因此“发送”会将 {name} 置于最前。",
   "composer.send.typeAnyway": "仍要输入？",
   "composer.send.reallySend": "确认发送？",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "停止向终端输入",
   "composer.send.sendAria": "发送",
   "composer.send.reconnect": "请重新连接后再发送",

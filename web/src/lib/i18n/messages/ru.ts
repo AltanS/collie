@@ -215,6 +215,10 @@ export const ru: Dictionary = {
   "composer.placeholder.gone": "Панель закрыта",
   "composer.placeholder.readOnly": "Только чтение: нет авторизации",
   "composer.placeholder.noMuxSend": "Ввод в этот терминал недоступен",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Введите текст в терминал…",
   "composer.placeholder.shell": "Введите команду shell…",
   "composer.placeholder.reply": "Введите ответ…",
@@ -239,6 +243,7 @@ export const ru: Dictionary = {
   "composer.attach.inFront": "Его метки больше нет в тексте, поэтому «Отправить» поместит {name} в начало.",
   "composer.send.typeAnyway": "Ввести все равно?",
   "composer.send.reallySend": "Действительно отправить?",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Остановить ввод в терминал",
   "composer.send.sendAria": "Отправить",
   "composer.send.reconnect": "Переподключитесь для отправки",

@@ -256,6 +256,10 @@ export const zhTW: Dictionary = {
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "唯讀模式，未授權",
   "composer.placeholder.noMuxSend": "無法直接輸入至此終端機",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "輸入終端機指令…",
   "composer.placeholder.shell": "輸入 Shell 指令…",
   "composer.placeholder.reply": "輸入回覆內容…",
@@ -280,6 +284,7 @@ export const zhTW: Dictionary = {
   "composer.attach.inFront": "您的文字中已缺少其標記，因此「傳送」會將 {name} 置於最前。",
   "composer.send.typeAnyway": "仍要輸入？",
   "composer.send.reallySend": "確認傳送？",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "停止向終端機輸入",
   "composer.send.sendAria": "傳送",
   "composer.send.reconnect": "請重新連線後再傳送",

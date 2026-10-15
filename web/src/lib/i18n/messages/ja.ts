@@ -265,6 +265,10 @@ export const ja: Dictionary = {
   "composer.placeholder.gone": "ペインが存在しません",
   "composer.placeholder.readOnly": "読み取り専用です。権限がありません",
   "composer.placeholder.noMuxSend": "このターミナルには直接入力できません",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "ターミナルへ入力…",
   "composer.placeholder.shell": "シェルコマンドを入力…",
   "composer.placeholder.reply": "返信を入力…",
@@ -289,6 +293,7 @@ export const ja: Dictionary = {
   "composer.attach.inFront": "テキストからマーカーが消えたため、送信時に先頭へ {name} が付きます。",
   "composer.send.typeAnyway": "強制的に入力しますか？",
   "composer.send.reallySend": "送信しますか？",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "ターミナルへの入力を停止",
   "composer.send.sendAria": "送信",
   "composer.send.reconnect": "再接続してから送信してください",

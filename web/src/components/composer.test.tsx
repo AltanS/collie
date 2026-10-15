@@ -163,10 +163,12 @@ describe("Composer — send", () => {
     // A stranded raw draft too, so the destructive pre-clear sweep would fire if the refusal came
     // after it instead of before — those ctrl+k/Backspaces would land in the dialog.
     const props = renderComposerWithStatus({ dialogPresent: true, rawTerminalDraft: "leftover" });
-    const box = screen.getByPlaceholderText(/type a reply/i);
+    const box = screen.getByPlaceholderText("Dialog is waiting");
 
     await user.type(box, "please do not approve anything");
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    // The Send slot is a disabled "Answer the dialog" word for a READ dialog, so the pre-flight is
+    // reached by the keyboard submit (Ctrl+Enter), which stays unchanged.
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
     expect(calls).toEqual([]); // no keys, no reply — nothing reached the pane at all
@@ -227,15 +229,15 @@ describe("Composer — send", () => {
     const calls: string[] = [];
     server.use(replyHandler(() => calls.push("reply")));
     renderComposerWithStatus({ dialogPresent: true, dialogUnread: false });
-    const box = screen.getByPlaceholderText(/type a reply/i);
+    const box = screen.getByPlaceholderText("Dialog is waiting");
 
     await user.type(box, "please do not approve anything");
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
-    // Flat: no override is armed, so a second tap refuses exactly the same way.
+    // Flat: no override is armed, so a second submit refuses exactly the same way.
     expect(screen.queryByRole("button", { name: /type anyway/i })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.keyboard("{Control>}{Enter}{/Control}");
     expect(calls).toEqual([]);
     expect(box).toHaveValue("please do not approve anything");
   });
@@ -1250,6 +1252,82 @@ describe("Composer — blocked pre-flight override", () => {
     expect(box).toHaveValue("use fable please");
     await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
   }, 15000);
+});
+
+// A dialog a grammar READ owns the agent's keyboard. The refusal used to live only in the header
+// StatusArea, which a phone has scrolled away or under the keyboard when Send is tapped (field case
+// 2026-10-15, ADR 0009). It now stands in the Send slot and the placeholder too.
+describe("Composer: a read dialog is refused at the thumb", () => {
+  it("replaces Send with an 'Answer the dialog' word once there is a draft", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: false });
+
+    await user.type(screen.getByPlaceholderText("Dialog is waiting"), "for after the dialog");
+
+    const button = screen.getByRole("button", { name: "Answer the dialog" });
+    expect(button).toBeEnabled();
+    expect(button).toHaveTextContent("Answer the dialog");
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  });
+
+  it("keeps the empty box's own primary action, with the placeholder carrying the state", () => {
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: false });
+
+    expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
+    expect(screen.getByPlaceholderText("Dialog is waiting")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type a reply/i)).toBeNull();
+  });
+
+  it.each([
+    ["menu", "Menu is waiting"],
+    ["permission", "Permission is waiting"],
+    ["question", "Question is waiting"],
+    ["dialog", "Dialog is waiting"],
+  ] as const)("names a %s in the placeholder", (dialogNoun, placeholder) => {
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: false, dialogNoun });
+
+    expect(screen.getByPlaceholderText(placeholder)).toBeInTheDocument();
+  });
+
+  it("stays typeable and keeps the draft", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: false });
+    const box = screen.getByPlaceholderText("Dialog is waiting");
+
+    await user.type(box, "for after the dialog");
+
+    expect(box).toHaveValue("for after the dialog");
+  });
+
+  it("a tap goes to the card and sends no text and no key", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        calls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(() => calls.push("reply"), () => calls.push("submit")),
+    );
+    const onAnswerDialog = vi.fn();
+    const props = renderComposerWithStatus({ dialogPresent: true, dialogUnread: false, onAnswerDialog });
+    const box = screen.getByPlaceholderText("Dialog is waiting");
+
+    await user.type(box, "for after the dialog");
+    await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
+
+    expect(onAnswerDialog).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([]);
+    expect(box).toHaveValue("for after the dialog");
+    expect(props.onSent).not.toHaveBeenCalled();
+  });
+
+  it("leaves the unread dialog on its two-tap override, with the ordinary placeholder", () => {
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: true });
+
+    expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+  });
 });
 
 // ── THE DRAFT FIELD'S SIZE ────────────────────────────────────────────────────────────────────

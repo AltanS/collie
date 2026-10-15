@@ -975,6 +975,29 @@
       }
     },
     {
+      "fixture": "claude-lab--menu-model-picker-v2300--w119.txt",
+      "cols": 119,
+      "rows": 49,
+      "state": "menu-model-picker-v2300",
+      "notes": "/model picker on 2.1.300 (119 columns, the width of the 2026-10-15 field case): heading 'Select model' with a two-line blurb, ten numbered models (Default Sonnet 5.5 ✔ … Opus 4.8) with a '↓' scroll marker on row 10 and '… +3 models' under it, the effort row '● High effort ←/→ to adjust' (arrowed once off the default Medium) and the footer 'Enter to set as default · s to use this session only · Esc to cancel'. The screen on which Send was refused with no visible reason; it lifts one menu with the same keys as the 82-column file.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "Up",
+          "s"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--menu-resume-picker--w83.txt",
       "cols": 83,
       "rows": 49,

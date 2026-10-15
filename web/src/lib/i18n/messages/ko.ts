@@ -265,6 +265,10 @@ export const ko: Dictionary = {
   "composer.placeholder.gone": "창이 닫혔습니다",
   "composer.placeholder.readOnly": "읽기 전용: 권한 없음",
   "composer.placeholder.noMuxSend": "이 터미널에는 입력할 수 없습니다",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "터미널에 입력…",
   "composer.placeholder.shell": "셸 명령 입력…",
   "composer.placeholder.reply": "응답 입력…",
@@ -289,6 +293,7 @@ export const ko: Dictionary = {
   "composer.attach.inFront": "텍스트에서 해당 표시가 사라졌으므로 전송 시 {name}을(를) 앞에 둡니다.",
   "composer.send.typeAnyway": "그대로 입력할까요?",
   "composer.send.reallySend": "전송할까요?",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "터미널 입력 중단",
   "composer.send.sendAria": "전송",
   "composer.send.reconnect": "다시 연결한 뒤 전송하세요",

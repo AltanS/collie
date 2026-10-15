@@ -213,6 +213,10 @@ export const fr: Dictionary = {
   "composer.placeholder.gone": "Le volet a disparu",
   "composer.placeholder.readOnly": "Lecture seule : non autorisé",
   "composer.placeholder.noMuxSend": "Impossible d'écrire dans ce terminal",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Écrivez dans le terminal…",
   "composer.placeholder.shell": "Saisissez une commande shell…",
   "composer.placeholder.reply": "Écrivez une réponse…",
@@ -237,6 +241,7 @@ export const fr: Dictionary = {
   "composer.attach.inFront": "Son marqueur n'est plus dans votre texte, Envoyer place donc {name} au début.",
   "composer.send.typeAnyway": "Saisir quand même ?",
   "composer.send.reallySend": "Envoyer vraiment ?",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Arrêter la saisie dans le terminal",
   "composer.send.sendAria": "Envoyer",
   "composer.send.reconnect": "Reconnectez-vous pour envoyer",
