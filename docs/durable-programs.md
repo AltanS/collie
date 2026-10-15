@@ -71,6 +71,9 @@ one question waiting. Tap the row: it opens on the program's conversation list, 
 conversation Deploy waits with "Deploy to staging?". Open it and tap Yes or No. The program prints
 your answer and exits.
 
+To write a program of your own, read [The durable SDK](durable-sdk.md) and
+[The durable wire](durable-wire.md).
+
 ## Attach a program
 
 Each program is one entry in `sources.json`, and `collie durable attach` writes it.

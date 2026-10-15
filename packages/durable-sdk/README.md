@@ -54,9 +54,9 @@ returns who decided and when. Only Allow from the phone approves.
 | `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a program that brings its own transport. |
 
 **On Node, a program cannot read who connects to its socket.** Node has no way to read the caller of a Unix socket, so
-the descendant check (which refuses an answer from the program itself or from a process it started) cannot run, and
-the Node server writes one line at start that says so. Any process of your user can answer a card. Run the agent's
-tools in a sandbox that cannot reach the socket, or run the program on Bun.
+the descendant check (which refuses an answer, or any other act, from the program itself or from a process it started)
+cannot run, and the Node server writes one line at start that says so. Any process of your user can answer a card. Run
+the agent's tools in a sandbox that cannot reach the socket, or run the program on Bun.
 
 `./pi` needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later and below
 2. They are optional peer dependencies: install them yourself, and a program that never imports `./pi` needs none.

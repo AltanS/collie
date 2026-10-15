@@ -151,6 +151,8 @@ and that is the only way to install it on a phone.
 | | |
 | --- | --- |
 | [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
+| [**The durable SDK (experimental)**](./docs/durable-sdk.md) | The npm package `@colliepwa/durable-sdk`, part by part: its entries and runtimes, `openCollie`, the pane methods, the four kinds of question and `requireApproval`, hooks, history, caps, the helpers, the Pi glue and the versions |
+| [**The durable wire (experimental)**](./docs/durable-wire.md) | What travels between Collie and a program, for a builder: the routes, hello and the epoch, the life of an ask and the request ids, the socket and token transports, the limits and the version rule, with a link to `WIRE.md` for the exact rules |
 
 ### Reference
 

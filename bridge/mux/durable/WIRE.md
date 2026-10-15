@@ -1,7 +1,10 @@
 # The durable wire, version 1
 
 > **Experimental.** This wire may change in any minor release of Collie, and so may the version
-> range the `durable` adapter speaks. Nothing outside this repository should depend on it yet. A
+> range the `durable` adapter speaks. A program outside this repository may speak it, on its own or
+> through the npm package `@colliepwa/durable-sdk` under the dist-tag `experimental`, and the exit in
+> ADR 0104 decides by the 1.24.0 release whether the wire stays. A new version follows the version
+> policy (section 2): Collie accepts the previous version for one minor release after it ships. A
 > program and a Collie that do not share a version get a named `incompatible`, so a mismatch is
 > visible, not silent.
 
@@ -10,7 +13,8 @@ This document fixes the protocol between two parties:
 - **The program.** A durable agent program, for example one built on Pi Durable. It owns its
   conversations, and it **listens**: on a private Unix socket on the peer's machine, or behind TLS
   at a URL the person deployed it to (section 1).
-- **The adapter.** The `durable` mux adapter in a Collie peer (`COLLIE_MUX=durable`). It **dials**
+- **The adapter.** The `durable` mux adapter in a Collie peer, one for each program: an entry of
+  `sources.json`, or the one program of a durable-only peer (`COLLIE_MUX=durable`). It **dials**
   the program, and it maps what it reads onto the mux port (`bridge/mux/types.ts`).
 
 The decisions behind it are in [ADR 0099](../../../.adr/0099-a-durable-program-is-a-mux-with-no-screen.md)
@@ -31,7 +35,7 @@ token (1B). The bytes on the wire are the same on both: the routes, the bodies, 
 the ETag and every error code. Only how the program is reached, and who may reach it, differ.
 
 | | 1A, a private socket | 1B, TLS with a bearer token |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | Peer setting | `COLLIE_DURABLE_SOCKET` | `COLLIE_DURABLE_URL` and `COLLIE_DURABLE_TOKEN` |
 | Where the program runs | the peer's machine, as the same user | anywhere the person deployed it, for example a Cloudflare Worker with a Durable Object |
 | The gate | a socket only this user can open | the token, compared in constant time |
@@ -1288,8 +1292,9 @@ the same item id, not a new item, and it is not a "stopped" line.
   knows nor relies on it: a new start is a new epoch (section 8).
 - **Terminals.** No pane grid, no typed keys, no raw text. `caps.terminal` is false.
 - **Push.** No stream from the program. The adapter polls.
-- **More than one program per peer.** One socket path, or one URL, per peer.
-- **Ask kinds other than `permission`**, and free-text answers beyond the optional `note`.
+- **More than one program per adapter.** One socket path, or one URL, per adapter. A Collie runs
+  several programs as several adapters, one per entry of `sources.json` (section 1).
+- **Ask kinds other than `permission`, `choice`, `text` and `form`** (section 7.14).
 - **Starters that take input**, such as a folder or a prompt.
 - **Creating** workspaces, tabs or panes, and **renaming a pane**, from Collie. Renaming a workspace or a tab is section 7.8, and closing is section 7.9.
 
@@ -1381,5 +1386,5 @@ document. The version number stays 1; the spike's shapes are not supported.
     so no answer is lost or run twice.
 32. **An option or an action with no label left after cleaning is dropped, and a field with none is named by
     its id** (section 6). Every label on a card goes through the cleaner and a cap. No shape changes.
-33. **The descendant check is a Bun-only part of the example SDK** (section 1A). A program on Node serves the
-    same wire without it, and says so at start. No shape changes.
+33. **The descendant check runs only in the Bun entry of the SDK package** (`@colliepwa/durable-sdk`, on Linux,
+    section 1A). A program on Node serves the same wire without it, and says so at start. No shape changes.

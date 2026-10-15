@@ -192,8 +192,9 @@ path and the socket itself ([`WIRE.md` section 1A](../../bridge/mux/durable/WIRE
 The socket does not keep out you. Any process that runs as your user can open it, read every
 conversation and answer an ask. That includes a tool the agent runs.
 
-The app has one defence against that, the descendant check. It refuses an answer, a send, a stop or a
-starter from itself and from any process below it in the process tree, with `403 caller-refused`.
+The app has one defence against that, the descendant check. It refuses every act (an answer, a send, a
+stop, a belt action, a rename, a close, a reopen or a starter) from itself and from any process below it in
+the process tree, with `403 caller-refused`.
 Reads stay open. To find the caller, the app reads its pid from the socket (`SO_PEERCRED`, through
 `bun:ffi`) and walks the parent links in `/proc`. A caller whose process is gone, or whose chain of
 parents breaks, is refused too. Collie's adapter reports the 403 as a refusal that names the code, and
