@@ -15,11 +15,12 @@
   ],
   "idle": {
     "frame": {
-      "top": { "pattern": "^─{2,}(?:\\s+.+\\s+─{2,})?$", "minCells": 8, "column": 0 },
-      "prompt": { "pattern": "^(?:❯|!)(?:\\s(?<draft>.*))?$", "column": 0 },
+      "top": { "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―].*?)\\s+─+)?$", "minCells": 8, "column": 0 },
+      "prompt": { "pattern": "^(?:❯|!(?=\\s|$))(?:\\s?(?<draft>.+))?$", "column": 0 },
       "bottom": { "pattern": "^─+$", "minCells": 8, "column": 0 },
       "continuationIndent": 2,
-      "maxDraftRows": 100
+      "maxDraftRows": 100,
+      "maxTailRows": 60
     },
     "placeholders": {
       "texts": ["Press up to edit queued messages"],

@@ -1,0 +1,2041 @@
+[
+ {
+  "fixture": "claude--autocomplete-slash-clipped.txt",
+  "frame": {
+   "top": 4,
+   "prompt": 5,
+   "bottom": 6,
+   "label": "demo-session",
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--autocomplete-slash-long.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 8,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--autocomplete-slash-short.txt",
+  "frame": {
+   "top": 3,
+   "prompt": 4,
+   "bottom": 5,
+   "label": null,
+   "text": "/re",
+   "placeholder": false,
+   "status": {
+    "first": 6,
+    "last": 8
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--box-table-vs16-emoji.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--done.txt",
+  "frame": {
+   "top": 58,
+   "prompt": 59,
+   "bottom": 60,
+   "label": null,
+   "text": "cat hello.txt to verify",
+   "placeholder": true,
+   "status": {
+    "first": 61,
+    "last": 62
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--draft-footer-empty.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 8,
+   "label": "refactor the auth module",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 9,
+    "last": 10
+   },
+   "footer": {
+    "first": 12,
+    "last": 13
+   }
+  }
+ },
+ {
+  "fixture": "claude--draft-footer-single.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 8,
+   "label": "refactor the auth module",
+   "text": "remember to update the changelog before tagging",
+   "placeholder": false,
+   "status": {
+    "first": 9,
+    "last": 10
+   },
+   "footer": {
+    "first": 12,
+    "last": 13
+   }
+  }
+ },
+ {
+  "fixture": "claude--draft-footer-wrapped.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 10,
+   "label": "refactor the auth module",
+   "text": "this stranded draft is long enough that the Claude Code TUI soft-wraps it onto several continuation lines inside the input box while the background-agents footer sits below the box",
+   "placeholder": false,
+   "status": {
+    "first": 11,
+    "last": 12
+   },
+   "footer": {
+    "first": 14,
+    "last": 15
+   }
+  }
+ },
+ {
+  "fixture": "claude--draft-paste-placeholder.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "[Pasted text #3 +3 lines]",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 19
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--draft-paste-split-partial.txt",
+  "frame": {
+   "top": 1,
+   "prompt": 2,
+   "bottom": 3,
+   "label": null,
+   "text": "[Pasted text #3 +5 lines] TAIL-ONE-alpha-bravo TAIL-TWO-charlie-delta",
+   "placeholder": false,
+   "status": {
+    "first": 4,
+    "last": 6
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--draft-paste-split-tail.txt",
+  "frame": {
+   "top": 0,
+   "prompt": 1,
+   "bottom": 2,
+   "label": null,
+   "text": "[Pasted text #3 +5 lines] TAIL-ONE-alpha-bravo TAIL-TWO-charlie-delta TAIL-THREE-echo-foxtrot",
+   "placeholder": false,
+   "status": {
+    "first": 3,
+    "last": 5
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--draft-wrapped.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 20,
+   "label": null,
+   "text": "this stranded draft is long enough that Claude soft-wraps it onto several lines inside the input box which is exactly the case that used to stay visible",
+   "placeholder": false,
+   "status": {
+    "first": 21,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--footer-pointed-agent.txt",
+  "frame": {
+   "top": 1,
+   "prompt": 2,
+   "bottom": 3,
+   "label": null,
+   "text": "the agents footer hides the input box",
+   "placeholder": false,
+   "status": {
+    "first": 4,
+    "last": 4
+   },
+   "footer": {
+    "first": 6,
+    "last": 8
+   }
+  }
+ },
+ {
+  "fixture": "claude--fresh-idle.txt",
+  "frame": {
+   "top": 58,
+   "prompt": 59,
+   "bottom": 60,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 61,
+    "last": 62
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--ghost-suggestion.txt",
+  "frame": {
+   "top": 47,
+   "prompt": 48,
+   "bottom": 49,
+   "label": null,
+   "text": "fix it",
+   "placeholder": true,
+   "status": {
+    "first": 50,
+    "last": 53
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--ghost-typed-over.txt",
+  "frame": {
+   "top": 47,
+   "prompt": 48,
+   "bottom": 49,
+   "label": null,
+   "text": "hello real draft text",
+   "placeholder": false,
+   "status": {
+    "first": 50,
+    "last": 53
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--idle-background-shell.txt",
+  "frame": {
+   "top": 9,
+   "prompt": 10,
+   "bottom": 11,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 12,
+    "last": 12
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w132.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w40-low.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w40-ultracode.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w60-low.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w60-ultracode.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w60.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w80-low.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w80-ultracode.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider--w80.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-effort-slider.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-model-picker-dismissed.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 8,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 9,
+    "last": 11
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--menu-model-picker-moved.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-model-picker.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-resume-picker--w120-all-sanitized.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-resume-picker--w120-first.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-resume-picker--w120-search.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-resume-picker--w120-third.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-resume-picker--w60-first.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--menu-resume-picker--w80-second.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--model-alias.txt",
+  "frame": {
+   "top": 57,
+   "prompt": 58,
+   "bottom": 59,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 60,
+    "last": 62
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--permission-bash.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--permission-edit.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--feedback-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--feedback-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--feedback-wrapped.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--numbered-body.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--three-row-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--three-row-typed-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval--three-row.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--plan-approval.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--rename-resolved.txt",
+  "frame": {
+   "top": 18,
+   "prompt": 19,
+   "bottom": 20,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 21,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--select-menu.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-multi.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-multiselect-checked.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-multiselect-review.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-multiselect-single.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-preview-note-attached.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-preview-note-input.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--select-preview.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--send-inflight.txt",
+  "frame": {
+   "top": 18,
+   "prompt": 19,
+   "bottom": 20,
+   "label": null,
+   "text": "/rename",
+   "placeholder": false,
+   "status": {
+    "first": 21,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--trust-prompt-unnumbered.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--trust-prompt.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-ask-long-question--w50.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-ask-two-line-question.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-ask-type-something-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-ask-type-something-typed-off-row.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-ask-type-something-typed-two-lines.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-draft-prompt.txt",
+  "frame": {
+   "top": 3,
+   "prompt": 4,
+   "bottom": 7,
+   "label": null,
+   "text": "my shell said: ❯ ls -la and then nothing",
+   "placeholder": false,
+   "status": {
+    "first": 8,
+    "last": 9
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-draft-rule.txt",
+  "frame": {
+   "top": 2,
+   "prompt": 3,
+   "bottom": 8,
+   "label": null,
+   "text": "see this output: ──────────────────── some text ──────────────────── end",
+   "placeholder": false,
+   "status": {
+    "first": 9,
+    "last": 11
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplace-detail--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplace-detail--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplace-detail--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplace-detail-short--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplace-detail-short--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplace-detail-short--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-add--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-add--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-add--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-changed--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-changed--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-pending--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-pending--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-pending--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-pointed--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-pointed--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-pointed--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-updated--w120.txt",
+  "frame": {
+   "top": 36,
+   "prompt": 37,
+   "bottom": 38,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 39,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-updated--w40.txt",
+  "frame": {
+   "top": 36,
+   "prompt": 37,
+   "bottom": 38,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 39,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-fullscreen-plugin-marketplaces-updated--w82.txt",
+  "frame": {
+   "top": 36,
+   "prompt": 37,
+   "bottom": 38,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 39,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-multiselect-type-something-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-permission-amend-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-permission-amend-no-off-row.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-permission-amend-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplace-detail--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplace-detail--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplace-detail--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplace-detail-remove--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplace-detail-updated--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-add--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-add--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-add--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-add-form--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-pending--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-pending--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-pending--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-pointed--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-pointed--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-pointed--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-updated--w120.txt",
+  "frame": {
+   "top": 12,
+   "prompt": 13,
+   "bottom": 14,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 15,
+    "last": 15
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-updated--w40.txt",
+  "frame": {
+   "top": 35,
+   "prompt": 36,
+   "bottom": 37,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 38,
+    "last": 38
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-plugin-marketplaces-updated--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 16
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2283-shell-after-exit.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-shell-before-first-frame.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-slash-effort.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-slash-export.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-slash-hooks.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-slash-mcp.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-slash-usage.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-trust--w50.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2283-wizard-two-line-question.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2289-switch-model-no--w50.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2289-switch-model-no.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2289-switch-model-yes--w50.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2289-switch-model-yes.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2291-permission-bash-subagent.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-under-long-task-list.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-under-task-list.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-wizard-under-task-list.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-multiselect-checked.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-multiselect-final.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-multiselect-pointer-next.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-multiselect-q1.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-preview-note-attached.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-preview-q1.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-preview-wrapped-label.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-q1-revisit.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-q1.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-q2.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-submit-unanswered.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--wizard-submit.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--workflow-view.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--working-esc-to-interrupt.txt",
+  "frame": {
+   "top": 9,
+   "prompt": 10,
+   "bottom": 11,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 12,
+    "last": 12
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--working.txt",
+  "frame": {
+   "top": 58,
+   "prompt": 59,
+   "bottom": 60,
+   "label": "collie upgrades",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 61,
+    "last": 62
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--agents-screen--w40.txt",
+  "frame": {
+   "top": 14,
+   "prompt": 15,
+   "bottom": 16,
+   "label": null,
+   "text": "describe a task for a new session",
+   "placeholder": false,
+   "status": {
+    "first": 17,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--agents-screen--w82.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "describe a task for a new session",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 18
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--ask-multi-named-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-multi-named-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-multi-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-multi-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-single-named-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-single-named-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-single-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-single-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-named-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-named-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-review-named-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-review-named-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-review-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-review-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--ask-wizard-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--compacting--w82.txt",
+  "frame": {
+   "top": 29,
+   "prompt": 30,
+   "bottom": 31,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 32,
+    "last": 33
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-adversarial--w120.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 18,
+   "label": null,
+   "text": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
+   "placeholder": false,
+   "status": {
+    "first": 19,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-adversarial--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 20,
+   "label": null,
+   "text": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
+   "placeholder": false,
+   "status": {
+    "first": 21,
+    "last": 23
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-adversarial--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 18,
+   "label": null,
+   "text": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
+   "placeholder": false,
+   "status": {
+    "first": 19,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-long-wrapped--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 21,
+   "label": null,
+   "text": "please read the README file and the notes under docs, then tell me in three short bullet points what this lab project contains, without changing any file at all",
+   "placeholder": false,
+   "status": {
+    "first": 22,
+    "last": 24
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-long-wrapped--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 17,
+   "label": null,
+   "text": "please read the README file and the notes under docs, then tell me in three short bullet points what this lab project contains, without changing any file at all",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 19
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-paste-placeholder--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "[Pasted text #1 +28 lines]",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-paste-plus-text--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "[Pasted text #1 +28 lines] summarise this",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-short--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "list the files in src",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--draft-short--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "list the files in src",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--history-search-match--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "read README.md and reply with one short sentence",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-after-turn--w200.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-after-turn--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 19
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-after-turn--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "Nothing obvious follows from a one-off README read, so I'm suggesting nothing.",
+   "placeholder": true,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-fresh--w200.txt",
+  "frame": {
+   "top": 5,
+   "prompt": 6,
+   "bottom": 7,
+   "label": null,
+   "text": "Try \"fix lint errors\"",
+   "placeholder": true,
+   "status": {
+    "first": 8,
+    "last": 9
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-fresh--w40.txt",
+  "frame": {
+   "top": 5,
+   "prompt": 6,
+   "bottom": 7,
+   "label": null,
+   "text": "Try \"fix lint errors\"",
+   "placeholder": true,
+   "status": {
+    "first": 8,
+    "last": 10
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-fresh--w82.txt",
+  "frame": {
+   "top": 5,
+   "prompt": 6,
+   "bottom": 7,
+   "label": null,
+   "text": "Try \"how does <filepath> work?\"",
+   "placeholder": true,
+   "status": {
+    "first": 8,
+    "last": 9
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-fresh-auto-notice--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "Try \"how does <filepath> work?\"",
+   "placeholder": true,
+   "status": {
+    "first": 18,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-fresh-auto-notice--w82.txt",
+  "frame": {
+   "top": 10,
+   "prompt": 11,
+   "bottom": 12,
+   "label": null,
+   "text": "Try \"fix lint errors\"",
+   "placeholder": true,
+   "status": {
+    "first": 13,
+    "last": 14
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-ghost-suggestion--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-labelled-top-border--w41.txt",
+  "frame": {
+   "top": 18,
+   "prompt": 19,
+   "bottom": 20,
+   "label": "Read README.md",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 21,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--idle-labelled-top-border--w83.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": "Read README.md",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 19,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--interrupted--w82.txt",
+  "frame": {
+   "top": 42,
+   "prompt": 43,
+   "bottom": 44,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 45,
+    "last": 46
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--menu-config-panel--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-config-panel-named-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-config-panel-named-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-config-panel-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-config-panel-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-config-panel-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-effort-slider--w132.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-effort-slider--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-effort-slider-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-model-picker--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-model-picker-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-resume-picker--w83.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-resume-picker-named-v2296--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-resume-picker-named-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-resume-picker-v2291--w83.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-resume-picker-v2296--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-rewind--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-rewind-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--menu-status-screen--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--mode-bash--w40.txt",
+  "frame": {
+   "top": 19,
+   "prompt": 20,
+   "bottom": 21,
+   "label": null,
+   "text": "ls -1 src | head -3",
+   "placeholder": false,
+   "status": {
+    "first": 22,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--mode-bash--w82.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "ls -1 src | head -3",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 18
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--mode-bash-v2291--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "ls -1 src | head -3",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 18
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--mode-bash-v2291--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "ls -1 src | head -3",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 16
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--mode-memory--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "# remember the lab uses fake commands",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--permission-bash--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-bash--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-bash-subagent--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-bash-subagent--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-bash-v2291--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-bash-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-dangerous-rm--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-dangerous-rm--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-edit--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-edit--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-webfetch--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-webfetch--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-webfetch-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-write--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-write--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--permission-write-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval--w82--h30.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval-feedback-typed--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval-feedback-typed-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval-v2291--w82--h30.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--plan-approval-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--popup-at-file--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "@doc",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-at-file--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "@doc",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-all--w40.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "/",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-all--w82--h30.txt",
+  "frame": {
+   "top": 11,
+   "prompt": 12,
+   "bottom": 13,
+   "label": null,
+   "text": "/",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-all--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-all-clipped--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/packages",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 19
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-clipped--w120.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/refactor",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-clipped--w200.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/refactor",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-clipped--w60.txt",
+  "frame": {
+   "top": 14,
+   "prompt": 15,
+   "bottom": 16,
+   "label": null,
+   "text": "/refactor",
+   "placeholder": false,
+   "status": {
+    "first": 17,
+    "last": 24
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-clipped--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/refactor",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 23
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-mo--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/mo",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-model-exact--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--popup-slash-nomatch--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/zzqqxx",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 16
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--post-compact--w82.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 19,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--statusline-10row--w82.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "save it to docs/terminal-history.md",
+   "placeholder": true,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--statusline-3row--w82.txt",
+  "frame": {
+   "top": 40,
+   "prompt": 41,
+   "bottom": 42,
+   "label": null,
+   "text": "write the full essay",
+   "placeholder": true,
+   "status": {
+    "first": 43,
+    "last": 46
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--statusline-none--w82.txt",
+  "frame": {
+   "top": 43,
+   "prompt": 44,
+   "bottom": 45,
+   "label": null,
+   "text": "save it to docs/essay.md",
+   "placeholder": true,
+   "status": {
+    "first": 46,
+    "last": 46
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--statusline-numbered-rows--w82.txt",
+  "frame": {
+   "top": 40,
+   "prompt": 41,
+   "bottom": 42,
+   "label": null,
+   "text": "save it to docs/essay.md",
+   "placeholder": true,
+   "status": {
+    "first": 43,
+    "last": 45
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--statusline-prompt-row--w82.txt",
+  "frame": {
+   "top": 41,
+   "prompt": 42,
+   "bottom": 43,
+   "label": null,
+   "text": "save it to docs/essay.md",
+   "placeholder": true,
+   "status": {
+    "first": 44,
+    "last": 46
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--statusline-rule-row--w82.txt",
+  "frame": {
+   "top": 41,
+   "prompt": 42,
+   "bottom": 43,
+   "label": null,
+   "text": "save it to docs/terminal-history.md",
+   "placeholder": true,
+   "status": {
+    "first": 44,
+    "last": 46
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--survey-rating-above-box--w82.txt",
+  "frame": {
+   "top": 191,
+   "prompt": 192,
+   "bottom": 193,
+   "label": null,
+   "text": "git add docs/lab-notes.md and commit",
+   "placeholder": true,
+   "status": {
+    "first": 194,
+    "last": 195
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--tasks-panel--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--tasks-panel--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--tasks-panel-v2291--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--transcript-dialog-lookalike--w82.txt",
+  "frame": {
+   "top": 43,
+   "prompt": 44,
+   "bottom": 45,
+   "label": null,
+   "text": "finish the essay on terminal user interfaces",
+   "placeholder": true,
+   "status": {
+    "first": 46,
+    "last": 47
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--trust-prompt--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--trust-prompt--w82.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude-lab--working-popup-open--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "/ref",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--working-queued-message--w82.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 19,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude-lab--working-spinner--w82.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 17
+   },
+   "footer": null
+  }
+ }
+]

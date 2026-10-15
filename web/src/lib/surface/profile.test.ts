@@ -109,6 +109,7 @@ describe("parseProfile names the failing field", () => {
     ["no ranges at all", ["versions"], [], "versions"],
     ["a broken expression", ["collapse", "pattern"], "[unclosed", "collapse.pattern"],
     ["a prompt anchor with no hole", ["idle", "frame", "prompt", "pattern"], "^❯ .*$", "idle.frame.prompt.pattern"],
+    ["a missing tail bound", ["idle", "frame", "maxTailRows"], undefined, "idle.frame.maxTailRows"],
     ["Escape as the clear key", ["keys", "clear", "key"], "Escape", "keys.clear.key"],
     ["a probe of two characters", ["probe", "char"], "ab", "probe.char"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],

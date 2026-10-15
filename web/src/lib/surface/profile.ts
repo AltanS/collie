@@ -7,8 +7,8 @@
 // (`no-harness-names.test.ts`) keeps it that way. The version comes from the binary, never from the
 // screen; `versionFromOutput` is the one reading rule, shared with whoever runs the version command.
 //
-// Nothing reads a profile yet except its tests. The frame module (spec 03) and the Surface fold
-// (spec 04) read anchors and keys from here; the existing readers and grammars are untouched.
+// The frame module (`frame.ts`, spec 03) reads the `idle` anchors; the Surface fold (spec 04) will
+// read the rest.
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import { compareSemver } from "../semver";
@@ -34,7 +34,9 @@ export interface VersionRange {
 
 /** A frame anchor: a row pattern, the display cells it must span, and the column it starts in. */
 export interface FrameAnchor {
-  /** A regular expression source, matched against the trimmed row text. */
+  /** A regular expression source, matched against the row text with its trailing space cut. The top
+   *  anchor may hold a named group `label` (the words on the edge); the prompt anchor must hold
+   *  `draft` (the hole). */
   readonly pattern: string;
   readonly minCells?: number;
   readonly column: 0;
@@ -58,6 +60,9 @@ export interface Profile {
       /** Spaces in front of a wrapped draft row inside the box. */
       readonly continuationIndent: number;
       readonly maxDraftRows: number;
+      /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
+       *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
+      readonly maxTailRows: number;
     };
     readonly placeholders: {
       readonly texts: readonly string[];
@@ -242,6 +247,7 @@ export function parseProfile(raw: JsonValue): Profile {
       bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null),
       continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
       maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
+      maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
     },
     placeholders: {
       texts: textList(field(placeholderNode, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
@@ -335,6 +341,17 @@ export function loadProfiles(): ReadonlyMap<string, Profile> {
   }
   parsed = out;
   return out;
+}
+
+/**
+ * The profile with this id, for a reader that serves one harness and needs its anchors whatever the
+ * version (the frame module's callers). Throws when no file carries the id: such a reader ships with
+ * its profile, so a missing one is a build mistake, not a state to handle.
+ */
+export function requireProfile(id: string): Profile {
+  const profile = loadProfiles().get(id);
+  if (profile === undefined) throw new ProfileError("id", `no profile file carries the id ${id}`);
+  return profile;
 }
 
 const logged = new Set<string>();
