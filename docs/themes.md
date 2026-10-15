@@ -42,16 +42,23 @@ that the Typeface card wins: choose another face there and it stays, until you p
 
 The mark is the small animal in the header. Each theme draws its own, in the same three states.
 
-<!-- spec 10: confirm animals -->
-Nightwatch draws a night animal, Daylight a sharp-eyed day animal, and Harbour a playful otter. Collie keeps
-the dog.
+Nightwatch draws a horned owl on a branch: at rest it sits still and blinks about every half minute, while
+Collie works it looks left and right with its ear tufts up, and when the connection is lost it sleeps with
+its eyes shut. Daylight draws a brown hare sitting in the sun: at rest it flicks one ear every 20 seconds,
+while Collie works the sun crosses the sky and the hare bounces, and when the connection is lost it sits in
+grey with its head turned away and its ears flat. Harbour draws a sea otter floating on its back with its
+stone: at rest it rises and falls on a slow 48-second swell, while Collie works it juggles the stone, and
+when the connection is lost it dives and only the tip of its tail shows above the water. Collie keeps the
+dog.
+
+The import preview shows the file's mark at rest, once on the light half and once on the dark half.
 
 The three states mean the same under every theme:
 
 | State | What it means |
 | --- | --- |
 | Idle | Connected and at rest. |
-| Loading | Something is being fetched, or the connection has been in trouble for a while. |
+| Loading | Collie is busy with something you asked for, or the connection has been in trouble for a while. |
 | Lost | Collie has given up on the connection. The mark is still and looks asleep. |
 
 With reduced motion on, nothing moves, and loading still looks different from idle. An imported theme may
