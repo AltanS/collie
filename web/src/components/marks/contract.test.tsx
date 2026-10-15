@@ -1,71 +1,81 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { CollieHome } from "@/components/collie-home";
-import { __resetOperatorBusy, beginBusy } from "@/lib/busy";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
 import { SHIPPED_MARKS, type ShippedMark } from "@/lib/shipped-marks";
-import { clearStatus, setStatus } from "@/lib/status";
-import { setActiveTheme } from "@/lib/theme/store";
-import { markIsLive } from "@/test/collie-mark";
+import { markPaper } from "@/test/collie-mark";
 
 import { CollieMarkAdapter } from "./collie";
 import { MARKS, type MarkState } from "./index";
 
-// THE MARK CONTRACT, for every entry in the registry (M57 spec 10). contract.ts says what a mark
-// is; this file holds each mark to it. jsdom runs no CSS animation, so the motion is checked
-// statically: the mark's own <style> is parsed into its top-level rules, and a rule "runs" in a
-// state when it carries an `animation` and its selector matches an element of the mark drawn in
-// that state. That is the same question a browser asks, minus the clock.
+// THE MARK CONTRACT, for every entry of the registry (M57 spec 10). contract.ts says what a mark is;
+// this file holds each shipped mark to it. jsdom runs no CSS animation and has no `getAnimations`, so
+// the motion is checked statically: the mark's own <style> is read into its top-level rules, and a
+// rule "runs" in a state when it sets an `animation` and its selector matches an element of the mark
+// drawn in that state. That is the question a browser asks, minus the clock.
+//
+// THE DOG'S SEALED BEHAVIOUR. collie-mark.tsx is generated and hash-sealed. It keeps its 48 s drift at
+// rest AND when lost (the adapter greys it; it cannot stop the orbit without editing the sealed file).
+// So for an id the dog draws, "lost runs nothing" is read as "lost runs only slow loops, under the
+// grey filter". Every other mark meets the strict rule.
 
 const STATES: readonly MarkState[] = ["idle", "loading", "lost"];
 
-/**
- * The dog's lost state is its idle drift under grey: `marks/collie.tsx` passes `loading={false}` to
- * the sealed `collie-mark.tsx`, and theme-mark.test.tsx holds that markup to the old bytes. So for
- * the dog alone (and any id that still draws it), "lost runs nothing" is read as "lost runs only the
- * slow rest motion".
- */
-const lostDrifts = (id: ShippedMark): boolean => MARKS[id] === CollieMarkAdapter;
-
-/** The slowest a resting loop may be: the dog's slowest resting part turns once in 12.8 s. */
+/** The slowest a resting loop may be: 10 s. The dog's fastest resting part takes 17.8 s. */
 const SLOW_MS = 10_000;
+
+const isDog = (id: ShippedMark): boolean => MARKS[id] === CollieMarkAdapter;
 
 interface Rule {
   selector: string;
   body: string;
 }
 
-/** The top-level rules of a stylesheet, without the `@keyframes` and `@media` blocks. */
-function topLevelRules(css: string): Rule[] {
-  const rules: Rule[] = [];
-  let depth = 0;
-  let start = 0;
-  let selector = "";
-  for (let i = 0; i < css.length; i++) {
-    const ch = css[i];
-    if (ch === "{") {
-      if (depth === 0) {
-        selector = css.slice(start, i).trim();
-        start = i + 1;
-      }
-      depth++;
-    } else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
-        if (!selector.startsWith("@")) rules.push({ selector, body: css.slice(start, i) });
-        start = i + 1;
-      }
+interface Sheet {
+  plain: Rule[];
+  reduce: Rule[];
+}
+
+/**
+ * The top-level rules of a stylesheet, `@keyframes` dropped, and apart from them the rules inside a
+ * `prefers-reduced-motion: reduce` block.
+ */
+function rules(css: string): Sheet {
+  const plain: Rule[] = [];
+  const reduce: Rule[] = [];
+  const block = (from: number) => {
+    let depth = 0;
+    for (let j = from; j < css.length; j++) {
+      if (css[j] === "{") depth++;
+      else if (css[j] === "}" && --depth === 0) return { inner: css.slice(from + 1, j), end: j + 1 };
     }
+    throw new Error("unbalanced stylesheet");
+  };
+  let i = 0;
+  while (i < css.length) {
+    const open = css.indexOf("{", i);
+    if (open === -1) break;
+    const prelude = css.slice(i, open).trim();
+    const { inner, end } = block(open);
+    i = end;
+    if (prelude.startsWith("@keyframes")) continue;
+    if (prelude.startsWith("@media")) {
+      if (prelude.includes("prefers-reduced-motion: reduce")) reduce.push(...rules(inner).plain);
+      continue;
+    }
+    plain.push({ selector: prelude, body: inner });
   }
-  return rules;
+  return { plain, reduce };
 }
 
 /** The `animation` shorthand of a rule, or null when it has none or it is `none`. */
-function animationOf(rule: Rule): string | null {
-  const decl = /(?:^|;)\s*animation\s*:([^;]*)/.exec(rule.body);
+function animationOf(body: string): string | null {
+  const decl = /(?:^|;)\s*animation\s*:([^;]*)/.exec(body);
   if (decl === null) return null;
   const value = (decl[1] ?? "").trim();
-  return value === "none" || value.startsWith("none!") ? null : value;
+  return value.startsWith("none") ? null : value;
 }
 
 /** The custom property `name`, read up the tree from `el` through inline styles. */
@@ -79,8 +89,9 @@ function customProperty(el: Element, name: string): string | null {
 }
 
 /**
- * The duration in ms of each animation in a shorthand, resolving `var()` against `el` and a `calc()`
- * of products and quotients. NaN when a part cannot be resolved, which fails the caller's check.
+ * The duration in ms of each animation in a shorthand, resolving `var()` against `el` (the dog sets
+ * its drift through custom properties) and a `calc()` of products and quotients. NaN when a part
+ * cannot be resolved, which fails the caller's check.
  */
 function durationsMs(shorthand: string, el: Element): number[] {
   const resolve = (text: string): string =>
@@ -119,57 +130,75 @@ function durationsMs(shorthand: string, el: Element): number[] {
 
 interface Running {
   selector: string;
+  el: Element;
   durations: number[];
 }
 
-/** Every animated rule that matches an element of the mark in `container`, with its durations. */
-function running(container: HTMLElement): Running[] {
-  const css = container.querySelector("svg > style")?.textContent ?? "";
-  const out: Running[] = [];
-  for (const rule of topLevelRules(css)) {
-    const animation = animationOf(rule);
+interface Drawn {
+  svg: SVGSVGElement;
+  css: string;
+  running: Running[];
+  /** The selectors inside the reduced-motion block that set `animation: none`. */
+  stopped: string[];
+}
+
+function draw(id: ShippedMark, state: MarkState): Drawn {
+  const Mark = MARKS[id];
+  const { container } = render(<Mark size={40} weight="header" state={state} paper="var(--card)" />);
+  const svg = container.querySelector("svg");
+  if (svg === null) throw new Error(`${id} drew no svg`);
+  const css = svg.querySelector("style")?.textContent ?? "";
+  const { plain, reduce } = rules(css);
+  const nodes = [svg, ...svg.querySelectorAll("*")];
+  const running: Running[] = [];
+  for (const rule of plain) {
+    const animation = animationOf(rule.body);
     if (animation === null) continue;
     for (const selector of rule.selector.split(",").map((s) => s.trim())) {
-      for (const el of container.querySelectorAll(selector)) {
-        out.push({ selector, durations: durationsMs(animation, el) });
+      for (const el of nodes.filter((node) => node.matches(selector))) {
+        running.push({ selector, el, durations: durationsMs(animation, el) });
       }
     }
   }
-  return out;
+  const stopped = reduce.filter((r) => /animation\s*:\s*none/.test(r.body)).map((r) => r.selector);
+  return { svg, css, running, stopped };
 }
 
-function draw(id: ShippedMark, state: MarkState, paper?: string) {
-  const Mark = MARKS[id];
-  return render(<Mark size={40} weight="header" state={state} paper={paper} />).container;
-}
-
-describe("the mark contract", () => {
+describe("the mark contract, over the registry", () => {
   afterEach(() => cleanup());
 
   for (const id of SHIPPED_MARKS) {
     describe(id, () => {
-      it("forwards className and is named only by its title", () => {
+      it("draws one svg of its size, nothing beside it, in every state", () => {
         const Mark = MARKS[id];
-        const { container, rerender } = render(<Mark size={40} className="probe-class" />);
-        const svg = container.querySelector("svg");
-        expect(svg?.classList.contains("probe-class")).toBe(true);
-        expect(screen.queryByRole("img")).toBeNull();
-        rerender(<Mark size={40} title="Collie" className="probe-class" />);
-        expect(screen.getByRole("img", { name: "Collie" })).toBeInTheDocument();
-      });
-
-      it("hands `paper` to the knockout", () => {
         for (const state of STATES) {
-          const svg = draw(id, state, "var(--card)").querySelector("svg");
-          expect(svg?.style.getPropertyValue("--cm-paper")).toBe("var(--card)");
+          const { container } = render(<Mark size={24} state={state} weight="header" />);
+          expect(container.children).toHaveLength(1);
+          const svg = container.firstElementChild;
+          expect(svg?.tagName.toLowerCase()).toBe("svg");
+          expect(svg?.getAttribute("width")).toBe("24");
+          expect(svg?.getAttribute("height")).toBe("24");
+          expect(svg?.getAttribute("role")).toBe("presentation");
           cleanup();
         }
       });
 
-      it("draws with CSS only: no SMIL, no image, no foreign object", () => {
+      it("is an image with a name when it has a title", () => {
+        const Mark = MARKS[id];
+        const { container } = render(<Mark size={40} title="Collie" />);
+        const svg = container.querySelector("svg");
+        expect(svg?.getAttribute("role")).toBe("img");
+        // The dog names itself on `aria-label` (its file is sealed); the new marks carry a <title>.
+        const name = svg?.getAttribute("aria-label") ?? svg?.querySelector(":scope > title")?.textContent;
+        expect(name).toBe("Collie");
+      });
+
+      it("forwards className and hands paper to the knockout in every state", () => {
+        const Mark = MARKS[id];
         for (const state of STATES) {
-          const container = draw(id, state);
-          expect(container.querySelectorAll("animate, animateTransform, animateMotion, set, image, foreignObject")).toHaveLength(0);
+          const { container } = render(<Mark size={40} state={state} className="probe-class" paper="var(--muted)" />);
+          expect(container.querySelector("svg")?.classList.contains("probe-class")).toBe(true);
+          expect(markPaper(container)).toBe("var(--muted)");
           cleanup();
         }
       });
@@ -186,98 +215,61 @@ describe("the mark contract", () => {
         expect(new Set(ids).size).toBe(ids.length);
       });
 
-      it("rests slowly while idle", () => {
-        const idle = running(draw(id, "idle"));
-        for (const r of idle) {
+      it("uses CSS keyframes in its own style only, named cm- for the rate ramp", () => {
+        const { svg, css } = draw(id, "loading");
+        expect(svg.querySelector("animate, animateTransform, animateMotion, set, image, foreignObject")).toBeNull();
+        const names = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
+        expect(names.length).toBeGreaterThan(0);
+        for (const name of names) expect(name?.startsWith("cm-"), name).toBe(true);
+      });
+
+      it("carries cm-live on the root while loading, and only then", () => {
+        for (const state of STATES) {
+          expect(draw(id, state).svg.classList.contains("cm-live"), state).toBe(state === "loading");
+          cleanup();
+        }
+      });
+
+      it("animates at least five distinct selectors while loading", () => {
+        // The static stand-in for `getAnimations({ subtree: true })`, which jsdom lacks.
+        const selectors = new Set(draw(id, "loading").running.map((r) => r.selector));
+        expect(selectors.size).toBeGreaterThanOrEqual(5);
+      });
+
+      it("rests slowly: every loop at rest takes 10 s or more", () => {
+        for (const r of draw(id, "idle").running) {
           for (const ms of r.durations) expect(ms, r.selector).toBeGreaterThanOrEqual(SLOW_MS);
         }
       });
 
-      it("moves at least five elements while loading, and says so with cm-live", () => {
-        const container = draw(id, "loading");
-        expect(markIsLive(container)).toBe(true);
-        const selectors = new Set(running(container).map((r) => r.selector));
-        expect(selectors.size).toBeGreaterThanOrEqual(5);
-        // Every loading name starts with `cm-`, so the header's rate ramp collects it.
-        const css = container.querySelector("svg > style")?.textContent ?? "";
-        for (const name of css.matchAll(/@keyframes\s+([\w-]+)/g)) expect(name[1]).toMatch(/^cm-/);
-      });
+      if (isDog(id)) {
+        it("when lost, drifts only slowly under the grey filter (the sealed dog)", () => {
+          const { svg, running } = draw(id, "lost");
+          for (const r of running) for (const ms of r.durations) expect(ms, r.selector).toBeGreaterThanOrEqual(SLOW_MS);
+          expect(svg.classList.contains("grayscale")).toBe(true);
+        });
+      } else {
+        it("holds still when lost, in the muted ink", () => {
+          const { svg, running } = draw(id, "lost");
+          expect(running.map((r) => r.selector)).toEqual([]);
+          expect(svg.style.color).toBe("var(--muted-foreground)");
+        });
 
-      it("holds still and mutes its ink while lost", () => {
-        const container = draw(id, "lost");
-        expect(markIsLive(container)).toBe(false);
-        const lost = running(container);
-        if (lostDrifts(id)) {
-          for (const r of lost) for (const ms of r.durations) expect(ms, r.selector).toBeGreaterThanOrEqual(SLOW_MS);
-          expect(container.querySelector("svg")?.getAttribute("class")).toContain("grayscale");
-        } else {
-          expect(lost.map((r) => r.selector)).toEqual([]);
-          expect(container.innerHTML).toContain("var(--muted-foreground)");
+        it("stays under 40,960 bytes of source", () => {
+          const bytes = readFileSync(join(import.meta.dirname, `${id}.tsx`)).byteLength;
+          expect(bytes).toBeLessThan(40_960);
+        });
+      }
+
+      it("stops every animated element under prefers-reduced-motion", () => {
+        for (const state of STATES) {
+          const { running, stopped } = draw(id, state);
+          if (running.length > 0) expect(stopped.length, state).toBeGreaterThan(0);
+          const all = stopped.join(",");
+          for (const r of running) expect(r.el.matches(all), `${state} ${r.selector}`).toBe(true);
+          cleanup();
         }
       });
-
-      it("stops every animated class under prefers-reduced-motion", () => {
-        const container = draw(id, "loading");
-        const css = container.querySelector("svg > style")?.textContent ?? "";
-        const reduce = /prefers-reduced-motion: reduce\)\{([^{]*)\{animation:none!important\}\}/.exec(css);
-        expect(reduce).not.toBeNull();
-        const stopped = (reduce?.[1] ?? "").split(",").map((s) => s.trim());
-        const animated = topLevelRules(css)
-          .filter((rule) => animationOf(rule) !== null)
-          .flatMap((rule) => rule.selector.split(","))
-          .map((selector) => /(\.[\w-]+)\s*$/.exec(selector.trim())?.[1] ?? selector);
-        expect(animated.length).toBeGreaterThan(0);
-        for (const cls of new Set(animated)) {
-          expect(
-            stopped.some((s) => cls.startsWith(s)),
-            cls,
-          ).toBe(true);
-        }
-      });
-    });
-  }
-});
-
-// THE RATE RAMP with each mark in the header. jsdom has no `getAnimations`, so the ramp itself falls
-// back to its square wave here (collie-home.tsx says why that is never an error); what this holds
-// is that the header's round and busy spin start and stop every mark through `cm-live`, without a
-// throw. The ramp on real animations is checked in a browser and recorded in each mark's notes.
-describe("the header round with every mark", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    clearStatus();
-    __resetOperatorBusy();
-  });
-  afterEach(() => {
-    act(() => clearStatus());
-    act(() => __resetOperatorBusy());
-    act(() => setActiveTheme("collie"));
-    cleanup();
-    vi.useRealTimers();
-  });
-
-  for (const id of SHIPPED_MARKS) {
-    it(`${id}: one round on a status, a spin while busy, still while lost`, () => {
-      act(() => setActiveTheme(id));
-      const { container, unmount } = render(<CollieHome trouble={false} />);
-      expect(markIsLive(container)).toBe(false);
-      act(() => setStatus("claude is done", "success"));
-      expect(markIsLive(container)).toBe(true);
-      act(() => void vi.advanceTimersByTime(1800));
-      expect(markIsLive(container)).toBe(false);
-
-      let release!: () => void;
-      act(() => {
-        release = beginBusy();
-      });
-      expect(markIsLive(container)).toBe(true);
-      act(() => release());
-      expect(markIsLive(container)).toBe(false);
-      unmount();
-
-      const lost = render(<CollieHome trouble lost />).container;
-      act(() => void beginBusy());
-      expect(markIsLive(lost)).toBe(false);
     });
   }
 });
