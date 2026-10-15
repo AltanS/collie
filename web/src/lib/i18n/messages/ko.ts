@@ -421,6 +421,8 @@ export const ko: Dictionary = {
   "chat.mode.noChat": "{reason} 여기서는 터미널이 유지됩니다.",
   "chat.stream.empty": "메시지를 보내 시작하세요.",
   "chat.stream.working": "계속 작업 중…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "전송 대기 중",
   "chat.pin.label": "내 프롬프트",
   "chat.pin.earlier": "프롬프트는 더 이전에 있습니다 · 이전 로그 불러오기",

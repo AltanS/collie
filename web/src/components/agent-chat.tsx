@@ -802,6 +802,14 @@ export function AgentChat({
     [display, agent?.agent, grammarsOn],
   );
 
+  // A question waits in the terminal that no card can answer (OmO's `? Question pending` banner over a
+  // ready editor, pi/ask.ts). Same parse source and adapter as the probes around it. Chat draws one
+  // status line for it; the terminal view shows the banner itself, so nothing else reads this.
+  const questionPending = useMemo(
+    () => grammarsOn && adapterFor(agent?.agent)?.questionPending?.(splitLines(parseAnsi(display))) === true,
+    [display, agent?.agent, grammarsOn],
+  );
+
   // A user draft stranded on the input box's "❯" line — a message queued while the agent was busy
   // then recalled, which persists across turns. stripChrome peels the box off the mirror so it goes
   // invisible, and (worse) pane.send_text appends to it, corrupting the next send. We surface it to
@@ -2349,6 +2357,9 @@ export function AgentChat({
                   // same reason the status dot dims: a frozen reading must not animate as if it were
                   // arriving.
                   working={agent?.status === "working" && !connecting}
+                  // A question the terminal shows and no card answers (OmO's banner). Withheld on a
+                  // frozen reading, like `working`: it is a statement about the live screen.
+                  questionPending={questionPending && !connecting}
                   // A new pane with nothing to read yet: one line that says how to begin, never the
                   // "no transcript file" reading, which is only true of a pane that should have one.
                   starting={body === "start"}

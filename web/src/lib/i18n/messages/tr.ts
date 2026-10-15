@@ -355,6 +355,8 @@ export const tr: Dictionary = {
   "chat.mode.noChat": "{reason} Terminal burada kalır.",
   "chat.stream.empty": "Başlamak için bir mesaj gönderin.",
   "chat.stream.working": "Hâlâ çalışıyor…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Göndermek için bekleniyor",
   "chat.pin.label": "İsteminiz",
   "chat.pin.earlier": "Soru daha geride · Daha eskileri yükle",

@@ -422,6 +422,8 @@ export const ja: Dictionary = {
   "chat.mode.noChat": "{reason} ここではターミナルのままです。",
   "chat.stream.empty": "メッセージを送信して始めましょう。",
   "chat.stream.working": "処理中…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "送信待ち",
   "chat.pin.label": "あなたのプロンプト",
   "chat.pin.earlier": "プロンプトはさらに前です · 過去のログを読み込む",

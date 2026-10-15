@@ -195,6 +195,17 @@ lifts. Probed live 2026-10-12: a phone send while the banner shows is typed, rea
 submitted, and OmO takes it as the free-text answer (`↳ Color: "Blue please"`), as the banner says.
 Nothing is lost or sent elsewhere, so the banner is left as it is: a ready editor, no card.
 
+Chat used to give no sign of it, because Chat draws the session record and not the screen. Since
+2026-10-15 the adapter answers `questionPending` (`ask.ts`, `piQuestionBanner`): the editor is ready,
+no modal is up, and at most eight rows above the editor's top rule, with no blank row between, a row
+opens with a painted `?` and reads `? Question pending (N unanswered)`. Chat then ends the thread with
+one status line, "A question is waiting in the terminal. Your next message answers it.", with the
+needs-you mark and no control (`session-stream.tsx`). No card and no buttons: the banner prints no
+key a card could send but Enter, and a send is already its answer. The terminal view shows the banner
+itself. Chat has no in-stream way to the terminal view; the pane menu's "Terminal view" row is the
+one there is. Pinned by `pi--omo-v5130-question-banner.txt`, the only screen in the corpus that reads
+so (`ask.test.ts`).
+
 ## Not covered
 
 - The PR 397 extension is not published, so its screens are read from the contributor's captures

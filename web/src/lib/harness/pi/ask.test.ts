@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
 import { promptsEqual, promptsSameIdentity, type PromptModel } from "../prompt-model";
-import { detectPiQuestion, piModalOnScreen, readPiFrame } from "./ask";
+import { detectPiQuestion, piModalOnScreen, piQuestionBanner, readPiFrame } from "./ask";
 import { ruleAbove, tailRule } from "./composer";
 import { keyHintPairs } from "./footer";
 import { buildBlocks } from "../index";
@@ -403,6 +403,36 @@ describe("piModalOnScreen", () => {
     const lines = load("pi--omo-v5130-question-banner.txt");
     expect(piModalOnScreen(lines)).toBe(false);
     expect(piAdapter.composerReady?.(lines)).toBe(true);
+  });
+});
+
+// OmO's banner gets one cue in Chat (session-stream.tsx), never a card: a send answers it.
+describe("OmO's question banner", () => {
+  const banner = raw("pi--omo-v5130-question-banner.txt");
+
+  it("reads as a question pending over a ready editor, and lifts nothing", () => {
+    const lines = linesOf(banner);
+    expect(piQuestionBanner(lines)).toBe(true);
+    expect(piAdapter.questionPending?.(lines)).toBe(true);
+    expect(piAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
+    expect(buildBlocks(lines, { agent: "pi" }).map((block) => block.kind)).toEqual(["raw"]);
+  });
+
+  it("is the only screen in the corpus that reads so", () => {
+    expect(PI_FIXTURES.filter((name) => piAdapter.questionPending?.(load(name)))).toEqual(["pi--omo-v5130-question-banner.txt"]);
+  });
+
+  it("needs the painted `?` and the banner standing on the editor", () => {
+    // The same words typed as plain text: not OmO's banner.
+    const plain = banner.replace("\x1b[1m\x1b[38;2;228;101;225m?\x1b[0m", "?");
+    expect(plain).not.toBe(banner);
+    expect(piQuestionBanner(linesOf(plain))).toBe(false);
+    // A blank row between the banner and the editor: the banner does not stand on it.
+    const apart = banner.replace("or just type your reply", "or just type your reply\x1b[0m\n");
+    expect(apart).not.toBe(banner);
+    expect(piQuestionBanner(linesOf(apart))).toBe(false);
+    // An editor with no banner over it.
+    expect(piQuestionBanner(load("pi--omo-v5130-plain-idle.txt"))).toBe(false);
   });
 });
 

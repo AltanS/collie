@@ -238,6 +238,33 @@ export function piModalOnScreen(lines: StyledLine[]): boolean {
 }
 
 
+/** The banner's first row: `? Question pending (1 unanswered)`, with OmO's countdown after it. */
+const BANNER_TITLE = /^\? Question pending \(\d+ unanswered\)/;
+/** How far above the editor's top rule the banner's first row may stand (five rows in the capture). */
+const MAX_BANNER_ROWS = 8;
+
+/**
+ * OmO's question banner is up over a ready editor (ASK_NOTES.md, "OmO's question banner"): a question
+ * waits in the terminal, and no card can answer it, because the banner prints no keys of its own
+ * beyond Enter and a free-text reply. A send while it shows is OmO's free-text answer, so the editor
+ * stays ready and this is a cue only, never a card. Read from pi--omo-v5130-question-banner.txt:
+ *   - the editor is on screen and no pi modal is (the banner is not a dialog);
+ *   - at most eight rows above the editor's top rule, a row that opens with a painted `?` and reads
+ *     `? Question pending (N unanswered)`;
+ *   - no blank row between it and the top rule: the banner stands on the editor as one block.
+ */
+export function piQuestionBanner(lines: StyledLine[]): boolean {
+  const editor = locateComposer(lines);
+  if (editor === null || piModalOnScreen(lines)) return false;
+  for (let r = editor.top - 1; r >= 0 && editor.top - r <= MAX_BANNER_ROWS; r--) {
+    const text = lineText(lines[r]!).trimEnd();
+    if (text === "") return false;
+    const first = lines[r]!.segments.find((s) => s.text.trim() !== "");
+    if (BANNER_TITLE.test(text) && first !== undefined && first.text.trim() === "?" && first.fg !== undefined) return true;
+  }
+  return false;
+}
+
 /** Every visible segment painted: a hint row is dim, and pi never paints what the operator typed. */
 function paintedRow(line: StyledLine): boolean {
   const visible = line.segments.filter((s) => s.text.trim() !== "");

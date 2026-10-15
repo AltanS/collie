@@ -474,6 +474,7 @@ export const en = {
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
   "chat.stream.working": "Still working…",
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Waiting to send",
   "chat.pin.label": "Your prompt",
   "chat.pin.earlier": "Asked further back · Load older",
