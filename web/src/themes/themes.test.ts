@@ -88,6 +88,37 @@ describe("the theme collie equals index.css", () => {
   });
 });
 
+// The gate for every shipped theme other than `collie` (M57 spec 06). A shipped theme is complete:
+// both halves, all 43 tokens each, so nothing on screen comes from the default by accident. And it
+// passes every check of the contrast report, including the dark destructive pair that `collie`
+// keeps as its one recorded failure.
+describe("the shipped themes pass the gate", () => {
+  const others = readdirSync(resolve(web, "src/themes"))
+    .filter((name) => name.endsWith(".json") && name !== "collie.json")
+    .map((name) => name.slice(0, -".json".length))
+    .toSorted();
+  const collie = shipped("collie");
+
+  it("finds at least one shipped theme besides collie", () => {
+    expect(others.length).toBeGreaterThan(0);
+  });
+
+  it.each(others)("%s has both halves, every token in each, and a shipped face", (id) => {
+    const theme = shipped(id);
+    expect(theme.id).toBe(id);
+    expect(theme.author).toBe("Collie");
+    expect(Object.keys(theme.light ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(Object.keys(theme.dark ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(SHIPPED_FONTS).toContain(theme.fonts?.ui);
+  });
+
+  it.each(others)("%s passes every check of the contrast report in both halves", (id) => {
+    const report = contrastReport(shipped(id), collie);
+    expect(report.filter((f) => !f.pass)).toEqual([]);
+    expect(new Set(report.map((f) => f.half))).toEqual(new Set(["light", "dark"]));
+  });
+});
+
 describe("themes.css", () => {
   const dir = resolve(web, "src/themes");
   const files = readdirSync(dir)
