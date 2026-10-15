@@ -214,8 +214,9 @@ export const es: Dictionary = {
   "settings.typeface.note.system": "Fuente del sistema del dispositivo. Sin descargas de red.",
   "settings.typeface.note.grotesk": "Tipografía propia de Collie, diseñada a juego con el logotipo.",
   "settings.typeface.note.aldrich": "Solo incluye un grosor, por lo que el texto en negrita se muestra igual que el normal.",
-  "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
   "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Añadida por el operador de este collie.",
 
   // --- settings.fonts ---

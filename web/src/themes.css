@@ -46,6 +46,52 @@
   --host-9: light-dark(oklch(0.44 0.084 172), oklch(0.78 0.15 172));
 }
 
+:root[data-theme="harbour"] {
+  --background: light-dark(oklch(0.95 0.01 235), oklch(0.21 0.018 250));
+  --foreground: light-dark(oklch(0.26 0.025 250), oklch(0.93 0.012 240));
+  --card: light-dark(oklch(0.985 0.004 235), oklch(0.255 0.02 252));
+  --card-foreground: light-dark(oklch(0.26 0.025 250), oklch(0.93 0.012 240));
+  --chrome: light-dark(oklch(0.915 0.012 240), oklch(0.255 0.02 252));
+  --primary: light-dark(oklch(0.47 0.075 192), oklch(0.78 0.07 190));
+  --primary-foreground: light-dark(oklch(0.985 0.004 235), oklch(0.21 0.018 250));
+  --control-on: light-dark(oklch(0.885 0.045 215), oklch(0.34 0.045 220));
+  --control-on-foreground: light-dark(oklch(0.37 0.08 225), oklch(0.88 0.05 215));
+  --secondary: light-dark(oklch(0.915 0.012 240), oklch(0.3 0.022 252));
+  --secondary-foreground: light-dark(oklch(0.28 0.025 250), oklch(0.93 0.012 240));
+  --muted: light-dark(oklch(0.915 0.012 240), oklch(0.3 0.022 252));
+  --muted-foreground: light-dark(oklch(0.47 0.008 240), oklch(0.72 0.012 240));
+  --accent: light-dark(oklch(0.89 0.015 240), oklch(0.31 0.024 252));
+  --accent-foreground: light-dark(oklch(0.26 0.025 250), oklch(0.93 0.012 240));
+  --destructive: light-dark(oklch(0.52 0.16 22), oklch(0.68 0.14 20));
+  --destructive-foreground: light-dark(oklch(0.985 0.004 235), oklch(0.2 0.018 250));
+  --border: light-dark(oklch(0.885 0.014 240), oklch(0.3 0.02 250));
+  --input: light-dark(oklch(0.885 0.014 240), oklch(0.33 0.02 250));
+  --rule: light-dark(oklch(0.82 0.02 245), oklch(0.4 0.025 250));
+  --ring: light-dark(oklch(0.56 0.08 195), oklch(0.7 0.07 195));
+  --status-blocked: light-dark(oklch(0.47 0.16 20), oklch(0.72 0.14 20));
+  --status-working: light-dark(oklch(0.47 0.1 72), oklch(0.83 0.12 80));
+  --status-done: light-dark(oklch(0.46 0.11 145), oklch(0.78 0.12 140));
+  --status-idle: light-dark(oklch(0.46 0.05 280), oklch(0.77 0.05 280));
+  --status-unknown: light-dark(oklch(0.42 0.045 280), oklch(0.71 0.05 280));
+  --status-info: light-dark(oklch(0.46 0.11 225), oklch(0.8 0.09 225));
+  --syntax-keyword: light-dark(oklch(0.47 0.14 258), oklch(0.76 0.11 258));
+  --syntax-string: light-dark(oklch(0.46 0.085 188), oklch(0.8 0.08 188));
+  --syntax-constant: light-dark(oklch(0.48 0.13 325), oklch(0.77 0.09 325));
+  --syntax-property: light-dark(oklch(0.48 0.14 50), oklch(0.78 0.1 55));
+  --syntax-entity: light-dark(oklch(0.46 0.1 95), oklch(0.85 0.1 90));
+  --syntax-comment: light-dark(oklch(0.47 0.025 265), oklch(0.68 0.04 265));
+  --host-0: light-dark(oklch(0.46 0.085 200), oklch(0.8 0.1 200));
+  --host-1: light-dark(oklch(0.48 0.12 48), oklch(0.76 0.12 48));
+  --host-2: light-dark(oklch(0.46 0.17 302), oklch(0.74 0.15 302));
+  --host-3: light-dark(oklch(0.48 0.12 112), oklch(0.84 0.14 112));
+  --host-4: light-dark(oklch(0.48 0.16 352), oklch(0.77 0.14 352));
+  --host-5: light-dark(oklch(0.43 0.075 172), oklch(0.74 0.11 172));
+  --host-6: light-dark(oklch(0.43 0.16 255), oklch(0.68 0.14 255));
+  --host-7: light-dark(oklch(0.43 0.17 326), oklch(0.69 0.16 326));
+  --host-8: light-dark(oklch(0.51 0.09 240), oklch(0.86 0.07 240));
+  --host-9: light-dark(oklch(0.43 0.16 278), oklch(0.66 0.15 278));
+}
+
 :root[data-theme="nightwatch"] {
   --background: light-dark(oklch(0.945 0.012 70), oklch(0 0 0));
   --foreground: light-dark(oklch(0.2 0.02 55), oklch(0.9 0.012 80));

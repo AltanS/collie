@@ -72,11 +72,12 @@ export function fontClass(font: string): string {
   if (font === "grotesk") return "font-grotesk";
   if (font === "plex") return "font-plex";
   if (font === "geist") return "font-geist";
+  if (font === "atkinson") return "font-atkinson";
   if (font.startsWith(OPERATOR_FONT_PREFIX)) return "font-operator";
   return "";
 }
 
-const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-operator"] as const;
+const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-atkinson", "font-operator"] as const;
 
 function load(): DesignPrefs {
   try {

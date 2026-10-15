@@ -115,8 +115,10 @@ describe("the shipped themes", () => {
     expect(theme.author).toBe("Collie");
   });
 
-  it.each(ids)("%s passes every check of the contrast report", (id) => {
-    expect(contrastReport(shipped(id), collie).filter((f) => !f.pass)).toEqual([]);
+  it.each(ids)("%s passes every check of the contrast report in both halves", (id) => {
+    const report = contrastReport(shipped(id), collie);
+    expect(report.filter((f) => !f.pass)).toEqual([]);
+    expect(new Set(report.map((f) => f.half))).toEqual(new Set(["light", "dark"]));
   });
 });
 

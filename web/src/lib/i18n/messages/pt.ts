@@ -173,8 +173,9 @@ export const pt: Dictionary = {
   "settings.typeface.note.system": "A fonte do seu telefone. Não baixa nada.",
   "settings.typeface.note.grotesk": "A voz do próprio Collie, desenhada para combinar com a marca.",
   "settings.typeface.note.aldrich": "Um peso só, então o texto em negrito fica igual ao normal.",
-  "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
   "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Adicionada pelo operador deste collie.",
   "settings.fonts.title": "Fonte do terminal",
   "settings.fonts.description": "O espelho do terminal e o campo de rascunho, neste dispositivo.",

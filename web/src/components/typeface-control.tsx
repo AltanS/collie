@@ -1,7 +1,7 @@
 import { ChevronDown, CaseSensitive } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
-import { DEFAULT_FONT, SHIPPED_FONTS, isDesignFont, setDesignFont, useDesignPrefs } from "@/lib/design";
+import { DEFAULT_FONT, SHIPPED_FONTS, isDesignFont, isShippedFont, setDesignFont, useDesignPrefs } from "@/lib/design";
 import { findOperatorFont, operatorFontValue, type OperatorFontFace } from "@/lib/operator-fonts";
 import { useOperatorFonts } from "@/lib/operator-config";
 import { useLocale } from "@/hooks/use-locale";
@@ -34,6 +34,7 @@ const FAMILY_LABELS = {
   aldrich: "Aldrich",
   plex: "IBM Plex Sans",
   geist: "Geist",
+  atkinson: "Atkinson Hyperlegible Next",
 } satisfies Record<Exclude<(typeof SHIPPED_FONTS)[number], "system">, string>;
 
 const NOTE_KEYS = {
@@ -42,7 +43,8 @@ const NOTE_KEYS = {
   aldrich: "settings.typeface.note.aldrich",
   plex: "settings.typeface.note.plex",
   geist: "settings.typeface.note.geist",
-} as const;
+  atkinson: "settings.typeface.note.atkinson",
+} as const satisfies Record<(typeof SHIPPED_FONTS)[number], `settings.typeface.note.${string}`>;
 
 /** Settings card: the app's own typeface. Device-local, like theme and language. */
 export function TypefaceControl() {
@@ -134,8 +136,6 @@ function resolveShown(font: string, faces: readonly OperatorFontFace[]): string 
 }
 
 function noteKey(font: string): (typeof NOTE_KEYS)[keyof typeof NOTE_KEYS] | "settings.typeface.note.operator" {
-  if (font === "system" || font === "aldrich" || font === "grotesk" || font === "plex" || font === "geist") {
-    return NOTE_KEYS[font];
-  }
+  if (isShippedFont(font)) return NOTE_KEYS[font];
   return "settings.typeface.note.operator";
 }

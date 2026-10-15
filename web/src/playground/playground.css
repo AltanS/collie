@@ -5,14 +5,14 @@
    straight from the Google Fonts CDN. They stay here, never in index.css: index.css names exactly
    what the service worker caches (lib/sw-routes.ts UI_FONT_URLS, pinned by fonts.test.ts), and a CDN
    URL has no business in that list. They also have no metric-matched fallback twins, unlike the
-   self-hosted faces below, so their swap moves layout — fine in a playground, disqualifying in the
+   self-hosted faces in index.css, so their swap moves layout: fine in a playground, disqualifying in the
    app until one wins and gets the build-ui-font.sh treatment.
 
    ALDRICH USED TO BE ON THIS LINE AND HAS LEFT IT. It won: it is a shipped face now (ADR 0033), so
    the playground must compare the SAME BYTES the app renders — the subset, at the app's own ranges,
    with the computed twin — and not a differently-subset CDN copy that happens to share a name. That
-   is the whole point of auditioning here rather than in the app. Its @font-face is below, beside
-   the other self-hosted faces. */
+   is the whole point of auditioning here rather than in the app. Its @font-face is in index.css,
+   beside the other self-hosted faces. */
 @import url("https://fonts.googleapis.com/css2?family=Audiowide&family=Nova+Round&family=Orbitron:wght@400..700&display=swap");
 
 /* A stage holds a component that paints a whole screen. `<Stage dvh>` adds this class, and the rule

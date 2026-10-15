@@ -45,6 +45,7 @@ describe("TypefaceControl", () => {
       "Aldrich",
       "IBM Plex Sans",
       "Geist",
+      "Atkinson Hyperlegible Next",
     ]);
     expect(select).toHaveValue("aldrich");
     // The default wears no class — that is what keeps JavaScript off the first-paint path for a
@@ -100,6 +101,7 @@ describe("TypefaceControl", () => {
       "Aldrich",
       "IBM Plex Sans",
       "Geist",
+      "Atkinson Hyperlegible Next",
       "Departure Mono",
     ]);
 

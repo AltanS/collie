@@ -11,9 +11,11 @@
 #     offers exactly these, and web/src/index.css declares exactly these. index.css MIRRORS the
 #     shipped list: a face is shipped when it has an @font-face block, a computed fallback twin and
 #     an entry in UI_FONT_URLS (web/src/lib/sw-routes.ts). Today: aldrich (the default),
-#     space-grotesk, ibm-plex-sans (the Nightwatch theme's face, M57) and geist (the daylight
-#     theme's face, M57). Adding one means all four edits, and web/src/fonts.test.ts fails until
-#     they agree.
+#     space-grotesk, and three theme faces from M57: ibm-plex-sans (Nightwatch), geist (daylight)
+#     and atkinson-hyperlegible-next (harbour). Adding one means all four edits, and
+#     web/src/fonts.test.ts fails until they agree. Atkinson's google/fonts copy is byte for byte the
+#     Braille Institute's upstream release (googlefonts/atkinson-hyperlegible-next at 7925f50f,
+#     sha256 5a455d1c...); the committed subset was cut from that upstream file.
 #   * PLAYGROUND-ONLY auditions are candidates on disk that nothing in the app names. They exist so
 #     the "UI typeface" playground card can put a face beside the shipped ones at real sizes before
 #     anyone argues for it. Today: none; Plex and Geist began here and now ship. An audition that
@@ -69,6 +71,7 @@ CANDIDATES=(
   "aldrich:Aldrich-Regular.ttf:1.002:aldrich:static"
   "ibmplexsans:IBMPlexSans[wdth,wght].ttf:3.201:ibm-plex-sans:wdth=100"
   "geist:Geist[wght].ttf:1.800:geist:"
+  "atkinsonhyperlegiblenext:AtkinsonHyperlegibleNext[wght].ttf:2.001:atkinson-hyperlegible-next:"
 )
 
 # What the app prints. Basic Latin + Latin-1 + Latin-Ext-A (German and Spanish copy, and any Latin
@@ -166,7 +169,7 @@ def metrics(path, loc):
 refs = {"Arial": metrics(f"{work}/arimo.ttf", {"wght": 400}),
         "Roboto": metrics(f"{work}/roboto.ttf", {"wght": 400, "wdth": 100})}
 print(f"  reference spread: Roboto is {refs['Roboto'][0]/refs['Arial'][0]*100 - 100:+.2f}% vs Arial")
-for slug in ("space-grotesk", "aldrich", "ibm-plex-sans", "geist"):
+for slug in ("space-grotesk", "aldrich", "ibm-plex-sans", "geist", "atkinson-hyperlegible-next"):
     width, asc, desc, gap = metrics(f"{work}/{slug}-inst.ttf", {"wght": 400})
     sa = width / refs["Arial"][0]
     print(f"  {slug:14}  size-adjust: {sa*100:.2f}%  "
