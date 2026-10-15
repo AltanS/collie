@@ -148,7 +148,8 @@ Collie dials a socket only when the whole path is private. The usual causes are 
 easy to miss: `/var/run` links to `/run` on many Linux hosts, so a path that starts `/var/run/`
 fails with `/var/run is a symlink`. Use the real path.
 
-Run `chmod 700` on the socket's own folder, or move the socket under `$XDG_RUNTIME_DIR`. A program
+Run `chmod 700` on the socket's own folder, or move the socket under `$XDG_RUNTIME_DIR`. The rules
+are in [Security of a program](durable-programs-security.md#the-socket-transport). A program
 built with the SDK refuses to start in an existing folder whose mode is not `0700`, and says so on
 its own.
 
@@ -185,8 +186,8 @@ You see the program stop at start with `the descendant check needs Bun on Linux 
 a socket; pass callerCheck: "off" to run without it`.
 
 The check needs Bun on Linux. On macOS, run the program with Node, or pass `callerCheck: "off"` to
-`openCollie` and read what the check protects first. The error comes from the program. Collie is not
-involved.
+`openCollie` and read [what the check protects](durable-programs-security.md#what-a-program-can-and-cannot-do)
+first. The error comes from the program. Collie is not involved.
 
 ### A question comes back after a restart
 

@@ -84,6 +84,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **A program has a security page.** It says what a program can and cannot do, the tap rule and the descendant check that Node cannot run, the path walk of a private socket, the token and its rotation, billing and the outbound call, the cleaning of a program's text and the audit events. Security links it and lists the outbound call.
 - **A program that does not show up has a troubleshooting page.** It opens with `collie durable list`, `collie doctor` and `collie logs`, lists every reason a program shows as unreachable with its fix, explains each doctor row and its skip rule, and walks the cases: a folder with the wrong mode, a typo in `sources.json`, a refused token, a flip that takes two reads and a lead older than 1.21.0.
 - **The Programs quickstart states its platforms as a fact about the program.** The opening line reads "A program runs on Linux or macOS", so no page still opens with the old Linux-only requirement.
 - **The durable example attaches to the Collie you already run.** Its README drops the second instance it used to ask for and runs `collie durable attach` instead, keeps the `.env` form for a Collie with no terminal, and its crew section starts from an attached program. Two code comments now name the four `collie durable list` states and the six doctor rows.
