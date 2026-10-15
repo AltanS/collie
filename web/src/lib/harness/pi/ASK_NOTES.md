@@ -206,6 +206,21 @@ itself. Chat has no in-stream way to the terminal view; the pane menu's "Termina
 one there is. Pinned by `pi--omo-v5130-question-banner.txt`, the only screen in the corpus that reads
 so (`ask.test.ts`).
 
+## NO_COLOR and monochrome panes
+
+The editor, the dialog footer and the picker hint row are told by paint (`composer.ts`
+`paintedStatus`, `ask.ts` `styledRow` and `paintedRow`), because the paint is what keeps a dialog
+quoted in prose, or a draft that reads like key hints, from being read as pi's own. So a pane with no
+colour would read as nothing. Captured 2026-10-15 in the tap rig: stock pi 0.87.1 and OmO 5.1.30 each
+had `NO_COLOR=1` in its process environment (checked in `/proc/<pid>/environ`) and painted every row
+as before, 24-bit colour on the rules, the status rows, the footer and the options. Neither honours
+the variable: pi bundles chalk's colour check, which reads `FORCE_COLOR` and the terminal, and draws
+its theme colours itself. The four captures (`pi--v0871-nocolor-*`, `pi--omo-v5130-nocolor-*`) read
+exactly as the colour ones, and the tests pin that. No monochrome pi screen exists to read, so the
+readers keep the paint rule and fall back to nothing: a shape-only fallback would have no capture to
+prove it and would loosen the quoted-dialog rule for a screen nobody has seen. If a pi version starts
+to honour `NO_COLOR`, capture it first, then read it.
+
 ## Not covered
 
 - The PR 397 extension is not published, so its screens are read from the contributor's captures

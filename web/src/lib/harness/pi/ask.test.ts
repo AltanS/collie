@@ -72,6 +72,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // The same capture cut where an 18-row pane cuts it: the bottom rule and the status rows are off
   // the screen, the footer is not (fixtures README, derived).
   ["pi--omo-v5130-panel-question-cut.txt", "digit"],
+  // Run with NO_COLOR=1, which neither pi 0.87.1 nor OmO 5.1.30 honours: the same paint, the same read.
+  ["pi--v0871-nocolor-question.txt", "walk"],
+  ["pi--omo-v5130-nocolor-question.txt", "digit"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
