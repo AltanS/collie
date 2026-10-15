@@ -95,5 +95,6 @@
   },
   "fonts": {
     "ui": "plex"
-  }
+  },
+  "mark": "nightwatch"
 }
