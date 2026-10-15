@@ -358,7 +358,7 @@ The package has its own version, apart from Collie's, and names the wire version
 Collie speaks one wire version and accepts the one before it for one minor release after a new one
 ships. When a Collie speaks none of your versions, the core writes one line through `warn`, once per
 version, for example
-`collie: Collie speaks wire v2, this program speaks v1; update one of them`. The phone says the mismatch
+`collie: Collie speaks wire v2, this program speaks v1. Update the program's SDK, or Collie.` The phone says the mismatch
 on the program's home, in Collie's own words. Update the older side.
 
 The package is published under the npm dist-tag experimental, never latest. If the durable wire goes

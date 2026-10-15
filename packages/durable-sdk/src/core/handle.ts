@@ -260,7 +260,7 @@ function versionRefusal(state: CoreState, version: number | undefined): Pick<Pro
 
 /** The line a program writes for a refusal: Collie's version first, then the program's own, as Collie's notice row words it. */
 export function versionLine(refusal: VersionRefusal): string {
-  return `Collie speaks wire v${refusal.collie[1]}, this program speaks v${refusal.program[1]}; update one of them`;
+  return `Collie speaks wire v${refusal.collie[1]}, this program speaks v${refusal.program[1]}. Update the program's SDK, or Collie.`;
 }
 
 export function hello(state: CoreState): Hello {
