@@ -88,6 +88,35 @@ describe("the theme collie equals index.css", () => {
   });
 });
 
+// The shipped themes other than collie are new looks, so they owe the gate everything: both halves,
+// every token (a shipped theme is complete and is never filled from the default), a bundled face,
+// and every contrast check passed. collie keeps its one recorded failure above and nothing else.
+describe("the shipped themes pass the gate", () => {
+  const others = readdirSync(resolve(web, "src/themes"))
+    .filter((name) => name.endsWith(".json") && name !== "collie.json")
+    .toSorted()
+    .map((name) => name.slice(0, -".json".length));
+  const collie = shipped("collie");
+
+  it("finds a theme besides collie", () => {
+    expect(others.length).toBeGreaterThan(0);
+  });
+
+  it.each(others)("%s is complete in both halves and names a shipped face", (id) => {
+    const theme = shipped(id);
+    expect(theme.id).toBe(id);
+    expect(theme.author).toBe("Collie");
+    expect(Object.keys(theme.light ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(Object.keys(theme.dark ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(SHIPPED_FONTS).toContain(theme.fonts?.ui);
+  });
+
+  it.each(others)("%s passes every contrast check in both halves", (id) => {
+    const fails = contrastReport(shipped(id), collie).filter((f) => !f.pass);
+    expect(fails).toEqual([]);
+  });
+});
+
 describe("themes.css", () => {
   const dir = resolve(web, "src/themes");
   const files = readdirSync(dir)
