@@ -275,6 +275,37 @@ const GROK: readonly AgentCommand[] = [
   { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
+// ── Muse Code ────────────────────────────────────────────────────────────────
+// Sourced from Muse Code's own docs (dev.meta.ai/docs/muse-code/interactive) and checked against
+// Muse 1.4.7's own /help and slash completion, which win where they disagree: the docs' /models is
+// /model there. Muse has more commands than these 23 (/plan, /permissions, /quit, …); the rest are
+// reachable by typing, as on every catalog.
+const MUSE: readonly AgentCommand[] = [
+  { command: "/compact", description: "Summarize prior context to reclaim room", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/new", description: "Start a fresh session, keeping the terminal scrollback", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/clear", description: "Start a fresh session and wipe the scrollback", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/model", description: "Choose the model mid-session", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/resume", description: "Pick a retained session in this workspace to resume", takesArg: true, argHint: "[--last]", common: true, dangerous: false },
+  { command: "/help", description: "Show the full set of commands in this workspace", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/effort", description: "Change the reasoning effort mid-session", takesArg: true, argHint: "[level]", common: false, dangerous: false },
+  { command: "/name", description: "Show or rename this session", takesArg: true, argHint: "[name]", common: false, dangerous: false },
+  { command: "/fork", description: "Branch a new session from the latest message; optional first prompt", takesArg: true, argHint: "[prompt]", common: false, dangerous: false },
+  { command: "/rewind", description: "Branch from an earlier user message into a new session", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/side", description: "Open a side conversation; optional first message", takesArg: true, argHint: "[prompt]", common: false, dangerous: false },
+  { command: "/btw", description: "Open a side conversation with this message (alias /side)", takesArg: true, argHint: "<prompt>", common: false, dangerous: false },
+  { command: "/recap", description: "Show a summary of recent activity", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/export", description: "Export the transcript (.txt) or the full trajectory (JSON)", takesArg: true, argHint: "[transcript|trajectory]", common: false, dangerous: false },
+  { command: "/copy", description: "Copy a response, code block or ran command to the clipboard", takesArg: true, argHint: "[N]", common: false, dangerous: false },
+  { command: "/goal", description: "Set, show, edit, pause, resume, or clear the session goal", takesArg: true, argHint: "[objective|edit|pause|resume|clear]", common: false, dangerous: false },
+  { command: "/loop", description: "Schedule a recurring prompt (interval or 5-field cron)", takesArg: true, argHint: "[interval] <prompt>", common: false, dangerous: false },
+  { command: "/tasks", description: "Open the Tasks drawer for background work and subagents", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/subagents", description: "View running and past subagents", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/stop", description: "Stop background tasks and terminals (not the turn)", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/workflows", description: "Browse active and completed multi-agent workflow runs", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/keymap", description: "Show keyboard shortcuts", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/theme", description: "Set the terminal theme", takesArg: false, argHint: "", common: false, dangerous: false },
+];
+
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
@@ -285,6 +316,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["opencode", OPENCODE],
   ["omp", OMP],
   ["grok", GROK],
+  ["muse", MUSE],
   // Herdr reports this agent under both names, and canonicalAgent() folds neither onto the other,
   // so both keys are filed — one catalog, two spellings.
   ["agy", AGY],
