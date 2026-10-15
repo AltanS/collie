@@ -114,7 +114,7 @@ class FakeWorktreeMux {
     this.texts.push([paneId, text]);
     return Promise.resolve(this.failText ? muxRefused("pane is gone") : muxAck());
   }
-  sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+  writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
     this.keys.push([paneId, keys]);
     return Promise.resolve(muxAck());
   }

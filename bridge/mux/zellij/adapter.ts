@@ -379,7 +379,7 @@ export class ZellijMux implements MuxAdapter {
    * cannot express sends nothing at all, because the keys of one call are a sequence and delivering
    * its front half leaves the pane somewhere the caller cannot reason about (MUX_CONTRIBUTING.md).
    */
-  async sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+  async writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
     const translated: string[] = [];
     for (const key of keys) {
       const result = toZellijKey(key);

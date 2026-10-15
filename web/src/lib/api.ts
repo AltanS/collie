@@ -15,6 +15,8 @@ import {
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject, type JsonObject } from "./json";
+import { readSendReply, type SendReply } from "./send-protocol";
+import type { SendRequestBody } from "./surface/send";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { fileVersionOf } from "./file-image-cache";
@@ -1359,6 +1361,20 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
   if (result === null) throw new ApiError(`The ${route} route sent a body this phone cannot read.`, 502);
   if (result.outcome === "ok") stampSend(paneId);
   return result;
+}
+
+/**
+ * POST /api/send: one Send Protocol request (M56 spec 05), on a bridge that marks the pane with
+ * `sendProtocol`. Every outcome is a 200 with the answer; a refusal is an answer, not an error. The
+ * phone keeps the id for a retry of the same intent, so a lost answer never sends twice.
+ */
+export async function postSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
+  stampSend(body.pane);
+  const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+  const reply = readSendReply(got);
+  if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  return reply;
 }
 
 /**

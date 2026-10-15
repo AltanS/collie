@@ -1,0 +1,52 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mwrite a long essay of about 800 words on the history of terminal user [0m[48;2;55;55;55m          [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55minterfaces[0m[48;2;55;55;55m                                                                      [0m
+  
+[0m[38;2;255;255;255m●[0m [0m[1m[3m[4mThe History of Terminal User Interfaces[0m
+
+  The terminal user interface, or TUI, is among the longest-lived ideas in
+  computing. It has been declared obsolete many times and keeps returning. Its
+  history shows how people have tried to talk to machines using little more than a
+  grid of characters.
+
+  [0m[1mThe Teletype Era[0m
+
+  Before screens, there were printers. In the 1960s, interactive computing usually
+  meant a teletypewriter such as the ASR-33. A user typed a command, the machine
+  clicked and clattered, and the reply was printed on paper. The interface was a
+  scrolling transcript. Nothing could be erased, redrawn, or repositioned, so
+  interaction was linear. Many conventions we still use come from this period. The
+  line-oriented shell, the idea of "standard input and output," and even the name
+  "tty" all descend from these devices.
+
+  [0m[1mGlass Teletypes and Addressable Cursors[0m
+
+  The arrival of cathode-ray tube terminals in the 1970s changed what was
+  possible. Early "glass teletypes" merely imitated paper, but terminals such as
+  the DEC VT52 (1975) and later the VT100 (1978) added cursor addressing. A
+  program could now place text anywhere on the screen by sending special character
+  sequences. The VT100 popularized what became ANSI escape codes. These sequences
+  move the cursor, clear regions, and set attributes such as bold, underline, and
+  reverse video. The ANSI X3.64 standard codified them, and today's terminal
+  emulators still honor them.
+
+  The folder trust prompt looks like this:
+  ❯ 1. Yes, proceed
+    2. No, exit
+  Enter to confirm · Esc to exit
+
+  This made full-screen programs possible. Bill Joy's [0m[38;2;177;185;249mvi [0m(1976) was written for
+  terminals like these, and [0m[38;2;177;185;249memacs [0mfollowed in various forms. Their modal editing
+  and keybindings reflect an environment with limited bandwidth and no mouse.
+  Games joined in
+[0m[38;2;153;153;153m  ⎿  Interrupted · What should Claude do instead?[0m
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ 
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153msonnet · lab-project · main · ctx 12%[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← 1 agent[0m

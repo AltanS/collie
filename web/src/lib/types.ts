@@ -3,6 +3,7 @@
 
 import type { ApiErrorCode, ApiErrorDetail } from "@/lib/api-error-codes";
 import { t } from "@/lib/i18n";
+import type { Surface } from "@/lib/surface/surface";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -196,6 +197,14 @@ export interface AgentView {
    * never markup: every label came from a program, and an icon it names that this list lacks draws none.
    */
   actions?: PaneAction[];
+  /**
+   * The pane's input surface as the bridge reads it from the screen (M56 spec 04). Mirrors
+   * `PaneWire.surface` in bridge/types.ts. Present only while the bridge runs Surface shadow mode;
+   * absent on an older bridge and with the mode off. Nothing here decides a send by it yet.
+   */
+  surface?: Surface;
+  /** Mirrors `PaneWire.sendProtocol` (M56 spec 05): the composer sends through `POST /api/send`. */
+  sendProtocol?: true;
 }
 
 /** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */

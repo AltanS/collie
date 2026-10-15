@@ -149,7 +149,7 @@ class StubAdapter implements MuxAdapter {
     return Promise.resolve(muxAck());
   }
 
-  sendKeys(_paneId: string, _keys: readonly string[]) {
+  writeKeys(_paneId: string, _keys: readonly string[]) {
     this.calls.push("sendKeys");
     return Promise.resolve(muxAck());
   }
@@ -262,7 +262,7 @@ describe("withAgentHints", () => {
     await wrapped.reachable();
     await wrapped.readGrid("%1", { scope: "viewport", lines: 10, styling: "strip" });
     await wrapped.typeText("%1", "hi");
-    await wrapped.sendKeys("%1", ["Enter"]);
+    await wrapped.writeKeys("%1", ["Enter"]);
     await wrapped.renamePane("%1", "label");
     await wrapped.closePane("%1");
     await wrapped.createTab({ spaceId: "space" });

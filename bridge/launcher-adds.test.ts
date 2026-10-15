@@ -350,7 +350,7 @@ class FakeMux {
     this.texts.push(text);
     return Promise.resolve(muxAck());
   }
-  sendKeys(): Promise<MuxAck> {
+  writeKeys(): Promise<MuxAck> {
     return Promise.resolve(muxAck());
   }
   closePane(): Promise<MuxAck> {

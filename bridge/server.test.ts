@@ -235,6 +235,8 @@ function cfg(overrides: Partial<Config> = {}): Config {
     vapidSubject: "mailto:admin@example.com",
     stateDir: "/tmp/state",
     multiSession: true,
+    surfaceShadow: false,
+    sendProtocol: false,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
@@ -501,7 +503,7 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
       this.calls.push("text");
       return this.failOn === "text" ? Promise.reject(new Error("text rejected")) : Promise.resolve(muxAck());
     }
-    sendKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
+    writeKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
       this.calls.push("keys");
       return this.failOn === "keys" ? Promise.reject(new Error("keys rejected")) : Promise.resolve(muxAck());
     }
@@ -1163,6 +1165,33 @@ describe("pane write prompt binding", () => {
       );
       expect(entries[0]?.detail).toMatchObject({ promptBinding: { styled: "checked" } });
       expect(entries[1]?.detail).not.toHaveProperty("promptBinding.styled");
+    });
+  });
+
+  // M56 spec 03, shadow mode: an input box under the bound region is recorded in the audit line and
+  // never refuses (bridge/prompt-binding.ts composerBelowShadow says why: Muse draws a live question
+  // above its own box).
+  describe("an input box under the region (shadow)", () => {
+    const RULE = "─".repeat(40);
+    const REGION = ["Do you want to proceed?", "❯ 1. Yes", "  2. No"].join("\n");
+
+    test("the keys go, and the audit records shadow composer_below", async () => {
+      const client = new FakePaneClient();
+      client.text = [REGION, "", RULE, "❯ ", RULE, "  ? for shortcuts"].join("\n");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(200);
+      expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { checked: true, passed: true, shadow: "composer_below" } });
+    });
+
+    test("no box under the region leaves no shadow key", async () => {
+      const client = new FakePaneClient();
+      client.text = [RULE, "❯ an old prompt", RULE, REGION].join("\n");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(200);
+      expect(entries[0]?.detail).not.toHaveProperty("promptBinding.shadow");
     });
   });
 
@@ -3560,7 +3589,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       this.texts.push([paneId, text]);
       return this.failOn === "text" ? Promise.resolve(muxRefused("text failed")) : Promise.resolve(muxAck());
     }
-    sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+    writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
       this.keys.push([paneId, keys]);
       return this.failOn === "keys" ? Promise.resolve(muxRefused("keys failed")) : Promise.resolve(muxAck());
     }

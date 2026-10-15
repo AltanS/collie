@@ -2647,7 +2647,7 @@ export function AgentChat({
                   exists to surface; wrapping makes the strip's height depend on the pane width and turns
                   a column-aligned statusline into ragged prose. Stacking also preserves the shape the
                   user themselves configured in the TUI, so it reads as the same thing they know.
-                  THE UPSTREAM CAP IS A ROW COUNT, AND A ROW COUNT IS NOT A HEIGHT. `MAX_STATUS_LINES`
+                  THE UPSTREAM CAP IS A ROW COUNT, AND A ROW COUNT IS NOT A HEIGHT. The profile's `idle.volatile.below.maxRows`
                   bounds what stripChrome will claim (8), which was read here as "bounded, nothing more
                   to do" — and that held only while the viewport was tall. With the soft keyboard up the
                   page is ~440px on a phone, so eight rows of `CTX:44% CACHE:100% LIMITS…` is a quarter
@@ -2796,6 +2796,8 @@ export function AgentChat({
                 <Composer
                   ref={composerRef}
                   paneId={paneId}
+                  // The bridge's Send Protocol mark (M56 spec 05): absent unless COLLIE_SEND_PROTOCOL=1.
+                  sendProtocol={agent?.sendProtocol === true}
                   scope={scope}
                   stale={actsDisabledByCache}
                   agent={agent?.agent}

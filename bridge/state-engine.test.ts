@@ -630,10 +630,11 @@ describe("StateEngine — snapshot vs legacy path", () => {
 });
 
 describe("StateEngine — session name enrichment", () => {
-  // A named claude input box: the rule above the ❯ prompt carries the /rename session name.
-  const named = (name: string) => [`──────── ${name} ──`, "❯ "].join("\n");
+  // A named claude input box: the rule above the ❯ prompt carries the /rename session name. The box
+  // is a whole input frame (top edge, prompt, bottom edge), the shape the frame module finds.
+  const named = (name: string) => [`──────── ${name} ──`, "❯ ", "────────────────"].join("\n");
   // An unnamed input box (plain rule) — no session name to extract.
-  const plainBox = ["────────────────", "❯ "].join("\n");
+  const plainBox = ["────────────────", "❯ ", "────────────────"].join("\n");
 
   // A fake herdr that also serves per-pane text, so enrichSessionNames has something to read. The
   // production StateEngine short-circuits when `readPane` is absent (the other fakes here omit it),

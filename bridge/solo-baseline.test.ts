@@ -344,6 +344,12 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension either: the belt buttons of a pane whose program lists actions (M53 spec 07).
   // Only the `durable` adapter fills it, so it is absent here and no golden byte moved.
   actions: true,
+  // Not a crew dimension: the pane's input surface (M56 spec 04). Only Surface shadow mode fills it,
+  // and it is off by default, so it is absent on every pane here and no golden byte moved.
+  surface: true,
+  // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
+  // and it is off by default, so it is absent on every pane here and no golden byte moved.
+  sendProtocol: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -478,11 +484,13 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "paneLabel",
       "progress",
       "readableLines",
+      "sendProtocol",
       "session",
       "sessionName",
       "soleTabName",
       "status",
       "subtitle",
+      "surface",
       "tabId",
       "tabLabel",
       "tabPosition",
@@ -787,6 +795,10 @@ describe("solo zero-tax — routes", () => {
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
       // own: a lead reaches a peer's through the peer's existing `/crew/v1/*` dispatch.
       "/api/refresh",
+      // The Send Protocol (M56 spec 05): a SOLO route that legitimately extends this list, named here
+      // rather than exempted. Write-gated through the same closure a reply rides, this collie's own
+      // sessions only, and a 404 unless the operator set COLLIE_SEND_PROTOCOL=1. No crew route.
+      "/api/send",
       "/api/snapshot",
       // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
       // here rather than exempted, exactly as device pairing is. It is off until an operator
@@ -801,6 +813,10 @@ describe("solo zero-tax — routes", () => {
       // whose operator never taps "Download to host" downloads nothing and writes nothing through it.
       "/api/stt/whistle",
       "/api/subscribe",
+      // Surface shadow mode's debug read (M56 spec 04): a SOLO route that legitimately extends this
+      // list, named here rather than exempted. Read-gated, this collie's own sessions only, and a 404
+      // unless the operator set COLLIE_SURFACE_SHADOW=1. It registers no crew route.
+      "/api/surface",
       "/api/tab",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
@@ -885,6 +901,8 @@ const CONFIG_KEYS = {
   vapidSubject: true,
   stateDir: true,
   multiSession: true,
+  surfaceShadow: true,
+  sendProtocol: true,
   skipServe: true,
   basePath: true,
   uploadExtraTypes: true,
@@ -927,10 +945,12 @@ describe("solo zero-tax — config", () => {
       "quickRepliesFile",
       "readLines",
       "redact",
+      "sendProtocol",
       "skipServe",
       "socketPath",
       "stateDir",
       "submitKeys",
+      "surfaceShadow",
       "tailscaleHosts",
       "ternBin",
       "themeFile",
@@ -1008,9 +1028,11 @@ describe("solo zero-tax — config", () => {
       "COLLIE_PUBLIC_HOSTS",
       "COLLIE_READ_LINES",
       "COLLIE_REDACT",
+      "COLLIE_SEND_PROTOCOL",
       "COLLIE_SKIP_SERVE",
       "COLLIE_STATE_DIR",
       "COLLIE_SUBMIT_KEYS",
+      "COLLIE_SURFACE_SHADOW",
       "COLLIE_TAILSCALE_HOSTS",
       "COLLIE_TERN_BIN",
       "COLLIE_TMUX_BIN",
@@ -1095,6 +1117,10 @@ const STATE_DIR_ENTRIES = [
   "paired-devices.json",
   "pairing-pending.json",
   "push-subscriptions.json",
+  // The Send Protocol's request files and receipts (M56 spec 05), one per request id in this folder.
+  // Created only by a bridge started with COLLIE_SEND_PROTOCOL=1: with the flag off nothing builds the
+  // store, so every other instance never has this folder.
+  "sends",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.

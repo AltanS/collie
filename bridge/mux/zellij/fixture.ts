@@ -279,7 +279,7 @@ export class FakeZellij implements ZellijExec {
     if (verb === "list-tabs") return said(JSON.stringify(this.tabs.map((tab) => this.tabJson(tab))));
     if (verb === "dump-screen") return this.dumpScreen(args);
     if (verb === "write-chars") return this.writeChars(args);
-    if (verb === "send-keys") return this.sendKeys(args);
+    if (verb === "send-keys") return this.sendKeysVerb(args);
     if (verb === "rename-pane") return this.renamePane(args);
     if (verb === "close-pane") return this.closePane(args);
     if (verb === "new-tab") return this.newTab(args);
@@ -307,7 +307,7 @@ export class FakeZellij implements ZellijExec {
     return said("");
   }
 
-  private sendKeys(args: readonly string[]): ZellijRunResult {
+  private sendKeysVerb(args: readonly string[]): ZellijRunResult {
     const paneId = flagValue(args, "--pane-id") ?? "";
     const pane = this.paneAt(paneId);
     if (pane === undefined) return said("");

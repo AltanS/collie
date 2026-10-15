@@ -290,7 +290,7 @@ export class FakeTuios implements TuiosRpc {
     this.recorded.push({ paneId: windowId, kind: "text", payload: [text] });
   }
 
-  async sendKeys(sessionName: string, windowId: string, keys: string): Promise<void> {
+  async writeKeys(sessionName: string, windowId: string, keys: string): Promise<void> {
     this.window("send-keys", sessionName, windowId);
     const tokens = keys.split(/[ ,]+/u).filter((token) => token !== "");
     // The daemon parses every token before sending any; a bare separator has no token at all.

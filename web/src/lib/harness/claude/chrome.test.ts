@@ -475,7 +475,7 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   // Bug #76 fix: the wrapped-draft scan used to be bounded by MAX_DRAFT_LINES (12), so a draft long
   // enough to wrap past that many continuation rows made locateInputBox return null — the send guard
   // then saw no draft at all and stalled forever even though the text had landed. The bound is now
-  // 100 (defense-in-depth, not a correctness bound — see the comment on MAX_DRAFT_LINES in markers.ts),
+  // 100 (defense-in-depth, not a correctness bound, now `idle.frame.maxDraftRows` in the Claude profile, read by surface/frame.ts),
   // comfortably above real wraps, so a draft this long is still found.
   it("matches a box whose draft wraps past the old 12-line bound", () => {
     const many = Array.from({ length: 20 }, (_, i) => `  continuation ${i}`);
@@ -541,7 +541,7 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   // Round-3 finding 2: the two blank-line skips inside locateInputBox step (d) used to be UNBOUNDED
   // (`while (isBlank) i--`), run before/after the counted continuation walk rather than as part of it
   // — so a wall of blank lines could stand in for the non-blank filler above and reach an arbitrarily
-  // distant border for free, defeating MAX_DRAFT_LINES entirely for that shape. Both spots now draw
+  // distant border for free, defeating the draft-row bound (`idle.frame.maxDraftRows`) entirely for that shape. Both spots now draw
   // from the SAME `wrapped` counter as the continuation walk itself.
   it("does not tolerate 105 blank lines between the ❯ line and the bottom border", () => {
     // These blanks sit exactly where the old free pre-skip used to run: contiguous with the bottom

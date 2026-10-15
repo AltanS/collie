@@ -27,6 +27,11 @@ import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
+import { SendOfferStrip } from "@/components/send-offer-strip";
+import { keepsOldRoute, offerMode, readSend } from "@/lib/send-protocol";
+import type { SendMode, SendOffer, SendRequestBody } from "@/lib/surface/send";
+import { requestIdFor, type IntentId } from "@/lib/durable-control";
+import { mintRequestId } from "@/lib/worktree-name";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -80,6 +85,9 @@ export interface ComposerHandle {
 
 interface ComposerProps {
   paneId: string;
+  /** The bridge runs the Send Protocol for this pane (`PaneWire.sendProtocol`, M56 spec 05): Send posts
+   *  one request to `POST /api/send` instead of the guarded reply. Absent, nothing here changes. */
+  sendProtocol?: boolean;
   /** Which machine + which named session the pane lives in — scopes every write to the right Herdr. */
   scope?: Scope;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
@@ -335,7 +343,7 @@ const DIALOG_PLACEHOLDER = {
 } as const satisfies Record<DialogNoun, MessageKey>;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, dialogNoun, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
+  { paneId, sendProtocol = false, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, dialogNoun, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -515,6 +523,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     noticeNoEchoRef.current(null); // it described the pane we just left
   }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
+  // The Send Protocol's held intent (its request id) and the offers its last answer made (M56 spec 05).
+  const protocolIntent = useRef<IntentId | null>(null);
+  const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[] } | null>(null);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
@@ -1031,6 +1042,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
+  // What a VERIFIED send does to this composer, from the guarded reply route and from the Send
+  // Protocol alike: the draft goes, the ✓ flashes, the pill says sent, the preview keeps the text.
+  function afterVerifiedSend(t: string, isDraft: boolean) {
+    // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
+    // draft goes with it (an empty value removes the key).
+    // The chips go with the text: their paths were in the line that just went out.
+    if (isDraft) clearComposedDraft();
+    // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
+    // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
+    lastSentRef.current = { text: t, at: Date.now() };
+    // The stranded line was just swept and our text sent, so mark it handled and drop the preview so
+    // it can't flash back before the mirror echoes the cleared line.
+    if (effectiveRaw !== null) {
+      setHandledKey(normalizeDraft(effectiveRaw));
+      setPreviewLatched(false);
+    }
+    // ✓ flash on the send button + status line acknowledge a VERIFIED send (the text was seen in
+    // the input box before the submit key went out), so this lands slightly later than the old
+    // fire-and-forget ✓ but is now actually true. The "You sent: …" pending preview keeps the
+    // typed text visible until the mirror catches up (cleared by the next text update or a 6s
+    // safety timeout).
+    setJustSent(true);
+    if (sentTimer.current) clearTimeout(sentTimer.current);
+    sentTimer.current = setTimeout(() => setJustSent(false), 1500);
+    setStatus(translate("composer.status.sent"), "success");
+    const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
+    setLastSent(preview);
+    if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
+    lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
+    forceConfirm.reset(); // a clean send disarms any leftover override
+    noticeNoEcho(null); // whatever prompt it described, the pane has moved past it
+    onSent(); // you just acted, so snap the mirror back to the live tail to see the result
+  }
+
   // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
   // submit key went out). The quick-reply grid consumes the verdict to drive its own ✓ and to decide
   // whether to close its dock, so every early return below has to answer honestly.
@@ -1041,6 +1086,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setStatus(translate("composer.send.reconnect"), "error");
       return false;
     }
+    // The Send Protocol (M56 spec 05), when the bridge marks this pane: the bridge reads the screen,
+    // refuses a dialog or a draft before any key and answers with a receipt, so none of the phone-side
+    // guards below run. A text with a reserved lead keeps the old route, whose slash palette and
+    // mention path own it; so does a pane on another machine, whose link does not carry the route yet.
+    if (sendProtocol && !scope?.host && !keepsOldRoute(t)) return sendThroughProtocol(t, isDraft, "send", null);
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
@@ -1160,35 +1210,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         },
       });
       if (res.status === "sent") {
-        // Phone-owned input — cleared once the reply is on its way. Via updateInput, so the stored
-        // draft goes with it (an empty value removes the key).
-        // The chips go with the text: their paths were in the line that just went out.
-        if (isDraft) clearComposedDraft();
-        // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
-        // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
-        lastSentRef.current = { text: t, at: Date.now() };
-        // The stranded line was just swept and our text sent — mark it handled and drop the preview so
-        // it can't flash back before the mirror echoes the cleared line.
-        if (effectiveRaw !== null) {
-          setHandledKey(normalizeDraft(effectiveRaw));
-          setPreviewLatched(false);
-        }
-        // ✓ flash on the send button + status line acknowledge a VERIFIED send (the text was seen in
-        // the input box before the submit key went out), so this lands slightly later than the old
-        // fire-and-forget ✓ but is now actually true. The "You sent: …" pending preview keeps the
-        // typed text visible until the mirror catches up (cleared by the next text update or a 6s
-        // safety timeout).
-        setJustSent(true);
-        if (sentTimer.current) clearTimeout(sentTimer.current);
-        sentTimer.current = setTimeout(() => setJustSent(false), 1500);
-        setStatus(translate("composer.status.sent"), "success");
-        const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
-        setLastSent(preview);
-        if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
-        lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
-        forceConfirm.reset(); // a clean send disarms any leftover override
-        noticeNoEcho(null); // whatever prompt it described, the pane has moved past it
-        onSent(); // you just acted — snap the mirror back to the live tail to see the result
+        afterVerifiedSend(t, isDraft);
         return true;
       } else if (res.status === "blocked") {
         // The pre-flight refused: NOTHING was typed. That is usually right (a menu owns the keyboard),
@@ -1227,6 +1249,51 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     } finally {
       setSending(false);
     }
+  }
+
+  // One Send Protocol request. The id is kept for a retry of the same intent (mode, rows hash, text)
+  // until an answer arrives, so a lost answer never sends twice; an answer ends the intent, and every
+  // offer it makes is a new one with a new id. Resolves true only on `sent` or `effective`.
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null): Promise<boolean> {
+    setSending(true);
+    endUndoWindow();
+    stampSend(paneId);
+    const intent = requestIdFor(protocolIntent.current, `${mode}\u0000${rowsHash ?? ""}\u0000${t}`, mintRequestId);
+    protocolIntent.current = intent;
+    try {
+      const body: SendRequestBody = { id: intent.requestId, pane: paneId, text: t, mode };
+      const reply = await api.postSend(rowsHash === null ? body : { ...body, rowsHash }, scope);
+      protocolIntent.current = null;
+      const reading = readSend(reply);
+      if (reading.clear) {
+        setProtocolOffer(null);
+        afterVerifiedSend(t, isDraft);
+        return true;
+      }
+      setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers });
+      setStatus(translate(`composer.protocol.${reading.note}`), reading.note === "discarded" ? "success" : "error");
+      // The person's next look is the pane: snap the mirror to the live tail, as a send does.
+      onSent();
+      return false;
+    } catch (e) {
+      // No answer: the id stays, so the next tap on the same text asks for the same request.
+      setStatus(translate("composer.protocol.retry", { error: describeThrownError(e) }), "error");
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // A tap on an offer the last answer made: a new request with a new id, or nothing (`cancel`).
+  function onProtocolOffer(offer: SendOffer) {
+    const held = protocolOffer;
+    setProtocolOffer(null);
+    if (held === null || sending || locked) return;
+    const mode = offerMode(offer);
+    if (mode === null) return;
+    // Added to a draft, the text starts after one space, as a person typing on would put it.
+    const words = offer === "append" && !/^\s/u.test(held.text) ? ` ${held.text}` : held.text;
+    void sendThroughProtocol(words, held.isDraft, mode, offer === "commit" ? held.rowsHash : null);
   }
 
   // Gate the composer's Send through the destructive-input confirm: a matching command arms the
@@ -1799,6 +1866,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             reason and shares that slot, one notice at a time. See `floatingNotice` above; it renders
             here. */}
         {draftNoticeSlot ? createPortal(floatingNotice, draftNoticeSlot) : floatingNotice}
+        {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
+            Submit / Discard on text that was typed and not sent, and the second tap on a screen
+            Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
+        <Collapse open={protocolOffer !== null}>
+          {protocolOffer !== null && (
+            <SendOfferStrip offers={protocolOffer.offers} disabled={sending || locked} onOffer={onProtocolOffer} onDismiss={() => setProtocolOffer(null)} />
+          )}
+        </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}

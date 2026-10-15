@@ -142,6 +142,11 @@ const AGENT_VIEW_KEYS = {
   progress: true,
   // Not a crew dimension either: the belt buttons a durable program lists for a pane (M53 spec 07), present only on a pane that has some.
   actions: true,
+  // Not a crew dimension: the pane's input surface (M56 spec 04), present only while the bridge runs Surface shadow mode.
+  surface: true,
+  // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
+  // and it is off by default, so it is absent on every pane here and no golden byte moved.
+  sendProtocol: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -253,11 +258,13 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "paneLabel",
       "progress",
       "readableLines",
+      "sendProtocol",
       "session",
       "sessionName",
       "soleTabName",
       "status",
       "subtitle",
+      "surface",
       "tabId",
       "tabLabel",
       "tabPosition",

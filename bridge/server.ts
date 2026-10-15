@@ -105,8 +105,10 @@ import {
   type RecentRunSurface,
 } from "./recent-runs.ts";
 import {
+  composerBelowShadow,
   DEFAULT_PROMPT_TAIL_LINES,
   verifyPromptBinding,
+  type BindingShadow,
   type PromptBindingVerdict,
   type StyledOutcome,
 } from "./prompt-binding.ts";
@@ -128,6 +130,10 @@ import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
+import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
+import { gateFor } from "./surface/key-gate.ts";
+import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
+import { REQUEST_ID, SEND_MODES } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -1455,6 +1461,17 @@ export function startServer(opts: {
     //
     // The ORDER is the registry's own — primary first, then alphabetical — so it matches the
     // `sessions` array below and does not depend on which runtime happened to be spawned first.
+    // Surface shadow mode (M56 spec 04): an agent pane carries its newest Surface when the shadow has
+    // read it; every other pane, and every pane with the mode off, comes back as the same object. The
+    // ask's option labels are screen text, so they take the mirror's mask like a title does.
+    // With the Send Protocol on (M56 spec 05) such a pane also says so, and the phone's composer then
+    // sends through `POST /api/send`; with the flag off the field is absent.
+    const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
+      const surface = from.surface?.surfaceOf(wire.paneId);
+      if (surface === undefined) return wire;
+      const surfaced = { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
+      return from.send === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
+    };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
       const wired = sources.map((from) => ({
@@ -1464,7 +1481,7 @@ export function startServer(opts: {
         // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
-          withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr),
+          withSurface(withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr), from),
         ),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
@@ -2342,6 +2359,20 @@ export function startServer(opts: {
         return withBuildHeader(json(out, req.headers.get("accept-encoding")), await buildId());
       }
 
+      // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
+      // `GET /api/surface?pane=<id>` answers one pane's Surface with its harness's counters, and with
+      // no `pane` every pane and every counter, for the session `?session=` names. Gated like every
+      // read. With the mode off the route is not there: a 404 that says why.
+      if (pathname === "/api/surface" && req.method === "GET") {
+        const denied = guard(req, cfg, "read", pairingGate);
+        if (denied) return denied;
+        // This collie's own sessions only, like `/api/config`: the shadow is a local debugging aid and
+        // has no `?host=` branch to fall through.
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        return surfaceRoute(rt.surface, url.searchParams.get("pane"), cfg.redact, req.headers.get("accept-encoding"));
+      }
+
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
       // The block itself lives above, shared with the crew surface (§5). What a browser supplies is
       // its own gate (`guard`), its own device attribution, this collie's audit log, and the host
@@ -2360,6 +2391,25 @@ export function startServer(opts: {
         const denied = browserGate("read");
         if (denied) return denied;
         return text("not found", 404);
+      }
+      // ── The Send Protocol (M56 spec 05) ──────────────────────────────────
+      // `POST /api/send?session=<name>`: one request id minted by the phone, one lock per pane, one
+      // receipt. Write-gated through the same closure a reply rides. This collie's own sessions only:
+      // the phone uses it on a local pane and keeps the old reply route on a member's.
+      if (pathname === "/api/send" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text("the send protocol does not cross a crew link yet", 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseSendRequest` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
@@ -4069,7 +4119,7 @@ export async function filesImage(
 /** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */
 export interface ReplySender {
   typeText(paneId: string, text: string): Promise<MuxAck>;
-  sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
+  writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
 }
 
 /** Outcome of the two-step send. `textDelivered` is only meaningful on the failure branch. */
@@ -4120,7 +4170,9 @@ export async function sendReplySteps(
     }
     if (submit) {
       if (txt) await sleep(REPLY_SETTLE_MS);
-      const sent = await client.sendKeys(paneId, submitKeys);
+      // Through the key gate, like every key the bridge sends (M56 spec 05). The old route keeps its
+      // own guard: no revision check, the adapter's answer unchanged.
+      const sent = await gateFor(client).press(paneId, submitKeys, "legacy_reply");
       if (!sent.ok) return failed(sent.detail);
     }
     return { ok: true, textDelivered };
@@ -4367,7 +4419,9 @@ export async function keysPane(
   const keysDetail: AuditDetail = { keys };
   // Assigned, never conditionally spread: an unbound send records no `promptBinding` key.
   if (binding) keysDetail.promptBinding = binding.audit;
-  const sent = await herdr.sendKeys(paneId, keys);
+  // A person's keys (the Keys board, a dialog button, direct typing) go through the key gate with no
+  // revision check (M56 spec 05): the gate refuses a stale protocol token, never a person.
+  const sent = await gateFor(herdr).press(paneId, keys, "person_tap");
   if (sent.ok) {
     audit.record({
       action: "keys",
@@ -4458,7 +4512,16 @@ type PromptBindingCheck =
       // `styled` is present only when the phone sent `expected_styled`: `checked`, or
       // `skipped_unknown_version` when the text check alone decided (ADR 0080 point 7). `columns` is
       // present only when the phone sent `expected_columns`.
-      audit: { checked: true; passed: true; expected: string; styled?: StyledOutcome; columns?: ColumnRange };
+      // `shadow` is present only when a shadow check would have refused (M56 spec 03,
+      // `composerBelowShadow`). It never refuses; the audit line carries it for the counters.
+      audit: {
+        checked: true;
+        passed: true;
+        expected: string;
+        styled?: StyledOutcome;
+        columns?: ColumnRange;
+        shadow?: BindingShadow;
+      };
     }
   | {
       ok: false;
@@ -4563,6 +4626,15 @@ async function checkPromptBinding(
   // Assigned, never conditionally spread: a bound send without `expected_styled` records no `styled` key.
   if (result.styled !== undefined) passed.styled = result.styled;
   if (columns !== undefined) passed.columns = columns;
+  // Shadow mode only: a box under the region is recorded, never refused (composerBelowShadow says why).
+  // A throw in the shadow check must never cost the tap, so it records nothing then.
+  let shadow: BindingShadow | undefined;
+  try {
+    shadow = composerBelowShadow(freshText, expected, columns);
+  } catch {
+    shadow = undefined;
+  }
+  if (shadow !== undefined) passed.shadow = shadow;
   return { ok: true, audit: passed };
 }
 
@@ -6696,6 +6768,92 @@ type StaticHeaders = {
   "content-security-policy"?: string;
   "service-worker-allowed"?: string;
 } & Record<string, string>;
+
+/** What `/api/surface` answers once the gate passed and the session resolved: with the mode off (no
+ *  shadow on the runtime) the route is not there, a 404 that says why; else the shadow's body. */
+export const SURFACE_OFF_TEXT = "surface shadow mode is off (COLLIE_SURFACE_SHADOW=1 turns it on)";
+export function surfaceRoute(shadow: SurfaceShadow | undefined, paneId: string | null, redact: boolean, acceptEncoding: string | null): Response {
+  if (shadow === undefined) return text(SURFACE_OFF_TEXT, 404);
+  const answer = surfaceRouteBody(shadow, paneId, redact);
+  return json(answer.body, acceptEncoding, answer.status);
+}
+
+/** What `/api/send` answers with the flag off: the route is not there, a 404 that says why. */
+export const SEND_OFF_TEXT = "the send protocol is off (COLLIE_SEND_PROTOCOL=1 turns it on)";
+/** The longest text one send takes, in UTF-16 units. A longer message is a file, not a reply. */
+export const SEND_MAX_TEXT = 64 * 1024;
+
+/**
+ * A `/api/send` body, checked field by field, or null (a 400). Pure + exported for its test: the
+ * handler lives inside `Bun.serve`. The text may be empty only for `prepare`, which writes nothing.
+ */
+export function parseSendRequest(body: JsonValue | undefined): ({ pane: string } & SendRequest) | null {
+  const fields = asJsonRecord(body);
+  if (fields === null) return null;
+  const { id, pane, text: words, mode, rowsHash, revision } = fields;
+  if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
+  if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
+  if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
+  const chosen = mode === undefined ? "send" : SEND_MODES.find((m) => m === mode);
+  if (chosen === undefined) return null;
+  if (chosen !== "prepare" && words.trim().length === 0) return null;
+  const request: { pane: string } & SendRequest = { id, pane, text: words, mode: chosen };
+  if (rowsHash !== undefined) {
+    if (typeof rowsHash !== "string" || !/^[0-9a-f]{1,64}$/u.test(rowsHash)) return null;
+    Object.assign(request, { rowsHash });
+  }
+  if (revision !== undefined) {
+    if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0) return null;
+    Object.assign(request, { revision });
+  }
+  return request;
+}
+
+/**
+ * `POST /api/send` once the write gate passed and the session resolved (M56 spec 05). With the flag
+ * off (no protocol on the runtime) the route is not there. An agent pane only: the harness picks the
+ * profile. A screenless pane refuses it the way it refuses the raw reply. Every outcome is a 200 with
+ * the answer; a malformed body is a 400. One audit line per request, with the outcome and never the text.
+ */
+/** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface SendRouteRuntime {
+  readonly send?: SendProtocol;
+  readonly name: string;
+  readonly herdr: Pick<MuxAdapter, "controlTurn">;
+  readonly engine: {
+    current(): { readonly agents: readonly Pick<AgentView, "paneId" | "agent">[] };
+    noteInput(): void;
+    pokeNow(): void;
+  };
+}
+
+export async function sendRoute(
+  rt: SendRouteRuntime,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  const request = parseSendRequest(body);
+  if (request === null) return text("bad send request", 400);
+  const refusal = rawInputRefusal(rt.herdr);
+  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  const pane = rt.engine.current().agents.find((agent) => agent.paneId === request.pane);
+  if (pane === undefined) return text("no such agent pane", 404);
+  const { pane: paneId, ...sendRequest } = request;
+  const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness: pane.agent });
+  const receipt = answer.receipt;
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    if (receipt.keys.length > 0) {
+      rt.engine.noteInput();
+      rt.engine.pokeNow();
+    }
+  }
+  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  return json(out, context.acceptEncoding);
+}
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));

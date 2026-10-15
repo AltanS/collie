@@ -3,7 +3,7 @@ import { classifyFooter, isBlank, isBoxBorder, lineText } from "./markers";
 import { detectPromptSelectRegionIn, parseOptionRow, trailingMenuRows } from "./prompt-select";
 
 // Rows under the bottom border. A custom `statusLine` command prints as many rows as the user wrote,
-// so this matches the Claude reader's ceiling (claude/chrome.ts MAX_STATUS_LINES).
+// so this matches the Claude reader's ceiling (the Claude profile's `idle.volatile.below.maxRows`).
 const MAX_STATUS_LINES = 8;
 const MAX_DRAFT_LINES = 100;
 const PROMPT_REGEX = /^[❯›>]\s*/;

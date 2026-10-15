@@ -124,3 +124,8 @@ this module's designed failure mode, a stalled send rather than a typed modal.
 Trail: `web/src/lib/harness/claude/chrome.ts` (`atColumnZero`, `walkFrame`) ·
 `web/src/lib/harness/claude/input-box-frame.test.ts` · fixtures `claude--v2283-draft-rule.txt`,
 `claude--v2283-draft-prompt.txt`.
+
+Since 2026-10-15 (M56 spec 03) the walk lives in `web/src/lib/surface/frame.ts` (`findInputFrame`,
+`frameAt`, `frameEdge`), read from the profile's anchors in `web/src/lib/surface/profiles/claude.json`.
+`atColumnZero` and `walkFrame` are gone; the column-0 rule is the anchor's column, and the rule above
+holds unchanged.

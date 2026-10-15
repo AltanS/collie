@@ -25,6 +25,8 @@
           - web/src/lib/harness/**
           - web/src/fixtures/panes/**
           - web/src/fixtures/prompt-binding-regions.json
+          - web/src/fixtures/input-frame-regions.json
+          - web/src/lib/surface/**
           - bridge/prompt-binding.ts
           - bridge/prompt-binding.test.ts
           - HARNESS_CONTRIBUTING.md

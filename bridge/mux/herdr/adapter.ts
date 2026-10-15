@@ -460,7 +460,7 @@ export class HerdrMux implements MuxAdapter {
    * sequence, and delivering its front half is worse than delivering none of it (the pane would be
    * left mid-chord with no way for the caller to know where it stopped).
    */
-  async sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+  async writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
     const translated: string[] = [];
     for (const key of keys) {
       const result = toHerdrKey(key);

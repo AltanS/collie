@@ -1,6 +1,7 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
+import type { Surface } from "../web/src/lib/surface/surface.ts";
 import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
@@ -264,6 +265,21 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * which the phone reads as "no program buttons here".
    */
   actions?: PaneAction[];
+  /**
+   * The pane's input surface as the bridge reads it from the screen (M56 spec 04): turn, modal,
+   * composer and the reason a claim is unknown, with the revision of the read.
+   *
+   * Present only while Surface shadow mode is on (`COLLIE_SURFACE_SHADOW=1`) and the shadow has read
+   * the pane; absent on every other pane and from every older bridge. Nothing on the phone decides a
+   * send by it yet (spec 06 turns it into the composer's input).
+   */
+  surface?: Surface;
+  /**
+   * Present (and `true`) when this bridge runs the Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec
+   * 05) and the pane carries a Surface: the phone's composer then sends through `POST /api/send`.
+   * Absent otherwise, so a bridge without the flag sends the same bytes as before.
+   */
+  sendProtocol?: true;
 };
 
 /** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */

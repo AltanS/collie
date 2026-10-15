@@ -1184,7 +1184,7 @@ export class DurableMux implements MuxAdapter {
     return muxUnsupported("typeText", NO_KEYS);
   }
 
-  async sendKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
+  async writeKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
     return muxUnsupported("sendKeys", NO_KEYS);
   }
 
