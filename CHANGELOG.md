@@ -84,6 +84,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The push page says what a program's pushes do.** A new section gives the three caps (3 a pane a minute, 10 and 30 for one program on one machine), the one summary push and the hour of silence, the program's own title and line, and that a restart shows a repeated question and does not push it again.
 - **The Programs quickstart states its platforms as a fact about the program.** The opening line reads "A program runs on Linux or macOS", so no page still opens with the old Linux-only requirement.
 - **The durable example attaches to the Collie you already run.** Its README drops the second instance it used to ask for and runs `collie durable attach` instead, keeps the `.env` form for a Collie with no terminal, and its crew section starts from an attached program. Two code comments now name the four `collie durable list` states and the six doctor rows.
 - **The pages around Programs stop contradicting it.** Sessions counts a program's open and waiting conversations instead of its questions, Commands gives the `durable` verbs their flags and links the verb table, Configure names `sources.json` beside the section table and marks the three `COLLIE_DURABLE_*` variables as the durable-only form, and Crews no longer says one instance mirrors one backend.
