@@ -158,7 +158,8 @@ describe("commandsFor", () => {
       const all = commandsFor(agent);
       const seen = new Set<string>();
       for (const c of all) {
-        expect(c.command.startsWith("/")).toBe(true);
+        // Codex names a skill with its `$` mention sigil; every other row is a slash command.
+        expect(c.command.startsWith("/") || (agent === "codex" && c.command.startsWith("$"))).toBe(true);
         expect(seen.has(c.command)).toBe(false); // no duplicate commands within a catalog
         seen.add(c.command);
         expect(c.description.length).toBeGreaterThan(0);
@@ -167,6 +168,48 @@ describe("commandsFor", () => {
       }
     },
   );
+});
+
+describe("built-in skills in the shipped catalogs", () => {
+  // Each row was seen in the agent's own completion on 2026-10-15; the per-agent picks are pinned so
+  // a regeneration that drops one is a red test rather than a quiet gap.
+  const names = (agent: string) => commandsFor(agent).map((c) => c.command);
+
+  it("lists Codex's five system skills as `$` mentions", () => {
+    expect(names("codex").filter((c) => c.startsWith("$"))).toEqual([
+      "$imagegen",
+      "$openai-docs",
+      "$review-agent",
+      "$skill-creator",
+      "$skill-installer",
+    ]);
+  });
+
+  it("lists opencode's one built-in skill, which its `/` menu does not show", () => {
+    expect(names("opencode")).toContain("/customize-opencode");
+  });
+
+  it("lists Grok's bundled skills a person can invoke, and none it hides", () => {
+    const grok = names("grok");
+    for (const skill of ["/build-with-ai", "/create-skill", "/pr-babysit", "/resume-claude", "/statusline"]) {
+      expect(grok).toContain(skill);
+    }
+    for (const hidden of ["/docx", "/pdf", "/pptx"]) expect(grok).not.toContain(hidden);
+  });
+
+  it("lists only the built-in skills agy's default agent puts in its `/` menu", () => {
+    const agy = names("agy");
+    for (const skill of ["/agy-customizations", "/antigravity-guide", "/plugin"]) expect(agy).toContain(skill);
+    for (const off of ["/automation", "/generative_ui", "/run-workflow"]) expect(agy).not.toContain(off);
+  });
+
+  it("lists Muse's ten user-invocable bundled skills, and none it hides", () => {
+    const muse = names("muse");
+    for (const skill of ["/create-skill", "/doctor", "/grill", "/import", "/migrate", "/plan", "/resume-codex"]) {
+      expect(muse).toContain(skill);
+    }
+    for (const hidden of ["/taste", "/git", "/read-session"]) expect(muse).not.toContain(hidden);
+  });
 });
 
 // The operator's own rows (commands.toml → /api/config). The shipped catalogs cannot carry a
@@ -418,19 +461,14 @@ describe("suggestCommands (#458)", () => {
     expect(claude[0]?.common).toBe(true);
     expect(claude.some((c) => !c.common)).toBe(true);
 
-    const codexWithSkill = [
-      ...commandsFor("codex"),
-      {
-        command: "$imagegen",
-        description: "Generate or edit images",
-        takesArg: true,
-        argHint: "[request]",
-        common: false,
-        dangerous: false,
-      },
-    ];
-    const codexSkills = suggestCommands("$", codexWithSkill).map((c) => c.command);
-    expect(codexSkills).toEqual(["$imagegen"]);
+    const codexSkills = suggestCommands("$", commandsFor("codex")).map((c) => c.command);
+    expect(codexSkills).toEqual([
+      "$imagegen",
+      "$openai-docs",
+      "$review-agent",
+      "$skill-creator",
+      "$skill-installer",
+    ]);
 
     // Claude has no `$` commands, so `$` returns nothing there.
     expect(suggestCommands("$100", commandsFor("claude"))).toEqual([]);
