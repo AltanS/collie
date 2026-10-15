@@ -2,7 +2,7 @@
 
 > **Experimental.** The wire, the SDK and this page may change, or the feature may be removed, in a
 > later minor release. Today only Collie's own examples speak the wire. [The exit](#the-exit) says
-> what decides whether it stays.
+> what decides whether it stays. If you attach no program, Collie looks and works as before.
 
 If you built an agent with Pi Durable or any long-running program, Collie can show it on your
 phone. Your program gets approval prompts, history and a chat view without any UI code.
@@ -15,6 +15,9 @@ third-party harness.
 ## Quickstart
 
 A ten-line program, one `collie durable attach`, and a question card on your phone.
+
+You need Collie 1.22.0 or later running on this machine, with your phone paired
+([Install](install.md)).
 
 A program runs on Linux or macOS, with Node 22.18 or later or Bun 1.4 or later. Install the SDK in
 your program's folder:
@@ -64,7 +67,8 @@ collie restart
 ```
 
 Use the path your program printed. Add `--restart` to the first command to restart in the same
-step.
+step. `--restart` restarts the Collie bridge: your phone reconnects in a few seconds, and your
+terminal sessions keep running.
 
 Open Collie on your phone. A Programs section shows one row, `hello`, with an Experimental badge and
 one question waiting. Tap the row: it opens on the program's conversation list, where the
@@ -209,6 +213,8 @@ A `url` entry carries its token, and the token is the whole gate.
 openssl rand -hex 32
 ```
 
+The result is 64 hex characters, above the 32-byte floor.
+
 Make the token 32 random bytes or more, as above, and give the program the same value. `attach`
 reads it from the variable that `--token-env` names, so it is in no command line and no shell
 history. That variable must be set when you run `attach`.
@@ -346,4 +352,5 @@ The feature stays only if someone outside this repository uses it.
 By the 1.24.0 release, one of two things must be true: a public repository that speaks the wire
 exists, or an outside issue or discussion about a durable program exists. If neither does, the
 durable code moves out of the release into `experiments/`, and this page goes
-([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)).
+([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)). On removal, the npm package is
+deprecated, not deleted ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md#the-exit)).

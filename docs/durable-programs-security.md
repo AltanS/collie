@@ -39,8 +39,14 @@ host sends no more until an hour after it. A card is always shown.
 With the check, a program refuses `answer`, `send`, `abort`, `action`, `rename`, `close`, `reopen`
 and `starter` from itself, from any process it started, and from a caller it cannot tell apart from
 them. The refusal is 403 `caller-refused`, and reads stay open. The check needs Bun on Linux, where
-the SDK reads the caller of a socket. On Node it cannot run, and any process of your user can
-answer.
+the SDK reads the caller of a socket. The table says what it enforces where the program runs:
+
+| where the program runs | what the descendant check enforces |
+| --- | --- |
+| Bun on Linux | It runs by default. The SDK reads the caller of each connection and refuses an act from the program, its descendants, or a caller it cannot place, with 403 `caller-refused` |
+| Bun elsewhere, such as macOS | It cannot run. `openCollie` stops at start with an error, unless the program passes `callerCheck: "off"`. With `off`, any process of your user can answer |
+| Node | It cannot run. The program starts and writes one warning line. Any process of your user can answer |
+
 Put the agent's tools in a sandbox that cannot reach the socket, treat the card as a notice rather
 than a gate, or run the program on Bun. `callerCheck: "off"` is the program's own choice to run
 without the check.
