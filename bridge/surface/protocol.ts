@@ -371,6 +371,11 @@ export function probeLanding(before: readonly string[], after: readonly string[]
 }
 
 /** The whole read as one compare string, white space dropped. */
+/** The index of the last row with any non-blank character, or -1. */
+function lastFilled(rows: readonly string[]): number {
+  return rows.findLastIndex((row) => row.trim().length > 0);
+}
+
 function flat(rows: readonly string[]): string {
   return wsFree(rows.join(""));
 }
@@ -962,10 +967,14 @@ export class SendProtocol {
         return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame) ? "pass" : "wait";
       }
       if (landing === null) return "wait";
+      // No frame: the landing row, found at its S0 distance from the last non-blank row, reads as it
+      // did at S0 again, and the typed text no longer stands there. The rows under it may change (a
+      // status row counting tokens does, live on pi 0.87.1); a popup that moves the rows does not pass.
       const actual = flat(snap.plain);
       const typedTail = flat([lines.join(""), afterProbe(landing), ...s0.plain.slice(landing.row + 1)]);
-      const boxBack = flat([s0.plain[landing.row] ?? "", ...s0.plain.slice(landing.row + 1)]);
-      return !actual.endsWith(typedTail) && actual.endsWith(boxBack) ? "pass" : "wait";
+      const row = lastFilled(snap.plain) - (lastFilled(s0.plain) - landing.row);
+      const boxBack = row >= 0 && wsFree(snap.plain[row] ?? "") === wsFree(s0.plain[landing.row] ?? "");
+      return !actual.endsWith(typedTail) && boxBack ? "pass" : "wait";
     });
     state.marks.s2 = result.snap;
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });

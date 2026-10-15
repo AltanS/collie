@@ -29,6 +29,8 @@ class FakePane {
   box = "";
   placeholder = 'Try "fix the failing tests"';
   status = ["  sonnet · project · main"];
+  /** The row under a generic box: a path, or a status line that counts. */
+  footer = "~/project";
   over: string[] = [];
   popup: string[] | null = null;
   dialog: string[] | null = null;
@@ -79,7 +81,7 @@ class FakePane {
       return rows.join("\n");
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
-    if (this.mode === "generic") rows.push("~/project");
+    if (this.mode === "generic") rows.push(this.footer);
     else rows.push(...(this.popup ?? this.status));
     return rows.join("\n");
   }
@@ -330,6 +332,17 @@ describe("a harness with no profile", () => {
     // No profile: never a paste, and the generic probe character.
     expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:hello from the phone"]);
     expect(pane.transcript.at(-1)).toBe("> hello from the phone");
+  });
+
+  test("a status row under the box that changes on submit does not hide the send (live on pi 0.87.1)", async () => {
+    const { pane, send } = rig({ mode: "generic" });
+    pane.footer = "0.0%/200k (auto)";
+    pane.afterInput = (p, what) => {
+      if (what.endsWith("Enter")) p.footer = "0.9%/200k (auto)";
+    };
+    const first = await send("count my tokens");
+    const answer = await send("count my tokens", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", probed: true, keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("a commit whose rows moved since the person looked is refused stale_surface", async () => {
