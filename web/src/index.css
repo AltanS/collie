@@ -663,9 +663,10 @@
  * drawn from the same idea — geometric skeleton, monotone stroke, cut terminals — so the wordmark
  * at 18px reads as one drawing with the mark beside it. Its cost is the small end: x-height is
  * 486/1000, the lowest of the three faces measured, so 11px uppercase labels and the 13px tier are
- * where it has to be judged. The other two candidates (IBM Plex Sans 3.201, Geist 1.800) are on
- * disk in public/fonts/ and wired into the playground's "UI typeface" card behind a live switcher —
- * that card is where a candidate is AUDITIONED before anyone argues for shipping it.
+ * where it has to be judged. IBM Plex Sans 3.201 and Geist 1.800 were tried in the playground's
+ * "UI typeface" card first and now ship as the faces of the themes Nightwatch and daylight, beside
+ * Atkinson Hyperlegible Next for harbour (see their blocks below). That card is still where a new
+ * candidate is tried at real sizes before anyone argues for shipping it.
  *
  * WEIGHT. 27 KB, subset to Latin + Latin-Ext-A + the punctuation this app actually prints (·, —, …,
  * ‹›, arrows, ×, ✓) and instanced to wght 400–700. Compare 641 KB / 504 KB for the two Nerd Font
@@ -683,8 +684,8 @@
  * moved there), so on a warm tailnet its swap usually never happens at all. Measured in Chrome by forcing the swap with an observer running: see the
  * stand-in's own comment below for what it is matching and why one table covers every platform.
  *
- * Space Grotesk is SIL OFL 1.1 — public/fonts/LICENSE-space-grotesk.txt. The two other candidates
- * ship their licences beside it. */
+ * Space Grotesk is SIL OFL 1.1, public/fonts/LICENSE-space-grotesk.txt. Every other face ships its
+ * licence beside it. */
 @font-face {
   font-family: "Space Grotesk";
   src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
@@ -717,6 +718,116 @@
   /* Latin only, for the reason Aldrich's stand-in below gives: the 107.53% was measured on Space
      Grotesk's Latin, so Russian used to land here ~7.5% too large. Cyrillic now skips it for the
      plain system stack. Keep in step with the same block in index.html. */
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* IBM Plex Sans, the face of the theme Nightwatch (M57). A reader gets it by picking that theme,
+ * which writes `plex` into the Typeface setting once, or by picking it on the Typeface card. Built
+ * by the same scripts/build-ui-font.sh run as the faces around it: wdth pinned to 100, wght kept at
+ * 400 to 700, subset to the same Latin ranges, 34 KB. Its bold is a real bold, so the base layer's
+ * `font-synthesis-weight: none` changes nothing here. Its figures are tabular by default.
+ *
+ * It is not preloaded and not precached: like Space Grotesk it is fetched the first time a reader
+ * chooses it, and the SW keeps it from then on (lib/sw-routes.ts UI_FONT_URLS). Declared here,
+ * between Space Grotesk and Aldrich, because fonts.test.ts compares this file's URL order with
+ * FONT_URLS and Aldrich's Cyrillic companion must stay last.
+ *
+ * IBM Plex Sans is SIL OFL 1.1, public/fonts/LICENSE-ibm-plex-sans.txt. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/ui-ibm-plex-sans-3.201-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Plex's own metric-matched stand-in, on the same terms as the two beside it: `local()` only, one
+   metric family, numbers printed by scripts/build-ui-font.sh, Latin only by `unicode-range` so
+   Cyrillic skips it. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 101.21%;
+  ascent-override: 101.27%;
+  descent-override: 27.17%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* Geist, the face of the theme `daylight` (M57). Built by the same scripts/build-ui-font.sh run,
+ * subset to the same ranges, 23 KB, instanced to wght 400 to 700 like Space Grotesk, so its bold is
+ * a real drawn weight and `font-synthesis-weight: none` costs it nothing. Plain geometric shapes,
+ * open counters and a tall x-height: the reason the daylight theme picked it for sun and low vision.
+ * Opt-in like every face but the default: fetched when a reader picks it, never preloaded.
+ *
+ * Geist is SIL OFL 1.1, public/fonts/LICENSE-geist.txt. */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/ui-geist-1.800-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Geist's own metric-matched stand-in, on the same terms as the two above: `local()` only, one
+   metric family, Latin only by `unicode-range`. Recomputed by scripts/build-ui-font.sh on
+   2026-10-15 (the playground's older copy read 103.03 / 97.54; Arimo moved upstream since). Do not
+   hand-edit. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "Geist Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 103.04%;
+  ascent-override: 97.53%;
+  descent-override: 28.63%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* Atkinson Hyperlegible Next, the face of the theme `harbour` (M57) and a Typeface choice of its
+ * own. Drawn for the Braille Institute for readers with low vision: open apertures, and letters
+ * that are hard to mistake for each other (I, l and 1; 0 and O; rn and m). That is the reason it
+ * sits beside a terminal palette, where a path or a hash is read one character at a time.
+ *
+ * REAL WEIGHTS. The upstream file is variable on wght 200-800; the subset is instanced to 400-700
+ * like Space Grotesk, so the 500 and 600 the app asks for are drawn, not synthesised. 23 KB, cut by
+ * the same scripts/build-ui-font.sh ranges and features (tnum kept). Not preloaded: it is fetched
+ * when a reader or a theme picks it.
+ *
+ * `unicode-range` is the subset's own Latin range, so Cyrillic and every other script skip this
+ * face and its stand-in and fall to the system stack.
+ *
+ * Atkinson Hyperlegible Next 2.001 is SIL OFL 1.1, from github.com/googlefonts/atkinson-hyperlegible-next
+ * at commit 7925f50f: public/fonts/LICENSE-atkinson-hyperlegible-next.txt. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+/* Its metric-matched stand-in, on the same terms as the two beside it: `local()` only, the same one
+   metric family, Latin only, and every number printed by scripts/build-ui-font.sh. The face is
+   close to Arial in width (98.99%) but its line box is taller, so the overrides are its own. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 98.99%;
+  ascent-override: 99.4%;
+  descent-override: 31.92%;
+  line-gap-override: 0%;
   unicode-range:
     U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
@@ -805,7 +916,7 @@
 
 /* ── The typeface setting: CSS owns every stack, JavaScript only swaps a class ───────────────────
  *
- * THE WHOLE MECHANISM IS THESE THREE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
+ * THE WHOLE MECHANISM IS THESE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
  * first paint and adds ONE class to <html>; `lib/design.ts` swaps it at runtime. Neither ever holds
  * a font list, sets a family, or writes a custom property — because a font stack in JavaScript is a
  * second source of truth for something this file already states, and the two would drift.
@@ -833,6 +944,24 @@
   --font-sans:
     "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-plex {
+  --font-sans:
+    "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-geist {
+  --font-sans:
+    "Geist", "Geist Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-atkinson {
+  --font-sans:
+    "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
 /* An operator's own face (theme.toml, ADR 0033). The FAMILY NAME is the one thing this file cannot

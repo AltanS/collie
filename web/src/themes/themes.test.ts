@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
-import { THEME_TOKENS, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
+import { SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -85,6 +85,67 @@ describe("the theme collie equals index.css", () => {
     expect(fails).toEqual([
       { half: "dark", check: "destructive-foreground on destructive", ratio: 2.77, floor: 4.5, pass: false },
     ]);
+  });
+});
+
+// The gate for every shipped theme other than collie (M57 spec 06). A shipped theme is complete:
+// both halves, all 43 tokens, no fill from the default, and every finding of the contrast report
+// passes. Unlike collie, it has no recorded failure to carry.
+describe("the shipped themes", () => {
+  const ids = readdirSync(resolve(web, "src/themes"))
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => name.slice(0, -".json".length))
+    .filter((id) => id !== "collie")
+    .toSorted();
+  const collie = shipped("collie");
+
+  it("are shipped ids, each named after its file", () => {
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(SHIPPED_THEME_IDS).toContain(id);
+      expect(shipped(id).id).toBe(id);
+    }
+  });
+
+  it.each(ids)("%s has both halves, all 43 tokens each, a shipped face and the shipped author", (id) => {
+    const theme = shipped(id);
+    expect(Object.keys(theme.light ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(Object.keys(theme.dark ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(SHIPPED_FONTS).toContain(theme.fonts?.ui);
+    expect(theme.author).toBe("Collie");
+  });
+
+  it.each(ids)("%s passes every check of the contrast report in both halves", (id) => {
+    const report = contrastReport(shipped(id), collie);
+    expect(report.filter((f) => !f.pass)).toEqual([]);
+    expect(new Set(report.map((f) => f.half))).toEqual(new Set(["light", "dark"]));
+  });
+});
+
+// Daylight is for direct sun and low vision, so it holds floors above the shared gate. Each number
+// is argued in daylight.notes.md, beside the measured table.
+describe("daylight holds its own floors", () => {
+  const theme = shipped("daylight");
+  const report = contrastReport(theme, shipped("collie"));
+  const find = (half: "light" | "dark", check: string) => report.find((f) => f.half === half && f.check === check)?.ratio ?? 0;
+
+  it.each(["light", "dark"] as const)("%s: body text is AAA, 7:1 or better, on the page and on a card", (half) => {
+    for (const check of ["foreground on background", "foreground on card", "muted-foreground on background", "muted-foreground on card"]) {
+      expect(find(half, check), check).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  it.each(["light", "dark"] as const)("%s: blocked and done sit 0.25 or more apart in oklab", (half) => {
+    expect(find(half, "status-blocked apart from status-done")).toBeGreaterThanOrEqual(0.25);
+  });
+
+  // A step stronger than collie on both lines, and rule still the stronger of the two.
+  it.each(["light", "dark"] as const)("%s: border and rule are stronger than collie's, and rule beats border", (half) => {
+    const line = (t: Theme, token: "border" | "rule") => contrast(t[half]?.[token] ?? "", t[half]?.background ?? "");
+    const collie = shipped("collie");
+    expect(line(theme, "border")).toBeGreaterThan(line(collie, "border"));
+    expect(line(theme, "rule")).toBeGreaterThan(line(collie, "rule"));
+    expect(line(theme, "rule")).toBeGreaterThan(line(theme, "border"));
   });
 });
 

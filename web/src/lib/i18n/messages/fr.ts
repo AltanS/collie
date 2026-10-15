@@ -209,6 +209,9 @@ export const fr: Dictionary = {
   "settings.typeface.note.system": "La police de votre téléphone. Ne télécharge rien.",
   "settings.typeface.note.grotesk": "La voix propre à Collie, dessinée pour s'accorder à la marque.",
   "settings.typeface.note.aldrich": "Graisse unique : le texte en gras a le même aspect que le texte normal.",
+  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Ajoutée par l'opérateur de ce collie.",
   "settings.fonts.title": "Police du terminal",
   "settings.fonts.description": "Le miroir du terminal et le champ de brouillon, sur cet appareil.",
