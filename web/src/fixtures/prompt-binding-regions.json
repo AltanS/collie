@@ -20,6 +20,16 @@
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Which color theme should the dashboard use?\n\n> 1. Red\n  2. Green\n  3. Blue\n  4. Write-in...\n\n  ↑/↓ Navigate · enter Select · esc Skip\nesc to cancel                                                                                                                                                                                                   Gemini 3.7 Flash · low"
   },
   {
+    "fixture": "agy--slash-exact.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n> /model  Set a model, or run a single prompt on another model\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
+    "fixture": "agy--slash-partial.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n> /model                        Set a model, or run a single prompt on another model\n  /remote-control               Turn on remote control for this session (off to disable)\n  /permissions                  Manage tool permissions\n  /teamwork-preview             Invoke a team of agents to autonomously tackle large projects.\n  /agy-customizations           Comprehensive guide and reference for the Antigravity Customization System. Use to ...\n   ↓ 1 more\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
     "fixture": "claude--menu-effort-slider.txt",
     "detector": "menu",
     "region": "──────────────────────────────────────────────────────────────────────────────────\n  Effort\n\n          Faster                                                 Smarter\n          ──────────────────────────────▲────────────┆──────────────────\n          low     medium     high     xhigh      max       ultracode\n                                                       xhigh + workflows\n\n  ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"

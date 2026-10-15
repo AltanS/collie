@@ -9,6 +9,24 @@ const MAX_DRAFT_LINES = 100;
 const PROMPT_REGEX = /^[❯›>]\s*/;
 const ESC_TO_CANCEL = /\besc(?:ape)?\s+to\s+cancel\b/i;
 
+// The slash-command completion popup (agy 1.3.5, live 2026-10-15) paints UNDER the box's bottom rule:
+// suggestion rows, the highlighted one led by `>` (`> /model  Set a model…`) and the rest by two
+// spaces, then `↓ 1 more` or `No matches`, then its own footer `↑/↓ Navigate · enter Select · tab
+// Complete` and an `esc to cancel` row. The box above stays live: typing still lands in it. Only that
+// footer says `tab Complete`; every dialog footer in the corpus says `esc Skip`, `tab Amend` or
+// `enter Confirm`, so the phrase is what tells the popup from a modal.
+const COMPLETION_FOOTER = /\btab\s+complete\b/i;
+const COMPLETION_POINTED = /^>\s+(\/\S+)/;
+// The popup's own rows on top of the status rows: five suggestions, a `↓ n more`, an `↑ n more` once
+// scrolled, the footer, with margin.
+const MAX_POPUP_LINES = 10;
+
+/** The completion footer's row between the bottom rule and `end`, or -1 when no popup is open. */
+function completionFooter(texts: string[], bottomBorder: number, end: number): number {
+  for (let j = bottomBorder + 1; j < end; j++) if (COMPLETION_FOOTER.test(texts[j]!)) return j;
+  return -1;
+}
+
 // What a dialog paints under its rule and a status line never does: a footer hint, `esc to cancel`,
 // or a numbered menu (rows 1., 2. …, as `trailingMenuRows` reads one). Idle and working composers
 // print `? for shortcuts` under the box (every capture in the corpus), so any of these under a rule
@@ -30,6 +48,8 @@ export interface LocatedBox {
   top: number;
   prompt: number;
   bottomBorder: number;
+  /** The first status row: the row under the rule, or under a completion popup's footer. */
+  statusStart: number;
   statusEnd: number;
   draft: string | null;
 }
@@ -43,7 +63,11 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
   // 1. Look for bottom border within MAX_STATUS_LINES from the tail (allowing status/hint lines below)
   let bottomBorder = -1;
   let statusEnd = end;
+  let reach = MAX_STATUS_LINES;
   for (let s = 0; s <= MAX_STATUS_LINES && bot - s >= 0; s++) {
+    if (COMPLETION_FOOTER.test(texts[bot - s]!)) reach = MAX_STATUS_LINES + MAX_POPUP_LINES;
+  }
+  for (let s = 0; s <= reach && bot - s >= 0; s++) {
     const idx = bot - s;
     if (isBoxBorder(texts[idx]!)) {
       bottomBorder = idx;
@@ -55,7 +79,11 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
   // `select-menu` dialog (one real option and a write-in) puts that rule inside it, and the echoed
   // user message `> …` above it then reads as an idle prompt. A modal under the rule, or a prompt
   // grammar claiming the screen, means no composer: fail closed, like step 2.
-  if (bottomBorder !== -1 && (dialogUnder(texts, bottomBorder, end) || detectPromptSelectRegionIn(texts) !== null)) {
+  const footer = bottomBorder === -1 ? -1 : completionFooter(texts, bottomBorder, end);
+  if (
+    bottomBorder !== -1 &&
+    ((footer === -1 && dialogUnder(texts, bottomBorder, end)) || detectPromptSelectRegionIn(texts) !== null)
+  ) {
     return null;
   }
 
@@ -79,8 +107,10 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
             const cont = texts[j]!.trim();
             if (cont.length > 0) parts.push(cont);
           }
-          const draft = parts.join(" ").trim() || null;
-          return { top, prompt: p, bottomBorder, statusEnd, draft };
+          const typed = parts.join(" ").trim() || null;
+          const draft = footer === -1 ? typed : completedDraft(texts, bottomBorder, footer, typed);
+          const statusStart = footer === -1 ? bottomBorder + 1 : footer + 1;
+          return { top, prompt: p, bottomBorder, statusStart, statusEnd, draft };
         }
       }
       p--;
@@ -96,6 +126,22 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
   // authorise a reply the pane cannot receive. Failing closed costs a refused send; failing open
   // types into a running turn.
   return null;
+}
+
+/**
+ * The draft under an open completion popup. Enter runs the HIGHLIGHTED suggestion, so the typed text
+ * verifies only when that suggestion is the typed command itself, or when none is highlighted (`No
+ * matches`, an argument typed). On partial input (`/mo` over `> /model`) the highlighted row is folded
+ * in, so the reply guard cannot match and refuses, rather than bless a command nobody typed.
+ */
+function completedDraft(texts: string[], bottomBorder: number, footer: number, typed: string | null): string | null {
+  if (typed === null) return null;
+  for (let j = bottomBorder + 1; j < footer; j++) {
+    const pointed = COMPLETION_POINTED.exec(texts[j]!.trim());
+    if (pointed === null) continue;
+    return pointed[1] === typed ? typed : `${typed} ${texts[j]!.trim()}`;
+  }
+  return typed;
 }
 
 export function stripChrome(lines: StyledLine[]): StyledLine[] {
@@ -123,7 +169,7 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   if (box === null) return [];
 
   const rows: StyledLine[] = [];
-  for (let j = box.bottomBorder + 1; j < box.statusEnd; j++) {
+  for (let j = box.statusStart; j < box.statusEnd; j++) {
     if (!isBlank(texts[j]!)) rows.push(lines[j]!);
   }
   return rows;

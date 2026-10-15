@@ -7,6 +7,7 @@ import { lineText, splitLines } from "../../blocks";
 import { agyAdapter, antigravityAdapter } from "./index";
 import { detectPromptSelect } from "./prompt-select";
 import { describeAdapterConformance } from "../conformance";
+import { buildBlocks } from "../index";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
@@ -19,7 +20,15 @@ const allFixtures = readdirSync(PANES_DIR)
 
 const allAgyFixtures = allFixtures.filter((f) => f.startsWith("agy--"));
 
-const NEUTRAL = new Set(["agy--fresh-idle.txt", "agy--working.txt", "agy--done.txt"]);
+const NEUTRAL = new Set([
+  "agy--fresh-idle.txt",
+  "agy--working.txt",
+  "agy--done.txt",
+  // The slash-command completion popup under a live box: not a dialog, nothing to lift.
+  "agy--slash-exact.txt",
+  "agy--slash-partial.txt",
+  "agy--slash-typed-arg.txt",
+]);
 
 // Claude captures agy's grammar still claims, by name. `isAlienBuffer` (markers.ts) keeps agy off a
 // Claude buffer by a Claude name on screen, and a permission dialog raised by a Claude SUBAGENT with
@@ -352,5 +361,29 @@ describe("agy: the input-box search window never reads a dialog's rule as a comp
   it("one numbered item in a custom statusLine is still a live box", () => {
     const rows = [...boxWithStatusRows(1), "1. build ok  2. tests ok"];
     expect(agyAdapter.composerReady!(linesOf(rows))).toBe(true);
+  });
+});
+
+describe("the slash-command completion popup is the live box, not a dialog (agy 1.3.5)", () => {
+  const read = (name: string) => splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+
+  it("reads `/model` over its own highlighted suggestion, with no card and no popup in the status", () => {
+    const lines = read("agy--slash-exact.txt");
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractInputDraft!(lines)).toBe("/model");
+    expect(buildBlocks(lines, { agent: "agy" }).map((b) => b.kind)).toEqual(["raw"]);
+    const status = agyAdapter.extractStatusLines!(lines).map((l) => lineText(l)).join(" ");
+    expect(status).not.toContain("Set a model");
+    expect(status).not.toContain("tab Complete");
+  });
+
+  it("stalls safe on partial input, where Enter would run the highlighted `/model`", () => {
+    const lines = read("agy--slash-partial.txt");
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractInputDraft!(lines)).not.toBe("/mo");
+  });
+
+  it("reads a typed argument once the popup says No matches", () => {
+    expect(agyAdapter.extractInputDraft!(read("agy--slash-typed-arg.txt"))).toBe("/model x");
   });
 });
