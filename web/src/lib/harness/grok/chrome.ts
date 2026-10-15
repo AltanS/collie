@@ -304,7 +304,14 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   }
 
   const draft = parts.filter((p) => p.length > 0).join(" ");
-  return draft.length === 0 ? null : draft;
+  if (draft.length === 0) return null;
+  // Under the slash popup, Enter runs the HIGHLIGHTED row. The typed text verifies only when that
+  // row is the typed command; on partial input (`/stat` over `❯ /statusline`) the highlighted command
+  // is folded in, so the reply guard cannot match and refuses rather than run a command nobody typed.
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const pointed = popupOnComposer(texts, box.top);
+  if (pointed !== null && pointed !== draft.split(/\s+/)[0]) return `${draft} ${pointed}`;
+  return draft;
 }
 
 /** Whether Grok's free-text composer is on screen at the tail. */
@@ -328,6 +335,35 @@ const WELCOME_MENU = [/\bNew worktree\b/, /\bResume session\b/, /\bQuit\b/];
 const ROUNDED_BOTTOM = /^\s*╰/;
 const ROUNDED_TOP = /^\s*╭/;
 const WELCOME_SCAN_ROWS = 40;
+
+// Grok's slash-command completion popup (1.0.52, live 2026-10-15): its rows sit between two rules
+// directly on top of the composer, the highlighted one led by `❯ /`, the rest by spaces and `/`. The
+// box below stays live: typing lands in it. A rule-bounded run holding a `❯ /` row is what tells it
+// from the model picker, whose pointer rows name a model, not a slash command.
+const POPUP_RULE = /^\s*─+(?:\d+─+)?$/;
+const POPUP_POINTED = /^\s*❯ (\/\S+)/;
+const POPUP_ROWS = 40;
+
+/** The highlighted command of a slash popup whose bottom rule is row `bottom`, or null for no popup. */
+function slashPopupPointed(texts: string[], bottom: number): string | null {
+  if (!POPUP_RULE.test(texts[bottom]!)) return null;
+  let pointed: string | null = null;
+  for (let row = bottom - 1; row >= 0 && bottom - row <= POPUP_ROWS; row--) {
+    const t = texts[row]!;
+    if (POPUP_RULE.test(t)) return pointed;
+    pointed = POPUP_POINTED.exec(t)?.[1] ?? pointed;
+  }
+  return null;
+}
+
+/** The slash popup's highlighted command when one sits right on top of the composer at `top`. */
+function popupOnComposer(texts: string[], top: number): string | null {
+  for (let i = top - 1; i >= 0; i--) {
+    if (isBlank(texts[i]!)) continue;
+    return slashPopupPointed(texts, i);
+  }
+  return null;
+}
 
 /** Whether the rounded box closing on row `bottom` is Grok's welcome card. */
 function closesWelcomeCard(texts: string[], bottom: number): boolean {
@@ -360,7 +396,7 @@ export function composerReady(lines: StyledLine[]): boolean {
     const t = texts[i]!;
     if (isBlank(t)) continue;
     if (USER_BUBBLE_EDGE.test(t)) return true;
-    if (opensBox(t)) return closesWelcomeCard(texts, i);
+    if (opensBox(t)) return closesWelcomeCard(texts, i) || slashPopupPointed(texts, i) !== null;
     return true;
   }
   return true;

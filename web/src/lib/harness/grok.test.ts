@@ -62,6 +62,8 @@ const PINNED = [
   "grok--reply-table-highlighted.txt",
   "grok--reply-table-scrollbar.txt",
   "grok--reporter-294-draft-newline-hint.txt",
+  "grok--slash-popup-exact.txt",
+  "grok--slash-popup-partial.txt",
   "grok--startup.txt",
   "grok--user-bubble.txt",
   "grok--welcome-card.txt",
@@ -561,6 +563,20 @@ describe("grokBuildBlocks", () => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--welcome-card.txt"), "utf8")));
     expect(grokAdapter.composerReady!(lines)).toBe(true);
     expect(grokAdapter.extractInputDraft(lines)).toBeNull();
+  });
+
+  it("the slash-command popup above the box leaves the box live, and an exact command verifies", () => {
+    // Grok paints its `/` completion between two rules right on top of the composer (1.0.52). Enter
+    // runs the highlighted row, so the typed command verifies when that row is the command itself.
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--slash-popup-exact.txt"), "utf8")));
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    expect(grokAdapter.extractInputDraft(lines)).toBe("/statusline");
+  });
+
+  it("partial input under the popup does not verify, since Enter would run the highlighted row", () => {
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--slash-popup-partial.txt"), "utf8")));
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    expect(grokAdapter.extractInputDraft(lines)).not.toBe("/stat");
   });
 
   it("blank rows render unpainted in every block; glyph rows keep their backgrounds", () => {
