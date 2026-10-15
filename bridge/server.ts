@@ -6843,7 +6843,7 @@ export async function sendRoute(
   const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness: pane.agent });
   const receipt = answer.receipt;
   if (receipt !== undefined) {
-    const detail: AuditDetail = { mode: receipt.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.probed };
+    const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
     if (receipt.keys.length > 0) {

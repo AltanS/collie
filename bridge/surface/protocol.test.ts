@@ -224,9 +224,7 @@ describe("a send that goes through", () => {
       version: "2.1.200",
       profileId: "claude",
       profileStatus: "verified",
-      mode: "send",
       textLength: 41,
-      probed: false,
       keys: ["Enter"],
     });
     expect(answer.receipt?.reason).toBeUndefined();
@@ -247,14 +245,14 @@ describe("a send that goes through", () => {
   test("a provisional profile takes the probed path: the probe, Backspace, then the text", async () => {
     const { pane, send } = rig({ version: "2.1.999" });
     const answer = await send("hello there, agent");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", probed: true, keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.calls).toEqual([`type:${PROBE}`, "paste:hello there, agent"]);
   });
 
   test("a text of one to three characters takes the probed path on a verified profile", async () => {
     const { pane, send } = rig();
     const answer = await send("ok");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", probed: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.calls[0]).toBe(`type:${PROBE}`);
   });
 
@@ -328,7 +326,7 @@ describe("a harness with no profile", () => {
     const { pane, send } = rig({ mode: "generic" });
     const first = await send("hello from the phone");
     const answer = await send("hello from the phone", { rowsHash: first.rowsHash! });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", probed: true, keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     // No profile: never a paste, and the generic probe character.
     expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:hello from the phone"]);
     expect(pane.transcript.at(-1)).toBe("> hello from the phone");
@@ -342,7 +340,7 @@ describe("a harness with no profile", () => {
     };
     const first = await send("count my tokens");
     const answer = await send("count my tokens", { rowsHash: first.rowsHash! });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", probed: true, keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("a commit whose rows moved since the person looked is refused stale_surface", async () => {
@@ -633,7 +631,7 @@ describe("the offers as new requests", () => {
     const { pane, send } = rig();
     pane.box = "first half";
     const answer = await send(" second half", { mode: "append" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", mode: "append" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.transcript.at(-1)).toBe("> first half second half");
   });
 
@@ -647,13 +645,40 @@ describe("the offers as new requests", () => {
     neverEscape(pane);
   });
 
+  test("replace: the clear is its own step, so S0 keeps its two reads and its own gap", async () => {
+    const r = rig();
+    r.pane.box = "old draft";
+    let reads = 0;
+    r.pane.beforeRead = () => {
+      reads++;
+      // Every read is slow; two of them fit S0's 1200 ms, the clear's reads would not.
+      r.clock.now += 400;
+    };
+    const answer = await r.send("new words", { mode: "replace" });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.receipt?.gapsMs.s0).toBeLessThanOrEqual(1200);
+    expect(answer.receipt?.gapsMs.clear).toBeGreaterThan(0);
+    expect(reads).toBeGreaterThan(2);
+  });
+
+  test("replace: a clear that runs past its bound ends unknown, and no text is written", async () => {
+    const r = rig();
+    r.pane.box = "old draft";
+    r.pane.backspaceRestores = false;
+    const answer = await r.send("new words", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(r.pane.calls).toEqual([]);
+    neverEscape(r.pane);
+  });
+
   test("submit after typed_not_submitted: Enter on the text that is there", async () => {
     const { pane, send } = rig();
     pane.dropLastChar = true;
     await send("hello world");
     pane.dropLastChar = false;
     const answer = await send("hello worl", { mode: "submit" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", mode: "submit", keys: ["Enter"] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(Object.keys(answer.receipt?.gapsMs ?? {}).toSorted()).toEqual(["commit", "s0", "s2"]);
     expect(pane.transcript.at(-1)).toBe("> hello worl");
   });
 
@@ -702,6 +727,51 @@ describe("the lock", () => {
     expect((await r.send("the next one")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
   });
 
+  test("S0 past its own bound (2 reads, 1200 ms) is refused bound before anything is written", async () => {
+    const r = rig();
+    // Two reads of 900 ms each: 900 + 120 + 900 = 1920 ms, past S0's 1200 ms though far inside the request's bound.
+    r.pane.beforeRead = () => {
+      r.clock.now += 900;
+    };
+    const answer = await r.send("slow screen");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bound", keys: [], s0: null });
+    expect(answer.offers).toEqual(["keys"]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.deps.store.get(answer.receipt!.requestId)?.phase).toBe("settled");
+  });
+
+  test("S0 does not start its second read when the gap alone would cross the bound", async () => {
+    const r = rig();
+    r.pane.beforeRead = () => {
+      r.clock.now += 1100;
+    };
+    const answer = await r.send("slow screen");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bound" });
+    expect(r.pane.readsSeen).toBe(1);
+  });
+
+  test("S0 within its bound still goes through", async () => {
+    const r = rig();
+    r.pane.beforeRead = (_p, n) => {
+      if (n <= 2) r.clock.now += 500;
+    };
+    const answer = await r.send("a fair screen");
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.receipt?.gapsMs.s0).toBe(1120);
+  });
+
+  test("an S0 read that hangs is cut at S0's bound, not the request's", async () => {
+    const r = rig();
+    r.pane.beforeRead = (_p, n) => (n === 2 ? new Promise<void>(() => undefined) : undefined);
+    const started = Date.now();
+    const answer = await r.send("hung read");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bound" });
+    // 1200 ms less the 120 ms gap the fake clock skipped; far under the request's 7600 ms.
+    expect(Date.now() - started).toBeLessThan(2500);
+    expect(r.pane.calls).toEqual([]);
+  });
+
   test("a lock past its bound is free for the next request", () => {
     const locks = new SessionLocks();
     expect(locks.acquire("k", "a", 100, 0)).toBe(true);
@@ -722,8 +792,40 @@ describe("the crash case", () => {
     const answer = await protocol.handle({ id: "crash-req-001", text: "hello", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "crash" });
     expect(answer.replayed).toBe(true);
+    // Read, report: the pane as it reads now rides on the answer and on the receipt as S2.
+    expect(answer.receipt?.s2).toMatchObject({ revision: expect.any(Number), hash: expect.any(String) });
+    expect(answer.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(answer.rowsHash).toEqual(expect.any(String));
+    expect(answer.detail).toContain("restarted");
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a request the start-up recovery settled reads the pane when the phone asks again", async () => {
+    const storeDir = join(dir, "crash3");
+    const before = new RequestStore(storeDir);
+    before.accept({ id: "crash-req-003", session: "main", paneId: "%1", paneGeneration: "gen-1", surfaceRevision: 0, mode: "send", text: "hello" });
+    before.markSubmitSent("crash-req-003");
+    new RequestStore(storeDir).recover(SendProtocol.crashReceipt);
+    const { pane, protocol } = rig({ storeDir });
+    pane.box = "hello";
+    const answer = await protocol.handle({ id: "crash-req-003", text: "hello", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "crash" });
+    expect(answer.surface).toMatchObject({ composer: "draft" });
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a crash look that cannot read the pane still answers unknown, with no screen", async () => {
+    const storeDir = join(dir, "crash4");
+    const before = new RequestStore(storeDir);
+    before.accept({ id: "crash-req-004", session: "main", paneId: "%1", paneGeneration: "gen-1", surfaceRevision: 0, mode: "send", text: "hello" });
+    const { pane, protocol } = rig({ storeDir });
+    pane.readFails = true;
+    const answer = await protocol.handle({ id: "crash-req-004", text: "hello", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "crash", s2: null });
+    expect(answer.surface).toBeUndefined();
   });
 
   test("the start-up recovery settles it the same way", () => {

@@ -55,7 +55,7 @@ export type AcceptResult =
 
 const PHASES = ["accepted", "submit-sent", "settled"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
-const STEPS = ["s0", "probe", "write", "s1", "commit", "s2"] as const;
+const STEPS = ["s0", "clear", "probe", "write", "s1", "commit", "s2"] as const;
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
   return allowed.find((word) => word === value);
@@ -76,7 +76,6 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const text = (key: string): string | undefined => asJsonString(node[key]);
   const nullableText = (key: string): string | null | undefined => (node[key] === null ? null : text(key));
   const outcome = pick(node.outcome, SEND_OUTCOMES);
-  const mode = pick(node.mode, SEND_MODES);
   const reason = node.reason === undefined ? undefined : pick(node.reason, SEND_REASONS);
   const profileStatus = node.profileStatus === null ? null : pick(node.profileStatus, PROFILE_STATUSES);
   const [s0, s1, s2] = [mark(node.s0), mark(node.s1), mark(node.s2)];
@@ -94,7 +93,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
     textLength: asJsonNumber(node.textLength),
   };
   if (Object.values(fields).some((field) => field === undefined)) return undefined;
-  if (outcome === undefined || mode === undefined || profileStatus === undefined || (node.probed !== true && node.probed !== false)) return undefined;
+  if (outcome === undefined || profileStatus === undefined) return undefined;
   if (s0 === undefined || s1 === undefined || s2 === undefined || gapsNode === undefined || keys === undefined) return undefined;
   if (node.reason !== undefined && reason === undefined) return undefined;
   const gapsMs: Partial<Record<SendStep, number>> = {};
@@ -112,10 +111,8 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
     version: fields.version!,
     profileId: fields.profileId!,
     profileStatus,
-    mode,
     textHash: fields.textHash!,
     textLength: fields.textLength!,
-    probed: node.probed === true,
     s0,
     s1,
     s2,

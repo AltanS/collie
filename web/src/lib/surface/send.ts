@@ -37,7 +37,8 @@ export const SEND_REASONS = [
   "submit_failed",
   // sent: the box emptied after a discard
   "discarded",
-  // unknown: the request ended without evidence either way
+  // unknown: the request ended without evidence either way. `bound` also refuses: an S0 past its own
+  // bound (2 reads, 1200 ms) ends `refused(bound)`, since nothing was written yet.
   "bound",
   "crash",
   "lost_lock",
@@ -73,7 +74,7 @@ export interface ReadMark {
 }
 
 /** The steps whose time a receipt measures. */
-export type SendStep = "s0" | "probe" | "write" | "s1" | "commit" | "s2";
+export type SendStep = "s0" | "clear" | "probe" | "write" | "s1" | "commit" | "s2";
 
 /**
  * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no
@@ -88,10 +89,8 @@ export interface SendReceipt {
   readonly version: string | null;
   readonly profileId: string | null;
   readonly profileStatus: ProfileStatus | null;
-  readonly mode: SendMode;
   readonly textHash: string;
   readonly textLength: number;
-  readonly probed: boolean;
   readonly s0: ReadMark | null;
   readonly s1: ReadMark | null;
   readonly s2: ReadMark | null;

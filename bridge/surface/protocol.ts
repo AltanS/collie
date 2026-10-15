@@ -77,6 +77,8 @@ export const CLUSTER_ROWS = 24;
 const FIRST_GAP_MS = 80;
 /** The gap between the two S0 reads. */
 const S0_GAP_MS = 120;
+/** Emptying a box (replace, discard) borrows the S2 bound: a read after every batch, inside S2's reads and ms. */
+const CLEAR_BOUND = BOUNDS.s2;
 /** Keys per clear batch; a read sits between two batches. */
 const CLEAR_BATCH = 256;
 /** Texts this short take the probed path whatever the profile says. */
@@ -430,6 +432,24 @@ function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   return draft;
 }
 
+/** A read that a step's own bound cut short, before the request's bound. The step decides what it means. */
+class StepLate extends Error {
+  constructor() {
+    super("step bound");
+  }
+}
+
+/** A crash answer with the pane as it reads now, so the person checks it before sending again. */
+function withLook(answer: SendAnswer, look: Snap | null): SendAnswer {
+  if (look === null) return answer;
+  return {
+    ...answer,
+    surface: look.surface,
+    rowsHash: look.rowsHash,
+    detail: "The bridge restarted during this send, so Collie cannot say whether it went out. Check the screen before you send again.",
+  };
+}
+
 class Ended extends Error {
   constructor(
     readonly outcome: SendOutcome,
@@ -480,12 +500,20 @@ export class SendProtocol {
     }
     if (accepted.kind === "replay") {
       const stored = accepted.record.receipt;
-      if (stored !== undefined) return { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null), replayed: true };
+      if (stored !== undefined) {
+        const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null), replayed: true };
+        // A send a crash cut short: read the pane now and report it beside the stored receipt.
+        if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
+        return withLook(replay, await this.lookAfterCrash(request, accepted.record, target));
+      }
       // Unsettled and not running here: the bridge died while it ran, and the start-up recovery has
-      // not seen it. It ends `unknown` now, like recovery would end it.
-      const receipt = this.receiptOf(this.bareState(request, accepted.record, target, null), "unknown", "crash");
+      // not seen it. It ends `unknown` now, like recovery would end it, with the pane read as S2.
+      const look = await this.lookAfterCrash(request, accepted.record, target);
+      const state = this.bareState(request, accepted.record, target, null);
+      state.marks.s2 = look;
+      const receipt = this.receiptOf(state, "unknown", "crash");
       this.deps.store.settle(request.id, receipt);
-      return { receipt, offers: offersFor("unknown", "crash", false), replayed: true };
+      return withLook({ receipt, offers: offersFor("unknown", "crash", false), replayed: true }, look);
     }
     const work = this.run(request, accepted.record, target);
     this.inFlight.set(request.id, work);
@@ -493,6 +521,22 @@ export class SendProtocol {
       return await work;
     } finally {
       this.inFlight.delete(request.id);
+    }
+  }
+
+  /**
+   * After a crash: one fresh read of the pane (read, report), never a key. Null when the pane cannot
+   * be read inside S0's bound. The request's own bound is long past, so the read gets a fresh one.
+   */
+  private async lookAfterCrash(request: SendRequest, record: SendRecord, target: SendTarget): Promise<Snap | null> {
+    const match = await this.deps.profile(target.harness);
+    const until = this.now() + BOUNDS.s0.ms;
+    const state: RunState = { ...this.bareState(request, record, target, match), deadline: until };
+    try {
+      return await this.readNow(state, "crash", until);
+    } catch (err) {
+      if (err instanceof Ended || err instanceof StepLate) return null;
+      throw err;
     }
   }
 
@@ -507,10 +551,8 @@ export class SendProtocol {
       version: null,
       profileId: null,
       profileStatus: null,
-      mode: record.mode,
       textHash: record.textHash,
       textLength: record.textLength,
-      probed: false,
       s0: null,
       s1: null,
       s2: null,
@@ -549,10 +591,8 @@ export class SendProtocol {
       version: match?.version ?? null,
       profileId: match?.profile.id ?? null,
       profileStatus: match?.status ?? null,
-      mode: record.mode,
       textHash: record.textHash,
       textLength: record.textLength,
-      probed: state.probed,
       s0: mark(state.marks.s0),
       s1: mark(state.marks.s1),
       s2: mark(state.marks.s2),
@@ -629,7 +669,9 @@ export class SendProtocol {
         this.lap(state, "s0");
         state.marks.s1 = s0;
         await this.commit(state, s0);
+        this.lap(state, "commit");
         await this.awaitSent(state, s0, null, lines);
+        this.lap(state, "s2");
         return;
       }
       case "discard": {
@@ -637,13 +679,17 @@ export class SendProtocol {
         if (!boxMatches(boxText(frame), "", lines, collapseOf(match))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
         this.lap(state, "s0");
         await this.clear(state, s0);
+        this.lap(state, "clear");
         return;
       }
       case "replace": {
         const frame = this.draftFrame(s0);
+        // S0 ends with its two reads; emptying the box is its own step with its own bound.
+        this.lap(state, "s0");
         if (boxText(frame).length > 0) {
           s0 = await this.clear(state, s0);
           state.marks.s0 = s0;
+          this.lap(state, "clear");
         }
         break;
       }
@@ -656,7 +702,7 @@ export class SendProtocol {
       case "prepare":
         return;
     }
-    this.lap(state, "s0");
+    if (request.mode !== "replace") this.lap(state, "s0");
 
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
@@ -733,13 +779,20 @@ export class SendProtocol {
     }
   }
 
-  /** A promise that loses to the request's deadline. */
-  private async within<T>(state: RunState, work: Promise<T>): Promise<T> {
-    const left = state.deadline - this.now();
-    if (left <= 0) throw new Ended("unknown", "bound");
+  /**
+   * A promise that loses to the request's deadline, or to a step's own end (`until`) when that comes
+   * first. The request's deadline ends the request `unknown`; a step's end throws StepLate for the step.
+   */
+  private async within<T>(state: RunState, work: Promise<T>, until = state.deadline): Promise<T> {
+    const end = Math.min(until, state.deadline);
+    // The request's bound wins when both have passed: the request ends, not just the step.
+    const lateError = (): Error =>
+      this.now() < state.deadline && until < state.deadline ? new StepLate() : new Ended("unknown", "bound", { detail: "The multiplexer did not answer inside the bound." });
+    const left = end - this.now();
+    if (left <= 0) throw lateError();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Ended("unknown", "bound", { detail: "The multiplexer did not answer inside the bound." })), left);
+      timer = setTimeout(() => reject(lateError()), left);
     });
     try {
       return await Promise.race([work, late]);
@@ -748,10 +801,16 @@ export class SendProtocol {
     }
   }
 
-  private async read(state: RunState, step: string): Promise<Snap | null> {
+  /** One read, cut at the step's end (`until`) or the request's bound, whichever comes first. */
+  private async read(state: RunState, step: string, until = state.deadline): Promise<Snap | null> {
     this.guard(state);
+    return this.readNow(state, step, until);
+  }
+
+  /** A read without the lock check, for a look after a crash. */
+  private async readNow(state: RunState, step: string, until = state.deadline): Promise<Snap | null> {
     const { paneId, harness } = state.target;
-    const grid = await this.within(state, this.deps.mux.readGrid(paneId, { scope: "viewport", lines: SEND_READ_LINES, styling: "preserve" }));
+    const grid = await this.within(state, this.deps.mux.readGrid(paneId, { scope: "viewport", lines: SEND_READ_LINES, styling: "preserve" }), until);
     const gateRevision = this.deps.gate.noteRead(paneId);
     if (!grid.ok) return null;
     const rows = splitLines(parseAnsi(grid.value.text));
@@ -779,11 +838,28 @@ export class SendProtocol {
     };
   }
 
-  /** S0: two reads in separate mux calls; the box (or the bottom window, with no frame) must be identical. */
+  /**
+   * S0: two reads in separate mux calls inside S0's bound (2 reads, 1200 ms); the box (or the bottom
+   * window, with no frame) must be identical. Nothing is written before S0 passes, so a slow S0 is a
+   * refusal (`bound`), never an unknown.
+   */
   private async stableRead(state: RunState, step: string): Promise<Snap> {
-    const first = await this.read(state, step);
+    const until = Math.min(this.now() + BOUNDS.s0.ms, state.deadline);
+    const late = (): Ended => new Ended("refused", "bound", { detail: `The screen did not read twice inside ${String(BOUNDS.s0.ms)} ms.` });
+    const readInBound = async (): Promise<Snap | null> => {
+      try {
+        const snap = await this.read(state, step, until);
+        if (this.now() > until) throw late();
+        return snap;
+      } catch (err) {
+        if (err instanceof StepLate) throw late();
+        throw err;
+      }
+    };
+    const first = await readInBound();
+    if (this.now() + S0_GAP_MS > until) throw late();
     await this.sleep(S0_GAP_MS);
-    const second = await this.read(state, step);
+    const second = await readInBound();
     if (first === null || second === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
     const key = (snap: Snap): string => {
       if (snap.frame !== null) return snap.texts.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
@@ -813,7 +889,14 @@ export class SendProtocol {
       await this.sleep(Math.min(gap, left));
       gap *= 2;
       reads++;
-      const snap = await this.read(state, step);
+      let snap: Snap | null;
+      try {
+        snap = await this.read(state, step, until);
+      } catch (err) {
+        // The step's own bound cut the read short: the step ran out, like a read that came back late.
+        if (err instanceof StepLate) break;
+        throw err;
+      }
       if (snap === null) continue;
       last = snap;
       const verdict = test(snap);
@@ -983,15 +1066,24 @@ export class SendProtocol {
   /** Empties a framed box with the profile's clear key, in batches with a read between. Never Escape. */
   private async clear(state: RunState, from: Snap): Promise<Snap> {
     const clearKey = state.match?.profile.keys.clear ?? GENERIC_CLEAR;
+    const until = Math.min(this.now() + CLEAR_BOUND.ms, state.deadline);
+    const late = (): Ended => new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
     let snap = from;
-    for (let round = 0; round < BOUNDS.s2.reads; round++) {
+    for (let round = 0; round < CLEAR_BOUND.reads; round++) {
+      if (this.now() > until) throw late();
       if (snap.frame === null || snap.cueStrength !== "none") throw new Ended("unknown", "no_evidence", { detail: "The box went away while it was being emptied." });
       const left = [...boxText(snap.frame)].length;
       if (left === 0) return snap;
       const count = Math.min(CLEAR_BATCH, left + clearKey.slack);
       await this.keysThroughGate(state, Array.from({ length: count }, () => clearKey.key), "unknown");
       await this.sleep(FIRST_GAP_MS);
-      const next = await this.read(state, "clear");
+      let next: Snap | null;
+      try {
+        next = await this.read(state, "clear", until);
+      } catch (err) {
+        if (err instanceof StepLate) throw late();
+        throw err;
+      }
       if (next === null) throw new Ended("unknown", "no_evidence", { detail: "The pane could not be read while it was being emptied." });
       snap = next;
     }
