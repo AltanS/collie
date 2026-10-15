@@ -205,9 +205,20 @@ describe("built-in skills in the shipped catalogs", () => {
 
   it("lists Muse's ten user-invocable bundled skills, and none it hides", () => {
     const muse = names("muse");
-    for (const skill of ["/create-skill", "/doctor", "/grill", "/import", "/migrate", "/plan", "/resume-codex"]) {
-      expect(muse).toContain(skill);
-    }
+    const ten = [
+      "/create-plugin",
+      "/create-skill",
+      "/doctor",
+      "/grill",
+      "/import",
+      "/manage-settings",
+      "/migrate",
+      "/plan",
+      "/resume-claude",
+      "/resume-codex",
+    ];
+    expect(ten).toHaveLength(10);
+    for (const skill of ten) expect(muse).toContain(skill);
     for (const hidden of ["/taste", "/git", "/read-session"]) expect(muse).not.toContain(hidden);
   });
 });
