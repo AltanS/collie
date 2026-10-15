@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-15
-- **Shipped in:** pending (1.22.0)
+- **Shipped in:** 1.22.0
 - **Amends in scope:** [ADR 0033](./0033-the-app-face-is-a-device-preference.md), the line that the design store
   grows siblings: it grows one, `theme`, and a radius or a density never joins it
 - **Trail:** M57 (Themes) README, the shared contract · `web/src/themes/` (the shipped files) ·
@@ -87,6 +87,8 @@ non-zero diff stops the branch, whatever it improves.
 - Three files spell the token list: the shipped JSON, `theme-init.js` and the TypeScript validator. The coupling
   test is the price of a pre-paint script that imports nothing.
 - An imported theme is per device. It does not sync across devices or a crew in version 1.
+- A tampered store can show one wrong-colour frame before the app checks the theme again and resets to `collie`.
+  `theme-init.js` checks every key and the shape of every colour, but not the ranges of L, C and H. We accept this.
 - An operator default through `theme.toml`, `fonts.mono` in the file, an editor on the phone, and import from a URL
   are left for later. Each is a new field or a new path, not a change to version 1.
 - Revisit when the native mirror mode lands. That is the moment to add the ANSI 16 in version 2.
