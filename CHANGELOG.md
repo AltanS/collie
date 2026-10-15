@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.
+- **A dialog Collie has read is answered at the thumb.** With a draft in the box, Send becomes "Answer the dialog" and a tap scrolls to the dialog card and focuses its first button, instead of a refusal line in the header that a phone has scrolled away. The placeholder names what is waiting ("Menu is waiting"), an empty box keeps its microphone, and a 2.1.300 `/model` picker capture at 119 columns joins the fixtures.
 
 ### Packaging
 

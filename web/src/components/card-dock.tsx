@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
 import type {
@@ -56,6 +56,9 @@ type AutoBlock = Extract<Block, { kind: "autocomplete" }>;
 type UnreadBlock = Extract<Block, { kind: "unread-dialog" }>;
 
 export interface CardDockProps {
+  /** The dock's own box, so the composer's "Answer the dialog" word can scroll to it and focus its
+   *  first button (lib/dialog-focus.ts). */
+  ref?: Ref<HTMLDivElement>;
   /** The pane's blocks, as AgentChat built them for the mirror. Only the non-raw one is drawn here. */
   blocks: readonly Block[];
   /** Injected handler for a prompt-select tap (the race guard lives in AgentChat). Absent (or with a
@@ -213,6 +216,7 @@ export function CardDock(props: CardDockProps) {
     // `role="presentation"`, the mirror wrapper's own reading: a layout box whose click adds nothing
     // a keyboard user lacks (the textarea is the next tabbable thing).
     <div
+      ref={props.ref}
       role="presentation"
       data-slot="card-dock"
       className={cn(

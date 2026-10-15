@@ -268,6 +268,10 @@ export const es: Dictionary = {
   "composer.placeholder.gone": "El panel ya no existe",
   "composer.placeholder.readOnly": "Solo lectura: dispositivo no autorizado",
   "composer.placeholder.noMuxSend": "No es posible escribir en esta terminal",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Escribir en la terminal...",
   "composer.placeholder.shell": "Escribir un comando de shell...",
   "composer.placeholder.reply": "Escribir una respuesta...",
@@ -292,6 +296,7 @@ export const es: Dictionary = {
   "composer.attach.inFront": "Su marcador ya no está en el texto, por lo que Enviar antepone {name}.",
   "composer.send.typeAnyway": "¿Escribir de todos modos?",
   "composer.send.reallySend": "¿Confirmar envío?",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Detener escritura en la terminal",
   "composer.send.sendAria": "Enviar",
   "composer.send.reconnect": "Vuelve a conectarte para enviar",

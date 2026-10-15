@@ -270,6 +270,10 @@ export const de: Dictionary = {
   "composer.placeholder.gone": "Pane existiert nicht mehr",
   "composer.placeholder.readOnly": "Schreibgeschützt: Gerät nicht autorisiert",
   "composer.placeholder.noMuxSend": "Eingabe in dieses Terminal nicht möglich",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Ins Terminal eingeben…",
   "composer.placeholder.shell": "Shell-Befehl eingeben…",
   "composer.placeholder.reply": "Antwort eingeben…",
@@ -294,6 +298,7 @@ export const de: Dictionary = {
   "composer.attach.inFront": "Seine Markierung fehlt in Ihrem Text, daher setzt Senden {name} voran.",
   "composer.send.typeAnyway": "Trotzdem tippen",
   "composer.send.reallySend": "Senden bestätigen",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Eingabe ins Terminal abbrechen",
   "composer.send.sendAria": "Senden",
   "composer.send.reconnect": "Verbinde dich neu, um zu senden",

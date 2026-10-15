@@ -213,6 +213,10 @@ export const pt: Dictionary = {
   "composer.placeholder.gone": "O painel sumiu",
   "composer.placeholder.readOnly": "Somente leitura: não autorizado",
   "composer.placeholder.noMuxSend": "Não é possível digitar neste terminal",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Digite no terminal…",
   "composer.placeholder.shell": "Digite um comando shell…",
   "composer.placeholder.reply": "Digite uma resposta…",
@@ -237,6 +241,7 @@ export const pt: Dictionary = {
   "composer.attach.inFront": "O marcador sumiu do texto, então Enviar coloca {name} na frente.",
   "composer.send.typeAnyway": "Digitar mesmo assim?",
   "composer.send.reallySend": "Enviar mesmo?",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Parar de digitar no terminal",
   "composer.send.sendAria": "Enviar",
   "composer.send.reconnect": "Reconecte para enviar",

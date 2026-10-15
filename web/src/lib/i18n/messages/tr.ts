@@ -213,6 +213,10 @@ export const tr: Dictionary = {
   "composer.placeholder.gone": "Bölme kapandı",
   "composer.placeholder.readOnly": "Yalnızca okunur: yetki yok",
   "composer.placeholder.noMuxSend": "Bu terminale yazılamıyor",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Terminale yazın…",
   "composer.placeholder.shell": "Bir kabuk komutu yazın…",
   "composer.placeholder.reply": "Bir yanıt yazın…",
@@ -237,6 +241,7 @@ export const tr: Dictionary = {
   "composer.attach.inFront": "İşareti metninizde yok, bu nedenle Gönder {name} öğesini başa ekler.",
   "composer.send.typeAnyway": "Yine de yazılsın mı?",
   "composer.send.reallySend": "Gerçekten gönderilsin mi?",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Uçbirime yazmayı durdur",
   "composer.send.sendAria": "Gönder",
   "composer.send.reconnect": "Göndermek için yeniden bağlanın",

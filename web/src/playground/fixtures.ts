@@ -52,6 +52,7 @@ import type {
 // escape sequences and all, rather than a re-typed approximation of one.
 import claudePermissionBash from "@/fixtures/panes/claude--permission-bash.txt?raw";
 import claudeWorking from "@/fixtures/panes/claude--working.txt?raw";
+import claudeModelPicker from "@/fixtures/panes/claude-lab--menu-model-picker-v2300--w119.txt?raw";
 
 // ── The one clock ────────────────────────────────────────────────────────────────────────────────
 
@@ -1017,6 +1018,20 @@ export const paneUploadDraft: PaneFixture = {
   pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-upload` },
   text: claudeWorking,
   revision: 4_517,
+};
+
+/**
+ * Claude Code 2.1.300's `/model` picker at 119 columns: a READ dialog (a `menu` block) that owns the
+ * agent's keyboard, so the composer's Send slot says "Answer the dialog" (M51 spec 10).
+ *
+ * ITS OWN `paneId` for the same reason {@link paneUploadDraft} has one: the card seeds the REAL draft
+ * store, and this card's draft must not appear in another card's box.
+ */
+export const paneModelPicker: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView` — a plain data record — is an `AgentView`.
+  pane: { ...structuredClone(needsYou[0]!), paneId: `${needsYou[0]!.paneId}-model-picker` },
+  text: claudeModelPicker,
+  revision: 6_203,
 };
 
 /** A bare shell — no agent, no grammar, a ShellBadge in place of the status chip. */

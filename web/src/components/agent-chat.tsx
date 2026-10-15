@@ -56,7 +56,8 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
-import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
+import { blockOwnsKeyboard, dialogNounOf } from "@/lib/harness/dialog-contract";
+import { focusDialogCard } from "@/lib/dialog-focus";
 import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
@@ -855,6 +856,13 @@ export function AgentChat({
     () => blocks.some((b) => b.kind === "unread-dialog"),
     [blocks],
   );
+  // The noun, for the composer's placeholder ("Menu is waiting"), and the dock's box, for its
+  // "Answer the dialog" word to scroll to and focus.
+  const dialogNoun = useMemo(() => dialogNounOf(blocks), [blocks]);
+  const cardDockRef = useRef<HTMLDivElement>(null);
+  const answerDialog = useCallback(() => {
+    focusDialogCard(cardDockRef.current);
+  }, []);
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
   // is stateless, so it can't distinguish a stranded draft from the ~350ms flash where our OWN
@@ -2564,6 +2572,7 @@ export function AgentChat({
               a statusline run). */}
           {display && (
             <CardDock
+              ref={cardDockRef}
               blocks={blocks}
               onPromptAction={handlePromptAction}
               onWizardAction={handleWizardAction}
@@ -2795,6 +2804,8 @@ export function AgentChat({
                   hostBlock={hostBlock}
                   dialogPresent={dialogPresent}
                   dialogUnread={dialogUnread}
+                  dialogNoun={dialogNoun}
+                  onAnswerDialog={answerDialog}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

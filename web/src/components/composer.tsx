@@ -10,6 +10,7 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n";
 import { holdsMask } from "@/lib/masked-text";
 import { setStatus } from "@/lib/status";
 import { buzz } from "@/lib/haptics";
@@ -31,6 +32,7 @@ import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
+import type { DialogNoun } from "@/lib/harness/dialog-contract";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
 import {
@@ -122,6 +124,12 @@ interface ComposerProps {
    * screen or an alt-screen tool that trips the card's four conditions costs one extra tap instead
    * of a locked composer. False while any READ dialog is up, where the refusal stands flat. */
   dialogUnread?: boolean;
+  /** What the READ dialog on screen is called, so the placeholder names it ("Menu is waiting").
+   * Absent reads "Dialog is waiting". */
+  dialogNoun?: DialogNoun | null;
+  /** The "Answer the dialog" word's tap: scroll to the dialog card and focus its first button. It sends
+   * no text and no key. */
+  onAnswerDialog?: () => void;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -317,8 +325,16 @@ interface ClearedDraft {
   caret: number | null;
 }
 
+/** The placeholder key per noun, so the box names what is waiting. */
+const DIALOG_PLACEHOLDER = {
+  menu: "composer.placeholder.menuWaiting",
+  permission: "composer.placeholder.permissionWaiting",
+  question: "composer.placeholder.questionWaiting",
+  dialog: "composer.placeholder.dialogWaiting",
+} as const satisfies Record<DialogNoun, MessageKey>;
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, dialogNoun, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1237,6 +1253,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force";
+  // A dialog the screen reader parsed (not the unread-card heuristic) refuses every send, so the Send
+  // slot and the placeholder say so. The unread card keeps its two-tap override instead.
+  const readDialogOwnsKeys = dialogPresent && !dialogUnread && !direct.active;
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -1953,6 +1972,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       // the placeholder says what is true of THIS terminal rather than blaming the app.
                       missingSend !== null
                       ? missingSend.note || translate("composer.placeholder.noMuxSend")
+                    : readDialogOwnsKeys
+                      ? translate(DIALOG_PLACEHOLDER[dialogNoun ?? "dialog"])
                     : direct.active
                       ? translate("composer.placeholder.direct")
                       : isShell
@@ -2086,7 +2107,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               }}
             />
           </AnchoredMenu>
-          {!direct.active && forcingSend ? (
+          {readDialogOwnsKeys && hasDraft ? (
+            // A READ dialog owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
+            // and not only in the header StatusArea: on a phone that line is scrolled off or under
+            // the keyboard when Send is tapped (field case 2026-10-15, ADR 0009). The word replaces
+            // Send only once there is a draft to refuse; an empty box keeps its microphone and the
+            // placeholder carries the state. The tap is a way TO the card (scroll, focus its first
+            // button), never a send. Same shape as the two confirm words below but a muted variant,
+            // because this is a state to read, not a deliberate override to arm.
+            <Button
+              variant="secondary"
+              className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
+              onClick={() => onAnswerDialog?.()}
+              aria-label={translate("composer.send.dialogFirst")}
+            >
+              {translate("composer.send.dialogFirst")}
+            </Button>
+          ) : !direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.

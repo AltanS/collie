@@ -61,6 +61,28 @@ describe("detectMenuRegion — the /model picker", () => {
     expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
   });
 
+  // The 2026-10-15 field case (tracker M51 spec 10): Claude Code 2.1.300 at 119 columns, ten rows, the
+  // `… +3 models` tail and the `High effort` row. The grammar reads it like the 82-column picker, so
+  // the card the composer's refusal points at is on screen with its Esc action.
+  it("lifts the 2.1.300 picker at 119 columns as one menu with Enter, s and Esc", () => {
+    const blocks = claudeBuildBlocks(load("claude-lab--menu-model-picker-v2300--w119.txt"));
+    const menus = blocks.filter((b) => b.kind === "menu");
+    expect(menus).toHaveLength(1);
+    const block = menus[0]!;
+    if (block.kind !== "menu") throw new Error("unreachable: filtered to menu");
+    const menu = block.menu;
+    expect(menu.title).toBe("Select model");
+    expect(menu.actions).toEqual([
+      { label: "Set as default", keys: ["Enter"] },
+      { label: "Use this session only", keys: ["s"] },
+      { label: "Cancel", keys: ["Escape"], cancel: true },
+    ]);
+    expect(menu.nav).toEqual({
+      upDown: true,
+      leftRight: { verb: "adjust", label: "● High effort" },
+    });
+  });
+
   // The signature is what the race guard compares. Moving the highlight is exactly the drift a stale
   // tap must not survive, so the two captures must NOT sign the same.
   it("signs a moved highlight differently", () => {
