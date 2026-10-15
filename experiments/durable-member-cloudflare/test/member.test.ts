@@ -110,7 +110,11 @@ describe("the wire", () => {
       caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: true, reopen: true, terminal: false },
     });
     expect(r.body.epoch).toMatch(/^[0-9a-f]{32}$/);
-    expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({ code: "incompatible", range: { min: 1, max: 1 } });
+    expect((await call("GET", "/snapshot", { version: 2 })).body).toEqual({
+      code: "incompatible",
+      range: { min: 1, max: 1 },
+      refusal: { code: "version", collie: [2, 2], program: [1, 1] },
+    });
   });
 
   test("the snapshot lays out Support, Tickets and Look-ups, the first ticket waits on a Save or Don't save ask, and the ETag gives 304", async () => {
