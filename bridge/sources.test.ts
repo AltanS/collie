@@ -4,10 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  bootSources,
   envSource,
   ENV_SOURCE_NAME,
   parseSources,
   planPrograms,
+  PROGRAMS_OFF_LOG,
+  programsOff,
   readSources,
   SOURCES_FILE,
   SourcesError,
@@ -123,6 +126,33 @@ describe("the old env form", () => {
       COLLIE_DURABLE_URL: "https://x.example",
       COLLIE_DURABLE_TOKEN: TOKEN,
     });
+  });
+});
+
+describe("the kill switch", () => {
+  test("only COLLIE_PROGRAMS=off turns programs off, in any case and with spaces", () => {
+    expect(programsOff({ COLLIE_PROGRAMS: "off" })).toBe(true);
+    expect(programsOff({ COLLIE_PROGRAMS: " OFF " })).toBe(true);
+    for (const value of [undefined, "", "on", "0", "false", "offline"]) expect(programsOff({ COLLIE_PROGRAMS: value })).toBe(false);
+    expect(programsOff({})).toBe(false);
+  });
+
+  test("the boot line names the variable and the file", () => {
+    expect(PROGRAMS_OFF_LOG).toBe("[bridge] programs are off (COLLIE_PROGRAMS=off); sources.json ignored");
+  });
+
+  test("off, the file is not read at all: a listed program is none, and a wrong file does not stop the boot", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-sources-"));
+    try {
+      writeFileSync(sourcesPath(dir), JSON.stringify([{ name: "desk", kind: "durable", socket: "/s" }]), { mode: 0o600 });
+      expect(bootSources(dir, {})).toEqual([{ name: "desk", kind: "durable", socket: "/s" }]);
+      expect(bootSources(dir, { COLLIE_PROGRAMS: "off" })).toEqual([]);
+      writeFileSync(sourcesPath(dir), "[{]");
+      expect(() => bootSources(dir, {})).toThrow(SourcesError);
+      expect(bootSources(dir, { COLLIE_PROGRAMS: "off" })).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

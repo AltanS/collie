@@ -275,6 +275,12 @@ To change the token, deploy the new one to the program, set it in the `.env`, an
 `collie restart`. A durable-only instance joins a [crew](crew.md) under its host name, so give it a
 name with `collie crew join <lead-address> --label durable` when it shares a host with the lead.
 
+To turn every program from `sources.json` off for a while, set `COLLIE_PROGRAMS=off` in the `.env`
+and run `collie restart`. The bridge then ignores the file, logs one line, and runs as an install
+with no programs, so the phone shows no Programs section. `collie doctor` and `collie durable list`
+say that programs are off. The file stays as it is: unset the variable and restart to bring the
+programs back. The variable does not touch the old env form above.
+
 ## Where Collie keeps a program's data
 
 The program keeps the record of its conversations. Collie keeps a cache, its receipts and its push

@@ -213,6 +213,16 @@ describe("durable list", () => {
     expect(h.io.stdout.join("\n")).toContain("bridge not answering");
   });
 
+  test("with programs off the entries print as usual and the last line says so", async () => {
+    const h = harness({ COLLIE_PROGRAMS: "off" }, { [FILE]: seed }, (url) => (url.includes("session=desk") ? new Response("{}") : new Response("", { status: 404 })));
+    expect(await cmdDurableList(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.at(-1)).toBe("programs are off (COLLIE_PROGRAMS=off)");
+    expect(h.io.stdout.join("\n")).toContain(`desk  socket ${SOCKET}  loaded`);
+    const plain = harness({}, { [FILE]: seed }, () => new Response("{}"));
+    await cmdDurableList(plain.deps);
+    expect(plain.io.stdout.join("\n")).not.toContain("programs are off");
+  });
+
   test("an empty or missing file says so", async () => {
     const h = harness();
     expect(await cmdDurableList(h.deps)).toBe(EXIT.OK);

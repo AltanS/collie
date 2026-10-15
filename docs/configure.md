@@ -469,15 +469,16 @@ every add, rename and removal.
 ### Reaching a durable program (experimental)
 
 Each program a Collie runs beside its terminal is one entry in `sources.json`, written by
-`collie durable attach` ([Programs](durable-programs.md#attach-a-program)). The three variables
-below are the older form, for a durable-only instance (`COLLIE_MUX=durable`) that drives one
-program, named `default`. Set the socket, or the URL with its token, never both.
+`collie durable attach` ([Programs](durable-programs.md#attach-a-program)). The first three
+variables below are the older form, for a durable-only instance (`COLLIE_MUX=durable`) that drives
+one program, named `default`. Set the socket, or the URL with its token, never both.
 
 | variable | example | what it means |
 | --- | --- | --- |
 | `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the program's private Unix socket on this machine. Absolute, at most 103 bytes, mode `0600` |
 | `COLLIE_DURABLE_URL` | `https://durable-member.example.com` | the address of a program you deployed behind TLS. `https://` only, or `http://127.0.0.1:<port>` for a program on this machine. At most 2048 bytes, no query |
 | `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to the URL. At least 32 bytes. A file holding it must be mode 600, and Collie never prints it |
+| `COLLIE_PROGRAMS` | `off` | the kill switch for programs. The bridge ignores `sources.json`, logs one line and registers no program, so the phone shows no Programs section. `collie doctor` and `collie durable list` say programs are off. Unset it, then `collie restart`, to bring them back. It does not turn off the env form above |
 
 Both set, a URL without a token, or a token without a URL is a config error: the instance starts
 and shows the program as unreachable with that reason. Over https every poll is a billed request,

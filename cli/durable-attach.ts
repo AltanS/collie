@@ -4,6 +4,7 @@ import type { JsonValue } from "../bridge/json.ts";
 import { jsonRecord, jsonStringField } from "../bridge/stt/json.ts";
 import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { DURABLE_SOCKET_ENV, resolveSocketPath } from "../bridge/mux/durable/client.ts";
+import { PROGRAMS_OFF_NOTE, programsOff } from "../bridge/sources.ts";
 import {
   DURABLE_TOKEN_ENV,
   DURABLE_URL_ENV,
@@ -309,13 +310,14 @@ export async function cmdDurableList(deps: DurableAttachDeps): Promise<number> {
   }
   if (loaded.entries.length === 0) {
     deps.io.out(`no programs attached (${sourcesPath(deps.ctx)})`);
-    return EXIT.OK;
   }
   for (const e of loaded.entries) {
     // The token is in the entry and never in the line: the way in is shown, the credential is not.
     const way = e.socket !== undefined ? `socket ${e.socket}` : `url ${e.url ?? ""} (token set)`;
     deps.io.out(`${e.name}  ${way}  ${await stateOf(deps, e.name)}`);
   }
+  // The kill switch: the entries print as usual, and the last line says the bridge ignores them.
+  if (programsOff(deps.ctx.env)) deps.io.out(PROGRAMS_OFF_NOTE);
   return EXIT.OK;
 }
 
