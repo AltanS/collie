@@ -80,6 +80,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable SDK's promises resolve once, in plain sight.** `drained()` builds its promise with `Promise.withResolvers`, and the start's wait for asks raised again is an `async` function with `try` and `finally`, so oxlint's promise rules hold. Both wait and log as before.
 - **The durable SDK passes the root lint with no override.** Untyped input is `Json` and goes through named guards, and the package picks its runtime with `"Bun" in globalThis`.
 - **The parked Cloudflare example pins a patched sharp.** Dependabot alert 1: an npm override in the example's package.json lifts sharp from 0.35.4 to 0.35.5 under miniflare (its exact pin blocks a plain update), and the Cloudflare pins do not move.
+- **The durable example's bunfig no longer excludes the Pi packages from the cooldown.** The 1.1.0 line is past the seven-day window, so the example installs under the same rule as the root.
 
 ### Docs
 
