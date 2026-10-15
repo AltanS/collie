@@ -222,12 +222,10 @@ TLS carrying the crew secret. A member is a full Collie with no front door, and 
 agents, journal, uploads and audit log. Management runs entirely through the CLI, with no Herdr UI
 actions. The wire itself is specified in [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md).
 
-A peer is one Collie instance, and one Collie instance mirrors one backend. A host that has more than
-one backend therefore runs more than one peer, each with its own port and state directory, and each
-joins the crew on its own. A Herdr and a program on the same host that run as separate instances are the
-example: the Herdr peer and a second peer with `COLLIE_MUX=durable` appear as two machines in the
-list. One Collie can also carry both, and then no second peer is needed
-([Programs](durable-programs.md#attach-a-program)).
+A peer is one Collie instance, with one terminal multiplexer and the programs attached to it
+([Programs in a crew](#programs-in-a-crew)). A host with two terminal multiplexers runs one peer for
+each. Each such peer has its own port and state directory, joins the crew on its own, and appears as
+a machine of its own in the list.
 
 ![Code reaches a member over your own ssh, never over the crew link.](images/crew/crew-ssh-rides.svg)
 
@@ -239,6 +237,36 @@ levels it. The crew link carries runtime data, and it never becomes a distributi
 A deputy is one peer the lead named ahead of time. It binds a standby door with three routes, and
 that door is never published. The lead's silence arms it, and your own pairing credential spends it,
 so the phone can reach the deputy while the lead is gone.
+
+## Programs in a crew
+
+A member's programs show on the lead's phone, in the one Programs section, and the member's own
+Collie answers for them.
+
+```bash
+# on a member that runs a program beside Herdr, tmux or zellij: no second instance
+collie durable attach desk --socket /run/user/1000/desk/app.sock --restart
+# on a durable-only member that shares its host with another peer
+collie crew join <lead-address> --label desk-programs
+```
+
+One Collie carries one terminal multiplexer and every program attached to it, so a Herdr instance
+and its programs are one peer, and it needs no label of its own. A durable-only instance
+(`COLLIE_MUX=durable`) is a peer of its own. It joins under the host name unless you pass `--label`,
+so give it a name when another peer already uses that host.
+
+| What | Where it happens |
+| --- | --- |
+| A program's row | The lead's Programs section, with the member's name on it. The lead's own programs name no machine |
+| The program's card | The member tells the lead in its hello, so the phone reads it without asking again |
+| The push for a question | The lead. A member in a crew sends no push for its own questions |
+| The push caps | The lead, counted for each member and each program ([Pushes from a program](voice-and-push.md#pushes-from-a-program)) |
+| An answer, a send, a stop, a belt action, a reopen and a starter tap | The member that owns the program, forwarded by the lead |
+| The receipt for each of those | The member. The lead keeps no copy, and a retry with the same request id replays on the member |
+
+A lead older than 1.21.0 still lists a member's programs, but without the question card, and its
+Terminal tab polls a pane that has no terminal. The member says so once in its log, and
+`collie doctor` on the member shows the row `durable-lead`. Update the lead to fix it.
 
 ## Machines
 

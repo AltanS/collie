@@ -2,9 +2,9 @@
 
 Two programs that speak the durable socket wire to Collie. `hello.ts` is 10 lines of code and asks one question.
 `app.ts` is a small support desk built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable):
-it answers made-up support tickets for an online shop and shows each conversation to Collie. A Collie peer
-with `COLLIE_MUX=durable` lists those conversations as panes, so you can read them on the phone and answer
-their questions there. The wire is experimental and may change in any minor release of Collie
+it answers made-up support tickets for an online shop and shows each conversation to Collie. A Collie you
+attach it to lists those conversations, so you can read them on the phone and answer their questions
+there. The wire is experimental and may change in any minor release of Collie
 ([`WIRE.md`](../../bridge/mux/durable/WIRE.md)). This folder is example code to read and copy. The SDK it uses is
 the npm package [`@colliepwa/durable-sdk`](../../packages/durable-sdk/README.md).
 
@@ -35,8 +35,8 @@ console.log(`answer: ${answer.optionIds[0]}`);
 await collie.close();
 ```
 
-It imports the SDK and nothing else, with no Pi Durable and no model. Point a Collie peer at the socket it printed
-([below](#point-a-collie-peer-at-it)), open the peer on the phone, and the question "Deploy to staging?" waits
+It imports the SDK and nothing else, with no Pi Durable and no model. Attach it to your Collie
+([below](#attach-it-to-your-collie)), open Collie on the phone, and the question "Deploy to staging?" waits
 on a card with Yes and No. Tap one. The program prints your answer and exits.
 
 ## The support desk: app.ts
@@ -60,49 +60,45 @@ the next start shows them again. Delete that folder to start over. Stop the app 
 The app installs on its own. The collie root install does not pull in Pi Durable, and this folder
 has its own `bun.lock`. Pi Durable, `chord` and `pi-ai` are pinned to exact versions.
 
-## Point a Collie peer at it
-
-A peer is one Collie instance, and one instance mirrors one backend. So the durable program needs a
-peer of its own, even on a host that already runs Collie with Herdr. The peer needs two settings:
+## Attach it to your Collie
 
 ```sh
-COLLIE_MUX=durable
-COLLIE_DURABLE_SOCKET=/run/user/1000/durable-member/app.sock   # the path the program printed
+collie durable attach desk --socket /run/user/1000/durable-member/app.sock
+collie restart
 ```
 
-For `hello.ts` the path ends in `hello/app.sock`.
+Use the path the app printed. For `hello.ts` the path ends in `hello/app.sock`. Add `--restart` to
+the first command to restart in the same step.
 
-On a host that already runs Collie, make a second instance with its own port and state folder, in
-`~/.config/herdr/plugins/config/herdr.collie-durable/.env`:
+One Collie carries your terminal and the app together, so a host that already runs Collie with
+Herdr needs no second instance. The app appears in the Programs section on the phone.
+`collie durable list` shows each program you attached, and `collie doctor` checks the socket and
+says what is wrong when Collie cannot reach the app. The whole setup is on the
+[Programs page](../../docs/durable-programs.md).
+
+Run the app as the same user as Collie. Keep the socket under `$XDG_RUNTIME_DIR`: the Collie service
+runs with a private `/tmp`, so it cannot see a socket in `/tmp`.
+
+A Collie with no terminal, such as a Windows host, can drive the app alone from its `.env` instead
+([A program alone in one Collie](../../docs/durable-programs.md#a-program-alone-in-one-collie)):
 
 ```sh
-COLLIE_INSTANCE=durable
-COLLIE_PORT=8795
-COLLIE_STATE_DIR=/home/you/.local/state/collie-durable
 COLLIE_MUX=durable
 COLLIE_DURABLE_SOCKET=/run/user/1000/durable-member/app.sock
 ```
 
-Then run `COLLIE_INSTANCE=durable collie start`. `COLLIE_INSTANCE=durable collie doctor` checks the
-socket and says what is wrong when the peer cannot reach the app. The full steps are in
-[Multiple Collie instances on one host](../../docs/deployment.md#multiple-collie-instances-on-one-host),
-and what the `durable` backend can do is in [durable notes](../../docs/multiplexers.md#durable-notes).
-
-Run the peer as the same user as the app. Keep the socket under `$XDG_RUNTIME_DIR`: the Collie service
-runs with a private `/tmp`, so it cannot see a socket in `/tmp`.
-
 ## Join the crew
 
-Join the peer to your crew like any other machine: `collie crew invite` on the lead, then
-`collie crew join` on this host with `COLLIE_INSTANCE=durable` set. The commands and their flags are in
-[Crew commands](../../docs/crew.md#two-machines-one-crew). The peer then shows up in the list as a
-machine of its own, beside your Herdr peer. With no crew, pair the phone with this instance directly.
+On a machine of your crew, attach the app to that machine's Collie, as above. The commands that
+make a crew are in [Crew commands](../../docs/crew.md#two-machines-one-crew).
 
-A member's name defaults to the host name. If this host already runs the lead or a Herdr peer, name
-the durable peer so the host chip can tell them apart:
-`COLLIE_INSTANCE=durable collie crew join <lead-address> --label durable`. (`collie crew rename`
-names the crew, not a member.) A lead older than 1.21.0 lists the pane but shows no ask card, only
-"needs you". Update the lead first.
+A durable-only instance joins like any other machine: `collie crew invite` on the lead, then
+`collie crew join` on this host. It then shows up in the list as a machine of its own. A member's
+name defaults to the host name. If this host already runs the lead or a Herdr peer, name the
+durable-only instance so the host chip can tell them apart:
+`collie crew join <lead-address> --label durable`. (`collie crew rename` names the crew, not a
+member.) A lead older than 1.21.0 lists the pane but shows no ask card, only "needs you". Update
+the lead first.
 
 ## What you see on the phone
 
@@ -196,8 +192,9 @@ path and the socket itself ([`WIRE.md` section 1A](../../bridge/mux/durable/WIRE
 The socket does not keep out you. Any process that runs as your user can open it, read every
 conversation and answer an ask. That includes a tool the agent runs.
 
-The app has one defence against that, the descendant check. It refuses an answer, a send, a stop or a
-starter from itself and from any process below it in the process tree, with `403 caller-refused`.
+The app has one defence against that, the descendant check. It refuses every act (an answer, a send, a
+stop, a belt action, a rename, a close, a reopen or a starter) from itself and from any process below it in
+the process tree, with `403 caller-refused`.
 Reads stay open. To find the caller, the app reads its pid from the socket (`SO_PEERCRED`, through
 `bun:ffi`) and walks the parent links in `/proc`. A caller whose process is gone, or whose chain of
 parents breaks, is refused too. Collie's adapter reports the 403 as a refusal that names the code, and
@@ -235,6 +232,7 @@ Every variable is optional.
 | `DM_STEP_MS` | `400` | The pause before each scripted answer, so you can see the states change. |
 | `DM_SLOW_MS` | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer is long, and streams in chunks. |
 | `DM_HELPER_MS` | the value of `DM_STEP_MS` | How long the helper's scripted answer takes. |
+| `DM_ASK_TIMEOUT_MS` | `600000` (ten minutes) | How long the phone has to answer each question. The ask carries an `expiresAt`, so the phone shows the time left. Past it the question closes as timed out, the app logs it as a deny and goes on. |
 | `REAL_MODEL` | not set | A model id of the provider's Pi catalog. Not set means the scripted model. |
 | `REAL_PROVIDER` | `openrouter` | `openrouter` or `openai`. Read only when `REAL_MODEL` is set. |
 | `OPENROUTER_API_KEY` | not set | Your OpenRouter key. Pi reads it only when `REAL_MODEL` is set. |

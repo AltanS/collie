@@ -32,6 +32,7 @@ import {
   watchEvents,
 } from "@earendil-works/pi-durable";
 import {
+  AskClosed,
   argumentsView,
   type ConversationRow,
   type HistoryProvider,
@@ -46,7 +47,7 @@ import {
   type TextAskInput,
 } from "../core/index.ts";
 import { isList, isRecord, isText } from "../core/rules.ts";
-import type { Json } from "../core/types.ts";
+import type { Json, PermissionAskInput } from "../core/types.ts";
 
 /** An item without its id and stamp: the shape a {@link ReplyExtras} hands back. */
 type ItemBody = Item extends infer T ? (T extends Item ? Omit<T, "id" | "ts"> : never) : never;
@@ -764,6 +765,10 @@ export interface Risky {
    * tool, the question names the tool: "write_note wants to run", with Allow and Deny.
    */
   words?: (tool: string, summary: string) => RiskWords | undefined;
+  /** How long the phone has to answer, in milliseconds. Past it the ask closes as decided by `timeout` and the call is blocked. Default: no expiry. */
+  timeoutMs?: number;
+  /** Called when a question timed out, with the call's tool name and the question's title, so the program can log it. The call is blocked and the run goes on. */
+  onTimeout?: (tool: string, title: string) => void;
 }
 
 function defaultWords(tool: string, summary: string): RiskWords {
@@ -782,26 +787,30 @@ export function riskGuard(o: Risky): Extension {
           if (!pane) return { block: "no pane to ask on" }; // fail closed
           const summary = summaryOf(call.arguments, call.name);
           const words = o.words?.(call.name, summary) ?? defaultWords(call.name, summary);
-          const answer = pane.ask(
-            {
-              kind: "permission",
-              toolCallId: safeId(call.id),
-              itemId: safeId(call.id), // the tool item of this call, which the mapper keys the same way
-              title: words.title,
-              tool: { kind: "other", name: call.name, summary },
-              // The words of the notification (WIRE.md section 6). The pane's name goes in front of the title.
-              push: words.push,
-              options: [
-                { id: "allow", label: words.allow, effect: "allow" },
-                { id: "deny", label: words.deny, effect: "deny" },
-              ],
-            },
-            { signal: ctx.abortSignal },
-          );
+          const input: PermissionAskInput = {
+            kind: "permission",
+            toolCallId: safeId(call.id),
+            itemId: safeId(call.id), // the tool item of this call, which the mapper keys the same way
+            title: words.title,
+            tool: { kind: "other", name: call.name, summary },
+            // The words of the notification (WIRE.md section 6). The pane's name goes in front of the title.
+            push: words.push,
+            options: [
+              { id: "allow", label: words.allow, effect: "allow" },
+              { id: "deny", label: words.deny, effect: "deny" },
+            ],
+          };
+          if (o.timeoutMs !== undefined) input.expiresAt = new Date(Date.now() + o.timeoutMs);
+          const answer = pane.ask(input, { signal: ctx.abortSignal });
           markAsks(pane); // the badge counts the asks that wait for the phone
           o.panes.asked(safeId(call.id)); // the ask is open now: a start waiting for it may go on
           try {
             return (await answer).optionId === "allow" ? undefined : { block: "denied from the phone" };
+          } catch (e) {
+            // The clock closed the ask: a deny, and the run goes on. Any other close (a stop, an abort) still ends the call.
+            if (!(e instanceof AskClosed) || e.decidedBy !== "timeout") throw e;
+            o.onTimeout?.(call.name, words.title);
+            return { block: "timed out" };
           } finally {
             markAsks(pane);
           }
@@ -820,6 +829,12 @@ export interface AskToolWords {
   reply: { question: string; placeholder?: string };
 }
 
+/** A rejected ask the clock closed reads as no answer; any other close (a stop, an abort) still throws. */
+const timeoutOf = (e: Error): undefined => {
+  if (e instanceof AskClosed && e.decidedBy === "timeout") return undefined;
+  throw e;
+};
+
 /** A tool's answer to the model: one text block. */
 const toolReply = (text: string) => ({ content: [{ type: "text" as const, text }] });
 
@@ -829,8 +844,20 @@ const toolReply = (text: string) => ({ content: [{ type: "text" as const, text }
  * item, and `replay: "safe"` means a rerun after a crash asks again under the same id. Each answers the model with the
  * person's words: the team's name, or the line. The scripted double-charge ticket calls them after its note.
  */
-export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
+export function askTools(o: {
+  panes: PaneRegistry;
+  words: AskToolWords;
+  /** How long the phone has to answer, in milliseconds. Past it the tool returns an error result "timed out" and the run goes on. Default: no expiry. */
+  timeoutMs?: number;
+  /** Called when a question timed out, with the tool name and the question's title, so the program can log it. */
+  onTimeout?: (tool: string, title: string) => void;
+}) {
   const { team, reply: line } = o.words;
+  const expires = (): { expiresAt?: Date } => (o.timeoutMs === undefined ? {} : { expiresAt: new Date(Date.now() + o.timeoutMs) });
+  const timedOut = (tool: string, title: string) => {
+    o.onTimeout?.(tool, title);
+    return { content: [{ type: "text" as const, text: "timed out" }], isError: true };
+  };
   const ask = async <A>(api: { conversationId: ConversationId; callId: string }, raise: (pane: PaneHandle, id: string) => Promise<A>): Promise<A> => {
     const pane = o.panes.get(api.conversationId);
     if (!pane) throw new Error("no pane to ask on");
@@ -850,7 +877,8 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
     parameters: Type.Object({}),
     replay: "safe",
     execute: async (_args, api) => {
-      const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: team.question, options: team.options }));
+      const answer = await ask(api, (pane, id) => pane.ask({ kind: "choice", toolCallId: id, itemId: id, title: team.question, options: team.options, ...expires() })).catch((e: Error) => timeoutOf(e));
+      if (answer === undefined) return timedOut("ask_queue", team.question);
       return toolReply(answer.optionIds.map((picked) => team.options.find((option) => option.id === picked)?.label ?? picked).join(", "));
     },
   });
@@ -863,8 +891,9 @@ export function askTools(o: { panes: PaneRegistry; words: AskToolWords }) {
       const answer = await ask(api, (pane, id) => {
         const input: TextAskInput = { kind: "text", toolCallId: id, itemId: id, title: line.question, maxLength: 280 };
         if (line.placeholder !== undefined) input.placeholder = line.placeholder;
-        return pane.ask(input);
-      });
+        return pane.ask({ ...input, ...expires() });
+      }).catch((e: Error) => timeoutOf(e));
+      if (answer === undefined) return timedOut("ask_customer", line.question);
       return toolReply(clip(answer.text));
     },
   });

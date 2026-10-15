@@ -26,8 +26,34 @@ const DEFAULT: Theme = "system";
 /** Browser chrome — Android's URL bar and task-switcher card. These are --background's two halves
  *  rasterized: oklch(0.97) is rgb(245,245,245) and oklch(0.145) is rgb(10,10,10). Not #ffffff for
  *  light — the page is a step off white on purpose (index.css), and a pure-white URL bar above it
- *  shows the seam. Re-measure these if --background moves. */
-const META_COLOR = { light: "#f5f5f5", dark: "#0a0a0a" } satisfies Record<ResolvedTheme, string>;
+ *  shows the seam. Re-measure these if --background moves.
+ *
+ *  These are the colours of the theme `collie`. Another theme brings its own: lib/theme/store.ts
+ *  hands the two hexes of its `background` to {@link setMetaColours} each time a theme is applied,
+ *  and hands `undefined` back for `collie`, so the default theme reads exactly these two literals. */
+const DEFAULT_META_COLOR: MetaColours = { light: "#f5f5f5", dark: "#0a0a0a" };
+
+/** The two browser-chrome colours: one `#rrggbb` per resolved appearance. */
+export interface MetaColours {
+  light: string;
+  dark: string;
+}
+
+let metaColor = DEFAULT_META_COLOR;
+
+/** The colours the two theme-color metas carry right now, a function of the active colour theme. */
+export function metaColours(): MetaColours {
+  return metaColor;
+}
+
+/**
+ * Set the browser-chrome colours for the active colour theme, or `undefined` for the default
+ * theme's own two. Called by lib/theme/store.ts only; the metas are rewritten at once.
+ */
+export function setMetaColours(colours: MetaColours | undefined): void {
+  metaColor = colours ?? DEFAULT_META_COLOR;
+  apply(state.theme, state.resolved);
+}
 
 /** Read the pin. BARE string, not JSON — public/theme-init.js does the same strict compare before
  *  first paint, and JSON.stringify would write `"dark"` with the quotes and silently break it. */
@@ -73,7 +99,7 @@ function apply(theme: Theme, resolved: ResolvedTheme): void {
     // getAttribute, not `.media` — that reflected property is not implemented everywhere (jsdom
     // among them), and reading it blind throws on the undefined.
     const own: ResolvedTheme = meta.getAttribute("media")?.includes("dark") ? "dark" : "light";
-    meta.content = META_COLOR[pinned ? resolved : own];
+    meta.content = metaColor[pinned ? resolved : own];
   });
 }
 

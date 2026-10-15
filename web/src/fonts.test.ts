@@ -11,7 +11,7 @@ import {
 import { acceptOperatorFonts, operatorFontCss, operatorFontUrl } from "@/lib/operator-fonts";
 import { DEFAULT_UI_FONT_URL, FONT_URLS, UI_COMPANION_FONT_URLS, UI_FONT_URLS } from "@/lib/sw-routes";
 
-// Collie ships five webfonts — two Nerd Font symbol subsets, two UI typefaces and a Cyrillic companion — and the design
+// Collie ships eight webfonts: two Nerd Font symbol subsets, five UI typefaces and a Cyrillic companion. The design
 // rests on facts that are silent when broken: the stylesheet, the service worker and the disk agree
 // on which files exist; the symbol faces stay range-restricted so they stay lazy; the UI face is
 // preloaded and metric-matched so its swap moves nothing; and none of them re-enters the precache.
@@ -118,7 +118,7 @@ describe("the UI typefaces", () => {
   // splash render in the system font and the app change voice on hand-off — which is the exact bug
   // this splash block exists to prevent, just for a different reader.
   it("re-declares every shipped face for the pre-CSS boot splash", () => {
-    for (const family of ["Space Grotesk", "Aldrich"]) {
+    for (const family of ["Space Grotesk", "IBM Plex Sans", "Geist", "Atkinson Hyperlegible Next", "Aldrich"]) {
       expect(html).toContain(`font-family: "${family}";`);
       expect(html).toContain(`font-family: "${family} Fallback";`);
     }
@@ -129,6 +129,9 @@ describe("the UI typefaces", () => {
   it("mirrors the typeface root classes into the boot splash", () => {
     expect(html).toContain(":root.font-system");
     expect(html).toContain(":root.font-grotesk");
+    expect(html).toContain(":root.font-plex");
+    expect(html).toContain(":root.font-geist");
+    expect(html).toContain(":root.font-atkinson");
   });
 
   it("is small enough to sit on the critical path", () => {
@@ -177,7 +180,13 @@ describe("the Cyrillic companion", () => {
 
   // Each metric stand-in is tuned to its face's LATIN. Without a range it also catches Cyrillic,
   // which then renders at 113% (Aldrich) or 107.5% (Space Grotesk) of a system face for no reason.
-  it.each(["Aldrich Fallback", "Space Grotesk Fallback"])(
+  it.each([
+    "Aldrich Fallback",
+    "Space Grotesk Fallback",
+    "IBM Plex Sans Fallback",
+    "Geist Fallback",
+    "Atkinson Hyperlegible Next Fallback",
+  ])(
     "keeps the %s stand-in off Cyrillic with a Latin-only range, in both copies",
     (family) => {
       for (const [name, source] of [["index.css", css], ["index.html", html]] as const) {

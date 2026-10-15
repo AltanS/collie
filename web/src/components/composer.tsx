@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
@@ -10,6 +10,7 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n";
 import { holdsMask } from "@/lib/masked-text";
 import { setStatus } from "@/lib/status";
 import { buzz } from "@/lib/haptics";
@@ -26,11 +27,13 @@ import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
+import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
+import type { DialogNoun } from "@/lib/harness/dialog-contract";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
 import {
@@ -122,6 +125,12 @@ interface ComposerProps {
    * screen or an alt-screen tool that trips the card's four conditions costs one extra tap instead
    * of a locked composer. False while any READ dialog is up, where the refusal stands flat. */
   dialogUnread?: boolean;
+  /** What the READ dialog on screen is called, so the placeholder names it ("Menu is waiting").
+   * Absent reads "Dialog is waiting". */
+  dialogNoun?: DialogNoun | null;
+  /** The "Answer the dialog" word's tap: scroll to the dialog card and focus its first button. It sends
+   * no text and no key. */
+  onAnswerDialog?: () => void;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -317,8 +326,16 @@ interface ClearedDraft {
   caret: number | null;
 }
 
+/** The placeholder key per noun, so the box names what is waiting. */
+const DIALOG_PLACEHOLDER = {
+  menu: "composer.placeholder.menuWaiting",
+  permission: "composer.placeholder.permissionWaiting",
+  question: "composer.placeholder.questionWaiting",
+  dialog: "composer.placeholder.dialogWaiting",
+} as const satisfies Record<DialogNoun, MessageKey>;
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, dialogNoun, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -571,6 +588,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the outcome lands, not on the render after. `noticeNoEcho` is the only writer of both — go through
   // it, or the two disagree and the gap is measured in stored passwords.
   const [noEcho, setNoEcho] = useState<{ prompt: string; typed: boolean } | null>(null);
+  // Why the last send was refused when no READ dialog explains it: the unread card's first tap, or a
+  // `blocked` pre-flight. The header shows the same sentence, but on a phone that line is scrolled
+  // off or under the keyboard when Send is tapped, so it stands at the Send slot too while the
+  // "Type anyway?" override it explains is armed (see `refusalShown`). The m51-10 case, a dialog a
+  // grammar read, has its own word in the Send slot and never sets this.
+  const [sendRefusal, setSendRefusal] = useState<string | null>(null);
   const noEchoRef = useRef<{ prompt: string; typed: boolean } | null>(null);
 
   /** Raise or clear the password-prompt notice. Raising it also DROPS the stored draft: at that moment
@@ -1039,10 +1062,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // `force` already set by onSendClick and falls through to type.
       if (!force) {
         forceConfirm.confirm("force");
-        setStatus(
-          translate("composer.status.unreadDialog", { key: keyLabel(adapter?.cancelKey ?? "") }),
-          "error",
-        );
+        const reason = translate("composer.status.unreadDialog", { key: keyLabel(adapter?.cancelKey ?? "") });
+        setSendRefusal(reason);
+        setStatus(reason, "error");
         return false;
       }
     }
@@ -1177,7 +1199,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // A password prompt gets the notice AND keeps the override: the notice explains the screen and
         // offers the control that works, the override stays for the case where the detection is wrong.
         noticeNoEcho(res.noEcho !== undefined ? { prompt: res.noEcho, typed: false } : null);
-        setStatus(translate("composer.status.tapAgainToType", { error: res.error }), "error");
+        const reason = translate("composer.status.tapAgainToType", { error: res.error });
+        setSendRefusal(reason);
+        setStatus(reason, "error");
         return false;
       } else {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
@@ -1237,6 +1261,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force";
+  // A dialog the screen reader parsed (not the unread-card heuristic) refuses every send, so the Send
+  // slot and the placeholder say so. The unread card keeps its two-tap override instead.
+  const readDialogOwnsKeys = dialogPresent && !dialogUnread && !direct.active;
+  // The refusal's reason at the thumb, for as long as the override it explains is armed. Not with a
+  // read dialog (its own word stands in the Send slot), not in Type mode, and not beside the
+  // password notice, which already says why at this spot.
+  const refusalShown = forcingSend && sendRefusal !== null && !readDialogOwnsKeys && !direct.active && noEcho === null;
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -1818,6 +1849,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.tooLong")}
           </p>
         </Collapse>
+        {/* WHY THE SEND WAS REFUSED, AT THE THUMB (DESIGN.md §11, a contextual notice). The same
+            sentence the header shows, beside the "Type anyway?" override it explains, for as long as
+            that override is armed. A refusal used to name its reason only in the header, which a
+            phone has scrolled off or put under the keyboard by the time Send is tapped (the m51-10
+            field case, for the screens no grammar reads). Its one control goes where the reason
+            points: with the unread-dialog card on screen, to that card and its first button, the
+            same way as the "Answer the dialog" word. With no card there is nothing to go to, so the
+            notice carries no control. */}
+        <Collapse open={refusalShown}>
+          {sendRefusal !== null && (
+            <Notice
+              tone="caution"
+              variant="box"
+              className="mb-2"
+              icon={<TriangleAlert />}
+              action={
+                dialogUnread && onAnswerDialog !== undefined ? (
+                  <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={() => onAnswerDialog()}>
+                    {translate("composer.send.dialogFirst")}
+                  </Button>
+                ) : undefined
+              }
+            >
+              <span data-slot="composer-refusal">{sendRefusal}</span>
+            </Notice>
+          )}
+        </Collapse>
         {/* A draft that holds the bridge's mask. The operator copied a masked line off the mirror and
             pasted it here, and the pane would receive the dots, not the secret. A CONDITION for as
             long as the text stays, like the line above, so it is derived at render and clears when
@@ -1953,6 +2011,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       // the placeholder says what is true of THIS terminal rather than blaming the app.
                       missingSend !== null
                       ? missingSend.note || translate("composer.placeholder.noMuxSend")
+                    : readDialogOwnsKeys
+                      ? translate(DIALOG_PLACEHOLDER[dialogNoun ?? "dialog"])
                     : direct.active
                       ? translate("composer.placeholder.direct")
                       : isShell
@@ -2086,7 +2146,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               }}
             />
           </AnchoredMenu>
-          {!direct.active && forcingSend ? (
+          {readDialogOwnsKeys && hasDraft ? (
+            // A READ dialog owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
+            // and not only in the header StatusArea: on a phone that line is scrolled off or under
+            // the keyboard when Send is tapped (field case 2026-10-15, ADR 0009). The word replaces
+            // Send only once there is a draft to refuse; an empty box keeps its microphone and the
+            // placeholder carries the state. The tap is a way TO the card (scroll, focus its first
+            // button), never a send. Same shape as the two confirm words below but a muted variant,
+            // because this is a state to read, not a deliberate override to arm.
+            <Button
+              variant="secondary"
+              className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
+              onClick={() => onAnswerDialog?.()}
+              aria-label={translate("composer.send.dialogFirst")}
+            >
+              {translate("composer.send.dialogFirst")}
+            </Button>
+          ) : !direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.

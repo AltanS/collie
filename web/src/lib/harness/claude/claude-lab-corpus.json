@@ -975,6 +975,52 @@
       }
     },
     {
+      "fixture": "claude-lab--menu-model-picker-v2300--w119.txt",
+      "cols": 119,
+      "rows": 49,
+      "state": "menu-model-picker-v2300",
+      "notes": "/model picker on 2.1.300 (119 columns, the width of the 2026-10-15 field case): heading 'Select model' with a two-line blurb, ten numbered models (Default Sonnet 5.5 ✔ … Opus 4.8) with a '↓' scroll marker on row 10 and '… +3 models' under it, the effort row '● High effort ←/→ to adjust' (arrowed once off the default Medium) and the footer 'Enter to set as default · s to use this session only · Esc to cancel'. The screen on which Send was refused with no visible reason; it lifts one menu with the same keys as the 82-column file.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "Up",
+          "s"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-model-picker-v2301--w119.txt",
+      "cols": 119,
+      "rows": 49,
+      "state": "menu-model-picker-v2301",
+      "notes": "/model picker on 2.1.301 (119 columns, captured 2026-10-16 from a throwaway Herdr session with an isolated config): the same screen as 2.1.300, byte for byte in the footer 'Enter to set as default · s to use this session only · Esc to cancel', with the effort row on its default '◐ Medium effort (default) ←/→ to adjust' instead of '● High effort'. Lifts one menu with the same keys as the 2.1.300 file. Below about 70 columns the footer wraps and the picker is not lifted; that gap is recorded in the README row, not pinned here.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "Up",
+          "s"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--menu-resume-picker--w83.txt",
       "cols": 83,
       "rows": 49,

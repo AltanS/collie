@@ -81,6 +81,20 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |
 
+### Derived, not captured: a dialog taller than the pane (2026-10-15)
+
+Three files are CUT from the captures above, not captured. On a short pane OmO's fullscreen mode
+draws a dialog from the top down, so its bottom rule and status rows fall off the screen (probed live
+2026-10-12 at 18 and 20 rows, not saved). Each file keeps the first rows of a whole capture, bytes
+unchanged, and drops the rest, the way a shorter pane shows the same screen. What proves the modal
+there is in `pi/ASK_NOTES.md`, "A dialog taller than the pane".
+
+| Fixture | Cut from | Rows kept | Reads as |
+| --- | --- | --- | --- |
+| `pi--omo-v5130-panel-question-cut.txt` | `pi--omo-v5130-panel-question.txt` | 15: through the footer and the blank row under it | lifts, a tap sends the digit, bound to columns 0 to 91 |
+| `pi--omo-v5130-panel-question-cut-footer.txt` | `pi--omo-v5130-panel-question.txt` | 12: through the free-text row, no trailer, no footer | Escape card |
+| `pi--omo-v5130-panel-picker-tree-cut.txt` | `pi--omo-v5130-panel-picker-tree.txt` | 18: the header, the inner rule and twelve list rows | Escape card |
+
 ## pi 1.1.0 corpus, PR 397 (captured 2026-10-10 by @raffaelenatale, pi 1.1.0 with a pi question extension, Linux sandbox panes)
 
 Byte-faithful `format:ansi` captures of **pi 1.1.0** with a pi question extension loaded (the
@@ -200,6 +214,26 @@ editor's top rule, so the welcome banner above is gone. The footer is pi 1.2.0's
 The last two are real pi 1.2.0 captures too (Herdr 0.9.4, padding 2, the dialog named in the table), cut
 to the top rule like the rest. Before 1.21.3 both read as a ready composer; their search row looks like
 an editor. They are unread dialogs: nothing on the phone answers them.
+
+## pi and OmO with NO_COLOR=1 (captured 2026-10-15, Herdr 0.9.4, the tap rig)
+
+Stock pi 0.87.1 (with pi's `examples/extensions/question.ts`) and OmO 5.1.30, each started with
+`NO_COLOR=1` in its environment, in the isolated tap rig (`experiments/collie-rig/`: its own Herdr
+session and bridge), read through `GET /api/pane/:id?lines=60` the way the phone reads it, at 120
+columns. Models on OpenRouter: `google/gemini-3.5-flash-lite` for pi and `anthropic/claude-haiku-4.5`
+for OmO, each asked to call its question tool with fixed arguments. `/proc/<pid>/environ` showed
+`NO_COLOR=1` in both processes, and **both painted every row as before**: 24-bit colours on the
+rules, the status rows, the footer and the options. Neither honours the variable, so there is no
+monochrome pi screen to capture. Each file is cut to the final frame, from the frame's top rule;
+CRLF line ends as read. The only paths are the lab folders `/tmp/pi-nocolor-cwd` and
+`/tmp/omo-nocolor-cwd`; no key, user, host or home path is in any file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v0871-nocolor-draft.txt` | `collie stock pi draft probe` typed, not sent | composer, draft read back |
+| `pi--v0871-nocolor-question.txt` | `question`: Red, Green, Blue, `4. Type something.`, `>` on 1 | walk |
+| `pi--omo-v5130-nocolor-idle.txt` | Empty `❯` editor, status rows | composer |
+| `pi--omo-v5130-nocolor-question.txt` | OmO's ask, one question, Red and Green | digit |
 
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
@@ -838,6 +872,8 @@ username, hostname, home path or real project path appears in any file: the sess
 | `claude-lab--menu-effort-slider-v2291--w82.txt` | 82 × 49 | /effort slider on 2.1.291 (82 columns): the label row now ends with 'Tab to toggle', a heading 'Faster ... Smarter' sits above the scale and the scale reads low, medium, high, xhigh, max. The Effort grammar lifts it with the same keys, but its scale read now carries the three words of the 'Tab to toggle' hint as labels (effort.test.ts fails on this capture: 8 labels, the five real ones plus the three words of the hint, where the test pins the 2.1.278 scale of six ending in `ultracode`). Note for the grammar: that is a finding, not a corpus gap. |
 | `claude-lab--menu-model-picker--w82.txt` | 82 × 49 | /model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-model-picker-v2291--w82.txt`.] |
 | `claude-lab--menu-model-picker-v2291--w82.txt` | 82 × 49 | /model picker on 2.1.291 (82 columns): heading 'Select model' with a two-line blurb, ten visible models (Default Opus 5.5, Fable 5.1, Sonnet 5.5 ✔, Haiku 4.5, …, '… +2 models'), a '↓' scroll marker, the effort row '◐ Medium effort (default) ←/→ to adjust' and the same footer. |
+| `claude-lab--menu-model-picker-v2300--w119.txt` | 119 × 49 | /model picker on 2.1.300 at 119 columns, captured 2026-10-15 from a throwaway Herdr session (`--session`, deleted after) with an isolated `CLAUDE_CONFIG_DIR` holding the credentials, a settings file and the cached model list, `stty cols 119 rows 49`, in `/tmp/m51lab/project`. The field case of tracker M51 spec 10: heading `Select model` with a two-line blurb, ten numbered models (Default Sonnet 5.5 ✔ … Opus 4.8) with a `↓` marker on row 10, the `… +3 models` tail, the effort row `● High effort ←/→ to adjust` (one `→` off the default Medium) and the footer `Enter to set as default · s to use this session only · Esc to cancel`. Lifts one `menu` block: Enter, `s`, Esc (Cancel) and the Up/Down and Left/Right arrows. Plain `herdr pane read --source recent --lines 300 --format ansi`, byte for byte; the only path on it is `/tmp/m51lab/project` |
+| `claude-lab--menu-model-picker-v2301--w119.txt` | 119 × 49 | /model picker on 2.1.301 at 119 columns, captured 2026-10-16 from a throwaway Herdr session (`--session`, deleted after) with an isolated `CLAUDE_CONFIG_DIR` (credentials, an empty settings file, the account's cached model list, deleted after), `stty cols 119 rows 49`, plain `herdr pane read --source recent --lines 300 --format ansi`. The footer is byte for byte the 2.1.300 footer, `Enter to set as default · s to use this session only · Esc to cancel`; the 2.1.301 build did not change it. The only difference to the 2.1.300 file is the effort row on its default, `◐ Medium effort (default) ←/→ to adjust`. Lifts one `menu` block: Enter, `s`, Esc (Cancel) and the Up/Down and Left/Right arrows. The shell path in the banner was replaced by `/tmp/m56lab/project` and blanks, same length. A narrower pane is not lifted: from the same session, below 70 columns the footer wraps (`… · Esc to` over `cancel` at 70, `… · s to use` over `this session only · …` at 40), `detectMenuRegion` reads only the last row, and the screen falls to the unread-dialog card. At 40 columns the picker is also taller than the 49-row pane, so its top rule scrolls off. Not captured as fixtures; `readKeyHintFooter` already joins wrapped footers, and the grammar's pinned wrapped-footer declines (`/tasks` and `/effort` at 40 columns) must be decided first |
 | `claude-lab--menu-resume-picker--w83.txt` | 83 × 49 | /resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-resume-picker-v2291--w83.txt`.] |
 | `claude-lab--menu-resume-picker-v2291--w83.txt` | 83 × 49 | /resume picker on 2.1.291 (83 columns): the ▔ top edge is now a ─ rule, rows are indented two spaces (were three), the list is long and scrolls (a ↓ marker in the pointer column of the last visible row), and the same two-row key-hint footer. The sessions are the lab's own earlier runs. |
 | `claude-lab--menu-rewind--w82.txt` | 82 × 49 | esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-rewind-v2291--w82.txt`.] |

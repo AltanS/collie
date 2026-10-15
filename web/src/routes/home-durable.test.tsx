@@ -8,6 +8,7 @@ import { CrewProvider } from "@/components/crew-provider";
 import { __resetProgramLists } from "@/lib/conversation-list";
 import { __resetOperatorCommands, getMuxConfig } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
 import { clearStatus } from "@/lib/status";
 import type { AgentView, DurableConversationRow, MuxCapability, MuxConfig, WorkspaceView } from "@/lib/types";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureWorkspaces } from "@/test/handlers";
@@ -133,6 +134,7 @@ afterEach(() => {
   localStorage.clear();
   __resetOperatorCommands();
   __resetProgramLists();
+  __resetSessionCards();
 });
 
 describe("durable home: the conversation list is the dashboard", () => {
@@ -264,5 +266,37 @@ describe("durable home: every machine with a screen keeps its dashboard", () => 
     expect(document.querySelector('[data-slot="conversation-list"]')).toBeNull();
     expect(screen.getAllByText(fixtureWorkspaces[0]!.label).length).toBeGreaterThan(0);
     expect(seen.reads).toBe(0);
+  });
+});
+
+describe("durable home: a program refused for its wire version says why (M55 spec 14)", () => {
+  const SENTENCE = "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.";
+
+  it("durable home: the sentence sits above the list in a caution box, and the list foot says it too", async () => {
+    declares({ paneGrid: false, programHistory: true });
+    server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: false, reason: "unreachable" })));
+    noteSessionCards(
+      [{ name: "default", isPrimary: true, reachable: false, agents: 0, working: 0, blocked: 0, kind: "program", state: "unreachable", notice: SENTENCE }],
+      undefined,
+    );
+    renderHome(homeData({ agents: [] }));
+    await waitFor(() => expect(list()).not.toBeNull());
+    // Once in the box above the list, once in the list's foot in place of "did not answer".
+    await waitFor(() => expect(screen.getAllByText(SENTENCE)).toHaveLength(2));
+    const box = document.querySelector<HTMLElement>('[data-slot="notice"]');
+    expect(box).toHaveTextContent(SENTENCE);
+    expect(box?.querySelector('[role="status"]') ?? (box?.getAttribute("role") === "status" ? box : null)).not.toBeNull();
+    // The box sits above the list, not inside it.
+    expect(list()?.contains(box)).toBe(false);
+    expect(screen.queryByText("The program did not answer. Try again in a moment.")).toBeNull();
+  });
+
+  it("durable home: a program that is not refused draws no box", async () => {
+    declares({ paneGrid: false });
+    noteSessionCards([{ name: "default", isPrimary: true, reachable: true, agents: 2, working: 1, blocked: 1, kind: "program", state: "ready" }], undefined);
+    renderHome(homeData());
+    await waitFor(() => expect(list()).not.toBeNull());
+    expect(screen.queryByText(SENTENCE)).toBeNull();
+    expect(document.querySelector('[data-slot="notice"]')).toBeNull();
   });
 });

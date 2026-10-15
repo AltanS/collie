@@ -12,6 +12,7 @@ import {
   type SessionParts,
   widenedPanes,
 } from "./sessions.ts";
+import type { VersionRefusal } from "./mux/durable/protocol.ts";
 import type { DurableSource } from "./sources.ts";
 import type { EngineSnapshot } from "./state-engine.ts";
 import type { AgentStatus, AgentView, SessionState } from "./types.ts";
@@ -398,7 +399,7 @@ function cardedParts(opts: {
   supports: readonly MuxCapability[];
   agents?: AgentView[];
   bridge?: "connected" | "disconnected";
-  program?: { phase: SessionState; hostName: string };
+  program?: { phase: SessionState; hostName: string; refusal?: VersionRefusal };
   sessions?: () => ReturnType<SessionParts["herdr"]["listSessions"]>;
 }): SessionParts {
   const snap: EngineSnapshot = { agents: opts.agents ?? [], shellPanes: [], workspaces: [], tabs: [], bridge: opts.bridge ?? "connected" };
@@ -414,7 +415,7 @@ function cardedParts(opts: {
   };
   const program = opts.program;
   if (program === undefined) return parts;
-  return { ...parts, program: { phase: () => program.phase, hostName: () => program.hostName } };
+  return { ...parts, program: { phase: () => program.phase, hostName: () => program.hostName, versionRefusal: () => program.refusal ?? null } };
 }
 
 const DESK: DurableSource = { name: "desk", kind: "durable", socket: "/run/user/1000/desk/desk.sock" };
@@ -572,5 +573,27 @@ describe("SessionRegistry: programs beside the terminal mux (M55)", () => {
     const { registry } = mixedRegistry();
     const desk = registry.get("desk");
     expect(desk === undefined ? null : cardOf(desk, true).mux).toBe("Support desk");
+  });
+
+  test("a program refused for its wire version carries the one sentence as notice, and no other card has the key", () => {
+    const refusal: VersionRefusal = { code: "version", collie: [1, 1], program: [2, 3] };
+    const registry = new SessionRegistry({
+      configRoot: "/cfg/herdr",
+      primarySocketPath: "/cfg/herdr/herdr.sock",
+      factory: (name, endpoint) =>
+        endpoint.kind === "terminal"
+          ? cardedParts({ mux: "herdr", supports: [] })
+          : cardedParts({ mux: "durable", supports: [], program: name === "desk" ? { phase: "unreachable", hostName: "", refusal } : { phase: "unreachable", hostName: "" } }),
+      multiSession: true,
+      sources: [DESK, CLOUD],
+    });
+    const desk = registry.get("desk");
+    const cloud = registry.get("cloud");
+    const primary = registry.get();
+    expect(desk === undefined ? null : cardOf(desk, false).notice).toBe("Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK.");
+    // Unreachable for another reason: no notice, the word alone.
+    expect(cloud === undefined ? null : "notice" in cardOf(cloud, false)).toBe(false);
+    expect(primary === undefined ? null : "notice" in cardOf(primary, true)).toBe(false);
+    expect(registry.list().find((s) => s.name === "desk")).toMatchObject({ state: "unreachable", notice: "Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK." });
   });
 });

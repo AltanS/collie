@@ -20,6 +20,7 @@ import { machineRosterOf, MachineWatch, SOLO_MACHINE_ID } from "./machines.ts";
 import type { PushMessage } from "./push.ts";
 import { TrustStore } from "./crew/trust-store.ts";
 import { Snooze } from "./snooze.ts";
+import { bootSources, planPrograms, sourcesPath, type DurableSource } from "./sources.ts";
 import {
   SessionRegistry,
   herdTagFor,
@@ -196,7 +197,7 @@ const hasJournal = (agent: string) => agent === "claude";
  * A registry over exactly one session (the primary), built with the same fake-factory convention as
  * sessions.test.ts. `list()` is the REAL implementation — this pins what a solo `sessions` looks like.
  */
-function soloRegistry(): SessionRegistry {
+function soloRegistry(sources: readonly DurableSource[] = []): SessionRegistry {
   const factory: SessionFactory = () => ({
     // The registry's only discovery: an adapter reporting nothing but the primary itself.
     herdr: stubPart<SessionParts["herdr"]>({ listSessions: () => Promise.resolve(muxOk([])) }),
@@ -209,6 +210,7 @@ function soloRegistry(): SessionRegistry {
     primarySocketPath: "/home/you/.config/herdr/herdr.sock",
     factory,
     multiSession: true,
+    sources,
   });
 }
 
@@ -559,6 +561,24 @@ describe("solo zero-tax — the snapshot body is byte-for-byte today's", () => {
 
   test("assembles to the committed golden, byte for byte", () => {
     expectGolden("snapshot.json", `${body}\n`);
+  });
+
+  // COLLIE_PROGRAMS=off (M55 spec 16): a sources.json that lists a program is ignored whole, so the
+  // registry the bridge would build from it lists the same sessions and the snapshot is these bytes.
+  test("COLLIE_PROGRAMS=off: a sources.json with a program leaves the snapshot byte-identical to solo", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "collie-programs-off-"));
+    try {
+      writeFileSync(sourcesPath(dir), JSON.stringify([{ name: "desk", kind: "durable", socket: "/run/desk.sock" }]), { mode: 0o600 });
+      const plan = (env: Record<string, string>) =>
+        planPrograms({ durableOnly: false, env, sources: bootSources(dir, env), primaryName: "herdr" });
+      // The control: with the switch unset the same file does add a program, so the assertion below is not vacuous.
+      expect(plan({}).others).toHaveLength(1);
+      const off = plan({ COLLIE_PROGRAMS: "off" });
+      expect(off).toEqual({ primary: undefined, others: [] });
+      expect(JSON.stringify(soloSnapshot(soloRegistry(off.others)), null, 2)).toBe(body);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   // Deep equality, not a subset match: an added key fails here even if the golden were regenerated

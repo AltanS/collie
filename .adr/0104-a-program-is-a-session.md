@@ -69,6 +69,14 @@ program exists. If neither does, the durable code moves to `experiments/`, the d
 removed, and the homepage block on colliepwa.dev goes with the docs page. Sources stay a file and a registry rule, so the move removes an adapter and a verb, not a
 model.
 
+On removal, a person who attached a program gets notice first. A `sources.json` entry is ignored
+with one log line for one minor release before the code moves to `experiments/`. The program's own socket
+keeps working for the program itself. The npm package
+`@colliepwa/durable-sdk` is deprecated with `npm deprecate`, naming the last Collie version that speaks the wire,
+and is never unpublished ([ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md#the-exit) already says
+deprecated, not deleted). The docs pages, the site page, the homepage block and the footer link go in one
+commit per repository.
+
 ## Consequences
 
 - A builder installs one thing. The quickstart is a program, one `attach`, and a card on the phone.

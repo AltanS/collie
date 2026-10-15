@@ -3,11 +3,3 @@
 # the window in which a bad release is usually caught. `--frozen-lockfile` installs what bun.lock pins.
 [install]
 minimumReleaseAge = 604800 # 7 days, in seconds
-#
-# The four @earendil-works packages are excluded from the cooldown. The maintainer waived it on
-# 2026-10-13 for the 1.1.0 line (released 2026-10-07). The line can go after 2026-10-14 22:12 UTC,
-# when 1.1.0 is seven days old. This is the one place this bunfig differs from the root one.
-# Provenance, checked 2026-10-13: the four 1.1.0 packages were published on 2026-10-07 by GitHub Actions
-# with SLSA provenance naming refs/tags/v1.1.0 at commit abe508e1, with no install scripts, no binaries
-# and no advisory; npm's gitHead is empty, and the provenance stands in for it.
-minimumReleaseAgeExcludes = ["@earendil-works/pi-durable", "@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-telemetry"]

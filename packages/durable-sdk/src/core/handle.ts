@@ -1,8 +1,9 @@
 // The durable wire, version 1, as one function: a web `Request` in, a `Response` out. No socket, no runtime
 // import. The Bun server (../server.ts) and a Cloudflare Worker both call it.
 // Check order: version (409 incompatible), then hello, then ready (503 starting), then the route (404).
-// A server that can tell who calls (the Bun server's descendant check) passes `refuseAct`. It runs before the
-// four acts (answer, send, abort, starter) and throws 403 `caller-refused`. Reads never call it.
+// A server that can tell who calls (the Bun server's descendant check) passes `refuseAct`. It runs before every
+// act (answer, send, abort, action, rename, close, reopen and starter) and throws 403 `caller-refused`. Reads never
+// call it.
 
 import { BadAnswer, cleanConversationRow, cleanItem, type Pane, type Store } from "./layout.ts";
 import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, REOPEN_GROUP, STARTER_GROUP } from "./receipts.ts";
@@ -259,7 +260,7 @@ function versionRefusal(state: CoreState, version: number | undefined): Pick<Pro
 
 /** The line a program writes for a refusal: Collie's version first, then the program's own, as Collie's notice row words it. */
 export function versionLine(refusal: VersionRefusal): string {
-  return `Collie speaks wire v${refusal.collie[1]}, this program speaks v${refusal.program[1]}; update one of them`;
+  return `Collie speaks wire v${refusal.collie[1]}, this program speaks v${refusal.program[1]}. Update the program's SDK, or Collie.`;
 }
 
 export function hello(state: CoreState): Hello {

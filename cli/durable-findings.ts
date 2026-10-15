@@ -27,7 +27,7 @@ import {
 } from "../bridge/mux/durable/http-client.ts";
 import { HOST } from "../bridge/host.ts";
 import { chooseDurableTransport, type DurableEnv } from "../bridge/mux/durable/transport.ts";
-import { readSources, sourcesPath, sourceTransportEnv, SourcesError, type DurableSource } from "../bridge/sources.ts";
+import { PROGRAMS_OFF_NOTE, programsOff, readSources, sourcesPath, sourceTransportEnv, SourcesError, type DurableSource } from "../bridge/sources.ts";
 import {
   DURABLE_SERVICE,
   incompatibleDetail,
@@ -425,6 +425,11 @@ function diskMode(path: string): number | null {
  */
 export async function sourcesFindings(deps: SourcesDeps): Promise<Finding[]> {
   const path = sourcesPath(deps.ctx.configDir);
+  // The kill switch: the bridge ignores the file, so the file is not read here either, and a wrong
+  // one is not an error. One row says why there are no blocks.
+  if (programsOff(deps.ctx.env)) {
+    return [skipped(SOURCES_ROW, PROGRAMS_OFF_NOTE, "unset COLLIE_PROGRAMS, then `collie restart`")];
+  }
   let sources: DurableSource[];
   try {
     sources = readSources(deps.ctx.configDir);

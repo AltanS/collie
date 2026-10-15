@@ -834,6 +834,7 @@ describe("asks on a peer's pane", () => {
     ],
     reason: "The summary is the answer.",
     tool: { name: "write_note", summary: "path=/tmp/notes.txt" },
+    expiresAt: "2026-10-15T10:04:00.000Z",
   };
 
   test("the lead's merge passes asks through, and tags the host", () => {
@@ -849,6 +850,8 @@ describe("asks on a peer's pane", () => {
     const fromPeer = merged.agents.find((p) => p.paneId === "conv-02");
     expect(fromPeer?.host).toBe("laptop");
     expect(fromPeer?.asks).toEqual([ask]);
+    // The ask's expiry rides through the lead unchanged, so the phone counts down a member's question too.
+    expect(fromPeer?.asks?.[0]?.expiresAt).toBe("2026-10-15T10:04:00.000Z");
   });
 
   test("a pane without asks still parses and merges, and gains no asks key (an old peer)", () => {

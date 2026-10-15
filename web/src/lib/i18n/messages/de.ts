@@ -41,6 +41,42 @@ export const de: Dictionary = {
   "settings.theme.option.light": "Hell",
   "settings.theme.option.dark": "Dunkel",
 
+  "theme.title": "Theme", // TODO wordsmith
+  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
+  "theme.import": "Import", // TODO wordsmith
+  "theme.export": "Export", // TODO wordsmith
+  "theme.remove": "Remove", // TODO wordsmith
+  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
+  "theme.preview.title": "Import this theme?", // TODO wordsmith
+  "theme.preview.by": "By {author}", // TODO wordsmith
+  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
+  "theme.preview.halves.light": "Light only", // TODO wordsmith
+  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
+  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
+  "theme.preview.apply": "Apply", // TODO wordsmith
+  "theme.preview.cancel": "Cancel", // TODO wordsmith
+  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
+  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
+  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
+  "theme.refused.title": "This file was not imported", // TODO wordsmith
+  "theme.refused.close": "Close", // TODO wordsmith
+  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
+  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
+  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
+  "theme.export.title": "Copy this theme", // TODO wordsmith
+  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
+  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
+  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
+  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
+  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
+  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
+  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
+  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
+  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
+  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
+  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
+  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+
   // --- settings.haptics ---
   "settings.haptics.title": "Haptik",
   "settings.haptics.description": "Kurze Vibration bei Tastendruck und Schnellantworten.",
@@ -216,6 +252,9 @@ export const de: Dictionary = {
   "settings.typeface.note.system": "Systemschrift des Geräts. Kein zusätzlicher Download.",
   "settings.typeface.note.grotesk": "Eigene Collie-Schrift, abgestimmt auf das Logo.",
   "settings.typeface.note.aldrich": "Nur eine Schriftstärke: Fetter Text wird wie normaler Text dargestellt.",
+  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
+  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Vom Betreiber dieser Collie-Instanz hinterlegt.",
 
   // --- settings.fonts ---
@@ -270,6 +309,10 @@ export const de: Dictionary = {
   "composer.placeholder.gone": "Pane existiert nicht mehr",
   "composer.placeholder.readOnly": "Schreibgeschützt: Gerät nicht autorisiert",
   "composer.placeholder.noMuxSend": "Eingabe in dieses Terminal nicht möglich",
+  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
+  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
+  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
+  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Ins Terminal eingeben…",
   "composer.placeholder.shell": "Shell-Befehl eingeben…",
   "composer.placeholder.reply": "Antwort eingeben…",
@@ -294,6 +337,7 @@ export const de: Dictionary = {
   "composer.attach.inFront": "Seine Markierung fehlt in Ihrem Text, daher setzt Senden {name} voran.",
   "composer.send.typeAnyway": "Trotzdem tippen",
   "composer.send.reallySend": "Senden bestätigen",
+  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Eingabe ins Terminal abbrechen",
   "composer.send.sendAria": "Senden",
   "composer.send.reconnect": "Verbinde dich neu, um zu senden",
@@ -423,6 +467,8 @@ export const de: Dictionary = {
   "chat.mode.noChat": "{reason} Das Terminal bleibt hier.",
   "chat.stream.empty": "Zum Starten eine Nachricht senden.",
   "chat.stream.working": "Arbeitet noch…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Wartet auf Senden",
   "chat.pin.label": "Deine Eingabe",
   "chat.pin.earlier": "Die Frage liegt weiter zurück · Ältere Einträge laden",
@@ -490,9 +536,19 @@ export const de: Dictionary = {
   "prompt.sendingAria": "Wird gesendet",
   "prompt.reconnectNote": "Verbinde dich neu, um zu antworten.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Nicht angenommen. Die Frage wird möglicherweise gleich wieder angezeigt.",
+  // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
+  "ask.expiresIn": "Expires in {time}",
+  // TODO wordsmith
+  "ask.expired": "Expired",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -589,6 +645,8 @@ export const de: Dictionary = {
   "space.program.state.starting": "Starting",
   // TODO wordsmith
   "space.program.state.unreachable": "Unreachable",
+  // TODO wordsmith
+  "space.program.state.versionMismatch": "Version mismatch",
   // TODO wordsmith
   "space.program.member": "{line}, {member}",
   // TODO wordsmith

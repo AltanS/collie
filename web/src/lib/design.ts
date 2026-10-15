@@ -2,6 +2,8 @@ import { useSyncExternalStore } from "react";
 
 import { asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-fonts";
+import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "@/lib/shipped-fonts";
+import { DEFAULT_THEME_ID, isThemeId } from "@/lib/theme/schema";
 
 // The device's own look — today one field, `font`, and the shape is an OBJECT on purpose.
 //
@@ -23,21 +25,10 @@ import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-font
 
 const STORAGE_KEY = "collie:design:v1";
 
-/**
- * The shipped faces, and the only strings that may ever become a class name.
- *
- * A CLOSED LIST, checked on both the pre-paint path and this one. The stored value is attacker-
- * adjacent in exactly one narrow sense — it is a string from localStorage that is about to be
- * concatenated into `classList.add()` — and a closed list is the answer that cannot be got wrong,
- * where a sanitiser is one someone has to keep right.
- *
- * `aldrich` is the DEFAULT and adds no class at all: no class means the `--font-sans` already in
- * index.css's @theme block, which is the stack index.html preloads. A device that never opens the
- * setting runs no JavaScript before its first paint.
- */
-export const SHIPPED_FONTS = ["system", "grotesk", "aldrich"] as const;
-
-export type ShippedFont = (typeof SHIPPED_FONTS)[number];
+// The shipped faces live in `lib/shipped-fonts.ts`, a file with no imports, so the theme schema can
+// check `fonts.ui` against the same list without loading this module. Re-exported here so every
+// app import keeps reading them from `@/lib/design`.
+export { SHIPPED_FONTS, isShippedFont, type ShippedFont };
 
 /** The face a device gets before it says otherwise. */
 export const DEFAULT_FONT: ShippedFont = "aldrich";
@@ -58,17 +49,19 @@ export interface DesignPrefs {
    * wholesale, including by removing a face the operator has deleted.
    */
   operatorFont?: OperatorFontFace;
+  /**
+   * The id of the colour theme this device wears (M57). Absent means the theme `collie`, which wears
+   * no attribute and no inline property. Only the SHAPE of the id is checked here, never whether a
+   * theme of that name exists: like `font`, a stale id is kept, so an imported theme that comes back
+   * tomorrow is honoured, and `lib/theme/store.ts` falls back to `collie` while it is gone.
+   */
+  theme?: string;
 }
 
 const DEFAULT_PREFS: DesignPrefs = { font: DEFAULT_FONT };
 
 let prefs: DesignPrefs = load();
 const listeners = new Set<() => void>();
-
-/** True for a shipped key. Total over any string, which is the whole reason it exists. */
-export function isShippedFont(value: string): value is ShippedFont {
-  return SHIPPED_FONTS.some((font) => font === value);
-}
 
 /** True for a value the select may hold: a shipped key, or a namespaced operator basename. */
 export function isDesignFont(value: string): boolean {
@@ -78,18 +71,21 @@ export function isDesignFont(value: string): boolean {
 /**
  * The class `<html>` should carry for `font`, or `""` for the default (which wears none).
  *
- * The one place a stored string turns into a class name, and it can only ever return one of four
+ * The one place a stored string turns into a class name, and it can only ever return one of five
  * literals spelled right here. public/theme-init.js holds the pre-paint twin of this function —
  * minus the operator branch, which has no pre-paint path by design.
  */
 export function fontClass(font: string): string {
   if (font === "system") return "font-system";
   if (font === "grotesk") return "font-grotesk";
+  if (font === "plex") return "font-plex";
+  if (font === "geist") return "font-geist";
+  if (font === "atkinson") return "font-atkinson";
   if (font.startsWith(OPERATOR_FONT_PREFIX)) return "font-operator";
   return "";
 }
 
-const FONT_CLASSES = ["font-system", "font-grotesk", "font-operator"] as const;
+const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-atkinson", "font-operator"] as const;
 
 function load(): DesignPrefs {
   try {
@@ -123,6 +119,8 @@ export function parseDesignPrefs(raw: string): DesignPrefs {
   const next: DesignPrefs = { font };
   const face = readOperatorFace(doc.operatorFont);
   if (face !== undefined) next.operatorFont = face;
+  const theme = asJsonString(doc.theme);
+  if (theme !== undefined && isThemeId(theme) && theme !== DEFAULT_THEME_ID) next.theme = theme;
   return next;
 }
 
@@ -178,10 +176,27 @@ export function setDesignFont(font: string, face?: OperatorFontFace): void {
   const next: DesignPrefs = { font };
   if (face !== undefined) next.operatorFont = face;
   // A shipped choice drops the mirror: keeping a face nobody is using would leave the next cold load
-  // injecting an `@font-face` for a font it does not render.
+  // injecting an `@font-face` for a font it does not render. The theme is another field entirely and
+  // survives a change of face.
+  if (prefs.theme !== undefined) next.theme = prefs.theme;
   prefs = next;
   persist();
   applyFontClass(prefs.font);
+  for (const fn of listeners) fn();
+}
+
+/**
+ * Choose a colour theme by id. The theme `collie` is the absence of the field, so a device that goes
+ * back to it stores exactly what a device that never chose stores. An id of the wrong shape is
+ * ignored. Every other field is kept as it is.
+ */
+export function setDesignTheme(id: string): void {
+  if (!isThemeId(id)) return;
+  const next: DesignPrefs = { font: prefs.font };
+  if (prefs.operatorFont !== undefined) next.operatorFont = prefs.operatorFont;
+  if (id !== DEFAULT_THEME_ID) next.theme = id;
+  prefs = next;
+  persist();
   for (const fn of listeners) fn();
 }
 

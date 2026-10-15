@@ -14,3 +14,4 @@ release may change the API.
   optional peers. `./core` is the wire without a transport.
 - **Decoded JSON in, not `unknown`.** The public functions take `Json | undefined` instead of `unknown`, and `Json` and
   `JsonObject` are exported, so a consumer passes decoded JSON.
+- **The Pi helpers can put a clock on a question.** `riskGuard` and `askTools` take `timeoutMs`, and the ask carries `expiresAt`; past it the call is blocked, or the tool returns "timed out", and `onTimeout` lets the program log it.
