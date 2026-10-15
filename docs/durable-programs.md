@@ -16,8 +16,8 @@ third-party harness.
 
 A ten-line program, one `collie durable attach`, and a question card on your phone.
 
-You need Linux or macOS, and Node 22.18 or later or Bun 1.4 or later. Install the SDK in your
-program's folder:
+A program runs on Linux or macOS, with Node 22.18 or later or Bun 1.4 or later. Install the SDK in
+your program's folder:
 
 ```bash
 npm install @colliepwa/durable-sdk@experimental
