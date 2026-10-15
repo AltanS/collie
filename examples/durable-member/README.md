@@ -232,6 +232,7 @@ Every variable is optional.
 | `DM_STEP_MS` | `400` | The pause before each scripted answer, so you can see the states change. |
 | `DM_SLOW_MS` | `10000` | How long the scripted answer to a follow-up takes to write, so Stop has something to stop. The answer is long, and streams in chunks. |
 | `DM_HELPER_MS` | the value of `DM_STEP_MS` | How long the helper's scripted answer takes. |
+| `DM_ASK_TIMEOUT_MS` | `600000` (ten minutes) | How long the phone has to answer each question. The ask carries an `expiresAt`, so the phone shows the time left. Past it the question closes as timed out, the app logs it as a deny and goes on. |
 | `REAL_MODEL` | not set | A model id of the provider's Pi catalog. Not set means the scripted model. |
 | `REAL_PROVIDER` | `openrouter` | `openrouter` or `openai`. Read only when `REAL_MODEL` is set. |
 | `OPENROUTER_API_KEY` | not set | Your OpenRouter key. Pi reads it only when `REAL_MODEL` is set. |
