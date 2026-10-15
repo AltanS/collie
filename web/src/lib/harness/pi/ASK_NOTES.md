@@ -133,7 +133,8 @@ editor and the dialogs, starting at the column where the editor's rules end, W. 
 every row at W when a rule runs straight into text, or when a row of the frame at the tail is padded
 to W and then carries text. W counts only when it is the run of the tail frame's own bottom rule and
 the sign is a row of that frame: agent output can print a rule straight into text too (a markdown
-heading), and that must not crop the real frame (`panel.test.ts`). Windows ConPTY is not verified. Probed live 2026-10-12 at 125 columns: an idle send, a draft read back
+heading), and that must not crop the real frame (`panel.test.ts`). Windows ConPTY is not verified: `docs/windows.md` lists pi and OmO under "What is not tested".
+Probed live 2026-10-12 at 125 columns: an idle send, a draft read back
 without panel text, a `/` command. The panel ticks (`elapsed 1m21`), so the editor's bound prompt,
 which is whole rows, binds nothing there: the write is unbound and Enter still waits for the
 read-back. On an 18-row pane a picker pushes the bottom rule off the screen; see "A dialog taller
@@ -233,3 +234,7 @@ to honour `NO_COLOR`, capture it first, then read it.
 - A dialog taller than the pane whose options are on the screen but whose footer is not: Escape
   card only, because the keys come from the footer. No live capture of a cut screen yet; the
   fixtures are cut from whole ones.
+- pi and OmO on Windows. Every capture is from Linux, and whether ConPTY pads OmO's side panel or
+  the dialog rows the same way is not known. `docs/windows.md` lists it under "What is not tested".
+- A pi or OmO pane with no colour: neither honours `NO_COLOR` (see "NO_COLOR and monochrome
+  panes"), so no such screen has been seen.

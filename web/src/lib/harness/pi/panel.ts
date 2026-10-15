@@ -28,8 +28,9 @@
 // cropped at W, has a bottom rule whose own run on the screen is exactly W columns wide, and when one
 // sign row is a row of that frame. So the crop width is always the width of the frame's own rules:
 // a short rule in the transcript or in a typed draft cannot give a small W. Sign (b) reads W off the
-// frame's bottom rule to begin with. Both signs come from OmO 5.1.30 on Linux (Herdr 0.9.3); whether
-// Windows ConPTY pads the panel's rows the same way is not verified.
+// frame's bottom rule to begin with. All three signs come from OmO 5.1.30 on Linux (Herdr 0.9.3);
+// whether Windows ConPTY pads the panel's rows the same way is not verified, and docs/windows.md lists
+// pi and OmO under "What is not tested".
 //
 // A cropped frame is not one the bridge can find as whole screen rows: these carry the panel, and
 // the panel ticks (`elapsed 1m21`). So a question read from a cropped frame binds to the frame's
