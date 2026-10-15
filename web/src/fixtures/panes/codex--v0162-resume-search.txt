@@ -1,0 +1,39 @@
+ [0m[1mResume a previous session[0m
+
+ Filter: [0m[1m[4m Cwd [0m All    Status: [0m[1m Active [0m Archived    Sort: [0m[1m Updated  [0mCreated
+
+ Type to search
+
+  [0m[1m[7m› [0m[7m16m ago     [0m[1m[7mCreate outside-sandbox marker                                   [0m
+    17m ago     [0m[38;2;203;166;247mCreate outside-sandbox marker[0m
+    17m ago     [0m[38;2;137;220;235mCreate outside-sandbox marker file[0m
+    19m ago     [0m[38;2;137;220;235mCreate outside-tmux marker[0m
+    21m ago     [0m[38;2;250;179;135mCreate outside Zellij marker[0m
+    22m ago     [0m[38;2;243;139;168mCreate outside tmux marker[0m
+    24m ago     [0m[38;2;245;194;231mCreate m56c.txt[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 
+
+[0m[2m───────────────────────────────────────────────────────────────────[0m 1 / 7 · 100% [0m[2m─[0m
+ [0m[1menter [0mresume   [0m[1m^a[0m archive   [0m[1mesc[0m exit   [0m[1m^c[0m exit   [0m[1mtab[0m focus   [0m[1m←/→ [0moption
+ [0m[1m^o[0m comfy   [0m[1m^t[0m preview   [0m[1m^e[0m exp   [0m[1m↑/↓[0m browse

@@ -73,6 +73,10 @@ const PINNED = [
   "codex--v0157-idle.txt",
   "codex--v0158-goal-notice.txt",
   "codex--v0159-task-title.txt",
+  "codex--v0162-idle.txt",
+  "codex--v0162-picker-model.txt",
+  "codex--v0162-picker-permissions.txt",
+  "codex--v0162-resume-search.txt",
   "codex--working.txt",
 ];
 

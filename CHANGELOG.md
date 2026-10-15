@@ -82,6 +82,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The screen corpus holds six new captures.** Codex 0.162.1's idle box, `/model` picker, `/permissions` picker and `/resume` search, and Claude Code 2.1.301's idle box and the box a held subagent approval leaves with no dialog on the main screen.
 - **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a ten-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.
 - **A real Pi Durable program ran through the durable wire.** disler's proactive incident demo, 170 lines changed, one approval card on the phone shipped its deploy. Findings and two screenshots in `experiments/real-program-spike/`.
 - **Terminals is about terminals, and Programs holds everything about a program.** The reasons a program shows as unreachable, the two ways to reach one, the older durable-only form and the doctor rows moved to the Programs page, and the durable notes on the Terminals page are one paragraph that links there.

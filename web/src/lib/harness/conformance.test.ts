@@ -109,6 +109,10 @@ const NEUTRAL = new Set([
   // Claude Code 2.1.296's box table with a `⚠️` cell, cut to the reply's rows: a table that pans
   // (table-run.test.ts), never a dialog.
   "claude--box-table-vs16-emoji.txt",
+  // Claude Code 2.1.301: a fresh idle box, and the box a PermissionRequest hook leaves on screen while a
+  // background subagent waits for its approval (no dialog is drawn on the main screen at all).
+  "claude--v2301-idle.txt",
+  "claude--v2301-hold-subagent.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
