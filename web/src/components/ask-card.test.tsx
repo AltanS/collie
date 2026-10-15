@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/setup";
 import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { asJsonObject, type JsonObject } from "@/lib/json";
+import { noteServerDate, resetServerClockForTests } from "@/lib/server-clock";
 import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
 import type { Ask } from "@/lib/types";
 import { AskCard } from "./ask-card";
@@ -639,5 +640,84 @@ describe("the receipts (M55 spec 14)", () => {
     draw({ ask: { ...ASK, expiresAt: new Date(Date.now() - 1000).toISOString() } });
     expect(screen.getByText("Expired")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: wording("Allow") })).toBeEnabled();
+  });
+});
+
+describe("the countdown counts on the bridge's clock", () => {
+  // The bridge drops an ask at `expiresAt` by its own clock, so the card counts against the bridge's
+  // clock as the `Date` header tells it (lib/server-clock.ts), not against the phone's.
+  const BRIDGE = Date.UTC(2026, 9, 15, 10, 0, 0);
+  const FIVE_MIN = 5 * 60_000;
+  const IN_FOUR_AND_A_HALF = new Date(BRIDGE + 4 * 60_000 + 30_000).toISOString();
+
+  /** How far the phone's clock is off the bridge's. */
+  let phoneAhead = 0;
+
+  /** The phone's clock `offset` ms off the bridge's, on the page clock too. */
+  function phoneOff(offset: number): void {
+    phoneAhead = offset;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(BRIDGE + offset);
+    resetCacheClockForTests();
+  }
+
+  /** One poll's answer: the bridge says its time in the `Date` header, after a quick round trip. */
+  function polledBridge(): void {
+    const sent = Date.now();
+    noteServerDate(new Date(sent - phoneAhead).toUTCString(), sent, sent + 40);
+  }
+
+  afterEach(() => {
+    resetServerClockForTests();
+    resetCacheClockForTests();
+    vi.useRealTimers();
+  });
+
+  it("a phone five minutes ahead shows the time the bridge has left, not Expired", () => {
+    phoneOff(FIVE_MIN);
+    polledBridge();
+    draw({ ask: { ...ASK, expiresAt: IN_FOUR_AND_A_HALF } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+  });
+
+  it("a phone five minutes behind shows the time the bridge has left, not nine minutes", () => {
+    phoneOff(-FIVE_MIN);
+    polledBridge();
+    draw({ ask: { ...ASK, expiresAt: IN_FOUR_AND_A_HALF } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+  });
+
+  it("when the phone says Expired and the bridge still lists the ask, a tap still posts", async () => {
+    // No sample yet: the phone, five minutes ahead, counts on its own clock and calls the ask expired.
+    phoneOff(FIVE_MIN);
+    const seen = stubAnswer(() => HttpResponse.json({ ok: true, outcome: "taken" }));
+    draw({ ask: { ...ASK, expiresAt: new Date(BRIDGE + 30_000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    const allow = screen.getByRole("button", { name: wording("Allow") });
+    expect(allow).toBeEnabled();
+    await userEvent.click(allow);
+    await waitFor(() => expect(seen).toHaveLength(1));
+  });
+
+  it("the first poll that tells the bridge's time corrects the line on the next tick", () => {
+    phoneOff(FIVE_MIN);
+    draw({ ask: { ...ASK, expiresAt: new Date(BRIDGE + 30_000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    polledBridge();
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText(/^Expires in \d+ s$/u)).toBeInTheDocument();
+  });
+
+  it("a card with no expiry never subscribes to the page clock", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    resetCacheClockForTests();
+    const before = vi.getTimerCount();
+    const { unmount } = draw();
+    expect(vi.getTimerCount()).toBe(before);
+    unmount();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 60_000).toISOString() } });
+    expect(vi.getTimerCount()).toBe(before + 1);
   });
 });

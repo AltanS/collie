@@ -35,6 +35,7 @@ import {
 import { timeLeft } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
+import { onBridgeClock } from "@/lib/server-clock";
 import { isProgramSession, useSessionCard } from "@/lib/session-cards";
 import type { Ask, AskField, AskOption } from "@/lib/types";
 import { mintRequestId } from "@/lib/worktree-name";
@@ -64,9 +65,11 @@ import { mintRequestId } from "@/lib/worktree-name";
 //
 // THE RECEIPTS (M55 spec 14). The caption names the program that asks, by its session's name. An ask
 // with `expiresAt` shows the time left under its title, on the page's one shared clock
-// (lib/cache-clock.ts); past it the line says "Expired" and the buttons stay: the program answers the
-// tap with its own 409, and the next read drops the ask. A too-late answer says who decided first when
-// the program told: the program, the clock, or another answer.
+// (lib/cache-clock.ts) moved onto the bridge's (lib/server-clock.ts): the bridge drops the ask at
+// `expiresAt`, so a phone whose own clock is off must not count to another moment. Past it the line
+// says "Expired" and the buttons stay: the estimate may be a second off, the program answers a late
+// tap with its own 409, and the next read drops the ask. A too-late answer says who decided first
+// when the program told: the program, the clock, or another answer.
 
 /** A transport error as an answer: a refusal the bridge made on purpose says so, anything else may have arrived. */
 function thrownAnswer(status: number | undefined, message: string): AnswerResult {
@@ -254,11 +257,19 @@ export function AskCardFace({ card, program, disabled = false, offline = false, 
 }
 
 /**
+ * The page clock moved onto the bridge's (lib/server-clock.ts): `expiresAt` is compared there, so a
+ * phone whose own clock is off still counts down to the moment the bridge drops the ask.
+ */
+function askClockNow(): number {
+  return onBridgeClock(cacheClockNow());
+}
+
+/**
  * The time left on an ask, one muted line under its title. Its own component, so only a card with an
  * expiry subscribes to the page clock: a terminal's card never ticks.
  */
 function AskExpiry({ expiresAt }: { expiresAt: string }) {
-  const now = useSyncExternalStore(subscribeCacheClock, cacheClockNow, cacheClockNow);
+  const now = useSyncExternalStore(subscribeCacheClock, askClockNow, askClockNow);
   const left = timeLeft(expiresAt, now);
   if (left === null) return null;
   return (
