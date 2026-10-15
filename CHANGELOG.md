@@ -42,6 +42,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
 - **The phone shows the receipts of a program's question.** The ask card shows the time left, says who decided when an answer comes too late, names the program, and a question that timed out or was decided in the program leaves a line in the chat. A program refused for its wire version says why on its home.
 
+- **Themes have a decision record.** ADR 0106 says a theme is one closed JSON file with a version, a light half and a dark half of 43 colour tokens, and one UI face; anything outside the list is refused with a message. DESIGN.md gets section 13, which makes a token the only way a colour reaches a component, and section 10 lists the literal colours that a theme cannot reach yet.
+
 ### Changed
 
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
