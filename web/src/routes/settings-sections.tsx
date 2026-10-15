@@ -22,6 +22,7 @@ import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
+import { ThemePickerControl } from "@/components/theme-picker-control";
 import { CompactionsControl } from "@/components/compactions-control";
 import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
@@ -73,7 +74,10 @@ import { useScope } from "@/lib/session";
 export function SettingsAppearanceRoute() {
   return (
     <SettingsPage title="settings.section.appearance.title">
-      {/* The one people come here for, so it is first on the page they land on for it. */}
+      {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
+          Light, Dark) because the two are one question asked twice, and a person who finds one
+          should find the other. First on the page, because it is the one people come here for. */}
+      <ThemePickerControl />
       <ThemeControl />
       {/* Beside appearance because both are "how this phone presents itself". */}
       <LanguageControl />

@@ -48,6 +48,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The current look is the theme `collie`, kept as data.** `web/src/themes/collie.json` holds the 43 token pairs of `index.css` value for value, and a test keeps the two equal. `scripts/build-themes.ts` writes `web/src/themes.css` from the shipped theme files, one block for each theme other than `collie`, and a test fails when the file is stale. With only `collie` the file holds no block, so nothing changes on screen.
 - **A device remembers its colour theme.** The pick is the `theme` field of the design store, and imported themes live in a library of up to eight on the device. Each stored theme is checked again when it is read and again before it is applied, so nothing from storage reaches the page unchecked. The default theme `collie` writes no attribute and no property, and the status bar colour follows the active theme's two backgrounds. Nothing in Settings uses it yet.
 - **A chosen theme is on screen from the first frame.** `theme-init.js` sets a shipped theme's attribute, or an imported theme's colours, before the bundle loads, and checks every token name and colour against its own closed lists. A test reads the file and fails when its lists drift from the schema, and a browser case proves the page holds the stored colour with the app blocked.
+- **Settings has a Theme card for picking, importing and exporting a theme.** It sits above System, Light and Dark. Tap a pill to apply a theme at once. Import shows the name, both halves as swatches and a contrast report before anything is kept, and a failed check warns while Apply stays on. A refused file lists every cause and keeps nothing. Export saves the active theme as `<id>.collie-theme.json`, and Remove drops an imported one and goes back to `collie`. The playground has two cards for it.
 
 ### Changed
 
@@ -73,6 +74,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Tests pin the Programs section.** They cover each row state, the section above and below the spaces, the move on a new snapshot, a crew of two machines, and no Programs header with no program.
 - **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
 - **The durable example's questions expire after ten minutes.** The support desk sets a timeout on every ask, so the phone shows the time left and a question nobody tapped leaves a timed-out line; DM_ASK_TIMEOUT_MS changes the window.
+- **A strip pill can be one choice of a set.** `Chip` takes `radio`, which gives it `role="radio"` and `aria-checked` in place of `aria-current`. The box and the look stay the same, so nothing in a strip moves.
 
 ### Fixed
 
