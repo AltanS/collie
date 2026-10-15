@@ -157,6 +157,8 @@ The URL must start with `https://`. The one exception is `http://127.0.0.1:<port
 > and answer every question, and the host sees the text. A program reached this way should offer
 > Allow and Deny only, never an always-allow.
 
+[Programs security](durable-programs-security.md) says what a program can do and what Collie logs.
+
 Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
 too. With no phone open the idle poll runs every 10 s, so Collie asks 8,640 times a day. Check what
 your host's plan allows for that.
@@ -196,6 +198,7 @@ collie durable list
 When a program does not appear, run `collie doctor`, which names the failing check. The three usual
 causes are an entry not loaded yet (restart), a socket that is not private (`socket-not-private`),
 and a stale socket file left by a crash (`connection refused`: delete it and start the program).
+[Programs troubleshooting](durable-programs-troubleshooting.md) covers the program cases.
 [Troubleshooting](troubleshooting.md) covers Collie as a whole.
 
 ## Tokens

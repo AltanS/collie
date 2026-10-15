@@ -88,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The Programs page links its troubleshooting and security pages.** The pointer after the verbs names the program cases, and the token caution names the security page.
 - **The Crews page has a Programs in a crew section.** It says a member's programs show in the lead's one Programs section, that the lead runs the push and its caps while answers, controls, reopen and starter taps go to the member that owns the program and keep their receipts there, that a lead below 1.21.0 shows no question card, and when a durable-only member needs `--label`.
 - **`collie skill` tells an agent what a program is.** A new section "Programs (experimental)" gives the attach command, the three `collie durable` verbs, which of them an agent may run, and the `durable-` doctor rows to read when a program does not show.
 - **Terminology has the words a program brings.** Source, cap, hello, epoch, receipt, conversation, Programs section and wire each get an entry of two to four sentences and one link to the page that owns the word.
