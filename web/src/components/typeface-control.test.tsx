@@ -43,6 +43,7 @@ describe("TypefaceControl", () => {
       "System default",
       "Space Grotesk",
       "Aldrich",
+      "IBM Plex Sans",
     ]);
     expect(select).toHaveValue("aldrich");
     // The default wears no class — that is what keeps JavaScript off the first-paint path for a
@@ -59,6 +60,18 @@ describe("TypefaceControl", () => {
 
     expect(document.documentElement).toHaveClass("font-grotesk");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "grotesk" });
+  });
+
+  it("picking IBM Plex Sans writes its class and its own note", async () => {
+    config({});
+    const user = userEvent.setup();
+    render(<TypefaceControl />);
+
+    await user.selectOptions(await screen.findByLabelText("Family"), "plex");
+
+    expect(document.documentElement).toHaveClass("font-plex");
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "plex" });
+    expect(screen.getByText("IBM Plex Sans, the Nightwatch face. Its bold is a real bold.")).toBeInTheDocument();
   });
 
   it("swapping back to the default takes the class off again", async () => {
@@ -84,6 +97,7 @@ describe("TypefaceControl", () => {
       "System default",
       "Space Grotesk",
       "Aldrich",
+      "IBM Plex Sans",
       "Departure Mono",
     ]);
 
@@ -104,7 +118,7 @@ describe("TypefaceControl", () => {
     render(<TypefaceControl />);
 
     const select = await screen.findByLabelText("Family");
-    expect(within(select).getAllByRole("option")).toHaveLength(3);
+    expect(within(select).getAllByRole("option")).toHaveLength(4);
   });
 
   // The offline / deleted-row case. The select must not silently show its first option ("System

@@ -117,23 +117,9 @@
 
    When the operator picks a winner, the two losers leave together: this block, their .woff2 and
    their LICENSE-*.txt in public/fonts/, and their entries in typeface-card.tsx. */
-@font-face {
-  font-family: "IBM Plex Sans";
-  src: url("/fonts/ui-ibm-plex-sans-3.201-latin.woff2") format("woff2");
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "IBM Plex Sans Fallback";
-  src:
-    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
-    local("Liberation Sans"), local("Arimo"), local("Roboto");
-  size-adjust: 101.21%;
-  ascent-override: 101.27%;
-  descent-override: 27.17%;
-  line-gap-override: 0%;
-}
+/* IBM Plex Sans ships now, as the Nightwatch theme's face (M57), so its two rules live in index.css
+   with the other shipped faces. A second copy here would win over index.css's stand-in, which
+   carries a Latin-only `unicode-range` this one never had. */
 @font-face {
   font-family: "Geist";
   src: url("/fonts/ui-geist-1.800-latin.woff2") format("woff2");

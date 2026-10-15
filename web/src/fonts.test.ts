@@ -118,7 +118,7 @@ describe("the UI typefaces", () => {
   // splash render in the system font and the app change voice on hand-off — which is the exact bug
   // this splash block exists to prevent, just for a different reader.
   it("re-declares every shipped face for the pre-CSS boot splash", () => {
-    for (const family of ["Space Grotesk", "Aldrich"]) {
+    for (const family of ["Space Grotesk", "IBM Plex Sans", "Aldrich"]) {
       expect(html).toContain(`font-family: "${family}";`);
       expect(html).toContain(`font-family: "${family} Fallback";`);
     }
@@ -129,6 +129,7 @@ describe("the UI typefaces", () => {
   it("mirrors the typeface root classes into the boot splash", () => {
     expect(html).toContain(":root.font-system");
     expect(html).toContain(":root.font-grotesk");
+    expect(html).toContain(":root.font-plex");
   });
 
   it("is small enough to sit on the critical path", () => {
@@ -177,7 +178,7 @@ describe("the Cyrillic companion", () => {
 
   // Each metric stand-in is tuned to its face's LATIN. Without a range it also catches Cyrillic,
   // which then renders at 113% (Aldrich) or 107.5% (Space Grotesk) of a system face for no reason.
-  it.each(["Aldrich Fallback", "Space Grotesk Fallback"])(
+  it.each(["Aldrich Fallback", "Space Grotesk Fallback", "IBM Plex Sans Fallback"])(
     "keeps the %s stand-in off Cyrillic with a Latin-only range, in both copies",
     (family) => {
       for (const [name, source] of [["index.css", css], ["index.html", html]] as const) {

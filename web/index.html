@@ -102,6 +102,27 @@
           U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
           U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
       }
+      /* IBM Plex Sans, the Nightwatch theme's face. Not preloaded: it costs its own fetch for
+         the reader who chose it, as Space Grotesk does. Keep in step with index.css. */
+      @font-face {
+        font-family: "IBM Plex Sans";
+        src: url("/fonts/ui-ibm-plex-sans-3.201-latin.woff2") format("woff2");
+        font-weight: 400 700;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "IBM Plex Sans Fallback";
+        src:
+          local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+          local("Liberation Sans"), local("Arimo"), local("Roboto");
+        size-adjust: 101.21%;
+        ascent-override: 101.27%;
+        descent-override: 27.17%;
+        line-gap-override: 0%;
+        unicode-range:
+          U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+          U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+      }
       /* Aldrich is the DEFAULT face now, so this is the block the preload above warms — the
          splash and React's first paint resolve to it on any device that never opened the setting.
          One weight; the synthesized bold is index.css's note. Space Grotesk above it stays on the
@@ -177,6 +198,11 @@
       :root.font-grotesk {
         --font-sans:
           "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+          -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      :root.font-plex {
+        --font-sans:
+          "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
           -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       /* THE MARK, AND IT IS THE SAME ANIMAL EVERY OTHER SCREEN SHOWS. This used to be the gallop
