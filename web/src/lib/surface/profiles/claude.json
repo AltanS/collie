@@ -1,0 +1,63 @@
+{
+  "id": "claude",
+  "identity": {
+    "binary": "claude",
+    "versionCommand": ["claude", "--version"],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "2.1.0 - 2.1.296",
+      "status": "verified",
+      "verifiedThrough": "2.1.296",
+      "verifiedOn": "2026-10-12"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "top": { "pattern": "^─{2,}(?:\\s+.+\\s+─{2,})?$", "minCells": 8, "column": 0 },
+      "prompt": { "pattern": "^(?:❯|!)(?:\\s(?<draft>.*))?$", "column": 0 },
+      "bottom": { "pattern": "^─+$", "minCells": 8, "column": 0 },
+      "continuationIndent": 2,
+      "maxDraftRows": 100
+    },
+    "placeholders": {
+      "texts": ["Press up to edit queued messages"],
+      "sgr": 2
+    },
+    "volatile": {
+      "above": { "maxRows": 6 },
+      "below": { "maxRows": 8, "footerMaxRows": 8 }
+    }
+  },
+  "keys": {
+    "submit": ["Enter"],
+    "newline": ["ctrl+j"],
+    "interrupt": ["Escape"],
+    "clear": { "key": "Backspace", "slack": 16 },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    },
+    "enterWhileRunning": "queues"
+  },
+  "collapse": {
+    "pattern": "\\[Pasted text #(?<n>\\d+)(?: \\+(?<lines>\\d+) lines)?\\]"
+  },
+  "reservedLeads": ["/", "!", "@"],
+  "probe": {
+    "char": "§",
+    "status": "provisional",
+    "note": "placeholder until the slice 0 lab check (M56 spec 01) names the inert character"
+  },
+  "hooks": {
+    "SessionStart": "edge",
+    "UserPromptSubmit": "edge",
+    "Stop": "edge",
+    "SessionEnd": "edge",
+    "Notification": "edge",
+    "PermissionRequest": "ask"
+  }
+}
