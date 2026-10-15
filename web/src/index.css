@@ -500,6 +500,12 @@
   --ansi-15: #ffffff;
 }
 
+/* Every shipped theme other than the default, one `:root[data-theme="<id>"]` block each, generated
+   from src/themes/*.json by scripts/build-themes.ts. It sits right after the token block so a theme
+   block wins by order as well as by specificity. The default theme `collie` writes no block: its
+   values are the tokens above, and src/themes/themes.test.ts holds the two equal. */
+@import "./themes.css";
+
 /* Explicit pins. Class-based so theme-init.js can set them before first paint. */
 :root.light {
   color-scheme: light;
