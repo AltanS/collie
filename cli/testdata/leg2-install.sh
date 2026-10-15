@@ -28,7 +28,9 @@ __COLLIE_PAYLOAD__
 VMSG=$("$GIT" -C "$WORK/verify" bundle verify "$WORK/bundle.part" 2>&1 >/dev/null) || { echo "error: the pushed bundle did not verify: $VMSG" >&2; exit 22; }
 mv "$WORK/bundle.part" "$WORK/bundle"
 if [ -d "$ROOT/.git" ]; then
-  "$GIT" -C "$ROOT" fetch --no-tags --update-shallow "$WORK/bundle" HEAD
+  if ! "$GIT" -C "$ROOT" fetch --no-tags --update-shallow "$WORK/bundle" HEAD 2>"$WORK/fetch.err"; then
+    "$GIT" -C "$ROOT" bundle unbundle "$WORK/bundle" >/dev/null 2>>"$WORK/fetch.err" || { cat "$WORK/fetch.err" >&2; echo "error: the pushed bundle could not be applied to $ROOT" >&2; exit 28; }
+  fi
   "$GIT" -C "$ROOT" checkout --detach "$COMMIT"
 elif [ -e "$ROOT" ]; then
   echo "error: $ROOT exists and is not a git checkout — move it aside or pass --path" >&2
@@ -40,6 +42,12 @@ else
   "$GIT" -C "$ROOT.part" checkout --detach "$COMMIT"
   mv "$ROOT.part" "$ROOT"
 fi
+for PARENT in $("$GIT" -C "$ROOT" cat-file commit "$COMMIT" | sed -n '/^$/q; s/^parent //p'); do
+  if ! "$GIT" -C "$ROOT" cat-file -e "$PARENT^{commit}" 2>/dev/null; then
+    grep -qx "$COMMIT" "$ROOT/.git/shallow" 2>/dev/null || printf '%s\n' "$COMMIT" >> "$ROOT/.git/shallow"
+    break
+  fi
+done
 GOT=$("$GIT" -C "$ROOT" rev-parse HEAD)
 [ "$GOT" = "$COMMIT" ] || { echo "error: checkout is at $GOT, expected $COMMIT" >&2; exit 23; }
 BUNDIR=$(dirname "$BUN")
