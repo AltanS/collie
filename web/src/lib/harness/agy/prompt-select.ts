@@ -183,9 +183,10 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
       description: desc.length ? desc.join(" ") : undefined,
       // The digit alone answers a question (1.3.5, live 2026-10-15): it submitted a one-question call,
       // and on the first of two it answered and moved on, so a trailing Enter answered the second
-      // question with whatever row its pointer stood on. The plan dialog keeps digit then Enter, which
-      // was not re-measured.
-      keys: family === "plan" ? [String(row.n), "Enter"] : [String(row.n)],
+      // question with whatever row its pointer stood on. The plan family is the same widget: a
+      // conversation holding a plan artifact only adds `ctrl+r Review` to the footer, and there too
+      // the Enter answered Question 2/2 (live 2026-10-15).
+      keys: [String(row.n)],
     });
   }
   if (options.length === 0) return null;

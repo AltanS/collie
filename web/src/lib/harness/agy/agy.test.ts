@@ -460,6 +460,23 @@ describe("agy: a question takes its digit alone (1.3.5)", () => {
     expect(prompt?.options.map((o) => [o.label, o.keys.join("+")])).toEqual(options);
   });
 
+  // A conversation holding a plan artifact adds `ctrl+r Review` to every question's footer, which
+  // files it under the plan family. Live 2026-10-15: the old digit-then-Enter there answered
+  // Question 2/2 with its highlighted row.
+  it.each([
+    ["agy--plan-approval.txt", "Question 1/1: Approve plan execution?", [["Execute plan", "1"], ["Request changes", "2"], ["Cancel", "3"]]],
+    ["agy--ask-two-q1.txt", "Question 1/2: Which animal do you like?", [["cat", "1"], ["dog", "2"], ["fox", "3"]]],
+  ])("%s under a Review footer lifts each option as its digit alone", (name, question, options) => {
+    const rows = read(name).map((l) => {
+      const t = lineText(l);
+      return t.trimEnd().endsWith("esc Skip") ? `${t.trimEnd()} · ctrl+r Review` : t;
+    });
+    expect(rows.some((r) => r.includes("ctrl+r Review"))).toBe(true);
+    const prompt = promptOf(splitLines(parseAnsi(rows.join("\n"))));
+    expect(prompt?.question).toBe(question);
+    expect(prompt?.options.map((o) => [o.label, o.keys.join("+")])).toEqual(options);
+  });
+
   it("sends no Enter after a digit on the captured one-question menu", () => {
     const prompt = promptOf(read("agy--select-menu.txt"));
     expect(prompt?.options.length).toBeGreaterThan(1);
