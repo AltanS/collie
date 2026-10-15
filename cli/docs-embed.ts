@@ -51,7 +51,7 @@ export interface DocPage {
 }
 
 /**
- * The seventeen pages in an OPERATOR'S READING ORDER: the five-minute guide first, troubleshooting
+ * Every page in an OPERATOR'S READING ORDER: the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -97,7 +97,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "durable-programs",
-    purpose: "Show your own agent program on your phone: attach it, what it can do, and what to check",
+    purpose: "Show your own agent program on your phone: attach it, its tokens, its files, its versions",
     text: durablePrograms,
   },
   {
