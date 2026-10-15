@@ -65,6 +65,7 @@ const PINNED = [
   "grok--slash-popup-exact.txt",
   "grok--slash-popup-partial.txt",
   "grok--startup.txt",
+  "grok--trust-prompt.txt",
   "grok--user-bubble.txt",
   "grok--welcome-card.txt",
   "grok--working.txt",
@@ -93,6 +94,7 @@ const DIALOG = [
   "grok--plan-approval.txt",
   "grok--plan-request-changes.txt",
   "grok--plan-tab-prompt.txt",
+  "grok--trust-prompt.txt",
 ];
 
 const ownFixtures = DIALOG;
@@ -607,5 +609,36 @@ describe("grokBuildBlocks", () => {
     const text = block.lines.map(lineText).join("\n");
     expect(text).not.toContain("╭");
     expect(lines.map(lineText).join("\n")).toContain("╭");
+  });
+});
+
+describe("grok: the folder trust prompt lifts as a trust card (1.0.52)", () => {
+  const lines = () => splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--trust-prompt.txt"), "utf8")));
+  const promptOf = (rows: ReturnType<typeof lines>) => {
+    const block = grokAdapter.buildBlocks(rows).find((b) => b.kind === "prompt-select");
+    return block?.kind === "prompt-select" ? block.prompt : null;
+  };
+
+  it("offers the two printed keys, y and n, as the trust family", () => {
+    const prompt = promptOf(lines());
+    expect(prompt?.family).toBe("trust");
+    expect(prompt?.question).toBe("Do you trust the contents of this directory?");
+    expect(prompt?.options.map((o) => [o.label, o.keys.join("+")])).toEqual([
+      ["Yes, proceed", "y"],
+      ["No, quit", "n"],
+    ]);
+  });
+
+  it("starts the card at the first option, so the directory and the warning stay in the mirror", () => {
+    const [raw, card] = grokAdapter.buildBlocks(lines());
+    expect(card?.kind === "prompt-select" && lineText(card.lines[0]!).trim()).toMatch(/^Yes, proceed\s+y$/);
+    const mirror = raw?.kind === "raw" ? raw.lines.map((l) => lineText(l)).join("\n") : "";
+    expect(mirror).toContain("/tmp/collie-grok-sandbox");
+    expect(mirror).toContain("posing security risks.");
+  });
+
+  it("does not lift the options without the question above them", () => {
+    const rows = lines().map((l) => lineText(l).replace("Do you trust the contents of this directory?", ""));
+    expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
   });
 });
