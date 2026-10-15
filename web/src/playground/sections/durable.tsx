@@ -5,12 +5,18 @@
 //
 // DEV-ONLY, unreachable from the app entry.
 
+import { useEffect, useState } from "react";
+import { createMemoryRouter, RouterProvider } from "react-router";
+
+import { AskCard, AskCardFace } from "@/components/ask-card";
 import { ConversationList } from "@/components/conversation-list";
+import { DurableHome } from "@/components/durable-home";
 import { ProgramSection } from "@/components/program-section";
 import { SpaceOverview } from "@/components/space-overview";
+import { answered, freshCard, tapped } from "@/lib/ask";
 import { mergeConversations } from "@/lib/conversation-list";
-import { programsAbove } from "@/lib/session-cards";
-import type { AgentView, DurableConversationRow, ServerSummary, SessionSummary, WorkspaceView } from "@/lib/types";
+import { noteSessionCards, programsAbove } from "@/lib/session-cards";
+import type { AgentView, Ask, AskDecided, DurableConversationRow, ServerSummary, SessionSummary, WorkspaceView } from "@/lib/types";
 
 import { TS, homeSolo, type PaneFixture } from "../fixtures";
 import { PaneRouter } from "../harness";
@@ -21,7 +27,7 @@ export const DEF: SectionDef = {
   id: "durable",
   title: "Durable home",
   intent:
-    "A durable program this collie or a crew member carries is a row of the dashboard's Programs section, apart from the Spaces list: its name with an Experimental badge, its runtime and where it runs under it (and the member, on another machine), its state as the shared mark, and at the right its open conversations and, when any, the ones that wait on you in the needs-you ink. Starting or Unreachable is said in words there instead. The section sits above the spaces while a question waits, below them otherwise, and draws nothing with no program. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done.",
+    "A durable program this collie or a crew member carries is a row of the dashboard's Programs section, apart from the Spaces list: its name with an Experimental badge, its runtime and where it runs under it (and the member, on another machine), its state as the shared mark, and at the right its open conversations and, when any, the ones that wait on you in the needs-you ink. Starting or Unreachable is said in words there instead. The section sits above the spaces while a question waits, below them otherwise, and draws nothing with no program. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done. A program's question is a card that names the program in its caption and, when the program set an expiry, shows the time left under its title; an answer that comes too late says who decided first. A program refused for its wire version says why above its list.",
 };
 
 const MIN = 60_000;
@@ -173,6 +179,98 @@ function Dashboard({ programs, servers }: { programs: SessionSummary[]; servers?
   );
 }
 
+// ── The ask card (M55 spec 14) ────────────────────────────────────────────────
+
+/** A program's permission question, as the pane carries it. */
+const PROGRAM_ASK: Ask = {
+  id: "ask-desk-1",
+  kind: "permission",
+  toolCallId: "call-desk-1",
+  revision: 1,
+  title: "Refund 42.00 EUR to Jonas Berg?",
+  itemId: "tool-desk-1",
+  reason: "The order was charged twice.",
+  tool: { name: "refund", summary: "order=4711 amount=42.00" },
+  options: [
+    { id: "allow", label: "Refund it", effect: "allow" },
+    { id: "deny", label: "Do not refund", effect: "deny" },
+  ],
+};
+
+/** The program session the ask cards belong to: its card names it in the caption. */
+const DESK: SessionSummary = programSession("desk", { agents: 3, working: 1, blocked: 1 });
+
+/** The program refused for its wire version, as its session card carries it. */
+const REFUSED: SessionSummary = programSession("billing", {
+  mux: "acme-billing",
+  where: "remote",
+  state: "unreachable",
+  reachable: false,
+  notice: "Program speaks wire v2, this Collie speaks v1; update one of them",
+});
+
+/**
+ * Files the two session cards through the store's own mutator, the way the root loader does on every
+ * snapshot, so the real card reads its program's name and the real home reads the refusal.
+ */
+function useFiledCards(): void {
+  useEffect(() => {
+    noteSessionCards([DESK, REFUSED], undefined);
+  }, []);
+}
+
+/** The real card over a live ask whose expiry is `offsetMs` from the moment the card mounts. */
+function LiveAsk({ offsetMs }: { offsetMs: number }) {
+  useFiledCards();
+  const [ask] = useState<Ask>(() => ({ ...PROGRAM_ASK, expiresAt: new Date(Date.now() + offsetMs).toISOString() }));
+  return (
+    <div className="mx-auto w-full max-w-[390px]">
+      <AskCard ask={ask} paneId="conv-02" scope={{ session: DESK.name }} />
+    </div>
+  );
+}
+
+/** The face of a card the program answered too late, built by lib/ask.ts's own steps: a fresh card, a tap, the answer. */
+function LateAsk({ by }: { by: AskDecided["by"] }) {
+  const card = answered(tapped(freshCard(PROGRAM_ASK), "allow", "pg-request"), {
+    outcome: "too-late",
+    decided: { by, at: new Date(TS - 2 * MIN).toISOString() },
+  });
+  return (
+    <div className="mx-auto w-full max-w-[390px]">
+      <AskCardFace card={card} program={DESK.name} onPress={() => {}} onSend={() => {}} />
+    </div>
+  );
+}
+
+/** The real durable home of the refused program, on a memory router. */
+function RefusedHome() {
+  useFiledCards();
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: (
+            <DurableHome
+              scope={{ session: REFUSED.name }}
+              panes={[]}
+              workspaces={[]}
+              paneOpen={{ glideKeyOf: (pane) => pane.paneId, press: () => {}, open: () => {} }}
+            />
+          ),
+        },
+      ],
+      { initialEntries: ["/"] },
+    ),
+  );
+  return (
+    <div className="mx-auto w-full max-w-[390px] rounded-sm border border-rule bg-background">
+      <RouterProvider router={router} />
+    </div>
+  );
+}
+
 export function DurableSection() {
   return (
     <Section def={DEF}>
@@ -229,6 +327,49 @@ export function DurableSection() {
         </Card>
         <Card state="durable-home-empty" label="No conversation yet" reach="open the dashboard before the program has made a conversation.">
           <Home live={[]} rows={[]} />
+        </Card>
+      </Group>
+
+      <Group title="The ask card">
+        <Card
+          state="ask-expires-in"
+          label="1: a question with 4 min left"
+          reach="open a durable conversation whose program raised a question with expiresAt a few minutes ahead."
+          note="The real card over a live ask: the line ticks on the page's one clock and says Expired after four minutes. The caption names the program from its session card. A tap posts for real, and with no bridge behind this page it ends as not sure the answer arrived."
+        >
+          <LiveAsk offsetMs={4 * MIN + 30_000} />
+        </Card>
+        <Card
+          state="ask-expired"
+          label="2: a question past its expiry"
+          reach="leave a durable question with expiresAt open on the phone until the time passes, before the next read drops it."
+          note="The buttons stay: the program answers a late tap with its 409, and the card then says it timed out."
+        >
+          <LiveAsk offsetMs={-30_000} />
+        </Card>
+        <Card
+          state="ask-decided-in-program"
+          label="3: decided in the program"
+          reach="answer a question in the program's own window, then tap an answer on the phone before the next read drops the card."
+          note="The card's face from a state lib/ask.ts's own steps built (a tap, then a too-late answer naming the program), because this page has no bridge to answer a tap. The card stays frozen."
+        >
+          <LateAsk by="program" />
+        </Card>
+        <Card
+          state="ask-timed-out"
+          label="4: timed out"
+          reach="tap an answer on a question whose expiresAt passed, before the next read drops the card."
+          note="Built the same way as card 3, with the answer naming the clock."
+        >
+          <LateAsk by="timeout" />
+        </Card>
+        <Card
+          state="ask-program-refused"
+          label="5: a program refused for its wire version"
+          reach="list a program in sources.json whose hello names a wire version this Collie does not speak, and open its home."
+          note="The real durable home over the program's session card, which carries the refusal sentence. The program row on the dashboard keeps the word Unreachable."
+        >
+          <RefusedHome />
         </Card>
       </Group>
 

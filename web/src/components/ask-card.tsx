@@ -98,14 +98,7 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
   const next = polled(card, ask);
   if (next !== card) setCard(next);
 
-  const shown = card.ask;
-  const options = visibleOptions(shown);
-  const canAnswer = answerable(shown);
   const busy = card.phase === "sending";
-  // Off for good in these phases: the answer was taken, or someone else made it, or it is refused.
-  // `unknown` leaves only "Try again" (the same intent); `stale` on an old machine cannot be tapped.
-  const settled = card.phase === "taken" || card.phase === "late" || card.phase === "maybe" || card.phase === "refused";
-  const frozen = disabled || offline || busy || settled || card.phase === "unknown" || (card.phase === "stale" && card.older);
 
   /** A press on a permission option's button. "Always allow" arms on the first press and posts on the second. */
   function onPress(option: AskOption) {
@@ -133,9 +126,49 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
     }
   }
 
+  return (
+    <AskCardFace
+      card={card}
+      program={program}
+      disabled={disabled}
+      offline={offline}
+      onPress={onPress}
+      onSend={(answer, again) => void send(answer, again)}
+    />
+  );
+}
+
+export interface AskCardFaceProps {
+  /** Where the card stands, as lib/ask.ts's own steps left it. */
+  card: AskCardState;
+  /** The program that asks, by its session's name, or null for a terminal pane: the caption names it. */
+  program: string | null;
+  disabled?: boolean;
+  offline?: boolean;
+  /** A press on a permission option's button. */
+  onPress: (option: AskOption) => void;
+  /** An answer to send. `again` is "Try again" after an unknown outcome, which reuses the tap's request id. */
+  onSend: (answer: AskAnswer, again: boolean) => void;
+}
+
+/**
+ * The card's face for one state, with no state of its own: {@link AskCard} holds the state and the one
+ * post, and hands each step here. The states playground draws a settled card through it, from a state the
+ * real steps of lib/ask.ts built, because a page with no bridge behind it cannot reach one by a tap.
+ */
+export function AskCardFace({ card, program, disabled = false, offline = false, onPress, onSend }: AskCardFaceProps) {
+  useLocale();
   // Taken closes the card. The program drops the ask from the next poll; until then nothing is drawn.
   if (card.phase === "taken") return null;
 
+  const shown = card.ask;
+  const options = visibleOptions(shown);
+  const canAnswer = answerable(shown);
+  const busy = card.phase === "sending";
+  // Off for good in these phases: the answer was taken, or someone else made it, or it is refused.
+  // `unknown` leaves only "Try again" (the same intent); `stale` on an old machine cannot be tapped.
+  const settled = card.phase === "late" || card.phase === "maybe" || card.phase === "refused";
+  const frozen = disabled || offline || busy || settled || card.phase === "unknown" || (card.phase === "stale" && card.older);
   const retryAnswer = card.phase === "unknown" ? card.answer : null;
   const note = noteFor(card, offline);
 
@@ -171,11 +204,11 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
         </p>
       ) : null}
       {canAnswer && shown.kind === "choice" ? (
-        <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => void send(answer, false)} />
+        <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => onSend(answer, false)} />
       ) : canAnswer && shown.kind === "text" ? (
-        <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => void send(answer, false)} />
+        <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
       ) : canAnswer && shown.kind === "form" ? (
-        <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => void send(answer, false)} />
+        <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
       ) : canAnswer ? (
         <div className="flex flex-col gap-1">
           {options.map((option) => {
@@ -211,7 +244,7 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
           variant="outline"
           className="h-11"
           disabled={disabled || offline}
-          onClick={() => void send(retryAnswer, true)}
+          onClick={() => onSend(retryAnswer, true)}
         >
           {t("ask.retry")}
         </Button>

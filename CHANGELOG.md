@@ -44,6 +44,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **An answer that comes too late says who decided first.** When a program refuses a late tap with its first outcome, the ask card says the question was decided in the program, timed out, or already answered, instead of a plain not taken. The bridge keeps who decided on the answer's receipt.
 - **A question nobody tapped leaves a line in the chat.** A program's question that timed out or was decided in the program shows as one muted line in its conversation, with the question's title. A question answered on the phone or closed by a stop draws nothing new.
 - **The ask card names the program, and a refused program says why.** A program's question reads "Needs your answer · desk", with the program's name. A program refused for its wire version shows the sentence that says why above its list on its home, while its row on the dashboard keeps the word Unreachable.
+- **The states playground shows the ask card's receipts.** Five numbered cards in the Durable home section: a question with time left, one past its expiry, one decided in the program, one timed out, and a program refused for its wire version.
 
 ### Changed
 
