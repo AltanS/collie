@@ -690,6 +690,25 @@ Stated so nobody reads this document as a description of a clean tree.
    `menu-block.tsx` and `status-area.tsx:45` still draw edges at `border-border/60` or `/70`,
    which §4 measured at 1.09:1 in light. These are inside the agent-dialog blocks, which are
    the least-visited part of the restyle.
+6. **Literal colours that a theme cannot reach** (§13). Each one below paints the same under
+   every theme. Found 2026-10-15 for M57:
+
+   | Literal | What it should be |
+   | --- | --- |
+   | `ui/fab.tsx:73` `dark:bg-card dark:hover:bg-accent` | a token per state with no `dark:` switch; the switch picks a token by appearance, so a theme cannot choose the dark half's ground |
+   | `markdown-text.tsx:64` and `transcript-view.tsx:54` `bg-amber-300/70 dark:bg-amber-500/40` | a search highlight token |
+   | `ui/badge.tsx:13` `text-white` on `bg-destructive` | `text-destructive-foreground` |
+   | `harness-bar.tsx:182` `bg-white` | a token for the accent pill's ground |
+   | `file-preview.tsx:374` `bg-white` on the HTML frame | maybe deliberate: an HTML file draws on white, as in a browser; decide, then write it down |
+   | `idle-lock.tsx:43` `ring-white/10` | a ring token, or `ring-rule` |
+   | `chat-cards.tsx:1035` `border-white/10` | inside `MIRROR_SPACE`, so it is mirror ink (§8), not app chrome; it moves with the native-mirror work, not before |
+   | `playground/` `zinc-*` frames (`layout.tsx`, `sections/dashboard-nav.tsx`, `sections/update-screen.tsx`) | tokens; the playground shows themes too |
+
+   **The rule for closing one:** replace the literal with a token whose value in the theme
+   `collie` gives the same pixel, in light and in dark. If no token gives it, the fix needs a
+   new token, which is a new schema version (§13). These are not closed in M57, because that
+   milestone's exit test is a zero pixel diff of the current theme, and each fix needs its own
+   proof that it stays at zero.
 
 ---
 
@@ -853,3 +872,41 @@ carries its identity forward, not merely its position ([ADR 0069](./.adr/0069-a-
 never the swipe. Every other move stays what it was: a sideways move crossfades or slides, and the
 phone's own edge swipe plays the phone's own animation, never one of ours.
 
+## 13. Themes: a token is the only way a colour reaches a component
+
+From 1.22.0 a person can pick a theme or import one ([ADR 0106](./.adr/0106-a-theme-is-a-closed-file-of-named-tokens.md)).
+A theme is a closed JSON file of named colour tokens, a light half and a dark half, plus one UI
+face. It changes the VALUE of a token. It never changes which token a component uses.
+
+**So every colour a component draws is a token from the list below.** A theme reaches a token and
+nothing else. A literal colour in a component (`bg-white`, `text-white`, `amber-300`, `zinc-*`, an
+oklch or hex in a class) is now a theme bug: it paints the same under every theme. The literals
+that exist today are §10 gap 6. A `dark:` variant that switches between two tokens is the same bug
+in a quieter form, because it fixes which token each half uses. Write one token whose two values
+come from `light-dark()`.
+
+**The list, 43 tokens per half.**
+
+| Group | Tokens |
+| --- | --- |
+| Surfaces and inks (21) | `background` `foreground` `card` `card-foreground` `chrome` `primary` `primary-foreground` `secondary` `secondary-foreground` `muted` `muted-foreground` `accent` `accent-foreground` `control-on` `control-on-foreground` `destructive` `destructive-foreground` `border` `input` `rule` `ring` |
+| Status (6) | `status-blocked` `status-working` `status-done` `status-idle` `status-unknown` `status-info` |
+| Syntax (6) | `syntax-keyword` `syntax-string` `syntax-constant` `syntax-property` `syntax-entity` `syntax-comment` |
+| Host identity (10) | `host-0` to `host-9` |
+
+`popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
+
+**What a theme never reaches.** `--radius`, spacing, tap sizes, row heights, motion, and the
+meaning of a status: its icon and its word stay as the status components draw them. The
+terminal mirror keeps its own dark space and its ANSI palette (§8, ADR 0002); a theme does not
+tint it in schema version 1.
+
+**The rules a theme does not relax.** §4 still holds under every theme: chrome is the page
+colour with a rule, red marks harm, a raised panel is `card`. A shipped theme passes the contrast
+gate: every status chip at `/15` over `background` and `card` at 4.5:1 or better, body text at
+4.5:1 or better, `rule` against `background` at 1.3:1 or better, in both halves.
+
+**Adding a token is a schema change.** A new colour role that a component needs goes into the
+list only with a new schema version, and in the same change: `index.css`, every shipped theme
+file, the validator, and the list spelled in `public/theme-init.js`. The coupling test (§9) fails
+when the lists drift. Until then, reuse the nearest token; do not paint a literal.
