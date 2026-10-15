@@ -1267,7 +1267,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (held === null || sending || locked) return;
     const mode = offerMode(offer);
     if (mode === null) return;
-    void sendThroughProtocol(held.text, held.isDraft, mode, offer === "commit" ? held.rowsHash : null);
+    // Added to a draft, the text starts after one space, as a person typing on would put it.
+    const words = offer === "append" && !/^\s/u.test(held.text) ? ` ${held.text}` : held.text;
+    void sendThroughProtocol(words, held.isDraft, mode, offer === "commit" ? held.rowsHash : null);
   }
 
   // Gate the composer's Send through the destructive-input confirm: a matching command arms the

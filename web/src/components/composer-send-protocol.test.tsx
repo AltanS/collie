@@ -124,6 +124,20 @@ describe("Composer on the Send Protocol (M56 spec 05)", () => {
     expect(sends[1]!.id).not.toBe(sends[0]!.id);
   });
 
+  it("Add to it sends the text after one space, so it does not run into the draft", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } },
+      { body: { receipt: receipt("sent"), offers: [] } },
+    ]);
+    renderComposer();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "more words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Add to it" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).toMatchObject({ text: " more words", mode: "append" });
+  });
+
   it("a screen Collie cannot read takes two taps: the second carries the rows hash", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([
