@@ -100,7 +100,7 @@ const STYLE =
   ".nw-lost .nw-shut{display:inline}" +
   "@media (prefers-reduced-motion: reduce){.nw-halo,.nw-glow,.nw-body,.nw-lift,.nw-head,.nw-face,.nw-pupil,.nw-tuft-l,.nw-tuft-r,.nw-eye-l,.nw-eye-r{animation:none!important}}";
 
-const VIEW = { full: "-14 -16 128 128", header: "1 -2 98 98" };
+const VIEW = { full: "-14 -16 128 128", header: "-3 -10 106 106" };
 
 /**
  * The two accents, by state. `--cm-a1` is the theme's `primary` (the eyes, the ring and the glow);

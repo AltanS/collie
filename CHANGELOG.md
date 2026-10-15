@@ -87,6 +87,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable example's questions expire after ten minutes.** The support desk sets a timeout on every ask, so the phone shows the time left and a question nobody tapped leaves a timed-out line; DM_ASK_TIMEOUT_MS changes the window.
 - **A strip pill can be one choice of a set.** `Chip` takes `radio`, which gives it `role="radio"` and `aria-checked` in place of `aria-current`. The box and the look stay the same, so nothing in a strip moves.
 - **The three new themes name their own mark.** Nightwatch, Daylight and Harbour each carry a `mark` field now, and the marks themselves arrive in the same release.
+- **The owl's header frame leaves room for its raised tufts.** The header weight of the Nightwatch mark now crops 8 percent wider, so the tufts at the top of their lift keep clear of the edge instead of showing a flat cut at 40 px.
 
 ### Fixed
 
