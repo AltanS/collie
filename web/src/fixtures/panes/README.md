@@ -2031,3 +2031,27 @@ the only path on them is the lab folder, and nothing was altered.
 **Not captured.** The permission, plan and pick-many dialogs with the list under them; `✔` rows on a
 dialog screen (they appear in the unit tests, retyped from a real screen); and the idle screen, where
 the list is not drawn under the input box at all.
+
+## Surface corpus: labels and quoted-dialog transcripts (M56 spec 04, built 2026-10-15)
+
+`web/src/fixtures/surface-labels.json` gives every fixture in this folder one hand-checked row:
+the harness id it was captured under, the harness version (`unversioned` when the capture does not
+say), and a state: `idle`, `draft`, `running`, `popup`, `dialog`, `screen` (a full-screen view such
+as a picker, search box or shell prompt) or `other`. `web/src/lib/surface/fold.test.ts` fails when a
+fixture has no row or a row names a fixture that is gone. `dialog` and `screen` are the negative set:
+none may ever read `free`. The file also maps the eight incident commits of the reader-stability
+research to fixtures that show them. Where no capture shows an incident, the row rebuilds it from a
+captured screen with named row edits (`synthetic`), so the test reads a real screen with one change.
+
+`bun scripts/surface-corpus.ts` prints the table per harness and version from these labels.
+
+`web/src/fixtures/surface/` holds three transcripts that quote a dialog. Each is a real idle Claude Code
+2.1.291 screen at 82 columns with plain rows spliced into the transcript. The ANSI of every other row
+is unchanged. The cues must read them `free`, because a quote sits above the input box and not in the
+bottom cluster.
+
+| Fixture | Base | What the transcript quotes |
+|---|---|---|
+| `claude-transcript-quoted-permission--w82.txt` | `claude-lab--idle-after-turn--w82.txt` | A reply quoting the Bash permission dialog: `Do you want to proceed?`, a pointer on `1. Yes`, two more numbered options and `Esc to cancel · Tab to amend`. It replaces the one reply row |
+| `claude-transcript-quoted-picker--w82.txt` | `claude-lab--idle-after-turn--w82.txt` | A reply quoting the `/model` picker: a pointer on `Default (recommended)`, two more rows, `Enter to confirm · Esc to exit` and a closing sentence. It replaces the one reply row |
+| `claude-transcript-quoted-trust--w82.txt` | `claude-lab--interrupted--w82.txt` | The folder trust prompt (`❯ 1. Yes, proceed`, `2. No, exit`, `Enter to confirm · Esc to exit`) added mid-reply, five rows over the interrupted line |
