@@ -89,6 +89,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The Programs pages answer the first-day questions.** Step zero, what --restart does, how to make a token, what removal would mean, the wire's growth rules, and the check per platform.
 - **Programs on the phone has a page of its own.** `durable-programs-on-the-phone` covers the Programs section, the conversation list, the four kinds of question with their limits and every outcome of a tap, the receipts, the chat with your own line, the header and the belt, starters, the push caps, masking and the crew row, with five screenshots. The Programs page links it, and its Versions section now says a refused program shows the refusal sentence on its home and keeps the word Unreachable on its row.
 - **The docs have five phone screenshots of a program.** `scripts/docs-screens.sh programs` takes the Programs section with a waiting count, the conversation list, a permission card with its time left, a card decided in the program and a refused program's home from the playground, 390 px wide, into `docs/images/programs/`.
 - **The SDK page and the package changelog name the Pi helpers' timeout.** riskGuard and askTools take timeoutMs and onTimeout.

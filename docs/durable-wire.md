@@ -179,7 +179,11 @@ Today there is one wire version, 1, and Collie speaks `1..1`.
 
 When version 2 ships, Collie will accept version 1 for one minor release after it, and the minor after
 that drops it. A reader ignores a field, an event type, an item kind or a code it does not know. A
-new required field, a new meaning for an old field, or a removed field needs a new version.
+field added inside version 1, such as `expiresAt` or `decidedBy`, is optional. A new required field,
+a new meaning for an old field, or a removed field needs a new version.
+
+An ask of a kind the phone does not know shows as one it cannot answer from the phone, with no
+buttons.
 
 When the two ranges do not meet, Collie reads nothing more from the program. Once per epoch of the
 program it sends one more `hello`, this time with its own version, so the program can log the
