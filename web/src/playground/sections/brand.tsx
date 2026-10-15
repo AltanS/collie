@@ -51,7 +51,7 @@ export function BrandSection() {
           state="theme-mark-gallery"
           label="every shipped mark, in its three states"
           reach="a theme file's `mark`. Each mark at 24, 40 and 64 in idle, loading and lost, on the light and the dark ground. Use the page's reduce-motion toggle for the still half."
-          note="Drawn from the same registry entry ThemeMark draws for that id. Until the three new marks land, nightwatch, daylight and harbour draw the dog."
+          note="Drawn from the same registry entry ThemeMark draws for that id: the dog for collie, the owl for nightwatch, the hare for daylight and the otter for harbour."
           span={2}
         >
           <Stage>
