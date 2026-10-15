@@ -352,5 +352,6 @@ The feature stays only if someone outside this repository uses it.
 By the 1.24.0 release, one of two things must be true: a public repository that speaks the wire
 exists, or an outside issue or discussion about a durable program exists. If neither does, the
 durable code moves out of the release into `experiments/`, and this page goes
-([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)). On removal, the npm package is
-deprecated, not deleted ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md#the-exit)).
+([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)). On removal, a `sources.json` entry is ignored with one log line for one release, the socket keeps
+working for your program, and the npm package is deprecated, not deleted
+([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md#the-exit)).
