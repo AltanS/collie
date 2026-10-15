@@ -359,6 +359,8 @@ export const ru: Dictionary = {
   "chat.mode.noChat": "{reason} Терминал остается здесь.",
   "chat.stream.empty": "Отправьте сообщение, чтобы начать.",
   "chat.stream.working": "Выполняется…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Ожидание отправки",
   "chat.pin.label": "Ваш запрос",
   "chat.pin.earlier": "Запрос был раньше · Загрузить более старые",

@@ -410,6 +410,8 @@ export const zhTW: Dictionary = {
   "chat.mode.noChat": "{reason} 這裡維持終端機檢視。",
   "chat.stream.empty": "傳送一則訊息即可開始。",
   "chat.stream.working": "仍在處理…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "等待傳送",
   "chat.pin.label": "你的提問",
   "chat.pin.earlier": "提問在更早的紀錄裡 · 載入較早記錄",

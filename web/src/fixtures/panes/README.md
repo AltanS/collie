@@ -81,6 +81,20 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |
 
+### Derived, not captured: a dialog taller than the pane (2026-10-15)
+
+Three files are CUT from the captures above, not captured. On a short pane OmO's fullscreen mode
+draws a dialog from the top down, so its bottom rule and status rows fall off the screen (probed live
+2026-10-12 at 18 and 20 rows, not saved). Each file keeps the first rows of a whole capture, bytes
+unchanged, and drops the rest, the way a shorter pane shows the same screen. What proves the modal
+there is in `pi/ASK_NOTES.md`, "A dialog taller than the pane".
+
+| Fixture | Cut from | Rows kept | Reads as |
+| --- | --- | --- | --- |
+| `pi--omo-v5130-panel-question-cut.txt` | `pi--omo-v5130-panel-question.txt` | 15: through the footer and the blank row under it | lifts, a tap sends the digit, bound to columns 0 to 91 |
+| `pi--omo-v5130-panel-question-cut-footer.txt` | `pi--omo-v5130-panel-question.txt` | 12: through the free-text row, no trailer, no footer | Escape card |
+| `pi--omo-v5130-panel-picker-tree-cut.txt` | `pi--omo-v5130-panel-picker-tree.txt` | 18: the header, the inner rule and twelve list rows | Escape card |
+
 ## pi 1.1.0 corpus, PR 397 (captured 2026-10-10 by @raffaelenatale, pi 1.1.0 with a pi question extension, Linux sandbox panes)
 
 Byte-faithful `format:ansi` captures of **pi 1.1.0** with a pi question extension loaded (the
@@ -200,6 +214,26 @@ editor's top rule, so the welcome banner above is gone. The footer is pi 1.2.0's
 The last two are real pi 1.2.0 captures too (Herdr 0.9.4, padding 2, the dialog named in the table), cut
 to the top rule like the rest. Before 1.21.3 both read as a ready composer; their search row looks like
 an editor. They are unread dialogs: nothing on the phone answers them.
+
+## pi and OmO with NO_COLOR=1 (captured 2026-10-15, Herdr 0.9.4, the tap rig)
+
+Stock pi 0.87.1 (with pi's `examples/extensions/question.ts`) and OmO 5.1.30, each started with
+`NO_COLOR=1` in its environment, in the isolated tap rig (`experiments/collie-rig/`: its own Herdr
+session and bridge), read through `GET /api/pane/:id?lines=60` the way the phone reads it, at 120
+columns. Models on OpenRouter: `google/gemini-3.5-flash-lite` for pi and `anthropic/claude-haiku-4.5`
+for OmO, each asked to call its question tool with fixed arguments. `/proc/<pid>/environ` showed
+`NO_COLOR=1` in both processes, and **both painted every row as before**: 24-bit colours on the
+rules, the status rows, the footer and the options. Neither honours the variable, so there is no
+monochrome pi screen to capture. Each file is cut to the final frame, from the frame's top rule;
+CRLF line ends as read. The only paths are the lab folders `/tmp/pi-nocolor-cwd` and
+`/tmp/omo-nocolor-cwd`; no key, user, host or home path is in any file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v0871-nocolor-draft.txt` | `collie stock pi draft probe` typed, not sent | composer, draft read back |
+| `pi--v0871-nocolor-question.txt` | `question`: Red, Green, Blue, `4. Type something.`, `>` on 1 | walk |
+| `pi--omo-v5130-nocolor-idle.txt` | Empty `❯` editor, status rows | composer |
+| `pi--omo-v5130-nocolor-question.txt` | OmO's ask, one question, Red and Green | digit |
 
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 

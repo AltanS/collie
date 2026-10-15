@@ -95,6 +95,15 @@ export interface HarnessAdapter {
    */
   modalOnScreen?(lines: StyledLine[]): boolean;
   /**
+   * A question waits in the terminal that no card answers, while the input box stays ready: OmO's
+   * `? Question pending` banner (pi/ask.ts `piQuestionBanner`). A reply sent then is the harness's
+   * own free-text answer, so nothing is refused or lifted; Chat draws one status line that says a
+   * question waits (session-stream.tsx). The terminal view shows the banner itself.
+   *
+   * OPTIONAL. Absent means no harness signal of this kind, and nothing is drawn.
+   */
+  questionPending?(lines: StyledLine[]): boolean;
+  /**
    * Positive evidence that a full overlay box holds the keyboard — the /models-style overlay
    * paints its own bordered box over the middle of the screen while the composer tail stays
    * intact, so `composerReady` still answers true although typing would land in the overlay's

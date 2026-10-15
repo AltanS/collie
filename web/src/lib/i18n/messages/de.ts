@@ -428,6 +428,8 @@ export const de: Dictionary = {
   "chat.mode.noChat": "{reason} Das Terminal bleibt hier.",
   "chat.stream.empty": "Zum Starten eine Nachricht senden.",
   "chat.stream.working": "Arbeitet noch…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Wartet auf Senden",
   "chat.pin.label": "Deine Eingabe",
   "chat.pin.earlier": "Die Frage liegt weiter zurück · Ältere Einträge laden",

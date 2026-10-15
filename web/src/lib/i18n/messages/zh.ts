@@ -411,6 +411,8 @@ export const zh: Dictionary = {
   "chat.mode.noChat": "{reason} 这里保持终端视图。",
   "chat.stream.empty": "发送一条消息即可开始。",
   "chat.stream.working": "仍在处理…",
+  // TODO wordsmith
+  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "等待发送",
   "chat.pin.label": "你的提问",
   "chat.pin.earlier": "提问在更早的记录里 · 加载更早记录",

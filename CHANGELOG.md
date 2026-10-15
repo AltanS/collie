@@ -79,6 +79,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A dialog Collie has read is answered at the thumb.** With a draft in the box, Send becomes "Answer the dialog" and a tap scrolls to the dialog card and focuses its first button, instead of a refusal line in the header that a phone has scrolled away. The placeholder names what is waiting ("Menu is waiting"), an empty box keeps its microphone, and a 2.1.300 `/model` picker capture at 119 columns joins the fixtures.
 - **The parked Cloudflare example's version test matches the wire.** A refused version answers 409 with the refusal field the SDK core emits.
 - **The ask card's countdown follows the bridge's clock, not the phone's.** A phone whose clock is off no longer shows a wrong time left on a question. The phone reads the bridge's time from the `Date` header of its own polls, keeps the median of the last five quick round trips, and counts the card down against it.
+- **A pi dialog taller than the pane shows a card again.** In OmO's fullscreen mode on a short pane, a question or a picker runs past the last row, so its bottom rule and status rows are gone, and Chat showed no card at all. Collie now reads the frame from its top rule and painted title: the Escape card always shows, and a question whose footer is on the screen gets its buttons, bound to the columns left of the side panel. The rule is in `pi/ASK_NOTES.md`, and three fixtures cut from real captures pin it.
+- **A refused send says why at the thumb when no dialog was read.** When the unread-dialog card or a refused pre-flight arms "Type anyway?", the reason the header shows now also stands above the input box for as long as the override is armed. With the unread card on screen its "Answer the dialog" control scrolls to the card and focuses it; with no card it carries no control.
+- **Chat says when OmO's question waits in the terminal.** OmO can show a `? Question pending` banner over its ready editor instead of the dialog, and Chat showed nothing. The thread now ends with one line, "A question is waiting in the terminal. Your next message answers it.", with no card and no buttons, because a reply sent then is OmO's own free-text answer.
+- **A pi or OmO pane started with `NO_COLOR=1` is read as before, and tests pin it.** Real captures show that neither pi 0.87.1 nor OmO 5.1.30 honours the variable: both paint every row as usual, so Collie's paint-based readers read the editor, the draft and the question unchanged. Four captures join the fixtures, and `pi/ASK_NOTES.md` says why the readers keep the paint rule.
 
 ### Packaging
 
@@ -127,6 +131,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Sessions and Programs say where a program shows on the phone.** Both pages say a program has its own Programs section, with its runtime and the count of questions waiting, and that the section moves above your spaces when a question waits.
 - **A comment in the space overview reads without a dash.** House style, no code change.
 - **ADRs 0104 and 0105 are accepted.** A program is a session, and the durable SDK is an npm package.
+- **The Windows page says pi and OmO are not tested there.** Collie reads both from Linux captures only, and the Windows console may lay out their rows differently, so `docs/windows.md` lists them under "What is not tested".
 
 ## [1.21.3] - 2026-10-14
 
