@@ -176,6 +176,20 @@ describe("append", () => {
     expect(kinds(await rows(path))).toEqual(["ask", "ask-closed"]);
   });
 
+  test("an ask-closed row carries the ask's title, read back from the file after a restart too; an older row without one parses", async () => {
+    const { log, path } = await newLog();
+    await log.apply([{ type: "ask", ask: ask("a1") }, { type: "ask-closed", askId: "a1", by: "timeout" }]);
+    expect((await rows(path)).at(-1)).toMatchObject({ k: "ask-closed", askId: "a1", by: "timeout", title: "write_note wants to write /tmp/x" });
+    expect(parseLogRow(JSON.stringify({ k: "ask-closed", at: "2026-10-15T09:00:00.000Z", askId: "old", by: "program" }))).toEqual({
+      k: "ask-closed",
+      at: "2026-10-15T09:00:00.000Z",
+      askId: "old",
+      by: "program",
+      waitedMs: undefined,
+      title: undefined,
+    });
+  });
+
   test("a remove event removes nothing and writes nothing", async () => {
     const { log, path } = await newLog();
     await log.apply([text("i1", "keep me"), { type: "remove", id: "i1" }]);

@@ -1243,7 +1243,7 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   const logDir = sourceLogDir(cfg.stateDir, source.name);
   const target: MuxTarget = { endpoint: "", timeoutMs: DEFAULT_TIMEOUT_MS, options: { [DURABLE_LOG_DIR_OPTION]: logDir } };
   const program = createDurableMux(sourceTransportEnv(source), target.options);
-  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName() } };
+  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() } };
 }
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {

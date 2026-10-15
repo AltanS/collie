@@ -1,10 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/setup";
+import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { asJsonObject, type JsonObject } from "@/lib/json";
+import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
 import type { Ask } from "@/lib/types";
 import { AskCard } from "./ask-card";
 
@@ -157,6 +159,27 @@ describe("a tap", () => {
     expect(screen.queryByText(/Already answered/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
     expect(onSettled).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["program", "Decided in the program."],
+    ["timeout", "Timed out before an answer."],
+    ["phone", "Already answered. This card goes away on the next update."],
+  ])("too late decided by %s says so, and the card stays frozen", async (by, words) => {
+    stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late", decided: { by, at: "2026-10-15T09:30:00.000Z" } }));
+    const { onSettled } = draw();
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(screen.queryByText(/Not taken/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
+    expect(onSettled).toHaveBeenCalled();
+  });
+
+  it("too late with a decided this phone cannot read falls back to not taken", async () => {
+    stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late", decided: { by: "someone", at: "never" } }));
+    draw();
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText("Not taken. The question may show again in a moment.")).toBeInTheDocument();
   });
 
   it("stale replaces the card with the returned ask and asks for a fresh tap, with a new request id", async () => {
@@ -565,5 +588,56 @@ describe("a card of a kind this version cannot answer", () => {
     expect(screen.getByText("Which queue?")).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+describe("the receipts (M55 spec 14)", () => {
+  afterEach(() => {
+    __resetSessionCards();
+    resetCacheClockForTests();
+    vi.useRealTimers();
+  });
+
+  it("a program's ask names the program in the caption; a terminal pane's keeps the plain caption", () => {
+    noteSessionCards(
+      [
+        { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0, kind: "terminal" },
+        { name: "desk", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 1, kind: "program", state: "ready" },
+      ],
+      undefined,
+    );
+    const { unmount } = draw({ scope: { session: "desk" } });
+    expect(screen.getByText("Needs your answer · desk")).toBeInTheDocument();
+    unmount();
+    draw();
+    expect(screen.getByText("Needs your answer")).toBeInTheDocument();
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument();
+  });
+
+  it("an ask with an expiry shows the time left under the title, and one without shows none", () => {
+    resetCacheClockForTests();
+    const { unmount } = draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 4 * 60_000 + 30_000).toISOString() } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+    unmount();
+    draw();
+    expect(document.querySelector('[data-slot="ask-expiry"]')).toBeNull();
+  });
+
+  it("the line ticks on the page clock, into seconds under a minute", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    resetCacheClockForTests();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 61_000).toISOString() } });
+    expect(screen.getByText("Expires in 1 min")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(21_000);
+    });
+    expect(screen.getByText("Expires in 40 s")).toBeInTheDocument();
+  });
+
+  it("past its expiry the line says Expired and the buttons stay: the program answers the tap", () => {
+    resetCacheClockForTests();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() - 1000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeEnabled();
   });
 });

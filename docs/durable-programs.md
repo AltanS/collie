@@ -97,7 +97,7 @@ To change a token, deploy the new one to the program, set it in the `.env`, and 
 - **Socket permission.** Collie connects only to a socket that you own and that has no group or other permission (mode `0600`). The path must be absolute and at most 103 bytes. The reason shows as `socket-not-private`.
 - **A stale socket file.** A program that crashed can leave its socket file behind, and Collie then sees `connection refused`. Delete the file and start the program again.
 - **A program restart with a question open.** An answer to a question from before the restart is `too-late`, and the card goes. A program that derives the question's id from its tool call raises the same question again, and the card comes back.
-- **A version mismatch.** The reason `incompatible` shows both ranges. Update the older side.
+- **A version mismatch.** The reason `incompatible` shows both ranges, and the program's home on the phone says which wire version each side speaks. Update the older side.
 - **An old lead.** With a lead older than 1.21.0, a program's pane is listed but its question is not: the pane shows "needs you" with a red dot, and no card appears. Update the lead.
 
 When Collie cannot reach a program, the rest of Collie starts anyway, and the program shows as unreachable with a reason:
@@ -134,7 +134,8 @@ A program says what it can do in its hello. A cap it declares draws the control 
 cap it leaves out draws nothing. Today the caps are:
 
 - **asks.** The program raises a question: a yes or a no, a choice, a line of text, or a short form.
-  You answer it with one tap.
+  You answer it with one tap. The card names the program and shows the time left when the program
+  set one, and a question decided in the program or timed out leaves a line in the chat.
 - **starters.** The program lists starters, and they appear as rows on the New page.
 - **send.** You send text to a conversation.
 - **steer.** You steer text into a turn that is running.

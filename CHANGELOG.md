@@ -40,6 +40,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie durable attach` adds a program to your Collie.** One command writes the entry in `sources.json`, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
 - **The durable wire has a version policy and a receipt on every approval.** Collie accepts the previous wire version for one minor, a mismatch says so on the phone, and an approval records who decided and when. The SDK core imports nothing from Pi.
 - **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
+- **The phone shows the receipts of a program's question.** The ask card shows the time left, says who decided when an answer comes too late, names the program, and a question that timed out or was decided in the program leaves a line in the chat. A program refused for its wire version says why on its home.
 
 ### Changed
 

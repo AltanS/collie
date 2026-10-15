@@ -444,9 +444,19 @@ export const ru: Dictionary = {
   "prompt.sendingAria": "Отправка",
   "prompt.reconnectNote": "Переподключитесь для ответа.",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Не принято. Вопрос может появиться снова через некоторое время.",
+  // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
+  "ask.expiresIn": "Expires in {time}",
+  // TODO wordsmith
+  "ask.expired": "Expired",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",

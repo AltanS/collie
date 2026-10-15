@@ -1022,6 +1022,8 @@ export type LogRow =
       readonly askId: string;
       readonly by: LogClosedBy;
       readonly waitedMs?: number;
+      /** The ask's title, so Chat can name a question nobody tapped. Absent from a row an older build wrote. */
+      readonly title?: string;
     }
   | { readonly k: "state"; readonly at: string; readonly state: string }
   | {
@@ -1058,7 +1060,8 @@ export function parseLogRow(line: string): LogRow | null {
       if (askId === null) return null;
       const waited = root.waitedMs;
       const by = isLogCloser(root.by) ? root.by : "stopped";
-      return { k: "ask-closed", at, askId, by, waitedMs: isCount(waited) ? waited : undefined };
+      const title = textOf(root, "title", CAPS.askTitle);
+      return { k: "ask-closed", at, askId, by, waitedMs: isCount(waited) ? waited : undefined, title: title === "" ? undefined : title };
     }
     case "state": {
       const state = textOf(root, "state", CAPS.state);
@@ -1564,6 +1567,7 @@ export function askForWire(ask: DurableAsk): Ask {
   if (ask.reason !== undefined) wire.reason = ask.reason;
   if (ask.cleaned === true) wire.cleaned = true;
   if (ask.push !== undefined) wire.push = ask.push;
+  if (ask.expiresAt !== undefined) wire.expiresAt = ask.expiresAt;
   if (ask.tool !== undefined) {
     wire.tool = { name: ask.tool.name, summary: ask.tool.summary };
     if (ask.tool.output !== undefined) wire.tool.output = ask.tool.output;

@@ -23,7 +23,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
-import { parseAsk, type AnswerResult, type AskAnswer } from "./ask";
+import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
   ActionResponse,
@@ -1266,8 +1266,13 @@ function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
   switch (body.outcome) {
     case "taken":
       return body.replayed === true ? { outcome: "taken", replayed: true } : { outcome: "taken" };
-    case "too-late":
-      return body.replayed === true ? { outcome: "too-late", replayed: true } : { outcome: "too-late" };
+    case "too-late": {
+      const result: AnswerResult = { outcome: "too-late" };
+      const decided = decidedOf(body.decided);
+      if (decided !== undefined) result.decided = decided;
+      if (body.replayed === true) result.replayed = true;
+      return result;
+    }
     case "stale": {
       const ask = parseAsk(body.ask);
       return ask === undefined ? { outcome: "stale" } : { outcome: "stale", ask };

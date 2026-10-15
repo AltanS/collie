@@ -478,9 +478,19 @@ export const zh: Dictionary = {
   "prompt.sendingAria": "正在发送",
   "prompt.reconnectNote": "请重新连接后再回答。",
   "ask.caption": "Needs your answer",
+  // TODO wordsmith
+  "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "未被接受。该问题可能稍后会再次出现。",
+  // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
+  "ask.expiresIn": "Expires in {time}",
+  // TODO wordsmith
+  "ask.expired": "Expired",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",

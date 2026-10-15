@@ -81,6 +81,8 @@ const SESSION_SUMMARY_KEYS = {
   where: true,
   state: true,
   experimental: true,
+  // Rides only on a program card refused for its wire version (M55 spec 14), so no solo byte moved.
+  notice: true,
 } satisfies Record<keyof SessionSummary, true>;
 
 const AGENT_VIEW_KEYS = {
