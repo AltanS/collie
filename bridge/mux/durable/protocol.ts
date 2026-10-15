@@ -1564,6 +1564,7 @@ export function askForWire(ask: DurableAsk): Ask {
   if (ask.reason !== undefined) wire.reason = ask.reason;
   if (ask.cleaned === true) wire.cleaned = true;
   if (ask.push !== undefined) wire.push = ask.push;
+  if (ask.expiresAt !== undefined) wire.expiresAt = ask.expiresAt;
   if (ask.tool !== undefined) {
     wire.tool = { name: ask.tool.name, summary: ask.tool.summary };
     if (ask.tool.output !== undefined) wire.tool.output = ask.tool.output;

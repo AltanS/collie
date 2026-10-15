@@ -257,6 +257,8 @@ export interface Ask {
   tool?: AskTool;
   /** Present when the bridge cut or changed the program's title or reason. Such an ask offers no "Always allow". */
   cleaned?: true;
+  /** When the ask stops waiting, ISO 8601. The card shows the time left. Absent: it waits for a person. */
+  expiresAt?: string;
 }
 
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */

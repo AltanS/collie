@@ -1,4 +1,4 @@
-import { initials, shortCwd, timeAgo, timeAgoShort } from "./format";
+import { initials, shortCwd, timeAgo, timeAgoShort, timeLeft } from "./format";
 
 describe("shortCwd", () => {
   it("collapses /home/<user> to ~", () => {
@@ -104,5 +104,31 @@ describe("timeAgoShort", () => {
 
   it("says 'now' rather than 'just now'", () => {
     expect(timeAgoShort(now - 1000, now)).toBe("now");
+  });
+});
+
+describe("timeLeft", () => {
+  const now = 1_760_000_000_000;
+  const at = (ms: number) => new Date(now + ms).toISOString();
+
+  it.each([
+    [4 * 60_000, { kind: "left", text: "4 min" }],
+    [4 * 60_000 + 59_000, { kind: "left", text: "4 min" }],
+    [60_000, { kind: "left", text: "1 min" }],
+    [59_000, { kind: "left", text: "59 s" }],
+    [40_000, { kind: "left", text: "40 s" }],
+    [39_200, { kind: "left", text: "40 s" }],
+    [500, { kind: "left", text: "1 s" }],
+    [90 * 60_000, { kind: "left", text: "1 h" }],
+    [50 * 3_600_000, { kind: "left", text: "2 d" }],
+    [0, { kind: "expired" }],
+    [-5_000, { kind: "expired" }],
+  ])("%i ms ahead reads %o", (ms, expected) => {
+    expect(timeLeft(at(ms), now)).toEqual(expected);
+  });
+
+  it("is null for a value that is not a time", () => {
+    expect(timeLeft("soon", now)).toBeNull();
+    expect(timeLeft("", now)).toBeNull();
   });
 });

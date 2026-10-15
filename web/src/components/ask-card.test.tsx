@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/setup";
+import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { asJsonObject, type JsonObject } from "@/lib/json";
 import type { Ask } from "@/lib/types";
 import { AskCard } from "./ask-card";
@@ -565,5 +566,39 @@ describe("a card of a kind this version cannot answer", () => {
     expect(screen.getByText("Which queue?")).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+describe("the receipts (M55 spec 14)", () => {
+  afterEach(() => {
+    resetCacheClockForTests();
+    vi.useRealTimers();
+  });
+
+  it("an ask with an expiry shows the time left under the title, and one without shows none", () => {
+    resetCacheClockForTests();
+    const { unmount } = draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 4 * 60_000 + 30_000).toISOString() } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+    unmount();
+    draw();
+    expect(document.querySelector('[data-slot="ask-expiry"]')).toBeNull();
+  });
+
+  it("the line ticks on the page clock, into seconds under a minute", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    resetCacheClockForTests();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 61_000).toISOString() } });
+    expect(screen.getByText("Expires in 1 min")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(21_000);
+    });
+    expect(screen.getByText("Expires in 40 s")).toBeInTheDocument();
+  });
+
+  it("past its expiry the line says Expired and the buttons stay: the program answers the tap", () => {
+    resetCacheClockForTests();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() - 1000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeEnabled();
   });
 });

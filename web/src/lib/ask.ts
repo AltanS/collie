@@ -364,6 +364,12 @@ function toolOf(v: JsonValue | undefined): AskTool | undefined {
   return tool;
 }
 
+/** An ISO 8601 moment, or undefined when the value is not a string or not a time. */
+function isoOf(v: JsonValue | undefined): string | undefined {
+  const text = asJsonString(v);
+  return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
+}
+
 /**
  * An ask read out of a response body. The bridge cleaned every string, but this body crossed a crew
  * link, so a field of the wrong type drops the whole ask: a card is never drawn from half a shape.
@@ -392,6 +398,8 @@ export function parseAsk(v: JsonValue | undefined): Ask | undefined {
   const tool = toolOf(o.tool);
   if (tool !== undefined) ask.tool = tool;
   if (o.cleaned === true) ask.cleaned = true;
+  const expiresAt = isoOf(o.expiresAt);
+  if (expiresAt !== undefined) ask.expiresAt = expiresAt;
   if (o.multiple === true) ask.multiple = true;
   const placeholder = str(o.placeholder);
   if (placeholder !== undefined) ask.placeholder = placeholder;

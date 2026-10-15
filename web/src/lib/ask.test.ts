@@ -285,6 +285,13 @@ describe("an ask out of a response body", () => {
   it("drops a tool block it cannot read, and keeps the ask", () => {
     expect(parseAsk({ ...good, tool: { name: 3 } })?.tool).toBeUndefined();
   });
+
+  it("reads expiresAt when it is a time, and treats anything else as none", () => {
+    expect(parseAsk({ ...good, expiresAt: "2026-10-15T10:04:00.000Z" })?.expiresAt).toBe("2026-10-15T10:04:00.000Z");
+    expect(parseAsk({ ...good, expiresAt: "soon" })).not.toHaveProperty("expiresAt");
+    expect(parseAsk({ ...good, expiresAt: 1760000000 })).not.toHaveProperty("expiresAt");
+    expect(parseAsk(good)).not.toHaveProperty("expiresAt");
+  });
 });
 
 describe("more kinds of ask", () => {

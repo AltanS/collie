@@ -486,6 +486,10 @@ export const ko: Dictionary = {
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",
+  // TODO wordsmith
+  "ask.expiresIn": "Expires in {time}",
+  // TODO wordsmith
+  "ask.expired": "Expired",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",

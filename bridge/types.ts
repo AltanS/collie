@@ -356,6 +356,11 @@ export interface Ask {
    * them for a push and falls back to its own text. Cleaned by the adapter; a lead cleans them again.
    */
   push?: AskPushText;
+  /**
+   * When the ask stops waiting, ISO 8601 (WIRE.md 7.3), as the program sent it. Absent: it waits for a person.
+   * The phone shows the time left; past it the program decides the ask by `timeout`.
+   */
+  expiresAt?: string;
 }
 
 /** A push title (60 characters at most) and line (120 at most) a program chose for an ask. */

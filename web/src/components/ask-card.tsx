@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import { Check, Loader2 } from "lucide-react";
 
 import { OptionButton, OptionGroupCaption, optionSurface, PromptPanel } from "@/components/option-button";
@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { answerAsk, apiErrorStatus } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
+import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import {
   answerable,
   answered,
@@ -31,6 +32,7 @@ import {
   EMPTY_DRAFT,
   type FormDraft,
 } from "@/lib/ask";
+import { timeLeft } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { Ask, AskField, AskOption } from "@/lib/types";
@@ -133,6 +135,7 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
       <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
         {shown.title}
       </p>
+      {shown.expiresAt !== undefined ? <AskExpiry expiresAt={shown.expiresAt} /> : null}
       {shown.reason !== undefined ? (
         <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
           {shown.reason}
@@ -204,6 +207,21 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
         </Button>
       ) : null}
     </PromptPanel>
+  );
+}
+
+/**
+ * The time left on an ask, one muted line under its title. Its own component, so only a card with an
+ * expiry subscribes to the page clock: a terminal's card never ticks.
+ */
+function AskExpiry({ expiresAt }: { expiresAt: string }) {
+  const now = useSyncExternalStore(subscribeCacheClock, cacheClockNow, cacheClockNow);
+  const left = timeLeft(expiresAt, now);
+  if (left === null) return null;
+  return (
+    <p data-slot="ask-expiry" className="pl-0.5 text-xs leading-snug text-muted-foreground tabular-nums">
+      {left.kind === "expired" ? t("ask.expired") : t("ask.expiresIn", { time: left.text })}
+    </p>
   );
 }
 

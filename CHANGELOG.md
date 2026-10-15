@@ -40,6 +40,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie durable attach` adds a program to your Collie.** One command writes the entry in `sources.json`, and the phone shows the program after a restart. `detach` removes it, `list` shows each program with the state the running bridge gives it, and the token comes from the variable `--token-env` names, so it is never typed on the command line.
 - **The durable wire has a version policy and a receipt on every approval.** Collie accepts the previous wire version for one minor, a mismatch says so on the phone, and an approval records who decided and when. The SDK core imports nothing from Pi.
 - **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
+- **A program's question shows the time left on the phone.** When the program sets an expiry on a question, the ask card counts down under its title and says Expired once it passes. The lead passes the expiry through from a crew member unchanged.
 
 ### Changed
 

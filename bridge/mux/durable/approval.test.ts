@@ -4,7 +4,7 @@ import { DurableMux, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
 import type { JsonObject } from "../../json.ts";
 import { CAPS } from "./clean.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText } from "./fixture.ts";
-import { parseDecided, parseEvents, parseLogRow, parseSnapshot, type DurableAsk } from "./protocol.ts";
+import { askForWire, parseDecided, parseEvents, parseLogRow, parseSnapshot, type DurableAsk } from "./protocol.ts";
 
 // AN APPROVAL WITH A RECEIPT, READ BY THE ADAPTER (WIRE.md 7.3, M55 spec 03). A second answer to a decided ask is 409
 // `decided` and reads as `too-late`; an ask past its `expiresAt` leaves the open asks on the next read, even on a 304;
@@ -107,6 +107,12 @@ describe("an ask that expires", () => {
     expect((await read()).ok).toBe(true);
     expect(program.requests.at(-1)?.path).toBe("/session/v1/snapshot");
     expect(adapter.openAsks("conv-01")?.map((ask) => ask.id)).not.toContain("ask-extra");
+  });
+
+  test("askForWire keeps expiresAt for the phone, and an ask without one gains no key", () => {
+    const at = "2026-10-15T10:04:00.000Z";
+    expect(askForWire(askOn({ expiresAt: at })).expiresAt).toBe(at);
+    expect("expiresAt" in askForWire(askOn())).toBe(false);
   });
 
   test("an expiresAt that is no time is ignored: the ask stays open", () => {
