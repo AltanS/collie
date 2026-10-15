@@ -1906,7 +1906,7 @@ describe("the pane fits its viewport", () => {
   });
 
   it("caps the agent statusline against the viewport, and scrolls rather than eating a row", () => {
-    // `MAX_STATUS_LINES` (8) is a ROW COUNT, and a row count is not a height: eight rows of
+    // The status-row bound (8, `idle.volatile.below.maxRows` in the Claude profile) is a ROW COUNT, and a row count is not a height: eight rows of
     // `CTX:44% CACHE:100% LIMITS…` is a quarter of a keyboard-open phone, held against a mirror
     // already showing zero rows of what the agent actually SAID.
     const { container } = renderChat({ text: STATUS_TEXT });
