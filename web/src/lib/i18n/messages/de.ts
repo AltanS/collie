@@ -217,6 +217,7 @@ export const de: Dictionary = {
   "settings.typeface.note.grotesk": "Eigene Collie-Schrift, abgestimmt auf das Logo.",
   "settings.typeface.note.aldrich": "Nur eine Schriftstärke: Fetter Text wird wie normaler Text dargestellt.",
   "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Vom Betreiber dieser Collie-Instanz hinterlegt.",
 
   // --- settings.fonts ---

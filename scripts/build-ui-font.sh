@@ -11,12 +11,13 @@
 #     offers exactly these, and web/src/index.css declares exactly these. index.css MIRRORS the
 #     shipped list: a face is shipped when it has an @font-face block, a computed fallback twin and
 #     an entry in UI_FONT_URLS (web/src/lib/sw-routes.ts). Today: aldrich (the default),
-#     space-grotesk, and ibm-plex-sans (the Nightwatch theme's face, M57). Adding one means all four
-#     edits, and web/src/fonts.test.ts fails until they agree.
+#     space-grotesk, ibm-plex-sans (the Nightwatch theme's face, M57) and geist (the daylight
+#     theme's face, M57). Adding one means all four edits, and web/src/fonts.test.ts fails until
+#     they agree.
 #   * PLAYGROUND-ONLY auditions are candidates on disk that nothing in the app names. They exist so
 #     the "UI typeface" playground card can put a face beside the shipped ones at real sizes before
-#     anyone argues for it. Today: geist. An audition that never wins is deleted:
-#     its .woff2 and its LICENSE go together.
+#     anyone argues for it. Today: none; Plex and Geist began here and now ship. An audition that
+#     never wins is deleted: its .woff2 and its LICENSE go together.
 #
 # A THIRD KIND, the COMPANION, is built after the loop. Aldrich has no Cyrillic, so Russian used to
 # fall through to the system face, drawn ~13% too large by Aldrich's metric stand-in. The companion

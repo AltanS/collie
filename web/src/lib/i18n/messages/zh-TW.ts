@@ -203,6 +203,7 @@ export const zhTW: Dictionary = {
   "settings.typeface.note.grotesk": "Collie 自訂無襯線字型，符合產品識別風格。",
   "settings.typeface.note.aldrich": "僅提供一種字重，粗體文字顯示效果與一般文字相同。",
   "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "由目前執行個體的管理員設定加入。",
 
   // --- settings.fonts ---

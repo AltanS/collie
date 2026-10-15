@@ -33,6 +33,7 @@ const FAMILY_LABELS = {
   grotesk: "Space Grotesk",
   aldrich: "Aldrich",
   plex: "IBM Plex Sans",
+  geist: "Geist",
 } satisfies Record<Exclude<(typeof SHIPPED_FONTS)[number], "system">, string>;
 
 const NOTE_KEYS = {
@@ -40,6 +41,7 @@ const NOTE_KEYS = {
   grotesk: "settings.typeface.note.grotesk",
   aldrich: "settings.typeface.note.aldrich",
   plex: "settings.typeface.note.plex",
+  geist: "settings.typeface.note.geist",
 } as const;
 
 /** Settings card: the app's own typeface. Device-local, like theme and language. */
@@ -132,6 +134,8 @@ function resolveShown(font: string, faces: readonly OperatorFontFace[]): string 
 }
 
 function noteKey(font: string): (typeof NOTE_KEYS)[keyof typeof NOTE_KEYS] | "settings.typeface.note.operator" {
-  if (font === "system" || font === "aldrich" || font === "grotesk" || font === "plex") return NOTE_KEYS[font];
+  if (font === "system" || font === "aldrich" || font === "grotesk" || font === "plex" || font === "geist") {
+    return NOTE_KEYS[font];
+  }
   return "settings.typeface.note.operator";
 }

@@ -53,6 +53,7 @@
     if (d.font === "system") root.classList.add("font-system");
     else if (d.font === "grotesk") root.classList.add("font-grotesk");
     else if (d.font === "plex") root.classList.add("font-plex");
+    else if (d.font === "geist") root.classList.add("font-geist");
   } catch {
     // A truncated write, a hand-edited blob, or private mode. The default face is the right answer
     // to all three, and it is the one already in the stylesheet.

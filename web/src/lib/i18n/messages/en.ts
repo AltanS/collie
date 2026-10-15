@@ -242,6 +242,8 @@ export const en = {
   // app suppresses synthesized bold, so bold text under it is not heavier than the rest.
   "settings.typeface.note.aldrich": "One weight, so bold text looks the same as regular.",
   "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.",
+  // Geist has a real 400 to 700 axis, so unlike Aldrich its bold is drawn, not missing.
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---

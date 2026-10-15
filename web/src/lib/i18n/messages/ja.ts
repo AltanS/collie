@@ -212,6 +212,7 @@ export const ja: Dictionary = {
   "settings.typeface.note.grotesk": "Collieのロゴに合わせて設計されたフォントです。",
   "settings.typeface.note.aldrich": "ウェイトが1種類のみのため、太字も標準テキストと同じ太さで表示されます。",
   "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.", // TODO wordsmith
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "ホストの管理者が設定したフォントです。",
 
   // --- settings.fonts ---
