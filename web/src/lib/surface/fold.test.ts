@@ -15,7 +15,7 @@ import {
 import { findInputFrame, plainRows } from "./frame";
 import { endsInsideFrame, foldSurface, SURFACE_SOURCES, surfaceOfScreen, type ScreenInput, type SurfaceInput } from "./fold";
 import { requireProfile } from "./profile";
-import { askOf, isFree, type Ask } from "./surface";
+import { askOf, isFree, modalWord, type Ask, type Surface } from "./surface";
 
 // M56 spec 04: the fold from a numbered input log to a Surface, and the profile tests of the design
 // record (experiments/reader-stability/ARCHITECTURE.md section 4) over the whole fixture corpus:
@@ -110,25 +110,52 @@ describe("the idle matcher and the modal detector", () => {
   });
 });
 
+/**
+ * The claims of `after` that moved toward free from `before`: a modal that became `none`, a turn that
+ * became `idle`, a composer that became `empty` or `draft`. A claim that stays, turns `unknown`, or
+ * stays a modal of another kind (an ask the reader lost and the cues kept as `unreadable`) moved
+ * away from free or nowhere.
+ */
+function towardFree(before: Surface, after: Surface): string[] {
+  const moved: string[] = [];
+  if (after.modal === "none" && before.modal !== "none") moved.push(`modal ${modalWord(before.modal)} -> none`);
+  if (after.turn === "idle" && before.turn !== "idle") moved.push(`turn ${before.turn} -> idle`);
+  if ((after.composer === "empty" || after.composer === "draft") && after.composer !== before.composer) {
+    moved.push(`composer ${before.composer} -> ${after.composer}`);
+  }
+  return moved;
+}
+
 describe("perturbed fixtures", () => {
   // Each fixture is perturbed (moved row, blank row, extra status row, dropped border, width change)
   // and read again through the whole pipeline. A perturbed screen may stay the same or lose its
   // claims; it may never become free unless the fixture itself is free, and a negative fixture may
-  // never become free at all.
+  // never become free at all. On a negative fixture no single claim may move toward free either: the
+  // design record's "stays the same or becomes unknown", where a modal that changes kind still counts
+  // as a modal.
   for (const name of FIXTURES) {
     it(`perturb: ${name}`, () => {
       const label = labelOf(name);
       const agent = agentOf(label.harness);
       const idle = idleFor(label.harness);
-      const original = isFree(readScreen(fixtureRows(name), agent, idle).surface);
+      const before = readScreen(fixtureRows(name), agent, idle).surface;
+      const original = isFree(before);
       const wrong: string[] = [];
       for (const perturbed of perturbations(fixtureRows(name))) {
-        const free = isFree(readScreen(perturbed.rows, agent, idle).surface);
-        if (free && (!original || NEGATIVE.has(label.state))) wrong.push(perturbed.name);
+        const after = readScreen(perturbed.rows, agent, idle).surface;
+        if (isFree(after) && (!original || NEGATIVE.has(label.state))) wrong.push(`${perturbed.name}: free`);
+        if (NEGATIVE.has(label.state)) for (const move of towardFree(before, after)) wrong.push(`${perturbed.name}: ${move}`);
       }
       expect(wrong).toEqual([]);
     });
   }
+
+  it("perturb: a claim that moves toward free is caught", () => {
+    const dialog: Surface = { revision: 1, turn: "unknown", modal: "unreadable", composer: "unknown" };
+    expect(towardFree(dialog, { ...dialog, modal: "none", composer: "draft" })).toEqual(["modal unreadable -> none", "composer unknown -> draft"]);
+    expect(towardFree(dialog, { ...dialog, modal: "unknown" })).toEqual([]);
+    expect(towardFree({ ...dialog, modal: { ask: ASK } }, dialog)).toEqual([]);
+  });
 
   it("perturb: the incident screens never become free", () => {
     const wrong: string[] = [];
@@ -192,6 +219,32 @@ describe("the negative set", () => {
     const free = idle.filter((name) => isFree(own(name).surface));
     expect(idle.length).toBeGreaterThan(30);
     expect(free.length / idle.length).toBeGreaterThanOrEqual(0.95);
+  });
+});
+
+describe("the generic cues alone", () => {
+  // The other harnesses have no profile and few readers, so the cues are what keeps their dialogs from
+  // a guess: with no reader lifting, every dialog fixture of a harness other than the profiled one
+  // reads as a modal (`unreadable`), not merely `unknown`. scripts/surface-corpus.ts fails on the same
+  // rule and prints the column.
+  const others = FIXTURES.filter((name) => {
+    const label = labelOf(name);
+    return label.state === "dialog" && label.harness !== "claude" && label.harness !== "shell";
+  });
+
+  it("cues alone: the set covers codex, pi, opencode, grok and omp", () => {
+    const harnesses = new Set(others.map((name) => labelOf(name).harness));
+    for (const harness of ["codex", "pi", "opencode", "grok", "omp"]) expect(harnesses.has(harness), harness).toBe(true);
+    expect(others.length).toBeGreaterThan(200);
+  });
+
+  it("cues alone: flag every dialog fixture of the other harnesses as modal", () => {
+    const missed = others.filter((name) => {
+      const label = labelOf(name);
+      const surface = readScreen(fixtureRows(name), agentOf(label.harness), idleFor(label.harness), { lift: false }).surface;
+      return surface.modal !== "unreadable" && askOf(surface.modal) === null;
+    });
+    expect(missed).toEqual([]);
   });
 });
 

@@ -130,7 +130,7 @@ import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
-import { maskSurface, surfaceRouteBody } from "./surface/shadow.ts";
+import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -2364,9 +2364,7 @@ export function startServer(opts: {
         // has no `?host=` branch to fall through.
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
-        if (rt.surface === undefined) return text("surface shadow mode is off (COLLIE_SURFACE_SHADOW=1 turns it on)", 404);
-        const answer = surfaceRouteBody(rt.surface, url.searchParams.get("pane"), cfg.redact);
-        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+        return surfaceRoute(rt.surface, url.searchParams.get("pane"), cfg.redact, req.headers.get("accept-encoding"));
       }
 
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
@@ -6741,6 +6739,15 @@ type StaticHeaders = {
   "content-security-policy"?: string;
   "service-worker-allowed"?: string;
 } & Record<string, string>;
+
+/** What `/api/surface` answers once the gate passed and the session resolved: with the mode off (no
+ *  shadow on the runtime) the route is not there, a 404 that says why; else the shadow's body. */
+export const SURFACE_OFF_TEXT = "surface shadow mode is off (COLLIE_SURFACE_SHADOW=1 turns it on)";
+export function surfaceRoute(shadow: SurfaceShadow | undefined, paneId: string | null, redact: boolean, acceptEncoding: string | null): Response {
+  if (shadow === undefined) return text(SURFACE_OFF_TEXT, 404);
+  const answer = surfaceRouteBody(shadow, paneId, redact);
+  return json(answer.body, acceptEncoding, answer.status);
+}
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));

@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, readCues } from "./cues";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, readCues } from "./cues";
 import { findInputFrame, plainRows } from "./frame";
 import { requireProfile } from "./profile";
 import { isFree } from "./surface";
@@ -76,10 +76,26 @@ describe("the bottom cluster", () => {
   });
 
   it(`ends the no-frame cluster at ${String(CLUSTER_GAP_ROWS)} blank rows`, () => {
-    const rows = plainRows([" ❯ 1. Yes", "   2. No", "", "", "", "last line"]);
+    const rows = plainRows([" ❯ 1. Yes", "   2. No", "", "", "", "a reply", "more reply", "last line"]);
     const cues = readCues(rows, null);
-    expect(cues.cluster).toEqual([5]);
+    expect(cues.cluster).toEqual([5, 6, 7]);
     expect(cues.strength).toBe("none");
+  });
+
+  it(`passes over a footer of up to ${String(FOOTER_MAX_ROWS)} rows set apart at the bottom, once`, () => {
+    const rows = plainRows(["old", "", "", "", " ❯ 1. Yes", "   2. No", "", "", "", "", "~/proj:main"]);
+    const cues = readCues(rows, null);
+    expect(cues.cluster).toEqual([4, 5, 10]);
+    expect(cues.strength).toBe("strong");
+  });
+
+  it(`reads up to ${String(CLUSTER_MAX_ROWS)} non-blank rows, and a list the cap would cut whole`, () => {
+    const airy = plainRows(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? `line ${String(i)}` : "")));
+    expect(readCues(airy, null).cluster).toHaveLength(CLUSTER_MAX_ROWS);
+    const list = ["header", "→   first [x]", ...Array.from({ length: 30 }, (_, i) => `    item${String(i)} [x]`), "", "  status"];
+    const cues = readCues(plainRows(list), null);
+    expect(cues.cluster[0]).toBe(1);
+    expect(cues.strength).toBe("strong");
   });
 
   it("gives the same hash for the same rows", () => {
@@ -118,6 +134,10 @@ describe("cue shapes", () => {
     expect(readCues(plainRows(["┃  1 (○) Red", "┃  2 (○) Green", "┃  ↑/↓ navigate · y copy"]), null).strength).toBe("strong");
   });
 
+  it("reads an icon key cap with a letter as one key", () => {
+    expect(readCues(plainRows(["  some text", "", " \u{F0311} or \u{F0634} Q submit  \u{F12B7} cancel"]), null).strength).toBe("strong");
+  });
+
   it("knows a single-key prompt and not a count or prose", () => {
     expect(isSingleKeyRow("  1: Bad    2: Fine   3: Good   0: Dismiss")).toBe(true);
     expect(isSingleKeyRow("a approve  |  s request changes  |  c comment")).toBe(true);
@@ -140,5 +160,51 @@ describe("cue shapes", () => {
     expect(isRunningRow("  ⏵⏵ bypass permissions on · esc to interrupt · ← for agents")).toBe(true);
     expect(isRunningRow("✻ Brewed for 4s · done 12:27 PM")).toBe(false);
     expect(isRunningRow("  Esc to interrupt is not a key hint here")).toBe(false);
+  });
+});
+
+describe("overlay shapes in the no-frame cluster", () => {
+  const kinds = (rows: string[]) => readCues(plainRows(rows), null).cues.map((cue) => cue.kind);
+
+  it("a title row that names only its close key is strong", () => {
+    const rows = ["        Select agent                    esc", "", "        Search", "", "      ● build native", "        plan native"];
+    expect(kinds(rows)).toContain("dismiss-header");
+    expect(readCues(plainRows(rows), null).strength).toBe("strong");
+    expect(kinds(["Press esc for help", "                esc", "a title esc"])).not.toContain("dismiss-header");
+  });
+
+  it("three slash commands with descriptions are strong, two are not a list", () => {
+    const rows = ["┃ /agents     Switch agent   ┃", "┃ /connect    Connect        ┃", "┃ /debug      Debug info     ┃"];
+    expect(kinds(rows)).toContain("command-list");
+    expect(readCues(plainRows(rows), null).strength).toBe("strong");
+    expect(readCues(plainRows(rows.slice(0, 2)), null).strength).toBe("none");
+  });
+
+  it("a slash query with a choice under it is strong", () => {
+    expect(kinds(["╭── prompt ───────────────", "╰─ /", "❯ skill:sample   Read a sample"])).toContain("command-query");
+    expect(kinds(["❯ /us", "  /usage  Show session usage"])).toContain("command-query");
+    expect(kinds(["❯ /us", "  nothing matches"])).not.toContain("command-query");
+  });
+
+  it("a pointer list between two rules is strong, without the rules weak", () => {
+    const list = ["  ❯ 256k (active) Default", "    500k          500000 tokens"];
+    const rule = "─".repeat(40);
+    expect(readCues(plainRows([rule, ...list, rule]), null).strength).toBe("strong");
+    expect(readCues(plainRows(list), null).strength).toBe("weak");
+  });
+
+  it("a pointed list reads wrapped rows as part of the item above", () => {
+    const rows = ["❯ resume       Resume a different", "               session", "  pin          Pin a session", "  pause        Freeze all agents"];
+    expect(readCues(plainRows(rows), null).strength).toBe("strong");
+  });
+
+  it("never counts over a found frame, where a quote must stay free", () => {
+    const rows = rowsOf(
+      ["● The picker said:", "  Select agent                    esc", "  /agents   Switch agent", "  /connect  Connect", "  /debug    Debug", RULE, "❯ ", RULE, "  model · ctx 3%"].join("\n"),
+    );
+    const read = readScreen(rows, "claude", IDLE);
+    expect(read.frame).not.toBeNull();
+    expect(read.cues?.strength).toBe("none");
+    expect(isFree(read.surface)).toBe(true);
   });
 });

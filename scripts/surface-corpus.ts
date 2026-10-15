@@ -8,6 +8,9 @@
 // web/src/fixtures/surface-labels.json) reads free, or when fewer than 95% of the idle Claude fixtures
 // read free. One idle miss is forgiven on the last three versions above the profile's
 // `verifiedThrough`: a version nobody has verified yet may move one row before its profile does.
+// Exits 1 too when the generic cues alone (no reader lifting) read a `dialog` fixture of any other
+// harness (codex, pi, opencode, grok, omp and the rest) as anything but a modal: those harnesses
+// have no profile, so the cues are what stands between their dialogs and a guess.
 //
 //   bun scripts/surface-corpus.ts
 //
@@ -21,8 +24,10 @@ import { askOf, isFree, type Surface } from "../web/src/lib/surface/surface.ts";
 
 /** The labels that must never read free. */
 const NEGATIVE: ReadonlySet<FixtureState> = new Set(["dialog", "screen"]);
-/** The profile the idle rule is about. Named by id; the profile file carries its own name. */
-const IDLE_HARNESS = [..."claude"].join("");
+/** The profile the idle rule is about. scripts/ is outside the surface code's name ban. */
+const IDLE_HARNESS = "claude";
+/** The label a bare shell carries: no harness, so no cue rule. */
+const SHELL = "shell";
 const IDLE_SHARE = 0.95;
 const UNVERIFIED_WINDOW = 3;
 const UNVERIFIED_MISSES = 1;
@@ -63,6 +68,7 @@ const names = readdirSync(PANES_DIR)
 const rows = new Map<string, Row>();
 const freeDialogs: string[] = [];
 const idleMisses: { name: string; version: string }[] = [];
+const cuesMisses: string[] = [];
 let idleTotal = 0;
 let unlabelled = 0;
 
@@ -89,6 +95,7 @@ for (const name of names) {
   if (free) row.free++;
   if (isModal(surface)) row.modal++;
   if (isModal(cuesAlone)) row.cuesModal++;
+  else if (label.state === "dialog" && label.harness !== IDLE_HARNESS && label.harness !== SHELL) cuesMisses.push(`${name} (${label.harness})`);
   const reason = unknownReason(surface);
   if (reason !== null) row.unknown.set(reason, (row.unknown.get(reason) ?? 0) + 1);
 
@@ -149,6 +156,13 @@ console.log(
 );
 for (const miss of idleMisses) console.log(`  not free: ${miss.name} (${miss.version})`);
 if (share < IDLE_SHARE) failed = true;
+if (cuesMisses.length > 0) {
+  failed = true;
+  console.log(`FAIL: the cues alone miss ${String(cuesMisses.length)} dialog fixture(s) of the other harnesses:`);
+  for (const name of cuesMisses) console.log(`  ${name}`);
+} else {
+  console.log("ok: the cues alone read every dialog fixture of the other harnesses as a modal");
+}
 if (unlabelled > 0) {
   failed = true;
   console.log("FAIL: every pane fixture needs a row in web/src/fixtures/surface-labels.json");

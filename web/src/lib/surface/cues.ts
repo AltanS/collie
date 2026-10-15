@@ -12,19 +12,37 @@
 //    bottom edge, the rows are read only when they do not walk as the profile's status and footer
 //    rows (a popup or a dialog sits there); the volatile rows themselves are a statusline the operator
 //    writes, so they are never read for a modal cue.
-//  - With no frame, the cluster is the last run of rows on the screen: up to CLUSTER_MAX_ROWS rows
-//    above the last non-blank one, ended by CLUSTER_GAP_ROWS blank rows in a row.
+//  - With no frame, the cluster is the last run of rows on the screen: up to CLUSTER_MAX_ROWS
+//    non-blank rows from the last non-blank one up, ended by CLUSTER_GAP_ROWS blank rows in a row.
+//    A footer of at most FOOTER_MAX_ROWS rows at the very bottom, set apart by a gap, does not end
+//    it: an overlay drawn mid-screen over a status line sits above that gap. The cluster never cuts
+//    a list: when the cap falls inside an aligned list, the cluster grows up to the list's first row.
 //
 // Strength: one cue alone is weak (the fold says `unknown`). A pointer on a listed row together with
 // a numbered list, a key-hint footer together with any listed row, or a single-key prompt is strong
 // (the fold says `unreadable` when no reader lifted the dialog).
+//
+// Overlay shapes count in the no-frame cluster only, and each is strong on its own: a title row that
+// names only its close key ("Select agent      esc"), a list of three slash commands or more, a
+// slash query with a choice under it, and a pointer list between two rules. A pointed list there
+// also reads wrapped rows (indented deeper than the items) as part of the item above. A read with no
+// frame is never free, so one of these shapes in a transcript costs a counter, never a send; over a
+// found frame the stricter rules above keep a quote free.
 //
 // Pure: the same rows always give the same answer.
 
 import { rowText, type Frame, type FrameRow } from "./frame";
 import { shortHash } from "./surface";
 
-export type CueKind = "pointer-row" | "numbered-list" | "checkbox-list" | "key-hint" | "single-key";
+export type CueKind =
+  | "pointer-row"
+  | "numbered-list"
+  | "checkbox-list"
+  | "key-hint"
+  | "single-key"
+  | "dismiss-header"
+  | "command-list"
+  | "command-query";
 
 export interface Cue {
   readonly kind: CueKind;
@@ -45,15 +63,30 @@ export interface CueRead {
   readonly hash: string;
 }
 
-/** The longest run of rows the no-frame cluster reads. */
+/** The most non-blank rows the no-frame cluster reads (a list it would cut is read whole). */
 export const CLUSTER_MAX_ROWS = 24;
 /** Blank rows in a row that end the no-frame cluster. */
 export const CLUSTER_GAP_ROWS = 3;
+/** The tallest bottom run the no-frame cluster reads as a footer and passes over. */
+export const FOOTER_MAX_ROWS = 2;
+/** Commands in a list that make it an overlay shape. */
+const COMMAND_LIST_MIN = 3;
 
 /** Glyphs a dialog draws in front of the highlighted row. */
 const POINTERS = "❯›>▶►→➜❱▸➤⟩❭〉";
 /** Border glyphs a dialog draws at the left and right of its rows; read as blank columns. */
 const BORDERS = /[│┃║▌▐]/gu;
+/** Every box glyph, for the slash query: a prompt row is often a box's own edge ("╰─ /"). */
+const BOX_GLYPHS = /[│┃║▌▐╭╮╰╯┌┐└┘├┤┬┴┼─━═╹▀▔▁]/gu;
+/** A horizontal rule: plain line glyphs, maybe one short label inside ("────2─"), no corners. */
+const RULE = /^\s*[─━═╌┄┈]{2,}(?:\s*[^\s─━═╌┄┈]{1,3}\s*[─━═╌┄┈]+)?\s*$/u;
+const RULE_MIN_GLYPHS = 8;
+/** A title row that names only its close key, at its right end after a wide gap. */
+const DISMISS_HEADER = /^\s*(\S(?:.*\S)?)\s{3,}(?:esc|escape)\s*$/iu;
+/** A slash command with its description in a second column ("/agents     Switch agent"). */
+const COMMAND_ENTRY = new RegExp(`^(\\s*)(?:[${POINTERS}]\\s*)?/[\\w:.-]+\\s{2,}\\S`, "u");
+/** A prompt that holds only a slash query: "/", "/res", "❯ /usage". */
+const COMMAND_QUERY = new RegExp(`^\\s*(?:[${POINTERS}]\\s*)?/[\\w:.-]*\\s*$`, "u");
 
 const POINTER_ROW = new RegExp(`^(\\s*)([${POINTERS}])(\\s*)(\\S)`, "u");
 const NUMBERED_ITEM = new RegExp(
@@ -67,7 +100,7 @@ const CHECKBOX_ITEM = new RegExp(
 
 /** One key as a footer names it. A private-use glyph is an icon font's key cap (Enter, Escape). */
 const KEY_ATOM =
-  "(?:enter|return|esc|escape|tab|space|spacebar|backspace|shift\\+tab|shift\\+[a-z]|ctrl\\+[a-z.]|alt\\+[a-z]|⌃[a-z]|up|down|left|right|[↑↓←→⇆⇅⏎↵⎋⇥]+|[\\u{E000}-\\u{F8FF}\\u{F0000}-\\u{FFFFD}]|arrow keys|arrows)";
+  "(?:enter|return|esc|escape|tab|space|spacebar|backspace|shift\\+tab|shift\\+[a-z]|ctrl\\+[a-z.]|alt\\+[a-z]|⌃[a-z]|up|down|left|right|[↑↓←→⇆⇅⏎↵⎋⇥]+|[\\u{E000}-\\u{F8FF}\\u{F0000}-\\u{FFFFD}](?:\\s?[a-z](?![a-z]))?|arrow keys|arrows)";
 /** A key, or several joined by slashes ("↑/↓", "Tab/←→", "Escape/Ctrl+C"). */
 const KEY = `${KEY_ATOM}(?:\\s*/\\s*${KEY_ATOM})*`;
 /** What a dialog's footer says a key does. A composer's footer says send, newline, mode or cycle. */
@@ -128,20 +161,58 @@ export function isRunningRow(text: string): boolean {
   return INTERRUPT_HINT.test(text) || SPINNER_ROW.test(text);
 }
 
-/** The generic bottom cluster: the last run of rows on the screen. */
+/** The column a row's text starts in, with border glyphs read as blank, or -1 on a blank row. */
+function startCol(text: string): number {
+  return unboxed(text).search(/\S/u);
+}
+
+/** Whether a row is a horizontal rule (see RULE). */
+function isRule(text: string): boolean {
+  const t = unboxed(text);
+  return RULE.test(t) && (t.match(/[─━═╌┄┈]/gu)?.length ?? 0) >= RULE_MIN_GLYPHS;
+}
+
+/** The generic bottom cluster: the last run of rows on the screen (see the header for the rules). */
 function tailCluster(texts: readonly string[]): number[] {
   let end = texts.length - 1;
   while (end >= 0 && isBlank(texts[end]!)) end--;
   const rows: number[] = [];
   let gap = 0;
-  for (let i = end; i >= 0 && end - i < CLUSTER_MAX_ROWS; i--) {
+  let footerPassed = false;
+  let crossing = false;
+  let i = end;
+  for (; i >= 0 && rows.length < CLUSTER_MAX_ROWS; i--) {
     if (isBlank(texts[i]!)) {
+      if (crossing) continue;
       gap++;
-      if (gap >= CLUSTER_GAP_ROWS) break;
-      continue;
+      if (gap < CLUSTER_GAP_ROWS) continue;
+      // A short run at the very bottom set apart by a gap is a footer: pass over the gap once.
+      if (!footerPassed && rows.length <= FOOTER_MAX_ROWS) {
+        footerPassed = true;
+        crossing = true;
+        continue;
+      }
+      break;
     }
     gap = 0;
+    crossing = false;
     rows.push(i);
+  }
+  // The cap fell inside a list: read the list whole, up to its first row (a pointer row included).
+  if (rows.length === 0) return rows;
+  const top = rows.at(-1)!;
+  const col = startCol(texts[top]!);
+  if (rows.length >= CLUSTER_MAX_ROWS && col >= 1) {
+    for (let j = top - 1, n = 0; j >= 0 && n < CLUSTER_MAX_ROWS; j--, n++) {
+      if (isBlank(texts[j]!)) break;
+      if (startCol(texts[j]!) === col) {
+        rows.push(j);
+        continue;
+      }
+      const pointer = POINTER_ROW.exec(unboxed(texts[j]!));
+      if (pointer !== null && pointer[1]!.length + pointer[2]!.length + pointer[3]!.length === col) rows.push(j);
+      break;
+    }
   }
   return rows.toReversed();
 }
@@ -191,22 +262,62 @@ interface ClusterCues {
   readonly pointedList: boolean;
   /** How many key-hint phrases the cluster holds, over all its rows. */
   readonly keyHints: number;
+  /** An overlay shape (no-frame cluster only, see the header): strong on its own. */
+  readonly overlay: boolean;
 }
 
-/** How many rows next to `row`, upward and downward without a gap, start in column `col`. */
-function alignedSiblings(texts: readonly string[], inCluster: ReadonlySet<number>, row: number, col: number): number {
+interface Siblings {
+  /** Rows in the list's column next to the pointer row. */
+  readonly count: number;
+  /** The list's first and last row, wrapped rows included. */
+  readonly first: number;
+  readonly last: number;
+}
+
+/**
+ * The rows next to `row`, upward and downward without a gap, that start in column `col`. With
+ * `wrapped`, a row indented deeper than `col` is a wrapped line of the item above and does not end
+ * the walk.
+ */
+function alignedSiblings(texts: readonly string[], inCluster: ReadonlySet<number>, row: number, col: number, wrapped: boolean): Siblings {
   let count = 0;
+  let first = row;
+  let last = row;
   for (const dir of [-1, 1]) {
     for (let j = row + dir; inCluster.has(j); j += dir) {
       const other = unboxed(texts[j]!);
-      if (isBlank(other) || other.search(/\S/u) !== col) break;
-      count++;
+      if (isBlank(other)) break;
+      const at = other.search(/\S/u);
+      if (at === col) count++;
+      else if (!(wrapped && at > col)) break;
+      if (dir < 0) first = j;
+      else last = j;
     }
   }
-  return count;
+  return { count, first, last };
 }
 
-function cuesIn(texts: readonly string[], cluster: readonly number[]): ClusterCues {
+/** Whether a row holds only a slash query, box glyphs read as blank ("╰─ /", "❯ /usage"). */
+function isCommandQuery(text: string): boolean {
+  return COMMAND_QUERY.test(text.replace(BOX_GLYPHS, " "));
+}
+
+/** Whether the first row under a slash query, rules passed over, is a choice: a pointer row or a
+ *  slash command with its description. */
+function choiceUnder(texts: readonly string[], inCluster: ReadonlySet<number>, row: number): boolean {
+  for (let j = row + 1; inCluster.has(j) && j <= row + 2; j++) {
+    const text = unboxed(texts[j]!);
+    if (isRule(text)) continue;
+    return POINTER_ROW.test(text) || COMMAND_ENTRY.test(text);
+  }
+  return false;
+}
+
+/**
+ * The cues in a run of rows. `readOverlay` reads the overlay shapes of the header too; only the no-frame
+ * cluster passes it.
+ */
+function cuesIn(texts: readonly string[], cluster: readonly number[], readOverlay = false): ClusterCues {
   const cues: Cue[] = [];
   const inCluster = new Set(cluster);
   const numbered: { row: number; n: number }[] = [];
@@ -217,6 +328,10 @@ function cuesIn(texts: readonly string[], cluster: readonly number[]): ClusterCu
   let keyHintRow = -1;
   let keyHints = 0;
   let singleKeyRow = -1;
+  let dismissRow = -1;
+  let commandQueryRow = -1;
+  let ruledList = false;
+  const commandCols = new Map<number, number[]>();
 
   for (const i of cluster) {
     const text = unboxed(texts[i]!);
@@ -227,12 +342,25 @@ function cuesIn(texts: readonly string[], cluster: readonly number[]): ClusterCu
     const pointer = POINTER_ROW.exec(text);
     if (pointer !== null && !pointerListed) {
       const textCol = pointer[1]!.length + pointer[2]!.length + pointer[3]!.length;
-      const siblings = alignedSiblings(texts, inCluster, i, textCol);
-      if (n !== null || checkbox || siblings > 0) {
+      const siblings = alignedSiblings(texts, inCluster, i, textCol, readOverlay);
+      if (n !== null || checkbox || siblings.count > 0) {
         pointerListed = true;
-        pointedList = siblings >= 2;
+        pointedList = siblings.count >= 2;
         pointerRow = i;
+        ruledList =
+          readOverlay &&
+          inCluster.has(siblings.first - 1) &&
+          inCluster.has(siblings.last + 1) &&
+          isRule(texts[siblings.first - 1]!) &&
+          isRule(texts[siblings.last + 1]!);
       }
+    }
+    if (readOverlay) {
+      const header = DISMISS_HEADER.exec(text);
+      if (dismissRow < 0 && header !== null && /\p{L}/u.test(header[1]!)) dismissRow = i;
+      const command = COMMAND_ENTRY.exec(text);
+      if (command !== null) commandCols.set(command[1]!.length, [...(commandCols.get(command[1]!.length) ?? []), i]);
+      if (commandQueryRow < 0 && isCommandQuery(texts[i]!) && choiceUnder(texts, inCluster, i)) commandQueryRow = i;
     }
     const hints = text.match(KEY_HINTS)?.length ?? 0;
     if (hints > 0 && keyHintRow < 0) keyHintRow = i;
@@ -246,8 +374,13 @@ function cuesIn(texts: readonly string[], cluster: readonly number[]): ClusterCu
   if (checkboxes.length >= 2) cues.push({ kind: "checkbox-list", row: checkboxes[0]! });
   if (keyHintRow >= 0) cues.push({ kind: "key-hint", row: keyHintRow });
   if (singleKeyRow >= 0) cues.push({ kind: "single-key", row: singleKeyRow });
+  if (dismissRow >= 0) cues.push({ kind: "dismiss-header", row: dismissRow });
+  const commandList = [...commandCols.values()].find((rows) => rows.length >= COMMAND_LIST_MIN);
+  if (commandList !== undefined) cues.push({ kind: "command-list", row: commandList[0]! });
+  if (commandQueryRow >= 0) cues.push({ kind: "command-query", row: commandQueryRow });
   const listed = numbered.length > 0 || checkboxes.length > 0 || pointerListed;
-  return { cues, listed, pointerListed, pointedList, keyHints };
+  const overlay = dismissRow >= 0 || commandList !== undefined || commandQueryRow >= 0 || ruledList;
+  return { cues, listed, pointerListed, pointedList, keyHints, overlay };
 }
 
 /**
@@ -260,7 +393,7 @@ export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRea
   const hash = shortHash(tail.map((i) => texts[i]!.trimEnd()).join("\n"));
 
   if (frame === null) {
-    const found = cuesIn(texts, tail);
+    const found = cuesIn(texts, tail, true);
     return { cluster: tail, above: [], cues: found.cues, strength: strengthOf(found.cues, found), hash };
   }
 
@@ -280,7 +413,8 @@ export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRea
  * Strong: a single-key prompt; a pointer on a listed row with a numbered list; a key-hint footer with
  * a listed row. Two more shapes name a list or a choice on their own, so they are strong too: a
  * pointed list of three rows or more, and key hints that name two keys or more ("↑/↓ navigate ·
- * enter select", "enter confirm · esc cancel"). Any other cue alone is weak.
+ * enter select", "enter confirm · esc cancel"). In the no-frame cluster an overlay shape (see the
+ * header) is strong on its own. Any other cue alone is weak.
  */
 function strengthOf(cues: readonly Cue[], found: ClusterCues): CueStrength {
   if (cues.length === 0) return "none";
@@ -288,6 +422,6 @@ function strengthOf(cues: readonly Cue[], found: ClusterCues): CueStrength {
   if (has("single-key")) return "strong";
   if (found.pointerListed && has("numbered-list")) return "strong";
   if (has("key-hint") && found.listed) return "strong";
-  if (found.pointedList || found.keyHints >= 2) return "strong";
+  if (found.pointedList || found.keyHints >= 2 || found.overlay) return "strong";
   return "weak";
 }

@@ -6,7 +6,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { loadConfig } from "../config.ts";
 import type { MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
+import { guard, SURFACE_OFF_TEXT, surfaceRoute } from "../server.ts";
 import type { AgentView } from "../types.ts";
 import { askOf } from "../../web/src/lib/surface/surface.ts";
 import { DISAGREE_REPEAT_MS, DISAGREE_TAG, SurfaceShadow, freeOnOldAxis, maskSurface, surfaceRouteBody } from "./shadow.ts";
@@ -19,8 +21,9 @@ const PERMISSION = "claude-lab--permission-bash--w82.txt";
 const SURVEY = "claude-lab--survey-rating-above-box--w82.txt";
 /** A dialog fixture whose screen still shows a live box: the Surface sees no modal, the old reader a block. */
 const AGENTS = "claude-lab--agents-screen--w82.txt";
-/** The harness id the fixtures were captured under; the profile is picked by it. */
-const HARNESS = ["cl", "aude"].join("");
+/** The harness id the fixtures were captured under; the profile is picked by it. Test files are
+ *  outside the surface code's name ban (no-harness-names.test.ts). */
+const HARNESS = "claude";
 
 class FakeMux {
   screens = new Map<string, { text: string; revision: number }>();
@@ -245,5 +248,58 @@ describe("the debug route body", () => {
     expect(askOf(masked.modal)?.options[0]?.label).toContain("password=");
     const plain = { revision: 1, turn: "idle", modal: "none", composer: "empty" } as const;
     expect(maskSurface(plain)).toBe(plain);
+  });
+});
+
+describe("the debug route", () => {
+  // The handler in server.ts runs inside Bun.serve: the gate, then the session, then `surfaceRoute`.
+  // The gate and `surfaceRoute` are run here for real; the order in the handler is read off the source,
+  // as server.test.ts does for the other routes inside Bun.serve.
+  const config = loadConfig({ COLLIE_STATE_DIR: "/nonexistent-m56-surface-state" });
+  const gate = {
+    enforced: () => true,
+    resolve: (token: string | null) => (token === "tok-phone" ? { label: "phone" } : null),
+  };
+  const request = (headers: Record<string, string>): Request =>
+    new Request("http://collie.invalid/api/surface?pane=w1:p1", { headers: { host: "127.0.0.1:8787", ...headers } });
+
+  test("is token-gated as a read: no token or a wrong one is a 403, the paired token passes", async () => {
+    const none = guard(request({}), config, "read", gate);
+    expect(none?.status).toBe(403);
+    expect(await none!.text()).toBe("device not paired");
+    expect(guard(request({ authorization: "Bearer tok-other" }), config, "read", gate)?.status).toBe(403);
+    expect(guard(request({ authorization: "Bearer tok-phone" }), config, "read", gate)).toBeNull();
+  });
+
+  test("the handler gates first, then resolves the session, then answers through surfaceRoute", () => {
+    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/surface" && req.method === "GET") {');
+    expect(at).toBeGreaterThan(0);
+    const block = src.slice(at, src.indexOf("\n      }\n", at));
+    const gateAt = block.indexOf('const denied = guard(req, cfg, "read", pairingGate);');
+    const deniedAt = block.indexOf("if (denied) return denied;");
+    const sessionAt = block.indexOf("localRuntime(");
+    const answerAt = block.indexOf("return surfaceRoute(rt.surface,");
+    expect(gateAt).toBeGreaterThan(0);
+    expect(deniedAt).toBeGreaterThan(gateAt);
+    expect(sessionAt).toBeGreaterThan(deniedAt);
+    expect(answerAt).toBeGreaterThan(sessionAt);
+  });
+
+  test("with the mode off the route is a 404 that says why", async () => {
+    const off = surfaceRoute(undefined, "w1:p1", false, null);
+    expect(off.status).toBe(404);
+    expect(await off.text()).toBe(SURFACE_OFF_TEXT);
+    expect(SURFACE_OFF_TEXT).toContain("COLLIE_SURFACE_SHADOW=1");
+  });
+
+  test("with the mode on it answers the shadow's body as JSON, and a pane not read is a 404", async () => {
+    const r = rig();
+    r.mux.set("w1:p1", IDLE, 4);
+    await r.shadow.observe([agent("w1:p1")]);
+    const on = surfaceRoute(r.shadow, "w1:p1", false, null);
+    expect(on.status).toBe(200);
+    expect(await on.json()).toMatchObject({ pane: "w1:p1", surface: { revision: 4, modal: "none" } });
+    expect(surfaceRoute(r.shadow, "w9:p9", false, null).status).toBe(404);
   });
 });
