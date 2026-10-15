@@ -259,10 +259,10 @@ const CARD_FIXTURES = {
     notModals: [],
   },
   // README: the `/resume` Conversations picker after a search that matched nothing — a real dialog
-  // with no row to select, so the menu grammar declines it and Escape is the way out. Every other AGY
-  // dialog fixture is one of its own grammars reads.
-  agy: { modals: ["agy--resume-picker-nomatch.txt"], notModals: [] },
-  antigravity: { modals: ["agy--resume-picker-nomatch.txt"], notModals: [] },
+  // with no row to select, so the menu grammar declines it and Escape is the way out — and a checkbox
+  // question, which no recipe here ticks. Every other AGY dialog fixture is one its grammars read.
+  agy: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
+  antigravity: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
   // Every opencode picker: composerReady refuses it (the picker shape) and no grammar reads it, so
   // Escape, which closes a picker (probed on 1.18.32), is its way out. The permission steps and every
   // question dialog the grammars lift (single select, multi select, a many-question call, the Confirm

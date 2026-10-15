@@ -31,6 +31,9 @@ const NEUTRAL = new Set([
   // The Conversations picker after a search that matched nothing: no highlighted row, so nothing to
   // select. It stays raw, and the unread-dialog card offers Escape.
   "agy--resume-picker-nomatch.txt",
+  // A checkbox question: Space ticks a row, which no multi-select recipe here sends, so it stays raw
+  // and the unread-dialog card offers Escape.
+  "agy--ask-multi.txt",
 ]);
 
 // Claude captures agy's grammar still claims, by name. `isAlienBuffer` (markers.ts) keeps agy off a
@@ -134,9 +137,9 @@ describe("agyAdapter unit & footer safety", () => {
     expect(model!.family).toBe("select");
     expect(model!.options).toHaveLength(3);
     expect(model!.options[0]!.label).toBe("Run build directly");
-    expect(model!.options[0]!.keys).toEqual(["1", "Enter"]);
+    expect(model!.options[0]!.keys).toEqual(["1"]);
     expect(model!.options[1]!.label).toBe("Inspect directory first");
-    expect(model!.options[1]!.keys).toEqual(["2", "Enter"]);
+    expect(model!.options[1]!.keys).toEqual(["2"]);
 
     const blocks = agyAdapter.buildBlocks(lines);
     expect(blocks.some((b) => b.kind === "prompt-select")).toBe(true);
@@ -435,5 +438,39 @@ describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => 
     expect(rows.some((r) => r.includes("enter Pick"))).toBe(true);
     const lines = splitLines(parseAnsi(rows.join("\n")));
     expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu")).toBe(false);
+  });
+});
+
+describe("agy: a question takes its digit alone (1.3.5)", () => {
+  // Measured live 2026-10-15: the digit answers on its own. On a one-question call it submitted; on
+  // the first of two it answered and moved to the second; on the last it submitted the set. An Enter
+  // sent after it answered the NEXT question with whatever row its pointer stood on.
+  const read = (name: string) => splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  const promptOf = (lines: ReturnType<typeof read>) => {
+    const block = buildBlocks(lines, { agent: "agy" }).find((b) => b.kind === "prompt-select");
+    return block?.kind === "prompt-select" ? block.prompt : null;
+  };
+
+  it.each([
+    ["agy--ask-two-q1.txt", "Question 1/2: Which animal do you like?", [["cat", "1"], ["dog", "2"], ["fox", "3"]]],
+    ["agy--ask-two-q2.txt", "Question 2/2: Which drink do you want?", [["tea", "1"], ["coffee", "2"]]],
+  ])("%s lifts each option as its digit alone", (name, question, options) => {
+    const prompt = promptOf(read(name));
+    expect(prompt?.question).toBe(question);
+    expect(prompt?.options.map((o) => [o.label, o.keys.join("+")])).toEqual(options);
+  });
+
+  it("sends no Enter after a digit on the captured one-question menu", () => {
+    const prompt = promptOf(read("agy--select-menu.txt"));
+    expect(prompt?.options.length).toBeGreaterThan(1);
+    expect(prompt?.options.every((o) => o.keys.length === 1 && /^[1-9]$/.test(o.keys[0]!))).toBe(true);
+  });
+
+  it("keeps a checkbox question raw, also under a Submit All footer", () => {
+    const lines = read("agy--ask-multi.txt");
+    expect(buildBlocks(lines, { agent: "agy" }).map((b) => b.kind)).toEqual(["unread-dialog"]);
+    const rows = lines.map((l) => lineText(l).replace("enter Submit · esc Skip", "enter Submit All · esc Skip"));
+    expect(rows.some((r) => r.includes("Submit All"))).toBe(true);
+    expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
   });
 });

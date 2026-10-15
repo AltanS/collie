@@ -106,6 +106,9 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
     }
   }
   if (!family) return null;
+  // A checkbox question: Space ticks a row and a digit's effect there is unmeasured, so no recipe here
+  // answers it. It stays raw and the unread-dialog card offers Escape.
+  if (/\bspace\s+toggle\b/i.test(texts[fi]!)) return null;
 
   const footerIndex = fi;
 
@@ -178,10 +181,11 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
     options.push({
       label: row.label,
       description: desc.length ? desc.join(" ") : undefined,
-      keys:
-        family === "select" || family === "plan"
-          ? [String(row.n), "Enter"]
-          : [String(row.n)],
+      // The digit alone answers a question (1.3.5, live 2026-10-15): it submitted a one-question call,
+      // and on the first of two it answered and moved on, so a trailing Enter answered the second
+      // question with whatever row its pointer stood on. The plan dialog keeps digit then Enter, which
+      // was not re-measured.
+      keys: family === "plan" ? [String(row.n), "Enter"] : [String(row.n)],
     });
   }
   if (options.length === 0) return null;

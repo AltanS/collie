@@ -1770,6 +1770,9 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
 | `agy--resume-picker-search.txt` | Same picker with `Reply with` typed: `Search: Reply with` and five matches, the first highlighted | `blocked` |
 | `agy--resume-picker-search-moved.txt` | Same search after Down: the highlight on the second match, so the menu signature differs | `blocked` |
 | `agy--resume-picker-nomatch.txt` | Same picker with `/resume` typed into its search: `No matching conversations.` and no highlighted row. Stays raw; the unread-dialog card offers Escape | `blocked` |
+| `agy--ask-two-q1.txt` | agy 1.3.5, a two-question call: `Question 1/2: Which animal do you like?`, numbered options, `4. Write-in...`, footer `↑/↓ Navigate · → Next · enter Select · esc Skip`. Lifts with each option as its digit ALONE | `blocked` |
+| `agy--ask-two-q2.txt` | The same call after `2`: `Question 2/2: Which drink do you want?`, footer `↑/↓ Navigate · ← Back · enter Submit All · esc Skip`. Lifts the same way | `blocked` |
+| `agy--ask-multi.txt` | A checkbox question: `Question 1/1`, rows `1. [ ] apple` …, footer `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`. Stays raw (no recipe here ticks with Space); the unread-dialog card offers Escape | `blocked` |
 
 The three `agy--slash-*` captures of 2026-10-15 are visible-screen reads of agy 1.3.5 in a throwaway
 Herdr session (`herdr pane read --source visible --format ansi`). The account email became
@@ -1785,6 +1788,13 @@ keeps its place. In `agy--resume-picker-nomatch.txt` one sentence of the resumed
 thought, which quoted a local instruction file, was deleted. Measured at the time: Down moved the highlight,
 a first Escape cleared a typed search and a second closed the picker, and Enter resumed the
 highlighted conversation (a canary run).
+
+The three `agy--ask-*` captures of 2026-10-15 are reads of agy 1.3.5 in a throwaway Herdr session, with the
+same email and path swaps; the earlier canary turns above the last question were cut, so each keeps the
+header and its own turn. Measured at the time: a digit alone answers. On a one-question call it
+submitted; on `1/2` it answered and moved to `2/2`; on `2/2` it submitted the set. The digit-then-Enter
+recipe the reader used before answered `2/2` with its highlighted row, so `1/2` lifts with the digit
+alone now. The plan-approval dialog keeps digit then Enter; it was not re-measured.
 
 
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is

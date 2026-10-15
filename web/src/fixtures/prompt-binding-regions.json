@@ -1,5 +1,20 @@
 [
   {
+    "fixture": "agy--ask-multi.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Which fruits do you like?\n\n> 1. [ ] apple\n  2. [ ] banana\n  3. [ ] cherry\n  4. Write-in...\n\n  ↑/↓ Navigate · space Toggle · enter Submit · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
+    "fixture": "agy--ask-two-q1.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/2: Which animal do you like?\n\n> 1. cat\n  2. dog\n  3. fox\n  4. Write-in...\n\n  ↑/↓ Navigate · → Next · enter Select · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
+    "fixture": "agy--ask-two-q2.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 2/2: Which drink do you want?\n\n> 1. tea\n  2. coffee\n  3. Write-in...\n\n  ↑/↓ Navigate · ← Back · enter Submit All · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
     "fixture": "agy--permission-bash.txt",
     "detector": "menu",
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   ls -la /tmp\n\nDo you want to proceed?\n> 1. Yes\n  2. Yes, and always allow in this conversation for commands that start with 'ls'\n  3. Yes, and always allow for commands that start with 'ls' (Persist to settings.json)\n  4. No\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                                                                                                                                                                                                   Gemini 3.7 Flash · low"
