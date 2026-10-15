@@ -154,10 +154,10 @@ const PI: readonly AgentCommand[] = [
 
 // ── opencode (opencode.ai) ───────────────────────────────────────────────────
 const OPENCODE: readonly AgentCommand[] = [
-  { command: "/compact", description: "Compact (summarize) the current session", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/compact", description: "Compact (summarize) the current session", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/new", description: "Start a new session (alias /clear)", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/models", description: "List and switch between available models", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/sessions", description: "List and switch sessions (alias /resume)", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/models", description: "List and switch between available models", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/sessions", description: "List and switch sessions (alias /resume)", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/init", description: "Guided setup to create or update AGENTS.md", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/share", description: "Share the current session via a link", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/undo", description: "Undo the last turn and revert file changes (Git-backed)", takesArg: false, argHint: "", common: true, dangerous: true },
@@ -236,9 +236,11 @@ const AGY: readonly AgentCommand[] = [
   { command: "/plan", description: "Switch into plan mode to outline steps before execution", takesArg: true, argHint: "[goal]", common: true, dangerous: false },
   { command: "/grill-me", description: "Interactive interview to resolve ambiguity and align on design", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/learn", description: "Persist lessons, corrections, and project workflows", takesArg: true, argHint: "[lesson]", common: true, dangerous: false },
-  { command: "/compact", description: "Summarize conversation history to free up context", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/compact", description: "Summarize conversation history to free up context", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  // From agy 1.3.5's own `/` completion (2026-10-15), which opened its conversation picker on Enter.
+  { command: "/resume", description: "Browse and resume past conversations", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/clear", description: "Clear conversation history and start fresh", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/model", description: "Switch active model or reasoning effort", takesArg: true, argHint: "[model]", common: true, dangerous: false },
+  { command: "/model", description: "Switch active model or reasoning effort", takesArg: true, argHint: "[model]", common: true, dangerous: false }, // harness-bar
   { command: "/status", description: "Show session stats, model, and connectivity status", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/subagents", description: "View and manage active background subagents", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/skills", description: "List and manage available skills", takesArg: false, argHint: "", common: false, dangerous: false },
@@ -257,9 +259,9 @@ const AGY: readonly AgentCommand[] = [
 // Sourced from Grok's published slash-command reference, not from pane captures.
 const GROK: readonly AgentCommand[] = [
   { command: "/new", description: "Start a fresh session and clear the conversation", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/compact", description: "Compress history to reclaim context; optional focus note", takesArg: true, argHint: "[context]", common: true, dangerous: false },
-  { command: "/resume", description: "Open the session picker to reload a previous session", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/model", description: "Switch model; optional effort as a second argument", takesArg: true, argHint: "[name] [effort]", common: true, dangerous: false },
+  { command: "/compact", description: "Compress history to reclaim context; optional focus note", takesArg: true, argHint: "[context]", common: true, dangerous: false }, // harness-bar
+  { command: "/resume", description: "Open the session picker to reload a previous session", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/model", description: "Switch model; optional effort as a second argument", takesArg: true, argHint: "[name] [effort]", common: true, dangerous: false }, // harness-bar
   { command: "/copy", description: "Copy the most recent response, or the Nth, or write a file", takesArg: true, argHint: "[N|file]", common: true, dangerous: false },
   { command: "/context", description: "Show how the context window is being used", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/rewind", description: "Roll the conversation back to an earlier turn", takesArg: false, argHint: "", common: true, dangerous: true },
@@ -281,13 +283,13 @@ const GROK: readonly AgentCommand[] = [
 // /model there. Muse has more commands than these 23 (/plan, /permissions, /quit, …); the rest are
 // reachable by typing, as on every catalog.
 const MUSE: readonly AgentCommand[] = [
-  { command: "/compact", description: "Summarize prior context to reclaim room", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/compact", description: "Summarize prior context to reclaim room", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/new", description: "Start a fresh session, keeping the terminal scrollback", takesArg: false, argHint: "", common: true, dangerous: true },
   { command: "/clear", description: "Start a fresh session and wipe the scrollback", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/model", description: "Choose the model mid-session", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/resume", description: "Pick a retained session in this workspace to resume", takesArg: true, argHint: "[--last]", common: true, dangerous: false },
+  { command: "/model", description: "Choose the model mid-session", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/resume", description: "Pick a retained session in this workspace to resume", takesArg: true, argHint: "[--last]", common: true, dangerous: false }, // harness-bar
   { command: "/help", description: "Show the full set of commands in this workspace", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/effort", description: "Change the reasoning effort mid-session", takesArg: true, argHint: "[level]", common: false, dangerous: false },
+  { command: "/effort", description: "Change the reasoning effort mid-session", takesArg: true, argHint: "[level]", common: false, dangerous: false }, // harness-bar
   { command: "/name", description: "Show or rename this session", takesArg: true, argHint: "[name]", common: false, dangerous: false },
   { command: "/fork", description: "Branch a new session from the latest message; optional first prompt", takesArg: true, argHint: "[prompt]", common: false, dangerous: false },
   { command: "/rewind", description: "Branch from an earlier user message into a new session", takesArg: false, argHint: "", common: false, dangerous: false },

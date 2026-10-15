@@ -36,8 +36,18 @@ describe("the shipped bar", () => {
     }
   });
 
-  it("names a bar for exactly the four harnesses this milestone drove from a phone", () => {
-    expect(BAR_AGENTS.toSorted()).toEqual(["claude", "codex", "omp", "pi"]);
+  it("names a bar for every harness whose pickers were opened on a live pane", () => {
+    expect(BAR_AGENTS.toSorted()).toEqual([
+      "agy",
+      "antigravity",
+      "claude",
+      "codex",
+      "grok",
+      "muse",
+      "omp",
+      "opencode",
+      "pi",
+    ]);
   });
 
   it("gives Claude Model, Effort, Compact and Resume, in that order", () => {
@@ -58,8 +68,28 @@ describe("the shipped bar", () => {
     expect(barFor("omp").map((i) => i.id)).toEqual(["model", "compact", "tree", "resume"]);
   });
 
+  it("gives opencode its own spellings: /models and /sessions", () => {
+    expect(barFor("opencode").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+    expect(barFor("opencode").map((i) => i.command)).toEqual(["/models", "/compact", "/sessions"]);
+  });
+
+  it("gives Grok no Effort button, because a bare /effort opens no picker", () => {
+    // Grok's /model picker walks model, window and effort in turn; a bare /effort only leaves an
+    // argument template in the input box.
+    expect(barFor("grok").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+  });
+
+  it("gives Muse Claude's four, because its /effort opens a picker of its own", () => {
+    expect(barFor("muse").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
+  });
+
+  it("gives agy one bar under both of its names, with Effort inside its /model picker", () => {
+    expect(barFor("agy").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+    expect(barFor("antigravity")).toEqual(barFor("agy"));
+  });
+
   it("renders nothing for an agent with no bar, and for no agent at all", () => {
-    for (const agent of ["grok", "opencode", "agy", "antigravity", "bash", "", undefined, null]) {
+    for (const agent of ["hermes", "bash", "", undefined, null]) {
       expect(barFor(agent), `${String(agent)} has no bar`).toEqual([]);
     }
   });
