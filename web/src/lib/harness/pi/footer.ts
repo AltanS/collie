@@ -185,6 +185,21 @@ export function keyHintPairs(text: string): number {
   return pairs;
 }
 
+/**
+ * The key-hint rows of pi 1.2.0's two list dialogs whose rows are not all key/action pairs: `/settings`
+ * (`Type to search · Enter/Space to change · Esc to cancel`, pi--v120-settings-padded2.txt) leads with
+ * the search hint, and `/scoped-models` (`Enter toggle · Ctrl+A all · ... · Ctrl+S save · all enabled`,
+ * pi--v120-scoped-models-padded2.txt) ends on a status. Matched on the stable fragment, since the
+ * rest of the row changes with the width and the state. Both screens draw a search input row
+ * (`> ` and the cursor cell) that reads as an editor, so the hint row is the only evidence of a dialog.
+ */
+const LIST_DIALOG_HINTS = [/\bType to search\s+[•·]\s+Enter\/Space to change\b/, /\bEnter toggle\s+[•·]\s+Ctrl\+A all\b/];
+
+/** Whether a row is one of pi 1.2.0's list-dialog hint rows (`LIST_DIALOG_HINTS`). */
+export function listDialogHint(text: string): boolean {
+  return LIST_DIALOG_HINTS.some((re) => re.test(text));
+}
+
 function enterRole(verb: string): EnterRole {
   if (verb === "select" || verb === "confirm") return "select";
   if (verb === "submit") return "submit";

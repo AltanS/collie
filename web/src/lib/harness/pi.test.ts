@@ -6,6 +6,7 @@ import { splitLines } from "../blocks";
 import { describeAdapterConformance } from "./conformance";
 import { buildBlocks } from "./index";
 import { piAdapter } from "./pi";
+import { draftCarriesSend } from "../reply-action";
 import { adapterFor } from "./registry";
 
 const PANES = join(import.meta.dirname, "../../fixtures/panes");
@@ -26,6 +27,7 @@ describeAdapterConformance(piAdapter, {
   // cannot find on the screen, so the write goes out unbound.
   unboundComposerFixtures: [
     "pi--v110-slash-palette.txt",
+    "pi--v120-slash-palette-padded.txt",
     "pi--omo-v5130-panel-draft.txt",
     "pi--omo-v5130-panel-phantom.txt",
     "pi--omo-v5130-panel-running.txt",
@@ -69,6 +71,24 @@ describe("pi adapter routing", () => {
     expect(piAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
     expect(piAdapter.composerReady?.(lines)).toBe(false);
     expect(buildBlocks(lines, { agent: "pi" }).map((block) => block.kind)).toContain("unread-dialog");
+  });
+
+  // pi 1.2.0's /settings and /scoped-models were read as a ready editor (found capturing padded screens
+  // for #442). They hold the send now, as an unread dialog: the phone shows the raw mirror and the
+  // printed keys, the same block as pi's /model. The options are NOT readable as a pointed list yet, so
+  // nothing here is answerable; a raw modal that blocks sending is the 1.21.3 scope.
+  it.each([
+    "pi--v120-settings-padded2.txt",
+    "pi--v120-scoped-models-padded2.txt",
+  ])("holds the send on %s as an unread, unanswerable dialog, the same block kind as /model", (name) => {
+    const lines = load(name);
+    const kinds = (l: typeof lines) => buildBlocks(l, { agent: "pi" }).map((block) => block.kind);
+    expect(piAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBeNull();
+    expect(kinds(lines)).toContain("unread-dialog");
+    expect(kinds(lines)).toEqual(kinds(load("pi--v110-core-selector.txt")));
   });
 
   // Issue 416: a default OmO install, whose last status row is a plain badge, and its slash
@@ -135,6 +155,24 @@ describe("pi adapter routing", () => {
     expect(piAdapter.composerReady?.(idle)).toBe(true);
     expect(piAdapter.extractInputDraft(load(draftName))).toBe("collie stock pi draft probe");
     expect(buildBlocks(idle, { agent: "pi" }).every((block) => block.kind === "raw")).toBe(true);
+  });
+
+  // Issue 442: with `editorPaddingX` above 0 the typed draft opens with a space. The guarded send
+  // (lib/reply-action.ts) types only on a ready composer and presses Enter only when composerReady
+  // still holds and the draft reads back, so each fixture must pass both reads.
+  it.each([
+    ["pi--v120-idle-padded.txt", null],
+    ["pi--v120-draft-unpadded.txt", "hello from the probe"],
+    ["pi--v120-draft-padded.txt", "hello from the probe"],
+    ["pi--v120-draft-padded-multiline.txt", "line one line two"],
+    ["pi--v120-slash-palette-padded.txt", "/"],
+  ])("keeps a pi pane with editor padding sendable: %s", (name, draft) => {
+    const lines = load(name);
+    expect(piAdapter.composerReady?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBe(draft);
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
+    expect(buildBlocks(lines, { agent: "pi" }).every((block) => block.kind === "raw")).toBe(true);
+    if (draft !== null) expect(draftCarriesSend(draft, piAdapter.extractInputDraft(lines))).toBe(true);
   });
 
   it.each(["pi--v0871-narrow-idle.txt", "pi--v110-stock-narrow-idle.txt", "pi--v0871-question-answered.txt"])(

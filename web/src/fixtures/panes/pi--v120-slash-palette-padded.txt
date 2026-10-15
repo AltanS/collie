@@ -1,0 +1,11 @@
+[0m[38;2;43;145;141m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ /[0m[7m [0m                                                                                                                    
+[0m[38;2;43;145;141m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[38;2;216;108;216m→ settings       Open settings menu[0m                                                                                   
+   model[0m[38;2;157;157;157m          <provider/model> — Select model (opens selector UI)[0m                                                  
+   tree[0m[38;2;157;157;157m           Navigate session tree (switch branches)[0m                                                              
+   thinking[0m[38;2;157;157;157m       <level> — Set thinking level[0m                                                                         
+   scoped-models[0m[38;2;157;157;157m  Enable/disable models for Ctrl+P cycling[0m                                                             
+ [0m[38;2;157;157;157m  (1/24)[0m                                                                                                              
+[0m[38;2;127;127;127m/tmp/collie-pi-padding-probe/work[0m
+[0m[38;2;127;127;127m0.0%/262k (auto)                                                                          moonshotai/kimi-k2.6 • medium[0m

@@ -685,6 +685,21 @@ describe("collie doctor — the local checks", () => {
     expect(code).toBe(EXIT.FAIL);
   });
 
+  // ADR 0013's tunnel row: a peer that dials its lead on loopback is behind an operator-owned tunnel
+  // (or shares the lead's host), so the lead's dial lands on loopback too and the default bind is right.
+  test("bind: loopback on a PEER whose lead is dialled on loopback is a tunnel, not the trap", async () => {
+    for (const address of ["http://127.0.0.1:18787", "127.0.0.1:18787", "[::1]:8787", "https://localhost:8787"]) {
+      const peer = peerStore({ lead: member({ memberId: "desk", role: "lead", address }) });
+      const { byCheck } = await findings(
+        harness(peer, [hello({ memberId: "desk" })], {
+          files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
+        }),
+      );
+      expect(byCheck.get("bind")?.status, address).toBe("ok");
+      expect(byCheck.get("bind")?.detail, address).toContain("reaches its lead on loopback too");
+    }
+  });
+
   test("bind: loopback on a lead or solo is the RIGHT answer, not a finding", async () => {
     const solo = await findings(harness(null));
     expect(solo.byCheck.get("bind")?.status).toBe("ok");

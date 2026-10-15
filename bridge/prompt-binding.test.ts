@@ -271,6 +271,53 @@ describe("client/bridge binding contract", () => {
   });
 });
 
+// Claude Code 2.1.299 draws its task checklist under a dialog's footer, and a list of five rows or
+// more pushes the region out of the tail window. A trailing checklist whose counts agree with its
+// header is not counted against the tail (web/src/lib/task-checklist.ts); anything else still is.
+describe("a task checklist under the region", () => {
+  const LONG = "claude--v2299-ask-under-long-task-list.txt";
+  const raw = readFileSync(join(FIXTURE_DIR, LONG), "utf8");
+  const { region } = REGIONS.find((r) => r.fixture === LONG)!;
+  const regionLines = normalizePromptRegion(region);
+  /** Seven rows under the region, each `rows(i)`, so the region ends outside the six-row tail. */
+  const under = (header: string, row: (i: number) => string): string =>
+    [region, header, ...Array.from({ length: 6 }, (_, i) => row(i))].join("\n");
+
+  test("the phone's region binds on the screen with the long list under it", () => {
+    expect(verifyPromptBinding(raw, region)).toEqual({ ok: true });
+    expect(verifyExpectedPrompt(raw, region)).toEqual({ ok: true });
+  });
+
+  test("the style check runs at the same place and passes", () => {
+    const freshLines = normalizePromptRegion(raw);
+    const start = freshLines.findIndex((_, i) => regionLines.every((line, k) => freshLines[i + k] === line));
+    const styled = encodeStyledRegion(styledRegionLines(raw).slice(start, start + regionLines.length));
+    expect(verifyPromptBinding(raw, region, styled)).toEqual({ ok: true, styled: "checked" });
+  });
+
+  test("a list whose counts agree is skipped wherever it sits under the region", () => {
+    expect(verifyExpectedPrompt(under("  6 tasks (0 done, 6 open)", (i) => `  ◻ Step ${i}`), region)).toEqual({ ok: true });
+  });
+
+  test("seven rows of other output under the region still push it out of the tail", () => {
+    expect(verifyExpectedPrompt(under("output row", (i) => `output row ${i}`), region)).toEqual({
+      ok: false,
+      reason: "not_in_tail",
+    });
+  });
+
+  test("a list whose counts do not add up is counted against the tail", () => {
+    expect(verifyExpectedPrompt(under("  6 tasks (1 done, 5 open)", (i) => `  ◻ Step ${i}`), region)).toEqual({
+      ok: false,
+      reason: "not_in_tail",
+    });
+    expect(verifyExpectedPrompt(under("  7 tasks (0 done, 6 open)", (i) => `  ◻ Step ${i}`), region)).toEqual({
+      ok: false,
+      reason: "not_in_tail",
+    });
+  });
+});
+
 // ADR 0080 point 7. The text check strips every SGR escape, so a pointer drawn only as a background
 // colour is invisible to it. `expected_styled` is the phone's canonical styled lines of the same rows
 // (behind a `v1` format line); the bridge runs the SAME function over the fresh read and compares at

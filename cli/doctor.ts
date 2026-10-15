@@ -13,7 +13,7 @@ import {
 import { HOST, type Host } from "../bridge/host.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
-import { DEFAULT_PORT, envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
+import { DEFAULT_PORT, envBool, isLoopbackBindHost, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import { configFilePaths } from "../bridge/config-source.ts";
 import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
@@ -39,7 +39,7 @@ import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zelli
 import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
-import type { HelloResult, CrewFetch, PeerOutcome } from "../bridge/crew/peer-client.ts";
+import { crewUrl, type HelloResult, type CrewFetch, type PeerOutcome } from "../bridge/crew/peer-client.ts";
 import { crewRuntimePath, parseMarker, rosterDrift, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import {
@@ -234,7 +234,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     updateSource(deps, install),
     ...quarantine(deps, install),
     herdrSocket(deps),
-    bindCheck(deps, mode),
+    bindCheck(deps, mode, leadIsOnLoopback(data?.lead?.address ?? null)),
     bindWildcard(deps),
     acl(deps),
     frontDoor(deps, mode),
@@ -831,14 +831,32 @@ function isLoopbackBind(host: string): boolean {
 }
 
 /**
+ * Whether this peer dials its lead on loopback. The stored address goes through `crewUrl`, the same
+ * builder the dial uses, so an address the dial would refuse never counts.
+ */
+function leadIsOnLoopback(address: string | null): boolean {
+  const url = address === null ? null : crewUrl(address, "");
+  return url !== null && isLoopbackBindHost(new URL(url).hostname);
+}
+
+/**
  * **The #1 field trap.** A peer that kept the default loopback bind answers its own machine and
  * nobody else, so the lead's `hello` never lands, the member never loses its `provisional` marker,
  * and every symptom points at the lead.
+ *
+ * Except when this peer reaches its lead on loopback too. Then the lead sits on this host or at the
+ * far end of an operator-owned tunnel (an `ssh -L`/`-R` pair, say), the lead's own dial arrives over
+ * that same tunnel, and loopback is the right bind: ADR 0013's table names both rows. This peer
+ * cannot see the lead's dial, so a tunnel that runs one way only is the lead's `member-reach` to
+ * catch.
  */
-function bindCheck(deps: DoctorDeps, mode: string): Finding {
+function bindCheck(deps: DoctorDeps, mode: string, leadOnLoopback: boolean): Finding {
   const host = resolvedBind(deps);
   const shown = bindIsWildcard(host) ? "0.0.0.0/:: (COLLIE_HOST empty)" : host;
   if (mode === "peer" && isLoopbackBind(host)) {
+    if (leadOnLoopback) {
+      return ok("bind", `${shown} (mode peer: this peer listens on loopback, and it reaches its lead on loopback too, so the lead sits on this host or at the end of a tunnel)`);
+    }
     const suggestion = tailnetName(deps.exec) ?? "<address the lead can dial>";
     return bad(
       "bind",

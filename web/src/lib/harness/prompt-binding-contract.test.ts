@@ -11,6 +11,7 @@ import { detectPreviewSelect } from "./claude/preview-select";
 import { detectPromptSelect } from "./claude/prompt-select";
 import { detectWizard } from "./claude/wizard";
 import { dropClosingRule } from "./claude/closing-rule";
+import { dropTaskChecklist } from "./claude/task-checklist";
 import { detectMenu } from "./claude/menu";
 import { detectResumePicker } from "./claude/resume";
 import { detectMarketplaces } from "./claude/marketplaces";
@@ -61,7 +62,8 @@ const REGIONS = JSON.parse(
 function detectRegion(input: StyledLine[]): FoundRegion | null {
   // The adapter takes the closing rule a named session draws under a dialog off first (2.1.296,
   // claude/closing-rule.ts), so the region the phone binds to is the one an unnamed session shows.
-  const lines = dropClosingRule(input);
+  // The task checklist 2.1.299 draws below that rule (claude/task-checklist.ts) goes before it.
+  const lines = dropClosingRule(dropTaskChecklist(input));
   const prompt = detectPromptSelect(lines);
   if (prompt) return { detector: "prompt-select", region: prompt.signature };
   const wizard = detectWizard(lines);

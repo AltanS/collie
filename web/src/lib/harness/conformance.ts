@@ -62,6 +62,7 @@ import { WALK_GAPS, WALK_PAIRS, walkGroupKey } from "./walk-pairs";
 // bridge imports web/src/lib/styled-region.ts the other way, and neither pulls a cycle).
 import { verifyExpectedStyled, verifyPromptBinding } from "../../../../bridge/prompt-binding.ts";
 import { cropRawColumns, type ColumnRange } from "../column-range";
+import { trailingTaskChecklistStart } from "../task-checklist";
 import {
   DIALOG_CONTRACT,
   dialogComparators,
@@ -734,10 +735,13 @@ export function describeAdapterConformance(
               // A model read from a column range is matched, as the bridge matches it, against the
               // read cut to that range (lib/column-range.ts).
               const columns = contract.columns?.(model);
-              const fresh =
+              const read =
                 columns === undefined
                   ? whole
                   : normalizeRegion(splitLines(parseAnsi(cropRawColumns(loadRaw(name), columns))).map(lineText).join("\n"));
+              // Nor, as the bridge does not, is a task checklist that ends the read counted against
+              // the tail (lib/task-checklist.ts).
+              const fresh = read.slice(0, trailingTaskChecklistStart(read) ?? read.length);
               const expected = normalizeRegion(contract.region(model));
               const matchEnd = lastMatchEnd(fresh, expected);
               expect(matchEnd, `${name}: the ${kind} region is not on its own screen`).toBeGreaterThan(-1);

@@ -51,7 +51,7 @@ import { pointerWalk } from "../menu-hints";
 import type { PromptFeedback, PromptModel, PromptOption } from "../prompt-model";
 import type { WizardAnswer, WizardModel, WizardStepChip } from "../wizard-model";
 import { locateComposer, MAX_PICKER_HEADER_ROWS, paintedStatus, ruleAbove } from "./composer";
-import { keyHintPairs, parsePiFooter, type PiFooter } from "./footer";
+import { keyHintPairs, listDialogHint, parsePiFooter, type PiFooter } from "./footer";
 
 /** A full-width rule: pi's editor rules and every question extension's own top and bottom rule. */
 const RULE = /^─{8,}$/;
@@ -168,7 +168,8 @@ function paintedRow(line: StyledLine): boolean {
  * A picker is up (.adr/0098, "Pickers"): pi's own `/model`, `/tree` and `/resume`, OmO's, and any
  * other selector an extension draws in the editor's place. Every one prints a key-hint row, and a
  * picker is told by that row alone, never by its title, its name or the extension behind it:
- *   - a painted row that is nothing but two or more key/action pairs (`keyHintPairs`, footer.ts);
+ *   - a painted row that is nothing but two or more key/action pairs (`keyHintPairs`, footer.ts), or one
+ *     of the two 1.2.0 list-dialog hint rows keyHintPairs cannot read (`listDialogHint`, footer.ts);
  *   - between the bottom rule over the live status rows and the nearest rule of its width above, or,
  *     when that section is not an editor, in a header section of at most eight rows above that
  *     (`/tree` puts its hints over an inner rule, pi--omo-v5130-picker-tree.txt);
@@ -187,7 +188,7 @@ function pickerOnScreen(lines: StyledLine[]): boolean {
   const width = texts[bottom]!.length;
   const hintIn = (from: number, to: number): boolean => {
     for (let r = from; r < to; r++) {
-      if (paintedRow(lines[r]!) && keyHintPairs(texts[r]!) >= 2) return true;
+      if (paintedRow(lines[r]!) && (keyHintPairs(texts[r]!) >= 2 || listDialogHint(texts[r]!))) return true;
     }
     return false;
   };

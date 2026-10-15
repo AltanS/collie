@@ -177,6 +177,30 @@ collide with the PR 397 corpus above.
 
 What each footer means, and the source lines behind it: [`pi/ASK_NOTES.md`](../../lib/harness/pi/ASK_NOTES.md).
 
+## Stock pi 1.2.0 editor padding (issue 442, captured 2026-10-14, Herdr 0.9.4)
+
+pi's `editorPaddingX` setting (pi-tui `components/editor.js`) pads every editor row it draws, the draft
+rows and the slash palette rows, with that many spaces on each side. These are real reads of stock pi
+1.2.0 (model `moonshotai/kimi-k2.6`) in a throwaway Herdr pane at 119 columns, through the socket's
+`pane.read` with `source:"recent"` and `format:"ansi"`, the way the bridge reads a pane. CRLF line ends
+and the trailing padding spaces are as read. Each file is cut to the final frame: it starts at the
+editor's top rule, so the welcome banner above is gone. The footer is pi 1.2.0's two rows, the cwd row
+(`/tmp/collie-pi-padding-probe/work`) and the stats row. No key, user, host or home path is in any file.
+
+| Fixture | State | Padding | Reads as |
+| --- | --- | --- | --- |
+| `pi--v120-idle-padded.txt` | Empty editor, the cursor cell after the padding | 1 | composer |
+| `pi--v120-draft-padded.txt` | `hello from the probe` typed, not sent | 1 | composer, draft read back |
+| `pi--v120-draft-padded-multiline.txt` | `line one` and `line two` on two rows | 2 | composer, draft read back |
+| `pi--v120-slash-palette-padded.txt` | `/` typed: the palette of six rows under the bottom rule | 1 | composer with palette, draft `/` |
+| `pi--v120-draft-unpadded.txt` | `hello from the probe` typed | 0 | composer, the control |
+| `pi--v120-settings-padded2.txt` | `/settings`, main list: a `> ` search row, `→ Auto-compact` option rows, a `(1/34)` counter, the hint `Type to search · Enter/Space to change · Esc to cancel` | 2 | raw modal, holds the send (`listDialogHint`) |
+| `pi--v120-scoped-models-padded2.txt` | `/scoped-models`: the `Model Configuration` title, a `> ` search row, `✓` model rows, a `(1/393)` counter, the hint `Enter toggle · Ctrl+A all · ... · all enabled` | 2 | raw modal, holds the send (`listDialogHint`) |
+
+The last two are real pi 1.2.0 captures too (Herdr 0.9.4, padding 2, the dialog named in the table), cut
+to the top rule like the rest. Before 1.21.3 both read as a ready composer; their search row looks like
+an editor. They are unread dialogs: nothing on the phone answers them.
+
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
 Agent prose can quote a whole question dialog. These four files are BUILT, not captured: a real
@@ -1963,3 +1987,47 @@ the rows hold only the probe table.
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `shell--box-table-vs16-emoji.txt` | A box table printed by a script in a plain shell pane (no agent), with `⚠️` (U+26A0 U+FE0F), `❤️` (U+2764 U+FE0F) and both in one boxed row. Herdr's own cursor position report after each sample says it draws each of these two columns wide, a bare `⚠` or `❤` one, and `a`, `é`, `→`, `€` followed by U+FE0F one. So every wall after an emoji stands at the anchor's column. `table-run.test.ts` pins one run over rows 2..9. `read --source visible --format ansi --raw`, cut to the heading line and the table, CRLF as read. Synthetic content, nothing to scrub | `idle` |
+
+## Claude Code 2.1.299 task checklist under a dialog (captured 2026-10-14, herdr 0.9.4 on Windows, lab session)
+
+While a session has tasks, Claude Code 2.1.299 draws their checklist as the very last rows of the
+screen, UNDER an AskUserQuestion dialog's key-hint footer. Every Claude grammar anchors on the last
+non-blank row being its footer, so each such dialog fell to the unread-dialog card, and a list long
+enough pushed the footer out of the rows `modalOnScreen` reads, so the screen showed nothing at all.
+The bridge's binding check refused every tap on it as `not_in_tail`, since the list filled its 6-row
+tail window. `lib/task-checklist.ts` recognises the list, and both sides skip it: the Claude adapter's
+entry points through `claude/task-checklist.ts`, and `bridge/prompt-binding.ts` before its tail check.
+
+```
+Enter to select · ↑/↓ to navigate · Esc to cancel
+
+  8 tasks (2 done, 1 in progress, 5 open)
+  ◼ Juliet step
+  ◻ Kilo step
+  ◻ Lima step
+  ◻ Mike step
+  ◻ November step
+   … +1 pending, 2 completed
+```
+
+The header leaves out `P in progress` when P is 0 (`1 tasks (0 done, 1 open)`), in-progress and open
+tasks get one row each (`◼`, `◻`), finished ones a `✔` row, and in every screen seen (these three
+and one real session's four-row list) at most five task rows show, the rest folded into one
+`… +N state` row, its parts joined by `, `. The counts agree with the header on all of them, and the
+recogniser requires it.
+
+The lab was a Haiku 5.5 session in a throwaway folder, driven to create and update tasks named after
+the NATO alphabet and then to ask the questions below. The pane was 315 columns wide. Each capture is
+the bridge's own `GET /api/pane/:id?lines=80` text, byte for byte, CRLF as read (what
+`scripts/capture-fixture.sh` writes). A scan for the user name, account and e-mail address found none;
+the only path on them is the lab folder, and nothing was altered.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2299-ask-under-task-list.txt` | One question, Red / Blue, over `1 tasks (0 done, 1 open)` and one `◻` row. Lifts `prompt-select` |
+| `claude--v2299-ask-under-long-task-list.txt` | One question, Small / Large, over the eight-task list above: seven rows under the footer, past the bridge's tail window. Lifts `prompt-select`, and the tap binds |
+| `claude--v2299-wizard-under-task-list.txt` | Two questions, first step, over `8 tasks (3 done, 1 in progress, 4 open)` ending `… +3 completed`. Lifts `wizard` |
+
+**Not captured.** The permission, plan and pick-many dialogs with the list under them; `✔` rows on a
+dialog screen (they appear in the unit tests, retyped from a real screen); and the idle screen, where
+the list is not drawn under the input box at all.
