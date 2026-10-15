@@ -308,8 +308,9 @@ A Programs section on the dashboard, and for each program a list of its conversa
 Each program is one row in the Programs section, with its name, an Experimental badge, its runtime
 and whether it runs here or elsewhere. On the right it counts its open conversations and, in the
 needs-you colour, those that wait on you. The section moves above your spaces while a question
-waits. A program that is starting or unreachable says so in place of the counts. Only a refused
-token has its own words on the phone; `collie doctor` names every other reason.
+waits. A program that is starting or unreachable says so in place of the counts. A refused token
+and a refused wire version have their own words on the phone; `collie doctor` names every other
+reason.
 
 Tap a row to open the program's conversation list, like the chat list of a messaging app. What waits
 on you comes first, then the other open conversations, then the closed ones under the label Closed.
@@ -320,6 +321,7 @@ no Terminal view and no typed keys. [Sessions](sessions.md#what-the-phone-shows)
 
 A question card names the program and shows the time left when the program set one. A question
 decided in the program, or timed out, leaves a line in the chat.
+[Programs on the phone](durable-programs-on-the-phone.md) shows each of these with a figure.
 
 ## Versions
 
@@ -330,11 +332,12 @@ after it, and the minor after that drops it. Today there is no previous version 
 
 When the two ranges do not meet, Collie reads nothing more from the program. Its log gets one line
 for each range it refuses, such as
-`[durable] Program speaks wire v2, this Collie speaks v1; update one of them`. The program shows as
-unreachable with the reason `incompatible: program speaks 2..3, this Collie speaks 1..1`, and
-`collie doctor` shows both ranges. The program's home on the phone says which wire version each
-side speaks. Once per start of the program, Collie also sends it one `hello` with its own version, so
-the program can log the mismatch on its side. Update the older side.
+`[durable] Program speaks wire v2, this Collie speaks v1; update one of them`. The program's home
+on the phone shows the same sentence in a caution box, and its row on the dashboard keeps the word
+Unreachable. `collie doctor` shows both ranges on its `durable-hello` row:
+`incompatible: program speaks 2..3, this Collie speaks 1..1`. Once per start of the program, Collie
+also sends it one `hello` with its own version, so the program can log the mismatch on its side.
+Update the older side.
 
 ## The exit
 
