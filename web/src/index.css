@@ -722,6 +722,42 @@
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
 }
 
+/* IBM Plex Sans, the face of the theme Nightwatch (M57). A reader gets it by picking that theme,
+ * which writes `plex` into the Typeface setting once, or by picking it on the Typeface card. Built
+ * by the same scripts/build-ui-font.sh run as the faces around it: wdth pinned to 100, wght kept at
+ * 400 to 700, subset to the same Latin ranges, 34 KB. Its bold is a real bold, so the base layer's
+ * `font-synthesis-weight: none` changes nothing here. Its figures are tabular by default.
+ *
+ * It is not preloaded and not precached: like Space Grotesk it is fetched the first time a reader
+ * chooses it, and the SW keeps it from then on (lib/sw-routes.ts UI_FONT_URLS). Declared here,
+ * between Space Grotesk and Aldrich, because fonts.test.ts compares this file's URL order with
+ * FONT_URLS and Aldrich's Cyrillic companion must stay last.
+ *
+ * IBM Plex Sans is SIL OFL 1.1, public/fonts/LICENSE-ibm-plex-sans.txt. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/ui-ibm-plex-sans-3.201-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Plex's own metric-matched stand-in, on the same terms as the two beside it: `local()` only, one
+   metric family, numbers printed by scripts/build-ui-font.sh, Latin only by `unicode-range` so
+   Cyrillic skips it. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 101.21%;
+  ascent-override: 101.27%;
+  descent-override: 27.17%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
 /* Aldrich — the second SHIPPED face, and the one a reader picks deliberately. Built by the same
  * scripts/build-ui-font.sh run, subset to the same ranges, 8 KB.
  *
@@ -832,6 +868,12 @@
 :root.font-grotesk {
   --font-sans:
     "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-plex {
+  --font-sans:
+    "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }

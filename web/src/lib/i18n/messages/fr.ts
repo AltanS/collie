@@ -173,6 +173,7 @@ export const fr: Dictionary = {
   "settings.typeface.note.system": "La police de votre téléphone. Ne télécharge rien.",
   "settings.typeface.note.grotesk": "La voix propre à Collie, dessinée pour s'accorder à la marque.",
   "settings.typeface.note.aldrich": "Graisse unique : le texte en gras a le même aspect que le texte normal.",
+  "settings.typeface.note.plex": "IBM Plex Sans, the Nightwatch face. Its bold is a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "Ajoutée par l'opérateur de ce collie.",
   "settings.fonts.title": "Police du terminal",
   "settings.fonts.description": "Le miroir du terminal et le champ de brouillon, sur cet appareil.",
