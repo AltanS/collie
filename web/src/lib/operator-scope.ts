@@ -14,6 +14,7 @@ export const AGENT_FAMILIES = [
   "omp",
   "grok",
   "kiro",
+  "muse",
   "agy",
   "antigravity",
 ] as const;
