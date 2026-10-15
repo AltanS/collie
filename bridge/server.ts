@@ -131,6 +131,7 @@ import { chatParams, LiveWindows } from "./journal/live.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
+import { gateFor } from "./surface/key-gate.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -4094,7 +4095,7 @@ export async function filesImage(
 /** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */
 export interface ReplySender {
   typeText(paneId: string, text: string): Promise<MuxAck>;
-  sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
+  writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
 }
 
 /** Outcome of the two-step send. `textDelivered` is only meaningful on the failure branch. */
@@ -4145,7 +4146,9 @@ export async function sendReplySteps(
     }
     if (submit) {
       if (txt) await sleep(REPLY_SETTLE_MS);
-      const sent = await client.sendKeys(paneId, submitKeys);
+      // Through the key gate, like every key the bridge sends (M56 spec 05). The old route keeps its
+      // own guard: no revision check, the adapter's answer unchanged.
+      const sent = await gateFor(client).press(paneId, submitKeys, "legacy_reply");
       if (!sent.ok) return failed(sent.detail);
     }
     return { ok: true, textDelivered };
@@ -4392,7 +4395,9 @@ export async function keysPane(
   const keysDetail: AuditDetail = { keys };
   // Assigned, never conditionally spread: an unbound send records no `promptBinding` key.
   if (binding) keysDetail.promptBinding = binding.audit;
-  const sent = await herdr.sendKeys(paneId, keys);
+  // A person's keys (the Keys board, a dialog button, direct typing) go through the key gate with no
+  // revision check (M56 spec 05): the gate refuses a stale protocol token, never a person.
+  const sent = await gateFor(herdr).press(paneId, keys, "person_tap");
   if (sent.ok) {
     audit.record({
       action: "keys",

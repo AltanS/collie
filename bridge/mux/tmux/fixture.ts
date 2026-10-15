@@ -380,7 +380,7 @@ export class FakeTmux implements TmuxExec {
     if (verb === "capture-pane") return this.capturePane(group);
     if (verb === "load-buffer") return this.loadBuffer(group, stdin ?? "");
     if (verb === "paste-buffer") return this.pasteBuffer(group);
-    if (verb === "send-keys") return this.sendKeys(group);
+    if (verb === "send-keys") return this.sendKeysVerb(group);
     if (verb === "select-pane") return this.selectPane(group);
     if (verb === "select-window") return this.selectWindow(group);
     if (verb === "list-clients") return this.listClients(group);
@@ -444,7 +444,7 @@ export class FakeTmux implements TmuxExec {
   }
 
   /** `send-keys -t <pane> -- <key> …` — every argument after `--` is one key, in order. */
-  private sendKeys(group: readonly string[]): TmuxRunResult {
+  private sendKeysVerb(group: readonly string[]): TmuxRunResult {
     const paneId = flagValue(group, "-t") ?? "";
     const pane = this.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return missing("pane", paneId);

@@ -108,7 +108,7 @@ describe("capabilities", () => {
     const answers = [
       ["paneGrid", await adapter.readGrid("conv-01", { scope: "viewport", lines: 10, styling: "strip" })],
       ["typeText", await adapter.typeText("conv-01", "hi")],
-      ["sendKeys", await adapter.sendKeys("conv-01", ["Enter"])],
+      ["sendKeys", await adapter.writeKeys("conv-01", ["Enter"])],
       ["renamePane", await adapter.renamePane("conv-01", "x")],
       ["closePane", await adapter.closePane("conv-01")],
       ["setFocus", await adapter.setFocus("conv-01")],

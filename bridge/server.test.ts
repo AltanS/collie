@@ -502,7 +502,7 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
       this.calls.push("text");
       return this.failOn === "text" ? Promise.reject(new Error("text rejected")) : Promise.resolve(muxAck());
     }
-    sendKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
+    writeKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
       this.calls.push("keys");
       return this.failOn === "keys" ? Promise.reject(new Error("keys rejected")) : Promise.resolve(muxAck());
     }
@@ -3588,7 +3588,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       this.texts.push([paneId, text]);
       return this.failOn === "text" ? Promise.resolve(muxRefused("text failed")) : Promise.resolve(muxAck());
     }
-    sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+    writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
       this.keys.push([paneId, keys]);
       return this.failOn === "keys" ? Promise.resolve(muxRefused("keys failed")) : Promise.resolve(muxAck());
     }

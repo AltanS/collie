@@ -321,7 +321,7 @@ export function withAgentBeacons(
     refresh: () => adapter.refresh(),
     readGrid: (paneId, request) => adapter.readGrid(paneId, request),
     typeText: (paneId, text) => adapter.typeText(paneId, text),
-    sendKeys: (paneId, keys) => adapter.sendKeys(paneId, keys),
+    writeKeys: (paneId, keys) => adapter.writeKeys(paneId, keys),
     renamePane: (paneId, label) => adapter.renamePane(paneId, label),
     closePane: (paneId) => adapter.closePane(paneId),
     setFocus: (paneId) => adapter.setFocus(paneId),

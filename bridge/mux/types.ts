@@ -799,12 +799,24 @@ export interface MuxAdapter {
   typeText(paneId: string, text: string): Promise<MuxAck>;
 
   /**
+   * Paste literal text into a pane as ONE bracketed paste, submitting nothing (M56 spec 05). OPTIONAL
+   * by design, like {@link foregroundProcesses}: only a multiplexer whose own paste call wraps the
+   * text in the paste markers when the program asked for them has it (tmux `paste-buffer -p`). Collie
+   * never writes the markers itself. One caller: the Send Protocol (bridge/surface/protocol.ts), and
+   * only where the harness's profile allows a paste. The text holds no line break.
+   */
+  pasteText?(paneId: string, text: string): Promise<MuxAck>;
+
+  /**
    * Send keys in the contract's neutral spelling (keys.ts), applied in order. Needs `sendKeys`.
+   *
+   * ONE CALLER: the key gate (bridge/surface/key-gate.ts, M56 spec 05). Every route that sends keys
+   * asks the gate, and a test there fails on any other caller outside the adapters.
    *
    * A key the multiplexer cannot send is `refused` and is listed in `unsupportedKeys` — the whole
    * door is not closed because one key is missing.
    */
-  sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
+  writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
 
   /** Set or clear a pane's operator label (`null` clears). Needs `renamePane`. */
   renamePane(paneId: string, label: string | null): Promise<MuxAck>;
@@ -917,6 +929,7 @@ export type MuxOptionalMethod =
   | "paneActions"
   | "controlTurn"
   | "foregroundProcesses"
+  | "pasteText"
   | "renameSpace"
   | "listConversations"
   | "conversationItems"
@@ -952,6 +965,8 @@ export function muxOptionalMethods(
   if (controlTurn !== undefined) methods.controlTurn = controlTurn;
   const foregroundProcesses = adapter.foregroundProcesses?.bind(adapter);
   if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
+  const pasteText = adapter.pasteText?.bind(adapter);
+  if (pasteText !== undefined) methods.pasteText = pasteText;
   const renameSpace = adapter.renameSpace?.bind(adapter);
   if (renameSpace !== undefined) methods.renameSpace = renameSpace;
   // The program's history (M53 spec 11): the list, the items of one, and a reopen.

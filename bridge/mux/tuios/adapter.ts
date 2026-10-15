@@ -374,7 +374,7 @@ export class TuiosMux implements MuxAdapter {
    * The whole batch is translated before anything is sent, and the daemon parses every token of the
    * call before it sends any, so a batch holding one key tuios cannot express sends nothing.
    */
-  async sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+  async writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
     const translated: string[] = [];
     for (const key of keys) {
       const result = toTuiosKey(key);
@@ -390,7 +390,7 @@ export class TuiosMux implements MuxAdapter {
       translated.push(result.key);
     }
     if (translated.length === 0) return muxAck();
-    return this.onPane(paneId, (session) => this.rpc.sendKeys(session, paneId, translated.join(" ")));
+    return this.onPane(paneId, (session) => this.rpc.writeKeys(session, paneId, translated.join(" ")));
   }
 
   /**

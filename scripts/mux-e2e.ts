@@ -195,8 +195,8 @@ async function sendAndReadBack(adapter: MuxAdapter, paneId: string): Promise<str
   const expected = `COLLIE${token}E2E`;
   const typed = await adapter.typeText(paneId, `printf 'COLLIE%sE2E\\n' ${token}`);
   if (!typed.ok) return [`typeText refused: ${typed.reason}: ${typed.detail}`];
-  const entered = await adapter.sendKeys(paneId, ["Enter"]);
-  if (!entered.ok) return [`sendKeys(Enter) refused: ${entered.reason}: ${entered.detail}`];
+  const entered = await adapter.writeKeys(paneId, ["Enter"]);
+  if (!entered.ok) return [`writeKeys(Enter) refused: ${entered.reason}: ${entered.detail}`];
   const deadline = Date.now() + READBACK_TIMEOUT_MS;
   let last = "";
   while (Date.now() < deadline) {
