@@ -225,12 +225,26 @@ function AskExpiry({ expiresAt }: { expiresAt: string }) {
   );
 }
 
+/** The line a too-late answer says: who decided first when the program told, else the plain "not taken". */
+function lateNote(card: AskCardState): string {
+  switch (card.decided?.by) {
+    case "program":
+      return t("ask.decidedInProgram");
+    case "timeout":
+      return t("ask.timedOut");
+    case "phone":
+      return t("ask.late");
+    case undefined:
+      // Not "Already answered": after a wake the same question may come back under the same id.
+      return t("ask.notTaken");
+  }
+}
+
 /** The one line a phase says under the question, or null while the card is simply waiting for a tap. */
 function noteFor(card: AskCardState, offline: boolean): string | null {
   switch (card.phase) {
     case "late":
-      // Not "Already answered": after a wake the same question may come back under the same id.
-      return t("ask.notTaken");
+      return lateNote(card);
     case "stale":
       return card.older ? t("ask.stale.older") : t("ask.stale");
     case "unknown":

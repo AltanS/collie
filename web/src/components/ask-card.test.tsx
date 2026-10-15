@@ -160,6 +160,27 @@ describe("a tap", () => {
     expect(onSettled).toHaveBeenCalled();
   });
 
+  it.each([
+    ["program", "Decided in the program."],
+    ["timeout", "Timed out before an answer."],
+    ["phone", "Already answered. This card goes away on the next update."],
+  ])("too late decided by %s says so, and the card stays frozen", async (by, words) => {
+    stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late", decided: { by, at: "2026-10-15T09:30:00.000Z" } }));
+    const { onSettled } = draw();
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(screen.queryByText(/Not taken/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
+    expect(onSettled).toHaveBeenCalled();
+  });
+
+  it("too late with a decided this phone cannot read falls back to not taken", async () => {
+    stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late", decided: { by: "someone", at: "never" } }));
+    draw();
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText("Not taken. The question may show again in a moment.")).toBeInTheDocument();
+  });
+
   it("stale replaces the card with the returned ask and asks for a fresh tap, with a new request id", async () => {
     const newer: Ask = { ...ASK, revision: 5, title: "Run npm test as root?" };
     const seen = stubAnswer(() => HttpResponse.json({ ok: false, outcome: "stale", ask: newer }, { status: 409 }));

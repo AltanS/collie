@@ -363,6 +363,15 @@ export interface Ask {
   expiresAt?: string;
 }
 
+/**
+ * Who decided an ask first, and when (WIRE.md 7.3, the 409 `decided` body). `phone`: an answer from a phone,
+ * `program`: the program itself, `timeout`: the ask's `expiresAt` passed. `at` is ISO 8601.
+ */
+export interface AskDecided {
+  by: "phone" | "program" | "timeout";
+  at: string;
+}
+
 /** A push title (60 characters at most) and line (120 at most) a program chose for an ask. */
 export interface AskPushText {
   title?: string;
@@ -401,6 +410,7 @@ export type AnswerPayload =
  *
  *  • `taken` (200): the program took the answer and closed the ask.
  *  • `too-late` (200): the ask is not open any more (answered, stopped, or from before a restart).
+ *    `decided` says who decided it first and when, when the program said so (a 409 `decided`).
  *  • `stale` (409): the ask changed since the phone read it. `ask` is its current form when the
  *    program sent one. Nothing ran.
  *  • `unknown` (504): the answer may or may not have reached the program. The receipt stays, so
@@ -416,7 +426,7 @@ export type AnswerPayload =
  */
 export type AnswerResponse =
   | { ok: true; outcome: "taken"; replayed?: true }
-  | { ok: false; outcome: "too-late"; replayed?: true }
+  | { ok: false; outcome: "too-late"; decided?: AskDecided; replayed?: true }
   | { ok: false; outcome: "stale"; ask?: Ask; replayed?: true }
   | { ok: false; outcome: "unknown"; detail: string }
   | { ok: false; outcome: "maybe-applied"; replayed?: true }

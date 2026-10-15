@@ -554,6 +554,8 @@ export const en = {
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Not taken. The question may show again in a moment.",
+  "ask.decidedInProgram": "Decided in the program.",
+  "ask.timedOut": "Timed out before an answer.",
   "ask.expiresIn": "Expires in {time}",
   "ask.expired": "Expired",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",

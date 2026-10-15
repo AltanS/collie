@@ -41,6 +41,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable wire has a version policy and a receipt on every approval.** Collie accepts the previous wire version for one minor, a mismatch says so on the phone, and an approval records who decided and when. The SDK core imports nothing from Pi.
 - **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
 - **A program's question shows the time left on the phone.** When the program sets an expiry on a question, the ask card counts down under its title and says Expired once it passes. The lead passes the expiry through from a crew member unchanged.
+- **An answer that comes too late says who decided first.** When a program refuses a late tap with its first outcome, the ask card says the question was decided in the program, timed out, or already answered, instead of a plain not taken. The bridge keeps who decided on the answer's receipt.
 
 ### Changed
 

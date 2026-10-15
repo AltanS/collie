@@ -488,6 +488,10 @@ export const ja: Dictionary = {
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "受け付けられませんでした。しばらくすると質問が再度表示される場合があります。",
   // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
   "ask.expiresIn": "Expires in {time}",
   // TODO wordsmith
   "ask.expired": "Expired",

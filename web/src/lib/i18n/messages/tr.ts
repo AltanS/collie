@@ -419,6 +419,10 @@ export const tr: Dictionary = {
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Kabul edilmedi. Soru birazdan tekrar gösterilebilir.",
   // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
   "ask.expiresIn": "Expires in {time}",
   // TODO wordsmith
   "ask.expired": "Expired",

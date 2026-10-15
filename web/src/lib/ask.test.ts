@@ -7,6 +7,7 @@ import {
   ASKS_SHOWN,
   asksAt,
   blockOf,
+  decidedOf,
   EMPTY_DRAFT,
   effectKey,
   formFields,
@@ -172,6 +173,13 @@ describe("the card's state", () => {
     expect(answered(tapped(first, "yes", "r"), { outcome: "too-late" }).phase).toBe("late");
   });
 
+  it("too late keeps who decided first when the answer said, and nothing when it did not", () => {
+    const decided = { by: "timeout" as const, at: "2026-10-15T09:30:00.000Z" };
+    expect(answered(tapped(first, "yes", "r"), { outcome: "too-late", decided })).toMatchObject({ phase: "late", decided });
+    expect(answered(tapped(first, "yes", "r"), { outcome: "too-late" }).decided).toBeNull();
+    expect(first.decided).toBeNull();
+  });
+
   it("stale replaces the card with the returned ask and asks for a fresh tap", () => {
     const newer = ask({ revision: 2, title: "Run it as root?" });
     const s = answered(tapped(first, "yes", "r"), { outcome: "stale", ask: newer });
@@ -291,6 +299,18 @@ describe("an ask out of a response body", () => {
     expect(parseAsk({ ...good, expiresAt: "soon" })).not.toHaveProperty("expiresAt");
     expect(parseAsk({ ...good, expiresAt: 1760000000 })).not.toHaveProperty("expiresAt");
     expect(parseAsk(good)).not.toHaveProperty("expiresAt");
+  });
+});
+
+describe("who decided a too-late answer", () => {
+  it("reads the three words with a time, and nothing else", () => {
+    for (const by of ["phone", "program", "timeout"]) {
+      expect(decidedOf({ by, at: "2026-10-15T09:30:00.000Z" })).toEqual({ by, at: "2026-10-15T09:30:00.000Z" });
+    }
+    expect(decidedOf({ by: "stopped", at: "2026-10-15T09:30:00.000Z" })).toBeUndefined();
+    expect(decidedOf({ by: "program", at: "later" })).toBeUndefined();
+    expect(decidedOf({ by: "program" })).toBeUndefined();
+    expect(decidedOf(undefined)).toBeUndefined();
   });
 });
 

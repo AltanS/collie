@@ -261,6 +261,12 @@ export interface Ask {
   expiresAt?: string;
 }
 
+/** Who decided an ask first, and when, as a too-late answer says it. Mirrors `AskDecided` in bridge/types.ts. */
+export interface AskDecided {
+  by: "phone" | "program" | "timeout";
+  at: string;
+}
+
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */
 export type GitHead = { kind: "branch"; name: string } | { kind: "detached"; sha: string };
 

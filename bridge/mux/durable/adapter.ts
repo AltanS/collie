@@ -87,6 +87,7 @@ import {
   parseControlReply,
   parseConversationItems,
   parseConversations,
+  parseDecided,
   parseHello,
   parseProblem,
   parseSnapshot,
@@ -739,8 +740,12 @@ export class DurableMux implements MuxAdapter {
       return muxOk({ kind: "stale", ask: ask === null ? null : askForWire(ask) });
     }
     // Someone decided first: the phone, the program or the clock (WIRE.md 7.3). This answer did not land, and the
-    // ask is closed, which is what `too-late` says. The first decision is in the pane's log, from its `ask-closed`.
-    if (reply.status === 409 && problem.code === "decided") return muxOk({ kind: "too-late", replayed: false });
+    // ask is closed, which is what `too-late` says. The body's first outcome says who and when, so the phone can too.
+    if (reply.status === 409 && problem.code === "decided") {
+      const first = parseDecided(reply.text);
+      if (first === null) return muxOk({ kind: "too-late", replayed: false });
+      return muxOk({ kind: "too-late", replayed: false, decided: { by: first.decidedBy, at: first.decidedAt } });
+    }
     if (reply.status === 404 && problem.code === "no-such-pane") return muxGone("The conversation is not in the program's layout.");
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {

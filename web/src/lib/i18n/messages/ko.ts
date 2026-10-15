@@ -487,6 +487,10 @@ export const ko: Dictionary = {
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",
   // TODO wordsmith
+  "ask.decidedInProgram": "Decided in the program.",
+  // TODO wordsmith
+  "ask.timedOut": "Timed out before an answer.",
+  // TODO wordsmith
   "ask.expiresIn": "Expires in {time}",
   // TODO wordsmith
   "ask.expired": "Expired",

@@ -50,7 +50,8 @@ describe("a decided approval", () => {
     const first = await adapter.answerAsk("conv-02", { requestId: "req-first", askId: OPEN_ASK, revision: 1, optionId: "allow" });
     expect(first).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
     const second = await adapter.answerAsk("conv-02", { requestId: "req-second", askId: OPEN_ASK, revision: 1, optionId: "deny" });
-    expect(second).toEqual({ ok: true, value: { kind: "too-late", replayed: false } });
+    // The 409 body says who decided first and when, and the adapter passes both on with the too-late.
+    expect(second).toEqual({ ok: true, value: { kind: "too-late", replayed: false, decided: { by: "phone", at: expect.any(String) } } });
     // The program ran the first answer only.
     expect(program.answers.map((answer) => answer.optionId)).toEqual(["allow"]);
   });
