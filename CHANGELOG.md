@@ -66,6 +66,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The playground shows the Programs section in four numbered cards.** Card 1 has nothing waiting, card 2 has two questions waiting and the section on top, card 3 has an unreachable program, and card 4 has two machines.
 - **Tests pin the Programs section.** They cover each row state, the section above and below the spaces, the move on a new snapshot, a crew of two machines, and no Programs header with no program.
 - **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
+- **A strip pill can be one choice of a set.** `Chip` takes `radio`, which gives it `role="radio"` and `aria-checked` in place of `aria-current`. The box and the look stay the same, so nothing in a strip moves.
 
 ### Fixed
 
