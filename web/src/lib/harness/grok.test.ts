@@ -45,6 +45,7 @@ const PINNED = [
   "grok--draft-single.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
+  "grok--model-arg-hint.txt",
   "grok--model-effort-moved.txt",
   "grok--model-effort.txt",
   "grok--model-picker-moved.txt",
@@ -122,13 +123,17 @@ describe("the grok corpus", () => {
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
   it.each(
-    neutralFixtures.filter((f) => f !== "grok--user-bubble.txt" && !f.includes("ask-multi")),
+    neutralFixtures.filter(
+      (f) => f !== "grok--user-bubble.txt" && f !== "grok--model-arg-hint.txt" && !f.includes("ask-multi"),
+    ),
   )("%s: the composer is on screen ⇒ true", (name) => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
     expect(grokAdapter.composerReady!(lines)).toBe(true);
   });
 
-  it.each(["grok--user-bubble.txt", "grok--ask-multi.txt", "grok--ask-multi-checked.txt", ...DIALOG])(
+  // The model list Grok opens over the box after `/model` is not a slash popup, so the box fails
+  // closed there: a phone reply would append to the `/model` it holds.
+  it.each(["grok--user-bubble.txt", "grok--ask-multi.txt", "grok--ask-multi-checked.txt", "grok--model-arg-hint.txt", ...DIALOG])(
     "%s: a modal or torn frame ⇒ false",
     (name) => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
@@ -579,6 +584,21 @@ describe("grokBuildBlocks", () => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--slash-popup-partial.txt"), "utf8")));
     expect(grokAdapter.composerReady!(lines)).toBe(true);
     expect(grokAdapter.extractInputDraft(lines)).not.toBe("/stat");
+  });
+
+  it("a slash command's grey argument hint is not part of the draft", () => {
+    // The bar's Model button leaves `❯ /model <model> [window] [effort]` in the box over the model
+    // list (1.0.52, live 2026-10-15); the phone offered the hint back as a terminal draft to take over.
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--model-arg-hint.txt"), "utf8")));
+    expect(grokAdapter.extractInputDraft(lines)).toBe("/model");
+  });
+
+  it("keeps the same words when typed, since typed text is not the hint's grey", () => {
+    const raw = readFileSync(join(PANES_DIR, "grok--model-arg-hint.txt"), "utf8").replace(
+      "\u001b[38;2;108;108;108m\u001b[48;2;20;20;20m<model>",
+      "\u001b[38;2;225;225;225m\u001b[48;2;20;20;20m<model>",
+    );
+    expect(grokAdapter.extractInputDraft(splitLines(parseAnsi(raw)))).toBe("/model <model> [window] [effort]");
   });
 
   it("blank rows render unpainted in every block; glyph rows keep their backgrounds", () => {

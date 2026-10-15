@@ -280,6 +280,29 @@ function draftLineText(line: StyledLine): string {
   return text;
 }
 
+// After a slash command Grok paints its argument hint in grey (`❯ /model <model> [window] [effort]`,
+// 1.0.52, live 2026-10-15), and it stays while the model list is open. Read as draft, the phone
+// offered the hint back as a terminal draft to take over. Only that shape, in that grey, as the
+// row's last text, so the same words typed by the user (typed-text colour) stay in the draft.
+const ARG_HINT = /^(?:<[^<>]+>|\[[^[\]]+\])(?:\s+(?:<[^<>]+>|\[[^[\]]+\]))*$/;
+
+function withoutArgumentHint(line: StyledLine, text: string): string {
+  let offset = 0;
+  let hint: { at: number; length: number } | null = null;
+  for (const segment of line.segments) {
+    const body = segment.text.trim();
+    if (body !== "" && body !== "│") {
+      hint =
+        segment.style.color === "rgb(108,108,108)" && ARG_HINT.test(body)
+          ? { at: offset + segment.text.indexOf(body), length: body.length }
+          : null;
+    }
+    offset += segment.text.length;
+  }
+  if (hint === null || !/❯\s*\//.test(text.slice(0, hint.at))) return text;
+  return text.slice(0, hint.at) + " ".repeat(hint.length) + text.slice(hint.at + hint.length);
+}
+
 /**
  * The user's draft stranded in the composer. Grok writes it on the `│ ❯ … │` row and wraps onto
  * indented continuation rows below. Fragments join with a single space (soft wrap). Empty box → null.
@@ -296,7 +319,8 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
   const parts: string[] = [];
-  const prompt = composerPromptText(draftLineText(lines[box.firstDraftRow]!));
+  const first = lines[box.firstDraftRow]!;
+  const prompt = composerPromptText(withoutArgumentHint(first, draftLineText(first)));
   if (prompt === null) return null;
   parts.push(prompt.trim());
   for (let i = box.firstDraftRow + 1; i < box.bottom; i++) {
