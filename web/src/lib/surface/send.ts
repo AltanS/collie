@@ -1,0 +1,163 @@
+// The Send Protocol's wire shapes and its pure text rules (M56 spec 05; the contract is in the M56
+// README, "Send Protocol", and experiments/reader-stability/ARCHITECTURE.md section 2). The bridge
+// runs the steps (bridge/surface/protocol.ts); the phone mints the request id, posts one request and
+// renders the answer. Both read the types from here, so the closed lists cannot drift apart.
+//
+// Pure: no DOM, no Bun API, no harness name.
+
+import type { ProfileStatus } from "./profile";
+import type { Surface } from "./surface";
+
+/** The closed list of outcomes. `effective` needs a matching UserPromptSubmit edge (spec 11), so v1 closes as `sent`. */
+export const SEND_OUTCOMES = ["effective", "sent", "typed_not_submitted", "refused", "unknown"] as const;
+export type SendOutcome = (typeof SEND_OUTCOMES)[number];
+
+/**
+ * The closed list of reasons. A `refused` outcome always carries one and nothing was typed (or, for
+ * `probe_failed`, only the probe character). The other outcomes carry one when there is something to
+ * say: why the text was not submitted, or why the outcome is unknown.
+ */
+export const SEND_REASONS = [
+  // refused: nothing of the text was written
+  "id_reused",
+  "busy",
+  "not_free",
+  "draft_present",
+  "probe_failed",
+  "reserved_lead",
+  "unconfirmed",
+  "stale_surface",
+  "pane_gone",
+  "write_failed",
+  // typed_not_submitted: the text is in the box, Enter was not sent
+  "mismatch",
+  "changed",
+  "modal_cue",
+  "stale_token",
+  "submit_failed",
+  // sent: the box emptied after a discard
+  "discarded",
+  // unknown: the request ended without evidence either way
+  "bound",
+  "crash",
+  "lost_lock",
+  "no_evidence",
+] as const;
+export type SendReason = (typeof SEND_REASONS)[number];
+
+/**
+ * What a request asks for. `send` is a new message into an empty box. `append` and `replace` answer a
+ * `draft_present` refusal; `submit` and `discard` answer a `typed_not_submitted`. `prepare` only reads
+ * and hands back the hash of the rows, for the two-tap send on an unknown screen.
+ */
+export const SEND_MODES = ["send", "append", "replace", "submit", "discard", "prepare"] as const;
+export type SendMode = (typeof SEND_MODES)[number];
+
+/** A next action the answer offers, each a new request with a new id (`cancel` and `keys` send nothing). */
+export type SendOffer = "append" | "replace" | "cancel" | "submit" | "discard" | "commit" | "keys";
+
+/** What the phone posts to `POST /api/send`. The id is minted at tap time and kept across retries. */
+export interface SendRequestBody {
+  readonly id: string;
+  readonly pane: string;
+  readonly text: string;
+  readonly mode?: SendMode;
+  /** The hash of the rows the person saw, from a `prepare` or an `unconfirmed` answer. */
+  readonly rowsHash?: string;
+}
+
+/** One read the receipt names: the multiplexer's revision and a short hash of the rows. Never the rows. */
+export interface ReadMark {
+  readonly revision: number;
+  readonly hash: string;
+}
+
+/** The steps whose time a receipt measures. */
+export type SendStep = "s0" | "probe" | "write" | "s1" | "commit" | "s2";
+
+/**
+ * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no
+ * message text: the rows live only in the bridge's short memory ring, and the text only as a hash.
+ */
+export interface SendReceipt {
+  readonly requestId: string;
+  readonly session: string;
+  readonly paneId: string;
+  readonly paneGeneration: string;
+  readonly harness: string;
+  readonly version: string | null;
+  readonly profileId: string | null;
+  readonly profileStatus: ProfileStatus | null;
+  readonly mode: SendMode;
+  readonly textHash: string;
+  readonly textLength: number;
+  readonly probed: boolean;
+  readonly s0: ReadMark | null;
+  readonly s1: ReadMark | null;
+  readonly s2: ReadMark | null;
+  readonly gapsMs: Readonly<Partial<Record<SendStep, number>>>;
+  /** Named keys sent, in order. The probe character is written as `probe`; text writes are not keys. */
+  readonly keys: readonly string[];
+  readonly outcome: SendOutcome;
+  readonly reason?: SendReason;
+}
+
+/** What `POST /api/send` answers. A `prepare` has no receipt; every other request has one. */
+export interface SendAnswer {
+  readonly receipt?: SendReceipt;
+  /** The Surface of the newest read, when the answer is about the screen (a refusal, a prepare). */
+  readonly surface?: Surface;
+  readonly offers: readonly SendOffer[];
+  /** The hash of the rows, for the commit tap after `prepare` or `unconfirmed`. */
+  readonly rowsHash?: string;
+  /** A sentence for the person: which verb route a reserved lead belongs to, or what moved. */
+  readonly detail?: string;
+  /** True when the same id came back and this is the stored receipt. */
+  readonly replayed?: boolean;
+}
+
+/** The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead. */
+export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean): SendOffer[] {
+  if (outcome === "refused" && reason === "draft_present") return framed ? ["append", "replace", "cancel"] : ["keys"];
+  if (outcome === "refused" && reason === "unconfirmed") return ["commit", "keys"];
+  if (outcome === "typed_not_submitted") return framed ? ["submit", "discard", "keys"] : ["keys"];
+  if (outcome === "refused" || outcome === "unknown") return ["keys"];
+  return [];
+}
+
+/** A request id the bridge accepts: letters, digits, `-` and `_`, 8 to 64 of them. It names a file. */
+export const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
+
+/** The paste-end sequence a pasted chunk must never carry. */
+const PASTE_END = "\u001b[201~";
+const PASTE_START = "\u001b[200~";
+
+/** Whether a character is not a control byte: not C0 (below U+0020), not DEL, not C1 (U+0080 to U+009F). */
+function printable(ch: string): boolean {
+  const code = ch.codePointAt(0) ?? 0;
+  return code >= 0x20 && (code < 0x7f || code > 0x9f);
+}
+
+/**
+ * The text as the lines it will be written as. Line breaks split it (each later line is preceded by
+ * the profile's newline key), the paste markers are cut, a Tab becomes one space, and every other
+ * control byte (C0, DEL, C1) is dropped. Trailing blank lines are dropped; a line in between stays,
+ * even empty, because the person typed it.
+ */
+export function sendLines(text: string): string[] {
+  const cut = text.split(PASTE_END).join("").split(PASTE_START).join("");
+  const lines = cut.split(/\r\n|\r|\n/u).map((line) => [...line.replace(/\t/gu, " ")].filter(printable).join(""));
+  while (lines.length > 1 && lines[lines.length - 1]!.trim().length === 0) lines.pop();
+  return lines;
+}
+
+/** The reserved lead a text starts with (after leading blanks), or null. */
+export function reservedLead(text: string, leads: readonly string[]): string | null {
+  const head = text.trimStart();
+  return leads.find((lead) => head.startsWith(lead)) ?? null;
+}
+
+/** The text with every white-space character removed: the compare form for wrapped rows. */
+export function wsFree(text: string): string {
+  return text.replace(/\s+/gu, "");
+}

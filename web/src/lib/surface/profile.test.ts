@@ -72,7 +72,10 @@ describe("every profile file", () => {
     expect(claude.keys.interrupt).toEqual(["Escape"]);
     expect(claude.keys.enterWhileRunning).toBe("queues");
     expect(claude.reservedLeads).toEqual(["/", "!", "@"]);
-    expect(claude.probe.status).toBe("provisional");
+    // The slice 0 lab (M56 spec 01, LAB.md table 1) named the inert character; spec 05 writes it in.
+    expect(claude.probe.char).toBe("⌁");
+    expect(claude.probe.status).toBe("verified");
+    expect(claude.paste).toEqual({ bracketed: true });
     expect(claude.hooks.PermissionRequest).toBe("ask");
     expect(claude.hooks.Stop).toBe("edge");
   });
@@ -112,6 +115,7 @@ describe("parseProfile names the failing field", () => {
     ["a missing tail bound", ["idle", "frame", "maxTailRows"], undefined, "idle.frame.maxTailRows"],
     ["Escape as the clear key", ["keys", "clear", "key"], "Escape", "keys.clear.key"],
     ["a probe of two characters", ["probe", "char"], "ab", "probe.char"],
+    ["a paste flag that is not a boolean", ["paste", "bracketed"], "yes", "paste.bracketed"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
     ["an empty submit key list", ["keys", "submit"], [], "keys.submit"],
     ["a bad id", ["id"], "Claude Code", "id"],

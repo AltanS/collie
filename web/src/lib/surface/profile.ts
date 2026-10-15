@@ -98,6 +98,11 @@ export interface Profile {
     readonly status: "verified" | "provisional";
     readonly note: string;
   };
+  /** How a send writes its text (M56 spec 05). Optional: a profile without it is written as typed keys. */
+  readonly paste?: {
+    /** The harness takes a bracketed paste as text, so a send may paste where the multiplexer can. */
+    readonly bracketed: boolean;
+  };
   /** Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one. */
   readonly hooks: Readonly<Record<string, HookKind>>;
 }
@@ -297,13 +302,22 @@ export function parseProfile(raw: JsonValue): Profile {
   };
   if ([...probe.char].length !== 1) fail("probe.char", "must be exactly one character");
 
+  let paste: Profile["paste"];
+  if (root.paste !== undefined) {
+    const pasteNode = object(root.paste, "paste");
+    const bracketed = pasteNode.bracketed;
+    if (bracketed !== true && bracketed !== false) fail("paste.bracketed", "must be true or false");
+    paste = { bracketed: bracketed === true };
+  }
+
   const hooksNode = object(field(root, "hooks", ""), "hooks");
   const hooks = Object.fromEntries(
     Object.keys(hooksNode).map((event) => [event, oneOf(hooksNode[event], `hooks.${event}`, HOOK_KINDS)]),
   );
   if (Object.keys(hooks).length === 0) fail("hooks", "must name at least one event");
 
-  return { id, identity, versions, idle, keys, collapse, reservedLeads, probe, hooks };
+  const parsedProfile: Profile = { id, identity, versions, idle, keys, collapse, reservedLeads, probe, hooks };
+  return paste === undefined ? parsedProfile : { ...parsedProfile, paste };
 }
 
 /** The version a binary printed: the first match of the profile's own version expression, or null. */

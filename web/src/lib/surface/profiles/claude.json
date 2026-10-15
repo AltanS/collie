@@ -49,9 +49,12 @@
   },
   "reservedLeads": ["/", "!", "@"],
   "probe": {
-    "char": "§",
-    "status": "provisional",
-    "note": "placeholder until the slice 0 lab check (M56 spec 01) names the inert character"
+    "char": "⌁",
+    "status": "verified",
+    "note": "M56 spec 01 lab, 2026-10-15: inert after the type and after Backspace in every dialog without a text field, on Herdr, tmux and zellij; fallback ¤"
+  },
+  "paste": {
+    "bracketed": true
   },
   "hooks": {
     "SessionStart": "edge",
