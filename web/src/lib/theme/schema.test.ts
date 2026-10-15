@@ -256,7 +256,7 @@ describe("parseTheme", () => {
       for (const r of refusals(result)) {
         expect(r.path).not.toBe("");
         expect(r.detail).not.toBe("");
-        expect(r.detail).not.toMatch(/—/);
+        expect(r.detail).not.toMatch(/\u2014/);
       }
     }
   });
