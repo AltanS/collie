@@ -392,6 +392,48 @@ describe("the slash-command completion popup is the live box, not a dialog (agy 
   it("reads a typed argument once the popup says No matches", () => {
     expect(agyAdapter.extractInputDraft!(read("agy--slash-typed-arg.txt"))).toBe("/model x");
   });
+
+  // The screens below are built from the exact capture and not seen live: each is a shape the popup
+  // reader must refuse rather than take for the popup (review of the reader, 2026-10-15).
+  const rebuilt = (name: string, edit: (row: string) => string[]) =>
+    splitLines(parseAnsi(read(name).flatMap((l) => edit(lineText(l))).join("\n")));
+
+  it("a modal whose hint row only mentions `tab Complete` refuses the composer", () => {
+    const rows = read("agy--slash-exact.txt").map((l) => lineText(l));
+    const rule = rows.findLastIndex((r) => /^─{20,}/.test(r));
+    const modal = [
+      "Conversations",
+      "> Recent conversation",
+      "Keyboard: ↑/↓ Navigate  enter Select  tab Complete search",
+      "  esc Go back / Clear search",
+    ];
+    const lines = splitLines(parseAnsi([...rows.slice(0, rule + 1), ...modal].join("\n")));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+  });
+
+  it("a row the popup never paints, between the rule and its footer, refuses the composer", () => {
+    const lines = rebuilt("agy--slash-exact.txt", (t) =>
+      t.startsWith("> /model  Set") ? [t, "Delete this file? Press Enter to confirm."] : [t],
+    );
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+  });
+
+  it("a highlight drawn with a pointer the reader does not know does not verify `/mo`", () => {
+    const lines = rebuilt("agy--slash-exact.txt", (t) => {
+      if (t.trimEnd() === "> /model") return ["> /mo"];
+      return [t.startsWith("> /model  Set") ? `❯ ${t.slice(2)}` : t];
+    });
+    expect(agyAdapter.extractInputDraft!(lines)).not.toBe("/mo");
+  });
+
+  it("a popup with no highlighted row and no `No matches` does not verify `/mo`", () => {
+    const lines = rebuilt("agy--slash-exact.txt", (t) => {
+      if (t.trimEnd() === "> /model") return ["> /mo"];
+      return [t.startsWith("> /model  Set") ? `  ${t.slice(2)}` : t];
+    });
+    expect(agyAdapter.extractInputDraft!(lines)).not.toBe("/mo");
+  });
 });
 
 describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => {
@@ -416,9 +458,19 @@ describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => 
   );
 
   it("changes its signature when the highlight moves", () => {
-    expect(menuOf("agy--resume-picker-search-moved.txt")?.signature).not.toBe(
-      menuOf("agy--resume-picker-search.txt")?.signature,
-    );
+    const moved = menuOf("agy--resume-picker-search-moved.txt");
+    const before = menuOf("agy--resume-picker-search.txt");
+    expect(moved).not.toBeNull();
+    expect(before).not.toBeNull();
+    expect(moved!.signature).not.toBe(before!.signature);
+  });
+
+  // Built from the capture, not seen live: the screen ends on agy's right-aligned model status, so a
+  // row painted after it is something the picker reader does not know (review, 2026-10-15).
+  it("does not lift the picker when a row it does not know follows the status", () => {
+    const rows = read("agy--resume-picker.txt").map((l) => lineText(l).trimEnd());
+    const lines = splitLines(parseAnsi([...rows, "Delete this conversation? Press Enter to confirm."].join("\n")));
+    expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu")).toBe(false);
   });
 
   it("starts the card at the title, so the box above stays in the mirror", () => {
@@ -488,6 +540,20 @@ describe("agy: a question takes its digit alone (1.3.5)", () => {
     expect(buildBlocks(lines, { agent: "agy" }).map((b) => b.kind)).toEqual(["unread-dialog"]);
     const rows = lines.map((l) => lineText(l).replace("enter Submit · esc Skip", "enter Submit All · esc Skip"));
     expect(rows.some((r) => r.includes("Submit All"))).toBe(true);
+    expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
+  });
+
+  // Built from the capture, not seen live (review, 2026-10-15): the checkbox is known by its rows'
+  // `[ ]` as well as by the footer, so neither a wrapped footer nor one without `space Toggle` lifts it.
+  it.each([
+    ["with `space Toggle` on a footer row of its own", "  ↑/↓ Navigate · space Toggle\n  enter Submit All · esc Skip"],
+    ["under a Submit All footer that does not say `space Toggle`", "  ↑/↓ Navigate · enter Submit All · esc Skip"],
+  ])("keeps a checkbox question raw %s", (_, footer) => {
+    const rows = read("agy--ask-multi.txt").map((l) => {
+      const t = lineText(l);
+      return t.trimEnd() === "  ↑/↓ Navigate · space Toggle · enter Submit · esc Skip" ? footer : t;
+    });
+    expect(rows.includes(footer)).toBe(true);
     expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
   });
 });

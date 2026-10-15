@@ -32,6 +32,11 @@ const SELECT = hint("enter Select");
 const GO_BACK = hint("esc Go back(?: / Clear search)?");
 // Non-blank rows under the `esc` row: the model and effort status agy prints at the bottom right.
 const STATUS_ROWS = 2;
+// The screen ends on that status, one right-aligned run of words (`Gemini 3.8 Flash · high`, every
+// capture), or on the footer itself. A last row of any other shape was painted after the picker and
+// is content this reader does not know, so the picker stays raw rather than offer Enter over it
+// (review, 2026-10-15).
+const STATUS = /^\s{8,}\S+(?: \S+)*\s*$/;
 // Rows the `Keyboard:` hints may wrap onto above the `esc` row on a narrow pane (not measured).
 const FOOTER_ROWS = 3;
 // The title sits above the search row, ten conversations and the pager.
@@ -55,6 +60,7 @@ export function detectConversationsRegion(texts: string[]): ConversationsRegion 
       escRow = i;
       break;
     }
+    if (i === last && !STATUS.test(texts[i]!)) return null;
     seen++;
   }
   if (escRow < 0) return null;

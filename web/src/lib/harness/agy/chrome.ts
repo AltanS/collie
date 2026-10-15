@@ -12,19 +12,32 @@ const ESC_TO_CANCEL = /\besc(?:ape)?\s+to\s+cancel\b/i;
 // The slash-command completion popup (agy 1.3.5, live 2026-10-15) paints UNDER the box's bottom rule:
 // suggestion rows, the highlighted one led by `>` (`> /model  Set a model…`) and the rest by two
 // spaces, then `↓ 1 more` or `No matches`, then its own footer `↑/↓ Navigate · enter Select · tab
-// Complete` and an `esc to cancel` row. The box above stays live: typing still lands in it. Only that
-// footer says `tab Complete`; every dialog footer in the corpus says `esc Skip`, `tab Amend` or
-// `enter Confirm`, so the phrase is what tells the popup from a modal.
-const COMPLETION_FOOTER = /\btab\s+complete\b/i;
+// Complete` and an `esc to cancel` row. The box above stays live: typing still lands in it. The popup
+// is named by that whole footer row and by every row between the rule and it being one the popup
+// paints. The phrase `tab Complete` alone is not enough: a modal's hint row may say `tab Complete
+// search` (review, 2026-10-15), and taking it for the popup would skip the modal check.
+const COMPLETION_FOOTER = /^\s*↑\/↓ Navigate · enter Select · tab Complete\s*$/;
 const COMPLETION_POINTED = /^>\s+(\/\S+)/;
+const COMPLETION_ROW = /^(?:> | {2})\/\S+(?:\s{2,}\S.*)?$/;
+const COMPLETION_MORE = /^\s*[↑↓] \d+ more$/;
+const COMPLETION_NONE = /^\s*No matches$/;
 // The popup's own rows on top of the status rows: five suggestions, a `↓ n more`, an `↑ n more` once
 // scrolled, the footer, with margin.
 const MAX_POPUP_LINES = 10;
 
 /** The completion footer's row between the bottom rule and `end`, or -1 when no popup is open. */
 function completionFooter(texts: string[], bottomBorder: number, end: number): number {
-  for (let j = bottomBorder + 1; j < end; j++) if (COMPLETION_FOOTER.test(texts[j]!)) return j;
+  for (let j = bottomBorder + 1; j < end; j++) {
+    if (!COMPLETION_FOOTER.test(texts[j]!)) continue;
+    for (let k = bottomBorder + 1; k < j; k++) if (!isPopupRow(texts[k]!)) return -1;
+    return j;
+  }
   return -1;
+}
+
+function isPopupRow(text: string): boolean {
+  const t = text.trimEnd();
+  return t === "" || COMPLETION_ROW.test(t) || COMPLETION_MORE.test(t) || COMPLETION_NONE.test(t);
 }
 
 // What a dialog paints under its rule and a status line never does: a footer hint, `esc to cancel`,
@@ -130,18 +143,23 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
 
 /**
  * The draft under an open completion popup. Enter runs the HIGHLIGHTED suggestion, so the typed text
- * verifies only when that suggestion is the typed command itself, or when none is highlighted (`No
- * matches`, an argument typed). On partial input (`/mo` over `> /model`) the highlighted row is folded
- * in, so the reply guard cannot match and refuses, rather than bless a command nobody typed.
+ * verifies only when that suggestion is the typed command itself, or when the popup says `No matches`
+ * (an argument typed). On partial input (`/mo` over `> /model`) the highlighted row is folded in, so
+ * the reply guard cannot match and refuses, rather than bless a command nobody typed. A popup listing
+ * suggestions with none highlighted is not measured, so its rows are folded in the same way: not
+ * finding the highlight is not the same as the popup saying there is none.
  */
 function completedDraft(texts: string[], bottomBorder: number, footer: number, typed: string | null): string | null {
   if (typed === null) return null;
+  const rows: string[] = [];
   for (let j = bottomBorder + 1; j < footer; j++) {
-    const pointed = COMPLETION_POINTED.exec(texts[j]!.trim());
-    if (pointed === null) continue;
-    return pointed[1] === typed ? typed : `${typed} ${texts[j]!.trim()}`;
+    const row = texts[j]!.trim();
+    if (COMPLETION_NONE.test(row)) return typed;
+    const pointed = COMPLETION_POINTED.exec(row);
+    if (pointed !== null) return pointed[1] === typed ? typed : `${typed} ${row}`;
+    if (row !== "") rows.push(row);
   }
-  return typed;
+  return rows.length === 0 ? null : `${typed} ${rows.join(" ")}`;
 }
 
 export function stripChrome(lines: StyledLine[]): StyledLine[] {
