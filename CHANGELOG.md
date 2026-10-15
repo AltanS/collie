@@ -43,6 +43,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A theme file has a schema that Collie checks before it uses one.** Version 1 is one JSON file with an id, a name, a light and a dark half of 43 named colour tokens, and an optional bundled UI face. The check refuses an unknown key, an unknown version, a value that is not a hex or oklch colour, a file over its size cap and a shipped id, and it lists every reason at once. The app does not read a theme yet.
 - **The current look is the theme `collie`, kept as data.** `web/src/themes/collie.json` holds the 43 token pairs of `index.css` value for value, and a test keeps the two equal. `scripts/build-themes.ts` writes `web/src/themes.css` from the shipped theme files, one block for each theme other than `collie`, and a test fails when the file is stale. With only `collie` the file holds no block, so nothing changes on screen.
 - **Geist joins the faces in the Typeface card.** It is a plain geometric face with a real bold from 400 to 700, bundled at 23 KB and fetched only when a reader picks it. It is the face of the new theme `daylight`.
+- **A shipped theme `daylight` for direct sun and low vision.** Body text is 7:1 or better on the page and on a card in light and dark, borders and rules are a step stronger, and the status colours run from orange for blocked to blue for done with a step in lightness, so the two stay apart without red and green. Destructive is the one red. It carries Geist. Nothing picks it yet, and the current look does not change.
 
 ### Changed
 
