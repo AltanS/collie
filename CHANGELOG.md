@@ -63,6 +63,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The playground shows the Programs section in four numbered cards.** Card 1 has nothing waiting, card 2 has two questions waiting and the section on top, card 3 has an unreachable program, and card 4 has two machines.
 - **Tests pin the Programs section.** They cover each row state, the section above and below the spaces, the move on a new snapshot, a crew of two machines, and no Programs header with no program.
 - **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
+- **The durable example's questions expire after ten minutes.** The support desk sets a timeout on every ask, so the phone shows the time left and a question nobody tapped leaves a timed-out line; DM_ASK_TIMEOUT_MS changes the window.
 
 ### Fixed
 
