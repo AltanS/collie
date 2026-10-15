@@ -190,7 +190,7 @@ collie durable list
 
 | state | what it means |
 | --- | --- |
-| `ready` | The running bridge has loaded this entry. It is the bridge's word, not the program's: the program may still be unreachable. `collie doctor` asks the program |
+| `loaded` | The running bridge has loaded this entry. It is the bridge's word, not the program's: the program may still be unreachable. `collie doctor` asks the program |
 | `not loaded (restart to apply)` | The bridge started before you attached it. Run `collie restart` |
 | `refused (<status>)` | The bridge answered with this HTTP status instead of a state |
 | `bridge not answering` | No answer within 3 s: Collie is stopped, or busy. `collie status` shows whether it runs |

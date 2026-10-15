@@ -278,8 +278,8 @@ export async function cmdDurableDetach(deps: DurableAttachDeps, args: readonly s
 const LIST_BUDGET_MS = 3000;
 
 /**
- * What the running bridge says about one source: `ready`, `not loaded (restart to apply)`,
- * `refused (<status>)` or `bridge not answering`. `ready` means the bridge loaded the entry, not that
+ * What the running bridge says about one source: `loaded`, `not loaded (restart to apply)`,
+ * `refused (<status>)` or `bridge not answering`. `loaded` means the bridge loaded the entry, not that
  * the program answers; `collie doctor` asks the program.
  */
 async function stateOf(deps: DurableAttachDeps, name: string): Promise<string> {
@@ -295,7 +295,7 @@ async function stateOf(deps: DurableAttachDeps, name: string): Promise<string> {
     );
     if (res.status === 404 || res.status === 400) return "not loaded (restart to apply)";
     if (!res.ok) return `refused (${String(res.status)})`;
-    return "ready";
+    return "loaded";
   } catch {
     return "bridge not answering";
   }

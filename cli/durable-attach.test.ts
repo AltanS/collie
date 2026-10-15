@@ -201,7 +201,7 @@ describe("durable list", () => {
     const h = harness({}, { [FILE]: seed }, (url) => (url.includes("session=desk") ? new Response("{}") : new Response("", { status: 404 })));
     expect(await cmdDurableList(h.deps)).toBe(EXIT.OK);
     const out = h.io.stdout.join("\n");
-    expect(out).toContain(`desk  socket ${SOCKET}  ready`);
+    expect(out).toContain(`desk  socket ${SOCKET}  loaded`);
     expect(out).toContain("edge  url https://x.example (token set)  not loaded (restart to apply)");
     expect(everything(h)).not.toContain(token);
     expect(h.fetched[0]).toBe("http://127.0.0.1:8787/api/config?session=desk");

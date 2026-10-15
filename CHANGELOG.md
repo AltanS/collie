@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **`collie durable list` says `loaded`, not `ready`.** The word means the bridge loaded the entry; whether the program answers is the doctor's job.
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
 - **The durable SDK has typed hooks.** `onSend`, `onAbort` and `onRename` take typed payloads with the request id, so a program handles each action in one named place.
 - **The Cloudflare example runs on Cloudflare's PiHarness.** A job that is evicted mid-run wakes itself by alarm and continues, and a real model comes from a Workers AI binding with no key in the Worker. The Collie wire, the asks and the receipts are unchanged.
