@@ -64,6 +64,7 @@ const PINNED = [
   "grok--reporter-294-draft-newline-hint.txt",
   "grok--startup.txt",
   "grok--user-bubble.txt",
+  "grok--welcome-card.txt",
   "grok--working.txt",
 ];
 
@@ -551,6 +552,15 @@ describe("grokBuildBlocks", () => {
     expect(text).not.toContain("[stable]");
     expect(text).not.toContain("❯");
     expect(text).toContain("Grok 4.6 is here!");
+  });
+
+  it("Grok 1.0.52's welcome card right on top of the box does not hold the keyboard", () => {
+    // The changelog card comes with no tip row under it, so it sits directly on the composer, where
+    // an unknown rounded widget would fail closed. Typing lands in the box and the card goes (live,
+    // 2026-10-15).
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--welcome-card.txt"), "utf8")));
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    expect(grokAdapter.extractInputDraft(lines)).toBeNull();
   });
 
   it("blank rows render unpainted in every block; glyph rows keep their backgrounds", () => {

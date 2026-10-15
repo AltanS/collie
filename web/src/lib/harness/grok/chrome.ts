@@ -319,6 +319,27 @@ export function hasComposer(lines: StyledLine[]): boolean {
 // not captured yet.
 const USER_BUBBLE_EDGE = /^\s*[┌└]/;
 
+// Grok's welcome card: a rounded box holding the logo and its startup menu, `New worktree`,
+// `Resume session`, `Changelog`, `Quit` (every startup capture since 1.0.4x). It does not own the
+// keyboard: typing lands in the box below and the card goes (live, Grok Build 1.0.52, 2026-10-15).
+// Older builds printed a `Tip:` row between it and the box; the 1.0.52 changelog card sits right on
+// top of the box, where an unknown rounded widget fails closed, so it is named here.
+const WELCOME_MENU = [/\bNew worktree\b/, /\bResume session\b/, /\bQuit\b/];
+const ROUNDED_BOTTOM = /^\s*╰/;
+const ROUNDED_TOP = /^\s*╭/;
+const WELCOME_SCAN_ROWS = 40;
+
+/** Whether the rounded box closing on row `bottom` is Grok's welcome card. */
+function closesWelcomeCard(texts: string[], bottom: number): boolean {
+  if (!ROUNDED_BOTTOM.test(texts[bottom]!)) return false;
+  for (let top = bottom - 1; top >= 0 && bottom - top <= WELCOME_SCAN_ROWS; top--) {
+    if (!ROUNDED_TOP.test(texts[top]!)) continue;
+    const inner = texts.slice(top + 1, bottom);
+    return WELCOME_MENU.every((row) => inner.some((t) => row.test(t)));
+  }
+  return false;
+}
+
 /**
  * Whether a phone reply would reach Grok's composer rather than a widget sitting on top of it.
  *
@@ -339,7 +360,7 @@ export function composerReady(lines: StyledLine[]): boolean {
     const t = texts[i]!;
     if (isBlank(t)) continue;
     if (USER_BUBBLE_EDGE.test(t)) return true;
-    if (opensBox(t)) return false;
+    if (opensBox(t)) return closesWelcomeCard(texts, i);
     return true;
   }
   return true;
