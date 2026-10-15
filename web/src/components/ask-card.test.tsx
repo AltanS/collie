@@ -1,10 +1,13 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/setup";
+import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { asJsonObject, type JsonObject } from "@/lib/json";
+import { noteServerDate, resetServerClockForTests } from "@/lib/server-clock";
+import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
 import type { Ask } from "@/lib/types";
 import { AskCard } from "./ask-card";
 
@@ -157,6 +160,27 @@ describe("a tap", () => {
     expect(screen.queryByText(/Already answered/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
     expect(onSettled).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["program", "Decided in the program."],
+    ["timeout", "Timed out before an answer."],
+    ["phone", "Already answered. This card goes away on the next update."],
+  ])("too late decided by %s says so, and the card stays frozen", async (by, words) => {
+    stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late", decided: { by, at: "2026-10-15T09:30:00.000Z" } }));
+    const { onSettled } = draw();
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(screen.queryByText(/Not taken/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
+    expect(onSettled).toHaveBeenCalled();
+  });
+
+  it("too late with a decided this phone cannot read falls back to not taken", async () => {
+    stubAnswer(() => HttpResponse.json({ ok: false, outcome: "too-late", decided: { by: "someone", at: "never" } }));
+    draw();
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText("Not taken. The question may show again in a moment.")).toBeInTheDocument();
   });
 
   it("stale replaces the card with the returned ask and asks for a fresh tap, with a new request id", async () => {
@@ -565,5 +589,135 @@ describe("a card of a kind this version cannot answer", () => {
     expect(screen.getByText("Which queue?")).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+describe("the receipts (M55 spec 14)", () => {
+  afterEach(() => {
+    __resetSessionCards();
+    resetCacheClockForTests();
+    vi.useRealTimers();
+  });
+
+  it("a program's ask names the program in the caption; a terminal pane's keeps the plain caption", () => {
+    noteSessionCards(
+      [
+        { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0, kind: "terminal" },
+        { name: "desk", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 1, kind: "program", state: "ready" },
+      ],
+      undefined,
+    );
+    const { unmount } = draw({ scope: { session: "desk" } });
+    expect(screen.getByText("Needs your answer · desk")).toBeInTheDocument();
+    unmount();
+    draw();
+    expect(screen.getByText("Needs your answer")).toBeInTheDocument();
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument();
+  });
+
+  it("an ask with an expiry shows the time left under the title, and one without shows none", () => {
+    resetCacheClockForTests();
+    const { unmount } = draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 4 * 60_000 + 30_000).toISOString() } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+    unmount();
+    draw();
+    expect(document.querySelector('[data-slot="ask-expiry"]')).toBeNull();
+  });
+
+  it("the line ticks on the page clock, into seconds under a minute", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    resetCacheClockForTests();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 61_000).toISOString() } });
+    expect(screen.getByText("Expires in 1 min")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(21_000);
+    });
+    expect(screen.getByText("Expires in 40 s")).toBeInTheDocument();
+  });
+
+  it("past its expiry the line says Expired and the buttons stay: the program answers the tap", () => {
+    resetCacheClockForTests();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() - 1000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeEnabled();
+  });
+});
+
+describe("the countdown counts on the bridge's clock", () => {
+  // The bridge drops an ask at `expiresAt` by its own clock, so the card counts against the bridge's
+  // clock as the `Date` header tells it (lib/server-clock.ts), not against the phone's.
+  const BRIDGE = Date.UTC(2026, 9, 15, 10, 0, 0);
+  const FIVE_MIN = 5 * 60_000;
+  const IN_FOUR_AND_A_HALF = new Date(BRIDGE + 4 * 60_000 + 30_000).toISOString();
+
+  /** How far the phone's clock is off the bridge's. */
+  let phoneAhead = 0;
+
+  /** The phone's clock `offset` ms off the bridge's, on the page clock too. */
+  function phoneOff(offset: number): void {
+    phoneAhead = offset;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(BRIDGE + offset);
+    resetCacheClockForTests();
+  }
+
+  /** One poll's answer: the bridge says its time in the `Date` header, after a quick round trip. */
+  function polledBridge(): void {
+    const sent = Date.now();
+    noteServerDate(new Date(sent - phoneAhead).toUTCString(), sent, sent + 40);
+  }
+
+  afterEach(() => {
+    resetServerClockForTests();
+    resetCacheClockForTests();
+    vi.useRealTimers();
+  });
+
+  it("a phone five minutes ahead shows the time the bridge has left, not Expired", () => {
+    phoneOff(FIVE_MIN);
+    polledBridge();
+    draw({ ask: { ...ASK, expiresAt: IN_FOUR_AND_A_HALF } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+  });
+
+  it("a phone five minutes behind shows the time the bridge has left, not nine minutes", () => {
+    phoneOff(-FIVE_MIN);
+    polledBridge();
+    draw({ ask: { ...ASK, expiresAt: IN_FOUR_AND_A_HALF } });
+    expect(screen.getByText("Expires in 4 min")).toBeInTheDocument();
+  });
+
+  it("when the phone says Expired and the bridge still lists the ask, a tap still posts", async () => {
+    // No sample yet: the phone, five minutes ahead, counts on its own clock and calls the ask expired.
+    phoneOff(FIVE_MIN);
+    const seen = stubAnswer(() => HttpResponse.json({ ok: true, outcome: "taken" }));
+    draw({ ask: { ...ASK, expiresAt: new Date(BRIDGE + 30_000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    const allow = screen.getByRole("button", { name: wording("Allow") });
+    expect(allow).toBeEnabled();
+    await userEvent.click(allow);
+    await waitFor(() => expect(seen).toHaveLength(1));
+  });
+
+  it("the first poll that tells the bridge's time corrects the line on the next tick", () => {
+    phoneOff(FIVE_MIN);
+    draw({ ask: { ...ASK, expiresAt: new Date(BRIDGE + 30_000).toISOString() } });
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    polledBridge();
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText(/^Expires in \d+ s$/u)).toBeInTheDocument();
+  });
+
+  it("a card with no expiry never subscribes to the page clock", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    resetCacheClockForTests();
+    const before = vi.getTimerCount();
+    const { unmount } = draw();
+    expect(vi.getTimerCount()).toBe(before);
+    unmount();
+    draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 60_000).toISOString() } });
+    expect(vi.getTimerCount()).toBe(before + 1);
   });
 });

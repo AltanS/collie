@@ -658,6 +658,8 @@ Plain list, so nothing here reads as a promise:
 - Moving from a source checkout to the zip install, and updating a source checkout by hand.
 - Installing the zip by hand, without `install.ps1`.
 - Windows 10, Windows Server, Windows on ARM, tmux, zellij and tuios on Windows.
+- pi and OmO in a Herdr pane on Windows. Collie reads their screens from Linux captures only, and the
+  Windows console may lay out their rows differently.
 - A real Smart App Control block, and PowerShell 7 for `install.ps1`.
 - A build from source on a machine where Smart App Control is on.
 - The Task Scheduler fix on Windows Home. The route was checked with a standard user whose name held

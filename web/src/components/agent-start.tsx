@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
-import { CollieMark } from "@/components/collie-mark";
+import { ThemeMark } from "@/components/theme-mark";
 import type { HandoverPhase } from "@/hooks/use-handover";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -181,7 +181,7 @@ export function AgentStart({
         // here depends on a keyframe having run, so nothing can be left mid-fade.
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/82">
           <div className="flex items-center gap-4">
-            <CollieMark size={44} weight="header" loading paper="var(--background)" />
+            <ThemeMark size={44} weight="header" state="loading" paper="var(--background)" />
             <AgentIcon agent={harness} className="size-11" />
           </div>
           <span className="text-sm text-foreground">{label}</span>
@@ -194,7 +194,7 @@ export function AgentStart({
             <span className="as-word whitespace-nowrap text-sm text-foreground">{label}</span>
           </div>
           <div className="as-mark absolute left-1/2 top-1/2">
-            <CollieMark size={MARK} loading paper="var(--background)" />
+            <ThemeMark size={MARK} state="loading" paper="var(--background)" />
           </div>
         </>
       )}

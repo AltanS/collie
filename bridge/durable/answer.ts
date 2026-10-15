@@ -38,7 +38,7 @@ import { join } from "node:path";
 import type { AuditEntry } from "../audit.ts";
 import type { JsonValue } from "../json.ts";
 import type { MuxAdapter, MuxAnswerResult, MuxOutcome } from "../mux/types.ts";
-import type { AnswerRequest, AnswerResponse, AnswerValues, Ask } from "../types.ts";
+import type { AnswerRequest, AnswerResponse, AnswerValues, Ask, AskDecided } from "../types.ts";
 import {
   DURABLE_RECEIPT_LIMITS,
   digestDiffers,
@@ -81,6 +81,8 @@ export interface AnswerReceipt {
   /** For `refused`: the line the refusal carried, and its word. */
   detail?: string;
   reason?: "unsupported" | "refused";
+  /** For `too-late`: who decided the ask first, and when, when the program said so. A replay says it again. */
+  decided?: AskDecided;
 }
 
 /** The receipt's `optionId` for an answer: the option for a permission, the options joined for a choice, and nothing for a text or a form (their words stay out of the receipt). */
@@ -183,7 +185,7 @@ function replayOf(receipt: AnswerReceipt): AnswerReply | null {
     case "taken":
       return { status: 200, body: { ok: true, outcome: "taken", replayed: true } };
     case "too-late":
-      return { status: 200, body: { ok: false, outcome: "too-late", replayed: true } };
+      return { status: 200, body: receipt.decided === undefined ? { ok: false, outcome: "too-late", replayed: true } : { ok: false, outcome: "too-late", decided: receipt.decided, replayed: true } };
     case "stale":
       // The ask it carried then may have moved again since. The phone reads the pane for the current one.
       return { status: 409, body: { ok: false, outcome: "stale", replayed: true } };
@@ -205,6 +207,8 @@ interface Settled {
   readonly state: AnswerState;
   readonly reason?: "unsupported" | "refused";
   readonly detail?: string;
+  /** For `too-late`: the first decision, as the program told it. */
+  readonly decided?: AskDecided;
 }
 
 /** The reply for a retry that may have been the one to land: the phone says "check the chat". */
@@ -243,8 +247,12 @@ function settleOnce(outcome: MuxOutcome<MuxAnswerResult>): Settled {
   switch (result.kind) {
     case "taken":
       return { reply: { status: 200, body: result.replayed ? { ok: true, outcome: "taken", replayed: true } : { ok: true, outcome: "taken" } }, state: "taken" };
-    case "too-late":
-      return { reply: { status: 200, body: result.replayed ? { ok: false, outcome: "too-late", replayed: true } : { ok: false, outcome: "too-late" } }, state: "too-late" };
+    case "too-late": {
+      const body: AnswerResponse = { ok: false, outcome: "too-late" };
+      if (result.decided !== undefined) body.decided = { by: result.decided.by, at: result.decided.at };
+      if (result.replayed) body.replayed = true;
+      return result.decided === undefined ? { reply: { status: 200, body }, state: "too-late" } : { reply: { status: 200, body }, state: "too-late", decided: body.decided };
+    }
     case "stale": {
       const body: AnswerResponse = result.ask === null ? { ok: false, outcome: "stale" } : { ok: false, outcome: "stale", ask: result.ask satisfies Ask };
       return { reply: { status: 409, body }, state: "stale" };
@@ -322,6 +330,7 @@ async function send(
   const receipt: AnswerReceipt = { ...base, state: settled.state };
   if (settled.detail !== undefined) receipt.detail = settled.detail;
   if (settled.reason !== undefined) receipt.reason = settled.reason;
+  if (settled.decided !== undefined) receipt.decided = settled.decided;
   await receipts.record(receipt);
   deps.audit.record({
     action: "answer",

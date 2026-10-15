@@ -33,8 +33,49 @@
 // /api/config knows, so there is nothing this script could do before the network answers. A device
 // set to one paints in the default shipped stack for one frame and is reconciled at store init —
 // which is also exactly what it does offline, forever, without losing the preference.
+//
+// IT NOW DOES A THIRD THING: the colour theme (M57). A device that picked a theme must not watch the
+// app paint in Collie's colours first. The id is the `theme` field of the same design blob.
+//   * A shipped id sets `data-theme`, and the value written is the entry of SHIPPED below, never the
+//     stored string. `collie` is not in the list: the default theme writes nothing at all.
+//   * An imported id is looked up in the library (`collie:themes:v1`). Each name in TOKENS, the closed
+//     list, is set as an inline property when BOTH halves hold a value that matches COLOUR. Nothing
+//     is taken from the stored object's own keys, and no stored CSS text is ever used. A token left
+//     in only one half is skipped here; the app fills it from `collie` at load.
+// `src/theme-init.test.ts` reads this file and holds every list and pattern equal to its twin in
+// `lib/theme/schema.ts`.
 (function () {
   var root = document.documentElement;
+  var SHIPPED = ["nightwatch", "daylight", "harbour"];
+  var TOKENS = [
+    "background", "foreground", "card", "card-foreground", "chrome", "primary", "primary-foreground",
+    "control-on", "control-on-foreground", "secondary", "secondary-foreground", "muted",
+    "muted-foreground", "accent", "accent-foreground", "destructive", "destructive-foreground",
+    "border", "input", "rule", "ring", "status-blocked", "status-working", "status-done",
+    "status-idle", "status-unknown", "status-info", "syntax-keyword", "syntax-string",
+    "syntax-constant", "syntax-property", "syntax-entity", "syntax-comment", "host-0", "host-1",
+    "host-2", "host-3", "host-4", "host-5", "host-6", "host-7", "host-8", "host-9"
+  ];
+  var COLOUR = /^(?:#(?:[0-9a-f]{6}|[0-9a-f]{8})|oklch\( ?(?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+)(?: \/ (?:\d+(?:\.\d+)?|\.\d+)%?)? ?\))$/;
+  var ok = function (v) { return typeof v === "string" && v.length <= 64 && COLOUR.test(v); };
+  function applyColourTheme(id) {
+    for (var i = 0; i < SHIPPED.length; i++) {
+      if (SHIPPED[i] === id) return root.setAttribute("data-theme", SHIPPED[i]);
+    }
+    if (typeof id !== "string") return;
+    var lib = JSON.parse(localStorage.getItem("collie:themes:v1") || "null");
+    var list = lib && lib.version === 1 && Array.isArray(lib.themes) ? lib.themes : [];
+    for (var j = 0; j < list.length; j++) {
+      var t = list[j];
+      if (!t || t.id !== id) continue;
+      for (var k = 0; k < TOKENS.length; k++) {
+        var l = t.light && t.light[TOKENS[k]];
+        var d = t.dark && t.dark[TOKENS[k]];
+        if (ok(l) && ok(d)) root.style.setProperty("--" + TOKENS[k], "light-dark(" + l + ", " + d + ")");
+      }
+      return;
+    }
+  }
   try {
     var t = localStorage.getItem("collie:theme:v1");
     if (t === "dark" || t === "light") root.classList.add(t);
@@ -55,6 +96,7 @@
     else if (d.font === "plex") root.classList.add("font-plex");
     else if (d.font === "geist") root.classList.add("font-geist");
     else if (d.font === "atkinson") root.classList.add("font-atkinson");
+    applyColourTheme(d.theme);
   } catch {
     // A truncated write, a hand-edited blob, or private mode. The default face is the right answer
     // to all three, and it is the one already in the stylesheet.

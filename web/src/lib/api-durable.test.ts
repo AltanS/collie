@@ -48,6 +48,14 @@ describe("answerAsk", () => {
     await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "taken", replayed: true });
   });
 
+  it("reads who decided a too-late answer first, and a replayed one, and none from an older bridge", async () => {
+    const decided = { by: "program", at: "2026-10-15T09:30:00.000Z" };
+    server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ ok: false, outcome: "too-late", decided, replayed: true })));
+    await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "too-late", decided, replayed: true });
+    server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ ok: false, outcome: "too-late" })));
+    await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "too-late" });
+  });
+
   it("reads a 404 as stale on an older machine", async () => {
     server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ error: "not found" }, { status: 404 })));
     await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "stale", older: true });

@@ -23,8 +23,9 @@ Sessions come from two places:
 
 Your phone has one URL. Under it, each terminal workspace is a **space**, and each program is a
 space with its own name. A space holds tabs, and a tab holds panes. A pane shows one session. A
-program appears in its own Programs section, with its name, its runtime and the count of questions
-waiting, and an Experimental badge. The section moves above your spaces when a question waits.
+program appears in its own Programs section, with its name, its runtime and an Experimental badge,
+the count of its open conversations, and how many of them wait on you. The section moves above
+your spaces when a question waits.
 
 A terminal space draws exactly what it always drew. A program space opens on its list of
 conversations, and a control appears only when that program says it can do it.

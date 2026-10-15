@@ -328,6 +328,7 @@ export function SessionStream({
   onSendQueuedNow,
   asks,
   durable = false,
+  questionPending = false,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -377,6 +378,14 @@ export function SessionStream({
    * still writing carries a cursor. Every other pane draws what it always drew.
    */
   durable?: boolean;
+  /**
+   * A question waits in the terminal that no card answers: OmO's `? Question pending` banner over a
+   * ready editor (HarnessAdapter.questionPending). The thread ends with one status line that says so,
+   * in place of the working line, because the turn waits on the person. The fact comes from the
+   * screen, as the card dock below this body does (ADR 0059); the line claims nothing about the
+   * question itself, which the banner and the running question card carry.
+   */
+  questionPending?: boolean;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -433,7 +442,7 @@ export function SessionStream({
   const growing = newest !== undefined && "partial" in newest && newest.partial === true;
   const accepted = lines.some((line) => line.state === "sent");
   const dotsRow = durable && ((working && personsNewest) || accepted);
-  const staticRow = working && !(durable && (personsNewest || growing));
+  const staticRow = working && !(durable && (personsNewest || growing)) && !questionPending;
 
   // A PANE KEEPS ITS PLACE (ADR 0063). Switching modes unmounts this body and switching panes
   // remounts it, so neither the DOM nor the scroller remembers where the reader was — the same gap
@@ -722,6 +731,17 @@ export function SessionStream({
               and a name here is the state announced twice (status-badge.tsx § label). */}
           <StatusDot status="working" live className="size-2.5" />
           <span>{t("chat.stream.working")}</span>
+        </div>
+      )}
+
+      {/* A question waits in the terminal and no card answers it (OmO's banner). One line, the
+          needs-you mark and the words, no control: the banner prints no keys a card could send, and
+          a reply sent now is OmO's own free-text answer, which the line says. LIVE_ROW's box, so it
+          stands where the working line stood. */}
+      {questionPending && reading && (
+        <div data-slot="stream-question-pending" className={LIVE_ROW}>
+          <StatusDot status="blocked" className="size-2.5" />
+          <span>{t("chat.stream.questionPending")}</span>
         </div>
       )}
 

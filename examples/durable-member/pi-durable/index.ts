@@ -51,6 +51,6 @@ export function piHistory(o: PiHistoryOptions) {
 }
 
 /** `askTools` with the desk's two questions. */
-export function askTools(o: { panes: PaneRegistry }) {
-  return askToolsWith({ panes: o.panes, words: { team: { question: TEAM_QUESTION, options: TEAMS }, reply: { question: REPLY_QUESTION, placeholder: REPLY_PLACEHOLDER } } });
+export function askTools(o: { panes: PaneRegistry; timeoutMs?: number; onTimeout?: (tool: string, title: string) => void }) {
+  return askToolsWith({ ...o, words: { team: { question: TEAM_QUESTION, options: TEAMS }, reply: { question: REPLY_QUESTION, placeholder: REPLY_PLACEHOLDER } } });
 }

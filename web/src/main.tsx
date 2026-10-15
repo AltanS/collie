@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { onPreloadError } from "./lib/chunk-reload";
 import { initDesign } from "./lib/design";
+import { initTheme } from "./lib/theme/store";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
 // Registers the service worker (precaches the app shell, enables install) and wires auto/manual
@@ -22,6 +23,10 @@ import { startPushTitleSync } from "./lib/push-titles";
 // family name until /api/config answers) and Safari private mode, where the pre-paint read threw.
 // Before createRoot, so the class is settled by the time anything measures a line box.
 initDesign();
+// The colour theme, the same way: public/theme-init.js painted it from storage, and this settles what
+// that script leaves out (the theme-color metas, a token an imported theme sets in one half only).
+// For the default theme it removes nothing and adds nothing.
+initTheme();
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();

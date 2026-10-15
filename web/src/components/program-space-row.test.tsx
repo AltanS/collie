@@ -85,6 +85,21 @@ describe("ProgramSpaceRow: the row's states", () => {
     expect(onOpen).toHaveBeenCalledWith(session);
   });
 
+  it("a program refused for its wire version says Version mismatch in the same muted ink, and the row still opens", async () => {
+    const session = program("desk", {
+      state: "unreachable",
+      reachable: false,
+      notice: "Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK.",
+    });
+    const { row, slot, onOpen } = renderRow(session);
+    expect(row.dataset.state).toBe("unreachable");
+    expect(slot("program-space-state")?.textContent).toBe("Version mismatch");
+    expect(slot("program-space-state")).toHaveClass("text-muted-foreground");
+    expect(slot("program-space-counts")).toBeNull();
+    await userEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith(session);
+  });
+
   it("a card with no state word reads its counts only while reachable", () => {
     const { slot } = renderRow(program("desk", { state: undefined, reachable: false, agents: 4, blocked: 2 }));
     expect(slot("program-space-state")?.textContent).toBe("Unreachable");

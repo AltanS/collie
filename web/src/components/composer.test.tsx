@@ -143,8 +143,17 @@ function renderComposerWithStatus(
       ),
     },
   ]);
-  render(<RouterProvider router={router} />);
+  const { container } = render(<RouterProvider router={router} />);
+  lastContainer = container;
   return props;
+}
+
+let lastContainer: HTMLElement | null = null;
+
+/** `renderComposerWithStatus`, plus the render's own container to query (DESIGN.md §9). */
+function renderWithContainer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  const props = renderComposerWithStatus(overrides);
+  return { props, container: lastContainer! };
 }
 
 describe("Composer — send", () => {
@@ -1232,6 +1241,22 @@ describe("Composer — blocked pre-flight override", () => {
     expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument();
   });
 
+  // The reason stood only in the header, which a phone has scrolled off or put under the keyboard
+  // by the time Send is tapped. It stands at the Send slot too while the override is armed.
+  it("says why at the thumb too, with no control when there is no card to go to", async () => {
+    const user = userEvent.setup();
+    servePicker([]);
+    const { container } = renderWithContainer();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "use fable please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
+    const reason = container.querySelector('[data-slot="composer-refusal"]')!;
+    expect(reason).toHaveTextContent(/input box isn't on screen/i);
+    expect(reason.textContent).toBe(screen.getByTestId("status").textContent);
+    expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
+  });
+
   it("the second tap types anyway, but STILL withholds the submit key", async () => {
     const user = userEvent.setup();
     const calls: string[] = [];
@@ -1320,6 +1345,38 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     expect(calls).toEqual([]);
     expect(box).toHaveValue("for after the dialog");
     expect(props.onSent).not.toHaveBeenCalled();
+  });
+
+  it("says why at the thumb when the unread card refuses, and its control goes to the card", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        calls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(() => calls.push("reply"), () => calls.push("submit")),
+    );
+    const onAnswerDialog = vi.fn();
+    const { container } = renderWithContainer({ dialogPresent: true, dialogUnread: true, onAnswerDialog });
+
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "for after the dialog");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    const reason = container.querySelector('[data-slot="composer-refusal"]');
+    expect(reason).toHaveTextContent(/cannot read this dialog/i);
+    expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
+    expect(onAnswerDialog).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([]);
+  });
+
+  it("draws no refusal notice for a read dialog: its word stands in the Send slot", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithContainer({ dialogPresent: true, dialogUnread: false });
+    await user.type(screen.getByPlaceholderText("Dialog is waiting"), "for after the dialog");
+
+    expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull();
   });
 
   it("leaves the unread dialog on its two-tap override, with the ordinary placeholder", () => {
