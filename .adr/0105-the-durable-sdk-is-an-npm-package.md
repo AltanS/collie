@@ -1,6 +1,6 @@
 # 0105: the durable SDK is an npm package
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-14
 - **Shipped in:** pending (1.22.0)
 - **Amends in scope:** [ADR 0104](./0104-a-program-is-a-session.md), the line that it does not publish the SDK
