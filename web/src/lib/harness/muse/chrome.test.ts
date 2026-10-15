@@ -70,6 +70,11 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     expect(extractInputDraft(lines("muse--palette-hint-moved.txt"))).not.toBe("/resume");
   });
 
+  it("reads a command whose one suggestion is a built-in skill row, tags and all", () => {
+    // `  /plan · built-in · default skill  On an explicit planning request…` (Muse 1.4.8).
+    expect(extractInputDraft(lines("muse--palette-skill.txt"))).toBe("/plan");
+  });
+
   it("keeps a typed argument, which arrives in the typed-text colour once the hint is gone", () => {
     expect(extractInputDraft(lines("muse--palette-typed-arg.txt"))).toBe("/model x");
   });

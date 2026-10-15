@@ -1862,6 +1862,7 @@ signature.
 | `muse--palette-hint-skills.txt` | `/resume` typed: its hint, and three suggestions, the bold `/resume` first and two built-in `resume-*` skills under it. The read is `/resume`, since Enter runs the bold row | `idle` |
 | `muse--palette-hint-moved.txt` | Same, after Down: the bold has moved to `/resume-claude`, so the read must not verify `/resume` | `idle` |
 | `muse--palette-typed-arg.txt` | `/model x` typed: the hint is gone and `x` wears the typed-text colour. The read is `/model x` | `idle` |
+| `muse--palette-skill.txt` | `/plan` typed: its one suggestion is a built-in skill row, `  /plan · built-in · default skill  On an explicit…`, tags between the command and the gap. The read is `/plan`. Visible-screen read 2026-10-15, cwd swapped for the sandbox path and model label renamed `mini` | `idle` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`

@@ -65,6 +65,7 @@ const PINNED = [
   "muse--palette-hint-skills.txt",
   "muse--palette-hint.txt",
   "muse--palette-partial.txt",
+  "muse--palette-skill.txt",
   "muse--palette-typed-arg.txt",
   "muse--quoted-dialogs-bare.txt",
   "muse--tasks-popup-approval.txt",

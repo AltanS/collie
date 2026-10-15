@@ -263,7 +263,10 @@ export function parseSubmitRow(text: string): { n: number; checked: number } | n
 // trimmed: the indent is structural. Only ever read under a slash-led prompt row (chrome.ts): the
 // palette opens for slash input alone, so that gate keeps a prose continuation starting with `/`
 // (a path) from parsing as a suggestion.
-const PALETTE_ROW = /^  (\/\S+)\s{2,}(\S.*)$/;
+//
+// Muse 1.4.8 lists skills in the same palette with their tags between the command and the gap
+// (`  /plan · built-in · default skill  On an explicit…`), so ` · tag` runs may follow the command.
+const PALETTE_ROW = /^  (\/\S+)(?: · [^·]+?)*\s{2,}(\S.*)$/;
 
 /** Parse a palette suggestion row into its command, or null. */
 export function parsePaletteRow(text: string): { command: string } | null {
