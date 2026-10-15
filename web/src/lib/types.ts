@@ -203,6 +203,8 @@ export interface AgentView {
    * absent on an older bridge and with the mode off. Nothing here decides a send by it yet.
    */
   surface?: Surface;
+  /** Mirrors `PaneWire.sendProtocol` (M56 spec 05): the composer sends through `POST /api/send`. */
+  sendProtocol?: true;
 }
 
 /** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */

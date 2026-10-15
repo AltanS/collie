@@ -236,6 +236,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     stateDir: "/tmp/state",
     multiSession: true,
     surfaceShadow: false,
+    sendProtocol: false,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,

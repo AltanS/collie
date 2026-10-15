@@ -385,6 +385,13 @@ export interface Config {
    */
   surfaceShadow: boolean;
   /**
+   * The Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec 05): `POST /api/send` runs a send as one
+   * bridge-side request with a lock, a probe, a predicted-state check, the key gate and a receipt, and
+   * the phone's composer uses it on panes the snapshot marks. Turns on the Surface computation too.
+   * Off by default; the old reply route is untouched either way.
+   */
+  sendProtocol: boolean;
+  /**
    * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
    * identically either way — this flag only informs the startup warnings: without `tailscale serve`
@@ -707,6 +714,7 @@ export function loadConfig(env: Environment = process.env): Config {
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
     surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
+    sendProtocol: envBool("COLLIE_SEND_PROTOCOL", false, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };

@@ -1,5 +1,6 @@
 import { basename, dirname } from "node:path";
 
+import type { SendProtocol } from "./surface/protocol.ts";
 import type { SurfaceShadow } from "./surface/shadow.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
@@ -93,6 +94,8 @@ export interface SessionParts {
   program?: ProgramProbe;
   /** Set when Surface shadow mode is on (`COLLIE_SURFACE_SHADOW=1`), on terminal sessions only. */
   surface?: SurfaceShadow;
+  /** Set when the Send Protocol is on (`COLLIE_SEND_PROTOCOL=1`), on terminal sessions only. */
+  send?: SendProtocol;
 }
 
 /** A fully-built, running session runtime: its parts plus its identity in the registry. */

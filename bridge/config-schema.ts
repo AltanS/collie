@@ -217,6 +217,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "surfaceShadow",
   },
   {
+    key: "send_protocol",
+    env: "COLLIE_SEND_PROTOCOL",
+    section: "bridge",
+    kind: "bool",
+    default: false,
+    doc: "Send from the phone through the bridge-side Send Protocol (probe, predicted-state check, key gate, receipt).",
+    configField: "sendProtocol",
+  },
+  {
     key: "transcript",
     env: "COLLIE_TRANSCRIPT",
     section: "bridge",

@@ -211,6 +211,11 @@ import {
 } from "./update-action.ts";
 import { collieVersion, collieVersionBare } from "./version.ts";
 import { SurfaceShadow } from "./surface/shadow.ts";
+import { gateFor } from "./surface/key-gate.ts";
+import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
+import { RequestStore } from "./surface/requests.ts";
+import { VersionCache } from "./surface/binary-version.ts";
+import { loadProfiles, profileFor, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -1247,6 +1252,23 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName() } };
 }
 
+// The Send Protocol's request store (M56 spec 05), one for the bridge, under the state directory.
+// Created only with the flag on, so an instance without it touches no new file. On start every request
+// a previous run left unsettled ends `unknown` (a crash), and settled ones past a week are dropped.
+const sendStore = cfg.sendProtocol ? new RequestStore(join(cfg.stateDir, "sends")) : null;
+if (sendStore !== null) {
+  const recovered = sendStore.recover(SendProtocol.crashReceipt);
+  if (recovered.length > 0) console.log(`[send] ${String(recovered.length)} send request(s) left unsettled by the last run read as unknown`);
+  sendStore.prune();
+}
+const sendVersions = new VersionCache();
+/** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
+async function sendProfile(harness: string): Promise<ProfileMatch | null> {
+  const profile = loadProfiles().get(harness);
+  if (profile === undefined) return null;
+  return profileFor(profile.id, await sendVersions.versionOf(profile));
+}
+
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
   const target = built.target;
@@ -1351,13 +1373,35 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // Surface shadow mode (M56 spec 04): each poll's agent panes are read once more and their Surface
   // folded beside the old readers. Fired and not awaited, like the cache probe: a poll never waits on
   // it, and `observe` never throws. A terminal session only; a program session has no screen.
-  const surface = cfg.surfaceShadow && endpoint.kind === "terminal" ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs }) : undefined;
+  // The Send Protocol (M56 spec 05) needs the pane's Surface on the snapshot, so its flag turns the
+  // Surface computation on too.
+  const computeSurface = (cfg.surfaceShadow || cfg.sendProtocol) && endpoint.kind === "terminal";
+  const surface = computeSurface ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs }) : undefined;
   if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
+  // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
+  // request store. A pane's generation is its agent and the session the agent named: a pane that
+  // holds another program now is not the pane the request was accepted for.
+  const send =
+    sendStore !== null && endpoint.kind === "terminal"
+      ? new SendProtocol({
+          mux: herdr,
+          gate: gateFor(herdr),
+          store: sendStore,
+          locks: new SessionLocks(),
+          ring: new RowRing(),
+          profile: (harness) => sendProfile(harness),
+          generation: (paneId) => {
+            const pane = engine.current().agents.find((agent) => agent.paneId === paneId);
+            return pane === undefined ? null : `${pane.agent}:${pane.agentSession?.value ?? "-"}`;
+          },
+        })
+      : undefined;
 
   engine.start();
   poker.start();
   const parts = built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
-  return surface === undefined ? parts : { ...parts, surface };
+  const withSurface = surface === undefined ? parts : { ...parts, surface };
+  return send === undefined ? withSurface : { ...withSurface, send };
 };
 
 const registry = new SessionRegistry({

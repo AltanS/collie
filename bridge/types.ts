@@ -274,6 +274,12 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * send by it yet (spec 06 turns it into the composer's input).
    */
   surface?: Surface;
+  /**
+   * Present (and `true`) when this bridge runs the Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec
+   * 05) and the pane carries a Surface: the phone's composer then sends through `POST /api/send`.
+   * Absent otherwise, so a bridge without the flag sends the same bytes as before.
+   */
+  sendProtocol?: true;
 };
 
 /** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
