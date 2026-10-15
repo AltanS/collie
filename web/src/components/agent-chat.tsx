@@ -2776,6 +2776,8 @@ export function AgentChat({
                 <Composer
                   ref={composerRef}
                   paneId={paneId}
+                  // The bridge's Send Protocol mark (M56 spec 05): absent unless COLLIE_SEND_PROTOCOL=1.
+                  sendProtocol={agent?.sendProtocol === true}
                   scope={scope}
                   stale={actsDisabledByCache}
                   agent={agent?.agent}

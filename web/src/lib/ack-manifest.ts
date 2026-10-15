@@ -60,6 +60,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The composer empties and the sent text appears in the mirror; the Send button holds its busy tone until the bridge has verified the reply landed (lib/reply-action.ts).",
   },
+  postSend: {
+    channel: "echo",
+    why: "The Send Protocol's request (M56 spec 05): the Send button holds its busy tone until the bridge answers with a receipt; a sent text empties the composer and appears in the mirror, any other outcome lands as a status line and, where it has one, an offer strip at the thumb.",
+  },
   sendKeys: {
     channel: "echo",
     // TWO paths reach this one export, and the second is the reason `"silent"` is a real value in
