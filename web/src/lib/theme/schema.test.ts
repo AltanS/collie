@@ -169,6 +169,37 @@ describe("parseTheme", () => {
     expect(codes(parseTheme(file({ author }), CAP))).toEqual(["author author"]);
   });
 
+  it.each(["a\nb", "a\u0000b", "a\tb", "a\u007fb", "a\u0085b", "a\u009fb", "a\nb\u0000<script>"])(
+    "refuses a name or an author with the control character in %j",
+    (text) => {
+      const named = refusals(parseTheme(file({ name: text }), CAP));
+      expect(named.map((r) => `${r.code} ${r.path}`)).toEqual(["name name"]);
+      expect(named[0]?.detail).toContain("control character");
+      const authored = refusals(parseTheme(file({ author: text }), CAP));
+      expect(authored.map((r) => `${r.code} ${r.path}`)).toEqual(["author author"]);
+      expect(authored[0]?.detail).toContain("control character");
+    },
+  );
+
+  it("keeps a name with characters past the C1 range", () => {
+    expect(parseTheme(file({ name: "Caf\u00e9 \u00a0Nuit" }), CAP).ok).toBe(true);
+  });
+
+  it("lists 25 refusals at most, and counts the rest in one last row", () => {
+    const doc: Record<string, number> = {};
+    for (let i = 0; i < 4000; i += 1) doc[`k${i}`] = i;
+    const r = refusals(parseTheme(file(doc), CAP));
+    expect(r).toHaveLength(26);
+    expect(r.slice(0, 25).every((x) => x.code === "unknown-key")).toBe(true);
+    expect(r[25]).toEqual({ code: "json", path: "$", detail: "and 3975 more" });
+  });
+
+  it("lists exactly 25 refusals with no count row", () => {
+    const doc: Record<string, number> = {};
+    for (let i = 0; i < 25; i += 1) doc[`k${i}`] = i;
+    expect(refusals(parseTheme(file(doc), CAP))).toHaveLength(25);
+  });
+
   it("names every unknown key, at every level", () => {
     const raw = file({
       colours: {},
