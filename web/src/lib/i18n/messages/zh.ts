@@ -203,6 +203,7 @@ export const zh: Dictionary = {
   "settings.typeface.note.system": "使用系统自带字体，无需额外下载资源。",
   "settings.typeface.note.grotesk": "Collie 定制无衬线体，匹配产品标识风格。",
   "settings.typeface.note.aldrich": "仅提供一种字重，粗体文本显示效果与常规文本相同。",
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
   "settings.typeface.note.operator": "由当前实例管理员配置添加。",
 
   // --- settings.fonts ---

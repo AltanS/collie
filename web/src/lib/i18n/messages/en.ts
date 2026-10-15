@@ -241,6 +241,8 @@ export const en = {
   // Says the cost out loud rather than letting it be discovered: Aldrich ships one weight, and the
   // app suppresses synthesized bold, so bold text under it is not heavier than the rest.
   "settings.typeface.note.aldrich": "One weight, so bold text looks the same as regular.",
+  // Geist has a real 400 to 700 axis, so unlike Aldrich its bold is drawn, not missing.
+  "settings.typeface.note.geist": "Plain and geometric, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---

@@ -663,9 +663,10 @@
  * drawn from the same idea — geometric skeleton, monotone stroke, cut terminals — so the wordmark
  * at 18px reads as one drawing with the mark beside it. Its cost is the small end: x-height is
  * 486/1000, the lowest of the three faces measured, so 11px uppercase labels and the 13px tier are
- * where it has to be judged. The other two candidates (IBM Plex Sans 3.201, Geist 1.800) are on
- * disk in public/fonts/ and wired into the playground's "UI typeface" card behind a live switcher —
- * that card is where a candidate is AUDITIONED before anyone argues for shipping it.
+ * where it has to be judged. Geist 1.800 began as an audition beside it and now ships (see its own
+ * block below); IBM Plex Sans 3.201 is still on disk in public/fonts/ and wired into the
+ * playground's "UI typeface" card behind a live switcher, which is where a candidate is AUDITIONED
+ * before anyone argues for shipping it.
  *
  * WEIGHT. 27 KB, subset to Latin + Latin-Ext-A + the punctuation this app actually prints (·, —, …,
  * ‹›, arrows, ×, ✓) and instanced to wght 400–700. Compare 641 KB / 504 KB for the two Nerd Font
@@ -717,6 +718,38 @@
   /* Latin only, for the reason Aldrich's stand-in below gives: the 107.53% was measured on Space
      Grotesk's Latin, so Russian used to land here ~7.5% too large. Cyrillic now skips it for the
      plain system stack. Keep in step with the same block in index.html. */
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* Geist, the face of the theme `daylight` (M57). Built by the same scripts/build-ui-font.sh run,
+ * subset to the same ranges, 23 KB, instanced to wght 400 to 700 like Space Grotesk, so its bold is
+ * a real drawn weight and `font-synthesis-weight: none` costs it nothing. Plain geometric shapes,
+ * open counters and a tall x-height: the reason the daylight theme picked it for sun and low vision.
+ * Opt-in like every face but the default: fetched when a reader picks it, never preloaded.
+ *
+ * Geist is SIL OFL 1.1, public/fonts/LICENSE-geist.txt. */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/ui-geist-1.800-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Geist's own metric-matched stand-in, on the same terms as the two above: `local()` only, one
+   metric family, Latin only by `unicode-range`. Recomputed by scripts/build-ui-font.sh on
+   2026-10-15 (the playground's older copy read 103.03 / 97.54; Arimo moved upstream since). Do not
+   hand-edit. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "Geist Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 103.04%;
+  ascent-override: 97.53%;
+  descent-override: 28.63%;
+  line-gap-override: 0%;
   unicode-range:
     U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
@@ -832,6 +865,12 @@
 :root.font-grotesk {
   --font-sans:
     "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-geist {
+  --font-sans:
+    "Geist", "Geist Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
