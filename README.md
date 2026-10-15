@@ -151,6 +151,7 @@ and that is the only way to install it on a phone.
 | | |
 | --- | --- |
 | [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
+| [**The durable SDK (experimental)**](./docs/durable-sdk.md) | The npm package `@colliepwa/durable-sdk`, part by part: its entries and runtimes, `openCollie`, the pane methods, the four kinds of question and `requireApproval`, hooks, history, caps, the helpers, the Pi glue and the versions |
 
 ### Reference
 
