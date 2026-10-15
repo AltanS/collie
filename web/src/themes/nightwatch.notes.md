@@ -42,14 +42,17 @@ where Nightwatch picks its own values and what it measured. Numbers come from `c
 
 ## Status: a step quieter, never under 4.5
 
-Chroma is lower than the default in both halves (dark blocked 0.2 to 0.15, working 0.15 to 0.11,
+Chroma is lower than the default in both halves (dark blocked 0.2 to 0.15, working 0.15 to 0.12,
 done 0.16 to 0.11, info 0.15 to 0.1). Lightness is near the default. Two changes go further:
 
 - Blocked and done now differ in LIGHTNESS as well as hue. Dark blocked L 0.67, done L 0.76; light
   blocked L 0.42, done L 0.45. A reader who confuses red and green still gets a step. The oklab
   distance is 0.25 dark and 0.24 light (floor 0.15).
-- `working` keeps its amber, but moves to hue 85 in dark (primary is 70) so a working chip and a
-  primary button do not read as one thing.
+- `working` is a yellow-olive at hue 95, not the primary amber (hue 70). The first pick (hue 72 light,
+  85 dark) sat 0.029 (light) and 0.044 (dark) from `primary` in oklab, so the turning mark and the
+  Send button read as one colour. Now light `oklch(0.45 0.1 95)` and dark `oklch(0.8 0.12 95)`; the
+  distance to `primary` is now 0.063 (light) and 0.074 (dark), and the chip still clears 4.5 on both
+  grounds.
 - `idle` and `unknown` stay a cool pair (hue 250) on a warm page, so the hue keeps them apart from
   warm `muted-foreground`. The light pair was widened (0.46 and 0.41): rgb distance 25.1, the same
   band the default theme holds in dark. Dark pair 26.6.
@@ -59,7 +62,7 @@ Chip is `text-status-X` on `bg-status-X/15` over the ground (gate arithmetic, pl
 | status  | light bg | light card | dark bg | dark card |
 | ------- | -------- | ---------- | ------- | --------- |
 | blocked | 5.99     | 6.52       | 5.71    | 5.08      |
-| working | 5.20     | 5.60       | 8.54    | 7.46      |
+| working | 5.05     | 5.49       | 9.15    | 7.99      |
 | done    | 4.82     | 5.21       | 8.38    | 7.35      |
 | idle    | 4.92     | 5.32       | 7.11    | 6.26      |
 | unknown | 6.01     | 6.48       | 6.03    | 5.35      |

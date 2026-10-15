@@ -81,6 +81,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
 - **The durable example's questions expire after ten minutes.** The support desk sets a timeout on every ask, so the phone shows the time left and a question nobody tapped leaves a timed-out line; DM_ASK_TIMEOUT_MS changes the window.
 - **A strip pill can be one choice of a set.** `Chip` takes `radio`, which gives it `role="radio"` and `aria-checked` in place of `aria-current`. The box and the look stay the same, so nothing in a strip moves.
+- **Nightwatch tells its working mark from its accent.** The working status is now a yellow-olive (hue 95) in both halves, apart from the amber of the main buttons, so the turning mark and the Send button no longer read as one colour.
 
 ### Fixed
 
