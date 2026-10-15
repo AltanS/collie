@@ -93,6 +93,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The ChatGPT sign-in steps match Pi 1.1.0.** The login runs in the data folder from the pinned copy, shows no menu, needs a `chmod 600`, and a stored sign-in wins over the environment key.
 - **Sessions and Programs say where a program shows on the phone.** Both pages say a program has its own Programs section, with its runtime and the count of questions waiting, and that the section moves above your spaces when a question waits.
 - **A comment in the space overview reads without a dash.** House style, no code change.
+- **ADRs 0104 and 0105 are accepted.** A program is a session, and the durable SDK is an npm package.
 
 ## [1.21.3] - 2026-10-14
 
