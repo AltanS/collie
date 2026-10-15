@@ -65,6 +65,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The playground shows the Programs section in four numbered cards.** Card 1 has nothing waiting, card 2 has two questions waiting and the section on top, card 3 has an unreachable program, and card 4 has two machines.
 - **Tests pin the Programs section.** They cover each row state, the section above and below the spaces, the move on a new snapshot, a crew of two machines, and no Programs header with no program.
 - **The needs-you filter keeps a program that waits.** With the filter on, the Programs section lists only the programs with a question waiting.
+- **The phone finds Claude's input box through the frame module.** The chrome reader keeps its exports and its modal checks, and takes the box, the draft, ghost text and the statusline run from `findInputFrame`. The statusline and footer bounds and the placeholder text now come from the Claude profile. Every pane fixture reads exactly as before.
 
 ### Fixed
 
