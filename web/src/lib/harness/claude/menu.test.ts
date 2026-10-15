@@ -83,6 +83,22 @@ describe("detectMenuRegion — the /model picker", () => {
     });
   });
 
+  // 2026-10-16: Claude Code 2.1.301 prints the same footer as 2.1.300, so the picker lifts the same
+  // way. The effort row is on its default here, so the Left/Right label names Medium.
+  it("lifts the 2.1.301 picker at 119 columns with the 2.1.300 keys", () => {
+    const blocks = claudeBuildBlocks(load("claude-lab--menu-model-picker-v2301--w119.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
+    const block = blocks.find((b) => b.kind === "menu")!;
+    if (block.kind !== "menu") throw new Error("unreachable: filtered to menu");
+    const older = detectMenu(load("claude-lab--menu-model-picker-v2300--w119.txt"))!;
+    expect(block.menu.title).toBe("Select model");
+    expect(block.menu.actions).toEqual(older.actions);
+    expect(block.menu.nav).toEqual({
+      upDown: true,
+      leftRight: { verb: "adjust", label: "◐ Medium effort (default)" },
+    });
+  });
+
   // The signature is what the race guard compares. Moving the highlight is exactly the drift a stale
   // tap must not survive, so the two captures must NOT sign the same.
   it("signs a moved highlight differently", () => {
