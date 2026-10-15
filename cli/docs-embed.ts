@@ -35,6 +35,7 @@ import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
 import sessions from "../docs/sessions.md" with { type: "text" };
 import terminology from "../docs/terminology.md" with { type: "text" };
+import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
@@ -149,6 +150,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "voice-and-push",
     purpose: "The microphone in the composer, and notifications when an agent waits on you",
     text: voiceAndPush,
+  },
+  {
+    name: "themes",
+    purpose: "Pick, import, export and write a theme: colours, one typeface and the header mark",
+    text: themes,
   },
   {
     name: "security",
