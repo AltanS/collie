@@ -78,6 +78,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.
 - **A dialog Collie has read is answered at the thumb.** With a draft in the box, Send becomes "Answer the dialog" and a tap scrolls to the dialog card and focuses its first button, instead of a refusal line in the header that a phone has scrolled away. The placeholder names what is waiting ("Menu is waiting"), an empty box keeps its microphone, and a 2.1.300 `/model` picker capture at 119 columns joins the fixtures.
 - **The parked Cloudflare example's version test matches the wire.** A refused version answers 409 with the refusal field the SDK core emits.
+- **The ask card's countdown follows the bridge's clock, not the phone's.** A phone whose clock is off no longer shows a wrong time left on a question. The phone reads the bridge's time from the `Date` header of its own polls, keeps the median of the last five quick round trips, and counts the card down against it.
 
 ### Packaging
 
