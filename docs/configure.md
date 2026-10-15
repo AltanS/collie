@@ -539,8 +539,9 @@ typed.
 ## Your own typefaces
 
 The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
-System, Space Grotesk (the default), and Aldrich. You can add custom fonts in `theme.toml`, the
-fourth configuration file:
+System, Space Grotesk, Aldrich (the default), IBM Plex Sans, Geist and Atkinson Hyperlegible Next. A
+[theme](themes.md) that names a face writes it here once, when you pick the theme. You can add custom fonts in
+`theme.toml`, the fourth configuration file:
 
 ```bash
 cp theme.toml.example ~/.config/collie/theme.toml
@@ -560,7 +561,7 @@ Custom fonts append to the built-in list rather than replacing it
 `commands.toml` and the other configuration files. Because fonts do not trigger actions, there is
 nothing to shadow.
 
-They appear below the three default entries, and each client device selects its own.
+They appear below the shipped entries, and each client device selects its own.
 
 Three behaviors to note:
 
@@ -782,7 +783,9 @@ sessions. [Security](security.md) lists this behavior as a sharp edge.
 
 > **Note.** Collie follows your phone's appearance by default.
 
-To pin it, open **Settings → Appearance → Theme** and pick **System**, **Light** or **Dark**. The setting is
+To pin it, open **Settings → Appearance**, find the **Appearance** card under the **Theme** card, and pick
+**System**, **Light** or **Dark**. The [Theme](themes.md) card picks the colours; this card picks the light or
+the dark half of them. The setting is
 stored **per device** in the browser rather than on the bridge. Your phone can remain on Dark while
 a laptop tracks the OS. The preference persists across reloads and PWA reinstalls on the same
 device.
