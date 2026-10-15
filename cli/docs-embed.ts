@@ -25,6 +25,7 @@ import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
 import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
 import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
+import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
@@ -105,6 +106,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "durable-sdk",
     purpose: "Every part of the npm package a program uses: entries, panes, questions, hooks, caps",
     text: durableSdk,
+  },
+  {
+    name: "durable-wire",
+    purpose: "What travels between Collie and a program: routes, hello, asks, transports, limits",
+    text: durableWire,
   },
   {
     name: "upgrading",

@@ -5,7 +5,8 @@
 
 `@colliepwa/durable-sdk` is the npm package a program uses to show itself on your phone through
 Collie. This page lists every part of it. [Programs](durable-programs.md) has the quickstart and the
-setup on the Collie side.
+setup on the Collie side, and [The durable wire](durable-wire.md) explains what travels between the
+two.
 
 ## Install and entries
 
