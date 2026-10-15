@@ -80,6 +80,8 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--omo-v5130-panel-picker-tree.txt` | 40 rows, `/tree` with the panel beside its header | Escape card |
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |
+| `pi--trust-prompt.txt` | pi 1.2.0 started in an untrusted folder holding a project skill: `Trust project folder?`, the folder, the explanation, five unnumbered options with `→` on Trust (the parent folder wrapped under its option) and `↑↓ navigate  enter select  escape/ctrl+c cancel`, between two rules. Read with a throwaway `PI_CODING_AGENT_DIR`; both paths became one invented sandbox path of the same length, split where the real one wrapped | lifts (pi/trust.ts), a walked trust card plus Cancel (Escape) |
+| `pi--trust-prompt-moved.txt` | The same prompt after one Down: `→` on Trust parent folder. Its walk pair | lifts |
 
 ## pi 1.1.0 corpus, PR 397 (captured 2026-10-10 by @raffaelenatale, pi 1.1.0 with a pi question extension, Linux sandbox panes)
 

@@ -67,6 +67,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // The same question beside OmO's side panel: read from the rows cut at the panel, and bound to
   // those columns (panel.ts, index.ts).
   ["pi--omo-v5130-panel-question.txt", "digit"],
+  // pi 1.2.0's folder trust prompt: not a question, read by pi/trust.ts, plan (a) from its footer.
+  ["pi--trust-prompt.txt", "walk"],
+  ["pi--trust-prompt-moved.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
