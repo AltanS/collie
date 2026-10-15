@@ -171,6 +171,50 @@ describe("ThemePickerControl", () => {
       expect(within(dialog).getAllByRole("img", { name: /^background #[0-9a-f]{6}$/ })).toHaveLength(2);
     });
 
+    it("draws the file's own mark at rest on both grounds, not the active theme's, in a fixed row", async () => {
+      const { ThemePickerControl, store } = await load();
+      act(() => store.setActiveTheme("nightwatch"));
+      const { container } = render(<ThemePickerControl />);
+      const otter = copy("cove", "Cove", (theme) => {
+        theme.mark = "harbour";
+        theme.light = { ...theme.light, background: "#f0f4f8", primary: "#0f766e" };
+        theme.dark = { ...theme.dark, background: "#0b1220", primary: "#2dd4bf" };
+      });
+      pick(container, fileOf(JSON.stringify(otter)));
+      const dialog = await screen.findByRole("dialog");
+      const row = dialog.querySelector<HTMLElement>("[data-slot='theme-preview-mark']");
+      expect(row?.classList.contains("h-14")).toBe(true);
+      const halves = [...(row?.querySelectorAll<HTMLElement>("[data-half]") ?? [])];
+      expect(halves.map((box) => box.dataset.half)).toEqual(["light", "dark"]);
+      expect(halves.map((box) => box.style.getPropertyValue("--background"))).toEqual(["#f0f4f8", "#0b1220"]);
+      expect(halves.map((box) => box.style.getPropertyValue("--primary"))).toEqual(["#0f766e", "#2dd4bf"]);
+      for (const box of halves) {
+        expect(box.classList.contains("h-14")).toBe(true);
+        const svg = box.querySelector("svg");
+        expect(svg?.getAttribute("width")).toBe("40");
+        expect(svg?.classList.contains("cm-live")).toBe(false);
+        // The otter at rest, not the owl the active theme wears.
+        expect(box.querySelector(".hb-rest .hb-otter")).not.toBeNull();
+        expect(box.querySelector("[class^='nw-']")).toBeNull();
+      }
+      // The mark is decorative: the sixteen swatches stay the only images in the sheet.
+      expect(within(dialog).getAllByRole("img")).toHaveLength(16);
+    });
+
+    it("draws the dog in the preview when the file names no mark", async () => {
+      const { ThemePickerControl, store } = await load();
+      act(() => store.setActiveTheme("harbour"));
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("plain", "Plain"))));
+      const dialog = await screen.findByRole("dialog");
+      const boxes = dialog.querySelectorAll("[data-slot='theme-preview-mark'] [data-half]");
+      expect(boxes).toHaveLength(2);
+      for (const box of boxes) {
+        expect(box.querySelector(".cm-drift")).not.toBeNull();
+        expect(box.querySelector("[class^='hb-']")).toBeNull();
+      }
+    });
+
     it("says so when a half is filled from the default theme", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);

@@ -5,6 +5,8 @@ import { __resetOperatorBusy, beginBusy } from "@/lib/busy";
 import { clearStatus, setStatus } from "@/lib/status";
 import { markIsLive } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
+import { SHIPPED_MARKS } from "@/lib/shipped-marks";
+import { setActiveTheme } from "@/lib/theme/store";
 import { CollieHome, spinRate } from "./collie-home";
 
 // THE ROUND IS AN EVENT, NOT A STATE. Any status the app publishes turns the orbit exactly once, at
@@ -265,4 +267,72 @@ describe("CollieHome — the lost badge", () => {
     expect(cls).toMatch(/ring-background/);
     expect(cls).toMatch(/text-status-blocked/);
   });
+});
+
+// EVERY SHIPPED MARK IN THE HEADER (M57 spec 10). The round, the busy spin and the lost hold, run again
+// with each theme active, so each theme's own mark sits in the header. The ramp half: jsdom has no
+// `getAnimations`, so it is stubbed on the header box with one fake animation per keyframe the mark's
+// own stylesheet declares. The ramp must collect them (they are named `cm-`), rate them through the
+// round without throwing, and hand them back at rate 1.
+describe("CollieHome, the spin with every shipped mark", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearStatus();
+    __resetOperatorBusy();
+  });
+  afterEach(() => {
+    act(() => clearStatus());
+    act(() => __resetOperatorBusy());
+    act(() => setActiveTheme("collie"));
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  for (const id of SHIPPED_MARKS) {
+    it(`${id}: one round, the busy spin, and still while lost`, () => {
+      act(() => setActiveTheme(id));
+      const { container, unmount } = render(<CollieHome trouble={false} />);
+      expect(markIsLive(container)).toBe(false);
+      act(() => setStatus("claude is done", "success"));
+      expect(markIsLive(container)).toBe(true);
+      act(() => void vi.advanceTimersByTime(1800));
+      expect(markIsLive(container)).toBe(false);
+      let release!: () => void;
+      act(() => {
+        release = beginBusy();
+      });
+      expect(markIsLive(container)).toBe(true);
+      act(() => release());
+      expect(markIsLive(container)).toBe(false);
+      unmount();
+      const lost = render(<CollieHome trouble lost />);
+      act(() => void beginBusy());
+      expect(markIsLive(lost.container)).toBe(false);
+    });
+
+    it(`${id}: the round's rate ramp collects the mark's animations and hands them back at rate 1`, () => {
+      act(() => setActiveTheme(id));
+      const rates: number[] = [];
+      let names: string[] = [];
+      // A stub of a method jsdom lacks, on the prototype, removed by restoreAllMocks. The
+      // fakes carry only what collect() and the ramp read: `animationName` and `updatePlaybackRate`.
+      const stub = vi.fn(function (this: Element) {
+        const css = this.querySelector("svg > style")?.textContent ?? "";
+        names = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1] ?? "");
+        return names.map((animationName) => ({ animationName, updatePlaybackRate: (r: number) => void rates.push(r) }));
+      });
+      Object.defineProperty(HTMLElement.prototype, "getAnimations", { value: stub, configurable: true });
+      try {
+        render(<CollieHome trouble={false} />);
+        act(() => setStatus("claude is done", "success"));
+        act(() => void vi.advanceTimersByTime(1800));
+        expect(stub).toHaveBeenCalled();
+        expect(names.every((n) => n.startsWith("cm-"))).toBe(true);
+        expect(rates.length).toBeGreaterThan(names.length);
+        expect(rates.at(-1)).toBe(1);
+      } finally {
+        Reflect.deleteProperty(HTMLElement.prototype, "getAnimations");
+      }
+    });
+  }
 });
