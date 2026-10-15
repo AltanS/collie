@@ -1858,6 +1858,10 @@ signature.
 | `muse--approval-ls-147.txt` | Muse Code 1.4.7 `ls` approval, `⟩` on option 1 (#424) | `blocked` |
 | `muse--approval-date-147.txt` | Muse Code 1.4.7 `date` approval, `⟩` on option 2 (#424) | `blocked` |
 | `muse--trust-prompt-147.txt` | Muse Code 1.4.7 workspace trust prompt (#424) | `blocked` |
+| `muse--palette-hint.txt` | Muse Code 1.4.8, `/model` typed: the box reads `❯ /model [<model-id>]`, the hint in the bottom rule's colour, over one `/model` suggestion. The read is `/model` | `idle` |
+| `muse--palette-hint-skills.txt` | `/resume` typed: its hint, and three suggestions, the bold `/resume` first and two built-in `resume-*` skills under it. The read is `/resume`, since Enter runs the bold row | `idle` |
+| `muse--palette-hint-moved.txt` | Same, after Down: the bold has moved to `/resume-claude`, so the read must not verify `/resume` | `idle` |
+| `muse--palette-typed-arg.txt` | `/model x` typed: the hint is gone and `x` wears the typed-text colour. The read is `/model x` | `idle` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
@@ -1865,6 +1869,11 @@ dir; every question was answered with the sandbox's own test data. The dialogs
 left open at the end were dismissed with `Escape`. A second session
 (2026-09-26, tasks popup, same throwaway sandbox) approved `sleep 120/100/110/150`
 (backgrounded, no output) and `ls -la /tmp` (listing verified).
+
+The four `muse--palette-*` rows of 2026-10-15 are visible-screen captures of Muse Code 1.4.8 in a
+throwaway Herdr session (`herdr pane read --source visible --format ansi`). The statusline's
+shortened cwd was swapped for `/private/tmp/collie-muse-sandbox`, the same 32 characters, and its
+model label renamed `mini`. Nothing was submitted while capturing.
 
 
 ## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)
