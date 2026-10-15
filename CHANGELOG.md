@@ -72,6 +72,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.
+- **A tap on a dialog is refused when the composer is back under it.** The bridge's binding check looks for an input box under the dialog's region with the frame module and refuses with `composer_below`, so a tap bound to a dialog that has closed cannot land in the composer.
 
 ### Packaging
 

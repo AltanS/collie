@@ -318,6 +318,40 @@ describe("a task checklist under the region", () => {
   });
 });
 
+// M56 spec 03. A dialog replaces the composer while it is up, so an input box drawn UNDER the matched
+// region means the dialog has closed and the region is a copy left in the transcript. The box is found
+// by the one input-frame module from the profiles' anchors; the bridge refuses with `composer_below`.
+describe("an input box under the region", () => {
+  const FIXTURE = "claude--permission-bash.txt";
+  const { region } = REGIONS.find((r) => r.fixture === FIXTURE)!;
+  const RULE = "─".repeat(40);
+
+  test("the live dialog binds", () => {
+    expect(verifyPromptBinding(readFileSync(join(FIXTURE_DIR, FIXTURE), "utf8"), region)).toEqual({ ok: true });
+  });
+
+  test("the same region with the composer back under it is refused", () => {
+    const fresh = [region, "", RULE, "❯\u00a0", RULE, "  ? for shortcuts"].join("\n");
+    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: false, reason: "composer_below" });
+    expect(verifyExpectedPrompt(fresh, region)).toEqual({ ok: false, reason: "composer_below" });
+  });
+
+  test("a draft in that box changes nothing", () => {
+    const fresh = [region, RULE, "❯ yes please", RULE].join("\n");
+    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: false, reason: "composer_below" });
+  });
+
+  test("an echoed box ABOVE the live region is not the composer", () => {
+    const fresh = [RULE, "❯ an old prompt", RULE, region].join("\n");
+    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: true });
+  });
+
+  test("a half box under the region (no bottom edge) is no frame, so the text check decides", () => {
+    const fresh = [region, RULE, "❯ "].join("\n");
+    expect(verifyPromptBinding(fresh, region)).toEqual({ ok: true });
+  });
+});
+
 // ADR 0080 point 7. The text check strips every SGR escape, so a pointer drawn only as a background
 // colour is invisible to it. `expected_styled` is the phone's canonical styled lines of the same rows
 // (behind a `v1` format line); the bridge runs the SAME function over the fresh read and compares at

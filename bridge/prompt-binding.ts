@@ -7,6 +7,10 @@ import { cropRawColumns, type ColumnRange } from "../web/src/lib/column-range.ts
 // The task checklist Claude Code 2.1.299 draws under a dialog is recognised by the one function the
 // phone uses to take it off before its grammars run.
 import { trailingTaskChecklistStart } from "../web/src/lib/task-checklist.ts";
+// The input box is found by the one input-frame module (M56 spec 03), from every harness profile's
+// anchors. A box drawn under the region means the dialog is gone and the composer is back.
+import { findInputFrame, plainRows } from "../web/src/lib/surface/frame.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 
 /**
  * Normalize a rendered prompt region for comparison across terminal redraws.
@@ -42,7 +46,7 @@ export const DEFAULT_PROMPT_TAIL_LINES = 6;
 
 export type PromptBindingResult =
   | { ok: true }
-  | { ok: false; reason: "empty" | "not_found" | "not_in_tail" };
+  | { ok: false; reason: "empty" | "not_found" | "not_in_tail" | "composer_below" };
 
 /** The reasons the style check refuses with. Spelled apart from the text check's so an audit line
  *  says which of the two refused. */
@@ -92,10 +96,35 @@ function matchInTail(
 
 type TextRefusal = Extract<PromptBindingResult, { ok: false }>["reason"];
 
+/**
+ * Whether a harness input box is drawn BELOW the matched region: the input frame (findInputFrame,
+ * with each profile's anchors) has its top edge on a normalized line after `matchEnd`. A dialog
+ * replaces the composer while it is up, so a box under the region means the dialog has closed and
+ * the region is a copy left in the transcript: a tap bound to it would land in the composer. Any
+ * profile counts, because the route does not know the pane's harness; a box no harness draws over a
+ * live dialog. The frame module never judges a dialog, so a frame found ABOVE the region (an echoed
+ * box over a live dialog) says nothing here.
+ */
+function composerBelow(freshText: string, matchEnd: number): boolean {
+  const rows = freshText.replace(SGR_SEQUENCE, "").replace(/\r\n?/g, "\n").split("\n");
+  for (const profile of loadProfiles().values()) {
+    const frame = findInputFrame(plainRows(rows), profile.idle);
+    if (frame === null) continue;
+    // The normalized index of the top edge: the non-blank rows above it, as normalizePromptRegion
+    // keeps them. The top edge itself is never blank.
+    let topLine = 0;
+    for (let r = 0; r < frame.top; r++) if (rows[r]!.replace(/\s+$/, "").length > 0) topLine++;
+    if (topLine > matchEnd) return true;
+  }
+  return false;
+}
+
 /** The text check on already normalized lines: where the expected region starts, or why not. A task
  *  checklist that ends the read is not counted against the tail (`DEFAULT_PROMPT_TAIL_LINES`). Only
- *  the end is cut, so the start returned still indexes `freshLines`. */
+ *  the end is cut, so the start returned still indexes `freshLines`. A region with an input box drawn
+ *  under it in `freshText` is refused (`composer_below`). */
 function matchText(
+  freshText: string,
   freshLines: string[],
   expected: string,
   tailLines: number,
@@ -103,7 +132,11 @@ function matchText(
   const expectedLines = normalizePromptRegion(expected);
   if (expectedLines.length === 0) return { ok: false, reason: "empty" };
   const end = trailingTaskChecklistStart(freshLines) ?? freshLines.length;
-  return matchInTail(freshLines.slice(0, end), expectedLines, tailLines);
+  const match = matchInTail(freshLines.slice(0, end), expectedLines, tailLines);
+  if (match.ok && composerBelow(freshText, match.start + expectedLines.length - 1)) {
+    return { ok: false, reason: "composer_below" };
+  }
+  return match;
 }
 
 export function verifyExpectedPrompt(
@@ -111,7 +144,7 @@ export function verifyExpectedPrompt(
   expected: string,
   tailLines = DEFAULT_PROMPT_TAIL_LINES,
 ): PromptBindingResult {
-  const match = matchText(normalizePromptRegion(freshText), expected, tailLines);
+  const match = matchText(freshText, normalizePromptRegion(freshText), expected, tailLines);
   return match.ok ? { ok: true } : { ok: false, reason: match.reason };
 }
 
@@ -128,7 +161,8 @@ export function verifyExpectedPrompt(
  * counts the rows that carry text inside the range. Without a range the read is compared whole.
  *
  * The text check is `verifyExpectedPrompt`'s: the last contiguous match of the normalized expected
- * lines, ending inside the last `tailLines`. The style check does not search. The two projections
+ * lines, ending inside the last `tailLines`, with no harness input box drawn under it
+ * (`composer_below`: the dialog has closed and the composer is back). The style check does not search. The two projections
  * drop the same lines (a line with no visible text is dropped by both), so the normalized text lines
  * and the canonical styled lines of one read have the same count and aligned indices. The expected
  * styled lines must therefore equal the fresh styled lines exactly at the index where the text
@@ -153,7 +187,7 @@ export function verifyPromptBinding(
 ): PromptBindingVerdict {
   const freshText = columns === undefined ? readText : cropRawColumns(readText, columns);
   const freshLines = normalizePromptRegion(freshText);
-  const match = matchText(freshLines, expected, tailLines);
+  const match = matchText(freshText, freshLines, expected, tailLines);
   if (!match.ok) return { ok: false, reason: match.reason };
   if (expectedStyled === undefined) return { ok: true };
 

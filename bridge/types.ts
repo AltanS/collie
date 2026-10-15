@@ -1424,7 +1424,8 @@ export type ActionResponse =
       code?: ErrorCode;
       detail?: ApiErrorDetail;
       /** On a 409 `prompt_changed` only: which check refused (`not_found`, `not_in_tail`, `empty`,
-       *  `style_empty`, `style_not_found`, `style_misaligned`). A reason code, never pane content. */
+       *  `composer_below`, `style_empty`, `style_not_found`, `style_misaligned`). A reason code,
+       *  never pane content. */
       reason?: string;
     };
 
