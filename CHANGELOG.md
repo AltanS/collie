@@ -41,6 +41,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The durable wire has a version policy and a receipt on every approval.** Collie accepts the previous wire version for one minor, a mismatch says so on the phone, and an approval records who decided and when. The SDK core imports nothing from Pi.
 - **The durable SDK runs on Node and asks for an approval in one call.** `requireApproval(toolName, args, options)` builds the card from the tool's name and its arguments and returns who decided and when. A Node entry serves the same socket, and says at start that it cannot run the descendant check. The Pi helper moved to `sdk/pi` and takes its words as options.
 - **The Claude input box is described by a profile file, keyed by version.** `web/src/lib/surface/profiles/claude.json` holds the frame anchors, the keys, the long-paste form and the hook events, a loader checks every field and names the one that is wrong, and a Claude newer than the verified range reads as `provisional` instead of failing. Nothing reads the file yet; the new input surface (M56) builds on it.
+- **Collie reads a harness version from its binary for the input profile.** `bridge/surface/binary-version.ts` runs the profile's own version command and takes the first match, the way the canary does, and a binary that will not run gives `provisional`. The screen is never read for a version.
 
 ### Changed
 
