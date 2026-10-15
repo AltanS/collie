@@ -81,6 +81,20 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |
 
+### Derived, not captured: a dialog taller than the pane (2026-10-15)
+
+Three files are CUT from the captures above, not captured. On a short pane OmO's fullscreen mode
+draws a dialog from the top down, so its bottom rule and status rows fall off the screen (probed live
+2026-10-12 at 18 and 20 rows, not saved). Each file keeps the first rows of a whole capture, bytes
+unchanged, and drops the rest, the way a shorter pane shows the same screen. What proves the modal
+there is in `pi/ASK_NOTES.md`, "A dialog taller than the pane".
+
+| Fixture | Cut from | Rows kept | Reads as |
+| --- | --- | --- | --- |
+| `pi--omo-v5130-panel-question-cut.txt` | `pi--omo-v5130-panel-question.txt` | 15: through the footer and the blank row under it | lifts, a tap sends the digit, bound to columns 0 to 91 |
+| `pi--omo-v5130-panel-question-cut-footer.txt` | `pi--omo-v5130-panel-question.txt` | 12: through the free-text row, no trailer, no footer | Escape card |
+| `pi--omo-v5130-panel-picker-tree-cut.txt` | `pi--omo-v5130-panel-picker-tree.txt` | 18: the header, the inner rule and twelve list rows | Escape card |
+
 ## pi 1.1.0 corpus, PR 397 (captured 2026-10-10 by @raffaelenatale, pi 1.1.0 with a pi question extension, Linux sandbox panes)
 
 Byte-faithful `format:ansi` captures of **pi 1.1.0** with a pi question extension loaded (the

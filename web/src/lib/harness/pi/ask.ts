@@ -50,7 +50,7 @@ import { lineText, type StyledLine } from "../../blocks";
 import { pointerWalk } from "../menu-hints";
 import type { PromptFeedback, PromptModel, PromptOption } from "../prompt-model";
 import type { WizardAnswer, WizardModel, WizardStepChip } from "../wizard-model";
-import { locateComposer, MAX_PICKER_HEADER_ROWS, paintedStatus, ruleAbove } from "./composer";
+import { locateComposer, MAX_PICKER_HEADER_ROWS, paintedStatus, ruleAbove, tailRule } from "./composer";
 import { keyHintPairs, listDialogHint, parsePiFooter, type PiFooter } from "./footer";
 
 /** A full-width rule: pi's editor rules and every question extension's own top and bottom rule. */
@@ -75,7 +75,10 @@ const HEADER_ROW = /^ \S/;
 /** The frame every pi question screen shares: the two rules and the footer between them. */
 export interface PiFrame {
   top: number;
+  /** The bottom rule, or, on an open frame, the screen's last row (the region ends there). */
   bottom: number;
+  /** The bottom rule is off the screen: a dialog taller than the pane (see `openFrameTop`). */
+  open: boolean;
   /** First and last row of the footer (inclusive). */
   footerStart: number;
   footerEnd: number;
@@ -111,19 +114,8 @@ function statusTailBottom(lines: StyledLine[], texts: string[], end: number): nu
   return paintedStatus(lines.slice(bottom + 1, end + 1)) ? bottom : null;
 }
 
-/** Read the frame at the tail of `lines`, or null. Says nothing yet about what is inside it. */
-export function readPiFrame(lines: StyledLine[]): PiFrame | null {
-  const texts = lines.map((l) => lineText(l).trimEnd());
-  let end = texts.length - 1;
-  while (end >= 0 && texts[end] === "") end--;
-  if (end < 0) return null;
-
-  const bottom = statusTailBottom(lines, texts, end);
-  if (bottom === null || bottom < 3) return null;
-
-  // The footer: OmO leaves one blank row above the rule, stock pi none.
-  let footerEnd = bottom - 1;
-  if (texts[footerEnd] === "") footerEnd--;
+/** The footer ending at row `footerEnd`: one to three painted rows, one space in, that parse. */
+function footerAt(lines: StyledLine[], texts: string[], footerEnd: number): { start: number; footer: PiFooter } | null {
   let best: { start: number; footer: PiFooter } | null = null;
   for (let k = 1; k <= MAX_FOOTER_ROWS; k++) {
     const start = footerEnd - k + 1;
@@ -133,6 +125,33 @@ export function readPiFrame(lines: StyledLine[]): PiFrame | null {
     const footer = parsePiFooter(texts.slice(start, footerEnd + 1).map((t) => t.trim()).join(" "));
     if (footer !== null) best = { start, footer };
   }
+  return best;
+}
+
+/** Read the frame at the tail of `lines`, or null. Says nothing yet about what is inside it. A frame
+ *  whose bottom rule is off the screen is read too, as an open frame (`openFrameTop`), when its
+ *  footer is still on the screen. */
+export function readPiFrame(lines: StyledLine[]): PiFrame | null {
+  const texts = lines.map((l) => lineText(l).trimEnd());
+  let end = texts.length - 1;
+  while (end >= 0 && texts[end] === "") end--;
+  if (end < 0) return null;
+
+  const bottom = statusTailBottom(lines, texts, end);
+  if (bottom === null) {
+    const top = openFrameTop(lines, texts, end);
+    if (top === null) return null;
+    // The footer ends at the screen's last row: the rows under it are what the pane cut off.
+    const best = footerAt(lines, texts, end);
+    if (best === null || best.start <= top) return null;
+    return { top, bottom: end, open: true, footerStart: best.start, footerEnd: end, footer: best.footer, texts };
+  }
+  if (bottom < 3) return null;
+
+  // The footer: OmO leaves one blank row above the rule, stock pi none.
+  let footerEnd = bottom - 1;
+  if (texts[footerEnd] === "") footerEnd--;
+  const best = footerAt(lines, texts, footerEnd);
   if (best === null) return null;
 
   // The top rule: the first full rule above, of the bottom rule's length and colour.
@@ -144,7 +163,64 @@ export function readPiFrame(lines: StyledLine[]): PiFrame | null {
     top--;
   }
   if (top < 0 || texts[top] !== texts[bottom] || ruleColor(lines[top]!) !== ruleColor(lines[bottom]!)) return null;
-  return { top, bottom, footerStart: best.start, footerEnd, footer: best.footer, texts };
+  return { top, bottom, open: false, footerStart: best.start, footerEnd, footer: best.footer, texts };
+}
+
+/**
+ * The top rule of a dialog whose bottom rule is off the screen, or null (ASK_NOTES.md, "A dialog
+ * taller than the pane"). OmO's fullscreen mode draws a dialog from the top down, so on a short pane a
+ * question or a picker runs past the last row: no bottom rule and no status rows, which is the
+ * evidence every other reader here starts from. What proves the modal then, all of it:
+ *   - the screen ends inside the frame: no pi status rows at the tail, nothing under the frame's top
+ *     rule is a rule, and no row under it is wider than it (the rule spans the frame);
+ *   - the top rule is the lowest full rule on the screen, and then one of two shapes:
+ *     a. a dialog: after at most one blank row, a painted header row one space in (OmO's title
+ *        `Ask user · 30m`, stock pi's question), every later row one space in or a pointer row, and
+ *        either the first option row (`1.`) or the footer on the screen;
+ *     b. a picker: a painted key-hint row in the header section between this rule and the rule of
+ *        its width above it (`/tree`, pi--omo-v5130-panel-picker-tree-cut.txt), and no `❯` editor
+ *        row under it.
+ * The captures are cut from real ones (fixtures README, "derived"). Agent prose that quotes a dialog
+ * stays prose: while pi runs its editor and status rows are at the tail, and after it exits the shell
+ * prompt is, so neither screen ends inside a frame.
+ */
+export function openFrameTop(lines: StyledLine[], texts: string[], end: number): number | null {
+  if (end < 1 || tailRule(lines) !== null || statusTailBottom(lines, texts, end) !== null) return null;
+  let top = end;
+  while (top >= 0 && end - top <= MAX_BODY_ROWS && !RULE.test(texts[top]!)) {
+    if (/^\s*─/.test(texts[top]!)) return null;
+    top--;
+  }
+  if (top < 0 || !RULE.test(texts[top]!) || top === end) return null;
+  const width = texts[top]!.length;
+  for (let r = top + 1; r <= end; r++) if (texts[r]!.length > width) return null;
+  return openDialog(lines, texts, top, end) || openPicker(lines, texts, top, end) ? top : null;
+}
+
+/** Shape (a) of `openFrameTop`: a dialog's title under its top rule, then dialog rows to the end. */
+function openDialog(lines: StyledLine[], texts: string[], top: number, end: number): boolean {
+  let title = top + 1;
+  if (texts[title] === "") title++;
+  if (title > end || !HEADER_ROW.test(texts[title]!) || !styledRow(lines[title]!)) return false;
+  let option = false;
+  for (let r = title + 1; r <= end; r++) {
+    const t = texts[r]!;
+    if (t === "") continue;
+    if (!t.startsWith(" ") && !/^[>→] /.test(t)) return false;
+    if (optionStart(t) !== null) option = true;
+  }
+  return option || footerAt(lines, texts, end) !== null;
+}
+
+/** Shape (b) of `openFrameTop`: a picker's key-hint row over its inner rule, no editor under it. */
+function openPicker(lines: StyledLine[], texts: string[], top: number, end: number): boolean {
+  for (let r = top + 1; r <= end; r++) if (texts[r]!.startsWith("❯")) return false;
+  const header = ruleAbove(texts, top, texts[top]!.length, MAX_PICKER_HEADER_ROWS + 1);
+  if (header < 0) return false;
+  for (let r = header + 1; r < top; r++) {
+    if (paintedRow(lines[r]!) && (keyHintPairs(texts[r]!) >= 2 || listDialogHint(texts[r]!))) return true;
+  }
+  return false;
 }
 
 /**
@@ -154,7 +230,11 @@ export function readPiFrame(lines: StyledLine[]): PiFrame | null {
  */
 export function piModalOnScreen(lines: StyledLine[]): boolean {
   if (readPiFrame(lines)?.footer.escapeVerb != null) return true;
-  return pickerOnScreen(lines);
+  if (pickerOnScreen(lines)) return true;
+  const texts = lines.map((l) => lineText(l).trimEnd());
+  let end = texts.length - 1;
+  while (end >= 0 && texts[end] === "") end--;
+  return openFrameTop(lines, texts, end) !== null;
 }
 
 

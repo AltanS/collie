@@ -136,8 +136,8 @@ the sign is a row of that frame: agent output can print a rule straight into tex
 heading), and that must not crop the real frame (`panel.test.ts`). Windows ConPTY is not verified. Probed live 2026-10-12 at 125 columns: an idle send, a draft read back
 without panel text, a `/` command. The panel ticks (`elapsed 1m21`), so the editor's bound prompt,
 which is whole rows, binds nothing there: the write is unbound and Enter still waits for the
-read-back. On an 18-row pane a picker pushes the bottom rule off the screen; that screen reads as
-nothing and a send is refused.
+read-back. On an 18-row pane a picker pushes the bottom rule off the screen; see "A dialog taller
+than the pane" below.
 
 A question beside the panel lifts and binds to the columns it was read from, 0 to W
 (`PromptModel.bindColumns`, `web/src/lib/column-range.ts`). The phone sends them as
@@ -151,7 +151,40 @@ ticked (`elapsed 1m37` to `1m40`). A whole-row binding of that region was refuse
 and the real `submitPromptOption` with the same stale model sent `2`: OmO recorded `Color: Green`,
 and the audit line carries the columns. A first attempt was refused at entry, correctly, because
 the title's countdown went from `30m` to `29m` between the read and the tap. On a 20-row pane the
-same question lost its bottom rule off the screen and read as nothing, like the picker above.
+same question lost its bottom rule off the screen; see the next section.
+
+## A dialog taller than the pane
+
+OmO's fullscreen mode draws a dialog from the top down. On a short pane (an 18-row `/tree`, a
+20-row question beside the panel, probed live 2026-10-12) the dialog runs past the last row, so the
+bottom rule and the status rows are off the screen. Every reader above starts from those rows, so
+until 2026-10-15 such a screen read as nothing: no card, not even the Escape card, and a send was
+refused. `ask.ts` (`openFrameTop`) now reads it as an open frame. What proves the modal once the
+bottom rule is gone, all of it:
+
+- The screen ends inside the frame: no pi status rows at the tail, nothing under the frame's top
+  rule is a rule, and no row under it is wider than the rule.
+- The top rule is the lowest full rule on the screen, and one of two shapes follows:
+  - a dialog: after at most one blank row, a painted header row one space in (OmO's title
+    `Ask user · 30m`, stock pi's question), every later row one space in or a pointer row, and the
+    first option row (`1.`) or the footer on the screen;
+  - a picker: a painted key-hint row in the header section between this rule and the rule of its
+    width above it, and no `❯` editor row under it.
+
+So the top rule plus a painted title is the core, and an option row or the footer is the second
+sign: a title alone, cut above the options, proves nothing. An open frame is always a modal, so the
+Escape card shows. Buttons need the footer, because every key comes from the footer: with the footer
+on the screen the question lifts exactly as a closed one does, its region running from the top rule
+to the screen's last row; cut above the footer, it gets the Escape card only. Beside the panel the
+panel's column comes from the top rule (`panel.ts`, sign c), so the card binds to columns 0 to W.
+
+The evidence is cut from real captures, not captured short: `pi--omo-v5130-panel-question-cut.txt`
+(footer on screen, lifts), `-panel-question-cut-footer.txt` (cut above the trailer, Escape card) and
+`-panel-picker-tree-cut.txt` (18 rows, Escape card); the fixtures README says so. The limit, pinned in
+`ask.test.ts`: a dialog quoted in prose and cut at the screen's last row, with no editor and no
+status rows under it, reads as an open frame. While pi runs its editor is at the tail, and after it
+exits the shell prompt is, so that screen needs a pane cut mid-quote in the moment Herdr still says
+`pi`.
 
 ## OmO's question banner
 
@@ -171,4 +204,6 @@ Nothing is lost or sent elsewhere, so the banner is left as it is: a ready edito
 - OmO with several questions, or with an answered question.
 - A Submit page or a walked question beside OmO's side panel: no capture. Only OmO's one-question
   digit card is proven there.
-- A picker taller than the pane, which pushes the bottom rule off the screen.
+- A dialog taller than the pane whose options are on the screen but whose footer is not: Escape
+  card only, because the keys come from the footer. No live capture of a cut screen yet; the
+  fixtures are cut from whole ones.

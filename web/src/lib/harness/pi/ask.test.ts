@@ -7,7 +7,9 @@ import { promptsEqual, promptsSameIdentity, type PromptModel } from "../prompt-m
 import { detectPiQuestion, piModalOnScreen, readPiFrame } from "./ask";
 import { ruleAbove, tailRule } from "./composer";
 import { keyHintPairs } from "./footer";
+import { buildBlocks } from "../index";
 import { piAdapter } from "./index";
+import { piView } from "./panel";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
 const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
@@ -67,6 +69,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // The same question beside OmO's side panel: read from the rows cut at the panel, and bound to
   // those columns (panel.ts, index.ts).
   ["pi--omo-v5130-panel-question.txt", "digit"],
+  // The same capture cut where an 18-row pane cuts it: the bottom rule and the status rows are off
+  // the screen, the footer is not (fixtures README, derived).
+  ["pi--omo-v5130-panel-question-cut.txt", "digit"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -88,6 +93,9 @@ const RAW_MODALS = new Set([
   "pi--omo-v5130-picker-tree.txt",
   "pi--omo-v5130-picker-resume.txt",
   "pi--omo-v5130-panel-picker-tree.txt",
+  // Dialogs taller than the pane, cut from the captures above (fixtures README, derived).
+  "pi--omo-v5130-panel-question-cut-footer.txt",
+  "pi--omo-v5130-panel-picker-tree-cut.txt",
   "pi--v110-stock-picker-resume.txt",
   "pi--v110-stock-picker-tree.txt",
   // pi 1.2.0's /settings and /scoped-models, told by their hint rows (listDialogHint, footer.ts).
@@ -395,6 +403,85 @@ describe("piModalOnScreen", () => {
     const lines = load("pi--omo-v5130-question-banner.txt");
     expect(piModalOnScreen(lines)).toBe(false);
     expect(piAdapter.composerReady?.(lines)).toBe(true);
+  });
+});
+
+// OmO's fullscreen mode draws a dialog from the top down, so on a short pane its bottom rule and the
+// status rows are off the screen (ASK_NOTES.md, "A dialog taller than the pane"). The
+// fixtures are real captures cut where a short pane cuts them (fixtures README, derived).
+describe("a dialog taller than the pane", () => {
+  const cut = (name: string, rows: number) => load(name).slice(0, rows);
+  const kinds = (lines: StyledLine[]) => buildBlocks(lines, { agent: "pi" }).map((block) => block.kind);
+
+  it("lifts a question beside the panel whose footer is still on the screen, bound to the frame's columns", () => {
+    const lines = load("pi--omo-v5130-panel-question-cut.txt");
+    expect(lines.some((line) => /^─{8,}$/.test(lineText(line).trimEnd()))).toBe(false);
+    const card = buildBlocks(lines, { agent: "pi" }).find((block) => block.kind === "prompt-select");
+    if (card?.kind !== "prompt-select") throw new Error("no card");
+    expect(card.prompt.question).toBe("Pick a color?");
+    expect(card.prompt.options.map((o) => [o.label, o.keys])).toEqual([["Red", ["1"]], ["Green", ["2"]], ["Cancel", ["Escape"]]]);
+    expect(card.prompt.bindColumns).toEqual({ start: 0, end: 91 });
+    // The region runs from the top rule to the footer, the screen's last row, and carries no panel.
+    const region = card.prompt.signature.split("\n");
+    expect(region[0]).toMatch(/^─{91}$/);
+    expect(region.at(-1)).toMatch(/esc cancel$/);
+    expect(card.prompt.signature).not.toMatch(/MEMORY|CONTEXT|TOOLS|facts/);
+    // The same question cut on the full screen binds the same buttons.
+    const whole = buildBlocks(load("pi--omo-v5130-panel-question.txt"), { agent: "pi" }).find((block) => block.kind === "prompt-select");
+    expect(whole?.kind === "prompt-select" ? whole.prompt.options : []).toEqual(card.prompt.options);
+  });
+
+  it.each(["pi--omo-v5130-panel-question-cut-footer.txt", "pi--omo-v5130-panel-picker-tree-cut.txt"])(
+    "%s: with no footer to take keys from, the Escape card",
+    (name) => {
+      const lines = load(name);
+      expect(piModalOnScreen(piView(lines).lines)).toBe(true);
+      expect(piAdapter.composerReady?.(lines)).toBe(false);
+      expect(kinds(lines)).toEqual(["unread-dialog"]);
+    },
+  );
+
+  it("reads the same cut without the panel, unbound", () => {
+    // pi--omo-v5130-plain-question.txt: rule, blank, title, strip, question, options, trailer, footer
+    // (row 9), blank, bottom rule, status rows.
+    const lines = cut("pi--omo-v5130-plain-question.txt", 10);
+    expect(piView(lines).cropped).toBe(false);
+    const question = detectPiQuestion(lines);
+    if (question?.kind !== "prompt-select") throw new Error("no card");
+    expect(question.model.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["Escape"]]);
+    expect(question.model.bindColumns).toBeUndefined();
+    // Cut above the options, the title alone proves nothing.
+    expect(piModalOnScreen(cut("pi--omo-v5130-plain-question.txt", 5))).toBe(false);
+    // Cut just under the first option, it is a modal with no keys.
+    const first = cut("pi--omo-v5130-plain-question.txt", 6);
+    expect(piModalOnScreen(first)).toBe(true);
+    expect(detectPiQuestion(first)).toBeNull();
+  });
+
+  it("claims no modal on an editor cut below its top rule, a plain title, a shell prompt or a short rule", () => {
+    const idle = load("pi--omo-v5130-plain-idle.txt");
+    const promptRow = idle.findIndex((line) => lineText(line).startsWith("❯"));
+    expect(promptRow).toBeGreaterThan(0);
+    expect(piModalOnScreen(idle.slice(0, promptRow + 1))).toBe(false);
+    const question = cut("pi--omo-v5130-plain-question.txt", 10);
+    const plainTitle = question.map((line, i) => (i === 2 ? { segments: [{ text: lineText(line), style: {}, muted: false }] } : line));
+    expect(piModalOnScreen(plainTitle)).toBe(false);
+    expect(piModalOnScreen([...question, { segments: [{ text: "$ ", style: {}, muted: false }] }])).toBe(false);
+    const rule = (n: number): StyledLine => ({ segments: [{ text: "─".repeat(n), style: {}, fg: "#888888", muted: false }] });
+    const heading: StyledLine = { segments: [{ text: " Notes", style: {}, fg: "#ff00ff", muted: false }] };
+    const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+    const body = [plain(""), plain(" > 1. a row of a table that runs wider than the rule above it"), plain("   2. two"), plain("   3. three")];
+    expect(piModalOnScreen([rule(20), heading, ...body])).toBe(false);
+    expect(piModalOnScreen([rule(80), heading, ...body])).toBe(true);
+  });
+
+  // The limit, stated: a dialog quoted in prose and cut at the screen's last row, with no editor and
+  // no status rows under it, is pi's own open frame as far as the screen can tell. While pi runs its
+  // editor is at the tail; after it exits the shell prompt is (the test above).
+  it("states the limit: a quoted dialog cut inside its frame reads as an open frame", () => {
+    const quoted = load("pi--prose-quoted-dialog-then-shell.txt");
+    const footer = quoted.findLastIndex((line) => lineText(line).includes("Esc to cancel"));
+    expect(detectPiQuestion(quoted.slice(0, footer + 1))?.kind).toBe("prompt-select");
   });
 });
 
