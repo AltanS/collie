@@ -31,7 +31,7 @@
 // generation and starts over, instead of reading the new file from a position that means nothing in it.
 //   {"k":"item","at":ISO,"item":{...}}              an item in a version (a later row replaces it by id)
 //   {"k":"ask","at":ISO,"ask":{...}}                an open ask, or a higher revision of one
-//   {"k":"ask-closed","at":ISO,"askId":...,"by":...} an ask no longer open
+//   {"k":"ask-closed","at":ISO,"askId":...,"by":...} an ask no longer open, with its `title` since M55
 //   {"k":"state","at":ISO,"state":"working"}        the pane's state changed
 //   {"k":"settled","at":ISO,"inputId":...,...}      an input reached its end
 // `at` is when the bridge wrote the row. An item keeps its own `ts` when the program sent one.
@@ -190,6 +190,8 @@ const DEFAULT_LIMITS: Limits = { maxBytes: LOG_MAX_BYTES, keepItems: LOG_KEEP_IT
 interface AskNote {
   revision: number;
   open: boolean;
+  /** The title of its latest revision, written onto its `ask-closed` row so Chat can name it. */
+  title: string;
 }
 
 /** What the log remembers of its own file, so a repeat can be skipped without reading it. */
@@ -242,7 +244,7 @@ function indexOf(text: string): Index {
         break;
       }
       case "ask":
-        index.asks.set(row.ask.id, { revision: row.ask.revision, open: true });
+        index.asks.set(row.ask.id, { revision: row.ask.revision, open: true, title: row.ask.title });
         break;
       case "ask-closed": {
         const known = index.asks.get(row.askId);
@@ -374,13 +376,13 @@ export class PaneLog {
           // A lower or equal revision is ignored (WIRE.md 7.2), and so is any word about a closed ask.
           if (known !== undefined && (!known.open || event.ask.revision <= known.revision)) break;
           put({ k: "ask", at, ask: event.ask });
-          index.asks.set(event.ask.id, { revision: event.ask.revision, open: true });
+          index.asks.set(event.ask.id, { revision: event.ask.revision, open: true, title: event.ask.title });
           break;
         }
         case "ask-closed": {
           const known = index.asks.get(event.askId);
           if (known === undefined || !known.open) break;
-          put({ k: "ask-closed", at, askId: event.askId, by: event.by, waitedMs: event.waitedMs });
+          put({ k: "ask-closed", at, askId: event.askId, by: event.by, waitedMs: event.waitedMs, title: known.title === "" ? undefined : known.title });
           known.open = false;
           break;
         }

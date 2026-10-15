@@ -60,9 +60,17 @@ export interface AppOptions {
   authFile?: string;
   /** `descendant` (default) or `off`. An in-process test is the program's own caller, so it turns the check off. */
   callerCheck?: "descendant" | "off";
+  /**
+   * How long the phone has to answer each question the desk asks, in milliseconds (`DM_ASK_TIMEOUT_MS`). The ask carries
+   * an `expiresAt`, so the phone shows the time left, and past it the program treats the question as a deny. Default: ten minutes.
+   */
+  askTimeoutMs?: number;
   /** Open one sign-in ticket when the storage holds no conversation yet, so a first start has an ask to answer. Default true. */
   seed?: boolean;
 }
+
+/** The default window for every question the support desk asks: ten minutes. */
+export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60_000;
 
 export interface App {
   collie: Collie;
@@ -73,6 +81,9 @@ export interface App {
 export async function startApp(o: AppOptions): Promise<App> {
   const stepMs = o.stepMs ?? 400;
   const slowMs = o.slowMs ?? 10_000;
+  const timeoutMs = o.askTimeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
+  // A question nobody answered in time is a deny, not a crash and not a retry: the program says so in its own log and goes on.
+  const onTimeout = (tool: string, title: string) => console.error(`durable-member: ${tool} denied: timed out (${title})`);
 
   // The model: faux by default, the scripted one in script.ts. REAL_MODEL is a model id, off by default. REAL_PROVIDER picks
   // where it comes from: "openrouter" (default, the key is $OPENROUTER_API_KEY) or "openai" (an OpenAI API key, or the
@@ -165,7 +176,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     name: "triage-tools",
     tools: [
       writeNote,
-      ...askTools({ panes }),
+      ...askTools({ panes, timeoutMs, onTimeout }),
       spawnHelperTool({
         panes,
         harness: () => harness,
@@ -187,7 +198,7 @@ export async function startApp(o: AppOptions): Promise<App> {
   registry.install(triageTools);
   const risky = new Set(["write_note"]);
   // The question before a note is saved shows the note, with Save and Don't save.
-  registry.install(riskGuard({ panes, risky, words: (tool, summary) => (tool === "write_note" ? noteAsk(summary) : undefined) }));
+  registry.install(riskGuard({ panes, risky, timeoutMs, onTimeout, words: (tool, summary) => (tool === "write_note" ? noteAsk(summary) : undefined) }));
 
   // The history is Pi's own record (WIRE.md 7.16): every conversation, open and closed, with all its entries.
   collie.history(
@@ -295,6 +306,7 @@ export function optionsFromEnv(env: NodeJS.ProcessEnv = process.env): AppOptions
     stepMs: ms("DM_STEP_MS"),
     slowMs: ms("DM_SLOW_MS"),
     helperMs: ms("DM_HELPER_MS"),
+    askTimeoutMs: ms("DM_ASK_TIMEOUT_MS"),
     callerCheck: check === "off" ? "off" : "descendant",
   };
 }

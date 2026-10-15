@@ -18,9 +18,9 @@ import { assertPrivateSocket, checkSocketPath, clearStaleSocket, preparePrivateD
 export interface ServerOptions {
   core: CollieCore;
   /**
-   * The same-user defence. `descendant` (the default): `answer`, `send`, `abort` and starters are refused with 403
-   * `caller-refused` when the caller is the program itself or one of its descendants, or cannot be told apart from
-   * one. Reads stay open. It needs Bun on Linux. Where it cannot read the peer, the start fails; `off` is the
+   * The same-user defence. `descendant` (the default): every act (`answer`, `send`, `abort`, `action`, `rename`,
+   * `close`, `reopen` and starters) is refused with 403 `caller-refused` when the caller is the program itself or one
+   * of its descendants, or cannot be told apart from one. Reads stay open. It needs Bun on Linux. Where it cannot read the peer, the start fails; `off` is the
    * program's explicit choice to run without it.
    */
   callerCheck?: "descendant" | "off";
@@ -41,7 +41,7 @@ export async function startServer(socketPath: string, o: ServerOptions): Promise
     throw new Error('the descendant check needs Bun on Linux to read the peer of a socket; pass callerCheck: "off" to run without it');
   }
 
-  /** 403 for a caller that is the program or below it. Only the four acts call this; reads never do. */
+  /** 403 for a caller that is the program or below it. Every act calls this; reads never do. */
   function refuseOwnCaller(req: IncomingMessage) {
     if (callerCheck === "off") return;
     const relation = req.socket instanceof Conn ? req.socket.relation : "unknown";

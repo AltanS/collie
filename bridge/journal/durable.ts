@@ -25,6 +25,10 @@
 //              failed is an error, denied is a refusal (not an error)
 //   settled    a short note, "stopped", for an input that ended `unanswered` with the reason
 //              `aborted` (WIRE.md 7.5). Any other settled event draws nothing.
+//   ask-closed a short note for a question nobody tapped: "Timed out before an answer." when its
+//              `expiresAt` passed, "Decided in the program." when the program decided it itself, with
+//              the ask's title when the row carries one (WIRE.md 7.3). A close by the phone already has
+//              its card, and a stop is the person's own act, so those two draw nothing.
 // An ITEM IS UPSERTED BY ID: a later row for a known id replaces the earlier one in place and is
 // reported as `changed`, so History shows one turn per item and the live window updates it where it
 // sits. Open asks are rows too, but this adapter does not draw them (a later spec draws ask cards),
@@ -63,9 +67,25 @@ export const DURABLE_JOURNAL_AGENT = "durable";
 /** The line a stop draws (WIRE.md 7.5). */
 export const STOPPED_TEXT = "stopped";
 
+/** The line an ask the program decided itself draws (WIRE.md 7.3). The phone's ask card says the same words. */
+export const DECIDED_IN_PROGRAM_TEXT = "Decided in the program.";
+
+/** The line an ask that passed its `expiresAt` draws (WIRE.md 7.3). */
+export const TIMED_OUT_TEXT = "Timed out before an answer.";
+
 /**
- * Every row kind this adapter has met. `ask`, `ask-closed` and `state` are known and drawn as nothing:
- * the drop is the decision (reduce.ts § "known means met and decided about").
+ * The note for an ask closed by the program or by its clock, or null for any other close. The title follows the
+ * words when the row has one: "Timed out before an answer: shell wants to run".
+ */
+function closedNoteText(by: JsonValue | undefined, title: string): string | null {
+  const words = by === "timeout" ? TIMED_OUT_TEXT : by === "program" ? DECIDED_IN_PROGRAM_TEXT : null;
+  if (words === null) return null;
+  return title === "" ? words : `${words.slice(0, -1)}: ${title}`;
+}
+
+/**
+ * Every row kind this adapter has met. `ask` and `state` are known and drawn as nothing, and so is an
+ * `ask-closed` by the phone or a stop: the drop is the decision (reduce.ts § "known means met and decided about").
  */
 const DURABLE_KNOWN: KnownTypes = {
   rows: ["gen", "item", "ask", "ask-closed", "state", "settled"],
@@ -242,6 +262,17 @@ export function createDurableReducer(): RowReducer {
       const uuid = `settled:${inputId}`;
       if (held.has(uuid)) return NO_CHANGE;
       const entry: TranscriptEntry = { uuid, ts: at, role: "note", parts: [{ kind: "text", text: STOPPED_TEXT }] };
+      rememberPending(held, uuid, entry);
+      return reduction([entry], new Set());
+    }
+
+    if (parsed.k === "ask-closed") {
+      const askId = textOf(parsed.askId);
+      const text = closedNoteText(parsed.by, oneLine(textOf(parsed.title) ?? ""));
+      if (askId === null || askId === "" || text === null) return NO_CHANGE;
+      const uuid = `ask-closed:${askId}`;
+      if (held.has(uuid)) return NO_CHANGE;
+      const entry: TranscriptEntry = { uuid, ts: at, role: "note", parts: [{ kind: "text", text }] };
       rememberPending(held, uuid, entry);
       return reduction([entry], new Set());
     }

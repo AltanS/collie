@@ -183,7 +183,7 @@ import {
   type ProgramProbe,
   type SessionFactory,
 } from "./sessions.ts";
-import { ENV_SOURCE_NAME, planPrograms, readSources, sourcesPath, sourceTransportEnv, type DurableSource, type ProgramPlan } from "./sources.ts";
+import { bootSources, ENV_SOURCE_NAME, planPrograms, PROGRAMS_OFF_LOG, programsOff, sourcesPath, sourceTransportEnv, type DurableSource, type ProgramPlan } from "./sources.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import {
@@ -256,9 +256,13 @@ try {
 // there and wrong stops the bridge here with the entry and the field named, because a listed program
 // that is silently skipped is a phone that never shows it. `COLLIE_MUX=durable` (the old env form) makes
 // its one program, `default`, the primary session.
+//
+// `COLLIE_PROGRAMS=off` is the kill switch: the file is not read, one line says so, and the bridge boots
+// as if it did not exist. The env form of a durable-only instance is not the file and stays.
 let programs: ProgramPlan;
 try {
-  const listed = readSources(resolveConfigDir());
+  if (programsOff(process.env)) console.log(PROGRAMS_OFF_LOG);
+  const listed = bootSources(resolveConfigDir(), process.env);
   // The file can carry a bearer token, so it is held owner-only like `.env`: tightened, never refused.
   if (listed.length > 0) {
     const held = holdPrivateFile(sourcesPath(resolveConfigDir()), aclRepair);
@@ -1243,7 +1247,7 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   const logDir = sourceLogDir(cfg.stateDir, source.name);
   const target: MuxTarget = { endpoint: "", timeoutMs: DEFAULT_TIMEOUT_MS, options: { [DURABLE_LOG_DIR_OPTION]: logDir } };
   const program = createDurableMux(sourceTransportEnv(source), target.options);
-  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName() } };
+  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() } };
 }
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 
 import { ConversationList, type ConversationListFoot } from "@/components/conversation-list";
+import { Collapse } from "@/components/ui/collapse";
+import { Notice } from "@/components/ui/notice";
 import type { PaneOpen } from "@/hooks/use-pane-open";
 import { useNav } from "@/hooks/use-nav";
 import { DURABLE_CONVERSATIONS_PAGE, fetchDurableConversations } from "@/lib/api";
@@ -9,6 +12,7 @@ import { t } from "@/lib/i18n";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { conversationPath } from "@/lib/nav";
 import { scopeKey, type Scope } from "@/lib/scope";
+import { useSessionCard } from "@/lib/session-cards";
 import { setStatus } from "@/lib/status";
 import type { AgentView, DurableConversationRow, WorkspaceView } from "@/lib/types";
 
@@ -24,6 +28,10 @@ import type { AgentView, DurableConversationRow, WorkspaceView } from "@/lib/typ
 // visit and again when the set of live panes changes (a conversation opened or closed), never on the poll
 // beat, and the last answer per machine is kept in memory so a trip into a conversation and back draws it
 // whole on the first frame of the return.
+//
+// A REFUSED PROGRAM SAYS WHY (M55 spec 14). When the bridge refused the program for its wire version, the
+// session card carries the one sentence that says so (`notice`). It sits above the list as a caution box,
+// and the list's foot says it too in place of the plain "did not answer".
 
 type ListRead =
   | { kind: "off" }
@@ -49,6 +57,7 @@ export function DurableHome({
   stale?: boolean;
 }) {
   const nav = useNav();
+  const notice = useSessionCard(scope)?.notice;
   // Asked of the machine on screen, and ABSENT until a bridge said yes: a program that keeps no list of its
   // own still has a home, its open conversations, and nothing is asked of it.
   const served = useMuxDeclared("programHistory", scope);
@@ -120,7 +129,7 @@ export function DurableHome({
       : list.kind === "failed"
         ? { kind: "note", text: t("conversations.loadFailed") }
         : list.kind === "unavailable"
-          ? { kind: "note", text: list.reason === "unsupported" ? t("conversations.unsupported") : t("conversations.unreachable") }
+          ? { kind: "note", text: list.reason === "unsupported" ? t("conversations.unsupported") : (notice ?? t("conversations.unreachable")) }
           : { kind: "none" };
 
   function open(item: ConversationItem, row: HTMLButtonElement) {
@@ -134,16 +143,27 @@ export function DurableHome({
   }
 
   return (
-    <ConversationList
-      items={items}
-      workspaces={workspaces}
-      onOpen={open}
-      onPress={(item) => {
-        if (item.pane !== undefined) paneOpen.press(item.pane);
-      }}
-      glideKeyOf={(item) => (item.pane === undefined ? undefined : paneOpen.glideKeyOf(item.pane))}
-      foot={foot}
-      stale={stale}
-    />
+    <div className="flex flex-col">
+      <Collapse open={notice !== undefined}>
+        {notice !== undefined ? (
+          <div className="px-4 pt-4">
+            <Notice tone="caution" variant="box" announce="status" icon={<TriangleAlert />}>
+              {notice}
+            </Notice>
+          </div>
+        ) : null}
+      </Collapse>
+      <ConversationList
+        items={items}
+        workspaces={workspaces}
+        onOpen={open}
+        onPress={(item) => {
+          if (item.pane !== undefined) paneOpen.press(item.pane);
+        }}
+        glideKeyOf={(item) => (item.pane === undefined ? undefined : paneOpen.glideKeyOf(item.pane))}
+        foot={foot}
+        stale={stale}
+      />
+    </div>
   );
 }

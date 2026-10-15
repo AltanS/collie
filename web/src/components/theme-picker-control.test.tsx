@@ -1,0 +1,318 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { THEME_TOKENS, parseTheme, type Theme } from "@/lib/theme/schema";
+
+// The Theme card. The store keeps module-scope state (design prefs, the library), so each case
+// imports a fresh graph over a storage it seeded itself. Only `collie` ships on the branch that
+// wrote this file, so the pills are checked against the store's own shipped list and never against
+// four hard-coded names.
+
+const web = resolve(import.meta.dirname, "../..");
+const COLLIE_RAW = readFileSync(resolve(web, "src/themes/collie.json"), "utf8");
+const LIBRARY_KEY = "collie:themes:v1";
+const DESIGN_KEY = "collie:design:v1";
+
+function collie(): Theme {
+  const parsed = parseTheme(COLLIE_RAW, { maxBytes: 64 * 1024, allowReservedId: true });
+  if (!parsed.ok) throw new Error("collie.json no longer parses");
+  return parsed.theme;
+}
+
+/** A complete imported theme: collie's tokens under another id and name. */
+function copy(id: string, name: string, edit: (theme: Theme) => void = () => {}): Theme {
+  const base = collie();
+  const theme: Theme = { version: 1, id, name, author: "Test", light: { ...base.light }, dark: { ...base.dark } };
+  edit(theme);
+  return theme;
+}
+
+async function load(library: Theme[] = []) {
+  localStorage.clear();
+  if (library.length > 0) localStorage.setItem(LIBRARY_KEY, JSON.stringify({ version: 1, themes: library }));
+  document.documentElement.removeAttribute("style");
+  document.documentElement.removeAttribute("data-theme");
+  vi.resetModules();
+  const component = await import("./theme-picker-control");
+  const store = await import("@/lib/theme/store");
+  return { ...component, store };
+}
+
+function fileOf(text: string, name = "theme.json"): File {
+  return new File([text], name, { type: "application/json" });
+}
+
+function pick(container: HTMLElement, file: File): void {
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+  if (input === null) throw new Error("no file input");
+  fireEvent.change(input, { target: { files: [file] } });
+}
+
+describe("ThemePickerControl", () => {
+  // The global setup stubs the object-URL pair; a case that swaps or removes them puts them back.
+  const objectUrls = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  beforeEach(() => {
+    document.head.innerHTML = "";
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    URL.createObjectURL = objectUrls.create;
+    URL.revokeObjectURL = objectUrls.revoke;
+  });
+
+  it("draws one pill per shipped theme, in the store's order, then the imported ones, as a radiogroup", async () => {
+    const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
+    render(<ThemePickerControl />);
+    const group = screen.getByRole("radiogroup", { name: "Theme" });
+    const radios = within(group).getAllByRole("radio");
+    const names = [...store.shippedThemes().map((theme) => theme.name), "Mine"];
+    expect(radios.map((radio) => radio.textContent)).toEqual(names);
+    expect(radios.map((radio) => radio.getAttribute("aria-checked"))).toEqual(
+      names.map((name) => String(name === "Collie")),
+    );
+  });
+
+  it("applies a tapped theme at once and writes the choice", async () => {
+    const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
+    render(<ThemePickerControl />);
+    await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+    expect(screen.getByRole("radio", { name: "Mine" })).toHaveAttribute("aria-checked", "true");
+    expect(store.activeThemeId()).toBe("mine");
+    expect(JSON.parse(localStorage.getItem(DESIGN_KEY) ?? "{}").theme).toBe("mine");
+    expect(document.documentElement.style.getPropertyValue("--background")).toContain("light-dark(");
+    await userEvent.click(screen.getByRole("radio", { name: "Collie" }));
+    expect(store.activeThemeId()).toBe("collie");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+  });
+
+  it("says what a theme cannot do, in a line that is always there", async () => {
+    const { ThemePickerControl } = await load();
+    render(<ThemePickerControl />);
+    expect(
+      screen.getByText("A theme changes colours and the typeface only. It cannot run code, load files or reach a server."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Remove disabled while the active theme is not an imported one", async () => {
+    const { ThemePickerControl } = await load([copy("mine", "Mine")]);
+    render(<ThemePickerControl />);
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+    expect(screen.getByRole("button", { name: "Remove" })).toBeEnabled();
+  });
+
+  it("falls back to collie when the active imported theme is removed", async () => {
+    const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
+    render(<ThemePickerControl />);
+    await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(store.activeThemeId()).toBe("collie");
+    expect(screen.queryByRole("radio", { name: "Mine" })).toBeNull();
+    expect(screen.getByRole("radio", { name: "Collie" })).toHaveAttribute("aria-checked", "true");
+    expect(localStorage.getItem(LIBRARY_KEY)).toBeNull();
+  });
+
+  describe("import", () => {
+    it("lists every refusal of a refused file, names the key, and offers only Close", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const bad = JSON.stringify({ version: 2, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
+      pick(container, fileOf(bad));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(within(dialog).getAllByRole("listitem")).toHaveLength(2);
+      expect(dialog).toHaveTextContent("bogus");
+      expect(dialog).toHaveTextContent("version");
+      expect(within(dialog).queryByRole("button", { name: "Apply" })).toBeNull();
+      // The sheet's own corner button is also named Close; the text button is the card's.
+      await userEvent.click(within(dialog).getByText("Close"));
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("refuses a file over the cap without reading it, with the real size", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf("x".repeat(65 * 1024)));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("This file is too big for a theme.");
+      expect(dialog).toHaveTextContent(`${65 * 1024} bytes`);
+    });
+
+    it("tells a person with an exported shipped theme exactly what to change", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(collie(), null, 2), "collie.collie-theme.json"));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent(
+        'This id belongs to a shipped theme. Change "id" in the file to import your copy.',
+      );
+      expect(within(dialog).getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("previews a theme with a failing floor as a warning and still allows Apply", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const pale = copy("pale", "Pale", (theme) => {
+        theme.light = { ...theme.light, foreground: "#eeeeee" };
+      });
+      pick(container, fileOf(JSON.stringify(pale)));
+      const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(dialog).toHaveTextContent("Pale");
+      expect(dialog).toHaveTextContent("By Test");
+      expect(dialog).toHaveTextContent("Light and dark");
+      expect(dialog).toHaveTextContent("Light: foreground on background measures");
+      expect(dialog).not.toHaveTextContent("Every contrast check passes.");
+      expect(within(dialog).getByRole("button", { name: "Apply" })).toBeEnabled();
+      // Eight swatches a half, each named by token and hex.
+      expect(within(dialog).getAllByRole("img")).toHaveLength(16);
+      expect(within(dialog).getAllByRole("img", { name: /^background #[0-9a-f]{6}$/ })).toHaveLength(2);
+    });
+
+    it("says so when a half is filled from the default theme", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const darkOnly = copy("dusk", "Dusk", (theme) => {
+        delete theme.light;
+      });
+      pick(container, fileOf(JSON.stringify(darkOnly)));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("Dark only");
+      expect(dialog).toHaveTextContent("It fills its light half from the default theme.");
+    });
+
+    it("passes a clean theme with one success line", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      // collie's own dark destructive pair is 2.77:1 (a known finding, pinned in themes.test.ts), so
+      // the clean copy gives it a darker ground and a white ink.
+      const clean = copy("same", "Same", (theme) => {
+        theme.dark = { ...theme.dark, destructive: "#7f1d1d", "destructive-foreground": "#ffffff" };
+      });
+      pick(container, fileOf(JSON.stringify(clean)));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("Every contrast check passes.");
+    });
+
+    it("cancel keeps nothing", async () => {
+      const { ThemePickerControl, store } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("same", "Same"))));
+      await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(store.library()).toHaveLength(0);
+    });
+
+    it("apply adds the theme to the library and makes it the active one", async () => {
+      const { ThemePickerControl, store } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("same", "Same"))));
+      await userEvent.click(await screen.findByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(store.library().map((theme) => theme.id)).toEqual(["same"]);
+      expect(store.activeThemeId()).toBe("same");
+      expect(screen.getByRole("radio", { name: "Same" })).toHaveAttribute("aria-checked", "true");
+      expect(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}").themes).toHaveLength(1);
+    });
+
+    it("picking the same file twice works", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      const file = fileOf(JSON.stringify(copy("same", "Same")));
+      pick(container, file);
+      await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+      expect(input.value).toBe("");
+      pick(container, file);
+      expect(await screen.findByRole("dialog", { name: "Import this theme?" })).toBeInTheDocument();
+    });
+
+    it("refuses an id that is already imported, at Apply", async () => {
+      const { ThemePickerControl } = await load([copy("same", "Same")]);
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("same", "Same again"))));
+      await userEvent.click(await screen.findByRole("button", { name: "Apply" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent("already imported");
+    });
+
+    it("refuses at the Import button when the library is full", async () => {
+      const full = Array.from({ length: 8 }, (_, i) => copy(`t${i}`, `Theme ${i}`));
+      const { ThemePickerControl } = await load(full);
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("button", { name: "Import" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("You already hold 8 imported themes.");
+    });
+
+    it("opens the file chooser from the Import button", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      expect(input).toHaveAttribute("accept", ".json,application/json");
+      const click = vi.spyOn(input, "click").mockImplementation(() => {});
+      await userEvent.click(screen.getByRole("button", { name: "Import" }));
+      expect(click).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("export", () => {
+    it("saves the active theme as valid JSON under <id>.collie-theme.json", async () => {
+      const { ThemePickerControl } = await load([copy("mine", "Mine")]);
+      const blobs: Blob[] = [];
+      URL.createObjectURL = vi.fn((blob: Blob) => {
+        blobs.push(blob);
+        return "blob:theme";
+      });
+      URL.revokeObjectURL = vi.fn();
+      const names: string[] = [];
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+        names.push(this.download);
+      });
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+      await userEvent.click(screen.getByRole("button", { name: "Export" }));
+      expect(URL.createObjectURL).toHaveBeenCalledOnce();
+      expect(names).toEqual(["mine.collie-theme.json"]);
+      const text = await blobs[0]!.text();
+      expect(text).toBe(JSON.stringify(JSON.parse(text), null, 2));
+      const parsed = parseTheme(text, { maxBytes: 64 * 1024 });
+      expect(parsed.ok).toBe(true);
+      expect(Object.keys(JSON.parse(text).light).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    });
+
+    it("exports a shipped theme to a file that re-imports and is refused only for its id", async () => {
+      const { ThemePickerControl } = await load();
+      const blobs: Blob[] = [];
+      URL.createObjectURL = vi.fn((blob: Blob) => {
+        blobs.push(blob);
+        return "blob:theme";
+      });
+      URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("button", { name: "Export" }));
+      const text = await blobs[0]!.text();
+      const reparsed = parseTheme(text, { maxBytes: 64 * 1024 });
+      expect(reparsed.ok).toBe(false);
+      if (!reparsed.ok) expect(reparsed.refusals.map((refusal) => refusal.code)).toEqual(["reserved-id"]);
+    });
+
+    it("falls back to a sheet with a copyable block when the browser cannot save a file", async () => {
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      // A browser that cannot make an object URL: the global stub is set aside, then put back after the case.
+      URL.createObjectURL = () => {
+        throw new TypeError("URL.createObjectURL is not available");
+      };
+      await act(async () => {
+        await userEvent.click(screen.getByRole("button", { name: "Export" }));
+      });
+      const dialog = await screen.findByRole("dialog", { name: "Copy this theme" });
+      const shown = within(dialog).getByText(/"id": "collie"/);
+      expect(JSON.parse(shown.textContent ?? "").id).toBe("collie");
+    });
+  });
+});

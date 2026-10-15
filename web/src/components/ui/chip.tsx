@@ -27,6 +27,12 @@ interface ChipProps {
    */
   ariaLabel?: string;
   active: boolean;
+  /**
+   * The chip is one choice of a set of which exactly one is picked: it carries `role="radio"` and
+   * `aria-checked` in place of `aria-current`. The caller wraps the set in a `role="radiogroup"`
+   * (the theme strip in Settings). Looks and box are the same, so nothing in a strip moves.
+   */
+  radio?: boolean;
   /** Subtle ring marking the item focused in the desktop TUI. */
   ring?: boolean;
   /**
@@ -64,6 +70,7 @@ export function Chip({
   glyph,
   ariaLabel,
   active,
+  radio = false,
   ring,
   status,
   dimmed,
@@ -96,7 +103,9 @@ export function Chip({
       type="button"
       onClick={handleClick}
       {...longPress}
-      aria-current={active ? "true" : undefined}
+      role={radio ? "radio" : undefined}
+      aria-checked={radio ? active : undefined}
+      aria-current={!radio && active ? "true" : undefined}
       aria-label={ariaLabel}
       aria-describedby={statusWords === null ? undefined : descriptionId}
       className={cn(

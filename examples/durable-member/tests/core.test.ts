@@ -16,6 +16,7 @@ import {
   Receipts,
   type ReceiptStore,
   safeId,
+  versionLine,
 } from "../../../packages/durable-sdk/src/core/index.ts";
 import { sha256Hex } from "../../../packages/durable-sdk/src/core/hash.ts";
 import { protocolSuite } from "./protocol-suite.ts";
@@ -161,5 +162,9 @@ describe("the core alone", () => {
     } finally {
       console.error = original;
     }
+  });
+
+  test("the refusal sentence names who acts: the program's SDK, or Collie", () => {
+    expect(versionLine({ code: "version", collie: [2, 2], program: [1, 1] })).toBe("Collie speaks wire v2, this program speaks v1. Update the program's SDK, or Collie.");
   });
 });

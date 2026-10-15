@@ -355,6 +355,30 @@ describe("SessionStream", () => {
     expect(screen.queryByText("Still working…")).not.toBeInTheDocument();
   });
 
+  // OmO's `? Question pending` banner over a ready editor (pi/ask.ts piQuestionBanner): the terminal
+  // shows it, and Chat said nothing. One line now says a question waits, with no control.
+  it("says a question waits in the terminal, in place of the working line, with no control", () => {
+    const listRef = createRef<ChatMessageListHandle>();
+    const { container } = render(
+      <SessionStream
+        feed={feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")] })}
+        address="w1:p1"
+        working
+        questionPending
+        showToolCalls
+        showCompactions={false}
+        fontSize={14}
+        listRef={listRef}
+      />,
+    );
+    const row = container.querySelector("[data-slot='stream-question-pending']");
+    expect(row).toHaveTextContent("A question is waiting in the terminal. Your next message answers it.");
+    expect(row?.querySelector("button")).toBeNull();
+    expect(container.querySelector("[data-slot='stream-live']")).toBeNull();
+    const rows = [...container.querySelectorAll("[data-block], [data-slot='stream-question-pending']")];
+    expect(rows.at(-1)?.getAttribute("data-slot")).toBe("stream-question-pending");
+  });
+
   it("stands at the END of the thread, where the answer will arrive", () => {
     const { container } = renderStream(
       feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")] }),

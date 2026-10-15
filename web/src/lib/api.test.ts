@@ -8,6 +8,7 @@ import { DEAD_DEBOUNCE_MS, isLive, resetLiveness } from "./liveness";
 import { resetBasePathForTests } from "./base-path";
 import { burstPaneId, resetPollIntent, sendCount } from "./poll-intent";
 import { setDeviceToken } from "./pairing";
+import { resetServerClockForTests, serverSkewMs } from "./server-clock";
 import {
   apiErrorFields,
   checkForUpdates,
@@ -1218,5 +1219,25 @@ describe("one-off runs and their history (ADR 0095)", () => {
       { url: "/api/launch/recent/remove?host=badger", method: "POST", body: { line: "make test" } },
       { url: "/api/launch/recent/clear?host=badger", method: "POST", body: {} },
     ]);
+  });
+});
+
+describe("api client: the bridge's clock", () => {
+  afterEach(() => resetServerClockForTests());
+
+  it("reads the Date header of a response, so a phone five minutes ahead counts on the bridge's clock", async () => {
+    server.use(
+      http.get("/api/snapshot", () =>
+        HttpResponse.json(fixtureSnapshot, { headers: { date: new Date(Date.now() - 5 * 60_000).toUTCString() } }),
+      ),
+    );
+    await fetchSnapshot();
+    expect(Math.abs(serverSkewMs() + 5 * 60_000)).toBeLessThan(2000);
+  });
+
+  it("a response without the header leaves the phone's own clock", async () => {
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)));
+    await fetchSnapshot();
+    expect(serverSkewMs()).toBe(0);
   });
 });

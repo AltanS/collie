@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "@/lib/json";
 import { asJsonNumber, asJsonObject, asJsonString } from "@/lib/json";
 import type { MessageKey } from "@/lib/i18n";
-import type { Ask, AskField, AskOption, AskTool } from "@/lib/types";
+import type { Ask, AskDecided, AskField, AskOption, AskTool } from "@/lib/types";
 
 // THE ASK CARD'S RULES (ADR 0100), apart from the component so each one is a table test.
 //
@@ -183,6 +183,7 @@ export function optionTone(effect: AskOption["effect"] | undefined): "selected" 
  *  - `late`: the program said `too-late`: the ask was not open when the answer came. Someone else
  *    answered, the turn stopped, or the program woke and has not raised the question again yet (it
  *    keeps its id, M50 spec 14). One line, no buttons; the next poll drops the card or shows it again.
+ *    `decided` says who decided first when the program told (M55 spec 14), so the line can say it.
  *  - `stale`: the ask changed under the phone. The card shows its new form and asks for a fresh tap.
  *  - `unknown`: the answer may or may not have arrived. "Try again" sends the SAME request id.
  *  - `maybe`: an earlier try had an unknown outcome and the retry found the ask closed or changed, so
@@ -207,16 +208,18 @@ export interface AskCardState {
   older: boolean;
   /** The option whose first tap is in: "Always allow" posts only on a second tap. Any other tap clears it. */
   armed: string | null;
+  /** For `late`: who decided the ask first, and when, when the program said so. Null otherwise. */
+  decided: AskDecided | null;
 }
 
 export function freshCard(ask: Ask): AskCardState {
-  return { phase: "idle", ask, optionId: null, answer: null, requestId: null, detail: "", older: false, armed: null };
+  return { phase: "idle", ask, optionId: null, answer: null, requestId: null, detail: "", older: false, armed: null, decided: null };
 }
 
 /** What the answer route said, as the phone reads it. `older` is the old-peer 404, mapped to `stale`. */
 export type AnswerResult =
   | { outcome: "taken"; replayed?: true }
-  | { outcome: "too-late"; replayed?: true }
+  | { outcome: "too-late"; decided?: AskDecided; replayed?: true }
   | { outcome: "stale"; ask?: Ask; older?: true }
   | { outcome: "unknown" }
   | { outcome: "maybe-applied" }
@@ -255,7 +258,7 @@ export function answered(state: AskCardState, result: AnswerResult): AskCardStat
     case "taken":
       return { ...state, phase: "taken", detail: "", older: false };
     case "too-late":
-      return { ...state, phase: "late", detail: "", older: false };
+      return { ...state, phase: "late", detail: "", older: false, decided: result.decided ?? null };
     case "stale": {
       // The returned ask replaces the card when the program sent one; otherwise the next poll does.
       // Either way the buttons come back and the person taps again, on the new form, with a new id.
@@ -364,6 +367,22 @@ function toolOf(v: JsonValue | undefined): AskTool | undefined {
   return tool;
 }
 
+/** An ISO 8601 moment, or undefined when the value is not a string or not a time. */
+function isoOf(v: JsonValue | undefined): string | undefined {
+  const text = asJsonString(v);
+  return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
+}
+
+/** A too-late answer's `decided`, or undefined when it is not one: a known word and a time. */
+export function decidedOf(v: JsonValue | undefined): AskDecided | undefined {
+  const o = asJsonObject(v);
+  if (!o) return undefined;
+  const at = isoOf(o.at);
+  if (at === undefined) return undefined;
+  if (o.by === "phone" || o.by === "program" || o.by === "timeout") return { by: o.by, at };
+  return undefined;
+}
+
 /**
  * An ask read out of a response body. The bridge cleaned every string, but this body crossed a crew
  * link, so a field of the wrong type drops the whole ask: a card is never drawn from half a shape.
@@ -392,6 +411,8 @@ export function parseAsk(v: JsonValue | undefined): Ask | undefined {
   const tool = toolOf(o.tool);
   if (tool !== undefined) ask.tool = tool;
   if (o.cleaned === true) ask.cleaned = true;
+  const expiresAt = isoOf(o.expiresAt);
+  if (expiresAt !== undefined) ask.expiresAt = expiresAt;
   if (o.multiple === true) ask.multiple = true;
   const placeholder = str(o.placeholder);
   if (placeholder !== undefined) ask.placeholder = placeholder;

@@ -17,7 +17,10 @@ const text = (line: StyledLine) => lineText(line).trimEnd();
 const PANEL = [
   "pi--omo-v5130-panel-draft.txt",
   "pi--omo-v5130-panel-phantom.txt",
+  "pi--omo-v5130-panel-picker-tree-cut.txt",
   "pi--omo-v5130-panel-picker-tree.txt",
+  "pi--omo-v5130-panel-question-cut-footer.txt",
+  "pi--omo-v5130-panel-question-cut.txt",
   "pi--omo-v5130-panel-question.txt",
   "pi--omo-v5130-panel-running.txt",
   "pi--omo-v5130-panel-slash-model.txt",
@@ -55,6 +58,14 @@ describe("the side panel's signs", () => {
 
   it("(b) reads it off a picker's header beside the panel", () => {
     expect(panelColumn(load("pi--omo-v5130-panel-picker-tree.txt"))).toBe(93);
+  });
+
+  it("(c) reads it off the top rule of a dialog whose bottom rule is off the screen", () => {
+    expect(panelColumn(load("pi--omo-v5130-panel-question-cut.txt"))).toBe(91);
+    expect(panelColumn(load("pi--omo-v5130-panel-question-cut-footer.txt"))).toBe(91);
+    expect(panelColumn(load("pi--omo-v5130-panel-picker-tree-cut.txt"))).toBe(93);
+    // A rule run into text with no pi frame under it crops nothing.
+    expect(panelColumn([ruleInto(91, "cache   100% hit"), row(" plain prose under it")])).toBeNull();
   });
 
   // Sign (a) is anchored: W must be the run of the tail frame's own bottom rule, and a sign row must
