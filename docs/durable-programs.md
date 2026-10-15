@@ -194,7 +194,7 @@ collie durable list
 
 | state | what it means |
 | --- | --- |
-| `ready` | The running bridge has loaded this entry. It is the bridge's word, not the program's: the program may still be unreachable. `collie doctor` asks the program |
+| `loaded` | The running bridge has loaded this entry. It is the bridge's word, not the program's: the program may still be unreachable. `collie doctor` asks the program |
 | `not loaded (restart to apply)` | The bridge started before you attached it. Run `collie restart` |
 | `refused (<status>)` | The bridge answered with this HTTP status instead of a state |
 | `bridge not answering` | No answer within 3 s: Collie is stopped, or busy. `collie status` shows whether it runs |
@@ -281,6 +281,12 @@ To change the token, deploy the new one to the program, set it in the `.env`, an
 `collie restart`. A durable-only instance joins a [crew](crew.md) under its host name, so give it a
 name with `collie crew join <lead-address> --label durable` when it shares a host with the lead.
 
+To turn every program from `sources.json` off for a while, set `COLLIE_PROGRAMS=off` in the `.env`
+and run `collie restart`. The bridge then ignores the file, logs one line, and runs as an install
+with no programs, so the phone shows no Programs section. `collie doctor` and `collie durable list`
+say that programs are off. The file stays as it is: unset the variable and restart to bring the
+programs back. The variable does not touch the old env form above.
+
 ## Where Collie keeps a program's data
 
 The program keeps the record of its conversations. Collie keeps a cache, its receipts and its push
@@ -338,9 +344,9 @@ after it, and the minor after that drops it. Today there is no previous version 
 
 When the two ranges do not meet, Collie reads nothing more from the program. Its log gets one line
 for each range it refuses, such as
-`[durable] Program speaks wire v2, this Collie speaks v1; update one of them`. The program's home
-on the phone shows the same sentence in a caution box, and its row on the dashboard keeps the word
-Unreachable. `collie doctor` shows both ranges on its `durable-hello` row:
+`[durable] Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.` The program's home
+on the phone shows the same sentence in a caution box, and its row on the dashboard says Version
+mismatch in place of Unreachable. `collie doctor` shows both ranges on its `durable-hello` row:
 `incompatible: program speaks 2..3, this Collie speaks 1..1`. Once per start of the program, Collie
 also sends it one `hello` with its own version, so the program can log the mismatch on its side.
 Update the older side.

@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **COLLIE_PROGRAMS=off turns programs off.** The bridge ignores sources.json, logs one line, and the phone shows no Programs section; doctor and durable list say so.
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
 - **A durable pane shows a subtitle and a badge.** The program sets one line under the title and a count or a short mark next to it, so a list of its conversations reads at a glance.
 - **A durable pane shows its progress.** The program reports steps or a percent, and Chat and the card show how far a working conversation is.
@@ -48,6 +49,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **A program refused for its wire version says "Version mismatch" on its row.** The sentence on its home names who acts: update Collie, or the program's SDK.
+- **`collie durable list` says `loaded`, not `ready`.** The word means the bridge loaded the entry; whether the program answers is the doctor's job.
 - **On a durable pane, Steer and Stop sit in the belt, and New opens the program's starters.** The two buttons used to share a row above the composer that came and went with the pane's state, so the composer jumped. They are now the program's own section of the belt, drawn from the caps it declares, and Stop is dimmed when nothing runs. The new-tab and new-space buttons on a durable machine open the New page with its starters instead of hiding.
 - **The durable SDK has typed hooks.** `onSend`, `onAbort` and `onRename` take typed payloads with the request id, so a program handles each action in one named place.
 - **The Cloudflare example runs on Cloudflare's PiHarness.** A job that is evicted mid-run wakes itself by alarm and continues, and a real model comes from a Workers AI binding with no key in the Worker. The Collie wire, the asks and the receipts are unchanged.

@@ -192,7 +192,7 @@ This is the telling hello.
 
 Collie writes one line in its log for each range it refuses, and `collie doctor` shows both ranges.
 The program's home on the phone says the same sentence, for example
-"Program speaks wire v2, this Collie speaks v1; update one of them". Update the older side.
+"Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK." Update the older side.
 
 ## Where the exact rules are
 

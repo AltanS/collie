@@ -270,7 +270,7 @@ describe("durable home: every machine with a screen keeps its dashboard", () => 
 });
 
 describe("durable home: a program refused for its wire version says why (M55 spec 14)", () => {
-  const SENTENCE = "Program speaks wire v2, this Collie speaks v1; update one of them";
+  const SENTENCE = "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.";
 
   it("durable home: the sentence sits above the list in a caution box, and the list foot says it too", async () => {
     declares({ paneGrid: false, programHistory: true });

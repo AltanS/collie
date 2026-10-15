@@ -661,7 +661,7 @@ export interface SessionCard {
   experimental: boolean;
   /**
    * A program only, and only while it is refused for its wire version (WIRE.md section 2): the one sentence
-   * that says why, for example "Program speaks wire v2, this Collie speaks v1; update one of them". Absent
+   * that says why, for example "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK." Absent
    * everywhere else.
    */
   notice?: string;

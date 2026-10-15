@@ -47,8 +47,8 @@ describe("the version table", () => {
   test("the version notice row is one line naming the program's newest and this Collie's own", () => {
     const refusal = versionRefusal({ min: 2, max: 3 });
     expect(refusal).not.toBeNull();
-    expect(versionNotice(refusal!)).toBe("Program speaks wire v3, this Collie speaks v1; update one of them");
-    expect(versionNotice({ code: "version", collie: [1, 2], program: [0, 0] })).toBe("Program speaks wire v0, this Collie speaks v2; update one of them");
+    expect(versionNotice(refusal!)).toBe("Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK.");
+    expect(versionNotice({ code: "version", collie: [1, 2], program: [0, 0] })).toBe("Program speaks wire v0, this Collie speaks v2. Update Collie, or the program's SDK.");
   });
 });
 
@@ -70,7 +70,7 @@ describe("a version refusal, both sides", () => {
       expect(outcome.ok).toBe(false);
       clock.advance(MIN_SNAPSHOT_GAP_MS);
     }
-    expect(lines).toEqual(["[durable] Program speaks wire v3, this Collie speaks v1; update one of them"]);
+    expect(lines).toEqual(["[durable] Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK."]);
     expect(adapter.versionRefusal()).toEqual({ code: "version", collie: [1, 1], program: [2, 3] });
     expect(await adapter.reachable()).toBe(false);
   });

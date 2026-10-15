@@ -19,13 +19,13 @@ collie logs
 
 | command | what it shows for a program |
 | --- | --- |
-| `collie durable list` | One line per entry of `sources.json`, with the state the running bridge gives it: `ready`, `not loaded (restart to apply)`, `refused (<status>)` or `bridge not answering`. `ready` means the bridge loaded the entry. It does not mean the program answers. A `not loaded` also shows when the bridge answers HTTP 400 for the name |
+| `collie durable list` | One line per entry of `sources.json`, with the state the running bridge gives it: `loaded`, `not loaded (restart to apply)`, `refused (<status>)` or `bridge not answering`. `loaded` means the bridge loaded the entry. It does not mean the program answers. A `not loaded` also shows when the bridge answers HTTP 400 for the name |
 | `collie doctor` | Asks the program itself. It prints the rows of [Doctor rows for programs](#doctor-rows-for-programs) and names the failing check with a fix |
 | `collie logs` | The boot line of each program, `[bridge] program "desk": durable, private socket /run/user/1000/desk/app.sock`, and its reason when a setting breaks a rule. A bad `sources.json` prints `[bridge] FATAL:`. A failed read prints `[state] poll failed, marking disconnected: <reason>` once per outage. Lines that start `[durable]` name a version refusal, an old lead, dropped items and a deleted log |
 
-The phone says less. A program row reads Starting or Unreachable and gives no reason. Only a refused
-token has its own words there, in the connection bar. `collie doctor` and `collie logs` name every
-other reason.
+The phone says less. A program row reads Starting or Unreachable and gives no reason. A wire version
+refusal has its own word, Version mismatch, and a caution box on the program's home. A refused token
+has its own words in the connection bar. `collie doctor` and `collie logs` name every other reason.
 
 ## The reasons table
 

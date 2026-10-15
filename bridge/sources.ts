@@ -157,6 +157,33 @@ export function readSources(configDir: string, read: ReadText = readFromDisk): D
   return text === null ? [] : parseSources(text, path);
 }
 
+/** The kill switch: `COLLIE_PROGRAMS=off` makes the bridge ignore `sources.json` altogether. */
+export const PROGRAMS_ENV = "COLLIE_PROGRAMS";
+
+/** The one line the bridge logs at boot when the switch is set. */
+export const PROGRAMS_OFF_LOG = `[bridge] programs are off (${PROGRAMS_ENV}=off); ${SOURCES_FILE} ignored`;
+
+/** What `collie doctor` and `collie durable list` say when the switch is set. */
+export const PROGRAMS_OFF_NOTE = `programs are off (${PROGRAMS_ENV}=off)`;
+
+/** Whether the kill switch is set. Only `off` turns programs off; any other value, or none, leaves them on. */
+export function programsOff(env: Readonly<Record<string, string | undefined>>): boolean {
+  return env[PROGRAMS_ENV]?.trim().toLowerCase() === "off";
+}
+
+/**
+ * The sources the bridge boots with: {@link readSources}, or none at all while programs are off. With
+ * the switch set the file is not read, so a missing, unreadable or wrong `sources.json` cannot stop a
+ * bridge the operator has switched programs off on.
+ */
+export function bootSources(
+  configDir: string,
+  env: Readonly<Record<string, string | undefined>>,
+  read: ReadText = readFromDisk,
+): DurableSource[] {
+  return programsOff(env) ? [] : readSources(configDir, read);
+}
+
 /**
  * The old env form as a source: `default`, with whatever the three variables hold. Unchecked on
  * purpose: the transport's own rules (bridge/mux/durable/transport.ts) report a missing or
