@@ -84,6 +84,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The Programs page tells the whole setup.** It covers the quickstart on Linux and macOS, `sources.json` with its fields and refusal rules, the three `collie durable` verbs with their flags, output, exit codes and `list` states, the token in plain text in `sources.json` and its rotation, the durable-only form with its `config.toml` keys, the files Collie keeps for a program and how long, what the phone shows, the version rule and the exit. Troubleshooting is a pointer with the three usual causes.
 - **The Programs page starts with a quickstart.** It opens with what Collie does for a durable program, then runs a ten-line program, one `collie durable attach` and the card on the phone, and ends with the four usual troubles. The Cloudflare example is named as parked.
 - **A real Pi Durable program ran through the durable wire.** disler's proactive incident demo, 170 lines changed, one approval card on the phone shipped its deploy. Findings and two screenshots in `experiments/real-program-spike/`.
 - **Terminals is about terminals, and Programs holds everything about a program.** The reasons a program shows as unreachable, the two ways to reach one, the older durable-only form and the doctor rows moved to the Programs page, and the durable notes on the Terminals page are one paragraph that links there.
