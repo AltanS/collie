@@ -4,6 +4,7 @@ import type { ShippedMark } from "@/lib/shipped-marks";
 
 import { CollieMarkAdapter } from "./collie";
 import type { MarkProps } from "./contract";
+import { DaylightMark } from "./daylight";
 
 export type { MarkProps, MarkState } from "./contract";
 
@@ -15,6 +16,6 @@ export type { MarkProps, MarkState } from "./contract";
 export const MARKS = {
   collie: CollieMarkAdapter,
   nightwatch: CollieMarkAdapter,
-  daylight: CollieMarkAdapter,
+  daylight: DaylightMark,
   harbour: CollieMarkAdapter,
 } satisfies Record<ShippedMark, ComponentType<MarkProps>>;
