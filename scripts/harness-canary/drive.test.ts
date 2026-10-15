@@ -12,7 +12,7 @@ import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
 import { lastPointedRow } from "./dialogs";
-import { answeredBelow, opaqueTokenRead } from "./scenarios";
+import { answeredBelow, opaqueTokenRead, pressableBar } from "./scenarios";
 import type { Adapter } from "./readers";
 import { DEFAULT_SCENARIOS } from "./verdict";
 
@@ -47,6 +47,13 @@ describe("parseArgs", () => {
     expect(o.agents).toEqual(["grok", "hermes", "agy"]);
     expect(o.scenarios).toEqual(["options"]);
     expect(DEFAULT_SCENARIOS).not.toContain("options");
+  });
+
+  test("the harness bar is pressed only when asked for", () => {
+    const o = parseArgs(["--agent", "muse", "--scenario", "bar"], "/repo");
+    if (o === "help") throw new Error("help");
+    expect(o.scenarios).toEqual(["bar"]);
+    expect(DEFAULT_SCENARIOS).not.toContain("bar");
   });
 
   test("--agent, --scenario, --cols, --readers", () => {
@@ -256,5 +263,18 @@ describe("lastPointedRow", () => {
     const texts = ["❯ Use the AskUserQuestion tool to ask me", "Which fruit?", "  1. Apple", "❯ 2. Banana", "  3. Type something."];
     expect(lastPointedRow(texts, "❯")).toBe("2. Banana");
     expect(lastPointedRow(["no pointer here"], "❯")).toBeNull();
+  });
+});
+
+describe("pressableBar", () => {
+  test("presses the picker buttons in bar order, never Compact and never a two-tap row", () => {
+    const bar = [
+      { id: "model", command: "/model" },
+      { id: "compact", command: "/compact" },
+      { id: "wipe", command: "/clear", confirm: true },
+      { id: "resume", command: "/resume" },
+    ];
+    expect(pressableBar(bar).map((i) => i.id)).toEqual(["model", "resume"]);
+    expect(pressableBar([])).toEqual([]);
   });
 });
