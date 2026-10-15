@@ -24,6 +24,8 @@ import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
 import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
+import durableProgramsSecurity from "../docs/durable-programs-security.md" with { type: "text" };
+import durableProgramsTroubleshooting from "../docs/durable-programs-troubleshooting.md" with { type: "text" };
 import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
 import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
@@ -101,6 +103,16 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "durable-programs",
     purpose: "Show your own agent program on your phone: attach it, its tokens, its files, its versions",
     text: durablePrograms,
+  },
+  {
+    name: "durable-programs-troubleshooting",
+    purpose: "A program that does not show up or says Unreachable: first checks, every reason, doctor rows, cases",
+    text: durableProgramsTroubleshooting,
+  },
+  {
+    name: "durable-programs-security",
+    purpose: "What a program can and cannot do, the trust rules per transport, text cleaning, the audit log",
+    text: durableProgramsSecurity,
   },
   {
     name: "durable-sdk",
