@@ -76,6 +76,7 @@ const REFUSAL_KEYS = {
   font: "theme.refusal.font",
   "no-half": "theme.refusal.no-half",
   "reserved-id": "theme.refusal.reserved-id",
+  mark: "theme.refusal.mark",
 } as const satisfies Record<RefusalCode, MessageKey>;
 
 const HALF_KEYS = {

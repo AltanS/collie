@@ -70,6 +70,7 @@ export const fr: Dictionary = {
   "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
   "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
+  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
   "settings.haptics.title": "Retour haptique",
   "settings.haptics.description": "Une courte vibration lorsque vous appuyez sur une touche ou une réponse rapide.",
   "settings.install.title": "Installer l'application",
