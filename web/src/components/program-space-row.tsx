@@ -36,6 +36,16 @@ function stateWord(state: SessionState): string {
 }
 
 /**
+ * The word at the right edge of a row that is not ready. A program the bridge refused for its wire
+ * version carries `notice` on its card; it says "Version mismatch" in place of the generic "Unreachable".
+ * Its mark, its ink and its tap are the unreachable ones.
+ */
+function notReadyWord(session: Pick<SessionSummary, "notice">, state: SessionState): string {
+  if (state === "unreachable" && (session.notice ?? "") !== "") return t("space.program.state.versionMismatch");
+  return stateWord(state);
+}
+
+/**
  * Line 2: the runtime and the place, or the place alone when the card names no runtime, then the
  * member's name when another machine of the crew runs the program.
  */
@@ -118,7 +128,7 @@ export function ProgramSpaceRow({
             data-slot="program-space-state"
             className={cn("shrink-0 text-xs", state === "unreachable" ? "text-muted-foreground" : "text-foreground")}
           >
-            {stateWord(state)}
+            {notReadyWord(session, state)}
           </span>
         )}
       </div>

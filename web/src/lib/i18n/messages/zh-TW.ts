@@ -587,6 +587,8 @@ export const zhTW: Dictionary = {
   // TODO wordsmith
   "space.program.state.unreachable": "Unreachable",
   // TODO wordsmith
+  "space.program.state.versionMismatch": "Version mismatch",
+  // TODO wordsmith
   "space.program.member": "{line}, {member}",
   // TODO wordsmith
   "space.program.open.one": "{count} open conversation",

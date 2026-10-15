@@ -332,9 +332,9 @@ after it, and the minor after that drops it. Today there is no previous version 
 
 When the two ranges do not meet, Collie reads nothing more from the program. Its log gets one line
 for each range it refuses, such as
-`[durable] Program speaks wire v2, this Collie speaks v1; update one of them`. The program's home
-on the phone shows the same sentence in a caution box, and its row on the dashboard keeps the word
-Unreachable. `collie doctor` shows both ranges on its `durable-hello` row:
+`[durable] Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.` The program's home
+on the phone shows the same sentence in a caution box, and its row on the dashboard says Version
+mismatch in place of Unreachable. `collie doctor` shows both ranges on its `durable-hello` row:
 `incompatible: program speaks 2..3, this Collie speaks 1..1`. Once per start of the program, Collie
 also sends it one `hello` with its own version, so the program can log the mismatch on its side.
 Update the older side.

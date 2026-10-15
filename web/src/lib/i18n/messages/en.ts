@@ -632,6 +632,7 @@ export const en = {
   "space.program.state.ready": "Ready",
   "space.program.state.starting": "Starting",
   "space.program.state.unreachable": "Unreachable",
+  "space.program.state.versionMismatch": "Version mismatch",
   "space.program.member": "{line}, {member}",
   "space.program.open.one": "{count} open conversation",
   "space.program.open.other": "{count} open conversations",

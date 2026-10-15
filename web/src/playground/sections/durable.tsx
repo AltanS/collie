@@ -206,7 +206,7 @@ const REFUSED: SessionSummary = programSession("billing", {
   where: "remote",
   state: "unreachable",
   reachable: false,
-  notice: "Program speaks wire v2, this Collie speaks v1; update one of them",
+  notice: "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.",
 });
 
 /**

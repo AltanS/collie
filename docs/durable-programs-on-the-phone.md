@@ -21,7 +21,7 @@ Each program is one row in a Programs section, apart from your spaces.
 | Line 1 | The program's name from `sources.json`, and an Experimental badge |
 | Line 2 | Its runtime, the name the program gives itself in its hello, else `durable`. Then `local` or `remote` |
 | Right edge, ready | The count of its open conversations, and in the needs-you colour the count that waits on you. The second count is hidden at zero |
-| Right edge, not ready | The word Starting or Unreachable, and no counts |
+| Right edge, not ready | The word Starting, Unreachable or Version mismatch, and no counts |
 
 A program reached over its socket, or over `http://127.0.0.1` or `http://localhost`, is `local`.
 Every other URL is `remote`.
@@ -56,7 +56,7 @@ every poll.
 | Load more | The program has more than 100 conversations. Each tap reads the next 100 |
 | "This program does not keep a list of its conversations." | The program answered that it keeps no list |
 | "The program did not answer. Try again in a moment." | The program did not answer the read |
-| "Program speaks wire v2, this Collie speaks v1; update one of them" | Collie refused the program for its wire version ([Receipts](#receipts)) |
+| "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK." | Collie refused the program for its wire version ([Receipts](#receipts)) |
 | "Couldn't load the conversations. Try again." | The read failed on the way |
 
 A program that keeps no history shows its open conversations alone, with no Closed group and no
@@ -117,7 +117,7 @@ Collie tells you how a question ended when you did not answer it, and why a prog
 | The question has an expiry | The card shows the time left under its title |
 | You tapped after the program decided, or after the expiry | The card freezes and says "Decided in the program." or "Timed out before an answer." |
 | A question timed out, or the program decided it, with no tap from you | One line in the chat: "Timed out before an answer:" or "Decided in the program:", then the question's title |
-| Collie refused the program for its wire version | A caution box on the program's home, and the word Unreachable on its dashboard row |
+| Collie refused the program for its wire version | A caution box on the program's home, and the words Version mismatch on its dashboard row |
 
 A question you answered from the phone, or one that ended because you stopped the turn, leaves no
 such line. Your tap already had its card.
@@ -125,7 +125,7 @@ such line. Your tap already had its card.
 ![A refused program's home: Program speaks wire v2, this Collie speaks v1.](images/programs/program-refused-version.png)
 
 The caution box says which wire version each side speaks, for example "Program speaks wire v2, this
-Collie speaks v1; update one of them". Update the older side. [Versions](durable-programs.md#versions)
+Collie speaks v1. Update Collie, or the program's SDK." Update the older side. [Versions](durable-programs.md#versions)
 has the rule.
 
 ## The chat

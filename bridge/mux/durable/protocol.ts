@@ -98,7 +98,7 @@ export function versionRefusal(program: ProtocolRange, speaks: ProtocolRange = S
 
 /** The one line a refusal is shown as: in Collie's log, and as the notice row of the program's pane list. */
 export function versionNotice(refusal: VersionRefusal): string {
-  return `Program speaks wire v${String(refusal.program[1])}, this Collie speaks v${String(refusal.collie[1])}; update one of them`;
+  return `Program speaks wire v${String(refusal.program[1])}, this Collie speaks v${String(refusal.collie[1])}. Update Collie, or the program's SDK.`;
 }
 
 /** The refusal detail for two ranges that do not meet. It starts with `incompatible`. */
