@@ -44,6 +44,8 @@ const PINNED = [
   "codex--fresh-idle.txt",
   "codex--queue-context-inline.txt",
   "codex--reporter-294-busy-agents-hint.txt",
+  "codex--resume-picker-moved.txt",
+  "codex--resume-picker.txt",
   "codex--submitted-fill-labelled-rule.txt",
   "codex--trust-prompt.txt",
   "codex--v0150-custom-status.txt",
@@ -84,6 +86,8 @@ const DIALOG = [
   "codex--ask-fruit.txt",
   "codex--ask-wizard-q1.txt",
   "codex--ask-wizard-q2.txt",
+  "codex--resume-picker-moved.txt",
+  "codex--resume-picker.txt",
   "codex--trust-prompt.txt",
   "codex--v0156-approval-exec-2opt.txt",
   "codex--v0156-approval-exec-wrapped-50.txt",
@@ -1361,5 +1365,27 @@ describe("Codex mobile display cleanup", () => {
     expect(marked.map(lineText).join("\n")).toContain("Ask Codex to do anything");
     // Presentation only: the mirror text is byte-identical to what the bridge returned.
     expect(decorated.map(lineText)).toEqual(lines.map(lineText));
+  });
+});
+
+describe("codex: the /resume session picker lifts as a menu (0.159)", () => {
+  const menuOf = (name: string) => {
+    const block = codexAdapter.buildBlocks(fixtureLines(name)).find((b) => b.kind === "menu");
+    return block?.kind === "menu" ? block.menu : null;
+  };
+
+  it("offers Up/Down, Resume and Exit, and nothing that archives or quits", () => {
+    const menu = menuOf("codex--resume-picker.txt");
+    expect(menu?.title).toBe("Resume a previous session");
+    expect(menu?.actions.map((a) => [a.label, a.keys.join("+")])).toEqual([
+      ["Resume", "Enter"],
+      ["Exit", "Escape"],
+    ]);
+    expect(menu?.nav.upDown).toBe(true);
+    expect(codexAdapter.composerReady!(fixtureLines("codex--resume-picker.txt"))).toBe(false);
+  });
+
+  it("changes its signature when the highlight moves, so a stale tap is refused", () => {
+    expect(menuOf("codex--resume-picker-moved.txt")?.signature).not.toBe(menuOf("codex--resume-picker.txt")?.signature);
   });
 });
