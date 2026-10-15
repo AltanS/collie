@@ -84,6 +84,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **`collie skill` tells an agent what a program is.** A new section "Programs (experimental)" gives the attach command, the three `collie durable` verbs, which of them an agent may run, and the `durable-` doctor rows to read when a program does not show.
 - **Terminology has the words a program brings.** Source, cap, hello, epoch, receipt, conversation, Programs section and wire each get an entry of two to four sentences and one link to the page that owns the word.
 - **The push page says what a program's pushes do.** A new section gives the three caps (3 a pane a minute, 10 and 30 for one program on one machine), the one summary push and the hour of silence, the program's own title and line, and that a restart shows a repeated question and does not push it again.
 - **The Programs quickstart states its platforms as a fact about the program.** The opening line reads "A program runs on Linux or macOS", so no page still opens with the old Linux-only requirement.
