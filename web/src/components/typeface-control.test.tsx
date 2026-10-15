@@ -73,7 +73,7 @@ describe("TypefaceControl", () => {
 
     expect(document.documentElement).toHaveClass("font-plex");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "plex" });
-    expect(screen.getByText("IBM Plex Sans, the Nightwatch face. Its bold is a real bold.")).toBeInTheDocument();
+    expect(screen.getByText("Calm and humanist, with a real bold and even-width figures.")).toBeInTheDocument();
   });
 
   it("swapping back to the default takes the class off again", async () => {
