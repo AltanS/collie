@@ -2673,8 +2673,8 @@ describe("AgentChat — zen mode", () => {
 // still says how many there are, where you are in them, and whether anything is shouting.
 //
 // Four claims, and each one fails on the edit that would undo it: the rows are shown until asked
-// otherwise, the fold is remembered, the bar puts them back, and the soft keyboard overrides the
-// preference WITHOUT rewriting it.
+// otherwise, the fold is remembered, the bar puts them back, and the soft keyboard changes NOTHING
+// (it used to fold the rows on its own; the operator read that as a layout shift, 2026-10-16).
 describe("AgentChat — folding the tab and pane rows", () => {
   // A second pane in the open pane's own tab, so the pane row renders too (it draws nothing below
   // two) and the bar has both bead groups to show.
@@ -2836,52 +2836,68 @@ describe("AgentChat — folding the tab and pane rows", () => {
     act(() => field.focus());
   }
 
-  it("the keyboard folds the rows whatever the preference says, and an expand under it is not written down", async () => {
-    // The keyboard takes roughly 45% of the phone, and these rows are read BEFORE typing, never
-    // during it — the same test the pane switcher and the statusline are already judged by.
+  it("the keyboard does not fold the rows, and the preference rules under it", async () => {
+    // THE OLD RULE, and why it went: while the composer's keyboard was up the rows stood down
+    // whatever the preference said, and an expand taken under it was transient. On the phone that
+    // was a band folding on its own the moment the field took focus, which moved the mirror under
+    // the operator's eyes, and rows that came back on their own, undoing a choice he had just made
+    // (2026-10-16). Now the keyboard is not a state of the fold at all: shown stays shown, folded
+    // stays folded, and a tap under the keyboard writes the preference like any other tap.
     const kb = withSoftKeyboard();
     try {
       const user = userEvent.setup();
       renderStrips();
       expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
 
-      // The COMPOSER's keyboard, which is the only one that buys this fold — see the case below for
-      // the one that must not.
       focusComposer();
       kb.resize(460); // a soft keyboard: -384px, well past the open threshold
-      await waitFor(() => expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull());
-      // The PREFERENCE is untouched — the keyboard is spending the pixels, not choosing for the
-      // operator, so nothing is written.
+      // Past the full exit: if the band ever started closing, the strip would be gone by now.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, COLLAPSE_MS + 60));
+      });
+      expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /^Show tabs and panes/ })).toBeNull();
       expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
 
-      // "I need to see the tabs right now" is not "show me the tabs from now on". The expand holds
-      // for this keyboard session and writes nothing.
+      // A fold taken with the keyboard up is a choice like any other, so it is written down…
+      await user.click(screen.getByRole("button", { name: "Hide tabs and panes" }));
+      await waitFor(() => expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull());
+      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBe("1");
+
+      // …and the keyboard closing does not undo it: the rows stay folded on the operator's terms.
+      kb.resize(844);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, COLLAPSE_MS + 60));
+      });
+      expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Show tabs and panes/ })).not.toBeNull();
+
+      // And an expand under the keyboard holds past it too.
+      kb.resize(460);
       await user.click(screen.getByRole("button", { name: /^Show tabs and panes/ }));
       await waitFor(() =>
         expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull(),
       );
-      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
-
-      // …and it dies with the keyboard: the persisted preference (shown) rules again, so the rows
-      // are back on their own terms rather than on the override's.
+      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBe("0");
       kb.resize(844);
-      await waitFor(() =>
-        expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull(),
-      );
-      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, COLLAPSE_MS + 60));
+      });
+      expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
     } finally {
       kb.restore();
     }
   });
 
-  it("does not fold on a keyboard the composer did not ask for — the rename sheet survives its own keyboard", async () => {
+  it("the rename sheet inside the band survives its own keyboard", async () => {
     // THE BUG, from the phone: tap a tab → the actions sheet opens → tap Rename → "things flash" and
     // the sheet is gone, with nothing renameable on the device at all.
     //
     // The sheet is TabStrip's, so it renders INSIDE the band that folds. Its rename field
-    // autofocuses, the field's own keyboard opens, and a fold gated on "is a keyboard up" fires on
-    // it — 240ms later `Collapse` unmounts the strip, the sheet and the half-typed name together.
-    // The keyboard may spend the band's pixels only when it is the COMPOSER's keyboard.
+    // autofocuses, the field's own keyboard opens, and a fold gated on "is a keyboard up" fired on
+    // it, and 240ms later `Collapse` unmounted the strip, the sheet and the half-typed name together.
+    // No keyboard folds the band any more (the case above); this one stays as the guard that the
+    // band never again closes on a keyboard, whoever raised it.
     const kb = withSoftKeyboard();
     try {
       const user = userEvent.setup();

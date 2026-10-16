@@ -161,6 +161,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The bridge's sentence for an unreadable screen matches the phone's line above it.** It now ends "Check the pane, then tap Type here.", as the catalog line does, so the notice no longer says "rows" under a line that says "pane".
 - **No em dash is left in the app's sentences.** Status lines, hints and button names that carried a dash now read with a comma or a full stop, in English; the other languages had none.
 - **German speaks du throughout.** Ninety lines that said Sie now use the same du the rest of the app uses, so one screen no longer mixes both.
+- **The tab and pane rows above a pane no longer fold on their own when the keyboard opens.** They stay as the last tap left them, shown or folded, keyboard up or not, and a tap taken with the keyboard up is remembered like any other. The band folding by itself moved the screen under the reader's eyes and undid a choice just made.
 
 ### Packaging
 
