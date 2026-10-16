@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
+import { HOST } from "../bridge/host.ts";
 import {
   BEACON_SCHEMA_VERSION,
   EDGE_SCHEMA_VERSION,
@@ -16,7 +17,7 @@ import { asJsonString } from "../web/src/lib/json.ts";
 import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
 import { holdInputHash, shownInput } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { agentSettingsPath, settingsHold } from "./hold-entry.ts";
+import { agentHolds, agentSettingsPath, managedSettingsPath, projectSettingsPaths } from "./hold-entry.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -297,12 +298,27 @@ function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
 const TOOL_FIELD = /^[\x20-\x7e]{1,128}$/u;
 
 /**
- * Whether the settings file this agent reads holds Collie's permission hook right now (M56 spec 12).
- * The harness reloads hooks from the file while it runs (seen 2026-10-16 on 2.1.301), so the file
- * is the truth for a running agent too. One small read; an unreadable file holds nothing.
+ * Whether the settings this agent reads hold Collie's permission hook right now (M56 spec 12): the
+ * user file, the project's two files under the folder the hook reports (`cwd`), and the managed file.
+ * Any of them can turn hooks off (`disableAllHooks`, or `allowManagedHooksOnly` in the managed one).
+ * The harness reloads hooks from these files while it runs (seen 2026-10-16 on 2.1.301), so the files
+ * are the truth for a running agent too. A few small reads; an unreadable file holds nothing.
  */
-function holdsNow(deps: BeaconEmitDeps, event: string): boolean {
-  return settingsHold(deps.files.read(agentSettingsPath(deps.ctx.env, deps.ctx.home)), event);
+function holdsNow(deps: BeaconEmitDeps, event: string, cwd: string | null): boolean {
+  return agentHolds(
+    {
+      user: deps.files.read(agentSettingsPath(deps.ctx.env, deps.ctx.home)),
+      project: cwd === null ? [] : projectSettingsPaths(cwd).map((path) => deps.files.read(path)),
+      managed: deps.files.read(managedSettingsPath(HOST.platform)),
+    },
+    event,
+  );
+}
+
+/** The folder the hook reports the agent runs in, or null. */
+function cwdOf(payload: JsonObject): string | null {
+  const cwd = asJsonString(payload.cwd);
+  return cwd !== undefined && isAbsolute(cwd) && cwd.length < 4096 ? cwd : null;
 }
 
 /** A notification type: lower case and underscores. */
@@ -437,7 +453,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
         markers,
         at: (deps.now ?? Date.now)(),
         promptHash: null,
-        holds: holdsNow(deps, hold.event),
+        holds: holdsNow(deps, hold.event, cwdOf(payload)),
       };
       if (tool !== null) record = { ...record, tool };
       if (agent !== null) record = { ...record, agent };
@@ -472,7 +488,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
 
     // The edges first, each in its own guard: a beacon that cannot be written must not cost an edge,
     // one target that cannot be written must not cost the others, and the other way round.
-    const holds = hold === undefined ? false : holdsNow(deps, hold.event);
+    const holds = hold === undefined ? false : holdsNow(deps, hold.event, cwdOf(payload));
     for (const stateDir of edgeStateDirs(deps)) {
       try {
         writeEdge(deps, stateDir, {

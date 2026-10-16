@@ -43,6 +43,47 @@ export function agentSettingsPath(env: Readonly<Record<string, string | undefine
   return join(dir !== undefined && dir !== "" ? dir : join(home, ".claude"), "settings.json");
 }
 
+/**
+ * The managed settings file an administrator may install, which outranks every other (the harness's
+ * documented paths per platform). It can turn every hook off, or allow only its own hooks.
+ */
+export function managedSettingsPath(platform: string): string {
+  if (platform === "darwin") return "/Library/Application Support/ClaudeCode/managed-settings.json";
+  if (platform === "win32") return "C:\\Program Files\\ClaudeCode\\managed-settings.json";
+  return "/etc/claude-code/managed-settings.json";
+}
+
+/** The project's two settings files, under the folder the agent runs in. */
+export function projectSettingsPaths(cwd: string): string[] {
+  return [join(cwd, ".claude", "settings.json"), join(cwd, ".claude", "settings.local.json")];
+}
+
+/** The settings texts the agent reads, as far as the hold is concerned. Null: no such file, or unreadable. */
+export interface AgentSettingsTexts {
+  readonly user: string | null;
+  readonly project: readonly (string | null)[];
+  readonly managed: string | null;
+}
+
+function flagOn(text: string | null, key: string): boolean {
+  if (text === null || text.trim() === "") return false;
+  const document = parseJson(text);
+  return document instanceof Object && !Array.isArray(document) && document[key] === true;
+}
+
+/**
+ * Whether the agent's settings hold permissions for `event`, read as the harness reads them: the hold
+ * entry in the user file or a project file, and no file that turns it off. `disableAllHooks` in any
+ * file turns every hook off. `allowManagedHooksOnly` in the managed file runs only the administrator's
+ * hooks, so the user's hold never runs.
+ */
+export function agentHolds(texts: AgentSettingsTexts, event: string): boolean {
+  const all = [texts.user, ...texts.project, texts.managed];
+  if (all.some((text) => flagOn(text, "disableAllHooks"))) return false;
+  if (flagOn(texts.managed, "allowManagedHooksOnly")) return false;
+  return [texts.user, ...texts.project].some((text) => settingsHold(text, event));
+}
+
 /** Whether the settings text holds the hold entry for `event`. Unreadable text holds nothing. */
 export function settingsHold(text: string | null, event: string): boolean {
   if (text === null || text.trim() === "") return false;
