@@ -55,7 +55,7 @@ export function chooseDurableTransport(env: DurableEnv, platform: NodeJS.Platfor
       detail: `${DURABLE_SOCKET_ENV} and ${hasUrl ? DURABLE_URL_ENV : DURABLE_TOKEN_ENV} are both set; set the socket, or the URL with its token, not both`,
     };
   }
-  if (hasUrl && !hasToken) return { kind: "conflict", detail: `${DURABLE_URL_ENV} is set without ${DURABLE_TOKEN_ENV}; the program refuses a caller with no token` };
+  if (hasUrl && !hasToken) return { kind: "conflict", detail: `${DURABLE_URL_ENV} is set without ${DURABLE_TOKEN_ENV}; the durable agent refuses a caller with no token` };
   if (hasToken && !hasUrl) return { kind: "conflict", detail: `${DURABLE_TOKEN_ENV} is set without ${DURABLE_URL_ENV}; a token is only sent to a URL` };
   if (hasUrl) return { kind: "https", url: url ?? "", token: token ?? "" };
   return { kind: "socket", configured: socket };

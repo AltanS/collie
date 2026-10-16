@@ -56,16 +56,16 @@ const BOOK_SIZE = 512;
 
 // The sentences a person reads. Short, active, one idea each.
 const NO_BOX = "This conversation has no input box, so there is no text to add to, replace, submit or discard.";
-const ASK_OPEN = "The program waits for an answer to a question. Answer it first, then send.";
+const ASK_OPEN = "The durable agent waits for an answer to a question. Answer it first, then send.";
 const NOT_READ = "Collie cannot read the state of this conversation now. Try again in a moment.";
-const PANE_GONE = "The conversation is not in the program's layout.";
-const TURN_MOVED = "The program started another turn after you looked. Read the chat, then send again.";
+const PANE_GONE = "The conversation is not in the durable agent's layout.";
+const TURN_MOVED = "The durable agent started another turn after you looked. Read the chat, then send again.";
 const BUSY = "Another send or answer on this conversation is still running.";
-const QUEUED = "The program runs a turn. It takes the message when that turn ends.";
-const NOT_ACKED = "The program did not say it took the message. Read the chat before you send it again.";
-const CRASHED = "Collie lost this send before it ended, so it cannot say whether the program took it. Read the chat.";
-const ASK_NOT_ACKED = "The program did not say it took the answer. Read the chat before you answer again.";
-const ASK_CRASHED = "Collie lost this answer before it ended, so it cannot say whether the program took it. Read the chat.";
+const QUEUED = "The durable agent runs a turn. It takes the message when that turn ends.";
+const NOT_ACKED = "The durable agent did not say it took the message. Read the chat before you send it again.";
+const CRASHED = "Collie lost this send before it ended, so it cannot say whether the durable agent took it. Read the chat.";
+const ASK_NOT_ACKED = "The durable agent did not say it took the answer. Read the chat before you answer again.";
+const ASK_CRASHED = "Collie lost this answer before it ended, so it cannot say whether the durable agent took it. Read the chat.";
 const ID_ELSEWHERE = "This request id belongs to a send on another conversation.";
 
 /** What the driver needs of the program's adapter. Every read answers from the adapter's last layout read. */
@@ -660,7 +660,7 @@ export class ProgramDriver {
       case "too-late":
         return said.decided?.by === "phone"
           ? { outcome: "refused", reason: "ask_answered", detail: "Another tap answered this question first." }
-          : { outcome: "refused", reason: "ask_gone", detail: "The question closed before the answer reached the program." };
+          : { outcome: "refused", reason: "ask_gone", detail: "The question closed before the answer reached the durable agent." };
       case "stale":
         return { outcome: "refused", reason: "ask_changed", detail: "The question changed after you looked. The card shows it as it is now.", ask: said.ask === null ? this.liveAsk(target.paneId) : this.book.publish(target.paneId, said.ask) };
       case "unknown":

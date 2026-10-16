@@ -89,7 +89,7 @@ describe("ProgramSpaceRow: the row's states", () => {
     const session = program("desk", {
       state: "unreachable",
       reachable: false,
-      notice: "Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK.",
+      notice: "The durable agent speaks wire v3, this Collie speaks v1. Update Collie, or the agent's SDK.",
     });
     const { row, slot, onOpen } = renderRow(session);
     expect(row.dataset.state).toBe("unreachable");

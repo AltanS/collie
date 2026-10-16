@@ -263,9 +263,9 @@ describe("Send through accept, persist, lock and receipt", () => {
       [{ kind: "stale", turnId: "turn-2", askIds: [] }, "refused", "stale_surface"],
       [{ kind: "unknown", detail: "timed out" }, "unknown", "no_evidence"],
       [{ kind: "refused", detail: "bad body" }, "refused", "write_failed"],
-      [{ kind: "unsupported", detail: "This program takes no text from here." }, "refused", "write_failed"],
+      [{ kind: "unsupported", detail: "This durable agent takes no text from here." }, "refused", "write_failed"],
       [{ kind: "unreachable", detail: "connect refused" }, "refused", "write_failed"],
-      [{ kind: "gone", detail: "The conversation is not in the program's layout." }, "refused", "pane_gone"],
+      [{ kind: "gone", detail: "The conversation is not in the durable agent's layout." }, "refused", "pane_gone"],
     ];
     let n = 10;
     for (const [said, outcome, reason] of cases) {

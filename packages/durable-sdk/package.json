@@ -1,7 +1,7 @@
 {
   "name": "@colliepwa/durable-sdk",
   "version": "0.1.0",
-  "description": "Show a durable agent program on your phone through Collie: approvals, chat and history over a private socket. Experimental.",
+  "description": "Show a durable agent on your phone through Collie: approvals, chat and history over a private socket. Experimental.",
   "license": "MIT",
   "author": "Altan Sarisin",
   "type": "module",

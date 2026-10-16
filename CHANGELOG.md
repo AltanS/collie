@@ -169,6 +169,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A marked row under rounded corners also lifts.** With its ring on all four sides, a selected or blocked row under soft or round corners takes a soft shadow, and an unmarked row takes none. Under Collie's square corners nothing changes.
 - **The theme import preview and its refusals speak all eleven languages.** The shape and terminal palette labels and the two new refusal sentences were translated; the import promise now says a theme changes how the app looks and nothing else.
 - **The app says durable agent where it said program.**
+- **The bridge, doctor and SDK say durable agent too.** Refusal notices, doctor rows, the push title and the SDK readme use the same word as the app.
 
 ### Fixed
 

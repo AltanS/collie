@@ -184,7 +184,7 @@ export interface ControlDeps {
 export const NO_CONTROLS = "This pane takes no send or stop by turn.";
 
 /** The same refusal for a belt action. */
-export const NO_ACTIONS = "This pane takes no program actions.";
+export const NO_ACTIONS = "This pane takes no durable agent actions.";
 
 /** The refusal `/reply` and `/keys` answer on a pane that takes guarded controls instead (ADR 0101). */
 export const NO_RAW_INPUT = "This conversation has no terminal. Send text with the turn you saw instead of typed keys.";

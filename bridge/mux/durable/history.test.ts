@@ -199,7 +199,7 @@ describe("reopen", () => {
     await adapter.closePane("conv-02");
     tick();
     program.reopenRefusal = "archived for good";
-    expect(await adapter.reopenConversation("conv-02")).toMatchObject({ ok: false, reason: "refused", detail: "The program did not bring this conversation back: archived for good" });
+    expect(await adapter.reopenConversation("conv-02")).toMatchObject({ ok: false, reason: "refused", detail: "The durable agent did not bring this conversation back: archived for good" });
     expect(await adapter.reopenConversation("a b")).toMatchObject({ ok: false, reason: "refused" });
   });
 

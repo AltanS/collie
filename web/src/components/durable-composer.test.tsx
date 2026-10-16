@@ -463,7 +463,7 @@ describe("the program's own actions", () => {
 
   it("a refusal says the bridge's own words, keeps nothing, and the next tap is a new intent", async () => {
     const seen = stub("action", () =>
-      HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "The program did not run this action: Already escalated." }, { status: 409 }),
+      HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "The durable agent did not run this action: Already escalated." }, { status: 409 }),
     );
     const { onReload } = draw({ actions: [escalate] });
     const user = userEvent.setup();

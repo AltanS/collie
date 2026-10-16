@@ -106,7 +106,7 @@ describe("SpaceActionsSheet: rename", () => {
     const user = userEvent.setup();
     server.use(
       http.post(/\/api\/space\/[^/]+\/rename$/, () =>
-        HttpResponse.json({ ok: false, error: "The program did not accept this name.", code: "space.rename_failed", detail: { reason: "no" } }),
+        HttpResponse.json({ ok: false, error: "The durable agent did not accept this name.", code: "space.rename_failed", detail: { reason: "no" } }),
       ),
     );
     const props = renderSheet();
