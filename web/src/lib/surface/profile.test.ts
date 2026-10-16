@@ -221,22 +221,27 @@ describe("the codex profile (M56 spec 13)", () => {
   }
 });
 
-describe("the Codex ranges and the ledger", () => {
+describe("the Codex range", () => {
   const row = ledgerJson.agents.codex;
 
-  it("codex: verified through the ledger's Codex row", () => {
+  it("codex: verified through 0.163.0, where the live sends of spec 13 passed on 0.150.0, 0.159.2 and 0.163.0", () => {
     const codex = loadProfiles().get("codex")!;
     const verified = codex.versions.filter((range) => range.status === "verified");
     expect(verified).toHaveLength(1);
-    expect(verified[0]!.verifiedThrough).toBe(row.version);
-    expect(verified[0]!.verifiedOn).toBe(row.verified);
-    expect(verified[0]!.range.endsWith(` - ${row.version}`)).toBe(true);
-    expect(profileFor("codex", row.version, { log: () => {} })?.status).toBe("verified");
+    expect(verified[0]!.range).toBe("0.150.0 - 0.163.0");
+    expect(verified[0]!.verifiedThrough).toBe("0.163.0");
+    expect(verified[0]!.verifiedOn).toBe("2026-10-16");
+    expect(codex.probe.note).toContain("0.150.0, 0.159.2 and 0.163.0");
+    for (const version of ["0.150.0", row.version, "0.163.0"]) {
+      resetProfileLog();
+      expect(profileFor("codex", version, { log: () => {} })?.status, version).toBe("verified");
+    }
   });
 
-  it("codex: provisional above the ledger's Codex row, 0.163.0 of the lab included", () => {
+  it("codex: the ledger's canary row sits inside the range, and a version above it is provisional", () => {
     resetProfileLog();
-    expect(profileFor("codex", "0.163.0", { log: () => {} })?.status).toBe("provisional");
+    expect(profileFor("codex", row.version, { log: () => {} })?.range?.range).toBe("0.150.0 - 0.163.0");
+    expect(profileFor("codex", "0.164.0", { log: () => {} })?.status).toBe("provisional");
   });
 });
 
@@ -257,6 +262,8 @@ interface Spec14Case {
   /** Rows an anchor must refuse. */
   readonly refuses: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string }[];
   readonly collapse: { readonly text: string; readonly group: string; readonly value: string };
+  /** The reserved leads, where they are not `/`, `!` and `@`: pi and OMP read an `@` text as a message. */
+  readonly reservedLeads?: readonly string[];
   /** The keys that send a text on an idle box. */
   readonly submit: readonly string[];
   /** The keys that send a command, where they differ from `submit`. */
@@ -379,6 +386,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "prompt", row: "   hello there" },
     ],
     collapse: { text: "📄 #3", group: "", value: "" },
+    reservedLeads: ["/", "!"],
     submit: ["ctrl+q"],
     commandSubmit: ["Enter"],
     probeStatus: "provisional",
@@ -406,6 +414,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "top", row: "hello there" },
     ],
     collapse: { text: "[paste #2 +12 lines]", group: "lines", value: "12" },
+    reservedLeads: ["/", "!"],
     submit: ["alt+Enter"],
     commandSubmit: ["Enter"],
     probeStatus: "verified",
@@ -430,7 +439,7 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.keys.interrupt.length).toBeGreaterThan(0);
     expect(p.keys.enterWhileRunning).toBe(c.enterWhileRunning);
     expect(p.keys.queueKey).toBe(c.queueKey);
-    expect(p.reservedLeads).toEqual(["/", "!", "@"]);
+    expect(p.reservedLeads).toEqual(c.reservedLeads ?? ["/", "!", "@"]);
     expect(p.probe.char.length).toBeGreaterThan(0);
     expect(p.paste).toEqual({ bracketed: true });
     expect(p.hooks).toBeDefined();

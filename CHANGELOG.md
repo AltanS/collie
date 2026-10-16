@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **An `@` text is a message on pi and OMP.** It takes the send or queue key and never Enter. `/` and `!` stay commands. Codex is verified through 0.163.0.
 - **pi and OMP send with the key that queues in a turn, and agy and muse read a running turn.** pi sends with Alt+Enter and OMP with Ctrl+Q. Enter steers a running turn on both. A harness with no live send in its range probes every send.
 - **A profile may name keys per platform, other agent names, and a probe that never skips.** `keys.submit` and `keys.queueKey` take a `win32` entry. `identity.agentNames` files `antigravity` under `agy`. A profile with `probe.status` provisional probes every send.
 - **Grok has an input profile.** Collie finds the Grok box and reads its drafts. It treats an open model list as a dialog. Every send is probed.

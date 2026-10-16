@@ -44,6 +44,6 @@ need a rule to be read right.
 
 ## Versions
 
-- A range is `verified` through the ledger row in `web/src/lib/harness/verified-versions.json`.
+- A range is `verified` through the ledger row in `web/src/lib/harness/verified-versions.json`, or through a version where a live send passed. The probe note names those versions.
 - A range with no evidence is `provisional`, and its version fields are null.
 - A version above every range is read as `provisional`, with the nearest older range.
