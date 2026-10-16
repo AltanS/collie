@@ -16,6 +16,7 @@ import {
   serializeSettings,
   uninstallDocument,
 } from "./hooks.ts";
+import { codexConfigPath, installNotify, notifyState } from "./codex-hooks.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
 import { collieBinary } from "./unit.ts";
@@ -405,12 +406,90 @@ describe("install", () => {
   });
 
   test("names the harness, and refuses an unknown one", () => {
-    for (const args of [[], ["codex"]]) {
+    for (const args of [[], ["opencode"]]) {
       const d = deps();
       expect(cmdHooksInstall(d, args)).toBe(EXIT.USAGE);
       expect(d.files.entries.size).toBe(0);
-      expect(d.io.stderr.join("\n")).toContain("collie hooks install {claude}");
+      expect(d.io.stderr.join("\n")).toContain("collie hooks install {claude|codex}");
     }
+  });
+});
+
+describe("codex: the notify setting in config.toml (M56 spec 13)", () => {
+  const CODEX_DIR = join(HOME, ".codex");
+  const CONFIG = join(CODEX_DIR, "config.toml");
+  const LAB_HOME = join("/lab", "codex-home");
+  const NOTIFY = `notify = ["${OWN.replace(/\\/g, "\\\\")}","beacon","emit","codex"]`;
+  const OPERATOR = ['model = "gpt-6-luna"', 'approval_policy = "on-request"', "", "[projects.\"/srv/work\"]", 'trust_level = "trusted"', ""].join("\n");
+
+  test("codex: the config lives in CODEX_HOME, else ~/.codex", () => {
+    expect(codexConfigPath(context({}))).toBe(CONFIG);
+    expect(codexConfigPath(context({ CODEX_HOME: LAB_HOME }))).toBe(join(LAB_HOME, "config.toml"));
+  });
+
+  test("codex: install puts one notify line at the top level, before the first table, and backs the file up once", () => {
+    const d = deps({ files: { [CONFIG]: OPERATOR } });
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+    const text = d.files.entries.get(CONFIG)!.text;
+    expect(text.split("\n").slice(0, 4)).toEqual(['model = "gpt-6-luna"', 'approval_policy = "on-request"', NOTIFY, ""]);
+    expect(text).toContain('[projects."/srv/work"]');
+    expect(d.files.entries.get(`${CONFIG}.collie-backup`)?.text).toBe(OPERATOR);
+    expect(notifyState(text.split("\n"))).toMatchObject({ kind: "ours", binary: OWN });
+  });
+
+  test("codex: installing twice changes no bytes, and uninstall gives the operator's bytes back", () => {
+    const d = deps({ files: { [CONFIG]: OPERATOR } });
+    cmdHooksInstall(d, ["codex"]);
+    const once = d.files.entries.get(CONFIG)!.text;
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(once);
+    expect(d.io.stdout.join("\n")).toContain("No bytes changed");
+    expect(cmdHooksUninstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(OPERATOR);
+  });
+
+  test("codex: a notify command of the operator's own is refused, and the file is untouched", () => {
+    const theirs = `notify = ["/usr/local/bin/ding.sh"]\n${OPERATOR}`;
+    const d = deps({ files: { [CONFIG]: theirs } });
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.FAIL);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(theirs);
+    expect(d.io.stderr.join("\n")).toContain("Codex runs one notify command");
+    expect(cmdHooksUninstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(theirs);
+  });
+
+  test("codex: a notify key inside a table is not the setting; a multi-line notify array is refused", () => {
+    expect(notifyState(["[profiles.fast]", 'notify = ["x"]'])).toEqual({ kind: "none", insertAt: 0 });
+    expect(installNotify('notify = [\n  "x",\n]\n', OWN)).toMatchObject({ refuse: expect.stringContaining("cannot read") });
+  });
+
+  test("codex: an old install for another binary is healed in place", () => {
+    const old = `notify = ["/old/collie","beacon","emit","codex"]\n${OPERATOR}`;
+    const d = deps({ files: { [CONFIG]: old } });
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(`${NOTIFY}\n${OPERATOR}`);
+  });
+
+  test("codex: no config yet creates one with the line; a symlinked config is refused", () => {
+    const d = deps({ env: { CODEX_HOME: LAB_HOME } });
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(join(LAB_HOME, "config.toml"))?.text).toBe(`${NOTIFY}\n`);
+    expect(d.files.entries.has(join(CONFIG))).toBe(false);
+    const linked = deps();
+    linked.fs.entries.set(CONFIG, { kind: "symlink", target: "/nix/store/config.toml" });
+    expect(cmdHooksInstall(linked, ["codex"])).toBe(EXIT.FAIL);
+    expect(linked.files.entries.size).toBe(0);
+  });
+
+  test("codex: status names the config file and what it carries, and installing Codex never touches Claude's settings", () => {
+    const d = deps({ files: { [CONFIG]: OPERATOR } });
+    cmdHooksStatus(d);
+    expect(d.io.stdout.join("\n")).toContain(`${CONFIG}: not installed`);
+    cmdHooksInstall(d, ["codex"]);
+    expect(d.files.entries.has(SETTINGS)).toBe(false);
+    const after = deps({ files: { [CONFIG]: d.files.entries.get(CONFIG)!.text } });
+    cmdHooksStatus(after);
+    expect(after.io.stdout.join("\n")).toContain(`${CONFIG}: installed`);
   });
 });
 

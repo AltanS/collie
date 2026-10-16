@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
+import { parseEdge } from "../beacon/parse.ts";
 import type { BeaconLiveness } from "../beacon/reader.ts";
 import { EDGE_SCHEMA_VERSION, type BeaconMarker, type EdgeRecord } from "../beacon/types.ts";
 import type { EdgeSpool } from "../beacon-io.ts";
@@ -188,11 +189,11 @@ class FakeMux {
   };
 }
 
-function agent(paneId: string): AgentView {
-  return { paneId, workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", agent: HARNESS, status: "idle", cwd: "/x", focused: false };
+function agent(paneId: string, harness: string = HARNESS): AgentView {
+  return { paneId, workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", agent: harness, status: "idle", cwd: "/x", focused: false };
 }
 
-function shadowRig() {
+function shadowRig(version = "2.1.296") {
   const mux = new FakeMux();
   let clock = 1_000_000;
   const pending: { run: () => void; ms: number }[] = [];
@@ -203,7 +204,7 @@ function shadowRig() {
     compare: false,
     log: () => undefined,
     now: () => clock,
-    version: () => Promise.resolve("2.1.296"),
+    version: () => Promise.resolve(version),
     schedule: (run, ms) => {
       const entry = { run, ms };
       pending.push(entry);
@@ -343,5 +344,57 @@ describe("edges in the shadow", () => {
     expect(s.mux.reads).toBe(3);
     expect(modalWord(s.shadow.surfaceOf("w1:p1")!.modal)).toBe("ask");
     expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
+  });
+});
+
+describe("codex: the notify edge (M56 spec 13)", () => {
+  // The edge `collie beacon emit codex` writes (cli/codex-notify.ts): keyed to the TUI pid, with the
+  // Herdr marker from the TUI's own environment, and the notify event's own name.
+  const codexEdge = (over: Partial<EdgeRecord> = {}): EdgeRecord =>
+    record({ harness: "codex", event: "agent-turn-complete", markers: [marker("w1:p1", SOCKET, "herdr")], ...over });
+
+  test("codex: agent-turn-complete is a stop edge under the Codex profile", () => {
+    expect(kindOfEdge(codexEdge())).toBe("stop");
+    expect(kindOfEdge(codexEdge({ event: "approval-requested" }))).toBe("reread");
+  });
+
+  test("codex: the edge file parses with its dashed event name, and a dash at either end does not", () => {
+    expect(parseEdge(JSON.stringify(codexEdge()))?.event).toBe("agent-turn-complete");
+    expect(parseEdge(JSON.stringify(codexEdge({ event: "-turn" })))).toBeNull();
+    expect(parseEdge(JSON.stringify(codexEdge({ event: "turn-" })))).toBeNull();
+  });
+
+  test("codex: the router places the edge on the one pane its marker names, logs it by pid, and the hooks read live", async () => {
+    const got: { paneId: string; edge: PlacedEdge }[] = [];
+    const { r, spool, lines } = router([target({ got, matcher: matcher(SOCKET, "herdr") })]);
+    spool.files.push(JSON.stringify(codexEdge()));
+    await r.tick();
+    expect(got.map((g) => [g.paneId, g.edge.kind])).toEqual([["w1:p1", "stop"]]);
+    expect(lines.some((line) => line.includes(EDGE_TAG) && line.includes(`pid=${String(PID)}`) && line.includes("event=agent-turn-complete"))).toBe(true);
+    expect(r.hooksOf("main", "w1:p1")).toBe("live");
+  });
+
+  test("codex: a stop edge on a Codex turn that still runs keeps it running, and only an idle read makes the free", async () => {
+    const s = shadowRig("0.159.2");
+    s.mux.set("w1:p1", "codex--v0163-working-draft--w120.txt", 1);
+    await s.shadow.observe([agent("w1:p1", "codex")]);
+    expect(s.shadow.surfaceOf("w1:p1")?.turn).toBe("running");
+    s.shadow.edge("w1:p1", "stop", s.advance(50));
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
+    await s.reread();
+    expect(s.shadow.surfaceOf("w1:p1")?.turn).toBe("running");
+    s.mux.set("w1:p1", "codex--v0162-idle.txt", 2);
+    await s.shadow.observe([agent("w1:p1", "codex")]);
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+  });
+
+  test("codex: no edge frees a Codex approval on screen", async () => {
+    const s = shadowRig("0.159.2");
+    s.mux.set("w1:p1", "codex--v0156-approval-exec-2opt.txt", 1);
+    await s.shadow.observe([agent("w1:p1", "codex")]);
+    s.shadow.edge("w1:p1", "stop", s.advance(10));
+    await s.reread();
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
+    expect(modalWord(s.shadow.surfaceOf("w1:p1")!.modal)).toBe("ask");
   });
 });
