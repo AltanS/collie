@@ -124,6 +124,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Grok Build 1.0.52 is read on four screens that the phone read wrong.** A fresh pane under the welcome card and a slash command typed under the `/` completion popup now take a reply, a slash command's grey argument hint is no longer read as typed text (Take over would have sent it), and the folder trust prompt lifts as a trust card. Thanks @GGGODLIN (#447)
 - **Codex's and Muse's `/resume` pickers, pi's folder trust prompt and opencode's update prompt are read.** The Codex and Muse `Resume a previous session` list lifts as a menu with Up, Down, Resume and Exit; pi's `Trust project folder?` prompt lifts as a card whose options are walked to and confirmed with Enter; opencode's `Update Available` prompt now refuses a reply, because a reply's Enter would confirm the update. Thanks @GGGODLIN (#446)
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The states playground names its program section for the person, not for a multiplexer.** The section is `#programs`, "Programs home", in `sections/programs.tsx`, and its fixture panes carry the agent `program`, so the mux-name guard passes again with the durable adapter registered. `scripts/docs-screens.sh` opens `#programs`.

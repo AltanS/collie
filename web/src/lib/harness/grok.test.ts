@@ -45,6 +45,7 @@ const PINNED = [
   "grok--draft-single.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
+  "grok--model-arg-hint.txt",
   "grok--model-effort-moved.txt",
   "grok--model-effort.txt",
   "grok--model-picker-moved.txt",
@@ -62,8 +63,12 @@ const PINNED = [
   "grok--reply-table-highlighted.txt",
   "grok--reply-table-scrollbar.txt",
   "grok--reporter-294-draft-newline-hint.txt",
+  "grok--slash-popup-exact.txt",
+  "grok--slash-popup-partial.txt",
   "grok--startup.txt",
+  "grok--trust-prompt.txt",
   "grok--user-bubble.txt",
+  "grok--welcome-card.txt",
   "grok--working.txt",
 ];
 
@@ -90,6 +95,7 @@ const DIALOG = [
   "grok--plan-approval.txt",
   "grok--plan-request-changes.txt",
   "grok--plan-tab-prompt.txt",
+  "grok--trust-prompt.txt",
 ];
 
 const ownFixtures = DIALOG;
@@ -117,13 +123,17 @@ describe("the grok corpus", () => {
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
   it.each(
-    neutralFixtures.filter((f) => f !== "grok--user-bubble.txt" && !f.includes("ask-multi")),
+    neutralFixtures.filter(
+      (f) => f !== "grok--user-bubble.txt" && f !== "grok--model-arg-hint.txt" && !f.includes("ask-multi"),
+    ),
   )("%s: the composer is on screen ⇒ true", (name) => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
     expect(grokAdapter.composerReady!(lines)).toBe(true);
   });
 
-  it.each(["grok--user-bubble.txt", "grok--ask-multi.txt", "grok--ask-multi-checked.txt", ...DIALOG])(
+  // The model list Grok opens over the box after `/model` is not a slash popup, so the box fails
+  // closed there: a phone reply would append to the `/model` it holds.
+  it.each(["grok--user-bubble.txt", "grok--ask-multi.txt", "grok--ask-multi-checked.txt", "grok--model-arg-hint.txt", ...DIALOG])(
     "%s: a modal or torn frame ⇒ false",
     (name) => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
@@ -553,6 +563,44 @@ describe("grokBuildBlocks", () => {
     expect(text).toContain("Grok 4.6 is here!");
   });
 
+  it("Grok 1.0.52's welcome card right on top of the box does not hold the keyboard", () => {
+    // The changelog card comes with no tip row under it, so it sits directly on the composer, where
+    // an unknown rounded widget would fail closed. Typing lands in the box and the card goes (live,
+    // 2026-10-15).
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--welcome-card.txt"), "utf8")));
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    expect(grokAdapter.extractInputDraft(lines)).toBeNull();
+  });
+
+  it("the slash-command popup above the box leaves the box live, and an exact command verifies", () => {
+    // Grok paints its `/` completion between two rules right on top of the composer (1.0.52). Enter
+    // runs the highlighted row, so the typed command verifies when that row is the command itself.
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--slash-popup-exact.txt"), "utf8")));
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    expect(grokAdapter.extractInputDraft(lines)).toBe("/statusline");
+  });
+
+  it("partial input under the popup does not verify, since Enter would run the highlighted row", () => {
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--slash-popup-partial.txt"), "utf8")));
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    expect(grokAdapter.extractInputDraft(lines)).not.toBe("/stat");
+  });
+
+  it("a slash command's grey argument hint is not part of the draft", () => {
+    // The bar's Model button leaves `❯ /model <model> [window] [effort]` in the box over the model
+    // list (1.0.52, live 2026-10-15); the phone offered the hint back as a terminal draft to take over.
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--model-arg-hint.txt"), "utf8")));
+    expect(grokAdapter.extractInputDraft(lines)).toBe("/model");
+  });
+
+  it("keeps the same words when typed, since typed text is not the hint's grey", () => {
+    const raw = readFileSync(join(PANES_DIR, "grok--model-arg-hint.txt"), "utf8").replace(
+      "\u001b[38;2;108;108;108m\u001b[48;2;20;20;20m<model>",
+      "\u001b[38;2;225;225;225m\u001b[48;2;20;20;20m<model>",
+    );
+    expect(grokAdapter.extractInputDraft(splitLines(parseAnsi(raw)))).toBe("/model <model> [window] [effort]");
+  });
+
   it("blank rows render unpainted in every block; glyph rows keep their backgrounds", () => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--permission-edit.txt"), "utf8")));
     // The live frame paints base-coat colour across fully blank rows (the gray-stripe bug) and
@@ -581,5 +629,36 @@ describe("grokBuildBlocks", () => {
     const text = block.lines.map(lineText).join("\n");
     expect(text).not.toContain("╭");
     expect(lines.map(lineText).join("\n")).toContain("╭");
+  });
+});
+
+describe("grok: the folder trust prompt lifts as a trust card (1.0.52)", () => {
+  const lines = () => splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--trust-prompt.txt"), "utf8")));
+  const promptOf = (rows: ReturnType<typeof lines>) => {
+    const block = grokAdapter.buildBlocks(rows).find((b) => b.kind === "prompt-select");
+    return block?.kind === "prompt-select" ? block.prompt : null;
+  };
+
+  it("offers the two printed keys, y and n, as the trust family", () => {
+    const prompt = promptOf(lines());
+    expect(prompt?.family).toBe("trust");
+    expect(prompt?.question).toBe("Do you trust the contents of this directory?");
+    expect(prompt?.options.map((o) => [o.label, o.keys.join("+")])).toEqual([
+      ["Yes, proceed", "y"],
+      ["No, quit", "n"],
+    ]);
+  });
+
+  it("starts the card at the first option, so the directory and the warning stay in the mirror", () => {
+    const [raw, card] = grokAdapter.buildBlocks(lines());
+    expect(card?.kind === "prompt-select" && lineText(card.lines[0]!).trim()).toMatch(/^Yes, proceed\s+y$/);
+    const mirror = raw?.kind === "raw" ? raw.lines.map((l) => lineText(l)).join("\n") : "";
+    expect(mirror).toContain("/tmp/collie-grok-sandbox");
+    expect(mirror).toContain("posing security risks.");
+  });
+
+  it("does not lift the options without the question above them", () => {
+    const rows = lines().map((l) => lineText(l).replace("Do you trust the contents of this directory?", ""));
+    expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
   });
 });
