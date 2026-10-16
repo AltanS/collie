@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
 import { BEACON_HOOKS } from "./beacon.ts";
-import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT } from "./fakes.ts";
+import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT, STATE } from "./fakes.ts";
 import {
   claudeSettingsTargets,
   cmdHooksInstall,
@@ -26,7 +26,8 @@ import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject } from "../web/src/lib/json.ts";
 import { HOLD_CONNECT_MS, HOLD_GRACE_MS } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { cmdBeaconHold, type HoldDeps, type HoldSocket } from "./hold.ts";
+import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
+import { cmdBeaconHold, holdSocketPath, holdSocketPaths, type HoldDeps, type HoldSocket } from "./hold.ts";
 import { HOLD_MARKER_PREFIX, holdCommandIn, settingsHold } from "./hold-entry.ts";
 
 // `collie hooks install|uninstall|status`. Every decision is a pure function of the document on disk,
@@ -258,6 +259,8 @@ describe("install", () => {
     const hooks = JSON.parse(d.files.entries.get(SETTINGS)!.text).hooks;
     expect(Object.keys(hooks)).toEqual(BEACON_HOOKS.map((r) => r.event));
     expect(d.io.stdout.join("\n")).toContain("UserPromptSubmit");
+    expect(d.io.stdout.join("\n")).toContain("/.local/state/collie/hook-targets");
+    expect(d.io.stdout.join("\n")).not.toMatch(/Restart them/u);
     expect(d.io.stderr).toEqual([]);
   });
 
@@ -620,19 +623,20 @@ function holdDeps(over: {
   stdinFails?: boolean;
   proc?: string | null;
   sockets?: Record<string, FakeHoldSocket | null | "throw">;
-  onSent?: (path: string, socket: FakeHoldSocket) => void;
-} = {}): HoldDeps & { printed: string[]; connects: { path: string; ms: number }[]; timers: (() => void)[] } {
+  onSent?: ((path: string, socket: FakeHoldSocket) => void) | undefined;
+  /** Find the sockets through the hook target registry, as production does, not from `sockets`. */
+  registry?: boolean;
+} = {}): HoldDeps & { files: ReturnType<typeof fakeFiles>; printed: string[]; connects: { path: string; ms: number }[]; timers: (() => void)[] } {
   const printed: string[] = [];
   const connects: { path: string; ms: number }[] = [];
   const timers: (() => void)[] = [];
   const sockets = over.sockets ?? {};
   const stdin = over.stdin ?? permissionPayload();
-  return {
+  const built: HoldDeps & { files: ReturnType<typeof fakeFiles>; printed: string[]; connects: { path: string; ms: number }[]; timers: (() => void)[] } = {
     ctx: context(over.env ?? HOLD_ENV),
     files: fakeFiles(over.proc === null ? {} : { [`/proc/${HOLD_PID}/stat`]: over.proc ?? HOLD_STAT }),
     readStdin: () => (over.stdinFails === true ? Promise.reject(new Error("EPIPE")) : Promise.resolve(stdin)),
     agentPid: HOLD_PID,
-    sockets: () => Object.keys(sockets),
     connect: (path, ms) => {
       connects.push({ path, ms });
       const socket = sockets[path];
@@ -659,6 +663,8 @@ function holdDeps(over: {
     connects,
     timers,
   };
+  // The registry walk runs when no fixed list is given, as in production.
+  return over.registry === true ? built : { ...built, sockets: () => Object.keys(sockets) };
 }
 
 describe("hold: the install", () => {
@@ -839,5 +845,55 @@ describe("no secret", () => {
     await cmdBeaconHold(d);
     expect(socket.sent.join("")).not.toContain("sk-or-v1-your-key-here");
     expect(socket.sent.join("")).not.toMatch(SECRET);
+  });
+});
+
+describe("hold: the sockets come from the hook target registry", () => {
+  const REGISTRY = join(HOME, ".local", "state", "collie", "hook-targets");
+  const A = { dir: "/srv/collie-a", pid: 5001, start: 11 };
+  const B = { dir: "/srv/collie-b", pid: 5002, start: 22 };
+  const statOf = (pid: number, start: number): string => `${String(pid)} (bun) S 1 ${Array.from({ length: 17 }, (_v, i) => i).join(" ")} ${String(start)} 0 0`;
+  const sockOf = (dir: string): string => join(dir, "hold", "sock");
+
+  function registered(targets: { dir: string; pid: number; start: number; alive?: boolean }[], sockets: Record<string, FakeHoldSocket | null>, onSent?: (path: string, socket: FakeHoldSocket) => void) {
+    const d = holdDeps({ registry: true, sockets, onSent });
+    const files = d.files;
+    files.mkdirp(REGISTRY, 0o700);
+    for (const t of targets) {
+      files.write(join(REGISTRY, hookTargetFileName(t.dir)), JSON.stringify({ schemaVersion: 1, stateDir: t.dir, pid: t.pid, pidStartTime: t.start, bootedAt: 1 }), 0o600);
+      if (t.alive !== false) files.write(`/proc/${String(t.pid)}/stat`, statOf(t.pid, t.start));
+    }
+    return { d, files };
+  }
+
+  test("two live targets: the hook holds with both, the first decision wins, the other hears answered elsewhere", async () => {
+    const a = new FakeHoldSocket();
+    const b = new FakeHoldSocket();
+    const { d } = registered([A, B], { [sockOf(A.dir)]: a, [sockOf(B.dir)]: b }, (path, s) => {
+      if (path === sockOf(A.dir) && s.sent.length === 1) queueMicrotask(() => s.push('{"decision":"allow"}'));
+    });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.connects.map((c) => c.path).toSorted()).toEqual([sockOf(A.dir), sockOf(B.dir)].toSorted());
+    expect(d.connects.every((c) => c.ms === HOLD_CONNECT_MS)).toBe(true);
+    expect(b.sent.at(-1)).toBe(`${JSON.stringify({ done: "elsewhere" })}\n`);
+    expect(JSON.parse(d.printed[0]!).hookSpecificOutput.decision).toEqual({ behavior: "allow" });
+  });
+
+  test("a dead target is skipped and its file deleted; the live one holds alone", async () => {
+    const a = new FakeHoldSocket();
+    const { d, files } = registered([A, { ...B, alive: false }], { [sockOf(A.dir)]: a }, (_p, s) => queueMicrotask(() => s.push('{"decision":"deny"}')));
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.connects.map((c) => c.path)).toEqual([sockOf(A.dir)]);
+    expect(files.read(join(REGISTRY, hookTargetFileName(B.dir)))).toBeNull();
+    expect(d.printed).toHaveLength(1);
+  });
+
+  test("no registry: the hook connects to the socket in its own state dir", async () => {
+    const own = new FakeHoldSocket();
+    const d = holdDeps({ registry: true, sockets: { [holdSocketPath(STATE)]: own }, onSent: (_p, s) => queueMicrotask(() => s.drop()) });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.connects.map((c) => c.path)).toEqual([holdSocketPath(STATE)]);
+    expect(holdSocketPaths(d)).toEqual([holdSocketPath(STATE)]);
+    expect(d.printed).toEqual([]);
   });
 });

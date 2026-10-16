@@ -16,7 +16,7 @@ import {
   type HoldRequest,
 } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { BEACON_HARNESS, readEnvMarkers } from "./beacon.ts";
+import { BEACON_HARNESS, edgeStateDirs, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT } from "./io.ts";
 import type { Files } from "./sys.ts";
@@ -40,6 +40,16 @@ import type { Files } from "./sys.ts";
 
 export { holdSocketPath };
 
+/**
+ * The socket of every live bridge, found as the edge emitter finds its targets (M56 spec 11): each
+ * entry in the hook target registry whose process still runs, plus the hook's own state dir when
+ * COLLIE_STATE_DIR names it or when no bridge is listed. A dead entry is skipped and its file
+ * deleted, by the same walk.
+ */
+export function holdSocketPaths(deps: EdgeTargetDeps): string[] {
+  return edgeStateDirs(deps).map((dir) => holdSocketPath(dir));
+}
+
 /** One open connection to a bridge, line based. */
 export interface HoldSocket {
   send(line: string): void;
@@ -56,8 +66,10 @@ export interface HoldDeps {
   readStdin(): Promise<string>;
   /** The agent's pid: `process.ppid` in production. */
   readonly agentPid: number;
-  /** The socket paths of every live bridge. */
-  sockets(): readonly string[];
+  /** The owner uid the registry folder must have; undefined skips the check (Windows, tests). */
+  readonly uid?: number;
+  /** The socket paths of every live bridge. Defaults to {@link holdSocketPaths}. */
+  sockets?(): readonly string[];
   /** Connect within `ms`, or null. Never throws. */
   connect(path: string, ms: number): Promise<HoldSocket | null>;
   /** Write the decision to stdout. */
@@ -143,7 +155,7 @@ export async function cmdBeaconHold(deps: HoldDeps): Promise<number> {
     if (payload === undefined) return EXIT.OK;
     const request = holdRequestOf(deps, payload, hold);
     if (request === null) return EXIT.OK;
-    const paths = [...new Set(deps.sockets())];
+    const paths = [...new Set(deps.sockets?.() ?? holdSocketPaths(deps))];
     if (paths.length === 0) return EXIT.OK;
     sockets = await connectAll(deps, paths);
     if (sockets.length === 0) return EXIT.OK;
