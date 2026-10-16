@@ -78,7 +78,7 @@ import {
   type SendStep,
 } from "../../web/src/lib/surface/send.ts";
 import { isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
-import { closingReceipt, normalizePrompt, RECEIPT_EDGE_WINDOW_MS, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
+import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
@@ -1029,13 +1029,14 @@ export class SendProtocol {
 
   /**
    * A prompt edge on a pane (M56 spec 11): the harness took a prompt whose salted hash is `promptHash`.
-   * The newest open receipt on the pane with the same hash closes as `effective`: at once when it has
-   * settled, or at its settle when it still runs. Returns the request id it closed, or null. Never
-   * throws; a counter or a write that fails is a warning.
+   * `writtenAt` is when the hook wrote the edge. The newest open receipt on the pane with the same
+   * hash, sent no later than that and inside its window (10 minutes queued, 30 seconds otherwise),
+   * closes as `effective`: at once when it has settled, or at its settle when it still runs. Returns
+   * the request id it closed, or null. Never throws; a counter or a write that fails is a warning.
    */
-  promptEdge(paneId: string, promptHash: string, at: number): string | null {
-    this.pruneOpen(at);
-    const match = closingReceipt(this.openSends, paneId, promptHash, at);
+  promptEdge(paneId: string, promptHash: string, writtenAt: number): string | null {
+    this.pruneOpen(this.now());
+    const match = closingReceipt(this.openSends, paneId, promptHash, writtenAt);
     if (match === null) return null;
     const entry = this.openSends.find((open) => open.id === match.id);
     if (entry === undefined) return null;
@@ -1057,7 +1058,7 @@ export class SendProtocol {
   /** Drops open receipts past the window, and the oldest past the cap. */
   private pruneOpen(now: number): void {
     for (let i = this.openSends.length - 1; i >= 0; i--) {
-      if (now - this.openSends[i]!.at > RECEIPT_EDGE_WINDOW_MS) this.openSends.splice(i, 1);
+      if (now - this.openSends[i]!.at > receiptWindowMs(this.openSends[i]!)) this.openSends.splice(i, 1);
     }
     if (this.openSends.length > OPEN_SENDS_MAX) this.openSends.splice(0, this.openSends.length - OPEN_SENDS_MAX);
   }
@@ -1068,7 +1069,8 @@ export class SendProtocol {
     this.pruneOpen(at);
     // The lines as they were written: the harness reports what it took, control bytes and markers cut.
     const promptHash = this.deps.store.hashText(normalizePrompt(sendLines(state.request.text).join("\n")));
-    this.openSends.push({ id: state.record.id, paneId: state.target.paneId, promptHash, at, key: this.keyOf(state), settled: false, effective: false });
+    const open: OpenSend = { id: state.record.id, paneId: state.target.paneId, promptHash, at, key: this.keyOf(state), settled: false, effective: false };
+    this.openSends.push(state.queued ? { ...open, queued: true } : open);
   }
 
   /** At settle: a matched `sent` becomes `effective`; a `sent` or `unknown` stays open; any other end closes it. */

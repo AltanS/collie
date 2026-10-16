@@ -1468,7 +1468,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         // A pane the shadow has not read yet (an agent that just started) takes no edge into a fold;
         // the edge still counts, under its harness with no version, like a dropped one.
         if (!surface.edge(paneId, edge.kind, edge.at)) surfaceLedger?.edge({ harness: edge.record.harness, version: "-", profileId: "-", status: "-" }, edge.kind);
-        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.at);
+        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.record.at);
       },
     };
     edgeTargets.set(name, foreground === undefined ? edgeTarget : { ...edgeTarget, foreground });

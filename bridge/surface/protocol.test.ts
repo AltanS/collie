@@ -2335,6 +2335,14 @@ describe("a prompt edge closes a receipt as effective", () => {
     expect(answer.offers).toEqual([]);
   });
 
+  test("a desk-typed prompt with the same text 31 s after a free-box send closes nothing", async () => {
+    const { send, protocol, deps, clock } = rig();
+    const answer = await send("ok then");
+    expect(protocol.promptEdge("%1", hashOf(deps, "ok then"), clock.now + 31_000)).toBeNull();
+    expect(protocol.promptEdge("%1", hashOf(deps, "ok then"), clock.now - 60_000)).toBeNull();
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("sent");
+  });
+
   test("closes nothing for another text, another pane, or past the window", async () => {
     const { send, protocol, deps, clock } = rig();
     const answer = await send("the text that was typed");
