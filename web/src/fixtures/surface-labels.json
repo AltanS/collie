@@ -1781,6 +1781,11 @@
    "version": "unversioned",
    "state": "idle"
   },
+  "grok--model-arg-hint.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "draft"
+  },
   "grok--model-effort-moved.txt": {
    "harness": "grok",
    "version": "unversioned",
@@ -1866,15 +1871,35 @@
    "version": "unversioned",
    "state": "draft"
   },
+  "grok--slash-popup-exact.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "popup"
+  },
+  "grok--slash-popup-partial.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "popup"
+  },
   "grok--startup.txt": {
    "harness": "grok",
    "version": "unversioned",
    "state": "idle"
   },
+  "grok--trust-prompt.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "dialog"
+  },
   "grok--user-bubble.txt": {
    "harness": "grok",
    "version": "unversioned",
    "state": "other"
+  },
+  "grok--welcome-card.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "idle"
   },
   "grok--working.txt": {
    "harness": "grok",
