@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A message to a pi editor with no footer is sent.** When an extension empties pi's footer, the editor's bottom border is the last row on screen, and Collie said "the message didn't reach the input box". The reader now accepts a full-width bottom border with a matching top border above it and no status row; the phone status strip stays empty. Thanks @viniciosrab (#445).
+
 ## [1.21.3] - 2026-10-14
 
 A bugfix release, not urgent. You need it if you use pi with `editorPaddingX` above 0, Claude Code 2.1.299 with a task list, or a crew peer that listens on loopback.
