@@ -4415,7 +4415,7 @@ export async function replyThroughProtocol(
   context.audit.record({ action: "reply", paneId, session, device: context.device, detail: auditDetail });
   const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   const outcome = receipt?.outcome;
-  if (outcome === undefined || outcome === "sent" || outcome === "effective") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
+  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
   const textDelivered = outcome === "typed_not_submitted" || outcome === "unknown";
   const why = answer.detail ?? `${outcome}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}`;
   const failure = outcome === "typed_not_submitted" ? apiError("reply.not_submitted") : apiError("reply.send_failed", { reason: why });

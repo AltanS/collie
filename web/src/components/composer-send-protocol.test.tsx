@@ -155,7 +155,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     const user = userEvent.setup();
     const { sends } = bridge([
       { body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard", "keys"] } },
-      { body: { receipt: receipt("sent", "discarded"), offers: [] } },
+      { body: { receipt: receipt("discarded"), offers: [] } },
     ]);
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "half way");

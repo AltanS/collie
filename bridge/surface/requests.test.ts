@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SendReceipt } from "../../web/src/lib/surface/send.ts";
@@ -107,6 +107,21 @@ describe("phases and receipts", () => {
     const replay = restarted.accept(input());
     expect(replay.kind).toBe("replay");
     expect(replay.record.receipt).toEqual(receipt);
+  });
+
+  test("a discarded receipt and a cap's numbers survive a restart; a cap that is not whole makes the file unreadable", () => {
+    const first = new RequestStore(dir);
+    const { record } = first.accept(input());
+    const cap = { count: 5, limit: 5, harness: "codex", version: "-" };
+    const receipt: SendReceipt = { ...receiptFor(record, "refused"), reason: "unconfirmed", cap };
+    first.settle(ID, receipt);
+    expect(new RequestStore(dir).get(ID)?.receipt).toEqual(receipt);
+    const other = first.accept(input({ id: "req-0004-abcdef", text: "gone" }));
+    first.settle("req-0004-abcdef", receiptFor(other.record, "discarded"));
+    expect(new RequestStore(dir).get("req-0004-abcdef")?.receipt).toMatchObject({ outcome: "discarded" });
+    const broken = join(dir, `${ID}.json`);
+    writeFileSync(broken, readFileSync(broken, "utf8").replace('"count":5', '"count":"five"'));
+    expect(new RequestStore(dir).get(ID)).toBeNull();
   });
 
   test("after a crash, a request that sent its submit key but never settled ends unknown, and so does one that never got that far", () => {

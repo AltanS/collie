@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { getSendReceipts } from "@/lib/api";
-import { sendNote } from "@/lib/send-protocol";
+import { receiptLabelKey, receiptSentence } from "@/lib/send-protocol";
 import { timeAgo } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
@@ -69,10 +69,10 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
                   onClick={() => setOpen(expanded ? null : row.requestId)}
                   className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
                 >
-                  <span className="font-medium">{t(`sendReceipts.outcome.${row.outcome}`)}</span>
-                  {row.reason !== undefined && (
+                  <span className="font-medium">{t(receiptLabelKey(row.outcome))}</span>
+                  {sentence(row) !== null && (
                     <span className="min-w-0 text-muted-foreground" title={row.reason}>
-                      {t(`composer.protocol.${sendNote(row.outcome, row.reason)}`)}
+                      {sentence(row)}
                     </span>
                   )}
                   <span className="ml-auto shrink-0 text-muted-foreground">{timeAgo(row.at, now)}</span>
@@ -91,6 +91,11 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
       )}
     </section>
   );
+}
+
+/** The words under a row's label, in the phone's language. */
+function sentence(row: SendReceiptRow): string | null {
+  return receiptSentence(row, t);
 }
 
 const STEP_ORDER: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "commit", "s2"];

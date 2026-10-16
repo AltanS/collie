@@ -27,7 +27,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { offerMode, type SendNote, type SendReading } from "@/lib/send-protocol";
+import { capSentence, offerMode, type SendNote, type SendReading } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, UNREAD_SURFACE, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
@@ -331,7 +331,7 @@ function answerSentence(reading: SendReading): string {
   const note =
     reading.cap === null
       ? translate(`composer.protocol.${reading.note}`)
-      : translate("composer.protocol.capConfirm", { count: String(reading.cap.count), harness: reading.cap.harness, version: reading.cap.version });
+      : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirm", vars));
   // A draft refusal already says what the screen held.
   if (reading.surface === null || reading.note === "draft") return note;
   return `${note} ${translate(`composer.surface.${reading.surface}`)}`;
@@ -1235,7 +1235,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
   // write, a box out of reach), then Type mode, then the state's own sentence (lib/way-out.ts); a free
   // box keeps the ordinary reply or shell line.
-  const stateWords = way.words === null ? null : translate(way.words.key, way.words.params);
+  // While a send is in flight the box holds the probe character or the text on its way in, which the
+  // pane's read shows as a draft (send drill 3: "A draft is in the box" flashed for 0.3 s on Claude).
+  // It is Collie's own typing, not a draft, so the placeholder keeps the free line until the answer is in;
+  // a running turn keeps its own word, because the running state outranks a draft.
+  const stateWords = way.words === null || (sending && way.state === "draft") ? null : translate(way.words.key, way.words.params);
   const placeholderWords =
     way.state === "gone" || way.state === "readOnly"
       ? (stateWords ?? "")

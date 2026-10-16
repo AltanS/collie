@@ -12,7 +12,7 @@ import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, t
 import { profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 
@@ -469,6 +469,8 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     const { send } = rig({ pane, harness: "codex" });
     const first = await send("reply with one word: ok");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", profileId: null, keys: [] });
+    // The same words as the phone's catalog line printed above it.
+    expect(first.detail).toBe("Collie cannot read this screen. Check the pane, then tap Type here.");
     const answer = await send("reply with one word: ok", { rowsHash: first.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:reply with one word: ok"]);
@@ -1109,9 +1111,41 @@ describe("the offers as new requests", () => {
     const typed = await typedNotSubmitted(r, "hello there");
     pane.keysSeen = [];
     const answer = await r.send("hello there", { mode: "discard", rowsHash: typed.rowsHash! });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
     expect(pane.box).toBe("");
     expect(pane.keysSeen).toEqual(Array.from({ length: "hello there".length + 16 }, () => "Backspace"));
+    neverEscape(pane);
+  });
+
+  /** The box holds "hello ther" (one character short) after the text went in, with the earlier message of the same text standing in the history. */
+  const shortBox = async () => {
+    const { r, pane } = stuckCodex();
+    pane.sent = ["hello there"];
+    pane.dropLastChar = true;
+    const typed = await typedNotSubmitted(r, "hello there");
+    pane.dropLastChar = false;
+    expect(typed.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.box).toBe("hello ther");
+    return { r, pane, typed };
+  };
+
+  test("submit with no frame when the box holds a different text (send drill 3, 7b): Enter went, so it is sent, and the detail says the text differed", async () => {
+    const { r, pane, typed } = await shortBox();
+    const answer = await r.send("hello there", { mode: "submit", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(answer.detail).toBe("The box held a different text than the request when Enter went out.");
+    expect(pane.transcript.at(-1)).toBe("> hello ther");
+    expect(pane.box).toBe("");
+    neverEscape(pane);
+  });
+
+  test("discard with no frame when the box holds a different text (send drill 3, 7d): judged by the box being empty after the Backspaces", async () => {
+    const { r, pane, typed } = await shortBox();
+    pane.keysSeen = [];
+    const answer = await r.send("hello there", { mode: "discard", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
+    expect(pane.box).toBe("");
+    expect(pane.keysSeen).toEqual(Array.from({ length: "hello ther".length + 16 }, () => "Backspace"));
     neverEscape(pane);
   });
 
@@ -1142,13 +1176,14 @@ describe("the offers as new requests", () => {
     const answer = await send("hello world", { mode: "submit", rowsHash: typed.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
     expect(pane.transcript.at(-1)).toBe("> hello worl");
+    expect(answer.detail).toBe("The box held a different text than the request when Enter went out.");
   });
 
   test("discard: the box is emptied with Backspace, and the outcome says discarded", async () => {
     const { pane, send } = rig();
     pane.box = "do not send this";
     const answer = await send("do not send this", { mode: "discard" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
     expect(pane.box).toBe("");
     neverEscape(pane);
   });
@@ -1401,6 +1436,17 @@ describe("pure helpers", () => {
     for (const box of ["echo okay", "x echo ok", "!echo", ""]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(false);
   });
 
+  test("locateText takes the lowest row, and with partial the box a Backspace shortened, never the history echo above it", () => {
+    const rows = ["› say ok", "• ok", "  Worked for 1s", "› say o", "  GPT-6-Luna medium · ~/repo"];
+    // An exact look finds the echo in the history: that is why Submit and Discard ask for the partial one.
+    expect(locateText(rows, "say ok")).toMatchObject({ row: 0, head: "› ", partial: false });
+    expect(locateText(rows, "say ok", true)).toMatchObject({ row: 3, head: "› ", text: "say o", partial: true });
+    expect(locateText(rows.slice(0, 3).concat(["› say ok"]), "say ok", true)).toMatchObject({ row: 3, text: "say ok", partial: false });
+    // A footer that only starts alike is not the box: it shares less than all but two characters.
+    expect(locateText(["› hello there", "  hello-world.ts"], "hello there", true)).toMatchObject({ row: 0, partial: false });
+    expect(locateText(["› zz", "  sa"], "say ok", true)).toBeNull();
+  });
+
   test("probeLanding with freeBelow: the rest of the landing row may change and a row under it may go blank, never show other text", () => {
     const before = ["top", "", "› ", "", "  status", "  ← for agents · ? for shortcuts"];
     expect(probeLanding(before, ["top", "", `› ${PROBE}`, "", "  status", ""], PROBE)).toBeNull();
@@ -1515,7 +1561,7 @@ describe("counters, the cap and the examples", () => {
 
   test("past the cap the commit is refused once more with the count and the version, files the frame hash, and counts no manual send", async () => {
     const ledger = ledgerFor({ cap: 2 });
-    const { pane, send } = rig({ mode: "generic", ledger });
+    const { pane, send, protocol } = rig({ mode: "generic", ledger });
     for (let n = 0; n < 2; n++) {
       const first = await send(`hello from the phone ${String(n)}`);
       expect((await send(`hello from the phone ${String(n)}`, { rowsHash: first.rowsHash! })).receipt?.outcome).toBe("sent");
@@ -1524,7 +1570,11 @@ describe("counters, the cap and the examples", () => {
     const capped = await send("one more please", { rowsHash: first.rowsHash! });
     expect(capped.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(capped.cap).toEqual({ count: 2, limit: 2, harness: "nothing-known", version: "-" });
-    expect(capped.detail).toContain("2 times on nothing-known");
+    expect(capped.detail).toContain("2 times on nothing-known in the last day");
+    // The receipt carries the numbers, so the session page's list can say the cap's sentence for the row.
+    expect(capped.receipt?.cap).toEqual({ count: 2, limit: 2, harness: "nothing-known", version: "-" });
+    expect(protocol.recent("%1")[0]).toMatchObject({ outcome: "refused", reason: "unconfirmed", cap: { count: 2, limit: 2, harness: "nothing-known", version: "-" } });
+    expect(protocol.recent("%1").filter((row) => row.cap !== undefined)).toHaveLength(1);
     expect(capped.offers).toEqual(["commit", "keys"]);
     expect(capped.rowsHash).toBe(first.rowsHash);
     // Nothing was typed for the refused commit, and no manual send was counted for it.
@@ -1539,6 +1589,26 @@ describe("counters, the cap and the examples", () => {
     const acked = await send("one more please", { rowsHash: first.rowsHash!, capAck: true });
     expect(acked.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(rowOf(ledger, "nothing-known")?.manual).toBe(3);
+  });
+
+  test("a harness with no version is named alone in the cap's detail, not as `codex -`", async () => {
+    const ledger = ledgerFor({ cap: 0 });
+    const noVersion = rig({ mode: "generic", ledger, harness: "codex" });
+    const first = await noVersion.send("hello from the phone");
+    const capped = await noVersion.send("hello from the phone", { rowsHash: first.rowsHash! });
+    expect(capped.detail).toContain("0 times on codex in the last day");
+    expect(capped.detail).not.toContain("codex -");
+  });
+
+  test("a discard is counted as discarded, never as sent", async () => {
+    const ledger = ledgerFor();
+    const { pane, send } = rig({ ledger });
+    pane.box = "do not send this";
+    const answer = await send("do not send this", { mode: "discard" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.offers).toEqual([]);
+    expect(rowOf(ledger, "claude")).toMatchObject({ discarded: 1, sent: 0, effective: 0 });
   });
 
   test("the cap never touches a free send, and never removes the manual one: the ack always goes through", async () => {
