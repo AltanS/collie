@@ -1563,6 +1563,27 @@ describe("a member's capability block rides `hello` and is answered per host (M2
     expect(h.lead.sessionMuxFor("nobody", "desk")).toBeNull();
   });
 
+  test("a member's Surface reader version is kept from its hello, and a member that sends none has none (M56 spec 09)", async () => {
+    const answer = (surfaceVersion: number | undefined): PeerOutcome<{ version: string | null; mux: MuxConfig | null; surfaceVersion?: number }> => ({
+      ok: true,
+      value: surfaceVersion === undefined ? { version: "1.22.0", mux: null } : { version: "1.22.0", mux: null, surfaceVersion },
+      status: 200,
+      member: "laptop",
+      receivedAt: NOW,
+      date: null,
+    });
+    const named = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(answer(2)) });
+    expect(named.lead.surfaceVersionFor("laptop")).toBeNull();
+    await named.lead.sweep();
+    await Bun.sleep(5);
+    expect(named.lead.surfaceVersionFor("laptop")).toBe(2);
+    expect(named.lead.surfaceVersionFor("nobody")).toBeNull();
+    const silent = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(answer(undefined)) });
+    await silent.lead.sweep();
+    await Bun.sleep(5);
+    expect(silent.lead.surfaceVersionFor("laptop")).toBeNull();
+  });
+
   test("a member that has said nothing answers `null`, which the route reads as the lead's", async () => {
     // A peer older than this amendment, and a peer whose bridge holds no adapter, are the same
     // value here — and that value is NOT "every capability present".

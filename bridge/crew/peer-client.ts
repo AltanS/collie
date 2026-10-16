@@ -11,6 +11,7 @@ import {
   LEAD_CONFLICT,
   CREW_MUX_FIELD,
   CREW_SESSIONS_FIELD,
+  CREW_SURFACE_FIELD,
   CREW_PREFIX,
   PAIRING_LABEL_COLLISION,
   PREFLIGHT_FRESH,
@@ -476,6 +477,11 @@ export interface HelloResult {
    * every lead had before. Parsed like {@link mux}: bounded, and a card that is not whole is left out.
    */
   readonly sessions?: readonly SessionCard[];
+  /**
+   * That member's Surface reader version (M56 spec 09). Set only when it sent a whole number. **Absent
+   * means "a build that computes no Surface"**, never version 0.
+   */
+  readonly surfaceVersion?: number;
 }
 
 export interface PeerClientDeps {
@@ -659,6 +665,8 @@ export class PeerClient {
     const mux = parseMuxReport(outcome.value);
     // M55's optional cards, read the same absent-means-the-block's way.
     const sessions = parseSessionCards(outcome.value);
+    // M56 spec 09's reader version, read the same absent-means-closed way as `version`.
+    const surfaceVersion = parseSurfaceVersion(outcome.value);
     const value: HelloResult = {
       protocol,
       member,
@@ -670,7 +678,8 @@ export class PeerClient {
       mux,
     };
     // Assigned only when sent, so a member that sends none reads exactly as it did before M55.
-    return { ...outcome, value: sessions === null ? value : { ...value, sessions } };
+    const withCards = sessions === null ? value : { ...value, sessions };
+    return { ...outcome, value: surfaceVersion === null ? withCards : { ...withCards, surfaceVersion } };
   }
 
   /**
@@ -1372,6 +1381,16 @@ export function parseMuxReport(value: JsonValue): MuxConfig | null {
     wire.topologyLatency = { kind: "bounded", ms: latency.ms };
   }
   return wire;
+}
+
+/**
+ * One member's Surface reader version off a `hello` answer, or `null` when it sent none (M56 spec 09).
+ * Only a positive safe integer counts; every other shape reads as "said nothing", which refuses no
+ * link and is never read as version 0.
+ */
+export function parseSurfaceVersion(value: JsonValue): number | null {
+  const version = asRecord(value)?.[CREW_SURFACE_FIELD];
+  return typeof version === "number" && Number.isSafeInteger(version) && version > 0 ? version : null;
 }
 
 /** The most session cards one member's hello may carry. */

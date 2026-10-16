@@ -25,6 +25,7 @@ import {
   crewUrl,
   parseMuxReport,
   parseSessionCards,
+  parseSurfaceVersion,
   parsePeerVersion,
   sweepPeers,
   takeDataBudget,
@@ -661,6 +662,24 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
       expect(outcome.ok).toBe(true);
       expect(outcome.ok && outcome.value.version).toBeNull();
     }
+  });
+
+  test("`hello` reads a member's Surface reader version, and an absent or unusable one is absent, never a failure (M56 spec 09)", async () => {
+    const read = async (extra: JsonObject) => {
+      const { fetch } = replying({ protocol: 2, member: "laptop", ...extra });
+      return client(fetch).hello(laptop);
+    };
+    const named = await read({ surfaceVersion: 3 });
+    expect(named.ok && named.value.surfaceVersion).toBe(3);
+    for (const bad of [0, -1, 1.5, "3", null, true, [3], { v: 3 }]) {
+      const outcome = await read({ surfaceVersion: bad });
+      expect(outcome.ok).toBe(true);
+      expect(outcome.ok && Object.hasOwn(outcome.value, "surfaceVersion")).toBe(false);
+    }
+    const none = await read({});
+    expect(none.ok && Object.hasOwn(none.value, "surfaceVersion")).toBe(false);
+    expect(parseSurfaceVersion({ surfaceVersion: 2 })).toBe(2);
+    expect(parseSurfaceVersion({})).toBeNull();
   });
 
   test("an old parser ignores a new sibling — this amendment's compatibility claim (§7.1)", async () => {

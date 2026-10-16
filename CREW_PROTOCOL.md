@@ -390,6 +390,13 @@ answering build:
   card names no path and no secret. The member's snapshot already carries the same cards on its
   `sessions` entries, so the phone reads them without asking the lead.
 
+- `surfaceVersion` is **OPTIONAL**, added 2026-10-16 (M56 spec 09): one positive integer, the version of
+  the readers that make a Surface on that member (`SURFACE_VERSION`), so a lead can show which reader
+  judged a member's panes. It is sent only by a build that computes a Surface. **Absent means "a build
+  that computes no Surface"**, never version 0 (§7.1): an old lead ignores it and loses nothing, and a
+  value that is not a positive whole number reads as absent and refuses no link. The lead replaces it
+  on every successful hello, as it does `mux` and `sessions`. It names no secret.
+
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
 same reason `member` is — it is already knowable to anyone who has cleared both factors. A warrant

@@ -108,6 +108,13 @@ export const CREW_MUX_FIELD = "mux";
 export const CREW_SESSIONS_FIELD = "sessions";
 
 /**
+ * The OPTIONAL field a `hello` answer carries its Surface reader version on (M56 spec 09): one small
+ * integer (`SURFACE_VERSION`), so a lead can show which reader judged a member's panes. **Absent means
+ * "a build that computes no Surface"**, never version 0, and it refuses nothing.
+ */
+export const CREW_SURFACE_FIELD = "surfaceVersion";
+
+/**
  * The lead's REQUEST for a fresh preflight on the snapshot it is about to read (§19).
  *
  * `fresh` is the only value that means anything, and it is a request rather than an order: a peer
@@ -298,6 +305,8 @@ export interface CrewSurface {
   readonly mux?: MuxSource;
   /** This collie's session cards, for `hello`. See {@link SessionCardSource}. */
   readonly sessions?: SessionCardSource;
+  /** This collie's Surface reader version, for `hello` (M56 spec 09). Absent on a build that computes no Surface. */
+  readonly surfaceVersion?: number | undefined;
 }
 
 /**
@@ -343,6 +352,8 @@ export interface CrewRouterDeps {
   readonly mux?: MuxSource;
   /** Absent, or answering null ⇒ `hello` carries no session cards (M55). */
   readonly sessions?: SessionCardSource;
+  /** Absent ⇒ `hello` carries no `surfaceVersion` (M56 spec 09). */
+  readonly surfaceVersion?: number | undefined;
   /**
    * Whether the listener this handler is mounted on was built pin-enforcing
    * (`bridge/crew/transport.ts`). **Defaults to `false`, which admits nothing but a signed request.**
@@ -584,6 +595,8 @@ type HelloBody = {
   mux?: MuxConfig;
   /** This peer's session cards (M55, 2026-10-13). See {@link CREW_SESSIONS_FIELD}. */
   sessions?: SessionCard[];
+  /** This peer's Surface reader version (M56 spec 09). See {@link CREW_SURFACE_FIELD}. */
+  surfaceVersion?: number;
 };
 
 /**
@@ -971,6 +984,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // kind, a multiplexer name, the capability answers and two states.
       const cards = deps.sessions?.() ?? null;
       if (cards !== null && cards.length > 0) hello.sessions = cards;
+      // M56 spec 09: the reader version, one integer, so a lead can show a member's. Absent on a build
+      // that computes no Surface; a number names no secret and is admissible for `version`'s reason.
+      if (deps.surfaceVersion !== undefined) hello.surfaceVersion = deps.surfaceVersion;
       return new Response(JSON.stringify(hello), {
         status: 200,
         headers: crewResponseHeaders(verdict.self),

@@ -213,6 +213,20 @@ describe("GET /crew/v1/hello — behind both factors", () => {
     expect(Object.hasOwn(await again.json(), "sessions")).toBe(false);
   });
 
+  test("a build that computes a Surface sends its reader version; one that does not sends no key (M56 spec 09)", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const withReader = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null, surfaceVersion: 1 });
+    const res = (await call(withReader, CREW_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk", surfaceVersion: 1 });
+    const without = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null });
+    const again = (await call(without, CREW_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0 + 1) },
+    }))!;
+    expect(Object.hasOwn(await again.json(), "surfaceVersion")).toBe(false);
+  });
+
   test("a router built without a version simply omits the field — absent, never empty (§7.1)", async () => {
     // The optional field's own absent-means-closed rule, applied to the responder: nothing sends
     // `"version": null` or `""`, because a prober reads absence as "older than the amendment" and a

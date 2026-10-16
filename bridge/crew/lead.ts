@@ -211,7 +211,7 @@ export interface CrewLeadDeps {
   readonly hello?: (
     link: CrewLink,
   ) => Promise<
-    PeerOutcome<{ readonly version: string | null; readonly mux?: MuxConfig | null; readonly sessions?: readonly SessionCard[] | null }>
+    PeerOutcome<{ readonly version: string | null; readonly mux?: MuxConfig | null; readonly sessions?: readonly SessionCard[] | null; readonly surfaceVersion?: number }>
   >;
   /** This collie's member id and label — the `servers[0]` entry (§9.2). */
   readonly self: { readonly id: string; readonly name: string };
@@ -377,6 +377,8 @@ export class CrewLead {
    * `&session=` with its block.
    */
   private readonly sessionCards = new Map<string, readonly SessionCard[]>();
+  /** The Surface reader version each member sent on its last hello (M56 spec 09), assigned like {@link muxBlocks}. */
+  private readonly surfaceVersions = new Map<string, number>();
   /**
    * Members whose CURRENT link has already answered a hello, so their block is as fresh as the link.
    *
@@ -474,6 +476,7 @@ export class CrewLead {
         // machine this lead no longer knows.
         this.muxBlocks.delete(id);
         this.sessionCards.delete(id);
+        this.surfaceVersions.delete(id);
         this.muxAsked.delete(id);
         this.loggedState.delete(id);
         this.contactResets.delete(id);
@@ -915,6 +918,8 @@ export class CrewLead {
         // is now the whole answer for it, and a hello that said nothing drops the entry — which
         // reads as "use the lead's", not as "every capability present". See {@link muxBlocks}.
         if (outcome.ok) this.setCapabilities(link.memberId, outcome.value.mux ?? null, outcome.value.sessions ?? null);
+        // M56 spec 09: ASSIGNED too. A member that stops sending the field has no reader version here.
+        if (outcome.ok) this.setSurfaceVersion(link.memberId, outcome.value.surfaceVersion ?? null);
       }
     } catch (err) {
       // Defensive, exactly as `sweep` is: failure is a value everywhere in the crew client, so a
@@ -932,6 +937,17 @@ export class CrewLead {
   private learnCapabilities(link: CrewLink): void {
     if (this.muxAsked.has(link.memberId)) return;
     this.probe(link);
+  }
+
+  /** Record the Surface reader version one hello carried, or drop the entry when it carried none. */
+  private setSurfaceVersion(memberId: string, version: number | null): void {
+    if (version === null) this.surfaceVersions.delete(memberId);
+    else this.surfaceVersions.set(memberId, version);
+  }
+
+  /** The Surface reader version a member sent on its last hello, or `null` (M56 spec 09). It dials nobody. */
+  surfaceVersionFor(memberId: string): number | null {
+    return this.surfaceVersions.get(memberId) ?? null;
   }
 
   /** Record one hello's whole answer about a member's multiplexer. See {@link muxBlocks}. */

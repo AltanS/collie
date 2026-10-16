@@ -6,6 +6,15 @@
 /** Why a claim is `unknown`. `contested` is reserved for later sources (hooks, mux hints). */
 export type SurfaceReason = "no-match" | "contested" | "stale" | "torn";
 
+/**
+ * The version of the readers that make a Surface: the fold, the cues and the lift. A lead reads a
+ * member's on the crew hello (`surfaceVersion`) to show which reader a member's panes were judged by,
+ * and the counters of two versions are never mixed up. Bump it in the commit that changes what a
+ * screen reads as (a cue rule, a fold rule, a lift rule). A profile change is not a reader change: the
+ * profile's own version range says which binary it covers.
+ */
+export const SURFACE_VERSION = 1;
+
 export type AskKind = "permission" | "question" | "menu";
 export type AskChannel = "hook" | "keys";
 
