@@ -634,7 +634,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "journal",
     kind: "roots",
     default: [],
-    doc: "Where Hermes keeps its session logs. Empty takes ~/.hermes.",
+    doc: "Where Hermes keeps its session logs. Empty takes $HERMES_HOME, else ~/.hermes. Its named profiles (profiles/<name>/) are read too.",
     configField: "journalRoots",
   },
   {

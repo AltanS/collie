@@ -1,11 +1,16 @@
 // Hermes' local SessionDB journal adapter.
 //
-// Hermes stores sessions in one SQLite database (`~/.hermes/state.db`). The pane supplies the
-// session id through Herdr, so this adapter reads exactly that session; it never guesses from the
-// newest row. The database is opened read-only and the fixed filename is confined to the configured
-// root before opening.
+// Hermes stores sessions in one SQLite database per profile: `~/.hermes/state.db` for the default
+// profile, and `~/.hermes/profiles/<name>/state.db` for each named one (`hermes_state.py`,
+// `hermes_cli/profiles.py`; `hermes profile use <name>` makes a named profile the one a bare `hermes`
+// runs). The pane supplies the session id through Herdr, so this adapter reads exactly that session;
+// it never guesses from the newest row. It looks for the id in the root's own database, then in each
+// profile's. The profile names are the bridge's own directory listing, never anything a client sent,
+// and every database path is confined to the configured root, after symlinks, before it is opened.
+// Each database is opened read-only.
 
 import { Database } from "bun:sqlite";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
@@ -43,6 +48,8 @@ import type {
 } from "./types.ts";
 
 const DB_FILE = "state.db";
+// Where named profiles live under a Hermes root (`hermes_cli/profiles.py`).
+const PROFILES_DIR = "profiles";
 const SESSION_ID_RE = /^\d{8}_\d{6}_[A-Za-z0-9]+$/;
 
 export function isHermesSessionId(value: string): boolean {
@@ -363,6 +370,26 @@ function sessionMeta(db: Database, sessionId: string): SessionMeta {
   return { size: row?.count ?? 0, mtimeMs: row?.newest ?? 0 };
 }
 
+/**
+ * The databases a Hermes root may hold a session in: its own `state.db`, then each named profile's,
+ * in name order. Paths only; the caller confines each to the root before opening it. A root with no
+ * `profiles` folder (or one this process cannot read) is just its own database.
+ */
+async function sessionDbs(root: string): Promise<string[]> {
+  const dbs = [join(root, DB_FILE)];
+  let names: string[];
+  try {
+    names = await readdir(join(root, PROFILES_DIR));
+  } catch {
+    return dbs;
+  }
+  for (const name of names.toSorted()) {
+    if (name.startsWith(".")) continue;
+    dbs.push(join(root, PROFILES_DIR, name, DB_FILE));
+  }
+  return dbs;
+}
+
 export class HermesTranscriptSource implements TranscriptSource {
   private readonly roots: string[];
 
@@ -373,12 +400,14 @@ export class HermesTranscriptSource implements TranscriptSource {
   async resolve(ref: AgentSessionRef): Promise<string | null> {
     if (ref.kind !== "id" || !isHermesSessionId(ref.value)) return null;
     for (const root of this.roots) {
-      const path = await containedRealpath(join(root, DB_FILE), root);
-      if (path === null) continue;
-      const found = withDb(path, (db) =>
-        db.query<{ id: string }, [string]>("select id from sessions where id = ?").get(ref.value),
-      );
-      if (found !== null && found !== undefined) return hermesKey(path, ref.value);
+      for (const candidate of await sessionDbs(root)) {
+        const path = await containedRealpath(candidate, root);
+        if (path === null) continue;
+        const found = withDb(path, (db) =>
+          db.query<{ id: string }, [string]>("select id from sessions where id = ?").get(ref.value),
+        );
+        if (found !== null && found !== undefined) return hermesKey(path, ref.value);
+      }
     }
     return null;
   }
