@@ -290,9 +290,9 @@ function isRightNotice(segments: AnsiSegment[]): boolean {
   return chars <= MAX_STATUS_FIELD_CHARS;
 }
 
-// Codex 0.163.0 draws ` · ← for agents` on the status row itself, after the last field, when the TUI
-// is attached to a local Codex daemon (#454; the 0.157.0 key-hint row carries the same words on its
-// own row). Three segments: the ordinary separator, the `←` key in BOLD, and ` for agents` in the
+// Codex 0.163.0 draws ` · ← for agents` on the status row itself, after the last field (#454; the
+// 0.157.0 key-hint row carries the same words on its own row, and why the 0.163.0 pane shows the hint
+// is not known). Three segments: the ordinary separator, the `←` key in BOLD, and ` for agents` in the
 // separator's own quiet paint. Neither of the last two is a field or a separator, so the row was
 // refused and the pane had no composer. It is accepted only as the row's tail, exactly these words,
 // the glue in the row's one separator paint, so a hint anywhere else and an unpainted echo stay
