@@ -421,6 +421,11 @@ const SPEC14: readonly ProfileCase[] = [
     idleMin: 4,
     quote: ["Here is the dialog you asked about:", "  Permission required", "  ❯ 1. Allow once", "    2. Reject", "  Press enter to confirm or esc to cancel", "", "That is all it shows."],
   },
+  {
+    id: "pi",
+    idleMin: 14,
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
 ];
 
 describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, idleMin, quote }) => {
@@ -479,13 +484,11 @@ describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, 
   });
 
   it(`${id} (c): a dialog quoted in the transcript stays free`, () => {
+    // The quote goes straight over the live box, as the harness's reply would print it.
     const name = mine.find((n) => labelOf(n).state === "idle" && findInputFrame(fixtureRows(n), PROFILE) !== null)!;
     const rows = fixtureRows(name);
     const top = findInputFrame(rows, PROFILE)!.top;
-    const quoted = rowsOf(quote.join("\n"));
-    const room = top - quoted.length - 1;
-    expect(room, "the fixture has room above its box for the quote").toBeGreaterThanOrEqual(0);
-    const withQuote = [...rows.slice(0, room), ...quoted, ...rows.slice(top - 1)];
+    const withQuote = [...rows.slice(0, top), ...rowsOf(["", ...quote, ""].join("\n")), ...rows.slice(top)];
     const r = readScreen(withQuote, id, PROFILE);
     expect(r.frame).not.toBeNull();
     expect(isFree(r.surface), name).toBe(true);

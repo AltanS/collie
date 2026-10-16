@@ -34,7 +34,7 @@
 //
 // Pure: no DOM, no Bun API, no harness name. One log and one context always give one Surface.
 
-import { readCues, runningSign, type CueRead } from "./cues";
+import { readCuesFor, runningSign, type CueRead } from "./cues";
 import { coveredFrame, findInputFrame, frameEdge, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { isFree, type Ask, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface";
@@ -217,7 +217,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   }
   const rows = input.rows;
   const frame = idle === null ? null : findInputFrame(rows, idle);
-  const cues = readCues(rows, frame);
+  const cues = readCuesFor(rows, frame, idle);
 
   const turn: SurfaceTurn = frame === null || idle === null ? "unknown" : runningSign(rows, frame, idle.runningRows) ? "running" : "idle";
 

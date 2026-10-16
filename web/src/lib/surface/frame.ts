@@ -93,6 +93,7 @@ interface CompiledInterior {
   readonly trailerPad: RegExp | null;
   readonly maxPad: number;
   readonly continuation: RegExp | null;
+  readonly under: RegExp | null;
 }
 
 interface Compiled {
@@ -118,7 +119,7 @@ function compileAnchor(anchor: FrameAnchor, flags: string): CompiledAnchor {
 function compile(idle: IdleProfile): Compiled {
   const known = compiledByIdle.get(idle);
   if (known !== undefined) return known;
-  const { top, prompt, bottom, rows, trailer, continuation } = idle.frame;
+  const { top, prompt, bottom, rows, trailer, continuation, under } = idle.frame;
   const compiled: Compiled = {
     top: compileAnchor(top, "u"),
     // `d` gives the draft hole's offset, so the placeholder test reads only the runs inside it.
@@ -130,6 +131,7 @@ function compile(idle: IdleProfile): Compiled {
       trailerPad: trailer?.pad === undefined ? null : new RegExp(trailer.pad, "u"),
       maxPad: trailer?.maxPad ?? 0,
       continuation: continuation === undefined ? null : new RegExp(continuation, "u"),
+      under: under === undefined ? null : new RegExp(under, "u"),
     },
   };
   compiledByIdle.set(idle, compiled);
@@ -397,6 +399,11 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   if (bottomText === undefined) return null;
   const open = c.bottom.open;
   if (!open && anchored(bottomText, c.bottom) === null) return null;
+  if (c.interior.under !== null && !open) {
+    // The row the harness always draws under its box: the first row there that is not blank.
+    const under = texts.slice(bottom + 1).find((text) => !isBlank(text));
+    if (under !== undefined && !c.interior.under.test(under.trimEnd())) return null;
+  }
   const budget = idle.frame.maxDraftRows;
 
   // The last row of the box's interior: the bottom edge itself on an open box.

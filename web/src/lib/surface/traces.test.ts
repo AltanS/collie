@@ -35,6 +35,11 @@ describe("golden traces on disk", () => {
     expect(names.toSorted()).toEqual(["opencode/lab-approval-dialog.jsonl", "opencode/lab-running-turn.jsonl"]);
   });
 
+  it("pi: has a running turn, a queued message and a dialog trace (M56 spec 14)", () => {
+    const names = files.filter((trace) => trace.header.harness === "pi").map((trace) => trace.name);
+    expect(names.toSorted()).toEqual(["pi/lab-model-dialog.jsonl", "pi/lab-queued-message.jsonl", "pi/lab-running-turn.jsonl"]);
+  });
+
   for (const trace of files) {
     it(`${trace.name}: the expectations hold with the hook source present`, () => {
       const mismatches = replayTrace(trace, { mode: "present", fixture: fixtureText }).flatMap((result) =>

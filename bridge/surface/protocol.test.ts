@@ -1746,6 +1746,15 @@ describe("a send into a running turn", () => {
     expect(steadyRow("an answer row (12s)")).toBe("an answer row (12s)");
   });
 
+  test("steadyRow masks the braille spinner of a row the profile names as a running row (M56 spec 14)", () => {
+    const signs = [/^─+\s+[⠀-⣿]\s+Working\b/u];
+    expect(steadyRow("── ⠴ Working ─────", signs)).toBe(steadyRow("── ⠧ Working ─────", signs));
+    expect(steadyRow("── ⠴ Working ─────")).not.toBe(steadyRow("── ⠧ Working ─────"));
+    // Another row keeps its glyphs, and a changed word still changes the row.
+    expect(steadyRow("⠴ other row", signs)).toBe("⠴ other row");
+    expect(steadyRow("── ⠴ Working ─────", signs)).not.toBe(steadyRow("── ⠧ Idle ─────", signs));
+  });
+
   test("steadyRow reads the spinner row before and after its timer shows as one row (Claude Code 2.1.301)", () => {
     expect(steadyRow("✶ Wibbling…")).toBe(steadyRow("* Wibbling… (4s · ↓ 304 tokens)"));
     expect(steadyRow("✻ Julienning… (running UserPromptSubmit hooks… 1/2 · 2s · thinking with high effort)")).toBe(steadyRow("· Julienning…"));

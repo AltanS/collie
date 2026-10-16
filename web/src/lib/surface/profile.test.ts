@@ -252,6 +252,8 @@ interface Spec14Case {
   readonly refuses: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string }[];
   readonly collapse: { readonly text: string; readonly group: string; readonly value: string };
   readonly enterWhileRunning: "queues" | "steers" | undefined;
+  /** The key that queues a message in a turn, where Enter does not queue. */
+  readonly queueKey?: string;
 }
 
 const SPEC14_CASES: readonly Spec14Case[] = [
@@ -275,6 +277,30 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     collapse: { text: "[Pasted ~12 lines]", group: "lines", value: "12" },
     enterWhileRunning: "queues",
   },
+  {
+    id: "pi",
+    binary: "pi",
+    versionOutput: "0.87.1\n",
+    version: "0.87.1",
+    above: "1.1.0",
+    takes: [
+      { anchor: "top", row: "─".repeat(40) },
+      { anchor: "top", row: "── ⠴ Working ─────────────────────────" },
+      { anchor: "prompt", row: "hello there", draft: "hello there" },
+      { anchor: "prompt", row: "  hello there", draft: "hello there" },
+      { anchor: "prompt", row: "❯ hello there", draft: "hello there" },
+      { anchor: "prompt", row: "❯", draft: "" },
+      { anchor: "prompt", row: `❯${" ".repeat(60)}…/omo-lab/work`, draft: "" },
+      { anchor: "bottom", row: "─".repeat(40) },
+    ],
+    refuses: [
+      { anchor: "bottom", row: "── ⠴ Working ─────────────────────────" },
+      { anchor: "top", row: "hello there" },
+    ],
+    collapse: { text: "[paste #2 +12 lines]", group: "lines", value: "12" },
+    enterWhileRunning: "steers",
+    queueKey: "alt+Enter",
+  },
 ];
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
@@ -290,6 +316,7 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.keys.submit).toEqual(["Enter"]);
     expect(p.keys.interrupt.length).toBeGreaterThan(0);
     expect(p.keys.enterWhileRunning).toBe(c.enterWhileRunning);
+    expect(p.keys.queueKey).toBe(c.queueKey);
     expect(p.reservedLeads).toEqual(["/", "!", "@"]);
     expect(p.probe.char.length).toBeGreaterThan(0);
     expect(p.paste).toEqual({ bracketed: true });
@@ -338,6 +365,8 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["a trailer row that is no expression", ["idle", "frame", "trailer", "row"], "[unclosed", "idle.frame.trailer.row"],
     ["a continuation with no text group", ["idle", "frame", "continuation"], "^ *┃ .*$", "idle.frame.continuation"],
     ["an overlay row that is no expression", ["idle", "overlayRows", 0], "[unclosed", "idle.overlayRows[0]"],
+    ["an under row that is no expression", ["idle", "frame", "under"], "[unclosed", "idle.frame.under"],
+    ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
   ];
   for (const [name, path, value, field] of cases) {

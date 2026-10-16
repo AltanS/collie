@@ -477,11 +477,18 @@ types into it with stricter generic rules.
 | Agent | Enter during a turn | Long paste form | Profile checked against |
 | ----- | ------------------- | --------------- | ----------------------- |
 | OpenCode | Queues the message | `[Pasted ~12 lines]` | 1.18.33 |
+| pi | Steers the turn; Alt+Enter queues | `[paste #2 +12 lines]` | 1.1.0 |
 
 - **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line. Collie finds the
   box by those rows. A message sent into a running turn waits in the transcript with a `QUEUED`
   badge until the turn ends. A newline in a message goes in as Ctrl+J. A message longer than the
   box can show is refused, because Collie cannot read it back.
+
+- **pi** draws its box between two rules with no prompt mark. Collie finds it by the rule pair and by
+  the status line that pi always draws under it. A pi dialog opens between the same two rules, so
+  Collie reads the key hints and the list from the top rule down. In a running turn, Enter steers the
+  turn, and Collie sends Alt+Enter instead. pi shows the message as a `Follow-up:` row above the box.
+  A box taller than 30 rows is read as a dialog, not a draft.
 
 A version above the checked one still works, and the receipt says `provisional`.
 

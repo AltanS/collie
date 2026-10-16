@@ -524,3 +524,36 @@ describe("the interior walk (M56 spec 14)", () => {
     expect(findInputFrame(lines("  ┃  a", "  ┃  b", "output"), OC)).toBeNull();
   });
 });
+
+// M56 spec 14: a box with a blank prompt row and rules for edges (pi), the same shape as the gap
+// between a notice and the real box, told apart by the row the harness draws under it.
+describe("the interior walk on rules with no prompt glyph (M56 spec 14)", () => {
+  const PI = requireProfile("pi").idle;
+  const footer = ["/tmp/work (main)", "0.0%/200k (auto)    model • low"];
+
+  it("finds an empty box, a draft and a padded draft", () => {
+    expect(findInputFrame(lines("reply", RULE, "", RULE, ...footer), PI)!.interior.text).toBe("");
+    expect(findInputFrame(lines("reply", RULE, "hello there", RULE, ...footer), PI)!.interior.text).toBe("hello there");
+    expect(findInputFrame(lines(RULE, "  line one", "  line two", RULE, ...footer), PI)!.interior.text).toBe("line one line two");
+  });
+
+  it("reads the Working label on the top rule", () => {
+    const frame = findInputFrame(lines("reply", "── ⠴ Working ──────────────", "", RULE, ...footer), PI)!;
+    expect(frame.label).toBe("⠴ Working");
+  });
+
+  it("refuses a rule pair whose bottom has no status line under it", () => {
+    // The real box lost its bottom rule: the gap between the notice and the box top is not a box.
+    expect(findInputFrame(lines(RULE, "Update Available", RULE, "", RULE, "typed draft", ...footer), PI)).toBeNull();
+  });
+
+  it("cuts the text a side panel draws on the prompt row", () => {
+    const row = `❯${" ".repeat(40)}facts 4 queued`;
+    expect(findInputFrame(lines(RULE, row, RULE, ...footer), PI)!.interior.text).toBe("");
+  });
+
+  it("stops at 30 rows: a taller rule pair is a dialog, not a draft", () => {
+    const body = Array.from({ length: 35 }, (_, i) => `item ${String(i)}`);
+    expect(findInputFrame(lines(RULE, ...body, RULE, ...footer), PI)).toBeNull();
+  });
+});

@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **pi has an input profile.** The Send Protocol finds the pi box between its two rules, reads a draft, and sends a message into a running turn through Alt+Enter, where it queues as a follow-up. A pi dialog never reads as free.
 - **OpenCode has an input profile.** The Send Protocol finds the box of OpenCode from its own rows, reads a draft, and sends a message into a running turn, where it queues. A newline goes in as Ctrl+J, and a message too long for the box is refused.
 - **COLLIE_PROGRAMS=off turns programs off.** The bridge ignores sources.json, logs one line, and the phone shows no Programs section; doctor and durable list say so.
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.

@@ -137,6 +137,13 @@ export interface Profile {
        * row counts as its trimmed text.
        */
       readonly continuation?: string;
+      /**
+       * The interior walk only. A regular expression source the first non-blank row under the bottom
+       * edge must match, when there is one. A box with a blank prompt row has the same shape as the
+       * gap between a notice and the real box, so the row the harness always draws under the box
+       * (its status line) tells them apart. Optional; a closed box only.
+       */
+      readonly under?: string;
     };
     readonly placeholders: {
       readonly texts: readonly string[];
@@ -182,6 +189,13 @@ export interface Profile {
      * A match makes the modal `unreadable`. Optional.
      */
     readonly overlayRows?: readonly string[];
+    /**
+     * True for a harness that draws its dialogs where the box stands, between the same two rules. The
+     * frame walk then finds a box on a dialog screen, so the modal cues read the whole screen, the
+     * box rows included, as they do on a screen with no frame. A draft that looks like a list reads
+     * as a modal then, and a modal is never free. Optional.
+     */
+    readonly dialogsInBox?: boolean;
   };
   readonly keys: {
     /** The keys that send a text. Codex names Tab here: its Enter steers a running turn (`enterWhileRunning`). */
@@ -202,7 +216,8 @@ export interface Profile {
       readonly confirm: string;
       readonly cancel: string;
     };
-    readonly enterWhileRunning: EnterWhileRunning;
+    /** What Enter does in a running turn. Absent when no lab run measured it: a send into a turn is then refused. */
+    readonly enterWhileRunning?: EnterWhileRunning;
     /**
      * The key that queues a message for after the running turn, on a harness whose Enter does not
      * queue (`enterWhileRunning` is not `queues`). Optional: without it, a send into a turn is refused.
@@ -439,10 +454,11 @@ function parseFrame(frameNode: JsonObject): Profile["idle"]["frame"] {
   const interior = { ...base, bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true), walk };
   const withRows = frameNode.rows === undefined ? interior : { ...interior, rows: pattern(frameNode.rows, "idle.frame.rows").source };
   const withTrailer = frameNode.trailer === undefined ? withRows : { ...withRows, trailer: parseTrailer(frameNode.trailer) };
-  if (frameNode.continuation === undefined) return withTrailer;
+  const withUnder = frameNode.under === undefined ? withTrailer : { ...withTrailer, under: pattern(frameNode.under, "idle.frame.under").source };
+  if (frameNode.continuation === undefined) return withUnder;
   const continuation = pattern(frameNode.continuation, "idle.frame.continuation");
   if (!continuation.source.includes("(?<text>")) fail("idle.frame.continuation", "must hold the named group text");
-  return { ...withTrailer, continuation: continuation.source };
+  return { ...withUnder, continuation: continuation.source };
 }
 
 export function parseProfile(raw: JsonValue): Profile {
@@ -480,7 +496,11 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.overlayRows === undefined
       ? undefined
       : list(idleNode.overlayRows, "idle.overlayRows").map((item, i) => pattern(item, `idle.overlayRows[${String(i)}]`).source);
-  const idleBlock: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const withOverlay: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  if (idleNode.dialogsInBox !== undefined && idleNode.dialogsInBox !== true && idleNode.dialogsInBox !== false) {
+    fail("idle.dialogsInBox", "must be true or false");
+  }
+  const idleBlock: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
@@ -499,9 +519,11 @@ export function parseProfile(raw: JsonValue): Profile {
       confirm: text(field(navNode, "confirm", "keys.navigation"), "keys.navigation.confirm"),
       cancel: text(field(navNode, "cancel", "keys.navigation"), "keys.navigation.cancel"),
     },
-    enterWhileRunning: oneOf(field(keysNode, "enterWhileRunning", "keys"), "keys.enterWhileRunning", ENTER_MODES),
   };
   let keys: Profile["keys"] = baseKeys;
+  if (keysNode.enterWhileRunning !== undefined) {
+    keys = { ...keys, enterWhileRunning: oneOf(keysNode.enterWhileRunning, "keys.enterWhileRunning", ENTER_MODES) };
+  }
   if (keysNode.queuedRow !== undefined) {
     const queuedNode = object(keysNode.queuedRow, "keys.queuedRow");
     const rowPattern = pattern(field(queuedNode, "pattern", "keys.queuedRow"), "keys.queuedRow.pattern");
