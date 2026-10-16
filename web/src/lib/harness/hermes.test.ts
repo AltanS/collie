@@ -196,6 +196,19 @@ describe("the clarify panel", () => {
     }
   });
 
+  it("leaves a revisited question raw when its Other row shows an earlier answer", () => {
+    // `Other: <answer>`: the digit opens an empty editor, so the label would promise a resend.
+    const revisited = edited("hermes--clarify-choices.txt", /4\. Other \(type your answer\)/, (row) =>
+      row.replace("Other (type your answer)", "Other: CockroachDB      "),
+    );
+    expect(detectClarifyRegion(revisited)).toBeNull();
+  });
+
+  it("refuses a panel with anything printed under the input", () => {
+    const below = splitLines(parseAnsi(`${raw("hermes--clarify-choices.txt")}\n /model  Switch model`));
+    expect(detectClarifyRegion(below)).toBeNull();
+  });
+
   it("refuses a panel Hermes clipped so that the active question's own row is gone", () => {
     const clipped = edited("hermes--clarify-choices.txt", /▸ Which database/, (row) => row.replace("▸ Which database should the lab use?", "  more text of the question here "));
     expect(detectClarifyRegion(clipped)).toBeNull();
@@ -238,6 +251,25 @@ describe("the dangerous-command approval", () => {
     const cut = edited("hermes--approval-long.txt", /^│ dir\/three/, (row) => row.replace("dir/three   ", "… (choose Show full command)").slice(0, row.length + 17));
     const m = detectApprovalRegion(cut)?.model;
     expect(m === undefined ? null : options(m)).toEqual(["5 Show full command", "4 Deny"]);
+  });
+
+  // A panel narrower than the notice (inner width 24 to 27) wraps `… (choose Show full command)` onto
+  // two rows, and Hermes's smart-deny set (once, deny, view) is short enough to fit that panel.
+  it("withholds Allow once when the cut notice wraps, on the once/deny/view set", () => {
+    // Built from the capture's plain rows (the grammar reads text): the command's last row replaced
+    // by the notice wrapped onto two rows, and the choice set cut to once, deny and view.
+    const box = (inner: string) => `│ ${inner.padEnd(62)} │`;
+    const rows: string[] = [];
+    for (const row of rowsOf(load("hermes--approval-long.txt"))) {
+      if (row.startsWith("│ dir/three")) {
+        rows.push(box("… (choose Show"), box("full command)"));
+        continue;
+      }
+      if (/[23]\. (Allow for this session|Add to permanent allowlist)/.test(row)) continue;
+      rows.push(row.replace("4. Deny", "2. Deny").replace("5. Show full command", "3. Show full command"));
+    }
+    const m = detectApprovalRegion(splitLines(parseAnsi(rows.join("\n"))))?.model;
+    expect(m === undefined ? null : options(m)).toEqual(["3 Show full command", "2 Deny"]);
   });
 
   it("stays raw when the terminal cut the command for good, or a choice is one it does not know", () => {

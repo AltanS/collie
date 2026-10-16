@@ -63,6 +63,9 @@ What the adapter emits (`clarify.ts`):
 - Nothing for the `✎` screen. There the input is the answer, so the phone's composer is ready and
   the guarded send types the text and binds its `Enter` to the `✎ ❯ <text>` row (`chrome.ts`). If
   the question closed in between, the row reads `❯ ` again and the bridge refuses the `Enter`.
+- Nothing for a question revisited after an Other answer, whose Other row reads
+  `Other: <earlier answer>`: its digit opens an empty editor (the earlier text is prefilled only on
+  Enter, `_clarify_batch_enter`), so a button with that label would promise a resend it does not do.
 - Nothing for a multi-select question (a digit toggles, `Enter` submits) and nothing for a panel
   clipped to a short terminal so that the active question's own row is off the top. Both stay raw
   with the Keys pad, as before this adapter, and get no unread-dialog card: the rows that card binds

@@ -53,8 +53,10 @@ confirms), classified by label:
 - **Allow for this session** and **Add to permanent allowlist** are never buttons. Any other label
   refuses the whole panel.
 - While the command shows `… (choose Show full command)`, there is no Allow once button: the card
-  offers Show full command and Deny until the command is on screen whole. A command cut with
-  `… (command truncated …)` cannot be shown whole, and the panel stays raw.
+  offers Show full command and Deny until the command is on screen whole. The notice is matched on
+  its first row, `… (choose `: a panel narrower than it (inner width 24 to 27, a pane of about 30
+  columns) wraps it onto two rows, and Hermes's smart-deny set (once, deny, view) fits that panel.
+  A command cut with `… (command truncated …)` cannot be shown whole, and the panel stays raw.
 - The card's subject is the command and Hermes's reason, so the phone shows what is being approved.
 
 The bound region is the panel alone, with `bindTail` for the ticking rows under it, as for clarify.
