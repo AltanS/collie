@@ -12,6 +12,7 @@ import {
   HOLD_WIRE_VERSION,
   parseHoldReply,
   shownInputOf,
+  isCwd,
   type HoldDecision,
   type HoldProfile,
   type HoldRequest,
@@ -105,6 +106,7 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
   const agentRaw = asJsonString(payload.agent_id);
   const agent = agentRaw !== undefined && /^[\x20-\x7e]{1,128}$/u.test(agentRaw) ? agentRaw : null;
   const shown = shownInputOf(payload.tool_input, hold.inputShown, hold.inputDetails[tool]);
+  const cwd = asJsonString(payload.cwd);
   const request: HoldRequest = {
     v: HOLD_WIRE_VERSION,
     harness: BEACON_HARNESS,
@@ -118,7 +120,9 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
     hold: !hold.screenOnly.includes(tool) && !shown.cut,
     at: (deps.now ?? Date.now)(),
   };
-  return shown.cut ? { ...request, cut: true } : request;
+  // The folder lets the bridge match a dialog that names a file by its path below the folder.
+  const withCwd = cwd !== undefined && isCwd(cwd) ? { ...request, cwd } : request;
+  return shown.cut ? { ...withCwd, cut: true } : withCwd;
 }
 
 /** Connect to every socket at once, each with its own limit. The ones that answered, in order. */

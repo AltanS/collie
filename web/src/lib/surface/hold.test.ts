@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -116,6 +118,9 @@ describe("decisionOutput", () => {
 describe("the wire", () => {
   it("parses a whole request and refuses a bad field", () => {
     expect(parseHoldRequest(JSON.stringify(REQUEST))).toEqual(REQUEST);
+    expect(parseHoldRequest(JSON.stringify({ ...REQUEST, cwd: "/proj" }))).toEqual({ ...REQUEST, cwd: "/proj" });
+    expect(parseHoldRequest(JSON.stringify({ ...REQUEST, cwd: "proj" }))).toBeNull();
+    expect(parseHoldRequest(JSON.stringify({ ...REQUEST, cwd: "/a\u202eb" }))).toBeNull();
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, v: 2 }))).toBeNull();
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, pid: 1 }))).toBeNull();
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, markers: [] }))).toBeNull();
@@ -142,13 +147,46 @@ describe("the wire", () => {
 });
 
 describe("which dialog a hold may adopt", () => {
-  it("matches the input's first line with white space and the gutter dropped, or a path by its last part", () => {
-    expect(dialogShowsRequest("Bash command\n   mkfifo fixture-fifo\nDo you want to proceed?", "mkfifo fixture-fifo")).toBe(true);
-    expect(dialogShowsRequest("│ set -e; cd /a &&\n│ rm -rf ./*", "set -e; cd /a && rm -rf ./*")).toBe(true);
-    expect(dialogShowsRequest("Create file\n hello.txt\nDo you want to create hello.txt?", "/var/home/me/project/hello.txt")).toBe(true);
-    expect(dialogShowsRequest("Bash command\n   ls -la", "rm -rf build")).toBe(false);
-    expect(dialogShowsRequest("Do you want to proceed?", "ls")).toBe(false);
-    expect(dialogShowsRequest(null, "mkfifo fixture-fifo")).toBe(false);
+  const PANES = join(import.meta.dirname, "..", "..", "fixtures", "panes");
+  /** A fixture's dialog block as the lift hands it over: plain rows from the last full rule down. */
+  const dialogOf = (name: string): string => {
+    // eslint-disable-next-line no-control-regex -- the fixtures hold SGR escapes
+    const rows = readFileSync(join(PANES, name), "utf8").replace(/\u001b\[[0-9;]*m/gu, "").split("\n");
+    const edge = rows.findLastIndex((row) => /^─{20,}/u.test(row));
+    return rows.slice(edge).join("\n");
+  };
+  const req = (over: Partial<{ tool: string; input: string; agent: string | null; cwd: string }>) => ({ tool: "Bash", input: "", agent: null, ...over });
+
+  it("needs the tool's header, the subagent mark exactly on a subagent's request, and the whole first line", () => {
+    const bash = dialogOf("claude--permission-bash.txt");
+    expect(dialogShowsRequest(bash, req({ input: "mkfifo fixture-fifo" }), HOLD)).toBe(true);
+    // The reviewer's case: an older Write of a file with the same name, from a background subagent.
+    expect(dialogShowsRequest(bash, req({ tool: "Write", input: "/proj/fixture-fifo\n[content: 1 characters, 1 lines]\nx", agent: "a1", cwd: "/proj" }), HOLD)).toBe(false);
+    // The same tool and input from a subagent: the main dialog has no mark.
+    expect(dialogShowsRequest(bash, req({ input: "mkfifo fixture-fifo", agent: "a1" }), HOLD)).toBe(false);
+    // Part of the line is not the line.
+    expect(dialogShowsRequest(bash, req({ input: "fixture-fifo" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest(bash, req({ input: "mkfifo" }), HOLD)).toBe(false);
+    const sub = dialogOf("claude--v2291-permission-bash-subagent.txt");
+    const command = "set -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./* && cd $R && for f in $(git ls-tree -r --name-only HEAD web-forge/src/routes/pane); do mkdir -p $T/$(dirname $f); git show HEAD:$f > $T/$f; done; cd $T/web-forge && bunx vite build --outDir /tmp/sample-forge-home --emptyOutDir 2>&1 | grep -E \"MISSING|rror|built in\" | head -5";
+    expect(dialogShowsRequest(sub, req({ input: command, agent: "a1" }), HOLD)).toBe(true);
+    expect(dialogShowsRequest(sub, req({ input: command }), HOLD)).toBe(false);
+  });
+
+  it("matches a file by the path the dialog prints below the agent's folder, never by its name alone", () => {
+    const write = dialogOf("claude-lab--permission-write--w82.txt");
+    expect(dialogShowsRequest(write, req({ tool: "Write", input: "/lab/docs/lab-notes.md", cwd: "/lab" }), HOLD)).toBe(true);
+    expect(dialogShowsRequest(write, req({ tool: "Write", input: "/other/docs/lab-notes.md", cwd: "/lab" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest(write, req({ tool: "Write", input: "/lab/lab-notes.md", cwd: "/lab" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest(write, req({ tool: "Edit", input: "/lab/docs/lab-notes.md", cwd: "/lab" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest(dialogOf("claude-lab--permission-edit--w82.txt"), req({ tool: "Edit", input: "/lab/docs/notes.txt", cwd: "/lab" }), HOLD)).toBe(true);
+  });
+
+  it("never matches a dialog with no header it knows, or no text", () => {
+    expect(dialogShowsRequest("Do you want to proceed?\n ls", req({ input: "ls -la" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest("Bash command\n   ls -la", req({ input: "rm -rf build" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest(null, req({ input: "mkfifo fixture-fifo" }), HOLD)).toBe(false);
+    expect(dialogShowsRequest("Read file\n   /a/b", req({ tool: "Read", input: "/a/b" }), HOLD)).toBe(false);
   });
 });
 

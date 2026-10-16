@@ -260,9 +260,10 @@ export class HoldBook {
     const live = this.holdsOn(paneId).filter((held) => this.isLive(held));
     if (live.length === 0) return null;
     const permission = dialog !== null && dialog.blockKind === "prompt-select" && dialog.kind === "permission" ? dialog : null;
+    const adopter = this.adopterOf(live, permission);
     let owner: Ask | null = null;
     for (const held of live) {
-      const ask = this.step(held, live, generation, dialog, permission);
+      const ask = this.step(held, held === adopter, generation, dialog, permission);
       if (ask !== null && owner === null) owner = ask;
     }
     if (owner !== null) return owner;
@@ -271,14 +272,26 @@ export class HoldBook {
     return live.find((held) => held.state === "held" && held.dialog === null)?.ask ?? null;
   }
 
+  /**
+   * The one hold that may adopt the permission dialog on the screen, or null. A hold may adopt it when
+   * it waits with no dialog and the dialog shows its own tool, agent mark and input. No hold adopts a
+   * dialog another hold has already, and none adopts when two or more could: a wrong owner would turn
+   * a tap on the dialog's card into a decision for another request.
+   */
+  private adopterOf(live: readonly Held[], permission: LiftedDialog | null): Held | null {
+    if (permission === null) return null;
+    if (live.some((held) => held.dialog !== null && sameDialog(held.dialog, permission))) return null;
+    const fits = live.filter((held) => held.state === "held" && held.dialog === null && dialogShowsRequest(permission.region, held.request, held.profile));
+    return fits.length === 1 ? (fits[0] ?? null) : null;
+  }
+
   /** One hold's part of a read. Returns its ask when it owns the dialog on the screen, else null. */
-  private step(held: Held, live: readonly Held[], generation: string, dialog: LiftedDialog | null, permission: LiftedDialog | null): Ask | null {
+  private step(held: Held, adopts: boolean, generation: string, dialog: LiftedDialog | null, permission: LiftedDialog | null): Ask | null {
     if (held.state !== "held") return held.dialog !== null ? held.ask : null;
     if (held.dialog === null) {
-      // Adopt the permission dialog that shows this request's own tool input, when no other hold has it.
+      // Adopt the permission dialog when this hold is its one fit (adopterOf).
       // The dialog's labels replace the profile's; an id minted before answers `ask_changed`, never a key.
-      const taken = live.some((other) => other !== held && other.dialog !== null && permission !== null && sameDialog(other.dialog, permission));
-      if (permission !== null && !taken && dialogShowsRequest(permission.region, held.request.input)) {
+      if (permission !== null && adopts) {
         this.mint(held, generation, permission);
         this.voidKeysAsk(held.paneId);
         return held.ask;

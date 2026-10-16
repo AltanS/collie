@@ -61,6 +61,8 @@ export interface HoldRequest {
   readonly cut?: boolean;
   /** The subagent id the request came from, or null for the main session. */
   readonly agent: string | null;
+  /** The agent's working folder. A dialog names a file in it by the path below it. */
+  readonly cwd?: string;
   readonly hold: boolean;
   /** Epoch ms when the hook ran. */
   readonly at: number;
@@ -118,6 +120,13 @@ export interface HoldProfile {
   readonly inputDetails: Readonly<Record<string, HoldInputDetail>>;
   /** Tools whose dialog the hook cannot answer: the screen answers them through keys. */
   readonly screenOnly: readonly string[];
+  /**
+   * The header a permission dialog shows for each tool, by tool name. A hold adopts a dialog only
+   * when the header names its own tool. A tool with no entry never adopts: its hold card answers it.
+   */
+  readonly headers: Readonly<Record<string, readonly string[]>>;
+  /** A regular expression source for the header's subagent mark. It shows exactly on a subagent's dialog. */
+  readonly agentMark: string;
   /** The options when no dialog is on the screen. */
   readonly options: readonly HoldOption[];
   /** The rules that map a screen label to a decision, first match wins. */
@@ -225,26 +234,47 @@ function squash(text: string): string {
 
 /** The fewest characters a match key may have: shorter text shows up on any screen by chance. */
 const MATCH_KEY_MIN = 3;
-/** The most characters of the input's first line a match compares. */
-const MATCH_KEY_MAX = 60;
+/** A row that holds only a frame rule, or nothing. */
+const RULE_ROW = /^[\s─━═╌┄┈╭╮╰╯┌┐└┘]*$/u;
+
+/** What {@link dialogShowsRequest} compares of a request. */
+export type DialogMatchRequest = Pick<HoldRequest, "tool" | "input" | "agent" | "cwd">;
 
 /**
- * Whether a permission dialog's text shows this request's input, so the hold may take the dialog as
- * its own. White space is dropped on both sides: the dialog wraps a long command over rows. The key
- * is the first line of the input shown, cut at 60 characters. A path (no space, a slash) also
- * matches by its last part, as a dialog names a file relative to the project. An input too short to
- * tell, or a dialog with no text, never matches: the dialog then stays the screen's own keys ask.
+ * Whether a permission dialog shows this very request, so the hold may take the dialog as its own.
+ * Three things must agree. The header names the request's tool (profile `headers`). The header has
+ * the subagent mark exactly when the request comes from a subagent. And the whole first line of the
+ * input shown fills one or more whole rows of the dialog: white space and the `│` gutter are dropped,
+ * because the dialog wraps a long command. A path below the agent's folder also matches as the path
+ * the dialog prints, relative to that folder. An input too short to tell, or a dialog with no text,
+ * never matches: the dialog then stays the screen's own keys ask.
  */
-export function dialogShowsRequest(dialogText: string | null, input: string): boolean {
+export function dialogShowsRequest(dialogText: string | null, request: DialogMatchRequest, hold: Pick<HoldProfile, "headers" | "agentMark">): boolean {
   if (dialogText === null) return false;
-  // A wrapped command keeps the dialog's `│` gutter at the start of each row: drop it on the screen side.
-  const screen = squash(dialogText.replace(/│/gu, ""));
-  const first = (input.split("\n").find((line) => line.trim().length > 0) ?? "").trim();
-  const key = squash(first).slice(0, MATCH_KEY_MAX);
-  if (key.length >= MATCH_KEY_MIN && screen.includes(key)) return true;
-  if (/\s/u.test(first) || !first.includes("/")) return false;
-  const tail = first.slice(first.lastIndexOf("/") + 1);
-  return tail.length >= MATCH_KEY_MIN && screen.includes(squash(tail));
+  const rows = dialogText.split("\n").filter((row) => !RULE_ROW.test(row));
+  const header = (rows[0] ?? "").trim();
+  const mark = new RegExp(hold.agentMark, "u").exec(header);
+  const named = (mark === null ? header : header.slice(0, mark.index)).trim();
+  if (!(hold.headers[request.tool] ?? []).includes(named)) return false;
+  if ((mark !== null) !== (request.agent !== null)) return false;
+  const first = (request.input.split("\n").find((line) => line.trim().length > 0) ?? "").trim();
+  const keys = [first];
+  const cwd = request.cwd === undefined ? "" : request.cwd.replace(/\/+$/u, "");
+  if (cwd !== "" && first.startsWith(`${cwd}/`)) keys.push(first.slice(cwd.length + 1));
+  const body = rows.slice(1).map((row) => squash(row.replace(/│/gu, "")));
+  return keys.map(squash).some((key) => key.length >= MATCH_KEY_MIN && fillsRows(body, key));
+}
+
+/** Whether some run of whole rows, joined, reads exactly `key`. */
+function fillsRows(rows: readonly string[], key: string): boolean {
+  for (let start = 0; start < rows.length; start += 1) {
+    let joined = "";
+    for (let end = start; end < rows.length && joined.length < key.length; end += 1) {
+      joined += rows[end];
+      if (joined === key) return true;
+    }
+  }
+  return false;
 }
 
 /** The decision an option label stands for under the profile, or null when no rule names it. */
@@ -286,6 +316,14 @@ function readMarkers(value: JsonValue | undefined): HoldMarker[] | null {
   return out;
 }
 
+/** The most characters of an agent's working folder a request carries. */
+const CWD_MAX = 4096;
+
+/** Whether a working folder is fit for a request: an absolute path, one line, no hiding character. */
+export function isCwd(cwd: string): boolean {
+  return cwd.startsWith("/") && cwd.length <= CWD_MAX && cleanShown(cwd) === cwd && !cwd.includes("\n");
+}
+
 /** A request line, every field checked, or null. */
 export function parseHoldRequest(line: string): HoldRequest | null {
   if (line.length > HOLD_LINE_MAX) return null;
@@ -308,9 +346,12 @@ export function parseHoldRequest(line: string): HoldRequest | null {
   if (at === undefined || !Number.isFinite(at) || hold === undefined || markers === null) return null;
   if (agent === undefined || (agent !== null && !TEXT_FIELD.test(agent))) return null;
   if (node.cut !== undefined && asJsonBoolean(node.cut) === undefined) return null;
+  const cwd = node.cwd === undefined ? undefined : asJsonString(node.cwd);
+  if (node.cwd !== undefined && (cwd === undefined || !isCwd(cwd))) return null;
   // The hook cleaned the input already; an older hook did not drop the hiding characters.
-  const base = { v: HOLD_WIRE_VERSION, harness, pid, pidStartTime, markers, tool, input: cleanShown(input), agent, hold, at };
-  return node.cut === true ? { ...base, cut: true } : base;
+  const base: HoldRequest = { v: HOLD_WIRE_VERSION, harness, pid, pidStartTime, markers, tool, input: cleanShown(input), agent, hold, at };
+  const withCwd = cwd === undefined ? base : { ...base, cwd };
+  return node.cut === true ? { ...withCwd, cut: true } : withCwd;
 }
 
 /** A reply line, or null when it is not a decision. */

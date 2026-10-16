@@ -39,7 +39,8 @@ const IDLE = fx("claude--v2301-idle.txt");
 const QUESTION = fx("claude--v2283-ask-two-line-question.txt");
 /** A subagent's Bash permission drawn on the main screen ("· from the general-purpose agent"). */
 const SUB_DIALOG = fx("claude--v2291-permission-bash-subagent.txt");
-const SUB_COMMAND = "set -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./*";
+const SUB_COMMAND =
+  'set -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./* && cd $R && for f in $(git ls-tree -r --name-only HEAD web-forge/src/routes/pane); do mkdir -p $T/$(dirname $f); git show HEAD:$f > $T/$f; done; cd $T/web-forge && bunx vite build --outDir /tmp/sample-forge-home --emptyOutDir 2>&1 | grep -E "MISSING|rror|built in" | head -5';
 /** A subagent's request on 2.1.301: no dialog on the main screen at all (LAB.md Table 6). */
 const SUBAGENT_IDLE = fx("claude--v2301-hold-subagent.txt");
 /** The screen after the hook decided: the dialog is gone and the result line names the hook. */
@@ -508,7 +509,7 @@ describe("the hold matrix", () => {
     const first = r.open();
     const a1 = r.poll()!;
     r.pane.screen = EDIT;
-    const second = r.open({ tool: "Write", input: "/tmp/project/hello.txt" });
+    const second = r.open({ tool: "Write", input: "/tmp/project/hello.txt", cwd: "/tmp/project" });
     const a2 = r.poll()!;
     expect(first.conn.released).toBe(1);
     expect(first.conn.replies).toEqual([]);
@@ -721,6 +722,41 @@ describe("a hold owns only the dialog it adopted", () => {
     expect(r.poll()).toBeNull();
     expect(conn.released).toBe(1);
     expect(r.counted).toEqual(["desk"]);
+  });
+});
+
+describe("adoption needs the tool, the agent mark and the whole input line", () => {
+  test("the review's case: an older background Write of a file with the same name never takes the main Bash dialog", async () => {
+    const r = rig(BASH);
+    // The background subagent's Write opens first, so it would have had the first chance.
+    const write = r.open({ agent: "agent-9", tool: "Write", input: "/tmp/project/fixture-fifo", cwd: "/tmp/project", at: 1 });
+    const bash = r.open({ at: 2 });
+    const ask = r.poll()!;
+    const notes = r.holds.holdsOn(PANE).map((held) => [held.request.tool, held.dialog !== null]);
+    expect(notes).toEqual([
+      ["Write", false],
+      ["Bash", true],
+    ]);
+    r.pane.beforeRead = (pane) => {
+      if (bash.conn.replies.length > 0) pane.screen = DECIDED;
+    };
+    const reply = await r.answer(ask, "1");
+    expect(reply.receipt).toMatchObject({ outcome: "sent", decision: "allow" });
+    expect(bash.conn.replies).toEqual(["allow"]);
+    // A Yes on the Bash card never allowed the subagent's Write.
+    expect(write.conn.replies).toEqual([]);
+    expectNoKey(r);
+  });
+
+  test("two holds that both fit the dialog: none adopts it, the dialog stays a keys ask", () => {
+    const r = rig(SUB_DIALOG);
+    // Two subagents ask for the same command: no hold can tell which request the dialog shows.
+    r.open({ agent: "agent-3", input: SUB_COMMAND, at: 1 });
+    r.open({ agent: "agent-4", input: SUB_COMMAND, at: 2 });
+    const ask = r.poll()!;
+    expect(r.holds.holdsOn(PANE).map((held) => held.dialog)).toEqual([null, null]);
+    // The screen's own dialog keeps its keys ask; each hold waits on its hold card.
+    expect(ask.channel).toBe("keys");
   });
 });
 

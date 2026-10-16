@@ -860,6 +860,15 @@ describe("hold: only PermissionRequest is held", () => {
     expect(JSON.parse(socket.sent[0]!).input).toBe("rm -rf build\n[dangerouslyDisableSandbox: true]");
   });
 
+  test("a hold: the request carries the agent's folder, so the bridge can match a path the dialog prints below it", async () => {
+    for (const [cwd, sent] of [["/var/home/me/proj", "/var/home/me/proj"], ["relative", undefined], ["/a\u202eb", undefined]] as const) {
+      const socket = new FakeHoldSocket();
+      const d = holdDeps({ stdin: permissionPayload({ cwd }), sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.drop()) });
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(JSON.parse(socket.sent[0]!).cwd).toBe(sent);
+    }
+  });
+
   test("a decision from the bridge is printed in the harness's shape; the request carries the input shown, never the whole input", async () => {
     const socket = new FakeHoldSocket();
     const d = holdDeps({ sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.push('{"decision":"allow"}')) });
