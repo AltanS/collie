@@ -41,7 +41,7 @@ export const tr: Dictionary = {
   "theme.import": "İçe aktar",
   "theme.export": "Dışa aktar",
   "theme.remove": "Kaldır",
-  "theme.import.promise": "Bir tema yalnızca renkleri ve yazı tipini değiştirir. Kod çalıştıramaz, dosya yükleyemez veya bir sunucuya erişemez.",
+  "theme.import.promise": "Bir tema yalnızca renkleri ve yazı tipini değiştirir. Kod çalıştıramaz, dosya yükleyemez veya bir sunucuya erişemez.", // TODO wordsmith
   "theme.preview.title": "Bu tema içe aktarılsın mı?",
   "theme.preview.by": "{author} tarafından",
   "theme.preview.halves.both": "Açık ve koyu",

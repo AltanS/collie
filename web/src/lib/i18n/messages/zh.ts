@@ -46,7 +46,7 @@ export const zh: Dictionary = {
   "theme.import": "导入",
   "theme.export": "导出",
   "theme.remove": "移除",
-  "theme.import.promise": "主题仅更改颜色和字体。它无法运行代码、加载文件或访问服务器。",
+  "theme.import.promise": "主题仅更改颜色和字体。它无法运行代码、加载文件或访问服务器。", // TODO wordsmith
   "theme.preview.title": "导入此主题？",
   "theme.preview.by": "作者：{author}",
   "theme.preview.halves.both": "浅色与深色",

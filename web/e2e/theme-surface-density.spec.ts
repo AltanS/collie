@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
+import { en } from "@/lib/i18n/messages/en";
+
 import { installApiStub, installCrewWorld, installMachinesWorld } from "./fixtures/api";
 
 // A ROOMY THEME FITS A SMALL PHONE (M57 spec 14). Schema version 2 lets a theme raise the spacing step
@@ -178,4 +180,74 @@ test("the header dog is the same pixel size under every density", async ({ brows
     await context.close();
   }
   expect(sizes).toEqual(Array.from({ length: 4 }, () => "44x44 / 40x40"));
+});
+
+// THE VOICE TAKEOVER'S RING (reviewer F2). The countdown ring is an svg, and index.css pins an svg's own
+// size to the default step, so the ring takes its size from a wrapper that carries the inset. Under roomy
+// the OK button grows and the ring must grow with it and stay centred on it. The takeover opens through
+// the same fake microphone the voice spec uses: an oscillator behind a gain of 0.
+async function fakeMicrophone(page: Page): Promise<void> {
+  await page.route("**/api/config", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ push: false, vapidPublicKey: "", stt: { provider: "openai-compatible", available: true } }),
+    }),
+  );
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        async getUserMedia() {
+          const context = new AudioContext();
+          await context.resume();
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          gain.gain.value = 0;
+          const destination = context.createMediaStreamDestination();
+          oscillator.connect(gain).connect(destination);
+          oscillator.start();
+          return destination.stream;
+        },
+      },
+    });
+  });
+}
+
+test("the voice takeover's ring stays centred on its button under every density", async ({ browser }, testInfo) => {
+  onlyOnePhone(testInfo);
+  for (const viewport of VIEWPORTS) {
+    for (const surface of [undefined, LARGEST]) {
+      const context = await browser.newContext(contextOptions(testInfo, viewport));
+      const page = await context.newPage();
+      await installApiStub(page);
+      await fakeMicrophone(page);
+      await seedTheme(page, surface);
+      await open(page, "/pane/w1:p1", undefined);
+      await page.getByRole("button", { name: en["composer.mic.recordAria"] }).click();
+      const slot = page.locator('[data-slot="voice-takeover-ok"]');
+      const RING = 'svg[viewBox="-24 -24 48 48"]';
+      await expect(slot.locator(RING)).toHaveCount(1);
+      const seen = await slot.evaluate((el) => {
+        const button = el.querySelector("button")?.getBoundingClientRect();
+        const ring = el.querySelector('svg[viewBox="-24 -24 48 48"]')?.getBoundingClientRect();
+        if (button === undefined || ring === undefined) return null;
+        return {
+          dx: ring.x + ring.width / 2 - (button.x + button.width / 2),
+          dy: ring.y + ring.height / 2 - (button.y + button.height / 2),
+          ratio: ring.width / button.width,
+          scrollWidth: document.scrollingElement?.scrollWidth ?? 0,
+          innerWidth: window.innerWidth,
+        };
+      });
+      const at = `${surface === undefined ? "default" : "roomy"} at ${viewport.width}x${viewport.height}`;
+      expect(seen, at).not.toBeNull();
+      expect(Math.abs(seen?.dx ?? 99), `${at}: ring off centre across`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(seen?.dy ?? 99), `${at}: ring off centre down`).toBeLessThanOrEqual(0.5);
+      // 48 over 36 at the default step: the ring is the button plus the same inset on every side.
+      expect(seen?.ratio ?? 0, `${at}: ring size`).toBeCloseTo(48 / 36, 2);
+      expect(seen?.scrollWidth ?? 99999, `${at}: horizontal overflow`).toBeLessThanOrEqual(seen?.innerWidth ?? 0);
+      await context.close();
+    }
+  }
 });

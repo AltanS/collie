@@ -46,7 +46,7 @@ export const zhTW: Dictionary = {
   "theme.import": "匯入",
   "theme.export": "匯出",
   "theme.remove": "移除",
-  "theme.import.promise": "主題僅會變更顏色與字型。它無法執行程式碼、載入檔案或連線至伺服器。",
+  "theme.import.promise": "主題僅會變更顏色與字型。它無法執行程式碼、載入檔案或連線至伺服器。", // TODO wordsmith
   "theme.preview.title": "要匯入此主題嗎？",
   "theme.preview.by": "作者：{author}",
   "theme.preview.halves.both": "淺色與深色",

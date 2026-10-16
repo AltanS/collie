@@ -319,13 +319,27 @@ describe("ThemePickerControl", () => {
       expect(document.documentElement.getAttribute("style") ?? "").toBe("");
     });
 
-    it("exports version 2, also for a theme that was imported as version 1", async () => {
+    it("exports version 1 for a theme without a shape and version 2 for one with", async () => {
       const { themeFileText } = await load();
-      const parsed = parseTheme(JSON.stringify(copy("old", "Old")), { maxBytes: 64 * 1024 });
-      if (!parsed.ok) throw new Error("the copy no longer parses");
-      expect(JSON.parse(themeFileText(parsed.theme)).version).toBe(2);
-      expect(JSON.parse(themeFileText({ ...parsed.theme, version: 1 })).version).toBe(2);
-      expect(Object.keys(JSON.parse(themeFileText(parsed.theme)))[0]).toBe("version");
+      const one = parseTheme(JSON.stringify(copy("old", "Old")), { maxBytes: 64 * 1024 });
+      const twoPlain = parseTheme(JSON.stringify({ ...copy("plain", "Plain"), version: 2 }), { maxBytes: 64 * 1024 });
+      const twoWithSurface = parseTheme(surfaceFile({ density: "roomy" }), { maxBytes: 64 * 1024 });
+      if (!one.ok || !twoPlain.ok || !twoWithSurface.ok) throw new Error("a fixture no longer parses");
+      expect(JSON.parse(themeFileText(one.theme)).version).toBe(1);
+      expect(JSON.parse(themeFileText(twoPlain.theme)).version).toBe(1);
+      expect(JSON.parse(themeFileText(twoWithSurface.theme)).version).toBe(2);
+      // A stale version on the object never reaches the file: the content decides.
+      expect(JSON.parse(themeFileText({ ...twoWithSurface.theme, version: 1 })).version).toBe(2);
+      expect(Object.keys(JSON.parse(themeFileText(one.theme)))[0]).toBe("version");
+    });
+
+    it("keeps an imported version 1 file at version 1 in the library", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("old", "Old"))));
+      await userEvent.click(await screen.findByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}").themes[0].version).toBe(1);
     });
   });
 

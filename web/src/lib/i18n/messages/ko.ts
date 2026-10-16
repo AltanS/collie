@@ -46,7 +46,7 @@ export const ko: Dictionary = {
   "theme.import": "가져오기",
   "theme.export": "내보내기",
   "theme.remove": "제거",
-  "theme.import.promise": "테마는 색상과 글꼴만 변경합니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.",
+  "theme.import.promise": "테마는 색상과 글꼴만 변경합니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.", // TODO wordsmith
   "theme.preview.title": "이 테마를 가져오시겠습니까?",
   "theme.preview.by": "작성자: {author}",
   "theme.preview.halves.both": "라이트 및 다크",

@@ -8,6 +8,7 @@ import {
   THEME_VERSION,
   THEME_VERSIONS_READ,
   contrast,
+  versionOf,
   contrastReport,
   fillHalves,
   isColour,
@@ -96,7 +97,7 @@ describe("parseTheme", () => {
     expect(result).toEqual({
       ok: true,
       theme: {
-        version: 2,
+        version: 1,
         id: "mine",
         name: "Mine",
         author: "Me",
@@ -462,12 +463,16 @@ function v2(extra: JsonObject): string {
 }
 
 describe("versions", () => {
-  it("reads version 1 and version 2, and hands back version 2", () => {
+  it("reads version 1 and version 2, and hands back the lowest version that holds the content", () => {
     expect(THEME_VERSIONS_READ).toEqual([1, 2]);
     const one = parseTheme(file({}), CAP);
-    const two = parseTheme(v2({}), CAP);
-    expect(one.ok && one.theme.version).toBe(2);
-    expect(two.ok && two.theme.version).toBe(2);
+    const twoPlain = parseTheme(v2({}), CAP);
+    const twoWithSurface = parseTheme(v2({ surface: { radius: "soft" } }), CAP);
+    expect(one.ok && one.theme.version).toBe(1);
+    expect(twoPlain.ok && twoPlain.theme.version).toBe(1);
+    expect(twoWithSurface.ok && twoWithSurface.theme.version).toBe(2);
+    expect(one.ok && versionOf(one.theme)).toBe(1);
+    expect(twoWithSurface.ok && versionOf(twoWithSurface.theme)).toBe(2);
   });
 
   it("gives a version 1 file no surface, which is every default word", () => {

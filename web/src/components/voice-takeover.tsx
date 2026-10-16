@@ -237,23 +237,27 @@ export function VoiceTakeover({
           {phase === "recording" && (
             // The countdown: empty and invisible until speech was heard and then the quiet countdown begins;
             // the hook writes its offset and opacity per frame. `pathLength` makes 100 the whole circle.
-            <svg
-              ref={ringRef}
-              aria-hidden
-              viewBox="-24 -24 48 48"
-              className="pointer-events-none absolute -inset-1.5 size-12 -rotate-90 opacity-0"
-            >
-              <circle r="20" fill="none" strokeWidth="2.5" className="stroke-muted" />
-              <circle
-                r="20"
-                fill="none"
-                strokeWidth="2.5"
-                pathLength={100}
-                strokeDasharray={100}
-                strokeDashoffset={100}
-                className="stroke-primary"
-              />
-            </svg>
+            // The wrapper takes the inset, the svg fills it: index.css pins an svg's own size to the
+            // default spacing step, so a theme's `roomy` density grows this box and the ring with it.
+            <span aria-hidden className="pointer-events-none absolute -inset-1.5">
+              <svg
+                ref={ringRef}
+                aria-hidden
+                viewBox="-24 -24 48 48"
+                className="block size-full -rotate-90 opacity-0"
+              >
+                <circle r="20" fill="none" strokeWidth="2.5" className="stroke-muted" />
+                <circle
+                  r="20"
+                  fill="none"
+                  strokeWidth="2.5"
+                  pathLength={100}
+                  strokeDasharray={100}
+                  strokeDashoffset={100}
+                  className="stroke-primary"
+                />
+              </svg>
+            </span>
           )}
           {transcribing && (
             // The single indeterminate arc, turning on the ring's own track. THE ARC TURNS INSIDE THE
@@ -262,18 +266,20 @@ export function VoiceTakeover({
             // second, so the pane's scrollbar flashed at the right edge (Pixel, 2026-10-11). An <svg>
             // clips its own content, so a turn inside it adds nothing to anyone's overflow. Reduced
             // motion stops the turn, hides the arc and shows the whole ring at 40%.
-            <svg aria-hidden viewBox="-24 -24 48 48" className="pointer-events-none absolute -inset-1.5 size-12 -rotate-90">
-              <circle r="20" fill="none" strokeWidth="2.5" className="stroke-muted" />
-              <circle
-                r="20"
-                fill="none"
-                strokeWidth="2.5"
-                pathLength={100}
-                strokeDasharray="28 72"
-                className="animate-spin stroke-primary motion-reduce:animate-none motion-reduce:hidden"
-              />
-              <circle r="20" fill="none" strokeWidth="2.5" className="hidden stroke-primary opacity-40 motion-reduce:block" />
-            </svg>
+            <span aria-hidden className="pointer-events-none absolute -inset-1.5">
+              <svg aria-hidden viewBox="-24 -24 48 48" className="block size-full -rotate-90">
+                <circle r="20" fill="none" strokeWidth="2.5" className="stroke-muted" />
+                <circle
+                  r="20"
+                  fill="none"
+                  strokeWidth="2.5"
+                  pathLength={100}
+                  strokeDasharray="28 72"
+                  className="animate-spin stroke-primary motion-reduce:animate-none motion-reduce:hidden"
+                />
+                <circle r="20" fill="none" strokeWidth="2.5" className="hidden stroke-primary opacity-40 motion-reduce:block" />
+              </svg>
+            </span>
           )}
         </div>
       </div>

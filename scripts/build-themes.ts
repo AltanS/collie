@@ -53,7 +53,7 @@ if (process.argv.includes("--check")) {
     console.error("build-themes: web/src/themes.css is stale. Run `bun scripts/build-themes.ts`.");
     process.exit(1);
   }
-  console.log(`build-themes: web/src/themes.css is current (${files.length} theme files)`);
+  console.log(`build-themes: web/src/themes.css (${files.length} theme files) and the SURFACE line of web/public/theme-init.js are current`);
 } else {
   writeFileSync(target, result.css);
   writeFileSync(initTarget, init);

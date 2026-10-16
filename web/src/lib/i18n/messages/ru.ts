@@ -43,7 +43,7 @@ export const ru: Dictionary = {
   "theme.import": "Импорт",
   "theme.export": "Экспорт",
   "theme.remove": "Удалить",
-  "theme.import.promise": "Тема меняет только цвета и шрифт. Она не может выполнять код, загружать файлы или обращаться к серверу.",
+  "theme.import.promise": "Тема меняет только цвета и шрифт. Она не может выполнять код, загружать файлы или обращаться к серверу.", // TODO wordsmith
   "theme.preview.title": "Импортировать эту тему?",
   "theme.preview.by": "Автор: {author}",
   "theme.preview.halves.both": "Светлая и темная",

@@ -13,7 +13,6 @@ import { hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
   DEFAULT_THEME_ID,
-  THEME_VERSION,
   contrastReport,
   fillHalves,
   parseTheme,
@@ -23,6 +22,7 @@ import {
   type RefusalCode,
   type Theme,
   type ThemeToken,
+  versionOf,
 } from "@/lib/theme/schema";
 import {
   LIBRARY_MAX,
@@ -154,11 +154,12 @@ function downloadText(name: string, text: string): boolean {
 }
 
 /**
- * The text of an exported file: the theme as the parser kept it, two-space indent, and always the
- * version this build writes. A version 1 file comes back out as version 2 with the same content.
+ * The text of an exported file: the theme as the parser kept it, two-space indent, and the lowest
+ * version that holds it: 2 only when it carries a shape, so a colour-only export still imports into
+ * a Collie that reads version 1 alone.
  */
 export function themeFileText(theme: Theme): string {
-  return JSON.stringify({ ...theme, version: THEME_VERSION }, null, 2);
+  return JSON.stringify({ ...theme, version: versionOf(theme) }, null, 2);
 }
 
 // ── The preview sheet ───────────────────────────────────────────────────────────────────────────

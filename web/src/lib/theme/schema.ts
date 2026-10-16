@@ -7,7 +7,9 @@
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
-// VERSIONS. The parser reads 1 and 2 and always hands back a version 2 theme, so an export writes 2.
+// VERSIONS. The parser reads 1 and 2 and hands back the LOWEST version that holds the content: 2
+// when the theme carries a surface block, 1 when it does not. So a colour-only theme is stored and
+// exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
 // `surface` block in a file that says version 1 is refused: the file is older than the block.
 //
@@ -24,7 +26,7 @@ import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObj
 import { SHIPPED_FONTS } from "../shipped-fonts";
 import { SURFACE_TOKENS, isSurfaceToken, surfaceWordOf, surfaceWords, type Surface, type SurfaceToken } from "./surface";
 
-/** The schema version this build writes. Every parsed theme carries it, so an export says 2. */
+/** The highest schema version this build reads and writes. Only a theme with a shape needs it. */
 export const THEME_VERSION = 2;
 
 /** The schema versions this build reads. A file with any other `version` is refused. */
@@ -100,7 +102,7 @@ export const DEFAULT_THEME_ID: ShippedThemeId = "collie";
 export interface Half extends Partial<Record<ThemeToken, string>> {}
 
 export interface Theme {
-  /** What the parser hands back is always `THEME_VERSION`; a literal in a test may still say 1. */
+  /** The lowest version that holds the content: 2 with a `surface` block, 1 without (`versionOf`). */
   version: ThemeVersion;
   id: string;
   name: string;
@@ -221,7 +223,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
 
   if (refusals.length > 0 || id === undefined || name === undefined) return refuse(refusals);
 
-  const theme: Theme = { version: THEME_VERSION, id, name };
+  const theme: Theme = { version: surface === undefined ? 1 : 2, id, name };
   // Assigned, never spread: an absent field must carry NO key, so an export round-trips to the
   // same text the person imported.
   if (author !== undefined) theme.author = author;
@@ -269,6 +271,11 @@ function unknownKey(path: string): Refusal {
 }
 
 const READ_TEXT = THEME_VERSIONS_READ.join(" and ");
+
+/** The version a theme is written as: 2 when it carries a shape, 1 when it does not. */
+export function versionOf(theme: Theme): ThemeVersion {
+  return theme.surface === undefined ? 1 : 2;
+}
 
 function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undefined {
   const value = asJsonNumber(doc.version);

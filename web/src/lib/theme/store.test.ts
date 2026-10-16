@@ -289,7 +289,7 @@ describe("the library", () => {
     store.addImported(midnight());
     const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
     expect(stored.version).toBe(1);
-    expect(stored.themes).toEqual([{ ...midnight(), version: 2 }]);
+    expect(stored.themes).toEqual([midnight()]);
   });
 });
 
@@ -418,6 +418,21 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     Object.assign(theme, { surface: { radius: "9px" } });
     store.applyTheme(theme, "imported");
     expect(root().getAttribute("style") ?? "").toBe("");
+  });
+
+  it("stores each theme at the lowest version that holds it", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("plain"));
+    store.addImported(midnight("plain-two", { version: 2 }));
+    store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft" } }));
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
+    expect(stored.version).toBe(1);
+    expect(stored.themes.map((t: Theme) => [t.id, t.version])).toEqual([
+      ["plain", 1],
+      ["plain-two", 1],
+      ["shaped", 2],
+    ]);
+    expect(store.library().map((t) => t.version)).toEqual([1, 1, 2]);
   });
 
   it("re-reads a stored version 2 theme with its surface at startup", async () => {

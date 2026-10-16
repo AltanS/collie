@@ -41,7 +41,7 @@ export const fr: Dictionary = {
   "theme.import": "Importer",
   "theme.export": "Exporter",
   "theme.remove": "Supprimer",
-  "theme.import.promise": "Un thème modifie uniquement les couleurs et la police de caractères. Il ne peut pas exécuter de code, charger de fichiers ou joindre un serveur.",
+  "theme.import.promise": "Un thème modifie uniquement les couleurs et la police de caractères. Il ne peut pas exécuter de code, charger de fichiers ou joindre un serveur.", // TODO wordsmith
   "theme.preview.title": "Importer ce thème ?",
   "theme.preview.by": "Par {author}",
   "theme.preview.halves.both": "Clair et sombre",

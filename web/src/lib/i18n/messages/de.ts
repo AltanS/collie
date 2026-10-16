@@ -46,7 +46,7 @@ export const de: Dictionary = {
   "theme.import": "Importieren",
   "theme.export": "Exportieren",
   "theme.remove": "Entfernen",
-  "theme.import.promise": "Ein Design ändert nur Farben und Schriftart. Es kann keinen Code ausführen, keine Dateien laden und keinen Server erreichen.",
+  "theme.import.promise": "Ein Design ändert nur Farben und Schriftart. Es kann keinen Code ausführen, keine Dateien laden und keinen Server erreichen.", // TODO wordsmith
   "theme.preview.title": "Dieses Design importieren?",
   "theme.preview.by": "Von {author}",
   "theme.preview.halves.both": "Hell und dunkel",
