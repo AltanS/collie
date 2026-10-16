@@ -29,6 +29,8 @@ export const SEND_REASONS = [
   "stale_surface",
   "pane_gone",
   "write_failed",
+  // refused: a text of more than one line on a pane whose newline key is unknown (no profile)
+  "multiline",
   // typed_not_submitted: the text is in the box, Enter was not sent
   "mismatch",
   "changed",

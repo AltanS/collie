@@ -136,6 +136,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Windows: the doctor surface tests compare platform paths.** The asserts build the examples and inbox paths with join, as doctor does.
 - **A mixed-version crew no longer types text without a check.** A 1.21 phone's text reply to a member on this build, and this build's text reply to a member that sends no Surface reader version, are each refused at once with a sentence that says which machine to update, and nothing is typed. Keys and unsubmitted text work as before. `collie doctor` and `collie crew status` show each member's reader version, or `none (older build)`.
 - **Five composer tests follow the new sentences.** The locked-field, contested, torn and cap assertions read the wording of this release.
+- **A multi-line text on a pane with no profile is refused as `multiline`.** The receipt used to say `not_free`, though the box was free; the bridge's sentence still says to send one line at a time.
 
 ### Packaging
 

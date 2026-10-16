@@ -749,7 +749,7 @@ export class SendProtocol {
       const lead = request.mode === "command" ? null : reservedLead(lines[0] ?? "", leads);
       if (lead !== null) throw new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
       if (lines.length > 1 && profile === null) {
-        throw new Ended("refused", "not_free", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
+        throw new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
       }
     }
 

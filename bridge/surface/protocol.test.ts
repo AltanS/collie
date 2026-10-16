@@ -366,9 +366,11 @@ describe("a harness with no profile", () => {
     expect(pane.calls).toEqual([]);
   });
 
-  test("multi-line text on a pane with no profile is refused: its newline key is unknown", async () => {
+  test("multi-line text on a pane with no profile is refused multiline: its newline key is unknown", async () => {
     const { pane, send } = rig({ mode: "generic" });
-    expect((await send("a\nb", { rowsHash: "whatever" })).receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    const answer = await send("a\nb", { rowsHash: "whatever" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "multiline", keys: [] });
+    expect(answer.detail).toContain("one line at a time");
     expect(pane.calls).toEqual([]);
   });
 
