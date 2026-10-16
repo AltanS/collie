@@ -331,6 +331,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
             secretGeneration(data, members),
             reach(data, members, reaches),
             memberVersions(deps, members, probes),
+            ...memberSurface(members, probes),
           ].map(aboutCrew),
         ]
       : [];
@@ -2274,6 +2275,27 @@ function memberVersions(
       ` working${note}`,
     `\`collie crew update ${behind.map((e) => e.id).join(" ")}\` here, or \`collie update\` on each`,
   );
+}
+
+/**
+ * The Surface reader version each answering member sent on its `hello` (M56 spec 09), one quiet row.
+ * A member that sent none is an older build: the lead refuses a text reply to it, because that build
+ * types blind, and this row names it so the refusal has a reason on screen. No row when nobody answered.
+ * Never a warning: an older member is a fact about its build, and the keys still work.
+ */
+function memberSurface(
+  members: readonly TrustedMember[],
+  probes: Map<string, PeerOutcome<HelloResult>>,
+): Finding[] {
+  const parts: string[] = [];
+  for (const member of members) {
+    const outcome = probes.get(member.memberId);
+    if (outcome?.ok !== true) continue;
+    const version = outcome.value.surfaceVersion;
+    parts.push(`${member.memberId} ${version === undefined ? "none (older build)" : `reader ${String(version)}`}`);
+  }
+  if (parts.length === 0) return [];
+  return [ok("member-surface", `Surface reader version: ${parts.join(", ")}`)];
 }
 
 // ── Production wiring ────────────────────────────────────────────────────────

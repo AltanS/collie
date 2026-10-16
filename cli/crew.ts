@@ -1383,6 +1383,8 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
       // fed from it, on the strict per-poll budget that every real read runs under.
       for (const line of dataLines(reach)) emit(line.text, line.tone);
       for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
+      // The Surface reader it sent on `hello` (M56): none means an older build, to which this lead refuses text.
+      emit(`    surface ${outcome.value.surfaceVersion === undefined ? "none (older build)" : `reader ${String(outcome.value.surfaceVersion)}`}`, "dim");
       // The two phases of RFC §5, for this member: what it says it holds, and whether its listener
       // came up holding it (§18.17). Lead-side only — a peer has no roster to report anchoring for.
       if (data.lead === null) {

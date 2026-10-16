@@ -329,11 +329,12 @@ interface HelloBody {
   protocol: number;
   member: string;
   version?: string;
+  surfaceVersion?: number;
 }
 
 /** A `hello` answer: §6's two headers, the optional §5 `version`, and an HTTP `Date` the clock reads. */
 function hello(
-  over: { version?: string | null; date?: number | null; memberId?: string } = {},
+  over: { version?: string | null; date?: number | null; memberId?: string; surfaceVersion?: number } = {},
 ): Response {
   const headers = new Headers({
     "content-type": "application/json",
@@ -344,6 +345,7 @@ function hello(
   const version = over.version === undefined ? "1.0.0-alpha.12" : over.version;
   const body: HelloBody = { protocol: CREW_PROTOCOL_VERSION, member: over.memberId ?? "laptop" };
   if (version !== null) body.version = version;
+  if (over.surfaceVersion !== undefined) body.surfaceVersion = over.surfaceVersion;
   return new Response(JSON.stringify(body), { status: 200, headers });
 }
 
@@ -1390,6 +1392,22 @@ describe("collie doctor — the crew checks", () => {
     expect(f?.detail).toContain("pre-1.0.0-alpha.12 (not reported)");
     expect(f?.detail).toContain("laptop");
     expect(code).toBe(EXIT.OK);
+  });
+
+  test("member-surface: names each member's reader version, or none for an older build", async () => {
+    const withReader = await findings(
+      harness(LEAD, [hello({ surfaceVersion: 2 })], { files: { ...healthyFiles(), ...markerFile(LEAD) } }),
+    );
+    const named = withReader.byCheck.get("member-surface");
+    expect(named?.status).toBe("ok");
+    expect(named?.scope).toBe("crew");
+    expect(named?.detail).toContain("laptop reader 2");
+    const silent = await findings(
+      harness(LEAD, [hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } }),
+    );
+    expect(silent.byCheck.get("member-surface")?.status).toBe("ok");
+    expect(silent.byCheck.get("member-surface")?.detail).toContain("laptop none (older build)");
+    expect(silent.code).toBe(EXIT.OK);
   });
 
   test("member-versions: same version everywhere is one quiet ✓", async () => {
