@@ -182,10 +182,19 @@ Each harness ships its own buttons, in this order:
 | Codex | Model, Compact, Resume |
 | pi | Model, Compact, Tree, Resume |
 | omp | Model, Compact, Tree, Resume |
+| opencode | Model, Compact, Resume |
+| Grok Build | Model, Compact, Resume |
+| Muse Code | Model, Effort, Compact, Resume |
+| Antigravity (agy) | Model, Compact, Resume |
 
-Codex and pi have no Effort button. Codex's `/model` picker sets the model and the reasoning effort
-on one screen, so one button already reaches both. pi has no effort or thinking command at all;
-that dial lives inside `/settings`, a modal the keys pad cannot usefully drive.
+Codex, Grok and Antigravity have no Effort button, because their `/model` picker also sets the
+reasoning effort. A bare `/effort` in Grok opens no picker at all.
+
+pi and opencode have no effort command. pi keeps that dial inside `/settings`, a modal the keys pad
+cannot usefully drive, and opencode cycles its variants on a key.
+
+opencode spells two buttons its own way: Model sends `/models` and Resume sends `/sessions`. Its
+Compact works once the session holds a turn, because opencode offers `/compact` only then.
 
 omp's Tree button sits between Compact and Resume. It opens omp's own session tree in the mirror, a
 picker that jumps to any earlier point in the session. The same command, `/tree`, is also in omp's

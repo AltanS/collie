@@ -38,6 +38,16 @@ describe("commandsFor", () => {
     expect(cmds.find((c) => c.command === "/always-approve")?.dangerous).toBe(true);
   });
 
+  it("returns the Muse catalog for 'muse'", () => {
+    const cmds = commandsFor("muse");
+    // Muse 1.4.7 completes /mod to /model only; its configuration doc's /models does not exist.
+    expect(cmds.some((c) => c.command === "/model")).toBe(true);
+    expect(cmds.some((c) => c.command === "/models")).toBe(false);
+    // Both start a fresh session; Muse's docs differ only in whether the scrollback is wiped.
+    expect(cmds.find((c) => c.command === "/new")?.dangerous).toBe(true);
+    expect(cmds.find((c) => c.command === "/clear")?.dangerous).toBe(true);
+  });
+
   it("returns the omp catalog for 'omp'", () => {
     const cmds = commandsFor("omp");
     expect(cmds.length).toBeGreaterThan(0);
@@ -121,7 +131,7 @@ describe("commandsFor", () => {
     }
   });
 
-  it.each(["claude", "codex", "pi", "opencode", "omp", "grok"])(
+  it.each(["claude", "codex", "pi", "opencode", "omp", "grok", "muse"])(
     "exposes for '%s' a 'common' subset that is a proper, non-empty subset of all commands",
     (agent) => {
       const all = commandsFor(agent);
@@ -133,13 +143,14 @@ describe("commandsFor", () => {
     },
   );
 
-  it.each(["claude", "codex", "pi", "opencode", "omp", "grok"])(
+  it.each(["claude", "codex", "pi", "opencode", "omp", "grok", "muse"])(
     "'%s' entries are well-formed (slash-prefixed, unique, arg hints only when takesArg)",
     (agent) => {
       const all = commandsFor(agent);
       const seen = new Set<string>();
       for (const c of all) {
-        expect(c.command.startsWith("/")).toBe(true);
+        // Codex names a skill with its `$` mention sigil; every other row is a slash command.
+        expect(c.command.startsWith("/") || (agent === "codex" && c.command.startsWith("$"))).toBe(true);
         expect(seen.has(c.command)).toBe(false); // no duplicate commands within a catalog
         seen.add(c.command);
         expect(c.description.length).toBeGreaterThan(0);
@@ -148,6 +159,59 @@ describe("commandsFor", () => {
       }
     },
   );
+});
+
+describe("built-in skills in the shipped catalogs", () => {
+  // Each row was seen in the agent's own completion on 2026-10-15; the per-agent picks are pinned so
+  // a regeneration that drops one is a red test rather than a quiet gap.
+  const names = (agent: string) => commandsFor(agent).map((c) => c.command);
+
+  it("lists Codex's five system skills as `$` mentions", () => {
+    expect(names("codex").filter((c) => c.startsWith("$"))).toEqual([
+      "$imagegen",
+      "$openai-docs",
+      "$review-agent",
+      "$skill-creator",
+      "$skill-installer",
+    ]);
+  });
+
+  it("lists opencode's one built-in skill, which its `/` menu does not show", () => {
+    expect(names("opencode")).toContain("/customize-opencode");
+  });
+
+  it("lists Grok's bundled skills a person can invoke, and none it hides", () => {
+    const grok = names("grok");
+    for (const skill of ["/build-with-ai", "/create-skill", "/pr-babysit", "/resume-claude", "/statusline"]) {
+      expect(grok).toContain(skill);
+    }
+    for (const hidden of ["/docx", "/pdf", "/pptx"]) expect(grok).not.toContain(hidden);
+  });
+
+  it("lists only the built-in skills agy's default agent puts in its `/` menu", () => {
+    const agy = names("agy");
+    for (const skill of ["/agy-customizations", "/antigravity-guide", "/plugin"]) expect(agy).toContain(skill);
+    for (const off of ["/automation", "/generative_ui", "/run-workflow"]) expect(agy).not.toContain(off);
+  });
+
+  it("lists Muse's ten user-invocable bundled skills, and none it hides", () => {
+    const muse = names("muse");
+    const ten = [
+      "/create-plugin",
+      "/create-skill",
+      "/doctor",
+      "/grill",
+      "/import",
+      "/manage-settings",
+      "/migrate",
+      "/plan",
+      "/resume-claude",
+      "/resume-codex",
+    ];
+    expect(ten).toHaveLength(10);
+    for (const skill of ten) expect(muse).toContain(skill);
+    for (const hidden of ["/taste", "/git", "/read-session"]) expect(muse).not.toContain(hidden);
+  });
 });
 
 // The operator's own rows (commands.toml → /api/config). The shipped catalogs cannot carry a

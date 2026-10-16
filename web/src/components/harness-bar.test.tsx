@@ -44,7 +44,7 @@ describe("HarnessBar", () => {
   });
 
   it("renders nothing for an agent with no bar", () => {
-    const { container } = render(<HarnessBar agent="grok" onRun={took()} />);
+    const { container } = render(<HarnessBar agent="hermes" onRun={took()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
