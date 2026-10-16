@@ -410,10 +410,13 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
  * the box rows included.
  */
 export function readCuesFor(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
-  if (idle?.dialogsInBox !== true || frame === null) return readCues(rows, frame);
+  const plain = readCues(rows, frame);
+  if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
   const at = frame.top;
   const down = readCues(rows.slice(at), null);
+  // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
+  if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
 }
 

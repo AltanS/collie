@@ -351,13 +351,13 @@ const BRACKET = /\([^()]*\)/gu;
  * spinner with text after its bracket), the spinner glyph at its start and the digits inside its
  * brackets read as fixed marks, so a timer and a token count that ticked between two reads
  * are not a moved screen, a probe that changed two rows, or a row that gained text. A row that the
- * profile names as a running row (`signs`) shows its braille spinner glyph as a fixed mark. Every other
+ * profile names as a running row (`signs`) shows its braille spinner glyph and its digits as fixed marks. Every other
  * character of the row still counts: a row such as "2. No, tell Claude... (3m)" that changes its
  * words, or stops being a running row, still changes every compare.
  */
 export function steadyRow(row: string, signs: readonly RegExp[] = []): string {
   // A row the profile names as a running row (idle.runningRows) shows its spinner glyph as a fixed mark.
-  if (signs.some((sign) => sign.test(row.trimEnd()))) return row.replace(/[\u2800-\u28ff]/gu, "*");
+  if (signs.some((sign) => sign.test(row.trimEnd()))) return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
   // A spinner row with or without its bracket group reads as the glyph mark and the verb alone.
   const verb = SPINNER_VERB_ROW.exec(row);
   if (verb !== null) return `${verb[1] ?? ""}*${verb[2] ?? ""}`;

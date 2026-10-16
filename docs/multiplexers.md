@@ -478,6 +478,7 @@ types into it with stricter generic rules.
 | ----- | ------------------- | --------------- | ----------------------- |
 | OpenCode | Queues the message | `[Pasted ~12 lines]` | 1.18.33 |
 | pi | Steers the turn; Alt+Enter queues | `[paste #2 +12 lines]` | 1.1.0 |
+| OMP | Steers the turn; Ctrl+Q queues | `📄 #3` chip | 18.4.10 |
 
 - **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line. Collie finds the
   box by those rows. A message sent into a running turn waits in the transcript with a `QUEUED`
@@ -489,6 +490,13 @@ types into it with stricter generic rules.
   Collie reads the key hints and the list from the top rule down. In a running turn, Enter steers the
   turn, and Collie sends Alt+Enter instead. pi shows the message as a `Follow-up:` row above the box.
   A box taller than 30 rows is read as a dialog, not a draft.
+
+- **OMP** lets you choose the border style of its box, so Collie knows five shapes: the open box with a
+  status row on top (the default), a rule pair, a rule with no bottom rule, a pair with an empty
+  middle, and a borderless box. Collie cuts the hint that OMP draws on the right of the prompt row.
+  In a running turn, Enter steers the turn and Ctrl+Q queues the message after it. OMP lists a
+  queued message in an `After yield` block above the box. OMP can show a dim completion after your
+  text. A send that meets one stops before Enter and leaves the text in the box.
 
 A version above the checked one still works, and the receipt says `provisional`.
 

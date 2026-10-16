@@ -216,8 +216,10 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
     return { surface: { revision: input.revision, turn: "unknown", modal: "unknown", composer: "unreachable" }, frame: null, cues: null };
   }
   const rows = input.rows;
-  const frame = idle === null ? null : findInputFrame(rows, idle);
-  const cues = readCuesFor(rows, frame, idle);
+  const found = idle === null ? null : findInputFrame(rows, idle);
+  const cues = readCuesFor(rows, found, idle);
+  // A dialog drawn in the box's place (`idle.dialogsInBox`) hides the box: the screen makes no claim about it.
+  const frame = idle?.dialogsInBox === true && cues.strength === "strong" ? null : found;
 
   const turn: SurfaceTurn = frame === null || idle === null ? "unknown" : runningSign(rows, frame, idle.runningRows) ? "running" : "idle";
 

@@ -557,3 +557,38 @@ describe("the interior walk on rules with no prompt glyph (M56 spec 14)", () => 
     expect(findInputFrame(lines(RULE, ...body, RULE, ...footer), PI)).toBeNull();
   });
 });
+
+// M56 spec 14: OMP lets the person pick the border style, so its profile names five frame shapes.
+describe("frame alternates (M56 spec 14)", () => {
+  const OMP = requireProfile("omp").idle;
+  const status = " π · ⬢ no-model · 🗑 sandbox · ⑂ master";
+  const top = " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 ▶──4%──────────";
+
+  it("finds the open box: a status row on top, the prompt row `╰─`, and indented rows after it", () => {
+    const frame = findInputFrame(lines("reply", "", top, "╰─ first line", "   second line"), OMP)!;
+    expect(frame.interior.text).toBe("first line second line");
+    expect(frame.top).toBe(2);
+    expect(findInputFrame(lines("reply", "", top, "╰─"), OMP)!.interior.text).toBe("");
+  });
+
+  it("finds the old open box with `│` rows and the prompt row last", () => {
+    const rows = lines("reply", "╭── π  > ⬢ Auto > ⑂ master ▶────────", "│  wrapped draft row", "╰─ end");
+    expect(findInputFrame(rows, OMP)!.interior.text).toBe("wrapped draft row end");
+  });
+
+  it("finds the rule pair with a `❯` prompt row, the rule line with no bottom rule, and the borderless box", () => {
+    expect(findInputFrame(lines("reply", RULE, "❯ hello", RULE, status), OMP)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", RULE, "❯ hello", "", status), OMP)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", RULE, "", "❯ hello", status), OMP)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", RULE, "", RULE, status), OMP)!.interior.text).toBe("");
+  });
+
+  it("cuts the right-hand hint off the prompt row", () => {
+    const hint = `❯${" ".repeat(60)}⇧⇥ to change thinking effort`;
+    expect(findInputFrame(lines("reply", RULE, hint, RULE, status), OMP)!.interior.text).toBe("");
+  });
+
+  it("finds no box in a plain transcript", () => {
+    expect(findInputFrame(lines("a", "   indented", "b"), OMP)).toBeNull();
+  });
+});

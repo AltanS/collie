@@ -1747,7 +1747,8 @@ describe("a send into a running turn", () => {
   });
 
   test("steadyRow masks the braille spinner of a row the profile names as a running row (M56 spec 14)", () => {
-    const signs = [/^─+\s+[⠀-⣿]\s+Working\b/u];
+    const signs = [/^─+\s+[⠀-⣿]\s+Working\b/u, /^\s?[⠀-⣿]\s+\d+s\s.*▶/u];
+    expect(steadyRow(" ⠇ 4s > Haiku 4.5 ▶──5%──", signs)).toBe(steadyRow(" ⠹ 5s > Haiku 4.5 ▶──5%──", signs));
     expect(steadyRow("── ⠴ Working ─────", signs)).toBe(steadyRow("── ⠧ Working ─────", signs));
     expect(steadyRow("── ⠴ Working ─────")).not.toBe(steadyRow("── ⠧ Working ─────"));
     // Another row keeps its glyphs, and a changed word still changes the row.

@@ -278,6 +278,28 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "queues",
   },
   {
+    id: "omp",
+    binary: "omp",
+    versionOutput: "omp/18.6.1\n",
+    version: "18.6.1",
+    above: "18.6.1",
+    takes: [
+      { anchor: "top", row: "╭── π  > ⬢ Auto > 🗑 …/scratchpad/omp-sandbox > ⑂ master > ◫ 11.5%/200K ⟲ > (sub) ▶────────" },
+      { anchor: "top", row: " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 ▶──4%──────────" },
+      { anchor: "top", row: " ⠇ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 ▶──5%──────────" },
+      { anchor: "prompt", row: "╰─ hello there", draft: "hello there" },
+      { anchor: "prompt", row: "│  hello there", draft: "hello there" },
+      { anchor: "prompt", row: `╰─${" ".repeat(60)}⇧⇥ to change thinking effort`, draft: "" },
+    ],
+    refuses: [
+      { anchor: "top", row: " π · ⬢ no-model · 🗑 collie-omp-shape-sandbox" },
+      { anchor: "prompt", row: "   hello there" },
+    ],
+    collapse: { text: "📄 #3", group: "", value: "" },
+    enterWhileRunning: "steers",
+    queueKey: "ctrl+q",
+  },
+  {
     id: "pi",
     binary: "pi",
     versionOutput: "0.87.1\n",
@@ -334,7 +356,8 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
 
   it(`${c.id}: matches its own long-paste form`, () => {
     const hit = new RegExp(profile().collapse.pattern, "u").exec(c.collapse.text);
-    expect(hit?.groups?.[c.collapse.group]).toBe(c.collapse.value);
+    if (c.collapse.group === "") expect(hit).not.toBeNull();
+    else expect(hit?.groups?.[c.collapse.group]).toBe(c.collapse.value);
   });
 
   it(`${c.id}: verified through the ledger row, provisional above it`, () => {
@@ -379,6 +402,13 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawOpencode(), ["idle", "frame", "walk"], "edges")).path).toMatch(/^idle\.frame\./u);
     expect(failure(change(rawClaude(), ["idle", "frame", "rows"], "^x$")).path).toBe("idle.frame.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "bottom", "open"], true)).path).toBe("idle.frame.bottom.open");
+  });
+
+  it("names the alternate frame shape in the path of a bad field", () => {
+    const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
+    expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
+    expect(failure(change(raw, ["idle", "frameAlternates"], "no list")).path).toBe("idle.frameAlternates");
+    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
   });
 
   it("accepts a profile that names no hook", () => {

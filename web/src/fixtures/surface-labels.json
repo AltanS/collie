@@ -2839,7 +2839,7 @@
   "omp--v18-4-claude-titled.txt": {
    "harness": "omp",
    "version": "18.4",
-   "state": "draft"
+   "state": "idle"
   },
   "omp--v18-4-claude-wrapped.txt": {
    "harness": "omp",

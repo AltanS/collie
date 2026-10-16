@@ -420,8 +420,18 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
 
   let top = last;
   if (c.interior.rows !== null) {
-    while (top >= 0 && bottom - top <= budget && c.interior.rows.test(texts[top]!.trimEnd())) top--;
-    top++;
+    let stop = -1;
+    while (top >= 0 && bottom - top <= budget && c.interior.rows.test(texts[top]!.trimEnd())) {
+      // A row that is the top edge and cannot be a prompt row ends the box: a draft's indented rows
+      // above it are the transcript's.
+      if (anchored(texts[top]!, c.top) !== null && (isBlank(texts[top]!) ? !c.prompt.pattern.test("") : anchored(texts[top]!, c.prompt) === null)) {
+        stop = top;
+        break;
+      }
+      top--;
+    }
+    if (stop >= 0) top = stop;
+    else top++;
     if (top > last || bottom - top > budget) return null;
   } else {
     while (top >= 0 && bottom - top <= budget && anchored(texts[top]!, c.top) === null) top--;
@@ -511,6 +521,27 @@ export function coveredFrame(rows: readonly FrameRow[], frame: Frame, idle: Idle
  * blank top edge sits straight over the prompt row, and two blank rows in a row end the box.
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
+  const found = findLayout(rows, idle);
+  if (found !== null || idle.frameAlternates === undefined) return found;
+  for (const alternate of alternatesOf(idle)) {
+    const hit = findLayout(rows, alternate);
+    if (hit !== null) return hit;
+  }
+  return null;
+}
+
+const compiledAlternates = new WeakMap<IdleProfile, readonly IdleProfile[]>();
+
+/** The profile's other frame shapes, each as an idle block of its own with the main shape swapped for it. */
+function alternatesOf(idle: IdleProfile): readonly IdleProfile[] {
+  const known = compiledAlternates.get(idle);
+  if (known !== undefined) return known;
+  const list = (idle.frameAlternates ?? []).map((frame): IdleProfile => Object.assign({}, idle, { frame, frameAlternates: undefined }));
+  compiledAlternates.set(idle, list);
+  return list;
+}
+
+function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const c = compile(idle);
   let end = rows.length;
   while (end > 0 && isBlank(rowText(rows[end - 1]!))) end--;

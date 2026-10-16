@@ -90,6 +90,52 @@ export interface FrameTrailer {
   readonly maxPad: number;
 }
 
+/** One shape of the input box: its anchors, bounds and the fields of its walk (`idle.frame`). */
+export interface FrameLayout {
+  readonly top: FrameAnchor;
+  /** Must hold the named group `draft`: the hole where the person's text sits. */
+  readonly prompt: FrameAnchor;
+  /** With `open` set (interior walk only), the box has no bottom edge: it ends on the last row of the screen. */
+  readonly bottom: FrameAnchor;
+  /** Spaces in front of a wrapped draft row inside the box. */
+  readonly continuationIndent: number;
+  readonly maxDraftRows: number;
+  /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
+   *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
+  readonly maxTailRows: number;
+  /**
+   * How the walk finds the box. `edges` (the default) walks up from the bottom edge: rows that are
+   * no edge are the wrapped draft, the first edge row is the prompt row, the top edge is over it.
+   * `interior` walks up from the bottom edge (or from the last row, with no bottom anchor) to the
+   * nearest top edge. The prompt row is then the first row under it that matches the prompt anchor,
+   * and a blank row may match, so a box with no prompt glyph can be framed.
+   */
+  readonly walk?: FrameWalk;
+  /**
+   * The interior walk only. A regular expression source: the rows of the box are one unbroken run
+   * of rows that match it, and the top edge is the nearest row of the run that matches the top anchor
+   * and not the prompt anchor, or else the first row of the run. Without `rows` the top edge is the
+   * nearest row that matches the top anchor.
+   */
+  readonly rows?: string;
+  /** The interior walk only. Rows under the draft that are no draft text. Optional. */
+  readonly trailer?: FrameTrailer;
+  /**
+   * The interior walk only. A regular expression source with the named group `text`, applied to
+   * every interior row that is not the prompt row to take the draft text out of it. Without it a
+   * row counts as its trimmed text.
+   */
+  readonly continuation?: string;
+  /**
+   * The interior walk only. A regular expression source the first non-blank row under the bottom
+   * edge must match, when there is one. A box with a blank prompt row has the same shape as the
+   * gap between a notice and the real box, so the row the harness always draws under the box
+   * (its status line) tells them apart. Optional; a closed box only.
+   */
+  readonly under?: string;
+
+}
+
 /** How the frame module walks to a box. `edges` is the walk up from a bottom edge to a prompt row and a top edge. */
 export type FrameWalk = "edges" | "interior";
 
@@ -103,48 +149,7 @@ export interface Profile {
   };
   readonly versions: readonly [VersionRange, ...VersionRange[]];
   readonly idle: {
-    readonly frame: {
-      readonly top: FrameAnchor;
-      /** Must hold the named group `draft`: the hole where the person's text sits. */
-      readonly prompt: FrameAnchor;
-      /** With `open` set (interior walk only), the box has no bottom edge: it ends on the last row of the screen. */
-      readonly bottom: FrameAnchor;
-      /** Spaces in front of a wrapped draft row inside the box. */
-      readonly continuationIndent: number;
-      readonly maxDraftRows: number;
-      /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
-       *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
-      readonly maxTailRows: number;
-      /**
-       * How the walk finds the box. `edges` (the default) walks up from the bottom edge: rows that are
-       * no edge are the wrapped draft, the first edge row is the prompt row, the top edge is over it.
-       * `interior` walks up from the bottom edge (or from the last row, with no bottom anchor) to the
-       * nearest top edge. The prompt row is then the first row under it that matches the prompt anchor,
-       * and a blank row may match, so a box with no prompt glyph can be framed.
-       */
-      readonly walk?: FrameWalk;
-      /**
-       * The interior walk only. A regular expression source: the rows of the box are one unbroken run
-       * of rows that match it, and the top edge is the first row of the run. Without it the top edge is
-       * the nearest row that matches the top anchor.
-       */
-      readonly rows?: string;
-      /** The interior walk only. Rows under the draft that are no draft text. Optional. */
-      readonly trailer?: FrameTrailer;
-      /**
-       * The interior walk only. A regular expression source with the named group `text`, applied to
-       * every interior row that is not the prompt row to take the draft text out of it. Without it a
-       * row counts as its trimmed text.
-       */
-      readonly continuation?: string;
-      /**
-       * The interior walk only. A regular expression source the first non-blank row under the bottom
-       * edge must match, when there is one. A box with a blank prompt row has the same shape as the
-       * gap between a notice and the real box, so the row the harness always draws under the box
-       * (its status line) tells them apart. Optional; a closed box only.
-       */
-      readonly under?: string;
-    };
+    readonly frame: FrameLayout;
     readonly placeholders: {
       readonly texts: readonly string[];
       /**
@@ -196,6 +201,12 @@ export interface Profile {
      * as a modal then, and a modal is never free. Optional.
      */
     readonly dialogsInBox?: boolean;
+    /**
+     * Other shapes of the same box, tried in order when `frame` finds none. A harness whose border
+     * style the person can change (OMP) draws more than one. Each is a full frame as `frame` is.
+     * The first shape that finds a box wins, so a shape that is easy to match goes last. Optional.
+     */
+    readonly frameAlternates?: readonly FrameLayout[];
   };
   readonly keys: {
     /** The keys that send a text. Codex names Tab here: its Enter steers a running turn (`enterWhileRunning`). */
@@ -434,7 +445,7 @@ function parseTrailer(value: JsonValue): FrameTrailer {
 }
 
 /** `idle.frame`: the three anchors, the bounds, and the interior walk's own fields when the profile names that walk. */
-function parseFrame(frameNode: JsonObject): Profile["idle"]["frame"] {
+function parseFrame(frameNode: JsonObject): FrameLayout {
   const walk = frameNode.walk === undefined ? "edges" : oneOf(frameNode.walk, "idle.frame.walk", FRAME_WALKS);
   const base = {
     top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null, true),
@@ -496,7 +507,24 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.overlayRows === undefined
       ? undefined
       : list(idleNode.overlayRows, "idle.overlayRows").map((item, i) => pattern(item, `idle.overlayRows[${String(i)}]`).source);
-  const withOverlay: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const withOverlay0: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const withOverlay: Profile["idle"] =
+    idleNode.frameAlternates === undefined
+      ? withOverlay0
+      : {
+          ...withOverlay0,
+          frameAlternates: list(idleNode.frameAlternates, "idle.frameAlternates").map((item, i) => {
+            try {
+              return parseFrame(object(item, `idle.frameAlternates[${String(i)}]`));
+            } catch (error) {
+              // A field of the alternate says its own place, not the main frame's.
+              if (error instanceof ProfileError && error.path.startsWith("idle.frame.")) {
+                fail(`idle.frameAlternates[${String(i)}].${error.path.slice("idle.frame.".length)}`, error.message.split(": ").slice(1).join(": "));
+              }
+              throw error;
+            }
+          }),
+        };
   if (idleNode.dialogsInBox !== undefined && idleNode.dialogsInBox !== true && idleNode.dialogsInBox !== false) {
     fail("idle.dialogsInBox", "must be true or false");
   }
