@@ -136,8 +136,8 @@ export function ActionsRowSection() {
         <Card
           state="durable-idle"
           label="durable, idle: Steer and Stop are in the belt, dimmed"
-          reach="open a conversation of a durable program that declares caps.steer and caps.abort, with no turn running."
-          note="The program's own section opens with its mark and holds Steer, then Stop, under the thumb edge. Nothing is running, so both are dimmed in place and refuse the tap. They do not leave: the composer under the belt is the same height in every state."
+          reach="open a conversation of a durable agent that declares caps.steer and caps.abort, with no turn running."
+          note="The durable agent's own section opens with its mark and holds Steer, then Stop, under the thumb edge. Nothing is running, so both are dimmed in place and refuse the tap. They do not leave: the composer under the belt is the same height in every state."
           span={2}
         >
           <Durable working={false} />

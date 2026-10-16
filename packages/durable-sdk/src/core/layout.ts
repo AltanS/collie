@@ -724,7 +724,7 @@ export class Pane implements PaneHandle {
   private refuseAllowAlways(options: readonly { effect?: string }[]): void {
     if (this.store.allowAlways || !options.some((o) => o.effect === "allow-always")) return;
     throw new TypeError(
-      "an ask option with effect allow-always is refused: this program is reached over TLS with a token (WIRE.md 1B), so it offers Allow and Deny only",
+      "an ask option with effect allow-always is refused: this durable agent is reached over TLS with a token (WIRE.md 1B), so it offers Allow and Deny only",
     );
   }
 

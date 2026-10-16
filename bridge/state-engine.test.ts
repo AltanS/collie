@@ -423,7 +423,7 @@ describe("StateEngine — snapshot shaping", () => {
     const { herdr, engine, poll } = makeEngine();
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
     const good = herdr.sessionSnapshot.bind(herdr);
-    herdr.sessionSnapshot = () => Promise.reject(new Error("token-refused: the program answered 401"));
+    herdr.sessionSnapshot = () => Promise.reject(new Error("token-refused: the durable agent answered 401"));
     await poll();
     expect([engine.current().bridge, engine.current().muxFault]).toEqual(["disconnected", "token-refused"]);
     herdr.sessionSnapshot = good;

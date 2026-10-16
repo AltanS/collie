@@ -1659,7 +1659,7 @@ describe("the New page: a durable program's starters", () => {
     declares({ paneGrid: false });
     serveStarterItems([BUILT_IN, SHELL]);
     mount();
-    expect(await screen.findByText("This machine's program offers no starters yet.")).toBeInTheDocument();
+    expect(await screen.findByText("This machine's durable agent offers no starters yet.")).toBeInTheDocument();
     // Neither Claude Code nor the Shell is offered.
     expect(screen.queryByRole("radiogroup", { name: "Starters" })).toBeNull();
     expect(screen.queryByRole("radio", { name: "Claude Code" })).toBeNull();

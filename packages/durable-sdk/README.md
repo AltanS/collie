@@ -1,6 +1,6 @@
 # @colliepwa/durable-sdk
 
-Show a long-running durable agent on your phone through [Collie](https://colliepwa.dev). Your durable agent opens a
+Show a durable agent on your phone through [Collie](https://colliepwa.dev). Your durable agent opens a
 private Unix socket, or serves the same wire over HTTPS with a bearer token, lays out its conversations as panes, and
 asks its questions there. Collie dials the socket or the URL and shows each question as a card on the phone, with chat
 and history, and you answer with one tap.
@@ -62,7 +62,7 @@ a deadline shows as idle or working, never as waiting.
 | `@colliepwa/durable-sdk` | `openCollie` and the whole API. On Bun it serves the socket with the descendant check, elsewhere with `node:http`. |
 | `@colliepwa/durable-sdk/bun` | The Bun server only. |
 | `@colliepwa/durable-sdk/node` | The `node:http` server only. |
-| `@colliepwa/durable-sdk/pi` | The glue for a [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) durable agent: a conversation as a pane, a risky tool call as a card, history from Pi's store. |
+| `@colliepwa/durable-sdk/pi` | The glue for a [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) agent: a conversation as a pane, a risky tool call as a card, history from Pi's store. |
 | `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a durable agent that brings its own transport. |
 
 **On Node, a durable agent cannot read who connects to its socket.** Node has no way to read the caller of a Unix socket, so

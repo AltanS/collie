@@ -275,7 +275,7 @@ interface Reading {
 }
 
 const NO_SCREEN = "A durable conversation has no terminal screen.";
-const GONE = "The conversation is not in the program's layout.";
+const GONE = "The conversation is not in the durable agent's layout.";
 
 /** What is current on a pane, for the control guard: its newest turn and its open asks. */
 function turnView(pane: DurablePane): TurnView {
@@ -284,49 +284,49 @@ function turnView(pane: DurablePane): TurnView {
 
 /** Why the program cannot take this control, from its caps (WIRE.md section 7.4), or null when it can. */
 function controlUnsupported(caps: DurableCaps, request: ControlRequest): string | null {
-  if (request.act === "action") return caps.actions ? null : "This program lists no actions to run from here.";
-  if (request.act === "abort") return caps.abort ? null : "This program cannot stop a turn from here.";
-  if (!caps.send) return "This program takes no text from here.";
-  if (request.steer && !caps.steer) return "This program cannot steer a running turn.";
+  if (request.act === "action") return caps.actions ? null : "This durable agent lists no actions to run from here.";
+  if (request.act === "abort") return caps.abort ? null : "This durable agent cannot stop a turn from here.";
+  if (!caps.send) return "This durable agent takes no text from here.";
+  if (request.steer && !caps.steer) return "This durable agent cannot steer a running turn.";
   return null;
 }
-const NO_RENAME = "This program does not take a new name for a workspace or a tab from here.";
+const NO_RENAME = "This durable agent does not take a new name for a workspace or a tab from here.";
 /** What a rename says of the thing it names, per kind: the words of a refusal. */
 const RENAME_WORDS = {
   tab: {
     capability: "renameTab",
-    gone: "The tab is not in the program's layout.",
-    unknown: "The program did not answer, so the rename may have been applied. Look at the tab name before you try again.",
+    gone: "The tab is not in the durable agent's layout.",
+    unknown: "The durable agent did not answer, so the rename may have been applied. Look at the tab name before you try again.",
   },
   workspace: {
     capability: "renameSpace",
-    gone: "The workspace is not in the program's layout.",
-    unknown: "The program did not answer, so the rename may have been applied. Look at the workspace name before you try again.",
+    gone: "The workspace is not in the durable agent's layout.",
+    unknown: "The durable agent did not answer, so the rename may have been applied. Look at the workspace name before you try again.",
   },
 } as const;
 type RenameKind = keyof typeof RENAME_WORDS;
 const NO_SUCH_ACTION = "This conversation has no such action.";
-const NO_CLOSE = "This program does not take a close of a conversation or a tab from here.";
+const NO_CLOSE = "This durable agent does not take a close of a conversation or a tab from here.";
 /** What a close says of the thing it names, per kind: the words of a refusal. */
 const CLOSE_WORDS = {
   pane: {
     capability: "closePane",
     gone: GONE,
-    unknown: "The program did not answer, so the conversation may have been closed. Look at the list before you try again.",
+    unknown: "The durable agent did not answer, so the conversation may have been closed. Look at the list before you try again.",
   },
   tab: {
     capability: "closeTab",
-    gone: "The tab is not in the program's layout.",
-    unknown: "The program did not answer, so the tab may have been closed. Look at the tab list before you try again.",
+    gone: "The tab is not in the durable agent's layout.",
+    unknown: "The durable agent did not answer, so the tab may have been closed. Look at the tab list before you try again.",
   },
 } as const;
 type CloseKind = keyof typeof CLOSE_WORDS;
-const NO_HISTORY = "This program does not serve its history to Collie.";
-const NO_REOPEN = "This program does not bring a closed conversation back from here.";
-const NO_SUCH_CONVERSATION = "The program does not know this conversation.";
-const REOPEN_UNKNOWN = "The program did not answer, so the conversation may have been reopened. Look at the list before you try again.";
+const NO_HISTORY = "This durable agent does not serve its history to Collie.";
+const NO_REOPEN = "This durable agent does not bring a closed conversation back from here.";
+const NO_SUCH_CONVERSATION = "The durable agent does not know this conversation.";
+const REOPEN_UNKNOWN = "The durable agent did not answer, so the conversation may have been reopened. Look at the list before you try again.";
 const NO_KEYS = "A durable conversation takes no typed keys.";
-const NO_STRUCTURE = "A durable program lays out its own workspaces, tabs and conversations.";
+const NO_STRUCTURE = "A durable agent lays out its own workspaces, tabs and conversations.";
 
 /**
  * `agentDetection` and `agentSessionRef` are declared: a durable program reports how each
@@ -370,7 +370,7 @@ function durableCapabilities(idlePollMs: number, caps: DurableCaps | null): MuxC
       closePane: NO_CLOSE,
       setFocus: "There is no terminal to show a conversation in.",
       createTab: NO_STRUCTURE,
-      programActions: "This program lists no actions to run from here.",
+      programActions: "This durable agent lists no actions to run from here.",
       programHistory: NO_HISTORY,
       reopenConversation: NO_REOPEN,
       renameTab: NO_RENAME,
@@ -616,7 +616,7 @@ export class DurableMux implements MuxAdapter {
     const read = await this.poll();
     const session = this.current;
     if (!read.ok || session === null) return { kind: "unreachable", detail: read.ok ? STARTING : read.detail };
-    if (!session.caps.starters) return { kind: "unsupported", detail: "this program starts nothing from here" };
+    if (!session.caps.starters) return { kind: "unsupported", detail: "this durable agent starts nothing from here" };
 
     let reply: DurableReply;
     try {
@@ -657,18 +657,18 @@ export class DurableMux implements MuxAdapter {
     }
     if (reply.status === 401) {
       this.current = null;
-      return { kind: "unreachable", detail: "incompatible: program asks for a token" };
+      return { kind: "unreachable", detail: "incompatible: the durable agent asks for a token" };
     }
     if (reply.status === 409 && problem.code === "incompatible") {
       this.agreedVersion = null;
       this.current = null;
       return { kind: "unreachable", detail: incompatibleDetail(problem.range) };
     }
-    if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "the program cannot start this" };
+    if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "the durable agent cannot start this" };
     if (reply.status >= 400 && reply.status < 500) {
-      return { kind: "refused", detail: `program answered ${String(reply.status)} ${problem.code}`.trim() };
+      return { kind: "refused", detail: `the durable agent answered ${String(reply.status)} ${problem.code}`.trim() };
     }
-    return { kind: "unknown", detail: `program answered ${String(reply.status)}` };
+    return { kind: "unknown", detail: `the durable agent answered ${String(reply.status)}` };
   }
 
   // ── Asks (ADR 0100, WIRE.md section 7.3) ───────────────────────────────────
@@ -700,7 +700,7 @@ export class DurableMux implements MuxAdapter {
     if (tooLong !== null) return muxRefused(tooLong);
     const session = this.current;
     if (session === null) return muxUnreachable(STARTING);
-    if (!session.caps.asks) return muxRefused("This program takes no answers.");
+    if (!session.caps.asks) return muxRefused("This durable agent takes no answers.");
 
     const body = {
       requestId: answer.requestId,
@@ -736,7 +736,7 @@ export class DurableMux implements MuxAdapter {
       return muxOk({ kind: parsed.result, replayed: parsed.replayed });
     }
     if (reply.status >= 500 && reply.status !== 503) {
-      return muxOk({ kind: "unknown", detail: `program answered ${String(reply.status)}` });
+      return muxOk({ kind: "unknown", detail: `the durable agent answered ${String(reply.status)}` });
     }
     const problem = parseProblem(reply.text);
     if (reply.status === 409 && problem.code === "stale") {
@@ -750,12 +750,12 @@ export class DurableMux implements MuxAdapter {
       if (first === null) return muxOk({ kind: "too-late", replayed: false });
       return muxOk({ kind: "too-late", replayed: false, decided: { by: first.decidedBy, at: first.decidedAt } });
     }
-    if (reply.status === 404 && problem.code === "no-such-pane") return muxGone("The conversation is not in the program's layout.");
+    if (reply.status === 404 && problem.code === "no-such-pane") return muxGone("The conversation is not in the durable agent's layout.");
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
-      return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
+      return this.refusalFor(reply) ?? muxUnreachable(`the durable agent answered ${String(reply.status)}`);
     }
-    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
+    return muxRefused(`the durable agent answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   // ── Controls (ADR 0101, WIRE.md section 7.4) ───────────────────────────────
@@ -881,7 +881,7 @@ export class DurableMux implements MuxAdapter {
       if (parsed === null) return { kind: "unknown", detail: "unreadable control reply" };
       return { kind: "ok", replayed: parsed.replayed };
     }
-    if (reply.status >= 500 && reply.status !== 503) return { kind: "unknown", detail: `program answered ${String(reply.status)}` };
+    if (reply.status >= 500 && reply.status !== 503) return { kind: "unknown", detail: `the durable agent answered ${String(reply.status)}` };
     const problem = parseProblem(reply.text);
     if (reply.status === 409 && problem.code === "stale") {
       const stale = parseStaleControl(reply.text);
@@ -892,19 +892,19 @@ export class DurableMux implements MuxAdapter {
       const pane = this.program()?.snapshot.panes.find((candidate) => candidate.id === paneId);
       return pane === undefined ? { kind: "gone", detail: GONE } : { kind: "stale", ...turnView(pane) };
     }
-    if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "The program cannot take this here." };
+    if (reply.status === 409 && problem.code === "not-supported") return { kind: "unsupported", detail: "The durable agent cannot take this here." };
     if (reply.status === 404 && problem.code === "no-such-pane") return { kind: "gone", detail: GONE };
     // A belt action the program does not know any more, or does not run now (WIRE.md section 7.10).
     if (reply.status === 404 && problem.code === "no-such-action") return { kind: "refused", detail: NO_SUCH_ACTION };
     if (reply.status === 422 && problem.code === "action-refused") {
-      return { kind: "refused", detail: problem.message === "" ? "The program did not run this action." : `The program did not run this action: ${problem.message}` };
+      return { kind: "refused", detail: problem.message === "" ? "The durable agent did not run this action." : `The durable agent did not run this action: ${problem.message}` };
     }
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
       const refusal = this.refusalFor(reply);
-      return { kind: "unreachable", detail: refusal?.detail ?? `program answered ${String(reply.status)}` };
+      return { kind: "unreachable", detail: refusal?.detail ?? `the durable agent answered ${String(reply.status)}` };
     }
-    return { kind: "refused", detail: `program answered ${String(reply.status)} ${problem.code}`.trim() };
+    return { kind: "refused", detail: `the durable agent answered ${String(reply.status)} ${problem.code}`.trim() };
   }
 
   /** What is left of `gapMs` since the last read began. `refresh()` waits out the 250 ms floor only. */
@@ -1071,7 +1071,7 @@ export class DurableMux implements MuxAdapter {
       // The socket carries no token, so a program that asks for one there speaks another protocol.
       // Over HTTPS a 401 never reaches here: the client turns it into `token-refused` first.
       this.current = null;
-      return muxUnreachable("incompatible: program asks for a token");
+      return muxUnreachable("incompatible: the durable agent asks for a token");
     }
     if (reply.status === 409) {
       const problem = parseProblem(reply.text);
@@ -1081,14 +1081,14 @@ export class DurableMux implements MuxAdapter {
         this.current = null;
         return muxUnreachable(incompatibleDetail(problem.range));
       }
-      return muxUnreachable(`program answered 409 ${problem.code}`);
+      return muxUnreachable(`the durable agent answered 409 ${problem.code}`);
     }
     if (reply.status === 503) {
       // Not ready: ask `hello` again on the next read.
       this.current = null;
       return muxUnreachable(STARTING);
     }
-    return muxUnreachable(`program answered ${String(reply.status)}`);
+    return muxUnreachable(`the durable agent answered ${String(reply.status)}`);
   }
 
   // ── History (WIRE.md section 7.16, M53 spec 11) ─────────────────────────────
@@ -1126,7 +1126,7 @@ export class DurableMux implements MuxAdapter {
   /** The one GET both history reads share, with its refusals. */
   private async historyGet(path: string, page: MuxHistoryPage, maxBytes: number): Promise<MuxOutcome<DurableReply>> {
     if (this.kept?.session.caps.history !== true) return muxUnsupported("programHistory", NO_HISTORY);
-    if (page.after !== undefined && !isHistoryCursor(page.after)) return muxRefused("The cursor is not one the program gave.");
+    if (page.after !== undefined && !isHistoryCursor(page.after)) return muxRefused("The cursor is not one the durable agent gave.");
     if (page.limit !== undefined && (!Number.isSafeInteger(page.limit) || page.limit < 1)) return muxRefused("The page size must be a whole number from 1.");
     const read = await this.poll();
     const session = this.current ?? this.kept?.session ?? null;
@@ -1153,8 +1153,8 @@ export class DurableMux implements MuxAdapter {
     const problem = parseProblem(reply.text);
     if (reply.status === 404) return muxGone(NO_SUCH_CONVERSATION);
     if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported("programHistory", NO_HISTORY);
-    if (reply.status === 400) return muxRefused(`The program did not take the page: ${problem.code === "" ? "400" : problem.code}`);
-    return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
+    if (reply.status === 400) return muxRefused(`The durable agent did not take the page: ${problem.code === "" ? "400" : problem.code}`);
+    return this.refusalFor(reply) ?? muxUnreachable(`the durable agent answered ${String(reply.status)}`);
   }
 
   /**
@@ -1194,17 +1194,17 @@ export class DurableMux implements MuxAdapter {
       const pane = this.kept?.snapshot.panes.find((candidate) => logKeyOf(candidate) === id);
       return muxOk(pane === undefined ? {} : { paneId: pane.id });
     }
-    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${REOPEN_UNKNOWN} (program answered ${String(reply.status)})`);
+    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${REOPEN_UNKNOWN} (the durable agent answered ${String(reply.status)})`);
     const problem = parseProblem(reply.text);
     if (reply.status === 404 && problem.code === "no-such-target") return muxGone(NO_SUCH_CONVERSATION);
     if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported("reopenConversation", NO_REOPEN);
     if (reply.status === 422 && problem.code === "reopen-refused") {
-      return muxRefused(problem.message === "" ? "The program did not bring this conversation back." : `The program did not bring this conversation back: ${problem.message}`);
+      return muxRefused(problem.message === "" ? "The durable agent did not bring this conversation back." : `The durable agent did not bring this conversation back: ${problem.message}`);
     }
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
-      return this.refusalFor(reply) ?? muxUnreachable(`program answered ${String(reply.status)}`);
+      return this.refusalFor(reply) ?? muxUnreachable(`the durable agent answered ${String(reply.status)}`);
     }
-    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
+    return muxRefused(`the durable agent answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   // ── What a screenless program cannot do ─────────────────────────────────────
@@ -1301,19 +1301,19 @@ export class DurableMux implements MuxAdapter {
       await this.poll();
       return muxAck();
     }
-    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${words.unknown} (program answered ${String(reply.status)})`);
+    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${words.unknown} (the durable agent answered ${String(reply.status)})`);
     const problem = parseProblem(reply.text);
     if (reply.status === 404 && problem.code === "no-such-target") return muxGone(words.gone);
     if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported(words.capability, NO_RENAME);
     if (reply.status === 422 && problem.code === "rename-refused") {
-      return muxRefused(problem.message === "" ? "The program did not accept this name." : `The program did not accept this name: ${problem.message}`);
+      return muxRefused(problem.message === "" ? "The durable agent did not accept this name." : `The durable agent did not accept this name: ${problem.message}`);
     }
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
       const refusal = this.refusalFor(reply);
-      return refusal ?? muxUnreachable(`program answered ${String(reply.status)}`);
+      return refusal ?? muxUnreachable(`the durable agent answered ${String(reply.status)}`);
     }
-    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
+    return muxRefused(`the durable agent answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   /** Close a tab, and the conversations in it, the same way. */
@@ -1368,19 +1368,19 @@ export class DurableMux implements MuxAdapter {
       await this.poll();
       return muxAck();
     }
-    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${words.unknown} (program answered ${String(reply.status)})`);
+    if (reply.status >= 500 && reply.status !== 503) return muxRefused(`${words.unknown} (the durable agent answered ${String(reply.status)})`);
     const problem = parseProblem(reply.text);
     if (reply.status === 404 && problem.code === "no-such-target") return muxGone(words.gone);
     if (reply.status === 409 && problem.code === "not-supported") return muxUnsupported(words.capability, NO_CLOSE);
     if (reply.status === 422 && problem.code === "close-refused") {
-      return muxRefused(problem.message === "" ? "The program did not accept this close." : `The program did not accept this close: ${problem.message}`);
+      return muxRefused(problem.message === "" ? "The durable agent did not accept this close." : `The durable agent did not accept this close: ${problem.message}`);
     }
     // Version, token and ready refusals: nothing ran, and the next read asks `hello` again.
     if (reply.status === 401 || reply.status === 503 || (reply.status === 409 && problem.code === "incompatible")) {
       const refusal = this.refusalFor(reply);
-      return refusal ?? muxUnreachable(`program answered ${String(reply.status)}`);
+      return refusal ?? muxUnreachable(`the durable agent answered ${String(reply.status)}`);
     }
-    return muxRefused(`program answered ${String(reply.status)} ${problem.code}`.trim());
+    return muxRefused(`the durable agent answered ${String(reply.status)} ${problem.code}`.trim());
   }
 
   async createSpace(_request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
@@ -1388,19 +1388,19 @@ export class DurableMux implements MuxAdapter {
   }
 
   async listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return muxUnsupported("listWorktrees", "A durable program keeps no git worktrees.");
+    return muxUnsupported("listWorktrees", "A durable agent keeps no git worktrees.");
   }
 
   async createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return muxUnsupported("createWorktree", "A durable program keeps no git worktrees.");
+    return muxUnsupported("createWorktree", "A durable agent keeps no git worktrees.");
   }
 
   async openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return muxUnsupported("openWorktree", "A durable program keeps no git worktrees.");
+    return muxUnsupported("openWorktree", "A durable agent keeps no git worktrees.");
   }
 
   async listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {
-    return muxUnsupported("listSessions", "One peer drives one durable program.");
+    return muxUnsupported("listSessions", "One peer drives one durable agent.");
   }
 
   watch(options: MuxWatchOptions): MuxSubscription {

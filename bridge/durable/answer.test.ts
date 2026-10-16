@@ -161,10 +161,10 @@ describe("answer: one shape for every outcome", () => {
   });
 
   test("refused: 409 with the refusal's word, kept on the receipt", async () => {
-    const r = rig(new ScriptedAdapter([muxRefused("program answered 400 bad-option")]));
+    const r = rig(new ScriptedAdapter([muxRefused("the durable agent answered 400 bad-option")]));
     expect(await r.call("conv-02")).toEqual({
       status: 409,
-      body: { ok: false, outcome: "refused", reason: "refused", detail: "program answered 400 bad-option" },
+      body: { ok: false, outcome: "refused", reason: "refused", detail: "the durable agent answered 400 bad-option" },
     });
     expect(r.receipts.get(ID)).toMatchObject({ state: "refused", reason: "refused" });
   });
@@ -469,7 +469,7 @@ describe("answer: through the durable adapter (WIRE.md section 7.3)", () => {
   test("a bad option is the program's refusal, and nothing ran", async () => {
     const { program, r } = await durable();
     const reply = await r.call("conv-02", body({ askId: ASK_02, optionId: "nope" }));
-    expect(reply.body).toMatchObject({ ok: false, outcome: "refused", reason: "refused", detail: "program answered 400 bad-option" });
+    expect(reply.body).toMatchObject({ ok: false, outcome: "refused", reason: "refused", detail: "the durable agent answered 400 bad-option" });
     expect(program.answers).toEqual([]);
   });
 

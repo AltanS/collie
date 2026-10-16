@@ -489,7 +489,7 @@ describe("a peer's pane that carries asks", () => {
     floods = push.sent.filter((m) => m.titleCode === "ask.flood").length;
     expect(floods).toBe(1);
     const summary = push.sent.find((m) => m.titleCode === "ask.flood");
-    expect(summary?.title).toBe("A program on laptop is raising many asks");
+    expect(summary?.title).toBe("A durable agent on laptop is raising many asks");
     expect(summary?.host).toBe("laptop");
   });
 });

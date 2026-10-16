@@ -95,7 +95,7 @@ describe("doctor durable over https", () => {
     const findings = await durableFindings({ ctx: context(onUrl(program.url, mine)) });
     const hello = row(findings, "durable-hello");
     expect(hello.status).toBe("error");
-    expect(hello.detail).toBe("the program refused the token: token-refused: the program answered 401");
+    expect(hello.detail).toBe("the durable agent refused the token: token-refused: the durable agent answered 401");
     expect(hello.remedy).toContain("COLLIE_DURABLE_TOKEN");
     expect(row(findings, "durable-ready").status).toBe("skipped");
     expect(printed(findings)).not.toContain(mine);
@@ -132,7 +132,7 @@ describe("doctor durable over https", () => {
     ]);
     expect(row(both, "durable-env").detail).toContain("are both set");
     const half = await durableFindings({ ctx: context(onUrl("https://x.example", undefined)) });
-    expect(row(half, "durable-env").detail).toBe("COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the program refuses a caller with no token");
+    expect(row(half, "durable-env").detail).toBe("COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the durable agent refuses a caller with no token");
   });
 
   test("on the socket transport the url and token rows are skipped with the reason", async () => {
@@ -266,7 +266,7 @@ describe("doctor sources", () => {
       ["durable-ready:desk", "skipped"],
     ]);
     // Windows reads no file mode (NTFS has none), so the row carries no mode there.
-    expect(row(findings, "sources").detail).toBe(`2 programs in ${join(dir, "sources.json")}${windows ? "" : ", mode 0600"}`);
+    expect(row(findings, "sources").detail).toBe(`2 durable agents in ${join(dir, "sources.json")}${windows ? "" : ", mode 0600"}`);
     if (windows) {
       expect(row(findings, "durable-env:desk").detail).toBe(WINDOWS_NO_SOCKET);
       expect(row(findings, "durable-env:desk").remedy).toContain('"socket" of "desk"');
@@ -274,7 +274,7 @@ describe("doctor sources", () => {
     } else {
       expect(row(findings, "durable-env:desk").detail).toBe("transport: private socket · socket=/nonexistent/durable/desk.sock");
       expect(row(findings, "durable-socket:desk").remedy).toContain('"socket" of "desk"');
-      expect(row(findings, "durable-url:desk").detail).toBe('this program uses a socket, and "url" of "desk" is not set');
+      expect(row(findings, "durable-url:desk").detail).toBe('this durable agent uses a socket, and "url" of "desk" is not set');
     }
     expect(printed(findings)).not.toContain(token);
   }
@@ -306,7 +306,7 @@ describe("doctor sources", () => {
     const dir = configDir([{ name: "desk", kind: "durable", socket: "/s", url: "https://x.example", token: testToken() }]);
     const findings = await sourcesFindings({ ctx: context({ COLLIE_PROGRAMS: "off" }, { configDir: dir }), crew: { mode: "solo", marker: null } });
     expect(rows(findings)).toEqual([["sources", "skipped"]]);
-    expect(row(findings, "sources").detail).toBe("programs are off (COLLIE_PROGRAMS=off)");
+    expect(row(findings, "sources").detail).toBe("durable agents are off (COLLIE_PROGRAMS=off)");
   });
 
   test("the lead row follows the blocks when the verb asks for it", async () => {

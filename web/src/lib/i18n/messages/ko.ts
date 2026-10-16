@@ -594,12 +594,12 @@ export const ko: Dictionary = {
   "ask.notAnswerable": "이 질문에는 휴대폰으로 답변할 수 없습니다.",
   "ask.late": "이미 답변했습니다. 이 카드는 다음 업데이트 시 사라집니다.",
   "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",
-  "ask.decidedInProgram": "프로그램에서 결정되었습니다.",
+  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
   "ask.timedOut": "답변하기 전에 시간이 초과되었습니다.",
   "ask.expiresIn": "{time} 후 만료",
   "ask.expired": "만료됨",
   "ask.stale": "이 질문 내용이 변경되었습니다. 다시 확인한 후 답변을 누르십시오.",
-  "ask.stale.older": "이 컴퓨터는 이전 버전의 Collie를 실행 중이므로 여기에서 답변을 받을 수 없습니다. 업데이트하거나 프로그램 내에서 답변하십시오.",
+  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
   "ask.unknown": "답변이 도달했는지 확실하지 않습니다. 다시 시도하면 한 번 더 전송합니다.",
   "ask.retry": "다시 시도",
   "ask.refused": "답변이 거절되었습니다.",
@@ -633,15 +633,15 @@ export const ko: Dictionary = {
   "durable.composer.stopMoved": "대화가 계속 진행되어 아무것도 중지되지 않았습니다. 대화를 확인한 후 계속 원하시면 다시 중지하십시오.",
   "durable.composer.stopUnknown": "중지가 전달되었는지 확실하지 않습니다. 한 번 다시 시도하려면 '중지'를 다시 탭하십시오.",
   "durable.composer.maybe": "이미 전송되었을 수 있습니다. 다시 보내기 전에 대화를 확인하십시오.",
-  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
   "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
   "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
   "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
   "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
   "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "중지가 이미 적용되었을 수 있습니다. 대화를 확인하십시오.",
@@ -669,7 +669,7 @@ export const ko: Dictionary = {
   "conversations.here": "이 창에 표시됨",
   "conversations.loadMore": "더 불러오기",
   "conversations.loading": "불러오는 중…",
-  "conversations.empty": "이 프로그램에는 아직 대화가 없습니다.",
+  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
   "session.experimental": "실험적 기능",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "로컬",
@@ -683,9 +683,9 @@ export const ko: Dictionary = {
   "space.program.open.other": "열린 대화 {count}개",
   "space.program.waiting.one": "대기 중인 대화 {count}개",
   "space.program.waiting.other": "대기 중인 대화 {count}개",
-  "home.programs.title": "프로그램",
-  "conversations.unsupported": "이 프로그램은 대화 목록을 유지하지 않습니다.",
-  "conversations.unreachable": "프로그램이 응답하지 않았습니다. 잠시 후 다시 시도하십시오.",
+  "home.programs.title": "Durable agents", // TODO wordsmith
+  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
+  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
   "conversations.loadFailed": "대화를 불러올 수 없습니다. 다시 시도하십시오.",
   "conversations.gone": "이 대화는 더 이상 존재하지 않습니다.",
   "conversations.noItems": "이 대화에는 아직 항목이 없습니다.",
@@ -695,7 +695,7 @@ export const ko: Dictionary = {
   "conversations.reopenFailed": "대화를 다시 열 수 없습니다",
   "home.conversations.asks.one": "열린 질문 {count}개",
   "home.conversations.asks.other": "열린 질문 {count}개",
-  "newPage.starters.none": "이 컴퓨터의 프로그램은 아직 시작 항목을 제공하지 않습니다.",
+  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
   "newPage.starters.label": "시작 항목",
   "newPage.starters.title": "새 대화",
   "prompt.feedback.cancel": "취소",
@@ -1089,7 +1089,7 @@ export const ko: Dictionary = {
   "space.space.titleWithLabel": "스페이스 {label}",
   "space.space.readOnly": "읽기 전용. 이 기기는 스페이스의 이름을 변경할 권한이 없습니다.",
   "space.space.hostBlockSuffix": "{hostBlock}. 응답할 때까지 이름 변경을 사용할 수 없습니다.",
-  "space.space.empty.fallback": "이 프로그램은 스페이스에 대한 동작을 제공하지 않습니다.",
+  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
   "space.space.placeholder": "이 스페이스 이름 지정",
   "space.readOnly.notPaired": "미연결 상태입니다. 설정에서 기기를 연결하십시오.",
   "space.readOnly.expired": "페어링이 만료되었습니다. 설정에서 다시 연결하십시오.",
@@ -1146,7 +1146,7 @@ export const ko: Dictionary = {
   "connection.connected": "연결됨",
   "connection.reconnecting": "재연결 중…",
   "connection.herdrDown": "호스트의 Herdr 프로세스가 중단되었습니다.",
-  "connection.tokenRefused": "프로그램이 토큰을 거부했습니다. 이 피어의 COLLIE_DURABLE_TOKEN을 확인하세요.",
+  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
   "connection.offlineCantReach": "오프라인. Collie에 접근할 수 없습니다.",
   "connection.cantReach": "Collie에 접근할 수 없습니다.",
   "connection.withLastSeen": "{cause}. 마지막 확인 시각: {time}",
@@ -2101,7 +2101,7 @@ export const ko: Dictionary = {
   "pushTitle.machine.mem": "{machine}의 메모리가 계속 높음",
   "pushTitle.machine.disk": "{machine}의 디스크가 계속 가득 참",
   "pushTitle.ask.permission": "{pane} 창에 권한 필요",
-  "pushTitle.ask.flood": "{host}의 프로그램이 많은 질문을 생성하고 있습니다",
+  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle은 {link}의 음성 모델입니다.",
