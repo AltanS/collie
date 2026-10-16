@@ -94,6 +94,8 @@ interface FakeClient {
   session: string;
   readonly control: boolean;
   readonly activity: number;
+  /** tmux 3.7 refuses `send-keys` that lands on a read-only client. Collie's own watcher is one. */
+  readonly readOnly: boolean;
   /** `client_tty`. tmux's only handle on a client, and what `switch-client -c` addresses. */
   readonly tty: string;
 }
@@ -227,13 +229,14 @@ export class FakeTmux implements TmuxExec {
   }
 
   /** A terminal (or this adapter's own watch) attaches to a session. For the tests that need one. */
-  attachClient(sessionName: string, options: { control?: boolean; activity?: number; tty?: string } = {}): void {
+  attachClient(sessionName: string, options: { control?: boolean; activity?: number; tty?: string; readOnly?: boolean } = {}): void {
     this.clients = [
       ...this.clients,
       {
         session: sessionName,
         control: options.control ?? false,
         activity: options.activity ?? this.clients.length + 1,
+        readOnly: options.readOnly ?? false,
         tty: options.tty ?? `/dev/pts/${String(this.clients.length)}`,
       },
     ];
@@ -448,10 +451,29 @@ export class FakeTmux implements TmuxExec {
     const paneId = flagValue(group, "-t") ?? "";
     const pane = this.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return missing("pane", paneId);
+    if (this.targetClientIsReadOnly(group, pane.sessionId)) return { code: 1, stdout: "", stderr: "client is read-only\n" };
     const end = group.indexOf("--");
     const keys = end < 0 ? [] : group.slice(end + 1);
     this.recorded.push({ paneId, kind: "keys", payload: keys });
     return said("");
+  }
+
+  /**
+   * tmux 3.7's `send-keys` check: the target client is the one `-c` names (a tty here), or without
+   * `-c` the most recently active client of the pane's session. A `-c` that names nobody leaves no
+   * target client at all, because the flag fails quietly, and then nothing can refuse.
+   */
+  private targetClientIsReadOnly(group: readonly string[], sessionId: string): boolean {
+    const end = group.indexOf("--");
+    const named = flagValue(end < 0 ? group : group.slice(0, end), "-c");
+    if (named !== undefined) return this.clients.find((client) => client.tty === named)?.readOnly === true;
+    const session = this.sessions.find((candidate) => candidate.id === sessionId);
+    const inSession = this.clients.filter((client) => client.session === session?.name);
+    const best = inSession.reduce<FakeClient | undefined>(
+      (top, client) => (top === undefined || client.activity > top.activity ? client : top),
+      undefined,
+    );
+    return best?.readOnly === true;
   }
 
   /**

@@ -6,10 +6,13 @@ import { toTmuxKey } from "./keys.ts";
 import {
   classifyControlLine,
   LISTING_ARGS,
+  NO_TARGET_CLIENT,
   parseCreated,
   parseListing,
   saysMissing,
   saysNoServer,
+  saysReadOnlyClient,
+  sendKeysArgs,
   SEP,
 } from "./protocol.ts";
 
@@ -119,6 +122,28 @@ describe("toTmuxKey", () => {
     expect(toTmuxKey("Nonsense")).toEqual({ ok: false, reason: "unparsed" });
     expect(toTmuxKey(chord("Nonsense", "ctrl"))).toEqual({ ok: false, reason: "unparsed" });
     expect(toTmuxKey("")).toEqual({ ok: false, reason: "unparsed" });
+  });
+});
+
+describe("sendKeysArgs", () => {
+  test("the first attempt names no client, and `--` keeps a bare dash a key", () => {
+    expect(sendKeysArgs("%6", ["-", "Enter"], false)).toEqual(["send-keys", "-t", "%6", "--", "-", "Enter"]);
+  });
+
+  test("the retry names a client that does not exist, before the target", () => {
+    expect(sendKeysArgs("%6", ["a"], true)).toEqual(["send-keys", "-c", NO_TARGET_CLIENT, "-t", "%6", "--", "a"]);
+  });
+});
+
+describe("saysReadOnlyClient", () => {
+  test("matches the line tmux 3.7c prints, with or without its newline", () => {
+    expect(saysReadOnlyClient("client is read-only\n")).toBe(true);
+    expect(saysReadOnlyClient("client is read-only")).toBe(true);
+  });
+
+  test("does not match other refusals", () => {
+    expect(saysReadOnlyClient("can't find pane: %9\n")).toBe(false);
+    expect(saysReadOnlyClient("")).toBe(false);
   });
 });
 

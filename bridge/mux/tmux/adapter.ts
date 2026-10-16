@@ -99,6 +99,8 @@ import {
   parseListing,
   saysMissing,
   saysNoServer,
+  saysReadOnlyClient,
+  sendKeysArgs,
   type TmuxClient,
   type TmuxListing,
   type TmuxPaneRecord,
@@ -441,8 +443,13 @@ export class TmuxMux implements MuxAdapter {
       translated.push(result.key);
     }
     if (translated.length === 0) return muxAck();
-    const result = await this.attemptRun(["send-keys", "-t", paneId, "--", ...translated]);
-    return result.ok ? muxAck() : result;
+    const result = await this.attemptRun(sendKeysArgs(paneId, translated, false));
+    if (result.ok) return muxAck();
+    if (result.reason !== "refused" || !saysReadOnlyClient(result.detail)) return result;
+    // tmux 3.7 picked a read-only client (Collie's own watcher) as the target client and sent
+    // nothing, so asking again with no client named cannot double-send.
+    const retry = await this.attemptRun(sendKeysArgs(paneId, translated, true));
+    return retry.ok ? muxAck() : retry;
   }
 
   /**

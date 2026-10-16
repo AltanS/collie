@@ -139,6 +139,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A mixed-version crew no longer types text without a check.** A 1.21 phone's text reply to a member on this build, and this build's text reply to a member that sends no Surface reader version, are each refused at once with a sentence that says which machine to update, and nothing is typed. Keys and unsubmitted text work as before. `collie doctor` and `collie crew status` show each member's reader version, or `none (older build)`.
 - **Five composer tests follow the new sentences.** The locked-field, contested, torn and cap assertions read the wording of this release.
 
+- **Keys reach a tmux pane again on tmux 3.7.** tmux 3.7 refuses `send-keys` with "client is read-only" when the client it picks is Collie's own read-only watcher, so no key left the tmux adapter while pasted text still went in. Collie now repeats the refused call once with `-c` naming no client, which sends the keys to the pane. Other tmux versions never print that line and see no change.
+
 ### Packaging
 
 - **The durable SDK is a package of its own, `@colliepwa/durable-sdk` 0.1.0.** It moved from `examples/durable-member/sdk/` to `packages/durable-sdk/`. One import serves Node and Bun and picks the server at run time, `./node` and `./bun` force one, `./pi` is the Pi Durable entry, and `./core` is the wire without a transport. It has no runtime dependency, and the Pi packages are optional peers. It exports `WIRE_VERSION` and its own `SDK_VERSION`.
