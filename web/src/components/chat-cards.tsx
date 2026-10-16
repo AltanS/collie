@@ -323,7 +323,7 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
       return <UserTurn text={item.text} ts={item.ts} />;
     case "reply":
       // Agent prose: MarkdownText wears `font-content`, never the app face (DESIGN.md §5).
-      return <Growing partial={item.partial === true}><MarkdownText text={item.text} /></Growing>;
+      return <Growing partial={item.partial === true}><MarkdownText text={item.text} stretches /></Growing>;
     case "thinking":
       return (
         <Disclosure label={t("chat.card.thinking")} icon={ChevronRight}>

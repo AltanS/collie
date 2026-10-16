@@ -164,7 +164,18 @@ function ToolPart({
   );
 }
 
-function Part({ part, query, scope }: { part: TranscriptPart; query: string; scope?: Scope }) {
+function Part({
+  part,
+  query,
+  scope,
+  fromAgent,
+}: {
+  part: TranscriptPart;
+  query: string;
+  scope?: Scope;
+  /** The part belongs to an assistant turn, so its reply prose may carry stretches. */
+  fromAgent: boolean;
+}) {
   // Tool output is COMMAND output, not prose — it stays verbatim in a monospace block (see ToolPart).
   if (part.kind === "tool") return <ToolPart part={part} query={query} scope={scope} />;
   if (part.kind === "image") {
@@ -182,6 +193,7 @@ function Part({ part, query, scope }: { part: TranscriptPart; query: string; sco
         text={part.text}
         query={query}
         className={part.kind === "thinking" ? "italic text-muted-foreground" : undefined}
+        stretches={fromAgent && part.kind === "text"}
       />
       {part.truncated && (
         <div className="text-xs text-muted-foreground">{t("transcript.truncated")}</div>
@@ -232,7 +244,7 @@ function Turn({
           {time && ` · ${time}`}
         </div>
         {entry.parts.map((part, i) => (
-          <Part key={i} part={part} query={query} scope={scope} />
+          <Part key={i} part={part} query={query} scope={scope} fromAgent={false} />
         ))}
       </div>
     );
@@ -260,7 +272,7 @@ function Turn({
       )}
       <div className="space-y-1.5">
         {entry.parts.map((part, i) => (
-          <Part key={i} part={part} query={query} scope={scope} />
+          <Part key={i} part={part} query={query} scope={scope} fromAgent={entry.role === "assistant"} />
         ))}
       </div>
     </div>

@@ -232,6 +232,9 @@ export const tr: Dictionary = {
   "settings.display.tapToType.hint": "Açıkken, yansımada herhangi bir yere dokunmak klavyeyi açar. Kapalıyken, yansıma bir belge gibi davranır: dokunuşlar metne denk gelir ve yalnızca düzenleyici klavyeyi açar.",
   "settings.display.fullReply.label": "Son yanıtın tamamı",
   "settings.display.fullReply.hint": "Bir ajan terminali kaydırma geçmişi tutmaz, bu nedenle uzun bir yanıtın başı kaybolur. Açıkken, bu yanıt kapladığı satırların yerine ajanın kendi günlüğünden tam olarak gösterilir.",
+  "settings.display.stretchText.label": "Stretchtext yanıtlar",
+  "settings.display.stretchText.hint":
+    "cc-stretch eklentisiyle yazılan yanıtlar kısa hâllerini gösterir; açmak için bir ifadeye dokunun.",
   "settings.display.rawTerminal.label": "Ham terminal",
   "settings.display.rawTerminal.hint": "Düz yansımayı gösterir: dokunulabilir komut istemi butonları, çerçeve veya durum şeritleri yoktur. Bir iletişim kutusu yanlış işlendiğinde ve Keys üzerinden elle yönetmek istediğinizde kullanın.",
   "settings.display.noInvert.label": "Bu bölmeyi yerel olarak işle",
@@ -1278,6 +1281,9 @@ export const tr: Dictionary = {
   "transcript.truncated": "… kısaltıldı",
   "transcript.toolImageAlt": "Araç çıktısı",
   "transcript.attachmentAlt": "Ek",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Daha az göster",
   "mirror.imageAlt": "Terminal grafikleri",
   "mirror.imageBadge": "[Görsel]",
   "mirror.imageMatchedByOrder": "sıraya göre eşleşti, kontrol etmek için Geçmiş'i açın",

@@ -16,6 +16,7 @@ const PREFS: DisplayPrefs = {
   rawTerminal: false,
   tapToFocus: true,
   expandClippedReply: true,
+  stretchText: false,
 };
 
 function draw(paneView?: Partial<PaneViewControl>) {
@@ -33,6 +34,7 @@ function draw(paneView?: Partial<PaneViewControl>) {
       mirrorNative={false}
       setMirrorNative={vi.fn()}
       setExpandClippedReply={vi.fn()}
+      setStretchText={vi.fn()}
       paneView={
         paneView && {
           chosen: "terminal",

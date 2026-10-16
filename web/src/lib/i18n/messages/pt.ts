@@ -232,6 +232,9 @@ export const pt: Dictionary = {
   "settings.display.tapToType.hint": "Ativado, tocar em qualquer lugar do espelho abre o teclado. Desativado, o espelho funciona como um documento: os toques selecionam o texto e só o editor abre o teclado.",
   "settings.display.fullReply.label": "Última resposta completa",
   "settings.display.fullReply.hint": "O terminal de um agente não guarda histórico de rolagem, então uma resposta longa perde o início. Ativado, essa resposta aparece completa a partir do log do próprio agente, no lugar das linhas que ocupa.",
+  "settings.display.stretchText.label": "Respostas stretchtext",
+  "settings.display.stretchText.hint":
+    "Respostas escritas com o plugin cc-stretch mostram a forma curta; toque em uma frase para abri-la.",
   "settings.display.rawTerminal.label": "Terminal puro",
   "settings.display.rawTerminal.hint": "Mostra o espelho simples: sem botões de prompt clicáveis, sem moldura ou barras de status. Use quando uma caixa de diálogo renderizar errado e você quiser controlá-la manualmente por Teclas.",
   "settings.display.noInvert.label": "Renderizar este painel nativamente",
@@ -1278,6 +1281,9 @@ export const pt: Dictionary = {
   "transcript.truncated": "… truncado",
   "transcript.toolImageAlt": "Saída da ferramenta",
   "transcript.attachmentAlt": "Anexo",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Mostrar menos",
   "mirror.imageAlt": "Gráficos do terminal",
   "mirror.imageBadge": "[Imagem]",
   "mirror.imageMatchedByOrder": "correspondido por ordem, abra o Histórico para verificar",
