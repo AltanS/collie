@@ -2219,10 +2219,16 @@ files are labelled `idle` and read free.
 | `claude--v2301-synth-agents-panel-walk-fails.txt` | Hand-built from the incident screen | The same panel with `· ↓ to view` on the mode row and `↓ to manage` under the panel. Before the fix the walk failed here and the screen read `unreadable` |
 | `claude--v2301-lab-agents-panel-empty.txt` | Captured in the scratch-bridge lab, `tmux capture-pane -e` | A background agent runs. The box is empty, with a grey suggestion. The mode row ends `← for agents · ↓ to manage`, then a blank row, `● main` and one `◯` row. A plain send went in on this screen |
 | `claude--v2301-lab-agents-panel-draft.txt` | Same lab, one paste later | The same panel under a typed draft. The mode row drops its two hints, and the panel stays. Labelled `draft`, it reads `composer: draft` |
+| `claude--v2301-lab-agents-panel-more.txt` | Same lab, eleven agents | The panel shows `● main`, five `◯` rows and `↓ 6 more`. The profile names that row `agents-panel-more` |
+| `claude--v2301-lab-agents-panel-tasks-pill.txt` | Same lab, one ↓ from the box | The tasks pill is focused: the mode row ends `Enter to view tasks` |
+| `claude--v2301-lab-agents-panel-focused.txt` | Same lab, two ↓ from the box | The panel is focused: the mode row reads `↑/↓ to select`, and `❯ ● main` points at main. A typed key goes back to the box, so the label is `idle` |
 
 The two hand-built files carry a real reply from the transcript above the box. The folder in their
 statusline became `~/projects/sample-workspace`, the same length.
-In the two lab files the project folder became `~/.cache/sample-lab/lab-0000-00/work`, padded to the
+The lab could not draw `↓ to manage` on a row of its own under the panel. In each lab screen it stood on
+the mode row. The hand-built walk-fails file keeps that shape.
+
+In the lab files the project folder became `~/.cache/sample-lab/lab-0000-00/work`, padded to the
 same length, and the session name on the box became `lab-sample`.
 
 ## Surface corpus: labels and quoted-dialog transcripts (M56 spec 04, built 2026-10-15)

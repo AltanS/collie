@@ -129,6 +129,9 @@ const NEUTRAL = new Set([
   "claude--v2301-synth-agents-panel-walk-fails.txt",
   "claude--v2301-lab-agents-panel-empty.txt",
   "claude--v2301-lab-agents-panel-draft.txt",
+  "claude--v2301-lab-agents-panel-more.txt",
+  "claude--v2301-lab-agents-panel-tasks-pill.txt",
+  "claude--v2301-lab-agents-panel-focused.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

@@ -34,8 +34,9 @@
         "footerRows": [
           { "name": "agents-panel-main", "pattern": "^\\s*(?:❯\\s+)?●\\s+main(?:\\s.*)?$" },
           { "name": "agents-panel-agent", "pattern": "^\\s*(?:❯\\s+)?◯\\s+\\S.*$" },
+          { "name": "agents-panel-more", "pattern": "^\\s*↓ \\d+ more$" },
           { "name": "agents-panel-manage-hint", "pattern": "^\\s*↓ to manage$" },
-          { "name": "tasks-view-hint", "pattern": "\\s·\\s↓ to view(?:\\s·\\s|$)" }
+          { "name": "tasks-view-hint", "pattern": "^\\s*(?:⏵⏵|⏸|\\?)\\s.*\\s·\\s↓ to view(?:\\s·\\s|$)" }
         ]
       }
     }

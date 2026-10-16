@@ -856,6 +856,21 @@
    "version": "2.1.301",
    "state": "idle"
   },
+  "claude--v2301-lab-agents-panel-focused.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-more.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-tasks-pill.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--v2301-hold-subagent.txt": {
    "harness": "claude",
    "version": "2.1.301",

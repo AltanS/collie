@@ -473,24 +473,53 @@ describe("findInputFrame", () => {
     ]);
   });
 
-  it("a named run is a footer of any height, and the rows above it still walk as before", () => {
-    const agents = Array.from({ length: IDLE.volatile.below.footerMaxRows + 3 }, (_, i) => `  ◯ agent-${String(i)}   working    ${String(i)}s · ↓ 1k tokens`);
-    const frame = findInputFrame(lines(RULE, "❯ ", RULE, "  model", "", "  ● main", ...agents), IDLE)!;
-    expect(frame.volatile.status).toEqual({ first: 3, last: 3 });
-    expect(frame.volatile.footer).toEqual({ first: 5, last: 5 + agents.length });
+  it("a named run is at most footerMaxRows tall: a taller panel names nothing and walks as before", () => {
+    const max = IDLE.volatile.below.footerMaxRows;
+    const agentRows = (n: number) => Array.from({ length: n }, (_, i) => `  ◯ agent-${String(i)}   working    ${String(i)}s · ↓ 1k tokens`);
+    const fits = findInputFrame(lines(RULE, "❯ ", RULE, "  model", "", "  ● main", ...agentRows(max - 1)), IDLE)!;
+    expect(fits.volatile.status).toEqual({ first: 3, last: 3 });
+    expect(fits.volatile.footer).toEqual({ first: 5, last: 4 + max });
+    expect(fits.volatile.named).toHaveLength(max);
+    const tall = findInputFrame(lines(RULE, "❯ ", RULE, "  model", "", "  ● main", ...agentRows(max)), IDLE)!;
+    expect(tall.volatile.named).toEqual([]);
+    expect(tall.volatile.status).toBeNull();
     // A panel straight under the box, with no statusline: the panel alone is the footer.
     const bare = findInputFrame(lines(RULE, "❯ ", RULE, "", "  ● main", "  ◯ agent   working   1s · ↓ 1k tokens"), IDLE)!;
     expect(bare.volatile.status).toBeNull();
     expect(bare.volatile.footer).toEqual({ first: 4, last: 5 });
   });
 
-  it("a named run never makes rows that do not walk a statusline", () => {
+  it("a named run never makes rows that do not walk a statusline, and a failed walk names nothing", () => {
     const tall = Array.from({ length: IDLE.volatile.below.maxRows + 1 }, (_, i) => `  status ${String(i)}`);
     const frame = findInputFrame(lines(RULE, "❯ ", RULE, ...tall, "", "  ● main", "  ◯ agent   working   1s · ↓ 1k tokens"), IDLE)!;
     expect(frame.volatile.status).toBeNull();
     expect(frame.volatile.footer).toBeNull();
-    // The rows are still named, so the cues can skip them.
-    expect(frame.volatile.named.map((hit) => hit.name)).toEqual(["agents-panel-main", "agents-panel-agent"]);
+    expect(frame.volatile.named).toEqual([]);
+  });
+
+  it("no second footer walks over the named run: a dialog between the statusline and the panel fails the walk", () => {
+    const panel = ["", "  ● main", "  ◯ agent   working   1s · ↓ 1k tokens"];
+    const frame = findInputFrame(lines(RULE, "❯ ", RULE, "  ⏵⏵ auto mode on", "", " ❯ 1. Yes", "   2. No", ...panel), IDLE)!;
+    expect(frame.volatile.status).toBeNull();
+    expect(frame.volatile.footer).toBeNull();
+    expect(frame.volatile.named).toEqual([]);
+  });
+
+  it("names a run only when it opens with the list's first entry and keeps the list's order", () => {
+    const status = ["  ⏵⏵ auto mode on · 1 shell · ↓ to view", ""];
+    // No `● main`: a list of `◯` rows under the box is not the panel.
+    const popup = findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ◯ one", "  ◯ two"), IDLE)!;
+    expect(popup.volatile.named).toEqual([]);
+    // `● main` again under an agent row, or an agent row under the manage hint, breaks the order.
+    expect(findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ● main", "  ◯ one", "  ● main"), IDLE)!.volatile.named).toEqual([]);
+    expect(findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ● main", "  ↓ to manage", "  ◯ one"), IDLE)!.volatile.named).toEqual([]);
+    // The view hint counts only on the mode row, the last statusline row.
+    const ok = findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ● main", "  ◯ one"), IDLE)!;
+    expect(ok.volatile.named.map((hit) => hit.name)).toEqual(["tasks-view-hint", "agents-panel-main", "agents-panel-agent"]);
+    expect(findInputFrame(lines(RULE, "❯ ", RULE, "  pick one · ↓ to view", "", "  ● main", "  ◯ one"), IDLE)!.volatile.named.map((hit) => hit.name)).toEqual([
+      "agents-panel-main",
+      "agents-panel-agent",
+    ]);
   });
 
   it("names the band over the top edge as volatile, bounded by the profile", () => {
@@ -530,6 +559,7 @@ describe("the Claude profile's frame bounds", () => {
     expect((IDLE.volatile.below.footerRows ?? []).map((row) => row.name)).toEqual([
       "agents-panel-main",
       "agents-panel-agent",
+      "agents-panel-more",
       "agents-panel-manage-hint",
       "tasks-view-hint",
     ]);

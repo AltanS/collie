@@ -1,0 +1,40 @@
+
+
+[38;5;246m✻[39m [38;5;246mWaiting for [1m7[0m[38;5;246m background agents to finish[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 3 of 9" is waiting on its own background work[38;5;246m · 3s[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 5 of 9" is waiting on its own background work[38;5;246m · 3s[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 6 of 9" is waiting on its own background work[38;5;246m · 3s[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 4 of 9" is waiting on its own background work[38;5;246m · 4s[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 7 of 9" is waiting on its own background work[38;5;246m · 2s[39m
+
+[38;5;231m●[39m Seven of the nine workers have replied "done". Each one started its background [38;5;153msleep 500[39m. Workers 8 and 9 have not
+  reported yet.
+
+[38;5;246m✻[39m [38;5;246mWaiting for [1m2[0m[38;5;246m background agents to finish[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 8 of 9" is waiting on its own background work[38;5;246m · 2s[39m
+
+[38;5;114m●[39m Agent "Background sleep 500 worker 9 of 9" is waiting on its own background work[38;5;246m · 2s[39m
+
+[38;5;231m●[39m All nine workers have now replied "done". Each one started its background [38;5;153msleep 500[39m. The sleeps are still running. The
+  two earlier background sleeps (600 and 610 seconds) and the two Monitor watches may still be running too.
+
+[38;5;246m✻[39m [38;5;246mChurned for 12s · done 9:43 PM · 13 shells, 2 monitors still running[39m
+
+[38;5;244m─────────────────────────────────────────────────────────────────────────────────────────────────────────── lab-sample ─
+[39m❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246m↑/↓ to select[39m
+
+[1m❯ ● main[0m
+[38;5;246m  ◯ general-purpose[39m  [38;5;246mBackground sleep 500 worker 1[39m                                                 [38;5;246m3s · ↓ 27.3k tokens[39m
+[38;5;246m  ◯ general-purpose[39m  [38;5;246mBackground sleep 500 worker 2[39m                                                 [38;5;246m2s · ↓ 27.3k tokens[39m
+[38;5;246m  ◯ general-purpose[39m  [38;5;246mBackground sleep 500 worker 1 of 9[39m                                            [38;5;246m3s · ↓ 27.3k tokens[39m
+[38;5;246m  ◯ general-purpose[39m  [38;5;246mBackground sleep 500 worker 2 of 9[39m                                            [38;5;246m2s · ↓ 27.3k tokens[39m
+[38;5;246m  ◯ general-purpose[39m  [38;5;246mBackground sleep 500 worker 3 of 9[39m                                            [38;5;246m3s · ↓ 27.3k tokens[39m
+[38;5;246m  ↓ 6 more[39m

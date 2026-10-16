@@ -974,6 +974,63 @@
   }
  },
  {
+  "fixture": "claude--v2301-lab-agents-panel-focused.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": "lab-sample",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": {
+    "first": 33,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-more.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": "lab-sample",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": {
+    "first": 33,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-tasks-pill.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": "lab-sample",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": {
+    "first": 33,
+    "last": 39
+   }
+  }
+ },
+ {
   "fixture": "claude--v2301-queued-taken--w100.txt",
   "frame": {
    "top": 34,

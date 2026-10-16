@@ -998,6 +998,11 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // draft), and under a typed draft, where the mode row drops its two hints.
     { fixture: "v2301-lab-agents-panel-empty", statusRows: 1, draft: null, stripped: 8 },
     { fixture: "v2301-lab-agents-panel-draft", statusRows: 1, draft: "draft text in the box", stripped: 9 },
+    // The same lab with eleven agents: five rows and "↓ 6 more", the tasks pill focused ("Enter to view
+    // tasks" on the mode row), and the panel itself focused ("↑/↓ to select", "❯ ● main").
+    { fixture: "v2301-lab-agents-panel-more", statusRows: 1, draft: null, stripped: 14 },
+    { fixture: "v2301-lab-agents-panel-tasks-pill", statusRows: 1, draft: null, stripped: 13 },
+    { fixture: "v2301-lab-agents-panel-focused", statusRows: 1, draft: null, stripped: 14 },
     { fixture: "v2301-idle", statusRows: 1, draft: null, stripped: 6 },
     // Claude Code 2.1.301 around a running turn (send-queue lab, 2026-10-16): the operator's two-row
     // statusline plus the mode row; the draft typed during the turn is read as a draft.
