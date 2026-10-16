@@ -643,7 +643,7 @@ export const fr: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after \"collie hooks install\".", // TODO wordsmith
   "paneActions.title.fallback": "Volet",
   "paneActions.settings.label": "Paramètres du volet",
   "paneActions.readOnly": "Lecture seule : cet appareil n'est pas autorisé à renommer ou fermer les volets.",

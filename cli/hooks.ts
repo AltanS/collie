@@ -553,7 +553,8 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   if (failed) return EXIT.FAIL;
   deps.io.out(`  ${BEACON_HOOKS.map((r) => r.event).join(", ")} → \`${binary} beacon emit\``);
   deps.io.out(`  ${PINNED_NOTE[source]}`);
-  deps.io.out("  Outside tmux/zellij the hook exits immediately and writes nothing.");
+  deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only.");
+  deps.io.out("  Agents that run now keep their old hooks. Restart them to send hook edges.");
   return EXIT.OK;
 }
 
