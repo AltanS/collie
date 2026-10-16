@@ -122,6 +122,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Three composer sentences say what to do.** A contested read points at the Screen pill, a torn read says send again, and the cap sentence names the harness and the Confirm button without blaming the typist.
 - **The header keeps the Collie dog under every theme.** A theme changes the colours, one typeface and the shape of controls; the dog in the header, the home-screen icon and the splash look the same under all four themes and under an imported one.
 - **The three new themes each take a shape.** The dim-amber theme for the night is sharp and flat, with bold text and 2px borders, like an instrument panel. Daylight has round corners, a lifted shadow and roomier rows. Harbour has soft corners and keeps the rest of Collie's shape. Their colours and every contrast check are unchanged, and the Collie theme keeps its look.
+- **The Theme chips show each theme's shape.** In Settings, Appearance, every chip wears its own theme's corners and weight, so the strip shows the shape before a tap. The Collie chip looks as it did, and the strip keeps its one row and its height.
 
 ### Fixed
 

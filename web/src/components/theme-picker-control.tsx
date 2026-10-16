@@ -34,7 +34,7 @@ import {
   useActiveTheme,
   useLibrary,
 } from "@/lib/theme/store";
-import { SURFACE_TOKENS, fullSurfaceDeclarations, resolveSurface } from "@/lib/theme/surface";
+import { SURFACE_TOKENS, fullSurfaceDeclarations, resolveSurface, wordDeclarations } from "@/lib/theme/surface";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -110,6 +110,24 @@ function ThemeGlyph({ theme }: { theme: Theme }) {
       style={{ background: `linear-gradient(135deg, ${light} 50%, ${dark} 50%)` }}
     />
   );
+}
+
+/**
+ * The custom properties a theme's chip wears: the declarations of the theme's own radius and weight
+ * words (surface.ts), a word the theme leaves out at its default. The chip's `rounded-md` and
+ * `font-medium` read `--radius-md` and `--font-weight-medium` from the nearest box that sets them,
+ * so each chip shows its theme's corner and weight whatever theme the page wears. Collie's words
+ * are the defaults, so its chip draws what it drew before. Only these two: a chip that took the
+ * theme's density or border would change the strip's height, and the strip must not move (§2).
+ */
+export function themeChipStyle(theme: Theme): CSSProperties {
+  const surface = resolveSurface(theme.surface);
+  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
+  // only because CSSProperties has no index signature for `--*`. Names and values come from surface.ts.
+  return Object.fromEntries([
+    ...wordDeclarations("radius", surface.radius),
+    ...wordDeclarations("weight", surface.weight),
+  ]) as CSSProperties;
 }
 
 /** The size refusal for a file the card will not even read. The same words the parser uses. */
@@ -473,15 +491,18 @@ export function ThemePickerControl() {
         {/* `contents`: the group has no box of its own, so the pills stay direct flex items of the
             scroller and the strip lays out exactly as the space strip does. */}
         <div role="radiogroup" aria-label={t("theme.title")} className="contents">
+          {/* Each chip sits in a box-less span that carries its theme's radius and weight, so the
+              strip previews every theme's shape (themeChipStyle). */}
           {all.map((theme) => (
-            <Chip
-              key={theme.id}
-              radio
-              label={theme.name}
-              glyph={<ThemeGlyph theme={theme} />}
-              active={theme.id === active.id}
-              onClick={() => setActiveTheme(theme.id)}
-            />
+            <span key={theme.id} className="contents" style={themeChipStyle(theme)} data-testid="theme-chip-shape">
+              <Chip
+                radio
+                label={theme.name}
+                glyph={<ThemeGlyph theme={theme} />}
+                active={theme.id === active.id}
+                onClick={() => setActiveTheme(theme.id)}
+              />
+            </span>
           ))}
         </div>
       </LabelledStrip>
