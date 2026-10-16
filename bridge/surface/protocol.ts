@@ -1096,7 +1096,7 @@ export class SendProtocol {
     }
     if (takesManualSend(surface)) {
       if (state.request.rowsHash === undefined) {
-        throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: "Collie cannot read this screen. Check the rows, then tap Type here." });
+        throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: "Collie cannot read this screen. Check the pane, then tap Type here." });
       }
       if (state.request.rowsHash !== s0.rowsHash) {
         throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });

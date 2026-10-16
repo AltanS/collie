@@ -469,6 +469,8 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     const { send } = rig({ pane, harness: "codex" });
     const first = await send("reply with one word: ok");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", profileId: null, keys: [] });
+    // The same words as the phone's catalog line printed above it.
+    expect(first.detail).toBe("Collie cannot read this screen. Check the pane, then tap Type here.");
     const answer = await send("reply with one word: ok", { rowsHash: first.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:reply with one word: ok"]);

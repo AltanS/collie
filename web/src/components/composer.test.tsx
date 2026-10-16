@@ -340,7 +340,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     server.use(
       ...sendHandler((request) =>
         request.rowsHash === undefined
-          ? sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE, detail: "Collie cannot read this screen. Check the rows, then tap Type here." })
+          ? sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE, detail: "Collie cannot read this screen. Check the pane, then tap Type here." })
           : sendAnswer(request.id, "sent"),
       ),
     );
@@ -352,7 +352,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
     expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen.*cannot read was open over the box/i);
-    expect(container.querySelector('[data-slot="composer-refusal-detail"]')).toHaveTextContent(/check the rows/i);
+    expect(container.querySelector('[data-slot="composer-refusal-detail"]')).toHaveTextContent(/check the pane, then tap type here/i);
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");
     // Its control goes to the card, the same way the Answer the dialog word does.
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
