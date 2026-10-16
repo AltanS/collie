@@ -4355,6 +4355,15 @@ export type ReplyProtocolResponse = ActionResponse & { send: SendAnswer };
 export const REPLY_OFF_TEXT = "sending text is off on this machine (COLLIE_SEND_PROTOCOL=0); the keys still work";
 
 /**
+ * The reply route's refusal of a text submit that names no request id: a phone one release behind,
+ * reaching this machine through a lead that forwards its body as it is. The 1.22 phone always sends an
+ * `id` and a `mode`. The old phone never sends the `rowsHash` the protocol's second tap needs, so on a
+ * screen the protocol cannot read the first tap would ask for a tap that can never pass.
+ */
+export const REPLY_OLD_PHONE_TEXT =
+  "this machine runs a newer Collie than the one your phone talks to, so text cannot be checked here; update the lead, or use the keys";
+
+/**
  * A reply that submits text, run as one Send Protocol request (M56 spec 06). The old route typed,
  * waited a fixed 350 ms and pressed Enter blind; that path is gone. The body may name the request id,
  * the mode and the rows hash the way `POST /api/send` does (the phone does, on a crew member's pane,
@@ -4449,6 +4458,20 @@ export async function replyPane(
   const txt = fields.text ?? "";
   const submit = fields.submit ?? true;
   const ae = req.headers.get("accept-encoding");
+  // A text submit that names no request id comes from a phone one release behind (the 1.22 phone always
+  // sends one). It is answered at once, before any read and before any key: the protocol's second tap
+  // needs a rows hash that phone never sends. Keys and `submit: false` text are untouched.
+  if (submit && txt !== "" && fields.id === undefined) {
+    audit.record({
+      action: "reply",
+      paneId,
+      session,
+      device,
+      detail: { submit, submitted: false, textDelivered: false, reason: "old_phone" },
+    });
+    const refusal: ActionResponse = { ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: REPLY_OLD_PHONE_TEXT }) };
+    return json(refusal, ae);
+  }
   const binding = expected.present
     ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value)
     : null;
