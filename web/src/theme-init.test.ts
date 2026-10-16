@@ -103,3 +103,61 @@ describe("the colour pattern theme-init.js uses", () => {
     }
   });
 });
+
+// RUNNING THE SCRIPT, not reading it. The cases above hold the lists equal; these run the file
+// against a stand-in document and a stand-in localStorage and look at what it wrote. It is the only
+// way to cover a branch like `lib.version === 1`, which no text comparison exercises.
+function runInit(store: Record<string, string>) {
+  const classes = new Set<string>();
+  const attributes = new Map<string, string>();
+  const properties = new Map<string, string>();
+  const root = {
+    classList: { add: (c: string) => void classes.add(c) },
+    setAttribute: (k: string, v: string) => void attributes.set(k, v),
+    style: { setProperty: (k: string, v: string) => void properties.set(k, v) },
+  };
+  const storage = { getItem: (k: string) => store[k] ?? null };
+  new Function("document", "localStorage", init)({ documentElement: root }, storage);
+  return { classes: [...classes], attributes: [...attributes], properties: [...properties] };
+}
+
+const midnight = (version: number) => ({
+  version,
+  themes: [
+    {
+      version: 1,
+      id: "midnight",
+      name: "Midnight",
+      light: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#ffffff"])),
+      dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#123456"])),
+    },
+  ],
+});
+
+describe("theme-init.js, run", () => {
+  it("applies an imported theme from a version 1 library", () => {
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ theme: "midnight" }),
+      "collie:themes:v1": JSON.stringify(midnight(1)),
+    });
+    expect(seen.properties).toHaveLength(THEME_TOKENS.length);
+  });
+
+  it("applies nothing from a library that says version 2", () => {
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ theme: "midnight" }),
+      "collie:themes:v1": JSON.stringify(midnight(2)),
+    });
+    expect(seen).toEqual({ classes: [], attributes: [], properties: [] });
+  });
+
+  it("gives a pre-M57 design blob with no theme and a dark pin the dark class and nothing else", () => {
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ font: "aldrich" }),
+      "collie:theme:v1": "dark",
+    });
+    expect(seen.classes).toEqual(["dark"]);
+    expect(seen.attributes).toEqual([]);
+    expect(seen.properties).toEqual([]);
+  });
+});
