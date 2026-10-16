@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
-import { beaconFileName, beaconKey, EDGE_FILE, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
+import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
+import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
 import { BEACON_HARNESS, BEACON_HOOKS, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, STATE } from "./fakes.ts";
@@ -48,6 +49,7 @@ function deps(
     readStdin: () => Promise.resolve(over.stdin ?? payload()),
     agentPid: over.pid ?? AGENT_PID,
     now: () => 1_700_000_000_000,
+    uid: 1000,
   };
 }
 
@@ -339,17 +341,122 @@ describe("the hook edges it writes (M56 spec 11)", () => {
     expect(edges(d.files)[0]?.promptHash).toBeNull();
   });
 
-  test("a full spool takes no more edges: no bridge is taking them", async () => {
+  test("a full spool of fresh edges takes no more: no bridge is taking them", async () => {
     const d = deps({ stdin: payload({ hook_event_name: "Stop" }) });
-    for (let i = 0; i < EDGE_SPOOL_MAX; i++) d.files.write(`${STATE}/edges/${String(i)}-1-aa.json`, "{}");
+    d.files.mkdirp(`${STATE}/edges`, 0o700);
+    for (let i = 0; i < EDGE_SPOOL_MAX; i++) d.files.write(`${STATE}/edges/1700000000000-1-${i.toString(16)}.json`, "{}");
     await cmdBeaconEmit(d);
     expect(edges(d.files)).toEqual([]);
     expect(beacons(d.files).size).toBe(1);
+  });
+
+  test("a full spool first loses its edges older than the bridge would take, then takes the new one", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Stop" }) });
+    d.files.mkdirp(`${STATE}/edges`, 0o700);
+    const old = 1_700_000_000_000 - EDGE_MAX_AGE_MS - 1;
+    for (let i = 0; i < EDGE_SPOOL_MAX; i++) d.files.write(`${STATE}/edges/${String(i < 10 ? old : 1_700_000_000_000)}-1-${i.toString(16)}.json`, "{}");
+    await cmdBeaconEmit(d);
+    const names = [...d.files.entries.keys()].filter((path) => path.startsWith(`${STATE}/edges/`));
+    expect(names.filter((path) => path.includes(`/${String(old)}-`))).toEqual([]);
+    expect(edges(d.files)).toHaveLength(1);
+  });
+
+  test("a spool folder another user can write into takes no edge", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Stop" }) });
+    d.files.mkdirp(`${STATE}/edges`, 0o777);
+    await cmdBeaconEmit(d);
+    expect(edges(d.files)).toEqual([]);
+    const owned = deps({ stdin: payload({ hook_event_name: "Stop" }) });
+    owned.files.mkdirp(`${STATE}/edges`, 0o700);
+    owned.files.rootOwned.add(`${STATE}/edges`);
+    await cmdBeaconEmit(owned);
+    expect(edges(owned.files)).toEqual([]);
+  });
+
+  test("a Herdr pane gets the edge and no beacon file: Herdr names its agents itself", async () => {
+    const d = deps({ env: HERDR, stdin: payload({ hook_event_name: "UserPromptSubmit" }) });
+    await cmdBeaconEmit(d);
+    expect(edges(d.files)).toHaveLength(1);
+    expect(beacons(d.files).size).toBe(0);
+    const nested = deps({ env: { ...HERDR, ...TMUX }, stdin: payload({ hook_event_name: "UserPromptSubmit" }) });
+    await cmdBeaconEmit(nested);
+    expect(beacons(nested.files).size).toBe(1);
   });
 
   test("a subagent's event writes no edge", async () => {
     const d = deps({ stdin: payload({ hook_event_name: "Stop", agent_id: "sub-1" }) });
     await cmdBeaconEmit(d);
     expect(edges(d.files)).toEqual([]);
+  });
+});
+
+describe("the hook target registry (M56 spec 11)", () => {
+  const REGISTRY = "/home/pat/.local/state/collie/hook-targets";
+  const A = { dir: "/srv/collie-a", pid: 5001, start: 11, salt: "a".repeat(32) };
+  const B = { dir: "/srv/collie-b", pid: 5002, start: 22, salt: "b".repeat(32) };
+  const statOf = (pid: number, start: number): string => `${String(pid)} (bun) S 1 ${Array.from({ length: 17 }, (_v, i) => i).join(" ")} ${String(start)} 0 0`;
+
+  function withTargets(targets: { dir: string; pid: number; start: number; salt: string; alive?: boolean; file?: string }[], env: Environment = TMUX) {
+    const d = deps({ env, stdin: payload({ hook_event_name: "UserPromptSubmit", prompt: "fix the parser" }) });
+    d.files.mkdirp(REGISTRY, 0o700);
+    for (const t of targets) {
+      d.files.write(`${REGISTRY}/${t.file ?? hookTargetFileName(t.dir)}`, JSON.stringify({ schemaVersion: 1, stateDir: t.dir, pid: t.pid, pidStartTime: t.start, bootedAt: 1 }), 0o600);
+      d.files.write(`${t.dir}/sends/.salt`, t.salt);
+      if (t.alive !== false) d.files.write(`/proc/${String(t.pid)}/stat`, statOf(t.pid, t.start));
+    }
+    return d;
+  }
+  function edgesIn(files: ReturnType<typeof fakeFiles>, dir: string): EdgeRecord[] {
+    return [...files.entries]
+      .filter(([path]) => path.startsWith(`${dir}/edges/`) && EDGE_FILE.test(path.slice(`${dir}/edges/`.length)))
+      .flatMap(([, entry]) => {
+        const record = parseEdge(entry.text);
+        return record === null ? [] : [record];
+      });
+  }
+  const hash = (salt: string): string => createHash("sha256").update(salt).update("\u0000").update("fix the parser").digest("hex");
+
+  test("two live targets: each gets the edge, its prompt hashed with that target's own salt", async () => {
+    const d = withTargets([A, B]);
+    await cmdBeaconEmit(d);
+    expect(edgesIn(d.files, A.dir).map((edge) => edge.promptHash)).toEqual([hash(A.salt)]);
+    expect(edgesIn(d.files, B.dir).map((edge) => edge.promptHash)).toEqual([hash(B.salt)]);
+    // The default state dir is not a target while bridges are registered and none names it.
+    expect(edgesIn(d.files, STATE)).toEqual([]);
+  });
+
+  test("a dead target is skipped and its file deleted; a reused pid counts as dead", async () => {
+    const d = withTargets([A, { ...B, alive: false }]);
+    await cmdBeaconEmit(d);
+    expect(edgesIn(d.files, A.dir)).toHaveLength(1);
+    expect(edgesIn(d.files, B.dir)).toEqual([]);
+    expect(d.files.read(`${REGISTRY}/${hookTargetFileName(B.dir)}`)).toBeNull();
+    const reused = withTargets([A]);
+    reused.files.write(`/proc/${String(A.pid)}/stat`, statOf(A.pid, 999));
+    await cmdBeaconEmit(reused);
+    expect(edgesIn(reused.files, A.dir)).toEqual([]);
+    expect(edgesIn(reused.files, STATE)).toHaveLength(1);
+  });
+
+  test("no registry: the edge goes to the emitter's own state dir, as before", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Stop" }) });
+    await cmdBeaconEmit(d);
+    expect(edgesIn(d.files, STATE)).toHaveLength(1);
+  });
+
+  test("an explicit COLLIE_STATE_DIR is always a target, beside the registered ones", async () => {
+    const d = withTargets([A], { ...TMUX, COLLIE_STATE_DIR: STATE });
+    await cmdBeaconEmit(d);
+    expect(edgesIn(d.files, A.dir)).toHaveLength(1);
+    expect(edgesIn(d.files, STATE)).toHaveLength(1);
+  });
+
+  test("XDG_STATE_HOME moves the registry", async () => {
+    const d = deps({ env: { ...TMUX, XDG_STATE_HOME: "/xdg" }, stdin: payload({ hook_event_name: "Stop" }) });
+    d.files.mkdirp("/xdg/collie/hook-targets", 0o700);
+    d.files.write(`/xdg/collie/hook-targets/${hookTargetFileName(A.dir)}`, JSON.stringify({ schemaVersion: 1, stateDir: A.dir, pid: A.pid, pidStartTime: A.start, bootedAt: 1 }));
+    d.files.write(`/proc/${String(A.pid)}/stat`, statOf(A.pid, A.start));
+    await cmdBeaconEmit(d);
+    expect(edgesIn(d.files, A.dir)).toHaveLength(1);
   });
 });

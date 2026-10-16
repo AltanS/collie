@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import { BEACON_HOOKS, type HookRegistration } from "./beacon.ts";
+import { hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext } from "./context.ts";
 import { publishedBinary } from "./install-kind.ts";
@@ -554,7 +555,9 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   deps.io.out(`  ${BEACON_HOOKS.map((r) => r.event).join(", ")} → \`${binary} beacon emit\``);
   deps.io.out(`  ${PINNED_NOTE[source]}`);
   deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only.");
-  deps.io.out("  Agents that run now keep their old hooks. Restart them to send hook edges.");
+  deps.io.out(`  Hook edges go to each running bridge listed in ${hookTargetsDir(deps.ctx.env, deps.ctx.home)}.`);
+  deps.io.out("  With no bridge listed there, they go to the default state dir.");
+  deps.io.out("  An agent that started before this install keeps its old hooks until it restarts.");
   return EXIT.OK;
 }
 

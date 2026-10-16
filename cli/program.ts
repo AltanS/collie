@@ -296,6 +296,7 @@ function beaconDeps(): BeaconEmitDeps {
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     agentPid: process.ppid,
+    uid: process.getuid?.(),
   };
 }
 

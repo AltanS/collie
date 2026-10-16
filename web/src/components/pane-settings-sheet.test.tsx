@@ -179,7 +179,8 @@ describe("PaneSettingsView, the pane's hook edges (M56 spec 11)", () => {
   test("says hooks: none for a pane that started before the install, and names the install", () => {
     render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} hooks="none" />);
     expect(screen.getByText("Hooks: none")).toBeInTheDocument();
-    expect(screen.getByText(/collie hooks install/)).toBeInTheDocument();
+    expect(screen.getByText(/collie hooks install claude/)).toBeInTheDocument();
+    expect(screen.queryByText(/restart/i)).toBeNull();
   });
 
   test("shows no hooks row at all on an older bridge", () => {

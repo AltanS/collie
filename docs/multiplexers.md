@@ -370,28 +370,43 @@ on the beacon to supply the session key used by the journal.
 
 ### Hook edges
 
-The same hooks also write a **hook edge** for each event. A hook edge is a short note that an event
-happened in one pane, for example "a prompt went in", "the turn stopped" or "a permission dialog is
-up". Collie uses hook edges on every multiplexer, Herdr too. Herdr names its agents on its own, so on
-Herdr the hooks give hook edges only.
+The same hooks also write a **hook edge** for each event. A hook edge is a short note about one
+pane. Examples are "a prompt went in", "the turn stopped" and "a permission dialog is up". Collie
+uses hook edges on every multiplexer, Herdr too. Herdr names its agents on its own. On Herdr the
+hooks therefore write hook edges only, and no beacon.
 
-A hook edge never decides on its own that a pane is free. When an edge comes in, Collie reads the
-screen again about 0.7 seconds later. Only the screen can say that the input box is empty and that no
-dialog is up. An edge can say that a turn runs or that a dialog is up. Collie then holds the pane as
-busy until the closing edge comes, or until the screen shows a free box on three reads over ten
-seconds. When a prompt edge carries the same text as a send
-from the phone, that send shows as **Confirmed**. The edge carries a salted hash of the prompt, never
-the text itself.
+A hook edge never decides on its own that a pane is free. After each edge, Collie reads the screen
+again about 0.7 seconds later. Only the screen can say that the input box is empty and no dialog is
+up. An edge can say that a turn runs or that a dialog is up. Collie then holds the pane as busy until
+the closing edge comes. Three free screen reads over ten seconds also end the hold.
 
-Collie places each edge on one pane. The edge names the agent's process and the pane it runs in
-(`HERDR_PANE_ID`, `TMUX_PANE` or `ZELLIJ_PANE_ID`). An edge that names no pane, or a process that is
-gone, is dropped, and the bridge log shows one `surface.edge.dropped` line for it.
+A send from the phone can show as **Confirmed**. That happens when a prompt edge carries the same
+text soon after the send. The window is 30 seconds, or ten minutes for a send queued behind a turn.
+The edge carries a salted hash of the prompt, never the text itself.
+
+Collie places each edge on one pane. The edge names the agent's process and its pane
+(`HERDR_PANE_ID`, `TMUX_PANE` or `ZELLIJ_PANE_ID`). Collie drops an edge that names no pane, two
+panes, or a process that is gone. The bridge log then shows a `surface.edge.dropped` line. It shows at
+most one line per reason and process each minute. An edge older than 30 seconds, or a file that is
+not an edge, is counted but never logged.
+
+#### Which bridges get the edges
+
+Each bridge that takes hook edges lists itself in `~/.local/state/collie/hook-targets/` at boot.
+With `XDG_STATE_HOME` set, the folder is `$XDG_STATE_HOME/collie/hook-targets/`. A bridge removes its
+file when it stops cleanly. The hook writes each edge into every listed bridge whose process still
+runs. It deletes the file of a bridge that is gone. With no bridge listed, the hook writes into the
+default state dir. A `COLLIE_STATE_DIR` in the agent's own environment always gets the edges too.
+
+#### The pane info
 
 The pane info on the phone shows whether a pane sends hook edges:
 
 - **Hooks: live** means the agent in that pane sends hook edges.
-- **Hooks: none** means it does not. The hooks are not installed, or the agent started before
-  `collie hooks install claude`. Restart the agent to start its hook edges.
+- **Hooks: none** means Collie has no hook edge from that pane. Either the hooks are not installed,
+  or the agent started before `collie hooks install claude`. Only that second agent needs a restart.
+
+A bridge keeps the live panes across its own restart. The row stays "live" after a bridge restart.
 
 An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
 status` shows it as partial. Run `collie hooks install claude` again to update it in place.
