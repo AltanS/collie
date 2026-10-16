@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 import { EDGE_SCHEMA_VERSION, type BeaconMarker } from "../bridge/beacon/types.ts";
 import { parseProcStartTime } from "../bridge/beacon/liveness.ts";
@@ -27,7 +27,9 @@ import type { Files } from "./sys.ts";
 //
 //  - the parent is a TUI itself (an older Codex with no daemon): that TUI;
 //  - the parent is an app-server: every `codex` process that is no app-server, with the same
-//    CODEX_HOME as the daemon and a working folder equal to the payload's `cwd`. Exactly one such TUI
+//    CODEX_HOME as the daemon and a working folder equal to the payload's `cwd`. Each side's
+//    CODEX_HOME comes from that process's own environment, `$HOME/.codex` when it is unset, and both
+//    are compared as real paths: the default setup sets no CODEX_HOME at all. Exactly one such TUI
 //    gets the edge, with the markers from ITS OWN environment. None, or two in the same folder: no
 //    edge, and the pane reads the screen on its own poll as before.
 //
@@ -78,13 +80,27 @@ export function isCodexTui(args: readonly string[]): boolean {
   return programOf(args) === "codex" && !args.includes("app-server") && !args.includes("exec");
 }
 
+/**
+ * The Codex home of a process, from its own environment: `CODEX_HOME`, else `$HOME/.codex`, as a real
+ * path when it resolves. Null when the environment cannot be read or names neither.
+ */
+export function codexHomeOf(files: Files, pid: number): string | null {
+  const env = environOf(files, pid);
+  if (env === null) return null;
+  const set = (env.CODEX_HOME ?? "").trim();
+  const home = (env.HOME ?? "").trim();
+  const dir = set !== "" ? set : home !== "" ? join(home, ".codex") : null;
+  return dir === null ? null : (files.realpath(dir) ?? dir);
+}
+
 /** The TUI a notify belongs to, or null. See the header for the rule. */
 export function codexTuiFor(files: Files, parentPid: number, cwd: string | null): number | null {
   const parentArgs = argsOf(files, parentPid);
   if (parentArgs === null) return null;
   if (isCodexTui(parentArgs)) return parentPid;
   if (!isAppServer(parentArgs) || cwd === null) return null;
-  const home = environOf(files, parentPid)?.CODEX_HOME ?? null;
+  const home = codexHomeOf(files, parentPid);
+  if (home === null) return null;
   const folder = files.realpath(cwd) ?? cwd;
   const found: number[] = [];
   for (const name of files.list("/proc").slice(0, PROC_SCAN_MAX)) {
@@ -92,7 +108,7 @@ export function codexTuiFor(files: Files, parentPid: number, cwd: string | null)
     const pid = Number(name);
     const args = argsOf(files, pid);
     if (args === null || !isCodexTui(args)) continue;
-    if ((environOf(files, pid)?.CODEX_HOME ?? null) !== home) continue;
+    if (codexHomeOf(files, pid) !== home) continue;
     if (files.realpath(`/proc/${name}/cwd`) !== folder) continue;
     found.push(pid);
   }

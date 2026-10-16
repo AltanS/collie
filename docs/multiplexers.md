@@ -423,17 +423,19 @@ $ collie hooks status
 /home/you/.codex/config.toml: installed
 ```
 
-The install writes one line into `$CODEX_HOME/config.toml` (`~/.codex/config.toml` when `CODEX_HOME`
-is not set):
+The install writes one line at the top of `$CODEX_HOME/config.toml` (`~/.codex/config.toml` when
+`CODEX_HOME` is not set). The line goes after the comments at the top of the file:
 
 ```toml
 notify = ["/home/you/.local/bin/collie", "beacon", "emit", "codex"]
 ```
 
 Codex runs one notify command only. If your config already names one, Collie leaves it in place and
-the install stops with a message. Collie keeps a copy of the file before its first change.
-`collie hooks uninstall codex` puts back the bytes from before the install. A Codex that is already
-open may not see the new line until it starts again.
+the install stops with a message. If Collie cannot read the file as TOML, the install stops and
+names the line. Collie keeps a copy of the file before its first change.
+`collie hooks uninstall codex` puts back the exact bytes from before the install. If the install
+created the file, uninstall removes it. A Codex that is already open may not see the new line until
+it starts again.
 
 Codex sends one event, `agent-turn-complete`, at the end of each turn. Collie writes it as a stop
 edge, and the screen read after it decides whether the pane is free. The limits:
@@ -448,8 +450,16 @@ edge, and the screen read after it decides whether the pane is free. The limits:
 - Codex also runs a short hidden turn to name a new task. That turn sends one more stop edge, so
   the pane gets one more screen read.
 
-A send from the phone into a running Codex turn presses Tab, not Enter. In Codex, Enter steers the
-running turn, and Tab queues the message for after the turn. The receipt then says queued.
+Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
+message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
+running turn, so Collie never presses Enter for a message. A text that starts with `/` is a command.
+It takes Enter, because Tab would complete it in the slash popup. The receipt says queued only when
+Codex shows the queued row with the text.
+
+Collie answers a Codex approval with one key: the option's digit, `y`, or Escape. Only the trust
+prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then
+presses Enter. A Codex question dialog also takes one key, the option's digit. In Codex 0.163.0 the
+digit answers at once. On the last question it sends all the answers.
 
 > **Note.** Beacons provide no control channel. A beacon only determines what Collie *displays* and
 > *queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access

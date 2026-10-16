@@ -59,7 +59,7 @@
   "collapse": {
     "pattern": "\\[Pasted Content (?<chars>\\d+) chars\\]"
   },
-  "reservedLeads": ["/", "!", "@"],
+  "reservedLeads": ["/"],
   "probe": {
     "char": "⌁",
     "status": "verified",

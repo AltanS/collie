@@ -316,6 +316,34 @@ describe("codex asks (M56 spec 13)", () => {
     expect(pane.keysSeen).toEqual(["1"]);
   });
 
+  test("codex: a question dialog answers with the bare digit, one question or each step of two (lab, 0.163.0, K12)", async () => {
+    // Lab, Codex 0.163.0, 2026-10-16: a bare digit commits the option at once. On a one-question
+    // dialog it answers it; on a two-question dialog it answers the first and opens the second, and
+    // on the last it submits all. It never only moves the highlight, so no Enter follows.
+    const fruit = fx("codex--ask-fruit.txt");
+    const q1 = fx("codex--ask-wizard-q1.txt");
+    const q2 = fx("codex--ask-wizard-q2.txt");
+    const one = codex(fruit);
+    one.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "2") p.screen = CODEX_IDLE;
+    };
+    const fruitAsk = one.poll()!;
+    expect(fruitAsk.kind).toBe("question");
+    expect((await one.answer(fruitAsk, idOf(fruitAsk, "Pear"))).receipt).toMatchObject({ outcome: "sent", keys: ["2"] });
+    neverEnter(one.pane);
+    const two = codex(q1);
+    two.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "2") p.screen = q2;
+      else if (keys.join(",") === "1") p.screen = CODEX_IDLE;
+    };
+    const first = two.poll()!;
+    expect((await two.answer(first, idOf(first, "Spaces"))).receipt).toMatchObject({ outcome: "sent", keys: ["2"] });
+    const second = two.poll()!;
+    expect(second.options.map((o) => o.label)).toContain("No");
+    expect((await two.answer(second, idOf(second, "Yes (Recommended)"))).receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+    neverEnter(two.pane);
+  });
+
   test("codex: a patch approval's No sends the profile's cancel key", async () => {
     const { pane, poll, answer } = codex(CODEX_PATCH);
     pane.onKeys = (keys, p) => {
