@@ -264,8 +264,8 @@ const CARD_FIXTURES = {
     ],
     notModals: [],
   },
-  // README: the `/resume` Conversations picker after a search that matched nothing — a real dialog
-  // with no row to select, so the menu grammar declines it and Escape is the way out — and a checkbox
+  // README: the `/resume` Conversations picker after a search that matched nothing, a real dialog
+  // with no row to select, so the menu grammar declines it and Escape is the way out, and a checkbox
   // question, which no recipe here ticks. Every other AGY dialog fixture is one its grammars read.
   agy: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
   antigravity: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
