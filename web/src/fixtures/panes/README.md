@@ -1865,7 +1865,7 @@ same email and path swaps; the earlier canary turns above the last question were
 header and its own turn. Measured at the time: a digit alone answers. On a one-question call it
 submitted; on `1/2` it answered and moved to `2/2`; on `2/2` it submitted the set. The digit-then-Enter
 recipe the reader used before answered `2/2` with its highlighted row, so `1/2` lifts with the digit
-alone now. The plan-approval dialog keeps digit then Enter; it was not re-measured.
+alone now. The plan-approval dialog was not re-measured on 1.3.5; the code sends the digit alone for every family, so a build where a digit only moves the pointer would not submit it (measured on 1.3.5 only).
 
 
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is

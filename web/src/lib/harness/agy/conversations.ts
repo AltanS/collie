@@ -42,6 +42,10 @@ const STATUS = /^\s{8,}\S+(?: \S+)* · \S+\s*$/;
 // and expects the picker to keep lifting. A row there that names a key the way a prompt does is
 // refused, so a confirmation painted there is not offered Enter (second review, 2026-10-16).
 const NAMES_A_KEY = /\b(?:enter|esc(?:ape)?|space|tab|ctrl\+\S+|y\/n)\b/i;
+// A row inside the list that asks for a key (`Press Y to confirm`, `[y/N]`) is a prompt painted over the
+// conversations, such as a delete confirmation, and Enter on it would answer the prompt. A conversation
+// titled with the word "enter" or "tab" is not caught by this shape, which is why the check is narrow.
+const PROMPTS_FOR_A_KEY = /\b(?:press|hit)\s+\S+\s+to\b|\[y\/n\]|\(y\/n\)/i;
 // Rows the `Keyboard:` hints may wrap onto above the `esc` row on a narrow pane (not measured).
 const FOOTER_ROWS = 3;
 // The title sits above the search row, ten conversations and the pager.
@@ -90,7 +94,9 @@ export function detectConversationsRegion(texts: string[]): ConversationsRegion 
     }
   }
   if (top < 0) return null;
-  if (!texts.slice(top + 1, keyboard).some((row) => POINTER.test(row))) return null;
+  const listed = texts.slice(top + 1, keyboard);
+  if (!listed.some((row) => POINTER.test(row))) return null;
+  if (listed.some((row) => PROMPTS_FOR_A_KEY.test(row))) return null;
 
   // Through the last row, status included: a row that appears anywhere under the title, even below
   // the footer, makes a tap read on the old screen stale.
