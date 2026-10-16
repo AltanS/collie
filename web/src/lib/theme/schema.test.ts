@@ -238,6 +238,19 @@ describe("parseTheme", () => {
     ]);
   });
 
+  // The two shapes a stylesheet could smuggle through a colour slot (M57 spec 12): a rule that loads a
+  // file, and a function that paints an image. Both are refused as values, by name, and the whole
+  // theme with them.
+  it.each(["@import url(x)", "@import url(https://x.test/a.css)", "linear-gradient(red, blue)", "radial-gradient(#000000, #ffffff)"])(
+    "refuses %s as a colour and names the token",
+    (value) => {
+      expect(isColour(value)).toBe(false);
+      expect(codes(parseTheme(file({ light: { background: value }, dark: { background: "#000000" } }), CAP))).toEqual([
+        "value light.background",
+      ]);
+    },
+  );
+
   it("refuses a half that is not an object", () => {
     expect(codes(parseTheme(file({ light: "#ffffff" }), CAP))).toEqual(["value light"]);
     expect(codes(parseTheme(file({ dark: ["#ffffff"] }), CAP))).toEqual(["value dark"]);
