@@ -34,11 +34,16 @@ describe("edge kinds", () => {
     expect(edgeKindOf(events, "Stop", null)).toBe("stop");
     expect(edgeKindOf(events, "Notification", "permission_prompt")).toBe("dialog");
     expect(edgeKindOf(events, "Notification", "auth_success")).toBe("reread");
-    expect(edgeKindOf(events, "PostToolUse", null)).toBe("reread");
+    // PostToolUse is the tool edge of a hook-held permission (M56 spec 12); an event the profile does
+    // not map stays a re-read.
+    expect(edgeKindOf(events, "PostToolUse", null)).toBe("tool");
+    expect(edgeKindOf(events, "PreToolUse", null)).toBe("reread");
   });
 
-  it("inverts every kind, and the inversion is never the kind itself but for reread", () => {
-    for (const kind of EDGE_KINDS) if (kind !== "reread") expect(invertEdge(kind)).not.toBe(kind);
+  it("inverts every kind, and the inversion is never the kind itself but for reread and tool", () => {
+    // A tool edge is a re-read for the fold, so a lying one changes nothing there either.
+    for (const kind of EDGE_KINDS) if (kind !== "reread" && kind !== "tool") expect(invertEdge(kind)).not.toBe(kind);
+    expect(invertEdge("tool")).toBe("tool");
   });
 
   it("normalizes a prompt: line breaks and outer white space", () => {
