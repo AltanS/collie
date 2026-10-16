@@ -39,6 +39,15 @@ describe("HoldStore", () => {
     expect(again.list("other")).toEqual([]);
   });
 
+  test("a command that waits for a polled turn keeps the mark across a restart; one without it writes none", () => {
+    const store = new HoldStore(dir, () => 1_000);
+    store.add({ ...input("req-000021"), mode: "command", text: "/model", command: true, waitsForTurn: true });
+    store.add({ ...input("req-000022"), waitsForTurn: false });
+    const again = new HoldStore(dir, () => 1_000);
+    expect(again.get("req-000021")?.waitsForTurn).toBe(true);
+    expect(again.get("req-000022") && "waitsForTurn" in again.get("req-000022")!).toBe(false);
+  });
+
   test("running, put back with a try counted, ended with the text kept; waiting leaves the ended out", () => {
     const store = new HoldStore(dir, () => 1_000);
     store.add(input("req-000001"));

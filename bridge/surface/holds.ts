@@ -60,6 +60,11 @@ export interface HeldEntry {
   readonly outcome?: SendOutcome;
   readonly reason?: SendReason;
   readonly endedAt?: number;
+  /**
+   * A command whose keys could steer a turn (its Enter steers on this harness, or the version was not
+   * read): it goes out only after a poll read a running turn and then a free pane, never on quiet polls.
+   */
+  readonly waitsForTurn?: true;
 }
 
 export interface HoldInput {
@@ -72,6 +77,8 @@ export interface HoldInput {
   readonly revision: number;
   /** A command (a command mode, or a text with a reserved lead): it expires after {@link HOLD_COMMAND_MS}. */
   readonly command: boolean;
+  /** See {@link HeldEntry.waitsForTurn}. */
+  readonly waitsForTurn?: boolean;
 }
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
@@ -103,6 +110,7 @@ function parseEntry(raw: JsonValue | undefined): HeldEntry | null {
   if (outcome !== undefined) entry = { ...entry, outcome };
   if (reason !== undefined) entry = { ...entry, reason };
   if (endedAt !== undefined) entry = { ...entry, endedAt };
+  if (node.waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
   return entry;
 }
 
@@ -169,8 +177,9 @@ export class HoldStore {
   /** A new request at the end of its pane's queue. */
   add(input: HoldInput): HeldEntry {
     const at = this.now();
-    const { command, ...rest } = input;
-    return this.write({ ...rest, heldAt: at, expiresAt: at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 });
+    const { command, waitsForTurn, ...rest } = input;
+    const entry: HeldEntry = { ...rest, heldAt: at, expiresAt: at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
+    return this.write(waitsForTurn === true ? { ...entry, waitsForTurn: true } : entry);
   }
 
   get(id: string): HeldEntry | null {

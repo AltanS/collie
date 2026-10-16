@@ -3097,6 +3097,56 @@ describe("the held send (M56 spec 15)", () => {
     expect(r.holds.list()).toEqual([]);
   });
 
+  /** A pi pane in a turn with a held `/model`: pi sends a command with an Enter that steers a turn. */
+  const piHeldCommand = async (id: string): Promise<Rig & { holds: HoldStore; clock: { now: number }; pane: PiPane }> => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const pane = new PiPane("alt+Enter");
+    pane.inTurn = true;
+    const r = rig({ pane, harness: "pi", version: "0.87.1", holds, clock });
+    expect((await r.send("/model", { id, mode: "command" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(holds.get(id)?.waitsForTurn).toBe(true);
+    pane.inTurn = false;
+    return { ...r, holds, clock, pane };
+  };
+
+  test("a held command whose Enter steers (pi) never goes on quiet polls: 40 free polls keep it, then it expires at 10 minutes (review Q1)", async () => {
+    const r = await piHeldCommand("held-pi-01");
+    for (let i = 0; i < 40; i++) {
+      r.clock.now += 10_000;
+      expect(await tick(r)).toEqual([]);
+    }
+    expect(r.holds.get("held-pi-01")?.state).toBe("held");
+    expect(r.pane.keysSeen).toEqual([]);
+    r.clock.now = 1_000_000 + 10 * 60 * 1000 + 1_000;
+    await tick(r);
+    expect(r.holds.get("held-pi-01")).toMatchObject({ state: "ended", outcome: "expired" });
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("a held command whose Enter steers (pi) goes out after a poll read a running turn, then two free polls", async () => {
+    const r = await piHeldCommand("held-pi-02");
+    for (let i = 0; i < 10; i++) {
+      r.clock.now += 10_000;
+      expect(await tick(r)).toEqual([]);
+    }
+    expect(await tick(r, RUNNING)).toEqual([]);
+    const [released] = await freeTwice(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-pi-02", outcome: "sent" });
+    expect(released?.receipt?.keys.at(-1)).toBe("Enter");
+  });
+
+  test("a held command on a pane whose version was not read waits for a polled turn too; a held text there keeps the quiet path", async () => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ edit: noCommandQueue, holds, clock, version: "no version here" });
+    r.pane.over = [LIVE_ROW];
+    await r.send("/compact", { id: "held-uv-01", mode: "command" });
+    expect(holds.get("held-uv-01")?.waitsForTurn).toBe(true);
+    await r.send("then give it a title", { id: "held-uv-02" });
+    expect(holds.get("held-uv-02")?.waitsForTurn).toBeUndefined();
+  });
+
   test("five free polls inside ten seconds do not release the next held send on their own", async () => {
     const clock = { now: 1_000_000 };
     const r = untrusted({ clock });

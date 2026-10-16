@@ -697,6 +697,17 @@ function queuesInTurn(match: ProfileMatch | null): boolean {
 }
 
 /**
+ * Whether a released command's keys can never steer a turn: a version the binary reported, and an Enter
+ * that queues in a turn or no Enter among the command's keys. Else a held command waits for a turn a
+ * poll read before it goes (review of spec 15, Q1): pi and OMP send a command with an Enter that steers.
+ */
+function commandCannotSteer(match: ProfileMatch | null): boolean {
+  if (!turnTrusted(match)) return false;
+  const keys = match.profile.keys;
+  return keys.enterWhileRunning === "queues" || !(keys.commandSubmit ?? keys.submit).includes("Enter");
+}
+
+/**
  * Whether the harness also queues a command entered while its turn runs (`keys.commandWhileRunning:
  * "queues"`, measured in the lab, M56 spec 15). Only then does a command take the queued path; on
  * every other harness a command in a turn is held by Collie (or refused, with no hold queue).
@@ -1180,6 +1191,8 @@ interface PaneWatch {
   freeReads: number;
   /** When the first of those free polls came; null while the run is empty. */
   freeSince: number | null;
+  /** A poll itself read a running turn since the last release (a hold's own read does not count). */
+  pollSawRunning: boolean;
   /** Polls in a row that found no pane. */
   missing: number;
 }
@@ -1449,7 +1462,8 @@ export class SendProtocol {
     // A hold made from a refusal read the turn running: the pane's release waits for it to end.
     if (end.extra.detail !== HELD_BEHIND) this.watchOf(target.session, target.paneId).sawRunning = true;
     const command = state.command || request.mode === "command";
-    holds.add({ id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command });
+    const waitsForTurn = command && !commandCannotSteer(state.match);
+    holds.add({ id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn });
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     this.count(state, receipt);
@@ -1482,7 +1496,7 @@ export class SendProtocol {
     if (watch === undefined) {
       // First sight of a pane with held requests: a hold is made from a read of a running turn, and after
       // a restart the turn may have ended while the bridge was down, so the running read counts as done.
-      watch = { sawRunning: true, freeReads: 0, freeSince: null, missing: 0 };
+      watch = { sawRunning: true, freeReads: 0, freeSince: null, pollSawRunning: false, missing: 0 };
       this.watches.set(key, watch);
     }
     return watch;
@@ -1505,6 +1519,7 @@ export class SendProtocol {
     watch.sawRunning = false;
     watch.freeReads = 0;
     watch.freeSince = null;
+    watch.pollSawRunning = false;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
     if (record === null) {
       holds.remove(id);
@@ -1543,7 +1558,8 @@ export class SendProtocol {
    *    polls in a row found no pane; a session id that resolved, or a /clear, keeps them;
    *  - the oldest held request goes only once a poll read a running turn since the last release, and
    *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
-   *    it free over at least ten seconds. A release starts that wait again.
+   *    it free over at least ten seconds. A command whose Enter could steer a turn takes neither the
+   *    quiet path nor the hold's own read: a poll must read the turn. A release starts that wait again.
    * Every end keeps the text. Returns the releases it started, for a test to wait on. Never throws: a
    * release that fails is a warning.
    */
@@ -1592,12 +1608,16 @@ export class SendProtocol {
         watch.freeReads += 1;
         watch.freeSince ??= now;
       } else {
-        if (surface?.turn === "running") watch.sawRunning = true;
+        if (surface?.turn === "running") {
+          watch.sawRunning = true;
+          watch.pollSawRunning = true;
+        }
         watch.freeReads = 0;
         watch.freeSince = null;
       }
-      const afterTurn = watch.sawRunning && watch.freeReads >= FREE_POLLS;
-      const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
+      // A command whose Enter could steer a turn waits for a running turn a poll itself read (review Q1).
+      const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
+      const quiet = next.waitsForTurn !== true && watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
       if (busy || !(afterTurn || quiet)) continue;
       started.push(this.releaseQuietly(next.id));
     }

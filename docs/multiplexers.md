@@ -390,15 +390,17 @@ harness runs it after the turn. A harness that cannot take a send during its tur
 instead. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
 ends." The row shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
-the send before it started. If no turn shows, it goes after five free polls over ten seconds. A
+the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held
+command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits for a
+turn Collie sees, and so does any held command on an agent whose version Collie could not read. A
 later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
-10 minutes. After that the row says the message was not sent, and offers Resend. Some commands
-never wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`,
-`/quit`, `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`,
-`/new`, `/resume`, `/logout` and every `!` line. A held send survives a restart of Collie. Cancel works until the send starts to go
-out, and only on this machine's own panes. Collie keeps the held text on disk in plain form, in a
-file only your user can read (mode 0600). It deletes the text when the send goes out, and at most
-one hour after the hold ends.
+10 minutes. After that the row says the message was not sent, and offers Resend. Some commands never
+wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
+`/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
+`/resume`, `/logout` and every `!` line. A held send survives a restart of Collie. Cancel works
+until the send starts to go out, and only on this machine's own panes. Collie keeps the held text on
+disk in plain form, in a file only your user can read (mode 0600). It deletes the text when the send
+goes out, and at most one hour after the hold ends.
 
 Collie places each edge on one pane. The edge names the agent's process and its pane
 (`HERDR_PANE_ID`, `TMUX_PANE` or `ZELLIJ_PANE_ID`). Collie drops an edge that names no pane, two
