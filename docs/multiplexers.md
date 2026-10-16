@@ -247,7 +247,8 @@ Behavior details for Claude configuration changes:
   Project-level `.claude/settings.json` files are untouched.
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
-- **Running Claude processes do not reload configuration.** Restart agents to apply changes.
+- **Claude Code reloads its hooks while it runs.** This holds for 2.1.301. Restart an older Claude
+  if no hook edges come.
 - **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit
   beacons.
 - **Beacons are multiplexer-specific.** They record pane and session identifiers for the active
@@ -403,13 +404,50 @@ default state dir. A `COLLIE_STATE_DIR` in the agent's own environment always ge
 The pane info on the phone shows whether a pane sends hook edges:
 
 - **Hooks: live** means the agent in that pane sends hook edges.
-- **Hooks: none** means Collie has no hook edge from that pane. Either the hooks are not installed,
-  or the agent started before `collie hooks install claude`. Only that second agent needs a restart.
+- **Hooks: live, holds permissions** means the agent's hooks also hold permissions for the phone.
+  See [Permissions held for the phone](#permissions-held-for-the-phone).
+- **Hooks: none** means Collie has no hook edge from that pane. The hooks are not installed, or the
+  agent has not sent an event since the install. Claude Code 2.1.301 picks up new hooks while it
+  runs. Restart an older Claude.
 
 A bridge keeps the live panes across its own restart. The row stays "live" after a bridge restart.
 
 An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
 status` shows it as partial. Run `collie hooks install claude` again to update it in place.
+
+#### Permissions held for the phone
+
+```console
+$ collie hooks install claude --hold-permissions
+```
+
+This adds one more hook, on Claude's `PermissionRequest`. When Claude asks for a permission, the
+hook holds the request and waits for your tap. The phone shows the request as a card. A tap on
+**Yes** or **No** goes back to Claude through the hook. Collie sends no key to the pane for it.
+
+- **The hook finds each running bridge the way hook edges do.** It reads `hook-targets/` and
+  holds with every live bridge. The first answer wins. The other phones then say "Answered on
+  another Collie".
+- **The desk still works.** Answer the dialog in the terminal, and the phone card says "Answered
+  at the desk". A tap after that is not used.
+- **Only Yes and No go through the hook.** An option such as "don't ask again" stays a screen
+  answer. Collie refuses that tap on a held card.
+- **A held request has a time limit of 290 seconds.** After it, the dialog stays on the screen
+  and becomes an ordinary card with a new id. An old tap never turns into keys.
+- **No bridge, no hold.** With no bridge listening, or on any error, the hook prints nothing.
+  Claude then shows its own dialog as before. The hook never answers on its own.
+- **A subagent's request has no dialog on the screen.** The phone card is then the only way to
+  see it, so the card shows the tool and its input.
+- **Questions and plans stay screen cards.** `AskUserQuestion` and `ExitPlanMode` are never held.
+
+The socket is `<stateDir>/hold/sock`. Its folder is mode 0700 and the socket is mode 0600, so
+another user cannot connect. The bridge takes a request only from a process it places on a pane.
+It drops every other request with one `surface.hold.dropped` line. The hook and the settings carry
+no token. Each card carries a hash of the tool, the input and the labels. A tap with another hash
+lets the hook go with no answer.
+
+Run `collie hooks install claude` without the flag to take the hold out again. `collie doctor`
+says in how many settings files the hooks hold permissions.
 
 > **Note.** Beacons provide no control channel. A beacon only determines what Collie *displays* and
 > *queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access
