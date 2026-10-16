@@ -507,8 +507,32 @@ function aboveScrolled(before: Snap, after: Snap): boolean {
   const was = bandAbove(before, before.frame).slice(0, -1);
   const now = bandAbove(after, after.frame);
   if (now.length < 2) return false;
-  for (let k = 0; k + 1 < was.length; k++) if (was[k] === now[0] && was[k + 1] === now[1]) return true;
-  return false;
+  let top = false;
+  for (let k = 0; k + 1 < was.length && !top; k++) top = was[k] === now[0] && was[k + 1] === now[1];
+  return top && bottomHeld(before, now);
+}
+
+/**
+ * The bottom anchor of {@link aboveScrolled}. Scrolling takes rows away at the top, never at the
+ * bottom, so the last rows of `before` stay in `after`, in order, even where a replaced screen kept
+ * the same header on top. The anchor is the last two settled rows of `before` (above the volatile
+ * band over the box, where a spinner, a tip and a queued row come and go). A short screen with fewer
+ * settled rows is anchored by its band's last two rows: the second to last as it was, the last one
+ * as it was, grown, or cut at a wrapped word (one row is a prefix of the other). Rows may stand
+ * between the two in `after`: a turn prints above its spinner.
+ */
+function bottomHeld(before: Snap, now: readonly string[]): boolean {
+  if (before.frame === null) return false;
+  const end = before.frame.volatile.above === null ? before.frame.top : before.frame.volatile.above.first;
+  const settled = before.plain.slice(0, end).filter((row) => row.trim().length > 0);
+  const band = bandAbove(before, before.frame);
+  const pair = settled.length >= 2 ? settled.slice(-2) : band.slice(-2);
+  const first = pair[0];
+  const last = pair[1];
+  if (first === undefined || last === undefined) return false;
+  // The last row grew, or lost a word to the next row; a row cut to less than half is another row.
+  const holdsLast = (row: string): boolean => (settled.length >= 2 ? row === last : row.startsWith(last) || (row.length * 2 >= last.length && last.startsWith(row)));
+  return now.some((row, i) => row === first && now.slice(i + 1).some(holdsLast));
 }
 
 /** A row above the box that shows a spinner by its words, with or without its timer. */
@@ -517,10 +541,26 @@ function spinnerAbove(snap: Snap | null): boolean {
   return snap.texts.slice(0, snap.frame.top).some((row) => SPINNER_VERB_ROW.test(row) || isRunningRow(row));
 }
 
-/** The rows under the box with their digits masked: a statusline that ticks a clock is not a change. */
-function belowMasked(snap: Snap | null): string | null {
-  if (snap === null || snap.frame === null) return null;
-  return snap.plain.slice(snap.frame.bottom + 1).map((row) => row.replace(/\d+/gu, "0")).join("\n");
+/** The rows under the box as read, nothing masked: a ticking subagent timer there changes them. */
+function belowRows(snap: Snap): string | null {
+  return snap.frame === null ? null : snap.plain.slice(snap.frame.bottom + 1).join("\n");
+}
+
+/** Whether a row under the box shows a running sign or a spinner by its words. */
+function runningBelow(snap: Snap | null): boolean {
+  if (snap === null || snap.frame === null) return false;
+  return snap.texts.slice(snap.frame.bottom + 1).some((row) => SPINNER_VERB_ROW.test(row) || isRunningRow(row));
+}
+
+/**
+ * Whether the rows under the box changed between two reads whose box holds the same text. Only such
+ * a pair says something moved there on its own: Claude Code's footer follows the box (a hint for an
+ * empty box, "ctrl+g to edit in nano" once it holds text), so S0 against S1 always differs.
+ */
+function belowMovedAlone(before: Snap | null, after: Snap): boolean {
+  if (before === null || before.frame === null || after.frame === null) return false;
+  if (boxText(before.frame) !== boxText(after.frame)) return false;
+  return belowRows(before) !== belowRows(after);
 }
 
 /**
@@ -920,6 +960,8 @@ interface RunState {
    * says `queued` only on S0's running read or the S2 witness.
    */
   streamed: boolean;
+  /** Two reads with the same box text saw the rows under the box change (belowMovedAlone): a turn may run. */
+  belowMoved: boolean;
   /** The read before the latest one, for the compares that ask how the screen moved from read to read. */
   previousRead: Snap | null;
   /** The latest read. */
@@ -1194,6 +1236,7 @@ export class SendProtocol {
       heldOther: false,
       queued: false,
       streamed: false,
+      belowMoved: false,
       previousRead: null,
       lastRead: null,
       stepStart: at,
@@ -1662,6 +1705,7 @@ export class SendProtocol {
     await this.sleep(S0_GAP_MS);
     const second = await readInBound();
     if (first === null || second === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
+    if (belowMovedAlone(first, second)) state.belowMoved = true;
     // With a frame only the box is compared: the volatile rows around it (a spinner, a timer, a token
     // count, a statusline) move on their own while a turn runs. The box is compared with its faint
     // runs dropped: a placeholder that changes on an empty box (Claude Code's "Press up to edit
@@ -1854,7 +1898,10 @@ export class SendProtocol {
     const collapse = collapseOf(state.match);
     const { command, manual } = state;
     let why: SendReason = "mismatch";
+    let earlier: Snap | null = null;
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
+      if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
+      earlier = snap;
       // In a turn: the cue read inside the frame and the Surface's claim only (framedCueGrew says why).
       // A frameless cue that grew while the rows above moved is the turn's own list (aboveMovedInTurn).
       const cueGrew = state.queued || state.streamed ? framedCueGrew(s0, snap) || modalAtBox(snap) : cueAppeared(s0, snap) && !this.aboveMovedInTurn(state, s0, snap);
@@ -1997,9 +2044,10 @@ export class SendProtocol {
     if (queuedRow === undefined || !queuesInTurn(state.match) || state.queued || state.command) return;
     if ((state.marks.s2?.frame ?? null) === null) return;
     // Only where a turn may run: the rows above moved while Collie typed, a spinner showed before
-    // Enter, or the rows under the box changed between S0 and S1. A truly idle send skips the read.
+    // Enter above the box or under it, or the rows under the box changed between two reads with the
+    // same box text (S0's two, or two S1 reads). A truly idle send skips the read.
     const { s0, s1 } = state.marks;
-    const maybeTurn = state.streamed || spinnerAbove(s0) || spinnerAbove(s1) || belowMasked(s0) !== belowMasked(s1);
+    const maybeTurn = state.streamed || spinnerAbove(s0) || spinnerAbove(s1) || state.belowMoved || runningBelow(s0) || runningBelow(s1);
     if (!maybeTurn) return;
     const s1Frame = state.marks.s1?.frame ?? null;
     const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);

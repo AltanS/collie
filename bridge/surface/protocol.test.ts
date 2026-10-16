@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -30,6 +31,8 @@ class FakePane {
   box = "";
   placeholder = 'Try "fix the failing tests"';
   status = ["  sonnet · project · main"];
+  /** The rows under the box while it holds text, when they differ (Claude Code's footer follows the box). */
+  statusWithText: string[] | null = null;
   /** The row under a generic box: a path, or a status line that counts. */
   footer = "~/project";
   over: string[] = [];
@@ -98,7 +101,7 @@ class FakePane {
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
     if (this.mode === "generic") rows.push(this.footer);
-    else rows.push(...(this.popup ?? this.status));
+    else rows.push(...(this.popup ?? (this.box.length > 0 && this.statusWithText !== null ? this.statusWithText : this.status)));
     return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
   }
 
@@ -1220,6 +1223,10 @@ describe("a send into a running turn", () => {
   test("no late read on a screen that shows no turn: sent, no label", async () => {
     const { pane, send } = rig({ version: "2.1.301" });
     pane.height = 16;
+    // As on Claude Code (claude-lab--idle-fresh--w82 against claude-lab--draft-adversarial--w82): the
+    // footer follows the box, so S0 and S1 differ under the box on every idle send.
+    pane.status = ["  sonnet · lab-project · main · ctx 12%                      ◐ medium · /effort", "  ⏸ manual mode on · ← for agents"];
+    pane.statusWithText = ["  sonnet · lab-project · main · ctx 12%                  ctrl+g to edit in nano", "  ⏸ manual mode on"];
     const late = queuedRowLate(pane, 2, "then give it a title");
     const answer = await send("then give it a title");
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
@@ -1290,6 +1297,68 @@ describe("a send into a running turn", () => {
       const answer = await send("then give it a title");
       expect(pane.keysSeen.includes("Enter"), version).toBe(false);
       expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+    }
+  });
+
+  // Claude Code 2.1.301's header (claude--v2301-idle) and its footer.
+  const plainRows = (name: string): string[] =>
+    readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8")
+      .split(/\r?\n/u)
+      .map((row) =>
+        parseAnsi(row)
+          .map((segment) => segment.text)
+          .join("")
+          .trimEnd(),
+      );
+  const HEADER = plainRows("claude--v2301-idle.txt").slice(0, 3);
+
+  test("the agents screen under the same header as the conversation, as the text goes in: no Enter", async () => {
+    const agents = plainRows("claude-lab--agents-screen--w82.txt");
+    // Both header rows of the agents screen made equal to the conversation's: only the bottom anchor tells them apart.
+    const firstHeader = agents.findIndex((row) => row.includes("Claude Code v"));
+    agents[firstHeader] = HEADER[0]!;
+    agents[firstHeader + 1] = HEADER[1]!;
+    // Its key-hint footer made equal to the conversation's too, so no cue under the box tells them apart.
+    const footer = agents.findIndex((row) => row.includes("enter to return"));
+    agents[footer] = "  ⏸ manual mode on · ? for shortcuts · ← for agents";
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.transcript = [...HEADER];
+      pane.status = ["  ⏸ manual mode on · ? for shortcuts · ← for agents"];
+      pane.beforeWrite = (p, what) => {
+        if (what.startsWith("paste:") || what === "type:then give it a title") {
+          const text = what.slice(what.indexOf(":") + 1);
+          p.fixed = agents.join("\n").replace("❯ describe a task for a new session", `❯ ${text}`);
+        }
+      };
+      const answer = await send("then give it a title");
+      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
+      expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+    }
+  });
+
+  test("a streaming answer under the header goes in", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.drawsQueuedRow = true;
+      streamAnswer(pane, typing);
+      pane.transcript = [...HEADER, "", "❯ Write a 300 word story about a working dog, plain text, no tools.", ""];
+      expect((await send("then give it a title")).receipt, version).toMatchObject({ outcome: "sent", queued: true });
+    }
+  });
+
+  test("a short answer that fits in two rows, under the header, goes in", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.drawsQueuedRow = true;
+      pane.transcript = [...HEADER, "", "❯ Say hello in two lines."];
+      let pushed = false;
+      pane.beforeRead = (p) => {
+        if (pushed || p.calls.length === 0) return;
+        pushed = true;
+        p.transcript.push("● Hello there. This is the first row of a short answer,", "  and this is the second row.");
+      };
+      expect((await send("then give it a title")).receipt, version).toMatchObject({ outcome: "sent", queued: true });
     }
   });
 
