@@ -92,3 +92,57 @@ non-zero diff stops the branch, whatever it improves.
 - An operator default through `theme.toml`, `fonts.mono` in the file, an editor on the phone, and import from a URL
   are left for later. Each is a new field or a new path, not a change to version 1.
 - Revisit when the native mirror mode lands. That is the moment to add the ANSI 16 in version 2.
+
+## Amendment, 2026-10-16: schema version 2, and the mark is gone
+
+**Version 2 gives a theme a shape, a look and a terminal palette, each a closed word or a gate-checked
+colour. The header mark was never a part of the theme.** The text above stays as written for version 1.
+Where it says "version 1" or "never themeable", this amendment is the current rule.
+
+1. **The mark field was removed before release.** A first design (M57 spec 09) let a theme name its header
+   mark. Altan called it on quality, and M57 spec 13 took it out. No `mark` key exists in the schema. The
+   Collie dog in the header, the home-screen icon and the splash look the same under every theme.
+2. **The parser reads versions 1 and 2, and writes the lowest that holds the content.** A theme with a
+   `surface` block, a `fonts.display` face or an `ansi` block is version 2. A theme without them is version 1,
+   so a colour-only export still opens in a reader that knows version 1 alone. A file that says 1 and holds a
+   version 2 block is refused: the file is older than the block. A version 2 file is not read by a Collie older
+   than 1.22.0. This follows decision 12.
+3. **The `surface` block holds ten keys, each a closed list of words.** `radius` (sharp, soft, round),
+   `shadow` (default, flat, lifted), `density` (default, roomy), `weight` (default, bold), `border` (default,
+   strong), `ground` (flat, gradient, grain), `chrome` (page, band), `rows` (rules, cards), `icons` (default,
+   thin, heavy) and `labels` (caps, sentence). A key left out is its default word, and every default word is
+   today's value, held by a test per token. A word that is not on its list, or a number, is refused with the
+   token named. This amends decision 11: the corner radius is a closed word now. A free value is still not.
+4. **Two more version 2 doors beside `surface`.** `fonts.display` names one of the six shipped faces for
+   titles and the header name, and the browser fetches it only when a theme names it. `ansi` holds all 18
+   colours of the terminal mirror (slots 0 to 15, `ink`, `ground`) or none, opaque, written in dark space.
+   Its gates refuse a file instead of warning: ink on ground at 4.5, slots 1 to 15 on ground at 3, slot 0
+   exempt, ground darker than ink, slots 3, 7, 11 and 15 above relative luminance 0.6 and the other twelve
+   at or below it. This amends decision 10. It did not wait for a native mirror mode. The palette is
+   authored in dark space, the light mirror inverts it whole, and a theme computes its `ground` back from
+   its light page. The agent's own truecolour output stays outside every theme.
+5. **One table, four readers.** `web/src/lib/theme/surface.ts` holds the word-to-declaration table.
+   `schema.ts` checks words against it, `themes-css.ts` writes the shipped themes from it, `store.ts` sets an
+   imported theme's words inline, and `public/theme-init.js` does the same before first paint. The script
+   imports nothing, so `scripts/build-themes.ts` writes one generated line into it, and a test fails when the
+   line differs from the table. `bun scripts/build-themes.ts --check` is the gate.
+6. **A marked row never pairs a left bar with rounded corners.** A selected or blocked row writes
+   `shadow-[var(--edge-accent)_<colour>]` and never the offsets. The `radius` word sets `--edge-accent`: a 2px
+   bar on the left under `sharp`, a 2px ring on all four sides under `soft` and `round`. It also sets
+   `--edge-shadow`, the soft second layer of the ring. DESIGN.md §13 holds the rule.
+7. **The contrast gate grows with the look.** A gradient or a grain is measured at its far end, a band is
+   measured on `secondary`, and the shipped themes keep every check green. If a colour fails a gate, the colour
+   or the word changes, never the gate.
+8. **The exit test holds.** Collie renders the same pixels as before version 2 (22 of 22 captures at zero
+   difference against the parent build), and the perf recap stays flat.
+
+**Known limits.**
+
+- **The type scale is not a token.** The app sets 131 sizes as arbitrary `text-[Npx]` classes, and a scale word
+  would leave them behind. The conversion of those sizes to steps is the work of 1.23.0, and a type scale
+  waits for it.
+- **Under a gradient the three bars keep the flat page colour.** The header, the tab bar and the bottom bar
+  can read as a plain box on a tablet. A theme word cannot fix it. The bars could take the gradient's foot
+  colour, which is also 1.23.0 work.
+- **Shipped ids stay reserved.** An import with the id of Collie, Nightwatch, Daylight or Harbour is refused,
+  so an edited export needs its own `id`.

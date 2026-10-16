@@ -875,8 +875,9 @@ phone's own edge swipe plays the phone's own animation, never one of ours.
 ## 13. Themes: a token is the only way a colour reaches a component
 
 From 1.22.0 a person can pick a theme or import one ([ADR 0106](./.adr/0106-a-theme-is-a-closed-file-of-named-tokens.md)).
-A theme is a closed JSON file of named colour tokens, a light half and a dark half, plus one UI
-face. It changes the VALUE of a token. It never changes which token a component uses.
+A theme is a closed JSON file: a light half and a dark half of named colour tokens, one UI face, and, from
+schema version 2, twelve more tokens that each take a closed word or a gate-checked colour. It changes the
+VALUE of a token. It never changes which token a component uses.
 
 **So every colour a component draws is a token from the list below.** A theme reaches a token and
 nothing else. A literal colour in a component (`bg-white`, `text-white`, `amber-300`, `zinc-*`, an
@@ -896,15 +897,36 @@ come from `light-dark()`.
 
 `popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
 
-**What a theme never reaches.** A free value for spacing, tap sizes, row heights, motion, and the
-meaning of a status: its icon and its word stay as the status components draw them. Radius, shadow,
-density, weight and border are closed words from the schema (version 2, the `surface` block in
-`web/src/lib/theme/surface.ts`), never free values. So are the seven of M57 spec 17: `ground`
-(`flat`, `gradient`, `grain`), `chrome` (`page`, `band`), `rows` (`rules`, `cards`), `icons` (`default`,
-`thin`, `heavy`), `labels` (`caps`, `sentence`), `fonts.display` (one of the six shipped faces) and
-`ansi` (all 18 mirror colours or none, each held to its contrast floor). The
-terminal mirror keeps its own dark space and its ANSI palette (§8, ADR 0002); a theme does not
-tint it in schema version 1.
+**The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
+does (`web/src/lib/theme/surface.ts`). The default word of every token is today's look.
+
+| Token | Words |
+| --- | --- |
+| `radius` | `sharp` (default, 2px), `soft`, `round` |
+| `shadow` | `default`, `flat`, `lifted` |
+| `density` | `default`, `roomy` (never below default) |
+| `weight` | `default`, `bold` |
+| `border` | `default` (1px), `strong` (2px) |
+| `ground` | `flat`, `gradient`, `grain` |
+| `chrome` | `page`, `band` |
+| `rows` | `rules`, `cards` |
+| `icons` | `default`, `thin`, `heavy` |
+| `labels` | `caps`, `sentence` |
+| `fonts.display` | one of the six shipped faces |
+| `ansi` | all 18 mirror colours (slots 0 to 15, ink, ground) or none, each held to its contrast floor |
+
+A component reads a word through the utility it already uses (`rounded-md`, `shadow-sm`, `p-4`,
+`font-medium`, `border`) and never through a literal. Three more doors exist for the tokens a utility
+cannot reach: a small section label wears `label-caps`, a list that follows `rows` takes
+`data-slot="list-group"`, and a title wears the display face through `--font-display`.
+
+**What a theme never reaches.** Layout, tap sizes and row heights as free values (`roomy` is a word, and it
+never goes below the default), motion, the type scale, any other free value, and the meaning of a status:
+its icon and its word stay as the status components draw them. The type scale stays out while the app
+holds 131 arbitrary `text-[Npx]` sizes. The Collie dog in the header, the home-screen icon and the splash
+look the same under every theme. The terminal mirror keeps its dark space (§8, ADR 0002) under every
+theme. A version 2 theme may name the mirror's palette and ground, authored in dark space, and the light
+half inverts them with the mirror.
 
 **A marked row takes `--edge-accent`.** A row marked as selected or blocked by an inset shadow writes
 `shadow-[var(--edge-accent)_<colour>]`, never the offsets. The radius word sets them: a 2px bar on
@@ -914,9 +936,10 @@ the left edge under `sharp` (the Collie theme), a 2px ring on all four sides und
 **The rules a theme does not relax.** §4 still holds under every theme: chrome is the page
 colour with a rule, red marks harm, a raised panel is `card`. A shipped theme passes the contrast
 gate: every status chip at `/15` over `background` and `card` at 4.5:1 or better, body text at
-4.5:1 or better, `rule` against `background` at 1.3:1 or better, in both halves.
+4.5:1 or better, `rule` against `background` at 1.3:1 or better, in both halves. A `gradient` or `grain`
+ground and a `band` are measured too, at the far end of the ground and on `secondary`.
 
 **Adding a token is a schema change.** A new colour role that a component needs goes into the
 list only with a new schema version, and in the same change: `index.css`, every shipped theme
-file, the validator, and the list spelled in `public/theme-init.js`. The coupling test (§9) fails
-when the lists drift. Until then, reuse the nearest token; do not paint a literal.
+file, the validator, the word table in `surface.ts` and the lists spelled in `public/theme-init.js`.
+The coupling test (§9) and `bun scripts/build-themes.ts --check` fail when they drift. Until then, reuse the nearest token; do not paint a literal.
