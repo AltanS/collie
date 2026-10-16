@@ -535,7 +535,7 @@ export function sendHandler(answer: (request: SentRequest) => JsonObject) {
       sends.push(sent);
       const send = answer(sent);
       const receipt = asJsonObject(send.receipt);
-      const ok = receipt === undefined || receipt.outcome === "sent" || receipt.outcome === "effective";
+      const ok = receipt === undefined || receipt.outcome === "sent" || receipt.outcome === "effective" || receipt.outcome === "discarded";
       return HttpResponse.json({ ok, send });
     }),
   ];

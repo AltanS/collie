@@ -17,7 +17,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { readSendCap, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
 export const REQUEST_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
@@ -106,6 +106,9 @@ function mark(value: JsonValue | undefined): ReadMark | null | undefined {
   return revision === undefined || hash === undefined ? undefined : { revision, hash };
 }
 
+/** A receipt being finished, field by field. */
+type ReceiptDraft = { -readonly [K in keyof SendReceipt]: SendReceipt[K] };
+
 /** A receipt read back from its file, every field checked; undefined when one is not what it should be. */
 function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const node = asJsonObject(value);
@@ -133,6 +136,8 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (outcome === undefined || profileStatus === undefined) return undefined;
   if (s0 === undefined || s1 === undefined || s2 === undefined || gapsNode === undefined || keys === undefined) return undefined;
   if (node.reason !== undefined && reason === undefined) return undefined;
+  const cap = node.cap === undefined ? undefined : readSendCap(node.cap);
+  if (cap === null) return undefined;
   const gapsMs: Partial<Record<SendStep, number>> = {};
   for (const step of STEPS) {
     const gap = asJsonNumber(gapsNode[step]);
@@ -157,7 +162,10 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
     keys: keyNames,
     outcome,
   };
-  return reason === undefined ? receipt : { ...receipt, reason };
+  const whole: ReceiptDraft = { ...receipt };
+  if (reason !== undefined) whole.reason = reason;
+  if (cap !== undefined) whole.cap = cap;
+  return whole;
 }
 
 /** A record read back from its file, every field checked; null when it is not one this module wrote. */

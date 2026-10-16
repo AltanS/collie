@@ -89,6 +89,9 @@ function probeMayRemain(probe: string): string {
   return `A probe character (${probe}) may remain in the box. Check the pane before you type.`;
 }
 
+/** The detail after a Submit that went out on a box holding another text than the request named. */
+const HELD_OTHER = "The box held a different text than the request when Enter went out.";
+
 /** Rows one protocol read asks for. A viewport read never moves the screen. */
 export const SEND_READ_LINES = 120;
 /** The bottom window the probe must land in and the rows hash covers. */
@@ -609,25 +612,51 @@ function emptiedTo(emptyRow: string, now: readonly string[], typed: string): boo
 interface Located {
   readonly row: number;
   readonly head: string;
-  /** The text as it was found: as written, or with a command's lead cut. */
+  /** The text as it was found: as written, with a command's lead cut, or only its first characters when the box holds a different text. */
   readonly text: string;
+  /** True when only the start of the text stands there: the box holds a different text than the one asked for. */
+  readonly partial: boolean;
+}
+
+/** The shortest start of `text` that is `length` characters long with white space dropped. */
+function startOf(text: string, length: number): string {
+  let out = "";
+  for (const ch of text) {
+    if (flat([out]).length >= length) break;
+    out += ch;
+  }
+  return out;
+}
+
+/** How many leading characters `a` and `b` share. */
+function sharedStart(a: string, b: string): number {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n;
 }
 
 /**
  * The lowest spot of the bottom window where the read goes on with `text` (wrapped or not, white space
  * ignored): on a pane with no frame, the box that holds a text typed earlier. Null when it stands
- * nowhere there.
+ * nowhere there. With `partial`, a spot that goes on with the start of the text counts too, when that
+ * start is at least two characters and at most two short of the whole text: the box a person's own
+ * Backspace shortened. A row that shares less (a footer that starts alike) is not the box.
+ * The lowest row wins, so an echo of the same text higher up (the harness's history) never beats the box.
  */
-export function locateText(plain: readonly string[], text: string): Located | null {
+export function locateText(plain: readonly string[], text: string, partial = false): Located | null {
   const want = flat([text]);
   if (want.length === 0) return null;
   const first = [...want][0]!;
+  const least = partial ? Math.min(want.length, Math.max(2, want.length - 2)) : want.length;
   const win = bottomWindow(plain);
   for (let row = win.end - 1; row >= win.first; row--) {
     const line = plain[row] ?? "";
+    let best: { index: number; shared: number } | null = null;
     for (let i = line.indexOf(first); i >= 0; i = line.indexOf(first, i + 1)) {
-      if (flat([line.slice(i), ...plain.slice(row + 1, win.end)]).startsWith(want)) return { row, head: line.slice(0, i), text };
+      const shared = sharedStart(flat([line.slice(i), ...plain.slice(row + 1, win.end)]), want);
+      if (shared >= least && (best === null || shared > best.shared)) best = { index: i, shared };
     }
+    if (best !== null) return { row, head: line.slice(0, best.index), text: best.shared === want.length ? text : startOf(text, best.shared), partial: best.shared < want.length };
   }
   return null;
 }
@@ -649,6 +678,8 @@ interface RunState {
   manual: boolean;
   /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
   command: boolean;
+  /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
+  heldOther: boolean;
   stepStart: number;
 }
 
@@ -664,6 +695,12 @@ interface EndNote {
   /** The offers, when an end's own differ from the shared rules (a Submit or Discard to look at again). */
   offers?: SendOffer[];
 }
+
+/** A receipt being built, field by field. */
+type ReceiptDraft = { -readonly [K in keyof SendReceipt]: SendReceipt[K] };
+
+/** A row of the list of recent sends being built, field by field. */
+type RowDraft = { -readonly [K in keyof SendReceiptRow]: SendReceiptRow[K] };
 
 /** An answer being built, field by field. */
 type AnswerDraft = { -readonly [K in keyof SendAnswer]: SendAnswer[K] };
@@ -735,8 +772,10 @@ export class SendProtocol {
       if (rows.length >= limit) break;
       const receipt = record.receipt;
       if (record.paneId !== paneId || receipt === undefined) continue;
-      const row = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
-      rows.push(receipt.reason === undefined ? row : { ...row, reason: receipt.reason });
+      const row: RowDraft = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
+      if (receipt.reason !== undefined) row.reason = receipt.reason;
+      if (receipt.cap !== undefined) row.cap = receipt.cap;
+      rows.push(row);
     }
     return rows;
   }
@@ -846,11 +885,12 @@ export class SendProtocol {
       probed: false,
       manual: false,
       command: request.mode === "command",
+      heldOther: false,
       stepStart: at,
     };
   }
 
-  private receiptOf(state: RunState, outcome: SendOutcome, reason: SendReason | undefined): SendReceipt {
+  private receiptOf(state: RunState, outcome: SendOutcome, reason: SendReason | undefined, cap?: SendCap): SendReceipt {
     const { record, target, match } = state;
     const base: SendReceipt = {
       requestId: record.id,
@@ -870,7 +910,10 @@ export class SendProtocol {
       keys: [...state.keys],
       outcome,
     };
-    return reason === undefined ? base : { ...base, reason };
+    const receipt: ReceiptDraft = { ...base };
+    if (reason !== undefined) receipt.reason = reason;
+    if (cap !== undefined) receipt.cap = cap;
+    return receipt;
   }
 
   private async prepare(target: SendTarget): Promise<SendAnswer> {
@@ -894,7 +937,9 @@ export class SendProtocol {
     }
     try {
       await this.steps(state);
-      return this.settle(state, new Ended("sent", record.mode === "discard" ? "discarded" : undefined, { framed: true }));
+      const note: EndNote = { framed: true };
+      if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
+      return this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
     } catch (err) {
       if (err instanceof Ended) return this.settle(state, err);
       throw err;
@@ -904,7 +949,7 @@ export class SendProtocol {
   }
 
   private settle(state: RunState, end: Ended): SendAnswer {
-    const receipt = this.receiptOf(state, end.outcome, end.reason);
+    const receipt = this.receiptOf(state, end.outcome, end.reason, end.extra.cap);
     this.deps.store.settle(state.record.id, receipt);
     this.count(state, receipt);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
@@ -1051,7 +1096,7 @@ export class SendProtocol {
     }
     if (takesManualSend(surface)) {
       if (state.request.rowsHash === undefined) {
-        throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: "Collie cannot read this screen. Check the rows, then tap Type here." });
+        throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: "Collie cannot read this screen. Check the pane, then tap Type here." });
       }
       if (state.request.rowsHash !== s0.rowsHash) {
         throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
@@ -1080,7 +1125,7 @@ export class SendProtocol {
           surface: s0.surface,
           rowsHash: s0.rowsHash,
           cap: { count: cap.count, limit: cap.limit, harness: key.harness, version: key.version },
-          detail: `You typed past a screen Collie cannot read ${String(cap.count)} times on ${key.harness} ${key.version} in the last day. Check the screen, then confirm once more to type.`,
+          detail: `You typed past a screen Collie cannot read ${String(cap.count)} times on ${key.version === "-" ? key.harness : `${key.harness} ${key.version}`} in the last day. Check the screen, then confirm once more to type.`,
         });
       }
       ledger.noteManual(key);
@@ -1100,7 +1145,10 @@ export class SendProtocol {
    */
   private typedBox(state: RunState, s0: Snap, holds: (box: string) => boolean, lines: readonly string[]): Located | null {
     const { surface, frame } = s0;
-    if (frame !== null && holds(boxText(this.draftFrame(s0)))) return null;
+    if (frame !== null) {
+      if (holds(boxText(this.draftFrame(s0)))) return null;
+      state.heldOther = true;
+    }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     const hash = state.request.rowsHash;
     if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: "The box no longer holds this text." });
@@ -1108,7 +1156,9 @@ export class SendProtocol {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }
     if (frame !== null) return null;
-    return locateText(s0.plain, lines.join("")) ?? (state.command ? locateText(s0.plain, withoutLead(lines).join("")) : null);
+    const found = locateText(s0.plain, lines.join(""), true) ?? (state.command ? locateText(s0.plain, withoutLead(lines).join(""), true) : null);
+    if (found?.partial === true) state.heldOther = true;
+    return found;
   }
 
   /** The frame of a box that may hold a draft (append, replace, submit, discard), or a refusal. */

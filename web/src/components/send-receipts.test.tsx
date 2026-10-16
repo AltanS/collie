@@ -46,6 +46,27 @@ describe("SendReceiptsView", () => {
     for (const item of items) expect(item.textContent).not.toMatch(/not_free|modal cue|modal_cue|\bchanged\b|multiline|probe_failed|probe failed/u);
   });
 
+  it("a discard is listed as Discard with its own sentence, not as Sent (send drill 3, 7e)", () => {
+    const discard: SendReceiptRow = { requestId: "req00007", at: NOW, mode: "discard", outcome: "discarded", keys: ["Backspace"], gapsMs: {}, harness: "codex", version: null };
+    render(<SendReceiptsView rows={[discard]} now={NOW} />);
+    const item = screen.getByRole("listitem");
+    expect(item).toHaveTextContent("Discard");
+    expect(item).toHaveTextContent("The text was removed from the box. Your draft is still here.");
+    expect(item).not.toHaveTextContent("Sent");
+  });
+
+  it("the cap's refusal reads as the cap's sentence with the receipt's numbers, and names the harness alone without a version (send drill 3, 2)", () => {
+    const refused: SendReceiptRow = { requestId: "req00008", at: NOW, mode: "send", outcome: "refused", reason: "unconfirmed", keys: [], gapsMs: {}, harness: "codex", version: null };
+    const withVersion: SendReceiptRow = { ...refused, requestId: "req00009", cap: { count: 5, limit: 5, harness: "codex", version: "0.163.0" } };
+    const noVersion: SendReceiptRow = { ...refused, requestId: "req00010", cap: { count: 5, limit: 5, harness: "codex", version: "-" } };
+    render(<SendReceiptsView rows={[refused, withVersion, noVersion]} now={NOW} />);
+    const [plain, versioned, bare] = screen.getAllByRole("listitem");
+    expect(plain).toHaveTextContent("Collie cannot read this screen. Check the pane, then tap Type here.");
+    expect(versioned).toHaveTextContent("Collie could not read this screen on codex 0.163.0 5 times today. Check the screen, then tap Confirm and type.");
+    expect(bare).toHaveTextContent("Collie could not read this screen on codex 5 times today. Check the screen, then tap Confirm and type.");
+    expect(bare.textContent).not.toMatch(/codex -|\s{2}/u);
+  });
+
   it("a tap opens the keys by name and the gaps, and a second tap closes them", async () => {
     const user = userEvent.setup();
     render(<SendReceiptsView rows={rows} now={NOW} />);
