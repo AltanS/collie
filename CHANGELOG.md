@@ -102,6 +102,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A tool edge ends only the hold of its own call.** The edge carries a hash of the input shown, never the input. The bridge ends a hold on it only when the tool, the agent and the input hash match. The edge must also come at or after the request.
 - **The permission hook checks each socket before it connects.** The socket's folder must be your own, and nobody else may write to it. The socket must be a socket that you own, not a link or a file. The hook skips any other path.
 - **The pane reads "holds permissions" only when Claude will run the hold.** The edge emitter reads the user settings, the two project settings files and the managed settings. `disableAllHooks` in any of them turns the hold off. So does `allowManagedHooksOnly` in the managed file.
+- **`collie hooks install claude --hold-permissions` refuses a Claude Code older than 2.0.45.** That version added the PermissionRequest hook. If Collie cannot read the version, it installs and says what the hold needs.
 
 ### Changed
 

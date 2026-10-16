@@ -11,6 +11,8 @@ import type { Files } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 import { HOLD_VERB, holdCommandIn } from "./hold-entry.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { compareSemver } from "../web/src/lib/semver.ts";
+import { binaryVersion } from "../bridge/surface/binary-version.ts";
 
 // `collie hooks install claude` / `uninstall claude` / `status` — putting the beacon emitter into the
 // agent's own settings, and taking it back out.
@@ -452,6 +454,14 @@ export interface HooksDeps {
   readonly files: Files;
   /** `lstat` without following — the symlink refusal, and how the published PATH name is recognised. */
   readonly fs: LinkReader;
+  /** The installed version of a harness, or null when it cannot be read. Defaults to its profile's version command. */
+  readonly harnessVersion?: (harness: string) => string | null;
+}
+
+/** The harness's installed version, read through its profile's version command. */
+function readHarnessVersion(harness: string): string | null {
+  const profile = loadProfiles().get(harness);
+  return profile === undefined ? null : binaryVersion(profile);
 }
 
 /**
@@ -591,6 +601,14 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
     deps.io.err(`error: \`${harness}\` has no permission hold.`);
     return EXIT.USAGE;
   }
+  // An older harness never runs the hold event: the install would promise a hold that never comes.
+  const minVersion = hold === null ? null : (loadProfiles().get(harness)?.hold?.minVersion ?? null);
+  const version = minVersion === null ? null : (deps.harnessVersion ?? readHarnessVersion)(harness);
+  if (minVersion !== null && version !== null && compareSemver(version, minVersion) < 0) {
+    deps.io.err(`error: ${harness} ${version} does not run the ${hold!.event} hook. The hold needs ${minVersion} or later.`);
+    deps.io.err(`  Update ${harness}, or run the install without \`${HOLD_FLAG}\`.`);
+    return EXIT.FAIL;
+  }
   let failed = false;
 
   for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
@@ -638,6 +656,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   deps.io.out("  A running agent reloads its hooks on its own. If no edges come, restart it.");
   if (hold !== null) {
     deps.io.out(`  ${hold.event} → \`${binary} beacon hold\`: a permission waits for a tap on the phone.`);
+    if (version === null) deps.io.out(`  Collie could not read the ${harness} version. The hold needs ${minVersion ?? "a recent version"} or later.`);
     deps.io.out("  With no Collie listening, or on any error, the hook prints nothing and the dialog shows as before.");
   } else {
     deps.io.out(`  No permission hold. Add \`${HOLD_FLAG}\` to hold permissions for the phone.`);

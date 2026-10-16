@@ -67,7 +67,8 @@ function deps(
   const io = capture();
   const files = fakeFiles(over.files ?? {});
   const fs = fakeLinkFs(over.linked === true ? { [PUBLISHED]: { kind: "symlink", target: OWN } } : {});
-  return { ctx: context(over.env ?? {}), io, files, fs };
+  // No test runs the real harness: its version is what the lab ran.
+  return { ctx: context(over.env ?? {}), io, files, fs, harnessVersion: () => "2.1.301" };
 }
 
 const settingsOf = (d: ReturnType<typeof deps>, path = SETTINGS): JsonValue =>
@@ -704,6 +705,21 @@ describe("hold: the install", () => {
     expect(settingsHold(d.files.entries.get(posixKey(SETTINGS))!.text, HOLD_PROFILE.event)).toBe(true);
     expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
     expect(settingsHold(d.files.entries.get(posixKey(SETTINGS))?.text ?? null, HOLD_PROFILE.event)).toBe(false);
+  });
+
+  test("a hold: a Claude older than the profile's minVersion is refused, and nothing is written", () => {
+    const d = { ...deps(), harnessVersion: () => "2.0.44" };
+    expect(cmdHooksInstall(d, ["claude", HOLD_FLAG])).toBe(EXIT.FAIL);
+    expect(d.io.stderr.join("\n")).toContain(`does not run the PermissionRequest hook. The hold needs ${HOLD_PROFILE.minVersion} or later.`);
+    expect(d.files.entries.get(posixKey(SETTINGS))).toBeUndefined();
+    // Without the flag the version does not matter.
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+  });
+
+  test("a hold: an unreadable Claude version installs, and the output says what the hold needs", () => {
+    const d = { ...deps(), harnessVersion: () => null };
+    expect(cmdHooksInstall(d, ["claude", HOLD_FLAG])).toBe(EXIT.OK);
+    expect(d.io.stdout.join("\n")).toContain(`Collie could not read the claude version. The hold needs ${HOLD_PROFILE.minVersion} or later.`);
   });
 
   test("an unknown option is refused, and the marker prefix matches the one the emitter writes", () => {

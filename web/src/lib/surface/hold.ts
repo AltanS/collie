@@ -110,6 +110,8 @@ export interface HoldProfile {
   readonly limitMs: number;
   /** The timeout, in seconds, the install writes on the hook entry. */
   readonly hookTimeoutS: number;
+  /** The first harness version that runs the hold event. The install refuses an older one. */
+  readonly minVersion: string;
   /** The keys of the tool input shown on the card, first present wins. */
   readonly inputShown: readonly string[];
   /** More input to show for some tools, by tool name. */

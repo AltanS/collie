@@ -92,6 +92,7 @@
     "toolEvent": "PostToolUse",
     "limitMs": 290000,
     "hookTimeoutS": 300,
+    "minVersion": "2.0.45",
     "inputShown": ["command", "file_path", "notebook_path", "url", "pattern", "path", "query"],
     "inputDetails": {
       "Bash": { "flags": ["dangerouslyDisableSandbox", "run_in_background"] },

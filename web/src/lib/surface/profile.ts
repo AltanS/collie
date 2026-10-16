@@ -398,6 +398,8 @@ function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>):
   if (limitMs + HOLD_GRACE_MS >= hookTimeoutS * 1000) {
     fail("hold.limitMs", `plus ${String(HOLD_GRACE_MS)} ms must stay below hold.hookTimeoutS`);
   }
+  const minVersion = text(field(node, "minVersion", "hold"), "hold.minVersion");
+  if (!/^\d+\.\d+\.\d+$/u.test(minVersion)) fail("hold.minVersion", "must read X.Y.Z");
   const inputShown = textList(field(node, "inputShown", "hold"), "hold.inputShown", 1);
   const screenOnly = textList(field(node, "screenOnly", "hold"), "hold.screenOnly", 0);
   const detailsNode = object(field(node, "inputDetails", "hold"), "hold.inputDetails");
@@ -426,7 +428,7 @@ function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>):
   const decidedLine = pattern(field(node, "decidedLine", "hold"), "hold.decidedLine").source;
   const deniedLine = pattern(field(node, "deniedLine", "hold"), "hold.deniedLine").source;
   const denyMessage = text(field(node, "denyMessage", "hold"), "hold.denyMessage");
-  return { event, toolEvent, limitMs, hookTimeoutS, inputShown, inputDetails, screenOnly, options, decisions, decidedLine, deniedLine, denyMessage };
+  return { event, toolEvent, limitMs, hookTimeoutS, minVersion, inputShown, inputDetails, screenOnly, options, decisions, decidedLine, deniedLine, denyMessage };
 }
 
 /** A whole number of ms inside a range. */
