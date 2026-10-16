@@ -1519,6 +1519,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
                   generation: generationOf,
                   profile: (harness) => loadProfiles().get(harness)?.hold,
                   reread: (pane) => surface.edge(pane, "dialog", Date.now()),
+                  log: (line) => console.log(line),
                 },
                 paneId,
                 request,
@@ -1531,12 +1532,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   } else {
     edgeTargets.delete(name);
   }
-  // "holds" also when a hold came from the pane, which proves it before the next edge says so.
+  // "holds" also while a hold from the pane is live, which proves it before the next edge says so.
   const hooks =
     edgeTargets.has(name) && edgeRouter !== null
       ? (paneId: string) => {
           const word = edgeRouter.hooksOf(name, paneId);
-          return word === "live" && holdBook?.heldOn(paneId) !== undefined ? "holds" : word;
+          return word === "live" && holdBook?.live(paneId) === true ? "holds" : word;
         }
       : undefined;
   const hold = holdBook === undefined ? undefined : (paneId: string) => holdBook.note(paneId);

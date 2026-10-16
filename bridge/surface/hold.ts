@@ -55,6 +55,16 @@ import { placeEdge, type EdgeTarget } from "./edges.ts";
 export const DESK_READS = 2;
 /** How long after the hold opened a screen dialog may still give the ask its labels. */
 export const RELABEL_MS = 2000;
+
+/**
+ * How long a hold whose hook ended early waits for the screen to say who ended it. Claude Code
+ * 2.1.301 ends the hook when the desk answers with Esc or No: the dialog is then gone (desk). A
+ * dialog still on the screen means the hook stopped on its own (void). No read in time is void.
+ */
+export const CLOSE_GRACE_MS = 3000;
+
+/** A dialog read sooner than this after the early close may be the last frame before the desk's repaint. */
+export const CLOSE_SETTLE_MS = 600;
 /** How long a hold that went to the hook still shields its pane from a keys ask for the closing dialog. */
 export const SENT_SHIELD_MS = 2000;
 /** How long the phone keeps a closed hold's note (desk, void, timeout). */
@@ -107,6 +117,9 @@ export interface Held {
   sentAt: number | null;
   /** The decision that went to the hook, once one did. */
   decision: HoldDecision | null;
+  /** True once the hook's connection closed early: the next reads decide desk or void. */
+  hookGone: boolean;
+  goneAt: number;
   note: HoldNote | null;
   cancelLimit: () => void;
 }
@@ -174,6 +187,8 @@ export class HoldBook {
       outcome: null,
       sentAt: null,
       decision: null,
+      hookGone: false,
+      goneAt: 0,
       note: null,
       cancelLimit: () => {},
     };
@@ -216,6 +231,19 @@ export class HoldBook {
       return held.ask;
     }
     if (held.state !== "held") return held.ask;
+    if (held.hookGone) {
+      // The hook ended early. A dialog still up: the hook stopped on its own, so the dialog becomes
+      // a keys ask. No dialog on two reads: the desk answered, and Claude ended the hook.
+      if (permission !== null) {
+        if (this.now() - held.goneAt < CLOSE_SETTLE_MS) return held.ask;
+        this.end(held, "void");
+        return null;
+      }
+      held.missing += 1;
+      if (held.missing < DESK_READS) return held.ask;
+      this.end(held, "desk");
+      return null;
+    }
     if (held.dialog === null) {
       // Labels from the profile so far. A dialog that paints soon after takes over once, so the card on
       // the phone and the ask name the same options. The old id answers `ask_changed`, never a key.
@@ -306,7 +334,16 @@ export class HoldBook {
     if (how === "elsewhere") return this.end(held, "elsewhere");
     // A close at the limit is the hook's own timer: the same outcome as the bridge's.
     const late = this.now() - held.openedAt >= held.profile.limitMs - 2000;
-    this.end(held, late ? "timeout" : "void");
+    if (late) return this.end(held, "timeout");
+    // A subagent's request has no dialog for the screen to judge: the hook stopped.
+    if (held.request.agent !== null || held.state === "answering") return this.end(held, "void");
+    held.hookGone = true;
+    held.goneAt = this.now();
+    held.missing = 0;
+    held.cancelLimit();
+    held.cancelLimit = this.schedule(() => {
+      if (held.state === "held") this.end(held, "void");
+    }, CLOSE_GRACE_MS);
   }
 
   /**
@@ -385,6 +422,8 @@ export interface TakeHoldDeps {
   profile(harness: string): HoldProfile | undefined;
   /** Force a fresh read of the pane soon (a `dialog` edge into its fold). */
   reread(paneId: string): void;
+  /** One journal line when a request is released as an edge only. Optional. */
+  log?(line: string): void;
 }
 
 /**
@@ -399,10 +438,15 @@ export function takeHold(deps: TakeHoldDeps, paneId: string, request: HoldReques
   const generation = deps.generation(paneId);
   if (!request.hold || profile === undefined || generation === null || profile.screenOnly.includes(request.tool)) {
     conn.release();
+    deps.log?.(`[surface] surface.hold edge-only pane=${paneId} tool=${request.tool} reason=${!request.hold || profile?.screenOnly.includes(request.tool) === true ? "screen-only" : "no-hold"}`);
     return null;
   }
   const held = deps.book.open(paneId, generation, request, conn, profile);
-  onClose((how) => deps.book.closed(held, how));
+  onClose((how) => {
+    deps.book.closed(held, how);
+    // An early close is judged by the screen: read it again soon.
+    deps.reread(paneId);
+  });
   return held;
 }
 

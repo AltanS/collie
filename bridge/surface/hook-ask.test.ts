@@ -21,7 +21,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { isFree, type Ask } from "../../web/src/lib/surface/surface.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
-import { HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
+import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
 import { KeyGate, type GateResult, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -413,14 +413,42 @@ describe("the hold matrix", () => {
     const { conn, close } = r.open();
     const hookAsk = r.poll()!;
     close("closed");
+    // A read right after the close may be the last frame before the desk's repaint: no verdict yet.
+    expect(r.poll()?.id).toBe(hookAsk.id);
+    // A later read still shows the dialog: the hook stopped on its own, not the desk.
+    r.clock.now += CLOSE_SETTLE_MS;
+    const keysAsk = r.poll()!;
+    expect(keysAsk.channel).toBe("keys");
     expect(r.holds.note(PANE)?.state).toBe("void");
     expect(r.counted).toEqual(["void"]);
     expect(conn.replies).toEqual([]);
-    const keysAsk = r.poll()!;
-    expect(keysAsk.channel).toBe("keys");
     const reply = await r.answer(hookAsk, "1");
     expect(reply.receipt?.reason).toBe("ask_gone");
     expectNoKey(r);
+  });
+
+  test("desk Esc or No: Claude ends the hook and the dialog leaves the screen, so the desk answered", async () => {
+    const r = rig(BASH);
+    const { conn, close } = r.open();
+    const hookAsk = r.poll()!;
+    close("closed");
+    r.pane.screen = `⏺ Bash(mkfifo fixture-fifo)\n  ⎿  Interrupted · What should Claude do instead?\n${IDLE}`;
+    expect(r.poll()?.id).toBe(hookAsk.id);
+    expect(r.poll()).toBeNull();
+    expect(r.holds.note(PANE)?.state).toBe("desk");
+    expect(r.counted).toEqual(["desk"]);
+    expect(conn.replies).toEqual([]);
+    expect((await r.answer(hookAsk, "1")).receipt?.reason).toBe("ask_desk");
+    expectNoKey(r);
+  });
+
+  test("an early close with no read in time is void", () => {
+    const r = rig(BASH);
+    const { close } = r.open();
+    r.poll();
+    close("closed");
+    r.advance(CLOSE_GRACE_MS);
+    expect(r.counted).toEqual(["void"]);
   });
 
   test("a close at the limit is the hook's own timer: timeout", () => {
@@ -488,8 +516,9 @@ describe("the hold matrix", () => {
       const r = rig(BASH);
       const conn = new FakeConn();
       let reread = 0;
+      const lines: string[] = [];
       const held = takeHold(
-        { book: r.holds, generation: () => GEN, profile: (h) => loadProfiles().get(h)?.hold, reread: () => reread++ },
+        { book: r.holds, generation: () => GEN, profile: (h) => loadProfiles().get(h)?.hold, reread: () => reread++, log: (l) => lines.push(l) },
         PANE,
         holdRequest({ tool, hold: false }),
         conn,
@@ -499,6 +528,7 @@ describe("the hold matrix", () => {
       expect(conn.released).toBe(1);
       expect(conn.replies).toEqual([]);
       expect(reread).toBe(1);
+      expect(lines).toEqual([`[surface] surface.hold edge-only pane=${PANE} tool=${tool} reason=screen-only`]);
       expect(r.poll()?.channel).toBe("keys");
     }
   });
@@ -527,6 +557,12 @@ describe("the hold matrix", () => {
     expect(reply.receipt?.reason).toBe("no_plan");
     expect(conn.replies).toEqual([]);
     expect(conn.released).toBe(0);
+    // The id is not spent: Yes on the same card still reaches the hook.
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0) pane.screen = DECIDED;
+    };
+    expect((await r.answer(ask, "1")).receipt?.outcome).toBe("sent");
+    expect(conn.replies).toEqual(["allow"]);
     expectNoKey(r);
   });
 

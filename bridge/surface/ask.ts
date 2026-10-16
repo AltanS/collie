@@ -468,6 +468,15 @@ export class AskAnswerer {
    */
   private async answerHold(answer: Answer, target: AskTarget, held: Held): Promise<AskReply> {
     const holds = this.deps.book.holds!;
+    // An option the hook cannot state is refused before the id is taken: nothing happened, so the
+    // same card stays answerable with Yes or No. Found in the lab: the refusal had spent the id.
+    const live = held.state === "held" && held.ask !== null && held.ask.id === answer.askId && held.ask.hash === answer.hash ? held.ask : null;
+    if (live !== null) {
+      const at = live.options.findIndex((option) => option.id === answer.optionId);
+      if (at < 0 || (held.decisions[at] ?? null) === null) {
+        return this.holdReply(answer, target, held, "refused", "no_plan", null, { detail: "The hook answers Yes or No only. Use the screen and the keys for this choice." });
+      }
+    }
     const accepted = this.deps.store.acceptAsk({
       id: answer.askId,
       session: target.session,
