@@ -1417,7 +1417,7 @@ export class SendProtocol {
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
   private keyOf(state: RunState): CounterKey {
     const { target, match } = state;
-    return { harness: target.harness === "" ? "-" : target.harness, version: match?.version ?? "-", profileId: match?.profile.id ?? "-", status: match?.status ?? "-" };
+    return { harness: match?.profile.id ?? (target.harness === "" ? "-" : target.harness), version: match?.version ?? "-", profileId: match?.profile.id ?? "-", status: match?.status ?? "-" };
   }
 
   /**
@@ -1529,6 +1529,8 @@ export class SendProtocol {
       s0.frame === null ||
       match === null ||
       match.status !== "verified" ||
+      // A probe the profile calls provisional (no live send passed on a version inside its range) is never skipped.
+      match.profile.probe.status !== "verified" ||
       (!isFree(s0.surface) && request.mode !== "append" && request.mode !== "replace") ||
       ([...text].length >= 1 && [...text].length <= SHORT_TEXT);
     let landing: Landing | null = null;
@@ -1652,13 +1654,14 @@ export class SendProtocol {
   }
 
   /**
-   * The manual path on a harness whose Enter steers a running turn: S0 found no box to read the turn
-   * from, so any running sign on the screen counts. Then the send takes the queue key, or is refused
-   * when the profile names none (or the turn holds a command). Enter never steers a turn by accident.
+   * The manual path on a harness whose Enter does not queue (it steers the turn, or no lab run measured
+   * it): S0 found no box to read the turn from, so any running sign on the screen counts. Then the send
+   * takes the queue key, or is refused when the profile names none (or the turn holds a command). Enter
+   * never steers a turn by accident.
    */
   private gateSteeringTurn(state: RunState, s0: Snap): void {
     const profile = state.match?.profile;
-    if (profile?.keys.enterWhileRunning !== "steers" || state.request.mode === "discard") return;
+    if (profile === undefined || profile.keys.enterWhileRunning === "queues" || state.request.mode === "discard") return;
     const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
     if (!runs) return;

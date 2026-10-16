@@ -146,6 +146,11 @@ export interface Profile {
     readonly versionCommand: readonly string[];
     /** A regular expression source. The first match in the command output is the version. */
     readonly versionRegex: string;
+    /**
+     * Other names a multiplexer reports for this harness (Herdr reports Antigravity as `agy` and as
+     * `antigravity`). The bridge files each of them under this profile. Optional; never the id of a profile.
+     */
+    readonly agentNames?: readonly string[];
   };
   readonly versions: readonly [VersionRange, ...VersionRange[]];
   readonly idle: {
@@ -209,8 +214,14 @@ export interface Profile {
     readonly frameAlternates?: readonly FrameLayout[];
   };
   readonly keys: {
-    /** The keys that send a text. Codex names Tab here: its Enter steers a running turn (`enterWhileRunning`). */
+    /**
+     * The keys that send a text. Codex names Tab here: its Enter steers a running turn
+     * (`enterWhileRunning`). In the file this is a list, or an object `{ "default": [...], "win32": [...] }`
+     * for a harness whose key differs by platform; this field holds the default list.
+     */
     readonly submit: readonly string[];
+    /** The lists for the platforms that differ from `submit`, by `process.platform`. {@link forPlatform} applies them. Optional. */
+    readonly submitByPlatform?: Readonly<Record<string, readonly string[]>>;
     /**
      * The keys that send a command or a text that starts with a reserved lead, when they are not
      * `submit`. Optional: without it a command takes `submit`. Codex names Enter: Tab completes in its
@@ -236,6 +247,8 @@ export interface Profile {
      * submit key itself, on a harness whose submit key sends on an idle box and queues in a turn.
      */
     readonly queueKey?: string;
+    /** The queue keys for the platforms that differ from `queueKey`, by `process.platform`. Optional. */
+    readonly queueKeyByPlatform?: Readonly<Record<string, string>>;
     /**
      * How the harness draws a message it queued during a turn, when that is known: a row whose
      * `pattern` holds the text in the named group `text` (later rows of a wrapped text are indented),
@@ -332,6 +345,33 @@ function textList(value: JsonValue | undefined, path: string, minLength: number)
   const items = list(value, path);
   if (items.length < minLength) fail(path, `must hold at least ${String(minLength)} entries`);
   return items.map((item, i) => text(item, `${path}[${String(i)}]`));
+}
+
+const PLATFORMS = ["win32", "darwin", "linux"] as const;
+
+/** A key list as the file wrote it: the default, and the lists of the platforms that differ. */
+interface PlatformLists {
+  readonly default: string[];
+  readonly byPlatform: Record<string, string[]>;
+}
+
+/**
+ * A key list that may differ by platform: an array, or an object `{ "default": [...], "win32": [...] }`.
+ * With `single`, each list holds exactly one key (the queue key). Returns the default and the lists for
+ * the platforms named.
+ */
+function platformLists(value: JsonValue | undefined, path: string, single = false): PlatformLists {
+  const minimum = 1;
+  const check = (items: string[], at: string): string[] => (single && items.length !== 1 ? fail(at, "must name one key") : items);
+  const node = asJsonObject(value);
+  if (node === undefined) return { default: check(textList(value, path, minimum), path), byPlatform: {} };
+  const byPlatform: Record<string, string[]> = {};
+  for (const key of Object.keys(node)) {
+    if (key === "default") continue;
+    if (!PLATFORMS.some((platform) => platform === key)) fail(`${path}.${key}`, `must be default or one of ${PLATFORMS.join(", ")}`);
+    byPlatform[key] = check(textList(node[key], `${path}.${key}`, minimum), `${path}.${key}`);
+  }
+  return { default: check(textList(field(node, "default", path), `${path}.default`, minimum), `${path}.default`), byPlatform };
 }
 
 function oneOf<const T extends string>(value: JsonValue | undefined, path: string, allowed: readonly T[]): T {
@@ -483,6 +523,14 @@ export function parseProfile(raw: JsonValue): Profile {
     versionCommand: textList(field(identityNode, "versionCommand", "identity"), "identity.versionCommand", 1),
     versionRegex: pattern(field(identityNode, "versionRegex", "identity"), "identity.versionRegex").source,
   };
+  let agentNames: readonly string[] | undefined;
+  if (identityNode.agentNames !== undefined) {
+    agentNames = textList(identityNode.agentNames, "identity.agentNames", 1);
+    for (const name of agentNames) {
+      if (!/^[a-z][a-z0-9-]*$/.test(name)) fail("identity.agentNames", `${name} must be lower-case letters, digits and dashes`);
+      if (name === id) fail("identity.agentNames", "must not repeat the id");
+    }
+  }
 
   const versions = parseVersions(field(root, "versions", ""), "versions");
 
@@ -533,8 +581,9 @@ export function parseProfile(raw: JsonValue): Profile {
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
   const navNode = object(field(keysNode, "navigation", "keys"), "keys.navigation");
+  const platformSubmit = platformLists(field(keysNode, "submit", "keys"), "keys.submit");
   const baseKeys = {
-    submit: textList(field(keysNode, "submit", "keys"), "keys.submit", 1),
+    submit: platformSubmit.default,
     newline: textList(field(keysNode, "newline", "keys"), "keys.newline", 1),
     interrupt: textList(field(keysNode, "interrupt", "keys"), "keys.interrupt", 1),
     clear: {
@@ -548,7 +597,7 @@ export function parseProfile(raw: JsonValue): Profile {
       cancel: text(field(navNode, "cancel", "keys.navigation"), "keys.navigation.cancel"),
     },
   };
-  let keys: Profile["keys"] = baseKeys;
+  let keys: Profile["keys"] = Object.keys(platformSubmit.byPlatform).length === 0 ? baseKeys : { ...baseKeys, submitByPlatform: platformSubmit.byPlatform };
   if (keysNode.enterWhileRunning !== undefined) {
     keys = { ...keys, enterWhileRunning: oneOf(keysNode.enterWhileRunning, "keys.enterWhileRunning", ENTER_MODES) };
   }
@@ -564,11 +613,22 @@ export function parseProfile(raw: JsonValue): Profile {
     keys = { ...keys, queuedRow };
   }
   if (keysNode.queueKey !== undefined) {
-    const queueKey = text(keysNode.queueKey, "keys.queueKey");
-    if (/^(?:escape|esc)$/i.test(queueKey)) fail("keys.queueKey", "must not be Escape");
-    if (/^(?:enter|return)$/i.test(queueKey)) fail("keys.queueKey", "must not be Enter: keys.enterWhileRunning says what Enter does in a turn");
+    const queueObject = asJsonObject(keysNode.queueKey);
+    const queueNode = platformLists(
+      queueObject === undefined ? [text(keysNode.queueKey, "keys.queueKey")] : Object.fromEntries(Object.entries(queueObject).map(([key, value]) => [key, [text(value, `keys.queueKey.${key}`)]])),
+      "keys.queueKey",
+      true,
+    );
+    const checkQueueKey = (key: string): void => {
+      if (/^(?:escape|esc)$/i.test(key)) fail("keys.queueKey", "must not be Escape");
+      if (/^(?:enter|return)$/i.test(key)) fail("keys.queueKey", "must not be Enter: keys.enterWhileRunning says what Enter does in a turn");
+    };
+    const queueKey = queueNode.default[0] ?? fail("keys.queueKey", "must name one key");
+    checkQueueKey(queueKey);
     if (keys.enterWhileRunning === "queues") fail("keys.queueKey", "is for a harness whose Enter does not queue");
-    keys = { ...keys, queueKey };
+    const queueByPlatform = Object.fromEntries(Object.entries(queueNode.byPlatform).map(([platform, names]) => [platform, names[0] ?? ""]));
+    for (const key of Object.values(queueByPlatform)) checkQueueKey(key);
+    keys = Object.keys(queueByPlatform).length === 0 ? { ...keys, queueKey } : { ...keys, queueKey, queueKeyByPlatform: queueByPlatform };
   }
   if (keysNode.commandSubmit !== undefined) {
     const commandSubmit = textList(keysNode.commandSubmit, "keys.commandSubmit", 1);
@@ -616,7 +676,7 @@ export function parseProfile(raw: JsonValue): Profile {
 
   const edges = root.edges === undefined ? undefined : parseEdges(root.edges, hooks);
 
-  const parsedProfile: Profile = { id, identity, versions, idle: idleBlock, keys, collapse, reservedLeads, probe, hooks };
+  const parsedProfile: Profile = { id, identity: agentNames === undefined ? identity : { ...identity, agentNames }, versions, idle: idleBlock, keys, collapse, reservedLeads, probe, hooks };
   const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
   const withAsk = ask === undefined ? withPaste : { ...withPaste, ask };
   return edges === undefined ? withAsk : { ...withAsk, edges };
@@ -685,6 +745,13 @@ export function loadProfiles(): ReadonlyMap<string, Profile> {
     if (profile.id !== stem) throw new ProfileError("id", `${profile.id} does not match its file name ${stem}`);
     out.set(profile.id, profile);
   }
+  const claimed = new Set(out.keys());
+  for (const profile of out.values()) {
+    for (const name of profile.identity.agentNames ?? []) {
+      if (claimed.has(name)) throw new ProfileError("identity.agentNames", `${name} of ${profile.id} is already a profile id or another profile's name`);
+      claimed.add(name);
+    }
+  }
   parsed = out;
   return out;
 }
@@ -698,6 +765,36 @@ export function requireProfile(id: string): Profile {
   const profile = loadProfiles().get(id);
   if (profile === undefined) throw new ProfileError("id", `no profile file carries the id ${id}`);
   return profile;
+}
+
+/** The profile a multiplexer's agent name belongs to: the id itself, or a name in `identity.agentNames`. */
+export function findProfile(profiles: ReadonlyMap<string, Profile>, name: string): Profile | undefined {
+  const direct = profiles.get(name);
+  if (direct !== undefined) return direct;
+  for (const profile of profiles.values()) if (profile.identity.agentNames?.includes(name) === true) return profile;
+  return undefined;
+}
+
+/**
+ * The profile with the keys of one platform (`process.platform`): `keys.submit` and `keys.queueKey`
+ * take the platform's entry where the profile names one. A profile with no platform entry comes back as it is.
+ */
+export function forPlatform(profile: Profile, platform: string): Profile {
+  const { submitByPlatform, queueKeyByPlatform } = profile.keys;
+  const submit = submitByPlatform?.[platform];
+  const queueKey = queueKeyByPlatform?.[platform];
+  if (submit === undefined && queueKey === undefined) return profile;
+  const keys: Profile["keys"] = { ...profile.keys, submit: submit ?? profile.keys.submit };
+  return { ...profile, keys: queueKey === undefined ? keys : { ...keys, queueKey } };
+}
+
+/**
+ * {@link profileFor} for one platform: the match carries the profile with that platform's keys
+ * ({@link forPlatform}). The bridge calls this with `process.platform`.
+ */
+export function profileForPlatform(harness: string, version: string | null, platform: string, options?: ProfileForOptions): ProfileMatch | null {
+  const match = profileFor(harness, version, options);
+  return match === null ? null : { ...match, profile: forPlatform(match.profile, platform) };
 }
 
 const logged = new Set<string>();
@@ -751,7 +848,7 @@ export function profileFor(
   version: string | null,
   options?: ProfileForOptions,
 ): ProfileMatch | null {
-  const profile = (options?.profiles ?? loadProfiles()).get(harness);
+  const profile = findProfile(options?.profiles ?? loadProfiles(), harness);
   if (profile === undefined) return null;
 
   if (version === null || !SEMVER.test(version)) {

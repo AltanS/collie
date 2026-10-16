@@ -25,12 +25,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **Grok has an input profile.** Collie finds the Grok box, reads a draft past the scroll bar, and treats an open model list as a dialog.
-- **Antigravity has an input profile.** Collie finds the `>` box between its two rules.
-- **Muse has an input profile.** Collie finds the `❯` box between its rules, ignores its grey hint, and treats a command list under the box as a dialog.
-- **OMP has an input profile.** The Send Protocol finds the OMP box in any of five border styles, reads a draft, and sends a message into a running turn through Ctrl+Q, where it waits as an After yield row. A profile may now list other frame shapes, and a dialog drawn in the box's place never reads as free.
-- **pi has an input profile.** The Send Protocol finds the pi box between its two rules, reads a draft, and sends a message into a running turn through Alt+Enter, where it queues as a follow-up. A pi dialog never reads as free.
-- **OpenCode has an input profile.** The Send Protocol finds the box of OpenCode from its own rows, reads a draft, and sends a message into a running turn, where it queues. A newline goes in as Ctrl+J, and a message too long for the box is refused.
+- **A profile may name keys per platform, other agent names, and a probe that never skips.** `keys.submit` and `keys.queueKey` take a `win32` entry. `identity.agentNames` files `antigravity` under `agy`. A profile with `probe.status` provisional probes every send.
+- **Grok has an input profile.** Collie finds the Grok box and reads its drafts. It treats an open model list as a dialog. Every send is probed.
+- **Antigravity has an input profile.** Collie finds the `>` box between its two rules and reads the turn from its spinner row. Herdr names it `agy` or `antigravity`. Collie files both under `agy`.
+- **Muse has an input profile.** Collie finds the `❯` box between its rules and ignores its grey hint. It reads the turn from the timer row.
+- **OMP has an input profile.** Collie finds the box in any of its five border styles. It reads a draft and sends with Ctrl+Q, which also queues in a running turn. A dialog drawn in the box's place never reads as free.
+- **pi has an input profile.** Collie finds the pi box between its two rules and reads a draft. It sends with Alt+Enter, or Ctrl+Q on Windows, and the send queues in a running turn. A pi dialog never reads as free.
+- **OpenCode has an input profile.** Collie finds the box from its own rows and reads a draft. A send into a running turn queues. A newline goes in as Ctrl+J, and a message too long for the box is refused.
 - **COLLIE_PROGRAMS=off turns programs off.** The bridge ignores sources.json, logs one line, and the phone shows no Programs section; doctor and durable list say so.
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
 - **A durable pane shows a subtitle and a badge.** The program sets one line under the title and a count or a short mark next to it, so a list of its conversations reads at a glance.
