@@ -51,12 +51,17 @@ export type MdSpan =
    */
   | { kind: "image"; alt: string; src: string }
   /**
-   * A closed stretchtext stretch: `spans` is its short form, `key` names it for opening. Produced
-   * only by `liftStretches` in lib/stretch.ts, never by this parser.
+   * A closed stretchtext stretch: `spans` is its short form, `key` names it for opening, `hue` is its
+   * colour (0 to 3). Produced only by `liftStretches` in lib/stretch.ts, never by this parser.
    */
-  | { kind: "stretch"; key: string; spans: MdSpan[] }
-  /** The closer after an open stretch's long form. Produced only by `liftStretches` in lib/stretch.ts, never by this parser. */
-  | { kind: "stretch-close"; key: string };
+  | { kind: "stretch"; key: string; hue: number; spans: MdSpan[] }
+  /** The closer after an open stretch's long form, in its stretch's hue. Produced only by `liftStretches` in lib/stretch.ts, never by this parser. */
+  | { kind: "stretch-close"; key: string; hue: number }
+  /**
+   * Words an open stretch's long form added, in its stretch's hue, `faded` unless that stretch was
+   * opened last. Produced only by `liftStretches` in lib/stretch.ts, never by this parser.
+   */
+  | { kind: "tint"; hue: number; faded: boolean; spans: MdSpan[] };
 
 export type MdBlock =
   | { kind: "heading"; level: number; spans: MdSpan[] }
@@ -115,9 +120,9 @@ function externalHref(raw: string): string | null {
 // The lookbehind keeps it to a URL that STARTS somewhere: no `xhttp://`, and no second match inside
 // a URL this alternative already took. The tail class is what stops "see http://x." from swallowing
 // the full stop, and "(http://x)" from swallowing the bracket — a URL may not END on sentence
-// punctuation, though it may contain it. Neither class takes a stretch marker (U+E000 to U+E004, see
-// lib/stretch.ts), so a URL that ends a stretch's short form stops before the marker that ends it.
-const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"'\\uE000-\\uE004]*[^\\s<>`\"'.,:;!?)\\]}\\uE000-\\uE004])";
+// punctuation, though it may contain it. Neither class takes a stretch marker (U+E000 to U+E006, see
+// lib/stretch.ts), so a URL that ends a stretch's short form or a tinted run stops before the marker that ends it.
+const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"'\\uE000-\\uE006]*[^\\s<>`\"'.,:;!?)\\]}\\uE000-\\uE006])";
 
 // The pieces of a link, each bounded, each with a branch that cannot match what the other can:
 //  - LABEL holds anything but a bracket, or ONE image (`![alt](src)`), which is how a badge is

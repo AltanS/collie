@@ -192,6 +192,34 @@ describe("stretches", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("underlines each closed stretch in its own hue", () => {
+    withStretches("{{one|first words}} and {{two|second words}}");
+    expect(screen.getByRole("button", { name: "one" })).toHaveClass("decoration-stretch-1");
+    expect(screen.getByRole("button", { name: "two" })).toHaveClass("decoration-stretch-2");
+  });
+
+  it("draws the words an open stretch added in its hue, and its anchors in the text's ink", () => {
+    withStretches("x {{monad|a monad is a type}} y");
+    fireEvent.click(screen.getByRole("button", { name: "monad" }));
+    expect(screen.getByText("is a type")).toHaveClass("text-stretch-1");
+    expect(screen.getByText(/monad/).closest("[class*='text-stretch']")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveClass("text-stretch-1");
+  });
+
+  it("fades an open stretch's words once another is opened after it", () => {
+    withStretches("{{one|first words}} and {{two|second words}}");
+    fireEvent.click(screen.getByRole("button", { name: "one" }));
+    expect(screen.getByText("first words")).toHaveClass("text-stretch-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "two" }));
+    expect(screen.getByText("first words")).toHaveClass("text-stretch-1-faded");
+    expect(screen.getByText("second words")).toHaveClass("text-stretch-2");
+    // A closer keeps its stretch's unfaded colour.
+    const [first, second] = screen.getAllByRole("button", { name: "Show less" });
+    expect(first).toHaveClass("text-stretch-1");
+    expect(second).toHaveClass("text-stretch-2");
+  });
+
   it("a stretch in bold, in a list item and in a table cell is a button", () => {
     withStretches("**see {{bold one|b}}**\n\n- item {{list one|c}}\n\n| h | k |\n| --- | --- |\n| {{cell one|d}} | z |");
     for (const name of ["bold one", "list one", "cell one"]) {

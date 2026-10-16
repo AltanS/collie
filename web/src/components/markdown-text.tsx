@@ -74,8 +74,33 @@ function onPressKey(e: React.KeyboardEvent, press: () => void): void {
 
 const FOCUS_RING = "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
+/** One stretch hue's classes: a closed stretch's underline, and the ink of an open one's added words and closer. */
+interface StretchHueClass {
+  underline: string;
+  soft: string;
+  faded: string;
+}
+
 /**
- * A closed stretch: its short form, in its own ink, underlined dotted in primary, and pressed to open.
+ * Each stretch hue's classes, by the hue lib/stretch.ts gives it (0 to 3). Literal strings, so
+ * Tailwind finds every class; the colours are the `--stretch-*` tokens in index.css.
+ */
+const STRETCH_HUE_CLASS = new Map<number, StretchHueClass>([
+  [0, { underline: "decoration-stretch-1", soft: "text-stretch-1", faded: "text-stretch-1-faded" }],
+  [1, { underline: "decoration-stretch-2", soft: "text-stretch-2", faded: "text-stretch-2-faded" }],
+  [2, { underline: "decoration-stretch-3", soft: "text-stretch-3", faded: "text-stretch-3-faded" }],
+  [3, { underline: "decoration-stretch-4", soft: "text-stretch-4", faded: "text-stretch-4-faded" }],
+]);
+
+/** lib/stretch.ts hands out hues 0 to 3 only; a hue outside them would be its bug, drawn in the primary ink stretches had before they had hues. */
+const NO_HUE_CLASS: StretchHueClass = { underline: "decoration-primary", soft: "text-primary", faded: "text-primary" };
+
+function hueClass(hue: number): StretchHueClass {
+  return STRETCH_HUE_CLASS.get(hue) ?? NO_HUE_CLASS;
+}
+
+/**
+ * A closed stretch: its short form, in its own ink, underlined in its hue, and pressed to open.
  * An inline span and not a <button>, because a button is an atomic inline box and a phrase several
  * words long has to wrap across lines like the prose around it.
  */
@@ -90,23 +115,33 @@ function StretchSpan({ span }: { span: Extract<MdSpan, { kind: "stretch" }> }) {
       aria-expanded={false}
       onClick={press}
       onKeyDown={(e) => onPressKey(e, press)}
-      className={`cursor-pointer underline decoration-primary decoration-dotted underline-offset-2 ${FOCUS_RING}`}
+      className={`cursor-pointer underline decoration-2 underline-offset-2 ${hueClass(span.hue).underline} ${FOCUS_RING}`}
     >
       <Spans spans={span.spans} />
     </span>
   );
 }
 
+/** Words an open stretch added, in its hue: soft for the stretch opened last, faded for the others. */
+function TintSpan({ span }: { span: Extract<MdSpan, { kind: "tint" }> }) {
+  const colours = hueClass(span.hue);
+  return (
+    <span className={span.faded ? colours.faded : colours.soft}>
+      <Spans spans={span.spans} />
+    </span>
+  );
+}
+
 /**
- * The `«` after an open stretch's long form, pressed to close it and every stretch opened inside it.
- * Its hit area reaches past the glyph by a transparent `::before`, so a one-character target is
- * tappable without drawing any larger (DESIGN.md §6).
+ * The `«` after an open stretch's long form, in its stretch's soft hue, pressed to close it and every
+ * stretch opened inside it. Its hit area reaches past the glyph by a transparent `::before`, so a
+ * one-character target is tappable without drawing any larger (DESIGN.md §6).
  */
-function StretchClose({ stretchKey }: { stretchKey: string }) {
+function StretchClose({ span }: { span: Extract<MdSpan, { kind: "stretch-close" }> }) {
   useLocale();
   const control = useContext(StretchControlContext);
   if (control === null) return null;
-  const press = () => control.close(stretchKey);
+  const press = () => control.close(span.key);
   return (
     <span
       role="button"
@@ -114,7 +149,7 @@ function StretchClose({ stretchKey }: { stretchKey: string }) {
       aria-label={t("markdown.stretch.close")}
       onClick={press}
       onKeyDown={(e) => onPressKey(e, press)}
-      className={`relative cursor-pointer text-primary before:absolute before:-inset-x-2 before:-inset-y-1.5 before:content-[''] ${FOCUS_RING}`}
+      className={`relative cursor-pointer ${hueClass(span.hue).soft} before:absolute before:-inset-x-2 before:-inset-y-1.5 before:content-[''] ${FOCUS_RING}`}
     >
       «
     </span>
@@ -346,7 +381,9 @@ function Span({ span }: { span: MdSpan }) {
     case "stretch":
       return <StretchSpan span={span} />;
     case "stretch-close":
-      return <StretchClose stretchKey={span.key} />;
+      return <StretchClose span={span} />;
+    case "tint":
+      return <TintSpan span={span} />;
     default:
       return <TextRun text={span.text} />;
   }
@@ -386,26 +423,33 @@ const ALIGN_CLASS = new Map<string, string>([
   ["right", "text-right"],
 ]);
 
+/** This text's open stretches, each by the sequence it was opened at, and the last sequence handed out. */
+interface OpenStretches {
+  keys: ReadonlyMap<string, number>;
+  opened: number;
+}
+
 /**
  * The blocks to draw and the control over this text's stretches. With `drawn` false the control is
  * null and the blocks are the plain parse, exactly as the text was drawn before stretches existed.
  */
 function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, query: string) {
   const segments = useMemo(() => (drawn ? parseStretches(text) : null), [drawn, text]);
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const [open, setOpen] = useState<OpenStretches>(() => ({ keys: new Map(), opened: 0 }));
   // A FIND ALWAYS WINS (transcript-view.tsx): while a query is on screen every stretch is drawn open,
-  // so a hit inside a long form is painted rather than hidden behind its short form.
+  // so a hit inside a long form is painted rather than hidden behind its short form. Sequence 0 makes
+  // none of them the newest, so every one is drawn faded.
   const finding = drawn && query.trim() !== "";
   const blocks = useMemo(() => {
     if (segments === null) return parseMarkdown(text, { images: withImages });
-    const shown = finding ? new Set(allStretches(segments).map((s) => s.key)) : open;
+    const shown = finding ? new Map(allStretches(segments).map((s) => [s.key, 0])) : open.keys;
     const composed = composeStretches(segments, shown);
-    return liftStretches(parseMarkdown(composed.source, { images: withImages }), composed.keys);
+    return liftStretches(parseMarkdown(composed.source, { images: withImages }), composed);
   }, [segments, text, withImages, finding, open]);
   const control = useMemo<StretchControl>(
     () => ({
-      open: (key) => setOpen((keys) => new Set(keys).add(key)),
-      close: (key) => setOpen((keys) => closeStretch(keys, key)),
+      open: (key) => setOpen((was) => ({ keys: new Map(was.keys).set(key, was.opened + 1), opened: was.opened + 1 })),
+      close: (key) => setOpen((was) => ({ ...was, keys: closeStretch(was.keys, key) })),
     }),
     [],
   );
