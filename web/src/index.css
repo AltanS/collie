@@ -469,6 +469,22 @@
      (alpha-bar.tsx). */
   --status-info: light-dark(oklch(0.46 0.14 230), oklch(0.8 0.15 230));
 
+  /* Stretchtext hues (components/markdown-text.tsx, lib/stretch.ts): a closed stretch's underline,
+     and the ink of the words an open stretch added and of its «. They are the cc-stretch plugin's own
+     palette (0.3.4, hooks/register.tsx), so a reply reads in the same colours in Collie as in the
+     terminal: Claude Code's theme hues warning, autoAccept, planMode and claude, mixed 45% toward the
+     text colour (white in dark, black in light) for `--stretch-N`, and that mixed 35% toward the
+     background (black in dark, white in light) for `--stretch-N-faded`, rounded per channel as the
+     plugin rounds them. The faded form is the open stretches other than the one opened last. */
+  --stretch-1: light-dark(#533b11, #ffdd77);
+  --stretch-1-faded: light-dark(#8f8064, #a6904d);
+  --stretch-2: light-dark(#4a008c, #d3bdff);
+  --stretch-2-faded: light-dark(#8959b4, #897ba6);
+  --stretch-3: light-dark(#003838, #9ac5c0);
+  --stretch-3-faded: light-dark(#597e7e, #64807d);
+  --stretch-4: light-dark(#764130, #e9b4a3);
+  --stretch-4-faded: light-dark(#a68478, #97756a);
+
   /* Syntax colour for the Changes view's diff (components/changes-view.tsx, lib/diff-highlight.ts,
      ADR 0065 rule 7). Six inks, all colour and nothing else: no weight, no italic, so a coloured
      line keeps the plain line's glyphs and line boxes. Kinds without an ink (names, punctuation,
@@ -651,6 +667,14 @@
   --color-status-idle: var(--status-idle);
   --color-status-unknown: var(--status-unknown);
   --color-status-info: var(--status-info);
+  --color-stretch-1: var(--stretch-1);
+  --color-stretch-1-faded: var(--stretch-1-faded);
+  --color-stretch-2: var(--stretch-2);
+  --color-stretch-2-faded: var(--stretch-2-faded);
+  --color-stretch-3: var(--stretch-3);
+  --color-stretch-3-faded: var(--stretch-3-faded);
+  --color-stretch-4: var(--stretch-4);
+  --color-stretch-4-faded: var(--stretch-4-faded);
 
   --color-host-0: var(--host-0);
   --color-host-1: var(--host-1);

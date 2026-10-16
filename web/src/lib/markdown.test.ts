@@ -168,6 +168,14 @@ describe("parseInline", () => {
     expect(spans[2]).toEqual({ kind: "text", text: "\uE002 now" });
   });
 
+  it("a bare URL stops before a tint marker", () => {
+    for (const marker of ["\uE005", "\uE006"]) {
+      const spans = parseInline(`see https://x.example/a${marker} now`);
+      expect(spans[1]).toEqual({ kind: "link", href: "https://x.example/a", spans: [{ kind: "text", text: "https://x.example/a" }] });
+      expect(spans[2]).toEqual({ kind: "text", text: `${marker} now` });
+    }
+  });
+
   it("a URL inside a code span stays code", () => {
     expect(parseInline("`http://in-code:1`")).toEqual([{ kind: "code", text: "http://in-code:1" }]);
   });
