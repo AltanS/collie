@@ -40,6 +40,7 @@ class ScriptPane implements WalkPane {
   readonly pressed: string[] = [];
   stuck: string | null = null;
   starts: string | null = null;
+  liar: string | null = null;
 
   constructor(private readonly menu: readonly string[]) {}
 
@@ -88,7 +89,7 @@ class ScriptPane implements WalkPane {
         const hit = this.popupMatches()[0];
         this.entered.push(this.typed);
         this.typed = "";
-        this.mode = this.starts === hit ? "turn" : "dialog";
+        this.mode = this.starts === hit ? "turn" : this.liar === hit ? "idle" : "dialog";
       }
     }
   }
@@ -202,5 +203,21 @@ describe("runWalk", () => {
     expect(done.walk.menuRead).toBe(false);
     expect(done.walk.missing).toEqual(["/status", "/gone"]);
     expect(done.log.join("\n")).toContain("lost 2 of 3 safe ones");
+  });
+
+  test("a dialog that reads free ends the walk after one Escape, and no later command is sent", async () => {
+    const pane = new ScriptPane(MENU);
+    pane.liar = "/help";
+    const done = await runWalk(pane, LISTS);
+    expect(pane.entered).toEqual(["/help"]);
+    expect(pane.pressed.filter((key) => key === "Escape")).toHaveLength(2);
+    expect(done.log.join("\n")).toContain("the walk ends after one Escape");
+    expect(done.screens.some((screen) => screen.label === "/help" && screen.free)).toBe(true);
+  });
+
+  test("each note reaches the caller as it is written", async () => {
+    const heard: string[] = [];
+    const done = await runWalk(new ScriptPane(MENU), LISTS, (line) => heard.push(line));
+    expect(heard).toEqual(done.log);
   });
 });

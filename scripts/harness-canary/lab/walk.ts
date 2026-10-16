@@ -9,7 +9,7 @@
 import { classifyCommands, parseSlashMenu, type SlashLists } from "../slash-commands";
 import type { ScreenView } from "./screens";
 import { factOf } from "./screens";
-import type { ScreenFact, WalkFact } from "./verdict";
+import { isDialogScreen, type ScreenFact, type WalkFact } from "./verdict";
 
 /** The hands of the walk. The lab gives it a tmux pane. A test gives it a script. */
 export interface WalkPane {
@@ -117,11 +117,13 @@ export interface WalkResult {
   readonly log: string[];
 }
 
-export async function runWalk(pane: WalkPane, lists: SlashLists): Promise<WalkResult> {
+/** `onNote` hears each line the moment the walk writes it, so the run log carries the walk's own timestamps. */
+export async function runWalk(pane: WalkPane, lists: SlashLists, onNote: (line: string) => void = () => {}): Promise<WalkResult> {
   const screens: ScreenFact[] = [];
   const log: string[] = [];
   const note = (line: string): void => {
     log.push(line);
+    onNote(line);
   };
   const hasWalk = lists.safe.length > 0;
   const start = await settle(pane, SETTLE_COMMAND);
@@ -176,6 +178,14 @@ export async function runWalk(pane: WalkPane, lists: SlashLists): Promise<WalkRe
     const fact = factOf(reached, "walk", entry.command, entry.opens === "dialog" ? "dialog" : "either");
     screens.push(fact);
     note(`walk: ${entry.command} -> turn ${reached.surface.turn}, modal ${fact.surface.modal}, composer ${reached.surface.composer}, free ${String(reached.free)}`);
+    if (isDialogScreen(fact) && fact.free) {
+      // The Surface read a dialog as a free box. A key sent into a real dialog is a risk, so the walk
+      // presses Escape once, reads what is left, and ends. The verdict fails the run for this screen.
+      await pane.keys("Escape");
+      const left = await settle(pane, SETTLE_MENU);
+      note(`walk: ${entry.command} is a dialog and the Surface read it free, so the walk ends after one Escape (free after: ${String(left.free)})`);
+      return after({ returned: left.free });
+    }
     if (reached.surface.turn === "running") {
       await pane.keys("Escape");
       return after({ startedTurn: entry.command, returned: false });

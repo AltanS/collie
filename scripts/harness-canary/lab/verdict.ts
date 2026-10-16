@@ -71,6 +71,9 @@ export interface LabFacts {
   readonly send: SendFact | null;
   readonly ask: AskFact | null;
   readonly turns: number;
+  /** Why the send or the ask made no fact: a dialog no reader lifted, a turn cap, a box that was not free. */
+  readonly sendNote?: string | undefined;
+  readonly askNote?: string | undefined;
 }
 
 export type LabVerdictResult = "pass" | "fail" | "walk-only";
@@ -99,8 +102,14 @@ export function judge(facts: LabFacts): Verdict {
   if (!facts.walk.menuRead) reasons.push("the / menu listed no command");
   if (facts.walk.startedTurn !== null) reasons.push(`${facts.walk.startedTurn} is on the safe list and it started a model turn`);
   if (facts.profile === "none") return { result: reasons.length === 0 ? "walk-only" : "fail", reasons, freeOnDialog };
-  if (facts.send === null) reasons.push("no send was made");
+  if (facts.send === null) reasons.push(`no send was made${facts.sendNote === undefined || facts.sendNote === "" ? "" : `: ${facts.sendNote}`}`);
   else if (!SETTLED_OUTCOMES.includes(facts.send.outcome)) reasons.push(`the probed send did not settle: ${facts.send.outcome}${facts.send.reason === undefined ? "" : ` (${facts.send.reason})`}`);
-  if (facts.ask !== null && facts.ask.fileCreated) reasons.push("the declined command made its file");
+  // The ask is a pass condition: it must reach `sent` or `effective`, and the declined command must not have run.
+  // A dialog that no reader lifts is the case this catches, so the reason carries the leg's own note.
+  if (facts.ask === null) reasons.push(`no ask answer was made${facts.askNote === undefined || facts.askNote === "" ? "" : `: ${facts.askNote}`}`);
+  else {
+    if (!SETTLED_OUTCOMES.includes(facts.ask.outcome)) reasons.push(`the ask answer did not settle: ${facts.ask.outcome}${facts.ask.reason === undefined ? "" : ` (${facts.ask.reason})`}`);
+    if (facts.ask.fileCreated) reasons.push("the declined command made its file");
+  }
   return { result: reasons.length === 0 ? "pass" : "fail", reasons, freeOnDialog };
 }

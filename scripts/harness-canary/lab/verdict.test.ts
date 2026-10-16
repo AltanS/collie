@@ -19,7 +19,7 @@ const facts = (patch: Partial<LabFacts>): LabFacts => ({
   walk,
   screens: [screen({})],
   send: { outcome: "sent", probed: true, keys: 3 },
-  ask: { outcome: "answered", fileCreated: false },
+  ask: { outcome: "sent", fileCreated: false },
   turns: 2,
   ...patch,
 });
@@ -69,11 +69,20 @@ describe("judge", () => {
   });
 
   test("a declined command that made its file fails", () => {
-    expect(judge(facts({ ask: { outcome: "answered", fileCreated: true } })).result).toBe("fail");
+    expect(judge(facts({ ask: { outcome: "sent", fileCreated: true } })).result).toBe("fail");
   });
 
-  test("the ask outcome alone is reported, not a pass condition", () => {
-    expect(judge(facts({ ask: { outcome: "not-reached", fileCreated: false } })).result).toBe("pass");
+  test("the ask must reach sent or effective: an ask that did not settle fails", () => {
+    const verdict = judge(facts({ ask: { outcome: "refused", reason: "stale", fileCreated: false } }));
+    expect(verdict.result).toBe("fail");
+    expect(verdict.reasons.join(" ")).toContain("the ask answer did not settle: refused (stale)");
+    expect(judge(facts({ ask: { outcome: "effective", fileCreated: false } })).result).toBe("pass");
+  });
+
+  test("a dialog that no reader lifts is a fail, and the reason says so", () => {
+    const verdict = judge(facts({ ask: null, askNote: "the dialog was on screen and no reader lifted it" }));
+    expect(verdict.result).toBe("fail");
+    expect(verdict.reasons.join(" ")).toContain("no ask answer was made: the dialog was on screen and no reader lifted it");
   });
 
   test("a harness with no profile is walk-only when the walk is clean, and fails when it is not", () => {

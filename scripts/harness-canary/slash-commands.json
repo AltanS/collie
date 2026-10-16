@@ -20,10 +20,10 @@
       { "command": "/usage", "opens": "dialog", "reason": "A read-only usage panel." },
       { "command": "/release-notes", "opens": "dialog", "reason": "A read-only list of release notes." },
       { "command": "/sandbox", "opens": "dialog", "reason": "The sandbox mode picker. The lab closes it with Escape and never confirms a mode." },
-      { "command": "/privacy-settings", "opens": "dialog", "reason": "The privacy toggle. The lab closes it with Escape and never toggles it." },
       { "command": "/list-agents", "opens": "inline", "reason": "Prints the running agents as output." }
     ],
     "unsafe": [
+      { "command": "/privacy-settings", "reason": "An account setting kept on the server. The dialog can change it, so the walk never opens it." },
       { "command": "/clear", "reason": "Erases the conversation." },
       { "command": "/compact", "reason": "Rewrites the conversation and starts a model turn." },
       { "command": "/logout", "reason": "Ends the login." },
