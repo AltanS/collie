@@ -267,7 +267,7 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
     it("keeps the plain lost name when no stamp is known", () => {
       renderHeader(<Header bridge="connected" error onHome={() => {}} />);
       act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
-      expect(screen.getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Collie home, not connected" })).toBeInTheDocument();
     });
   });
 });

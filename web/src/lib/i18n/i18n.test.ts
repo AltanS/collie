@@ -225,6 +225,11 @@ describe("every translated dictionary", () => {
   // key a bundle forgot would read as English and pass a check made through `t()`.
   const bundles = import.meta.glob<Record<string, Record<string, string>>>("./messages/*.ts");
 
+  it("en has no em dash in any value", () => {
+    const offenders = englishKeys.filter((key) => en[key].includes("\u2014"));
+    expect(offenders, "en values with an em dash").toEqual([]);
+  });
+
   it.each(translated)(
     "%s has English's keys, English's slots on every key, no em dash, and is not English",
     async (code) => {

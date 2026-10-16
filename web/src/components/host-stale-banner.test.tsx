@@ -58,7 +58,7 @@ describe("HostStaleBanner — it never claims a refusal that will not happen", (
     const h = health({ state: "unknown", writable: true, lastSeenAt: 0, lastSeenLabel: "never seen" });
     render(<HostStaleBanner health={h} />);
     expect(
-      screen.getByText(/Nothing from workshop yet — waiting for its first answer\./i),
+      screen.getByText(/Nothing from workshop yet. Waiting for its first answer\./i),
     ).toBeInTheDocument();
     // The two claims this row may not make: the machine is not down, and nothing is being refused.
     expect(screen.queryByText(/unreachable/i)).not.toBeInTheDocument();

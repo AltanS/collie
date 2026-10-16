@@ -51,7 +51,7 @@ describe("updateNotice", () => {
     // the `update-major` command rather than leaving the operator to tap update and stay behind.
     const major = "https://github.com/AltanS/collie/releases/tag/v1.0.0";
     expect(updateNotice(someUpdate({ majorAvailable: "1.0.0", majorUrl: major }))).toEqual({
-      line: "Collie 1.0.0 — a new major",
+      line: "Collie 1.0.0, a new major",
       href: major,
       command: "herdr plugin action invoke update-major --plugin herdr.collie",
     });

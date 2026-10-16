@@ -306,7 +306,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     setOnline(false);
     renderBanner();
     await act(async () => {});
-    expect(screen.getByText("Offline — can't reach Collie")).toBeInTheDocument();
+    expect(screen.getByText("Offline, can't reach Collie")).toBeInTheDocument();
     expect(row()?.className).toMatch(/bg-status-blocked/); // offline is always red
   });
 
@@ -327,7 +327,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     setOnline(true);
     renderBanner({ error: true, lastSeenAt: new Date(2026, 0, 2, 14, 32).getTime() });
     await act(async () => {});
-    expect(announced("alert")).toHaveTextContent(/Can't reach Collie — last seen \d/);
+    expect(announced("alert")).toHaveTextContent(/Can't reach Collie. Last seen \d/);
   });
 
   it("leaves the red row undated when nothing can date it", async () => {
@@ -488,7 +488,7 @@ describe("ConnectionBanner — offline states", () => {
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
     await act(async () => {});
     expect(row()).not.toHaveTextContent(/No connection to the bridge/);
-    expect(row()).toHaveTextContent(/Can't reach Collie — last seen/);
+    expect(row()).toHaveTextContent(/Can't reach Collie. Last seen/);
   });
 
   it("the stale marks clear when the bridge answers: a green flash, then nothing", () => {
