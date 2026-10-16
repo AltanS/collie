@@ -2669,7 +2669,7 @@ describe("AgentChat — zen mode", () => {
 // ── THE FOLDED STRIPS ─────────────────────────────────────────────────────────
 // The pane screen is the one screen that stacks two strips, and they are chrome ABOUT the pane
 // rather than the pane's own output. Zen already answers "take it all away" and takes the header and
-// the composer with it; this is the smaller ask — fold the two rows into a 32px bar of beads that
+// the composer with it; this is the smaller ask; fold the two rows into a 24px bar of beads that
 // still says how many there are, where you are in them, and whether anything is shouting.
 //
 // Four claims, and each one fails on the edit that would undo it: the rows are shown until asked

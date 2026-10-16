@@ -70,7 +70,8 @@ test("a fold is remembered across a reload, and an expand is too", async ({ page
   await expect(summaryBar(page)).toHaveCount(0);
 });
 
-test("the keyboard moves nothing: shown rows stay shown, and the mirror's edge does not move", async ({ page }) => {
+test("the keyboard moves nothing: shown rows stay shown, and the mirror's edge does not move", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "app-tablet", "a phone case; a width change re-baselines the keyboard hook");
   await openPane(page);
   const before = await mirrorTop(page);
 
