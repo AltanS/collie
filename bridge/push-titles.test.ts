@@ -115,7 +115,7 @@ describe("pushTitle — the English comes from the catalogue", () => {
       "machine.mem": "Memory stays high on {machine}",
       "machine.disk": "Disk stays full on {machine}",
       "ask.permission": "Permission needed in {pane}",
-      "ask.flood": "A program on {host} is raising many asks",
+      "ask.flood": "A durable agent on {host} is raising many asks",
     });
   });
 

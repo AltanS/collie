@@ -207,7 +207,7 @@ export async function launchStarter(fields: JsonObject, job: StarterLaunch): Pro
   if (mux.listStarters === undefined || mux.startStarter === undefined) return refuse(job, "launch.not_allowlisted", 400);
   const offered = await mux.listStarters();
   // A program that could not be asked has no list to check against. Nothing has reached it.
-  if (!offered.reachable) return refuse(job, "workspace.create_failed", 503, { reason: "the program cannot be reached" });
+  if (!offered.reachable) return refuse(job, "workspace.create_failed", 503, { reason: "the durable agent cannot be reached" });
   if (!offered.starters.some((starter) => starter.id === starterId)) return refuse(job, "launch.not_allowlisted", 400);
 
   // Checked again with no await between it and `track`, so two requests with one id that both got

@@ -540,12 +540,12 @@ export const fr: Dictionary = {
   "ask.notAnswerable": "Impossible de répondre à cette question depuis le téléphone.",
   "ask.late": "Réponse déjà envoyée. Cette carte disparaîtra à la prochaine mise à jour.",
   "ask.notTaken": "Non pris en compte. La question peut réapparaître dans un instant.",
-  "ask.decidedInProgram": "Décidé dans le programme.",
+  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
   "ask.timedOut": "Délai dépassé avant une réponse.",
   "ask.expiresIn": "Expire dans {time}",
   "ask.expired": "Expiré",
   "ask.stale": "Cette question a changé. Relisez-la, puis appuyez sur une réponse.",
-  "ask.stale.older": "Cette machine utilise une version plus ancienne de Collie et ne peut pas recevoir de réponses ici. Mettez-la à jour, ou répondez dans le programme.",
+  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
   "ask.unknown": "Pas certain que la réponse soit arrivée. Réessayer l'envoie une fois de plus.",
   "ask.retry": "Réessayer",
   "ask.refused": "La réponse a été refusée.",
@@ -579,15 +579,15 @@ export const fr: Dictionary = {
   "durable.composer.stopMoved": "La conversation a continué, rien n'a donc été arrêté. Vérifiez-la, puis arrêtez de nouveau si vous le souhaitez toujours.",
   "durable.composer.stopUnknown": "Réception de l'arrêt non confirmée. Appuyez de nouveau sur Arrêter pour réessayer une fois.",
   "durable.composer.maybe": "Peut-être déjà envoyé. Vérifiez la conversation avant d'envoyer de nouveau.",
-  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
   "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
   "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
   "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
   "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
   "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "L'arrêt est peut-être déjà appliqué. Vérifiez la conversation.",
@@ -615,7 +615,7 @@ export const fr: Dictionary = {
   "conversations.here": "Affiché dans ce volet",
   "conversations.loadMore": "Charger plus",
   "conversations.loading": "Chargement…",
-  "conversations.empty": "Ce programme n'a pas encore de conversations.",
+  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
   "session.experimental": "Expérimental",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "local",
@@ -629,9 +629,9 @@ export const fr: Dictionary = {
   "space.program.open.other": "{count} conversations ouvertes",
   "space.program.waiting.one": "{count} conversation vous attend",
   "space.program.waiting.other": "{count} conversations vous attendent",
-  "home.programs.title": "Programmes",
-  "conversations.unsupported": "Ce programme ne conserve pas de liste de ses conversations.",
-  "conversations.unreachable": "Le programme n'a pas répondu. Réessayez dans un instant.",
+  "home.programs.title": "Durable agents", // TODO wordsmith
+  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
+  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
   "conversations.loadFailed": "Impossible de charger les conversations. Réessayez.",
   "conversations.gone": "Cette conversation n'existe plus.",
   "conversations.noItems": "Cette conversation ne contient encore aucun élément.",
@@ -641,7 +641,7 @@ export const fr: Dictionary = {
   "conversations.reopenFailed": "Impossible de rouvrir la conversation",
   "home.conversations.asks.one": "{count} question ouverte",
   "home.conversations.asks.other": "{count} questions ouvertes",
-  "newPage.starters.none": "Le programme de cette machine ne propose pas encore de démarrage rapide.",
+  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
   "newPage.starters.label": "Amorces",
   "newPage.starters.title": "Nouvelle conversation",
   "prompt.feedback.cancel": "Annuler",
@@ -1017,7 +1017,7 @@ export const fr: Dictionary = {
   "space.space.titleWithLabel": "Espace {label}",
   "space.space.readOnly": "Lecture seule. Cet appareil n'est pas autorisé à renommer les espaces.",
   "space.space.hostBlockSuffix": "{hostBlock}. Le renommage est indisponible jusqu'à ce qu'il réponde.",
-  "space.space.empty.fallback": "Ce programme ne propose aucune action pour un espace.",
+  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
   "space.space.placeholder": "nommer cet espace",
   "space.readOnly.notPaired": "Non associé : associez cet appareil dans Paramètres",
   "space.readOnly.expired": "Association expirée. Associez de nouveau dans Paramètres",
@@ -1060,7 +1060,7 @@ export const fr: Dictionary = {
   "connection.connected": "Connecté",
   "connection.reconnecting": "Reconnexion…",
   "connection.herdrDown": "Herdr est arrêté sur l'hôte",
-  "connection.tokenRefused": "Le programme a refusé le jeton. Vérifiez COLLIE_DURABLE_TOKEN sur ce pair.",
+  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
   "connection.offlineCantReach": "Hors ligne : impossible de joindre Collie",
   "connection.cantReach": "Impossible de joindre Collie",
   "connection.withLastSeen": "{cause} : vu pour la dernière fois {time}",
@@ -1948,7 +1948,7 @@ export const fr: Dictionary = {
   "pushTitle.machine.mem": "Mémoire toujours élevée sur {machine}",
   "pushTitle.machine.disk": "Disque toujours plein sur {machine}",
   "pushTitle.ask.permission": "Autorisation requise dans {pane}",
-  "pushTitle.ask.flood": "Un programme sur {host} pose de nombreuses questions",
+  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle est un modèle vocal de {link}.",

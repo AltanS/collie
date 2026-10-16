@@ -41,9 +41,9 @@ A machine saved in Herdr is not a crew member. Herdr's saved machines are ssh ta
 operator's own Herdr window. A crew is Collie on every machine, reached over Collie's own link. The
 operator sets ssh up once, and both tools use it.
 
-## Programs (experimental)
+## Durable agents (experimental)
 
-A program is a long-running agent built on the durable SDK. Collie shows it on the phone beside the
+A durable agent is a long-running agent built on the durable SDK. Collie shows it on the phone beside the
 terminal, and each of its conversations is one session. Collie holds no model key for it.
 
 Give the operator the commands to type, and read the state yourself:
@@ -61,13 +61,13 @@ restart nothing until the operator runs `collie restart`, or adds `--restart`. `
 so does `collie doctor`. Run `list` and `doctor` for the operator. Do not run `attach`, `detach` or
 `restart` on their behalf unless they ask. Never print a token.
 
-When a program does not show on the phone, read the doctor rows. The `sources` row checks the file.
-Each program in `sources.json` has six, with its name after a colon: `durable-env:desk`, `durable-socket:desk`, `durable-url:desk`,
+When a durable agent does not show on the phone, read the doctor rows. The `sources` row checks the file.
+Each durable agent in `sources.json` has six, with its name after a colon: `durable-env:desk`, `durable-socket:desk`, `durable-url:desk`,
 `durable-token:desk`, `durable-hello:desk` and `durable-ready:desk`. A row that fails stops the ones
 after it. An instance with no terminal prints the same six rows without the name. On a member of a
 crew, `durable-lead` says whether the lead is new enough to show the question card.
 
-Run `collie docs durable-programs` for the full flow.
+Run `collie docs durable-agents` for the full flow.
 
 ## The operator pages
 

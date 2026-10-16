@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate the phone-sized screenshots of the docs: the update flow and the PWA install card
-# under docs/images/updates/, and a durable program's surfaces under docs/images/programs/.
+# under docs/images/updates/, and a durable agent's surfaces under docs/images/programs/.
 #
 # Source: the states playground (web/src/playground/), served by Vite at
 # http://127.0.0.1:5199/playground.html. Uses the `agent-browser` CLI to drive a headless
@@ -29,7 +29,7 @@
 #     flipped on to reach the post-run "Tap to reload" state and flipped back off after,
 #     because that toggle drives a page-wide singleton every other band card also reads.
 #
-# The programs set (docs/durable-programs-on-the-phone.md) comes from the playground's "Programs
+# The programs set (docs/durable-agents-on-the-phone.md) comes from the playground's "Programs
 # home" section (web/src/playground/sections/programs.tsx), reached at #programs. Each shot is one
 # card's component, found by the card's `data-state` handle rather than its prose label, and cropped
 # to its own box. Those components are `max-w-[390px]`, so the programs set runs at a 1600px

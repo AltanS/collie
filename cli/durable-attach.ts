@@ -182,7 +182,7 @@ function parseAttach(args: readonly string[]): Parsed<AttachFlags> {
     if (values.has(flag)) return { ok: false, detail: `--${flag} is given twice` };
     values.set(flag, value);
   }
-  if (positional.length !== 1) return { ok: false, detail: "give the program one name" };
+  if (positional.length !== 1) return { ok: false, detail: "give the durable agent one name" };
   return {
     ok: true,
     value: {
@@ -273,7 +273,7 @@ export async function cmdDurableDetach(deps: DurableAttachDeps, args: readonly s
     return EXIT.FAIL;
   }
   if (!loaded.entries.some((e) => e.name === name)) {
-    deps.io.err(`error: no program named ${name} in ${sourcesPath(deps.ctx)}`);
+    deps.io.err(`error: no durable agent named ${name} in ${sourcesPath(deps.ctx)}`);
     return EXIT.STATE;
   }
   save(deps, loaded.entries.filter((e) => e.name !== name));
@@ -319,7 +319,7 @@ export async function cmdDurableList(deps: DurableAttachDeps): Promise<number> {
     return EXIT.FAIL;
   }
   if (loaded.entries.length === 0) {
-    deps.io.out(`no programs attached (${sourcesPath(deps.ctx)})`);
+    deps.io.out(`no durable agents attached (${sourcesPath(deps.ctx)})`);
   }
   for (const e of loaded.entries) {
     // The token is in the entry and never in the line: the way in is shown, the credential is not.

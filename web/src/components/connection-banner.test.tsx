@@ -178,7 +178,7 @@ describe("ConnectionBanner — the single connection surface", () => {
   // M50 spec 14: a durable program that refused this peer's token. Waiting does not cure it, so the
   // amber bar names it at once instead of "Reconnecting…", and red keeps the same sentence.
   it("names a refused token in amber and in red, and never says Reconnecting or Herdr for it", async () => {
-    const TOKEN = "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.";
+    const TOKEN = "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.";
     h.trouble = true;
     renderBanner({ muxFault: "token-refused" });
     expect(announced("status")).toHaveTextContent(TOKEN);

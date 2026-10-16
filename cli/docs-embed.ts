@@ -23,10 +23,10 @@ import commands from "../docs/commands.md" with { type: "text" };
 import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
-import durablePrograms from "../docs/durable-programs.md" with { type: "text" };
-import durableProgramsOnThePhone from "../docs/durable-programs-on-the-phone.md" with { type: "text" };
-import durableProgramsSecurity from "../docs/durable-programs-security.md" with { type: "text" };
-import durableProgramsTroubleshooting from "../docs/durable-programs-troubleshooting.md" with { type: "text" };
+import durableAgents from "../docs/durable-agents.md" with { type: "text" };
+import durableAgentsOnThePhone from "../docs/durable-agents-on-the-phone.md" with { type: "text" };
+import durableAgentsSecurity from "../docs/durable-agents-security.md" with { type: "text" };
+import durableAgentsTroubleshooting from "../docs/durable-agents-troubleshooting.md" with { type: "text" };
 import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
 import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
@@ -102,33 +102,33 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: crew,
   },
   {
-    name: "durable-programs",
-    purpose: "Show your own agent program on your phone: attach it, its tokens, its files, its versions",
-    text: durablePrograms,
+    name: "durable-agents",
+    purpose: "Show your own durable agent on your phone: attach it, its tokens, its files, its versions",
+    text: durableAgents,
   },
   {
-    name: "durable-programs-on-the-phone",
-    purpose: "What a program's section, conversations, questions and receipts look like on the phone",
-    text: durableProgramsOnThePhone,
+    name: "durable-agents-on-the-phone",
+    purpose: "What a durable agent's section, conversations, questions and receipts look like on the phone",
+    text: durableAgentsOnThePhone,
   },
   {
-    name: "durable-programs-troubleshooting",
-    purpose: "A program that does not show up or says Unreachable: first checks, every reason, doctor rows, cases",
-    text: durableProgramsTroubleshooting,
+    name: "durable-agents-troubleshooting",
+    purpose: "A durable agent that does not show up or says Unreachable: first checks, every reason, doctor rows, cases",
+    text: durableAgentsTroubleshooting,
   },
   {
-    name: "durable-programs-security",
-    purpose: "What a program can and cannot do, the trust rules per transport, text cleaning, the audit log",
-    text: durableProgramsSecurity,
+    name: "durable-agents-security",
+    purpose: "What a durable agent can and cannot do, the trust rules per transport, text cleaning, the audit log",
+    text: durableAgentsSecurity,
   },
   {
     name: "durable-sdk",
-    purpose: "Every part of the npm package a program uses: entries, panes, questions, hooks, caps",
+    purpose: "Every part of the npm package a durable agent uses: entries, panes, questions, hooks, caps",
     text: durableSdk,
   },
   {
     name: "durable-wire",
-    purpose: "What travels between Collie and a program: routes, hello, asks, transports, limits",
+    purpose: "What travels between Collie and a durable agent: routes, hello, asks, transports, limits",
     text: durableWire,
   },
   {
@@ -138,7 +138,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "sessions",
-    purpose: "What a session is, and where sessions come from: a terminal or a program",
+    purpose: "What a session is, and where sessions come from: a terminal or a durable agent",
     text: sessions,
   },
   {

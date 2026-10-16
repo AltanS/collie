@@ -3,7 +3,7 @@
 These are the terminals Collie reads [sessions](sessions.md) from: Herdr, tmux, zellij, tuios and
 Tern. Collie drives one terminal per install, and Herdr is the default. This page covers pointing
 Collie at any of them, what each one can answer, and the beacons Collie uses to detect an agent in
-a pane. A program with no screen is not a terminal, and [Programs](durable-programs.md) covers it.
+a pane. A durable agent with no screen is not a terminal, and [Durable agents](durable-agents.md) covers it.
 
 tmux and zellij call their own top-level group a session. Collie shows it as a space.
 
@@ -161,9 +161,9 @@ Collie does not detect Tern on its own, as it does not detect tuios: name it wit
 
 ### durable notes
 
-A program that you attach is not a terminal, and it has no screen. [Programs](durable-programs.md)
-covers how to attach one with `collie durable attach`, the older form that drives a program alone
-with `COLLIE_MUX=durable`, the two ways to reach a program, what it can do on the phone, and what to
+A durable agent that you attach is not a terminal, and it has no screen. [Durable agents](durable-agents.md)
+covers how to attach one with `collie durable attach`, the older form that drives a durable agent alone
+with `COLLIE_MUX=durable`, the two ways to reach a durable agent, what it can do on the phone, and what to
 check when it shows as unreachable.
 
 ### tuios notes

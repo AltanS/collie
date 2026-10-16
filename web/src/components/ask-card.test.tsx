@@ -165,7 +165,7 @@ describe("a tap", () => {
   });
 
   it.each([
-    ["program", "Decided in the program."],
+    ["program", "Decided in the durable agent."],
     ["timeout", "Timed out before an answer."],
     ["phone", "Already answered. This card goes away on the next update."],
   ])("too late decided by %s says so, and the card stays frozen", async (by, words) => {

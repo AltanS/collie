@@ -19,7 +19,7 @@ import { DetailRoute } from "./detail";
 import { HomeRoute } from "./home";
 
 // A PROGRAM IS A SESSION, ON THE PHONE (M55 spec 02, spec 13), through the real home route: a durable
-// program the collie carries is a row of the dashboard's Programs section, which sits above the spaces
+// program the collie carries is a row of the dashboard's Durable agents section, which sits above the spaces
 // while a question waits and below them otherwise, a tap opens its conversation list, and a snapshot with
 // no program session renders exactly as it did before the session card existed.
 
@@ -151,9 +151,9 @@ async function spacesShown(): Promise<void> {
 
 const programRows = () => [...document.querySelectorAll<HTMLElement>('[data-slot="program-space"]')];
 const programSection = () => document.querySelector<HTMLElement>('[data-slot="program-section"]');
-/** Whether any heading on the page reads "Programs". */
+/** Whether any heading on the page reads "Durable agents". */
 const programsHeading = (container: HTMLElement) =>
-  [...container.querySelectorAll("h2, h3")].some((h) => (h.textContent ?? "").includes("Programs"));
+  [...container.querySelectorAll("h2, h3")].some((h) => (h.textContent ?? "").includes("Durable agents"));
 /** The section wrapping the Spaces list's body. */
 const spacesSection = () => document.querySelector("#spaces-body")!.closest("section")!;
 /** Whether `a` comes before `b` in the document. */
@@ -174,7 +174,7 @@ describe("session card: a snapshot with no program session renders as before", (
     expect(markup(after.container)).toBe(old);
     expect(programRows()).toHaveLength(0);
     expect(document.querySelector('[data-slot="experimental-badge"]')).toBeNull();
-    // No program, no Programs section: not even its header (M55 spec 13).
+    // No program, no Durable agents section: not even its header (M55 spec 13).
     expect(programSection()).toBeNull();
     expect(programsHeading(before.container)).toBe(false);
     expect(programsHeading(after.container)).toBe(false);
@@ -221,7 +221,7 @@ describe("session card: a snapshot with no program session renders as before", (
   });
 });
 
-describe("Programs section: one row per program session, apart from the Spaces list", () => {
+describe("Durable agents section: one row per program session, apart from the Spaces list", () => {
   it("draws each program session as a row with its name, the Experimental badge, its runtime and its place", async () => {
     declares(TERMINAL_CAPS);
     renderHome(homeData([...TERMINAL_CARDS, DESK, BILLING]));
@@ -243,7 +243,7 @@ describe("Programs section: one row per program session, apart from the Spaces l
     expect(billing.querySelector('[data-slot="program-space-line"]')?.textContent).toBe("acme-billing, remote");
   });
 
-  it("lists the programs under a Programs header, and never in the Spaces list", async () => {
+  it("lists the programs under a Durable agents header, and never in the Spaces list", async () => {
     declares(TERMINAL_CAPS);
     const { container } = renderHome(homeData([...TERMINAL_CARDS, DESK, BILLING]));
     await spacesShown();
@@ -353,7 +353,7 @@ describe("Programs section: one row per program session, apart from the Spaces l
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: true, items: [] })));
     renderHome(homeData([...TERMINAL_CARDS, DESK], { session: "desk" }), "/?s=desk");
     await waitFor(() => expect(document.querySelector('[data-slot="conversation-list"]')).not.toBeNull());
-    // No Spaces list, no Programs section and no Files tab on a session with no screen.
+    // No Spaces list, no Durable agents section and no Files tab on a session with no screen.
     expect(document.querySelector("#spaces-body")).toBeNull();
     expect(programSection()).toBeNull();
     expect(screen.queryByRole("tab", { name: "Files" })).toBeNull();

@@ -607,12 +607,12 @@ export const ja: Dictionary = {
   "ask.notAnswerable": "この確認にはスマートフォンから回答できません。",
   "ask.late": "回答済みです。このカードは次回の更新時に消えます。",
   "ask.notTaken": "受け付けられませんでした。しばらくすると質問が再度表示される場合があります。",
-  "ask.decidedInProgram": "プログラム内で決定されました。",
+  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
   "ask.timedOut": "回答前にタイムアウトしました。",
   "ask.expiresIn": "{time}で期限切れになります",
   "ask.expired": "期限切れ",
   "ask.stale": "この確認の内容が変更されました。もう一度確認してから、回答をタップしてください。",
-  "ask.stale.older": "このマシンでは古いバージョンのCollieが動作しているため、ここから回答を受け付けることができません。更新するか、プログラム内で回答してください。",
+  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
   "ask.unknown": "回答が届いたか確認できませんでした。「再試行」をタップするともう一度送信します。",
   "ask.retry": "再試行",
   "ask.refused": "回答は拒否されました。",
@@ -646,15 +646,15 @@ export const ja: Dictionary = {
   "durable.composer.stopMoved": "会話が進んだため、何も停止されませんでした。確認したうえで、必要であれば再度停止してください。",
   "durable.composer.stopUnknown": "停止が届いたか不明です。「停止」をもう一度タップして再試行してください。",
   "durable.composer.maybe": "すでに送信されている可能性があります。再度送信する前にチャットを確認してください。",
-  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
   "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
   "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
   "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
   "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
   "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "停止はすでに適用されている可能性があります。チャットを確認してください。",
@@ -682,7 +682,7 @@ export const ja: Dictionary = {
   "conversations.here": "このペインに表示中",
   "conversations.loadMore": "さらに読み込む",
   "conversations.loading": "読み込み中…",
-  "conversations.empty": "このプログラムにはまだ会話がありません。",
+  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
   "session.experimental": "試験的機能",
   "space.program.line": "{mux}、{where}",
   "space.program.where.local": "ローカル",
@@ -696,9 +696,9 @@ export const ja: Dictionary = {
   "space.program.open.other": "{count} 件のオープンな会話",
   "space.program.waiting.one": "{count} 件の会話が返答待ちです",
   "space.program.waiting.other": "{count} 件の会話が返答待ちです",
-  "home.programs.title": "プログラム",
-  "conversations.unsupported": "このプログラムは会話のリストを保持しません。",
-  "conversations.unreachable": "プログラムが応答しませんでした。少し待ってから再試行してください。",
+  "home.programs.title": "Durable agents", // TODO wordsmith
+  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
+  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
   "conversations.loadFailed": "会話を読み込めませんでした。再試行してください。",
   "conversations.gone": "この会話はもう存在しません。",
   "conversations.noItems": "この会話にはまだ項目がありません。",
@@ -708,7 +708,7 @@ export const ja: Dictionary = {
   "conversations.reopenFailed": "会話を再度開けませんでした",
   "home.conversations.asks.one": "{count} 件の未解決の質問",
   "home.conversations.asks.other": "{count} 件の未解決の質問",
-  "newPage.starters.none": "このマシンのプログラムには、まだスターターがありません。",
+  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
   "newPage.starters.label": "スターター",
   "newPage.starters.title": "新しい会話",
   "prompt.feedback.cancel": "キャンセル",
@@ -1104,7 +1104,7 @@ export const ja: Dictionary = {
   "space.space.titleWithLabel": "スペース {label}",
   "space.space.readOnly": "読み取り専用。このデバイスにはスペースの名前を変更する権限がありません。",
   "space.space.hostBlockSuffix": "{hostBlock}。応答があるまで名前の変更は利用できません。",
-  "space.space.empty.fallback": "このプログラムにはスペース用のアクションがありません。",
+  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
   "space.space.placeholder": "このスペースに名前を付ける",
   "space.readOnly.notPaired": "未ペアリングです。設定からこの端末をペアリングしてください。",
   "space.readOnly.expired": "ペアリングの期限が切れました。設定から再ペアリングしてください。",
@@ -1161,7 +1161,7 @@ export const ja: Dictionary = {
   "connection.connected": "接続済み",
   "connection.reconnecting": "再接続中…",
   "connection.herdrDown": "ホスト上のHerdrが停止しています",
-  "connection.tokenRefused": "プログラムがトークンを拒否しました。このピアの COLLIE_DURABLE_TOKEN を確認してください。",
+  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
   "connection.offlineCantReach": "オフライン: Collieに接続できません",
   "connection.cantReach": "Collieに接続できません",
   "connection.withLastSeen": "{cause} (最終確認 {time})",
@@ -2122,7 +2122,7 @@ export const ja: Dictionary = {
   "pushTitle.machine.mem": "{machine} のメモリが高い状態です",
   "pushTitle.machine.disk": "{machine} のディスクがいっぱいのままです",
   "pushTitle.ask.permission": "{pane} で権限が必要です",
-  "pushTitle.ask.flood": "{host} 上のプログラムが多数の質問を出しています",
+  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistleは{link}の音声モデルです。",

@@ -59,7 +59,7 @@ export const PUSH_TITLES = {
    */
   "ask.permission": "Permission needed in {pane}",
   /** A host's ask breaker tripped: past 30 pushes in an hour, this one summary, then silence. */
-  "ask.flood": "A program on {host} is raising many asks",
+  "ask.flood": "A durable agent on {host} is raising many asks",
 } as const;
 
 /** Every code a push title can carry. The client mirror restates this union verbatim. */

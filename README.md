@@ -16,7 +16,7 @@ ColliePWA is an open-source (MIT) mobile client for [Herdr](https://herdr.dev), 
 support for [tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev). It is a
 self-hosted web app (PWA) for driving terminal AI agents such as Claude Code, Codex and OpenCode
 from your phone. Each instance connects to one terminal multiplexer, and can show your own agent
-programs beside it. It is served over Tailscale by default.
+durable agents beside it. It is served over Tailscale by default.
 Open the URL on an iPhone or Android phone to see which agent needs input and respond directly from
 your mobile keyboard.
 
@@ -40,7 +40,7 @@ until explicitly configured.
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
-- **Programs**: a long-running agent program is a session on the phone, with approvals and history (experimental)
+- **Durable agents**: a long-running durable agent is a session on the phone, with approvals and history (experimental)
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
@@ -143,19 +143,19 @@ and that is the only way to install it on a phone.
 
 | | |
 | --- | --- |
-| [**Sessions**](./docs/sessions.md) | What a session is, where sessions come from, a terminal or a program, and what the phone shows for each |
+| [**Sessions**](./docs/sessions.md) | What a session is, where sessions come from, a terminal or a durable agent, and what the phone shows for each |
 | [**Terminals**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios or Tern, what each can answer, and agent beacons. Experimental for tmux, zellij, tuios and Tern; bug reports wanted |
 
-### Programs
+### Durable agents
 
 | | |
 | --- | --- |
-| [**Programs (experimental)**](./docs/durable-programs.md) | Show your own agent program on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
-| [**Programs on the phone**](./docs/durable-programs-on-the-phone.md) | What a program's section, conversations, questions and receipts look like |
-| [**Troubleshooting a program**](./docs/durable-programs-troubleshooting.md) | A program that does not show up or says Unreachable: the first checks, every reason and what fixes it, the doctor rows, and the cases that come up |
-| [**Security of a program**](./docs/durable-programs-security.md) | What a program can and cannot do, the trust rules of the socket and of the token, what Collie does to a program's text, and what the audit log keeps |
+| [**Durable agents (experimental)**](./docs/durable-agents.md) | Show your own durable agent on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
+| [**Durable agents on the phone**](./docs/durable-agents-on-the-phone.md) | What a durable agent's section, conversations, questions and receipts look like |
+| [**Troubleshooting a durable agent**](./docs/durable-agents-troubleshooting.md) | A durable agent that does not show up or says Unreachable: the first checks, every reason and what fixes it, the doctor rows, and the cases that come up |
+| [**Security of a durable agent**](./docs/durable-agents-security.md) | What a durable agent can and cannot do, the trust rules of the socket and of the token, what Collie does to a durable agent's text, and what the audit log keeps |
 | [**The durable SDK (experimental)**](./docs/durable-sdk.md) | The npm package `@colliepwa/durable-sdk`, part by part: its entries and runtimes, `openCollie`, the pane methods, the four kinds of question and `requireApproval`, hooks, history, caps, the helpers, the Pi glue and the versions |
-| [**The durable wire (experimental)**](./docs/durable-wire.md) | What travels between Collie and a program, for a builder: the routes, hello and the epoch, the life of an ask and the request ids, the socket and token transports, the limits and the version rule, with a link to `WIRE.md` for the exact rules |
+| [**The durable wire (experimental)**](./docs/durable-wire.md) | What travels between Collie and a durable agent, for a builder: the routes, hello and the epoch, the life of an ask and the request ids, the socket and token transports, the limits and the version rule, with a link to `WIRE.md` for the exact rules |
 
 ### Reference
 
@@ -173,7 +173,7 @@ and that is the only way to install it on a phone.
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
-| [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, program, harness, crew, lead, and more |
+| [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, durable agent, harness, crew, lead, and more |
 | **For an AI coding agent in your terminal** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·

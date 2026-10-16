@@ -192,7 +192,7 @@ interface VersionRefusal {
 
 - **Collie's side.** The adapter writes one log line for each range it refuses, not one per poll, and
   keeps the refusal for the bridge. The pane list SHOULD show one notice row in place of the program's
-  panes: `Program speaks wire v<max>, this Collie speaks v<N>. Update Collie, or the program's SDK.`, where `<max>` is the
+  panes: `The durable agent speaks wire v<max>, this Collie speaks v<N>. Update Collie, or the agent's SDK.`, where `<max>` is the
   program's newest version.
 - **The program's side.** Once per program epoch, the adapter sends one more `GET /hello`, this time with
   `X-Collie-Session: <N>`. The program answers it 409 `incompatible` (point 5), with `refusal`, and

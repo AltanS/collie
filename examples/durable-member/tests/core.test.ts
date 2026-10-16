@@ -164,7 +164,7 @@ describe("the core alone", () => {
     }
   });
 
-  test("the refusal sentence names who acts: the program's SDK, or Collie", () => {
-    expect(versionLine({ code: "version", collie: [2, 2], program: [1, 1] })).toBe("Collie speaks wire v2, this program speaks v1. Update the program's SDK, or Collie.");
+  test("the refusal sentence names who acts: the agent's SDK, or Collie", () => {
+    expect(versionLine({ code: "version", collie: [2, 2], program: [1, 1] })).toBe("Collie speaks wire v2, this durable agent speaks v1. Update the agent's SDK, or Collie.");
   });
 });
