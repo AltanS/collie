@@ -49,7 +49,7 @@ import { isRunningRow, readCues, runningSign } from "../../web/src/lib/surface/c
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
-import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
+import type { ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   reservedLead,
@@ -292,18 +292,30 @@ function bottomWindow(texts: readonly string[]): RowWindow {
 
 /** A spinner glyph at the start of a running row: one or two characters with no letter and no digit. */
 const SPINNER_LEAD = /^(\s*)[^\p{L}\p{N}\s]{1,2}(?=\s)/u;
+/**
+ * A spinner row by its words: a glyph, a verb that ends in an ellipsis, and at most one bracket group
+ * after it, to the end of the row. In the first second of a turn the row has no bracket group yet
+ * ("✶ Wibbling…"), then gains its timer ("* Wibbling… (4s · ↓ 304 tokens)"). The turn label does
+ * not read this pattern (the running sign needs the timer); only the compares do.
+ */
+const SPINNER_VERB_ROW = /^(\s*)[^\p{L}\p{N}\s]{1,2}(\s+\p{L}[^()]*?(?:…|\.\.\.))\s*(?:\([^()]*\))?\s*$/u;
 /** A bracketed run on a running row: where its timer and its token count stand. */
 const BRACKET = /\([^()]*\)/gu;
 
 /**
- * A row's plain text as the compares of a pane with no frame see it. On a row that shows a running
- * sign (a spinner with a timer, an interrupt hint), the spinner glyph at its start and the digits
- * inside its brackets read as fixed marks, so a timer and a token count that ticked between two reads
+ * A row's plain text as the compares of a pane with no frame see it. A spinner row (SPINNER_VERB_ROW)
+ * reads as its verb behind a fixed glyph mark, its bracket group dropped, so the row before and after
+ * its timer shows compare equal. On another row that shows a running sign (an interrupt hint, a
+ * spinner with text after its bracket), the spinner glyph at its start and the digits inside its
+ * brackets read as fixed marks, so a timer and a token count that ticked between two reads
  * are not a moved screen, a probe that changed two rows, or a row that gained text. Every other
  * character of the row still counts: a row such as "2. No, tell Claude... (3m)" that changes its
  * words, or stops being a running row, still changes every compare.
  */
 export function steadyRow(row: string): string {
+  // A spinner row with or without its bracket group reads as the glyph mark and the verb alone.
+  const verb = SPINNER_VERB_ROW.exec(row);
+  if (verb !== null) return `${verb[1] ?? ""}*${verb[2] ?? ""}`;
   if (!isRunningRow(row)) return row;
   return row.replace(SPINNER_LEAD, "$1*").replace(BRACKET, (run) => run.replace(/\d+/gu, "0"));
 }
@@ -337,6 +349,42 @@ function cueAppeared(before: Snap, after: Snap): boolean {
  */
 function framedCueGrew(before: Snap, after: Snap): boolean {
   return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength];
+}
+
+/** How many rows above a queued hint are read for the queued texts. */
+const QUEUED_SCAN_ROWS = 24;
+
+/**
+ * Whether a read shows a text as a message the harness queued, by the profile's own drawing of one
+ * (`keys.queuedRow`): a hint row above the box, and over it, past at most `hintGap` blank rows, the
+ * queued texts. Each starts on a row the pattern matches, its wrapped rows indented under it. One of
+ * them, joined and whitespace-free, must equal the text. Rows inside the box are never read.
+ */
+function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string): boolean {
+  if (queuedRow === undefined || snap.frame === null || wsFree(text).length === 0) return false;
+  const start = new RegExp(queuedRow.pattern, "u");
+  const hint = new RegExp(queuedRow.hint, "u");
+  const want = wsFree(text);
+  const above = snap.texts.slice(0, snap.frame.top);
+  for (let at = above.length - 1; at >= 0; at--) {
+    if (!hint.test(above[at]!)) continue;
+    let i = at - 1;
+    for (let gap = 0; i >= 0 && gap < queuedRow.hintGap && above[i]!.trim().length === 0; gap++) i--;
+    // Upward through the queued texts: an indented row waits for the row that starts its text.
+    let wrapped: string[] = [];
+    for (const floor = Math.max(0, i - QUEUED_SCAN_ROWS); i >= floor; i--) {
+      const row = above[i]!;
+      const head = start.exec(row);
+      if (head !== null) {
+        if (wsFree([head.groups?.["text"] ?? "", ...wrapped].join("")) === want) return true;
+        wrapped = [];
+        continue;
+      }
+      if (!/^\s+\S/u.test(row)) break;
+      wrapped = [row.trim(), ...wrapped];
+    }
+  }
+  return false;
 }
 
 /** Reads in a row with no frame before a queued send counts the box as gone: one may be a torn read. */
@@ -1426,10 +1474,12 @@ export class SendProtocol {
     const second = await readInBound();
     if (first === null || second === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
     // With a frame only the box is compared: the volatile rows around it (a spinner, a timer, a token
-    // count, a statusline) move on their own while a turn runs. With no frame the bottom window is
-    // compared with its running rows masked, for the same reason.
+    // count, a statusline) move on their own while a turn runs. The box is compared with its faint
+    // runs dropped: a placeholder that changes on an empty box (Claude Code's "Press up to edit
+    // queued messages" going as the queue is taken) is not a moved box. With no frame the bottom
+    // window is compared with its running rows masked, for the same reason.
     const key = (snap: Snap): string => {
-      if (snap.frame !== null) return snap.texts.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
+      if (snap.frame !== null) return snap.plain.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
       const win = bottomWindow(snap.plain);
       return snap.plain.slice(win.first, win.end).join("\n");
     };
@@ -1679,7 +1729,13 @@ export class SendProtocol {
     const { command, manual, queued } = state;
     let dialog = false;
     let frameless = 0;
+    // A send that S0 read as idle may still have gone into a turn (its first second reads idle): the
+    // harness's own queued row with the text is the witness, and the receipt then says `queued`.
+    const s1Frame = state.marks.s1?.frame ?? null;
+    const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
+    let witnessed = false;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
+      if (!queued && !command && !witnessed) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
       if (s0.frame !== null) {
         // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
         // The Surface claiming a modal, or two reads in a row with no box, end the request on their
@@ -1711,6 +1767,7 @@ export class SendProtocol {
       return manual && emptyBoxBack(s0.plain, snap.plain, landing, lines.join("")) ? "pass" : "wait";
     });
     state.marks.s2 = result.snap;
+    if (witnessed && result.verdict === "pass") state.queued = true;
     if (dialog) throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: DIALOG_AFTER_ENTER }));
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
   }

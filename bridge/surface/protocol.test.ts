@@ -1079,6 +1079,63 @@ describe("a send into a running turn", () => {
     expect(steadyRow("an answer row (12s)")).toBe("an answer row (12s)");
   });
 
+  test("steadyRow reads the spinner row before and after its timer shows as one row (Claude Code 2.1.301)", () => {
+    expect(steadyRow("✶ Wibbling…")).toBe(steadyRow("* Wibbling… (4s · ↓ 304 tokens)"));
+    expect(steadyRow("✻ Julienning… (running UserPromptSubmit hooks… 1/2 · 2s · thinking with high effort)")).toBe(steadyRow("· Julienning…"));
+    // Another verb is another row.
+    expect(steadyRow("✶ Wibbling…")).not.toBe(steadyRow("✶ Waddling…"));
+    // A dialog option row is no spinner row: it reads as it is.
+    expect(steadyRow("2. No, tell Claude what to do differently (3m)")).toBe("2. No, tell Claude what to do differently (3m)");
+  });
+
+  test("with no frame, the spinner row gaining its timer between prepare and commit is not a moved screen", async () => {
+    const { pane, send } = rig({ mode: "generic" });
+    pane.transcript.push("✶ Wibbling…");
+    const first = await send("also say hello");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    pane.transcript[pane.transcript.length - 1] = "* Wibbling… (4s · ↓ 304 tokens)";
+    const commit = await send("also say hello", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("with no frame, a dialog option row that appears between prepare and commit is a moved screen", async () => {
+    const { pane, send } = rig({ mode: "generic" });
+    pane.transcript.push("✶ Wibbling…");
+    const first = await send("also say hello");
+    pane.transcript.push("2. No, tell Claude what to do differently (3m)");
+    const commit = await send("also say hello", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+  });
+
+  test("a send that S0 reads as idle is queued when S2 shows Claude Code's queued row with its text", async () => {
+    const { pane, send } = rig();
+    pane.drawsQueuedRow = true;
+    const answer = await send("QUEUEDMSG please add a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.over).toEqual(["❯ QUEUEDMSG please add a title", "  ctrl+enter to send now"]);
+  });
+
+  test("the queued witness needs the hint, and the row must carry the sent text", async () => {
+    const noHint = rig();
+    noHint.pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.over = ["❯ QUEUEDMSG please add a title"];
+    };
+    expect((await noHint.send("QUEUEDMSG please add a title")).receipt?.queued).toBeUndefined();
+    const other = rig();
+    other.pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.over = ["❯ another message", "  ctrl+enter to send now"];
+    };
+    expect((await other.send("QUEUEDMSG please add a title")).receipt?.queued).toBeUndefined();
+  });
+
+  test("the queued witness joins a wrapped queued text", async () => {
+    const { pane, send } = rig();
+    pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.over = ["❯ a long message that the harness wraps", "  onto a second row", "  ctrl+enter to send now"];
+    };
+    expect((await send("a long message that the harness wraps onto a second row")).receipt).toMatchObject({ outcome: "sent", queued: true });
+  });
+
   test("with no frame, a running row that ticks between prepare and commit is not a moved screen", async () => {
     const { pane, send } = rig({ mode: "generic" });
     let second = 5;
@@ -1133,6 +1190,15 @@ describe("S0", () => {
       p.over = [`✻ Thinking… (${String(second)}s · ↓ ${String(300 + second)} tokens)`];
     };
     expect((await send("hello there, agent")).receipt).toMatchObject({ outcome: "sent", queued: true });
+  });
+
+  test("a placeholder that changes on the empty box between the two reads is not a moved box", async () => {
+    const { pane, send } = rig();
+    pane.placeholder = "Press up to edit queued messages";
+    pane.beforeRead = (p, n) => {
+      if (n === 2) p.placeholder = 'Try "fix the failing tests"';
+    };
+    expect((await send("hello there, agent")).receipt).toMatchObject({ outcome: "sent" });
   });
 
   test("a box that changes between the two reads is refused not_free", async () => {

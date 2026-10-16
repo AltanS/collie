@@ -42,7 +42,12 @@
       "confirm": "Enter",
       "cancel": "Escape"
     },
-    "enterWhileRunning": "queues"
+    "enterWhileRunning": "queues",
+    "queuedRow": {
+      "pattern": "^\\s*❯ (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*ctrl\\+enter to send now\\s*$",
+      "hintGap": 1
+    }
   },
   "collapse": {
     "pattern": "\\[Pasted text #(?<n>\\d+)(?: \\+(?<lines>\\d+) lines)?\\]"

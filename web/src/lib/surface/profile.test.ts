@@ -71,6 +71,7 @@ describe("every profile file", () => {
     expect(claude.keys.submit).toEqual(["Enter"]);
     expect(claude.keys.interrupt).toEqual(["Escape"]);
     expect(claude.keys.enterWhileRunning).toBe("queues");
+    expect(claude.keys.queuedRow?.hintGap).toBe(1);
     expect(claude.reservedLeads).toEqual(["/", "!", "@"]);
     // The slice 0 lab (M56 spec 01, LAB.md table 1) named the inert character; spec 05 writes it in.
     expect(claude.probe.char).toBe("⌁");
@@ -87,6 +88,16 @@ describe("every profile file", () => {
     const form = new RegExp(collapse.pattern, "u");
     expect(form.exec("[Pasted text #3]")?.groups?.lines).toBeUndefined();
     expect(form.exec("[Pasted text #3 +59 lines]")?.groups?.lines).toBe("59");
+  });
+
+  it("matches the queued rows Claude Code 2.1.301 draws (claude--v2301-working-queued-message--w100)", () => {
+    const queuedRow = parseProfile(rawClaude()).keys.queuedRow!;
+    const start = new RegExp(queuedRow.pattern, "u");
+    const hint = new RegExp(queuedRow.hint, "u");
+    expect(start.exec("❯ QUEUEDMSG please add a title")?.groups?.text).toBe("QUEUEDMSG please add a title");
+    expect(start.exec("❯")).toBeNull();
+    expect(hint.test("  ctrl+enter to send now")).toBe(true);
+    expect(hint.test("  ctrl+enter to send now, or more")).toBe(false);
   });
 
   it("matches the frame anchors on a real box", () => {
@@ -123,6 +134,9 @@ describe("parseProfile names the failing field", () => {
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
     ["an empty submit key list", ["keys", "submit"], [], "keys.submit"],
     ["a bad id", ["id"], "Claude Code", "id"],
+    ["a queued row pattern with no text group", ["keys", "queuedRow", "pattern"], "^❯ .*$", "keys.queuedRow.pattern"],
+    ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
+    ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {
