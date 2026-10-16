@@ -1509,7 +1509,9 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
   it("a pane with no screen: no header taps, no Pin or settings, Close conversation, no Switch or Files pill", async () => {
     declaresMux({ paneGrid: false, closePane: true });
     const user = userEvent.setup();
-    const agent = { ...fixtureAgents[0]!, cwd: "/srv/support" };
+    // A bridge that does not mark the program for the Send Protocol: it has no receipts to list.
+    const { sendProtocol: _marked, ...unmarked } = fixtureAgents[0]!;
+    const agent: AgentView = { ...unmarked, cwd: "/srv/support" };
     const sibling: AgentView = { ...agent, paneId: "w1:p7" };
     const { container } = renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
@@ -1522,6 +1524,23 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(within(sheet).queryByRole("button", { name: /Pin to top/ })).toBeNull();
     expect(within(sheet).queryByRole("button", { name: /Pane settings/ })).toBeNull();
     expect(within(sheet).getByRole("button", { name: /Close conversation/ })).toBeInTheDocument();
+  });
+
+  it("a program on this machine with the Send Protocol: Pane settings opens its Recent sends, with no cache switch (M56 spec 14)", async () => {
+    declaresMux({ paneGrid: false, closePane: true });
+    server.use(
+      http.get("/api/send/receipts", () =>
+        HttpResponse.json({ receipts: [{ requestId: "req00003", at: Date.now(), mode: "send", outcome: "sent", queued: true, keys: [], gapsMs: {}, harness: "desk", version: null }] }),
+      ),
+    );
+    const user = userEvent.setup();
+    const agent: AgentView = { ...fixtureAgents[0]!, cwd: "/srv/support", sendProtocol: true };
+    renderChat({ agent, agents: [agent] });
+    await openPaneMenu(user);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Pane settings/ }));
+    expect(await screen.findByText("Recent sends")).toBeInTheDocument();
+    expect(await screen.findByText("Queued behind the agent's turn")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /cache goes cold/i })).toBeNull();
   });
 
   it("history row: a pane with a screen keeps it, on Herdr's declaration", async () => {

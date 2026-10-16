@@ -95,6 +95,8 @@ export interface SendRequestBody {
   readonly rowsHash?: string | undefined;
   /** The extra confirm of the cap (M56 spec 09): true on a commit the person made after an answer that carried `cap`. */
   readonly capAck?: boolean | undefined;
+  /** The Surface revision the phone showed. A program pane refuses `stale_surface` when its turn moved since (M56 spec 14). */
+  readonly revision?: number | undefined;
 }
 
 /**

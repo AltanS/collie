@@ -23,6 +23,7 @@ import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, N
 import { pairingRefused } from "./wipe";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { textRouteFor } from "./send-path";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
@@ -1371,11 +1372,26 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
  * phone keeps the id for a retry of the same intent, so a lost answer never sends twice.
  */
 export async function postSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
+  return postSendTo(body, scope, false);
+}
+
+/**
+ * POST /api/send for a program on this machine (M56 spec 14): the bridge's structured driver runs the
+ * request. A program on a crew member never comes here; it keeps the program's own send route
+ * (lib/send-path.ts).
+ */
+export async function postProgramSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
+  return postSendTo(body, scope, true);
+}
+
+async function postSendTo(body: SendRequestBody, scope: Scope | undefined, program: boolean): Promise<SendReply> {
   stampSend(body.pane);
   // A pane on a crew member goes through the pane's reply route, which the lead forwards to the
   // member like any other write; the member runs the same Send Protocol on its own screen and puts
   // the answer under `send` (M56 spec 06). `/api/send` serves this machine's own panes only.
-  const got = normalizeScope(scope).host
+  const route = textRouteFor({ program, crew: !isLead(scope), sendProtocol: true });
+  if (route === "pane-send") throw new ApiError("A program on a crew member takes its own send route.", 400);
+  const got = route === "pane-reply"
     ? asJsonObject(
         (
           await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope), {

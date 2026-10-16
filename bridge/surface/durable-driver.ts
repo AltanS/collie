@@ -30,7 +30,8 @@ import type { MuxAnswerResult, MuxControlOutcome, MuxOutcome } from "../mux/type
 import type { AgentStatus, AnswerRequest, Ask as ProgramAsk, ControlRequest } from "../types.ts";
 import type { Answer, AskReason, AskReceipt, AskReply, AskOutcome } from "../../web/src/lib/surface/ask.ts";
 import { offersFor, type ReadMark, type SendAnswer, type SendOutcome, type SendReason, type SendReceipt, type SendReceiptRow } from "../../web/src/lib/surface/send.ts";
-import { askOf, shortHash, type Ask, type AskKind, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
+import { programContract, type ProgramContract } from "../../web/src/lib/surface/program.ts";
+import { askOf, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
 import type { SendRequest, SendTarget, SessionLocks } from "./protocol.ts";
 import type { AskRecord, RequestStore, SendRecord } from "./requests.ts";
@@ -144,31 +145,12 @@ function markOf(view: ProgramView): ReadMark {
 
 // ── Asks ─────────────────────────────────────────────────────────────────────────────────────────
 
-/** A program ask as the contract shows it, with the program's option ids in the contract's order. */
-export interface ContractAsk {
-  readonly kind: AskKind;
-  readonly hash: string;
-  readonly labels: readonly string[];
-  readonly optionIds: readonly string[];
-}
+/** A program ask as the contract shows it (web/src/lib/surface/program.ts). */
+export type ContractAsk = ProgramContract;
 
-/**
- * The contract form of a program ask, or null when the contract cannot answer it with one tap: a
- * line of text, a form, a choice of several, or a kind this build does not know. Such an ask is a
- * modal the phone answers on the program's own card (`modal: unreadable`). An `allow-always` option
- * is left out: a grant that outlives the ask needs the second tap the program's card asks for.
- */
+/** The contract form of a program ask, or null when one tap cannot answer it (see `programContract`). */
 export function contractAsk(ask: ProgramAsk): ContractAsk | null {
-  let kind: AskKind;
-  if (ask.kind === "permission") kind = "permission";
-  else if (ask.kind === "choice" && ask.multiple !== true) kind = "question";
-  else return null;
-  const kept = ask.options.filter((option) => option.effect !== "allow-always");
-  if (kept.length === 0) return null;
-  const labels = kept.map((option) => option.label);
-  // Over the kind, the subject and the tool, the input shown and the option labels in order (spec 08).
-  const hash = shortHash(["program", kind, ask.title, ask.tool?.name ?? "", ask.tool?.summary ?? "", ask.reason ?? "", ...labels].join("\n"));
-  return { kind, hash, labels, optionIds: kept.map((option) => option.id) };
+  return programContract(ask);
 }
 
 type EntryState = "live" | "spent" | "voided";

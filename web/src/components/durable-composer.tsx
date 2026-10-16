@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
-import { abortPane, apiErrorStatus, runPaneAction, sendToPane, type ControlResult } from "@/lib/api";
+import { SendRefusalNotice, phoneRefusal, readingRefusal, type SendRefusal } from "@/components/send-notice";
+import { Collapse } from "@/components/ui/collapse";
+import { abortPane, apiErrorStatus, postProgramSend, runPaneAction, sendToPane, type ControlResult } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 import { addPending, dropNotSent, setPendingState } from "@/lib/durable-pending";
@@ -24,7 +26,10 @@ import {
   type IntentId,
 } from "@/lib/durable-control";
 import { t } from "@/lib/i18n";
-import { paneScopeKey, type Scope } from "@/lib/scope";
+import { isLead, paneScopeKey, type Scope } from "@/lib/scope";
+import { textRouteFor } from "@/lib/send-path";
+import { readSend, type SendReply } from "@/lib/send-protocol";
+import type { SendRequestBody } from "@/lib/surface/send";
 import { setStatus } from "@/lib/status";
 import type { AgentStatus, Ask, PaneAction } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -71,6 +76,14 @@ import { mintRequestId } from "@/lib/worktree-name";
 //     turn had moved or the program refused, "Sending, not confirmed" when the answer never came (the retry then
 //     carries the same request id, so the program is told once).
 //
+// THE SEND PROTOCOL ON THIS MACHINE (M56 spec 14). When the bridge marks the pane with `sendProtocol` and
+// the program runs on this machine, a plain send is one Send Protocol request (`POST /api/send`), run by
+// the bridge's structured driver. It names the Surface revision the phone saw, so a turn that moved is
+// refused before the program is asked. The answer is told with the terminal composer's own notice at
+// the thumb (components/send-notice.tsx), and a send the program takes for after its turn says Queued.
+// Steer and Stop stay on the program's own routes: a steer is not part of the Send Protocol. A program
+// on a crew member keeps the program's own send route (lib/send-path.ts).
+//
 // The belt keeps what is not about a screen: the Display button, the Switch pill and the Changes
 // pill. The Keys, Type and Quick buttons are not drawn, because there is nothing for them to type
 // into.
@@ -84,6 +97,10 @@ export interface DurableComposerProps {
   /** The buttons the pane's program lists for the belt (M53 spec 07), in its order. */
   actions?: readonly PaneAction[];
   status?: AgentStatus;
+  /** The bridge marks the pane for the Send Protocol (the snapshot's `sendProtocol`). */
+  sendProtocol?: boolean;
+  /** The Surface revision the phone shows, sent with a Send Protocol request; 0 or absent names none. */
+  revision?: number;
   /** The pane is gone, this device may not write, or the pane's machine is not taking writes. */
   locked: boolean;
   /** The placeholder while locked: why nothing can be sent. ALREADY TRANSLATED. */
@@ -119,6 +136,8 @@ export function DurableComposer({
   asks,
   actions,
   status,
+  sendProtocol = false,
+  revision = 0,
   locked,
   lockedWhy,
   offline,
@@ -138,6 +157,8 @@ export function DurableComposer({
   // The id of the program button whose tap is in flight, so a second tap on it waits for the first.
   const [running, setRunning] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
+  // What became of the last Send Protocol request, at the thumb; null after a clean send.
+  const [refusal, setRefusal] = useState<SendRefusal | null>(null);
   // The request id of the last send or stop, kept only while its outcome is unknown.
   const sendIntent = useRef<IntentId | null>(null);
   const stopIntent = useRef<IntentId | null>(null);
@@ -169,6 +190,11 @@ export function DurableComposer({
   async function send() {
     const text = input.trim();
     if (text === "" || off || sending) return;
+    if (textRouteFor({ program: true, crew: !isLead(scope), sendProtocol }, steerNow) === "api-send") {
+      await sendThroughProtocol(text);
+      return;
+    }
+    setRefusal(null);
     const id = requestIdFor(sendIntent.current, intentKey(text, steerNow, target), mintRequestId);
     sendIntent.current = id;
     const key = paneScopeKey(scope, paneId);
@@ -206,6 +232,59 @@ export function DurableComposer({
     }
     if (reading.reload) onReload();
     setStatus(say(reading, "send"), reading.note === "sent" ? "success" : "error");
+  }
+
+  // One Send Protocol request. The id is kept for a retry of the same intent only while no answer came,
+  // so a lost answer never sends twice; any answer ends the intent, as in the terminal composer.
+  async function sendThroughProtocol(text: string) {
+    const id = requestIdFor(sendIntent.current, intentKey(text, false, target), mintRequestId);
+    sendIntent.current = id;
+    const key = paneScopeKey(scope, paneId);
+    refocus.current = document.activeElement === field.current;
+    dropNotSent(key);
+    addPending(key, { requestId: id.requestId, text, at: Date.now(), state: "sending" });
+    setInput("");
+    clearDraft(scope, paneId);
+    setRefusal(null);
+    setSending(true);
+    let reply: SendReply | null = null;
+    let error = "";
+    try {
+      // The revision names the turn the phone saw; 0 names none, and the bridge then checks no turn.
+      const body: SendRequestBody = { id: id.requestId, pane: paneId, text, mode: "send", revision: revision > 0 ? revision : undefined };
+      reply = await postProgramSend(body, scope);
+    } catch (thrown) {
+      error = describeThrownError(thrown);
+    } finally {
+      setSending(false);
+    }
+    if (reply === null) {
+      // No answer: the id stays, so the next tap on the same text asks for the same request.
+      setInput(text);
+      saveDraft(scope, paneId, text);
+      setPendingState(key, id.requestId, "unconfirmed");
+      setRefusal(phoneRefusal(t("composer.protocol.retry", { error })));
+      return;
+    }
+    sendIntent.current = null;
+    const reading = readSend(reply);
+    if (reading.clear) {
+      // The pending line stays: the program's own item takes its place, and closes the receipt as effective.
+      setPendingState(key, id.requestId, "sent");
+      setJustSent(true);
+      setTimeout(() => setJustSent(false), 1500);
+      onSent();
+      onReload();
+      // A send the program takes for after its turn says so, in the place "Sent" stands.
+      setStatus(t(reading.note === "queued" ? "composer.protocol.queued" : "durable.composer.sent"), "success");
+      return;
+    }
+    setInput(text);
+    saveDraft(scope, paneId, text);
+    setPendingState(key, id.requestId, reply.outcome === "unknown" ? "unconfirmed" : "notSent");
+    setRefusal(readingRefusal(reading));
+    // The answer says what the bridge saw; the next read draws it.
+    onReload();
   }
 
   async function stop() {
@@ -288,6 +367,8 @@ export function DurableComposer({
         changes={changesPill}
         hand={hand}
       />
+      {/* What became of a Send Protocol request, at the thumb: the terminal composer's own notice. */}
+      <Collapse open={refusal !== null}>{refusal !== null && <SendRefusalNotice refusal={refusal} />}</Collapse>
       <div
         data-slot="composer-box"
         className={cn(

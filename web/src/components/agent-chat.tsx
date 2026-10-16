@@ -118,6 +118,7 @@ import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-ag
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
+import { answerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
@@ -824,7 +825,14 @@ export function AgentChat({
   const surfaceAsk = agent?.surface === undefined ? null : askOf(agent.surface.modal);
   const paneAsk =
     askReplaced !== null && askReplaced.pane === paneId && (surfaceAsk === null || surfaceAsk.id === askReplaced.refused) ? askReplaced.ask : surfaceAsk;
-  const asksAnswered = agent?.sendProtocol === true && isLead(scope);
+  // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
+  const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true };
+  const asksAnswered = answerRouteFor(sendPlace) === "api-ask";
+  // A program pane's taps answer the contract ask its Surface carries, when the card is the oldest open ask.
+  const oldestAsk = agent?.asks?.[0];
+  const programContract = gridless && asksAnswered && surfaceAsk !== null && oldestAsk !== undefined ? { ask: surfaceAsk, oldest: oldestAsk.id } : null;
+  // The session page's Recent sends: a program pane has receipts only where its texts take the Send Protocol.
+  const programReceipts = gridless && textRouteFor(sendPlace) === "api-send";
   // The dock's box, for the "Answer the dialog" word to scroll to and focus.
   const cardDockRef = useRef<HTMLDivElement>(null);
   const answerDialog = useCallback(() => {
@@ -2399,6 +2407,7 @@ export function AgentChat({
                             disabled: readOnly || hostBlock !== undefined || gone,
                             offline: savedCopyWrites || connecting,
                             onSettled: () => revalidator.revalidate(),
+                            contract: programContract,
                           },
                         }
                   }
@@ -2793,6 +2802,8 @@ export function AgentChat({
                     asks={agent?.asks}
                     actions={agent?.actions}
                     status={agent?.status}
+                    sendProtocol={agent?.sendProtocol === true}
+                    revision={agent?.surface?.revision ?? 0}
                     locked={gone || readOnly || hostBlock !== undefined}
                     lockedWhy={
                       gone
@@ -3043,8 +3054,9 @@ export function AgentChat({
           // The settings row, opened from the ⋮ for the reason zen is: the header's Action slot is
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.
-          // Not on a pane with no screen: its one switch warns about a prompt cache a program does not have.
-          onSettings={gridless ? undefined : () => setDrawer("paneSettings")}
+          // On a pane with no screen only for its Recent sends: the cache switch is not drawn there, because a
+          // program has no prompt cache to warn about (M56 spec 14).
+          onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
@@ -3072,6 +3084,7 @@ export function AgentChat({
           paneId={paneId}
           scope={scope}
           hooks={agent?.hooks}
+          program={gridless}
           // The header's name tap lands here, so the row that edits the name is here too. It hands
           // over to the ⋮ sheet's rename view in one event. Hidden where that view cannot save: a
           // read-only device, an unreachable machine, a multiplexer with no rename.

@@ -783,3 +783,109 @@ describe("partial replies", () => {
     expect(document.querySelector("[aria-busy]")).toBeNull();
   });
 });
+
+describe("the Send Protocol on this machine (M56 spec 14)", () => {
+  /** Serve `POST /api/send` with `reply`, and record each body. */
+  function stubProtocol(reply: (n: number) => Response): Sent[] {
+    const seen: Sent[] = [];
+    server.use(
+      http.post<never, JsonObject>("/api/send", async ({ request }) => {
+        seen.push(asJsonObject(await request.json()) ?? {});
+        return reply(seen.length);
+      }),
+    );
+    return seen;
+  }
+
+  it("a program on this machine sends a plain text through POST /api/send with the revision it showed", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [], acknowledged: "x" } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const { onSent } = draw({ sendProtocol: true, revision: 4242 });
+    const user = await type("go left");
+    await user.click(sendButton());
+    await waitFor(() => expect(protocol).toHaveLength(1));
+    expect(protocol[0]).toMatchObject({ pane: "c1", text: "go left", mode: "send", revision: 4242 });
+    expect(String(protocol[0]!.id)).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(old).toHaveLength(0);
+    await waitFor(() => expect(field()).toHaveValue(""));
+    expect(onSent).toHaveBeenCalled();
+    expect(screen.getByTestId("said")).toHaveTextContent("Sent");
+  });
+
+  it("a send the program takes for after its turn says Queued", async () => {
+    stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [], queued: true } }));
+    draw({ sendProtocol: true, status: "working" });
+    const user = await type("and then this");
+    await user.click(sendButton());
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("Queued. The agent takes it after this turn."));
+    expect(field()).toHaveValue("");
+  });
+
+  it("a refusal keeps the draft and tells it at the thumb with the terminal composer's notice", async () => {
+    stubProtocol(() =>
+      HttpResponse.json({
+        offers: [],
+        receipt: { outcome: "refused", reason: "stale_surface", keys: [] },
+        detail: "The program started another turn after you looked.",
+        surface: { revision: 9, turn: "running", modal: "none", composer: "empty" },
+      }),
+    );
+    const { onReload, onSent } = draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    const notice = await screen.findByText((_, node) => node?.getAttribute("data-slot") === "composer-refusal");
+    expect(notice.textContent).toContain("The screen changed");
+    expect(screen.getByText("The program started another turn after you looked.")).toHaveAttribute("data-slot", "composer-refusal-detail");
+    expect(field()).toHaveValue("hello");
+    expect(loadDraft(undefined, "c1")).toBe("hello");
+    expect(onReload).toHaveBeenCalled();
+    expect(onSent).not.toHaveBeenCalled();
+  });
+
+  it("no answer keeps the draft, and sending again carries the SAME request id", async () => {
+    const protocol = stubProtocol((n) => (n === 1 ? HttpResponse.error() : HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } })));
+    draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(field()).toHaveValue("hello"));
+    expect(await screen.findByText(/Tap Send again: it does not send twice/)).toHaveAttribute("data-slot", "composer-refusal");
+    await user.click(sendButton());
+    await waitFor(() => expect(protocol).toHaveLength(2));
+    expect(protocol[1]!.id).toBe(protocol[0]!.id);
+    await waitFor(() => expect(field()).toHaveValue(""));
+  });
+
+  it("a program on a crew member keeps the program's own send route", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    draw({ sendProtocol: true, scope: { host: "member" } });
+    const user = await type("over the crew");
+    await user.click(sendButton());
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(old[0]).toMatchObject({ text: "over the crew", turnId: "turn-7" });
+    expect(protocol).toHaveLength(0);
+  });
+
+  it("a steer stays on the program's own route: it is not part of the Send Protocol", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    draw({ sendProtocol: true, status: "working" });
+    const user = userEvent.setup();
+    await user.click(await steerButton());
+    await user.type(field(), "left please");
+    await user.click(sendButton());
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(old[0]).toMatchObject({ steer: true, text: "left please" });
+    expect(protocol).toHaveLength(0);
+  });
+
+  it("a bridge that does not mark the pane keeps the program's own send route", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    draw();
+    const user = await type("old bridge");
+    await user.click(sendButton());
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(protocol).toHaveLength(0);
+  });
+});
