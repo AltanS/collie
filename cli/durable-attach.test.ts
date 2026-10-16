@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { HOST, hostFor, type Host } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { testToken } from "../bridge/mux/durable/fixture.ts";
 import {
@@ -9,6 +10,7 @@ import {
   cmdDurableDetach,
   cmdDurableList,
   SOURCES_FILE,
+  WINDOWS_SOCKET_REFUSAL,
   type DurableAttachDeps,
 } from "./durable-attach.ts";
 import { capture, CONFIG, context, fakeExec, fakeFiles, type FakeFiles } from "./fakes.ts";
@@ -29,10 +31,13 @@ interface Harness {
   fetched: string[];
 }
 
+// The harness pins a POSIX host unless a test names another: the socket tests below are about the
+// entry, and on a Windows machine the real host would refuse every `--socket`.
 function harness(
   env: Environment = {},
   seed: Record<string, string> = {},
   answer: (url: string) => Response | Error = () => new Response("{}"),
+  host: Host = hostFor("linux"),
 ): Harness {
   const files = fakeFiles(seed);
   const io = capture();
@@ -42,6 +47,7 @@ function harness(
     ctx: context(env),
     io,
     files,
+    host,
     exec: fakeExec({ absent: ["tailscale"] }),
     restart: async () => {
       restarts.push(1);
@@ -86,6 +92,35 @@ describe("durable attach", () => {
     expect(stored(h)).toEqual([{ name: "edge", kind: "durable", url: "https://member.example.workers.dev", token }]);
     expect(h.files.entries.get(FILE)?.mode).toBe(0o600);
     expect(everything(h)).not.toContain(token);
+  });
+
+  test("on a Windows host a socket is refused with the sentence that names --url, exit 2, and nothing is written", async () => {
+    const h = harness({}, {}, undefined, hostFor("win32"));
+    expect(await cmdDurableAttach(h.deps, ["desk", "--socket", "C:\\run\\desk.sock"])).toBe(EXIT.USAGE);
+    expect(h.io.stderr.join("\n")).toBe(`error: ${WINDOWS_SOCKET_REFUSAL}`);
+    expect(WINDOWS_SOCKET_REFUSAL).toBe("a private socket needs Unix user ids; on Windows use --url <https://...> --token-env VAR");
+    expect(h.files.entries.size).toBe(0);
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("on a Windows host a url program is written as anywhere", async () => {
+    const token = testToken();
+    const h = harness({ DESK_TOKEN: token }, {}, undefined, hostFor("win32"));
+    expect(await cmdDurableAttach(h.deps, ["edge", "--url", "https://member.example.workers.dev", "--token-env", "DESK_TOKEN"])).toBe(EXIT.OK);
+    expect(stored(h)).toEqual([{ name: "edge", kind: "durable", url: "https://member.example.workers.dev", token }]);
+  });
+
+  test("on this machine's own host a socket is refused on Windows and written elsewhere", async () => {
+    const h = harness({}, {}, undefined, HOST);
+    const code = await cmdDurableAttach(h.deps, ["desk", "--socket", SOCKET]);
+    if (HOST.platform === "win32") {
+      expect(code).toBe(EXIT.USAGE);
+      expect(h.io.stderr.join("\n")).toBe(`error: ${WINDOWS_SOCKET_REFUSAL}`);
+      expect(h.files.entries.size).toBe(0);
+    } else {
+      expect(code).toBe(EXIT.OK);
+      expect(stored(h)).toEqual([{ name: "desk", kind: "durable", socket: SOCKET }]);
+    }
   });
 
   test("a second attach under the same name replaces the entry and keeps the others", async () => {

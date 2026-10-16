@@ -104,6 +104,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A refused send says why at the thumb when no dialog was read.** When the unread-dialog card or a refused pre-flight arms "Type anyway?", the reason the header shows now also stands above the input box for as long as the override is armed. With the unread card on screen its "Answer the dialog" control scrolls to the card and focuses it; with no card it carries no control.
 - **Chat says when OmO's question waits in the terminal.** OmO can show a `? Question pending` banner over its ready editor instead of the dialog, and Chat showed nothing. The thread now ends with one line, "A question is waiting in the terminal. Your next message answers it.", with no card and no buttons, because a reply sent then is OmO's own free-text answer.
 - **A pi or OmO pane started with `NO_COLOR=1` is read as before, and tests pin it.** Real captures show that neither pi 0.87.1 nor OmO 5.1.30 honours the variable: both paint every row as usual, so Collie's paint-based readers read the editor, the draft and the question unchanged. Four captures join the fixtures, and `pi/ASK_NOTES.md` says why the readers keep the paint rule.
+- **Windows: a socket attach says to use --url.** A private socket needs Unix user ids; programs on Windows attach over HTTPS, and doctor's per-program rows are pinned for that platform.
+- **Three private-folder tests hold on Windows.** They read the owner-only state the way the code sets it, instead of POSIX mode bits.
+- **The Windows suite's skip budget counts the durable socket tests.** Nine example-program tests need a Unix socket and skip there by design.
 
 ### Packaging
 

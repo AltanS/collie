@@ -3,6 +3,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SendReceipt } from "../../web/src/lib/surface/send.ts";
+import { HOST } from "../host.ts";
+import { isOwnerOnly } from "../owner-only.ts";
 import { SendProtocol } from "./protocol.ts";
 import { RequestStore, type AcceptInput, type SendRecord } from "./requests.ts";
 
@@ -40,8 +42,14 @@ describe("accept", () => {
   test("the file and the directory are private", () => {
     const store = new RequestStore(join(dir, "sends"));
     store.accept(input());
-    expect(statSync(join(dir, "sends")).mode & 0o777).toBe(0o700);
-    expect(statSync(join(dir, "sends", `${ID}.json`)).mode & 0o777).toBe(0o600);
+    // POSIX: the mode bits. NTFS reports 666, so Windows reads the owner-only access list instead.
+    if (HOST.platform === "win32") {
+      expect(isOwnerOnly(join(dir, "sends"), HOST)).toEqual({ state: "private" });
+      expect(isOwnerOnly(join(dir, "sends", `${ID}.json`), HOST)).toEqual({ state: "private" });
+    } else {
+      expect(statSync(join(dir, "sends")).mode & 0o777).toBe(0o700);
+      expect(statSync(join(dir, "sends", `${ID}.json`)).mode & 0o777).toBe(0o600);
+    }
   });
 
   test("the same id with the same text is a replay of the stored record", () => {

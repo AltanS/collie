@@ -89,6 +89,9 @@ collie durable attach edge --url https://edge.example.com --token-env EDGE_TOKEN
 collie restart
 ```
 
+On Windows only the HTTPS form is available: `attach --socket` refuses with exit code 2 and says to use
+`--url` and `--token-env`, because a private socket needs Unix user ids.
+
 `sources.json` sits in the config folder beside your `.env`: the Herdr plugin config folder
 (`~/.config/herdr/plugins/config/herdr.collie/`) on a Herdr-managed install, else
 `~/.config/collie/`. `attach` prints the path it wrote. The two commands above write this file:

@@ -70,6 +70,7 @@ link:
 | Every folder above it | A real folder that group and others cannot write to. A folder with the sticky bit, such as `/tmp`, is allowed there, never as the socket's own folder. Its owner is not checked, because a service with a private `/tmp` shows root's folders as user 65534 | `<path> has mode 0775, so group or others can write to it` |
 | The socket | A socket, yours, with no group or other permission | `the path is not a socket`, `the socket belongs to user <a>, not to <b>`, `the socket has mode 0666, not 0600` |
 | A platform with no user ids | Fails closed: Collie never dials | `this platform shows no file owner` |
+| Windows | Only the HTTPS transport is available: `collie durable attach --socket` refuses before it writes | `a private socket needs Unix user ids; on Windows use --url <https://...> --token-env VAR` |
 
 A path that fails is unreachable at once, with no grace. `collie doctor` names the same check in its
 `durable-socket` row and gives the fix. A path with nothing at it reads `no socket at <path>`, which

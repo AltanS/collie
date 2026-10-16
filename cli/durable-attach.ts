@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import type { JsonValue } from "../bridge/json.ts";
+import { HOST, type Host } from "../bridge/host.ts";
 import { jsonRecord, jsonStringField } from "../bridge/stt/json.ts";
 import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { DURABLE_SOCKET_ENV, resolveSocketPath } from "../bridge/mux/durable/client.ts";
@@ -49,6 +50,12 @@ export const DURABLE_SUBCOMMANDS = ["attach", "detach", "list"] as const;
 /** The usage line for `attach`, as the docs print it. */
 export const ATTACH_USAGE = "collie durable attach <name> (--socket <path> | --url <url> --token-env <VAR>) [--restart]";
 
+/**
+ * What `attach --socket` says on Windows. A private socket is proved by its owner's Unix user id, and
+ * Windows has none, so the verb refuses before it writes anything: the program attaches over HTTPS.
+ */
+export const WINDOWS_SOCKET_REFUSAL = "a private socket needs Unix user ids; on Windows use --url <https://...> --token-env VAR";
+
 /** The name rule from the contract: lower case, digits and hyphens, 1 to 32 characters. */
 const NAME_RULE = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 
@@ -71,6 +78,8 @@ export interface DurableAttachDeps {
   readonly exec: Exec;
   /** For `list`: the running bridge's answer to `/api/config?session=`. */
   readonly fetch: (url: string, init: { signal: AbortSignal; headers: Record<string, string> }) => Promise<Response>;
+  /** The platform facts `attach` reads. Absent reads as this machine's; a test pins one. */
+  readonly host?: Host;
 }
 
 // ── The file ─────────────────────────────────────────────────────────────────
@@ -195,12 +204,13 @@ function inFlags(detail: string, tokenEnv = "--token-env"): string {
 }
 
 /** The entry for these flags, or the first reason it breaks the contract. */
-function buildEntry(flags: AttachFlags, env: CliContext["env"]): Parsed<SourceEntry> {
+function buildEntry(flags: AttachFlags, env: CliContext["env"], host: Host): Parsed<SourceEntry> {
   if (!NAME_RULE.test(flags.name)) return { ok: false, detail: `name ${flags.name} must match ${String(NAME_RULE)}` };
   // m55-01: replace with the bridge loader at fold. The bridge refuses a name that is a terminal
   // session's; the CLI cannot see those names, so only the shape is checked here.
   if ((flags.socket === null) === (flags.url === null)) return { ok: false, detail: "give exactly one of --socket or --url" };
   if (flags.socket !== null) {
+    if (host.platform === "win32") return { ok: false, detail: WINDOWS_SOCKET_REFUSAL };
     if (flags.tokenEnv !== null) return { ok: false, detail: "--token-env goes with --url; a socket entry takes no token" };
     const socket = resolveSocketPath(flags.socket);
     if (!socket.ok) return { ok: false, detail: inFlags(socket.detail) };
@@ -227,7 +237,7 @@ export async function cmdDurableAttach(deps: DurableAttachDeps, args: readonly s
     return EXIT.USAGE;
   }
   const flags = parsedFlags.value;
-  const built = buildEntry(flags, deps.ctx.env);
+  const built = buildEntry(flags, deps.ctx.env, deps.host ?? HOST);
   if (!built.ok) {
     deps.io.err(`error: ${built.detail}`);
     return EXIT.USAGE;
