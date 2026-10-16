@@ -323,11 +323,12 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
  *
  * A picker paints OVER the middle of the screen and can leave the composer's own tail intact — so
  * the tail shape alone would answer `true` on a screen whose keyboard the picker owns.
- * `pickerOverlayUp` is the predicate that says so.
+ * `pickerOverlayUp` is the predicate that says so, and `confirmDialogUp` says the same of a confirm
+ * dialog.
  */
 export function hasComposer(lines: StyledLine[]): boolean {
   if (locateComposer(lines) === null) return false;
-  return !pickerOverlayUp(lines);
+  return !overlayUp(lines);
 }
 
 /** A row cut into its 2+-space-separated tokens, each with the display column it starts at. */
@@ -376,6 +377,44 @@ export function pickerOverlayUp(lines: StyledLine[]): boolean {
   return false;
 }
 
+/** How far below a confirm dialog's title row its buttons may sit: six on the update prompt (a blank,
+ *  two body rows and two blanks), with room for a body that wraps onto more rows on a narrow pane. */
+const MAX_TITLE_TO_BUTTONS = 12;
+/** How far left of the `esc` hint's end the `Confirm` label may end: the highlighted button pads its
+ *  label with one space inside its own background. */
+const BUTTON_PAD = 2;
+
+/**
+ * Whether one of opencode's confirm dialogs is up: the `Update Available` prompt, measured on 1.18.34
+ * (2026-10-15). It shares the pickers' title row (`Update Available … esc`) but has no search field:
+ * a body, then a button row whose `Confirm` ends in the `esc` hint's column, `Skip  Confirm`, with
+ * Confirm highlighted. Enter there installs the update, so a reply must never be typed into it;
+ * Escape dismisses it. Keyed on columns for the reason `pickerOverlayUp` is: the screen under the box
+ * shows through on both sides.
+ */
+export function confirmDialogUp(lines: StyledLine[]): boolean {
+  const rows = lines.map((l) => columnTokens(rstrip(lineText(l))));
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    for (let k = 1; k < row.length; k++) {
+      if (row[k]!.text !== "esc" || row[k - 1]!.text === "esc") continue;
+      const escEnd = row[k]!.col + displayWidth("esc");
+      for (let j = i + 1; j < rows.length && j - i <= MAX_TITLE_TO_BUTTONS; j++) {
+        const confirm = rows[j]!.find((t) => t.text.endsWith("Confirm"));
+        if (confirm === undefined) continue;
+        const end = confirm.col + displayWidth(confirm.text);
+        if (end <= escEnd && escEnd - end <= BUTTON_PAD) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** A picker or a confirm dialog floats over the screen and owns the keyboard. */
+function overlayUp(lines: StyledLine[]): boolean {
+  return pickerOverlayUp(lines) || confirmDialogUp(lines);
+}
+
 /** How many non-blank rows from the tail a dialog footer may sit: the permission steps paint one
  *  bare bar row under it. The same window the dialog lift allows (dialog.ts). */
 const MODAL_FOOTER_WINDOW = 3;
@@ -384,15 +423,15 @@ const MODAL_FOOTER_WINDOW = 3;
  * Positive evidence that one of opencode's own modals is up — the fifth condition of the
  * unread-dialog card (.adr/0053, addendum 2026-09-26). `composerReady` answering false says only
  * that no composer is there, which is also what the shell looks like while opencode starts and
- * after it exits; the card must not offer Escape there. Three shapes count: a picker
- * (`pickerOverlayUp`), a permission dialog painted in the bar run, whose footer — a bar row
- * carrying `⇆ select` and `enter confirm` — sits at the tail (1.18.32), and a question dialog,
+ * after it exits; the card must not offer Escape there. Four shapes count: a picker
+ * (`pickerOverlayUp`), a confirm dialog (`confirmDialogUp`), a permission dialog painted in the bar run, whose footer, a bar row
+ * carrying `⇆ select` and `enter confirm`, sits at the tail (1.18.32), and a question dialog,
  * whose footer is a bar row carrying `esc dismiss` after `enter submit|toggle|confirm` (1.18.33).
  * The question footer counts on EVERY question screen, the ones the grammar refuses included (a tab
  * bar, a long list): the card and the composer lock must work on exactly those.
  */
 export function modalOnScreen(lines: StyledLine[]): boolean {
-  if (pickerOverlayUp(lines)) return true;
+  if (overlayUp(lines)) return true;
   let seen = 0;
   for (let i = lines.length - 1; i >= 0 && seen < MODAL_FOOTER_WINDOW; i--) {
     const text = rstrip(lineText(lines[i]!));
@@ -457,7 +496,7 @@ export function composerPrompt(lines: StyledLine[]): string | null {
   const tail = locateComposer(lines);
   // The same screens `composerReady` refuses bind nothing: a sweep never runs there, and naming a
   // region would hand the conformance leg a binding the pre-flight will not type into.
-  if (tail === null || pickerOverlayUp(lines)) return null;
+  if (tail === null || overlayUp(lines)) return null;
   const rows = lines.slice(tail.modelRow, tail.rule + 1).map((l) => rstrip(lineText(l)));
   return rows[0]!.length === 0 ? null : rows.join("\n");
 }

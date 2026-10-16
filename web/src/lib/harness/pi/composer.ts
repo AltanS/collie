@@ -16,6 +16,9 @@
 // the status rows stay at column zero. A padded draft therefore opens with a space, as a panel's title
 // does; the editor is told from a panel by its cursor cell (see `indentedEditor`).
 //
+// An extension may empty pi's footer (`ctx.ui.setFooter`), and then there is no status row: the bottom
+// rule is the last non-blank row (issue 445).
+//
 // The status rows are painted (pi dims its own footer rows), except the last, which may be plain:
 // pi's footer prints every extension's `ctx.ui.setStatus` text on ONE row after its own, unstyled
 // unless the extension paints it (pi-coding-agent's components/footer.js). A default OmO install
@@ -129,6 +132,13 @@ export interface PiTail {
 export function tailRule(lines: StyledLine[]): PiTail | null {
   let end = lines.length;
   while (end > 0 && text(lines[end - 1]!) === "") end--;
+  // No status row at all (issue 445): an extension replaced pi's footer with an empty one, so the
+  // editor's bottom rule is the last thing on screen. A rule of the same width must stand above it, and `locateComposer`
+  // still demands the same colour and a clean editor body, which is what keeps other boxes out.
+  if (end > 0 && RULE.test(text(lines[end - 1]!)) &&
+    ruleAbove(lines.map(text), end - 1, text(lines[end - 1]!).length, MAX_EDITOR_ROWS) >= 0) {
+    return { bottom: end - 1, statusStart: end, end, palette: false };
+  }
   // The status rows: one to four, painted as `paintedStatus` says.
   let statusStart = end;
   while (statusStart > 0 && end - statusStart < MAX_STATUS_ROWS && statusRow(lines[statusStart - 1]!)) statusStart--;

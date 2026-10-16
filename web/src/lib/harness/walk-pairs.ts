@@ -115,6 +115,10 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--v110-questionnaire-tabs-second.txt", "pi--v110-questionnaire-tabs-second-moved.txt"],
   // The PR 397 question extension (pi 1.1.0): its one captured pair.
   ["pi", "pi--v110-single-desc.txt", "pi--v110-single-moved.txt"],
+  // pi 1.2.0's folder trust prompt (pi/trust.ts), before and after one Down.
+  ["pi", "pi--trust-prompt.txt", "pi--trust-prompt-moved.txt"],
+  // gentle-pi 4.2.0's ask_user_choice (pi 1.3.0): unnumbered rows, the second capture after a real Down.
+  ["pi", "pi--v130-gentle-choice.txt", "pi--v130-gentle-choice-moved.txt"],
 ];
 
 /**

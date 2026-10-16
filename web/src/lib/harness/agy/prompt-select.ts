@@ -68,6 +68,9 @@ export function isFreeTextLabel(label: string): boolean {
 
 const OPTION_SCAN_WINDOW = 24;
 const MAX_FOOTER_GAP = 3;
+const CHECKBOX_LABEL = /^\[[ xX*•✔✓]\]\s/;
+const CHECKBOX_LEAD = /^(?:[❯›>•*○●]\s*)?\[[ xX*•✔✓]\]\s/;
+const SPACE_TOGGLE = /\bspace\s+toggle\b/i;
 const QUESTION_SCAN_LIMIT = 12;
 
 export interface PromptRegion {
@@ -125,6 +128,14 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
   const firstOpt = menu[0]!.index;
   const lastOpt = menu[menu.length - 1]!.index;
 
+  // A checkbox question: Space ticks a row and a digit's effect there is unmeasured, so no recipe here
+  // answers it. It stays raw and the unread-dialog card offers Escape. It is known by a box on any of
+  // its rows (`1. [ ] apple`) or by `space Toggle` on any row under them, not only on the row taken
+  // for the footer: a wrapped footer would hide it there (review, 2026-10-15).
+  const boxed = (row: OptionRow) => CHECKBOX_LABEL.test(row.label) || CHECKBOX_LEAD.test(texts[row.index]!.trim());
+  if (menu.some(boxed)) return null;
+  for (let i = lastOpt + 1; i < texts.length; i++) if (SPACE_TOGGLE.test(texts[i]!)) return null;
+
   if (footerIndex - lastOpt > MAX_FOOTER_GAP) return null;
 
   const top = Math.max(0, firstOpt - QUESTION_SCAN_LIMIT);
@@ -178,10 +189,12 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
     options.push({
       label: row.label,
       description: desc.length ? desc.join(" ") : undefined,
-      keys:
-        family === "select" || family === "plan"
-          ? [String(row.n), "Enter"]
-          : [String(row.n)],
+      // The digit alone answers a question (1.3.5, live 2026-10-15): it submitted a one-question call,
+      // and on the first of two it answered and moved on, so a trailing Enter answered the second
+      // question with whatever row its pointer stood on. The plan family is the same widget: a
+      // conversation holding a plan artifact only adds `ctrl+r Review` to the footer, and there too
+      // the Enter answered Question 2/2 (live 2026-10-15).
+      keys: [String(row.n)],
     });
   }
   if (options.length === 0) return null;

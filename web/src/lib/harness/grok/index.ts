@@ -42,6 +42,7 @@ import { detectAskRegion } from "./ask";
 import { detectPermissionRegion } from "./permission";
 import { detectPlanMenuRegion } from "./plan-menu";
 import { detectModelPickerRegion } from "./model-picker";
+import { detectTrustRegion } from "./trust";
 
 export function grokBuildBlocks(lines: StyledLine[]): Block[] {
   // Drop Grok's full-screen theme-canvas paint before any block is built, so every rendered
@@ -85,6 +86,15 @@ export function grokBuildBlocks(lines: StyledLine[]): Block[] {
     const blocks: Block[] = [];
     if (before.length > 0) blocks.push({ kind: "raw", lines: before });
     blocks.push({ kind: "prompt-select", prompt: picker.model, lines: lines.slice(picker.startLine) });
+    return blocks;
+  }
+
+  const trust = detectTrustRegion(lines);
+  if (trust) {
+    const before = trimTrailingBlank(lines.slice(0, trust.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "prompt-select", prompt: trust.model, lines: lines.slice(trust.startLine) });
     return blocks;
   }
 

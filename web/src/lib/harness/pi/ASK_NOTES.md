@@ -17,6 +17,8 @@ and the live probes.
 | PR 397 extension, a tab page | `←→ tabs • ↑↓ navigate • Enter select • type a number or text • Esc cancel` | (a) walk, captioned | `pi--v110-tabs-single*`, `-tabs-compact` |
 | PR 397 extension, Review page | `←→ tabs • Enter submit • Esc cancel` | review (Enter, Escape) | `pi--v110-review-complete.txt` |
 | OmO ask, one question | `↑↓ move  1-9 select  space select  enter next  tab next question  c comment  esc cancel` | (b) digit | `pi--omo-v5130-single-described*`; probe below |
+| gentle-pi `ask_user_choice`, unnumbered, no status row | `↑↓ navigate • Enter select • Esc cancel` | (a) walk | `pi--v130-gentle-choice.txt`; source below |
+| pi's own selector (`ctx.ui.confirm`, `ctx.ui.select`), unnumbered | `↑↓ navigate  enter select  escape/ctrl+c cancel` | (a) walk | built from source in `ask.test.ts` |
 
 Raw, with the Escape card: every multi-select (`[ ]` rows, or a footer that gives Space a tick or a
 toggle), a pointer on the free-text row, every inline answer editor (`Enter to submit • Esc to go
@@ -25,9 +27,11 @@ every picker (below), and a Submit page beside OmO's side panel (below). A quest
 panel lifts, bound to the columns left of it (below).
 
 A dialog quoted in agent prose or a tool result stays prose (`pi--prose-quoted-*`). The tail
-decides: the bottom rule must have one to four status rows under it and nothing else, every one
-styled except the last, which may be plain under a styled one (pi's extension-status line, see "The
-editor"), and the footer row must be styled. With the editor below, the editor's own rules are the tail, so the
+decides: the bottom rule must be the last row, or have one to four status rows under it and nothing
+else, every one styled except the last, which may be plain under a styled one (pi's extension-status
+line, see "The editor"), and the footer row must be styled. A bare bottom rule counts since issue
+455, because Gentle Shell replaces pi's footer and leaves nothing under the dialog; a quoted block
+that ends the buffer is then the same bytes as a live dialog, and the screen cannot tell them apart. With the editor below, the editor's own rules are the tail, so the
 quoted block above it is never read. With no editor, a quoted block lifts only when every tail rule
 holds, which is pi's own screen; a walked tap there still sends no Enter, because the pointer never
 moves and the poll times out.
@@ -47,6 +51,31 @@ pi's own examples, `examples/extensions/question.ts` and `questionnaire.ts`, are
   tabs and wrap. On the Submit tab, Enter submits only when every question has an answer. The
   current tab chip is drawn with a background colour only (`48;2;…`), so the reader finds it by
   that segment; answered chips are `■`.
+
+## Unnumbered rows: gentle-pi and pi's own selector (issue 455)
+
+Captured 2026-10-16 with pi 1.3.0, gentle-pi 4.2.0 under Gentle Shell, Herdr 0.9.5, a 200-column pane:
+`pi--v130-gentle-choice.txt`, gentle-pi's `ask_user_choice` with three options and the pointer on
+the first, and `-moved`, the same dialog two seconds after `herdr pane send-keys <pane> Down`, the
+pointer on the second. Gentle Shell replaces pi's footer, so the dialog's bottom rule is the last row.
+The Down is the walk's own key, so the pair is also the live proof that it moves this pointer.
+
+Read from source, not captured:
+
+- gentle-pi 4.2.0, `lib/native-choice-list.ts`: each row is a `Text` with one column of padding,
+  `→ ` on the pointed row and two spaces on the others, the description as `\n   description`, so it
+  lands four columns in. Up and Down clamp at both ends (`setSelectedIndex`). Enter on an option
+  answers; with `allowCustomResponse` a last row `Other…` (`Provide a custom response`) opens an
+  editor on Enter, so it is the `free-text` field and never a button.
+- pi 1.3.0, `ExtensionSelectorComponent` (behind `ctx.ui.confirm` and `ctx.ui.select`): the same
+  ` → Label` / `   Label` rows with no description, clamped at both ends, a blank row on each side of
+  the footer. A `timeout` adds a ` (Ns)` countdown to the title, which moves the signature every
+  second, so a tap there is refused and the phone reads again.
+
+Unnumbered rows are read at column 1 only, never beside a tab strip, with no trailer row (a label
+long enough to wrap comes back at column 1 and declines), and lift by plan (a) only.
+`ask_user_question` (`❯` rows, a tab strip) is read from source only and stays raw with the Escape
+card.
 
 ## OmO, probed by the PR 412 author
 
@@ -238,3 +267,6 @@ to honour `NO_COLOR`, capture it first, then read it.
   the dialog rows the same way is not known. `docs/windows.md` lists it under "What is not tested".
 - A pi or OmO pane with no colour: neither honours `NO_COLOR` (see "NO_COLOR and monochrome
   panes"), so no such screen has been seen.
+- A picker taller than the pane, which pushes the bottom rule off the screen.
+- A live tap on gentle-pi's `ask_user_choice` or pi's own selector through the phone: the reader is
+  pinned on the captures and the source, and Down was sent by Herdr, but no tap went end to end.

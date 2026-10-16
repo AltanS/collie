@@ -65,10 +65,11 @@ import {
   regionReachesTail,
   stripChrome,
 } from "./chrome";
-import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, locateTail, rstrip } from "./markers";
+import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, locateTail, regionSignature, rstrip } from "./markers";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
+import { detectSessionPicker } from "../session-picker";
 
 /**
  * Muse's pane → blocks. The four dialog arms run in the build order of the dialog notes (approval →
@@ -125,6 +126,17 @@ export function museBuildBlocks(lines: StyledLine[]): Block[] {
       kind: "prompt-select",
       prompt: trust.model,
       lines: lines.slice(trust.startLine),
+    });
+  }
+  // The highlighted session row starts at column 0 (`⟩ 1h ago      oak-thebe · …`); the search
+  // field's `  ⟩ Search` is indented, so it never counts as a session.
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const picker = detectSessionPicker(texts, /^⟩ \S/, (from, to) => regionSignature(texts, from, to));
+  if (picker !== null) {
+    return lift(lines, picker.startLine, picker.model.signature, {
+      kind: "menu",
+      menu: picker.model,
+      lines: lines.slice(picker.startLine),
     });
   }
   return unlifted(lines);

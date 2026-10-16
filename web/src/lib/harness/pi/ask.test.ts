@@ -75,6 +75,13 @@ const LIFTS_397 = new Map<string, Expect>([
   // Run with NO_COLOR=1, which neither pi 0.87.1 nor OmO 5.1.30 honours: the same paint, the same read.
   ["pi--v0871-nocolor-question.txt", "walk"],
   ["pi--omo-v5130-nocolor-question.txt", "digit"],
+  // pi 1.2.0's folder trust prompt: not a question, read by pi/trust.ts, plan (a) from its footer.
+  ["pi--trust-prompt.txt", "walk"],
+  ["pi--trust-prompt-moved.txt", "walk"],
+  // gentle-pi 4.2.0's ask_user_choice on pi 1.3.0 under Gentle Shell: unnumbered rows, and no status
+  // row under the bottom rule (issue 455).
+  ["pi--v130-gentle-choice.txt", "walk"],
+  ["pi--v130-gentle-choice-moved.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -182,6 +189,116 @@ describe("plan (a): arrows move and Enter selects", () => {
     expect(prompt(load("pi--v110-questionnaire-tabs-second.txt")).caption).toBe("Size");
     expect(prompt(load("pi--v110-tabs-single.txt")).caption).toBe("Auth");
     expect(prompt(load("pi--v0871-questionnaire-single.txt")).caption).toBeUndefined();
+  });
+});
+
+// Issue 455: gentle-pi's ask_user_choice and pi's own selector (ctx.ui.confirm, ctx.ui.select) print
+// unnumbered rows at pointer column 1 (` → Label`, `   Label`), and under Gentle Shell nothing
+// stands under the bottom rule.
+describe("unnumbered rows, and a frame with no status row (issue 455)", () => {
+  const gentle = raw("pi--v130-gentle-choice.txt");
+  const pointed = (label: string) => ` \x1b[0m\x1b[38;2;157;157;157m→ ${label}\x1b[0m`;
+
+  it("reads the frame and the Escape card when the bottom rule is the last row", () => {
+    const lines = load("pi--v130-gentle-choice.txt");
+    expect(lineText(lines.at(-1)!).trimEnd()).toMatch(/^─{200}$/);
+    expect(readPiFrame(lines)?.footer.escapeVerb).toBe("cancel");
+    expect(piModalOnScreen(lines)).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+  });
+
+  it("walks gentle-pi's ask_user_choice with arrows and Enter, descriptions kept, no digit", () => {
+    const model = prompt(load("pi--v130-gentle-choice.txt"));
+    expect(model.question).toBe("Pick a color for the Collie probe");
+    expect(model.family).toBe("select");
+    expect(model.options).toEqual([
+      { label: "Red", description: "Warm and loud", keys: ["Enter"], keyLabel: "→" },
+      { label: "Green", description: "Calm and natural", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Blue", description: "Cool and deep", keys: ["Down", "Down", "Enter"], keyLabel: "" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(model.feedback).toBeUndefined();
+  });
+
+  it("walks from the pointer a real Down moved, and the move changes signature but not coreSignature", () => {
+    const moved = prompt(load("pi--v130-gentle-choice-moved.txt"));
+    expect(moved.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Down", "Enter"], ["Escape"]]);
+    const before = prompt(load("pi--v130-gentle-choice.txt"));
+    expect(moved.signature).not.toBe(before.signature);
+    expect(moved.coreSignature).toBe(before.coreSignature);
+  });
+
+  it("keeps gentle-pi's Other… row a free-text field, never a button, and leaves a pointer on it raw", () => {
+    const other = replaceLast(replaceLast(gentle, "   Blue", "   Other…"), "Cool and deep", "Provide a custom response");
+    const model = prompt(linesOf(other));
+    expect(model.options.map((o) => o.label)).toEqual(["Red", "Green", "Cancel"]);
+    expect(model.feedback).toEqual({ key: "", focused: false, text: "", purpose: "free-text" });
+    const focused = replaceLast(replaceLast(other, pointed("Red"), "   Red"), "   Other…", pointed("Other…"));
+    expect(detectPiQuestion(linesOf(focused))).toBeNull();
+    expect(piModalOnScreen(linesOf(focused))).toBe(true);
+  });
+
+  /** pi 1.3.0's ExtensionSelectorComponent, the selector behind ctx.ui.confirm and ctx.ui.select, as
+   *  its source draws it: rule, blank, title, blank, options, blank, footer, blank, rule. Built from the
+   *  source, not captured. */
+  const selector = (status: string[] = []) => {
+    const rule = `\x1b[38;2;95;135;255m${"─".repeat(60)}\x1b[0m`;
+    return linesOf([
+      rule,
+      "",
+      " \x1b[1;38;2;138;190;183mAllow guarded git push?\x1b[0m",
+      "",
+      " \x1b[38;2;138;190;183m→ \x1b[0m\x1b[38;2;138;190;183mYes\x1b[0m",
+      "   \x1b[38;2;212;212;212mNo\x1b[0m",
+      "",
+      " \x1b[38;2;128;128;128m↑↓\x1b[0m\x1b[38;2;102;102;102m navigate\x1b[0m  \x1b[38;2;128;128;128menter\x1b[0m" +
+        "\x1b[38;2;102;102;102m select\x1b[0m  \x1b[38;2;128;128;128mescape/ctrl+c\x1b[0m\x1b[38;2;102;102;102m cancel\x1b[0m",
+      "",
+      rule,
+      ...status,
+    ].join("\n"));
+  };
+
+  it("walks pi's own confirm selector, with a status row under it or none", () => {
+    for (const lines of [selector(), selector(["\x1b[38;2;102;102;102m~/project\x1b[0m"])]) {
+      const model = prompt(lines);
+      expect(model.question).toBe("Allow guarded git push?");
+      expect(model.options).toEqual([
+        { label: "Yes", keys: ["Enter"], keyLabel: "→" },
+        { label: "No", keys: ["Down", "Enter"], keyLabel: "" },
+        { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+      ]);
+    }
+  });
+
+  it.each([
+    ["two pointers", replaceLast(gentle, "   Green", pointed("Green"))],
+    ["no pointer", replaceLast(gentle, pointed("Red"), "   Red")],
+    ["the pointer at column 0, where pi's palette and pickers draw it", replaceLast(replaceLast(replaceLast(gentle,
+      pointed("Red"), "\x1b[0m\x1b[38;2;157;157;157m→ Red\x1b[0m "), "   Green", "  Green "), "   Blue", "  Blue ")],
+    ["a label wrapped back to column 1", replaceLast(gentle, "    \x1b[0m\x1b[38;2;157;157;157mCalm", " continued\n    \x1b[0m\x1b[38;2;157;157;157mCalm")],
+    ["a free-text row before the last option", replaceLast(gentle, "   Green", "   Other…")],
+    ["a footer that names digits, not Enter, as select", replaceLast(gentle, "Enter select", "1-9 select")],
+  ])("declines %s", (_name, text) => {
+    expect(text).not.toBe(gentle);
+    expect(detectPiQuestion(linesOf(text))).toBeNull();
+  });
+
+  it("still refuses the frame once plain output follows the bottom rule", () => {
+    const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+    const lines = load("pi--v130-gentle-choice.txt");
+    expect(detectPiQuestion([...lines, plain("$ ")])).toBeNull();
+    expect(readPiFrame([...lines, plain("$ ")])).toBeNull();
+    // Not asserted: `piModalOnScreen`. Since the open-frame read (00c6f251), a painted key-hint row
+    // over a rule with rows under it reads as a picker (`/tree` puts its hints over an inner rule), so
+    // the Escape card may stand here. It offers Escape only, never an option.
+  });
+
+  it("needs a top rule of the same width and colour above a bare bottom rule", () => {
+    const lines = load("pi--v130-gentle-choice.txt");
+    const recoloured = linesOf(replaceLast(gentle, "\x1b[38;2;157;157;157m─", "\x1b[38;2;1;2;3m─"));
+    expect(readPiFrame(recoloured)).toBeNull();
+    expect(readPiFrame(lines.slice(1))).toBeNull();
   });
 });
 
@@ -605,26 +722,27 @@ describe("a quoted dialog is not a dialog", () => {
     return lines.slice(0, bottom + 1);
   };
 
-  it("with no editor below, the tail rules refuse the quoted block, with a shell prompt under it or nothing", () => {
-    for (const lines of [load("pi--prose-quoted-dialog-then-shell.txt"), atTail()]) {
-      expect(detectPiQuestion(lines)).toBeNull();
-      expect(piModalOnScreen(lines)).toBe(false);
-    }
+  it("with no editor below, the tail rules refuse the quoted block once a shell prompt follows it", () => {
+    const lines = load("pi--prose-quoted-dialog-then-shell.txt");
+    expect(detectPiQuestion(lines)).toBeNull();
+    expect(piModalOnScreen(lines)).toBe(false);
     expect(lineText(atTail().at(-1)!)).toMatch(/^─{8,}/);
   });
 
-  // Without an editor below, the quoted rows lift only when EVERY tail rule holds: one to four
-  // non-rule rows under the bottom rule and nothing else, every one styled but the last, which may
-  // be plain when a styled row stands above it (pi's extension-status line); two full rules of one length and
-  // colour; a styled footer row of known key hints that names Esc, at most one blank row above the
-  // bottom rule; and the option shape. That is pi's own screen, so a styled row under a quoted block
-  // is the one case the screen cannot tell apart. A walked tap there still sends no Enter: the pointer
+  // Without an editor below, the quoted rows lift only when EVERY tail rule holds: nothing under the
+  // bottom rule, or one to four non-rule rows and nothing else, every one styled but the last, which
+  // may be plain when a styled row stands above it (pi's extension-status line); two full rules of one
+  // length and colour; a styled footer row of known key hints that names Esc, at most one blank row
+  // above the bottom rule; and the option shape. That is pi's own screen, so a quoted block at the very
+  // tail, or with a styled row under it, is the one case the screen cannot tell apart. A walked tap there still sends no Enter: the pointer
   // never moves, the poll times out (lib/prompt-action.ts).
   it("states the limit: a quoted block at the tail lifts only when every tail rule holds", () => {
     const quoted = atTail();
     const styled = (t: string): StyledLine => ({ segments: [{ text: t, style: {}, muted: true }] });
     const plain: StyledLine = { segments: [{ text: "$ ", style: {}, muted: false }] };
-    expect(detectPiQuestion(quoted)).toBeNull();
+    // Nothing under the bottom rule is pi's own screen too since issue 455: Gentle Shell replaces pi's
+    // footer, so a live dialog ends at its bottom rule, byte for byte the quoted block cut here.
+    expect(detectPiQuestion(quoted)?.kind).toBe("prompt-select");
     expect(detectPiQuestion([...quoted, plain])).toBeNull();
     expect(detectPiQuestion([...quoted, plain, styled("a")])).toBeNull();
     expect(detectPiQuestion([...quoted, styled("a"), plain, plain])).toBeNull();
