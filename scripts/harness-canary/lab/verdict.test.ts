@@ -1,0 +1,83 @@
+import { describe, expect, test } from "bun:test";
+import { judge, type LabFacts, type ScreenFact, type WalkFact } from "./verdict";
+
+const walk: WalkFact = { reached: true, returned: true, menuRead: true, startedTurn: null, sent: ["/help"], unclassified: [], missing: [] };
+const screen = (patch: Partial<ScreenFact>): ScreenFact => ({
+  leg: "walk",
+  label: "/model",
+  expects: "dialog",
+  surface: { turn: "unknown", composer: "unknown", modal: "ask" },
+  free: false,
+  cue: "strong",
+  rows: [],
+  ...patch,
+});
+const facts = (patch: Partial<LabFacts>): LabFacts => ({
+  harness: "claude",
+  version: "2.1.301",
+  profile: "provisional",
+  walk,
+  screens: [screen({})],
+  send: { outcome: "sent", probed: true, keys: 3 },
+  ask: { outcome: "answered", fileCreated: false },
+  turns: 2,
+  ...patch,
+});
+
+describe("judge", () => {
+  test("zero free on a dialog screen and a settled send pass", () => {
+    expect(judge(facts({}))).toMatchObject({ result: "pass", reasons: [] });
+  });
+
+  test("one dialog screen that reads free fails, and the verdict names it", () => {
+    const verdict = judge(facts({ screens: [screen({}), screen({ label: "/permissions", free: true })] }));
+    expect(verdict.result).toBe("fail");
+    expect(verdict.freeOnDialog.map((entry) => entry.label)).toEqual(["/permissions"]);
+    expect(verdict.reasons[0]).toContain("/permissions is a dialog");
+  });
+
+  test("a strong cue makes a screen a dialog even when the lab did not expect one", () => {
+    const verdict = judge(facts({ screens: [screen({ expects: "either", free: true })] }));
+    expect(verdict.result).toBe("fail");
+  });
+
+  test("an idle screen that reads free is fine", () => {
+    const idle = screen({ expects: "idle", label: "start", surface: { turn: "idle", composer: "empty", modal: "none" }, free: true, cue: "none" });
+    expect(judge(facts({ screens: [idle] })).result).toBe("pass");
+  });
+
+  test("a send that did not settle fails", () => {
+    const verdict = judge(facts({ send: { outcome: "refused", reason: "draft", probed: true, keys: 1 } }));
+    expect(verdict.result).toBe("fail");
+    expect(verdict.reasons.join(" ")).toContain("refused");
+  });
+
+  test("no send fails", () => {
+    expect(judge(facts({ send: null })).result).toBe("fail");
+  });
+
+  test("a walk that cannot start, cannot return or reads no menu fails", () => {
+    expect(judge(facts({ walk: { ...walk, reached: false } })).result).toBe("fail");
+    expect(judge(facts({ walk: { ...walk, returned: false } })).result).toBe("fail");
+    expect(judge(facts({ walk: { ...walk, menuRead: false } })).result).toBe("fail");
+  });
+
+  test("a safe command that started a turn fails", () => {
+    const verdict = judge(facts({ walk: { ...walk, startedTurn: "/help" } }));
+    expect(verdict.result).toBe("fail");
+    expect(verdict.reasons.join(" ")).toContain("/help is on the safe list");
+  });
+
+  test("a declined command that made its file fails", () => {
+    expect(judge(facts({ ask: { outcome: "answered", fileCreated: true } })).result).toBe("fail");
+  });
+
+  test("the ask outcome alone is reported, not a pass condition", () => {
+    expect(judge(facts({ ask: { outcome: "not-reached", fileCreated: false } })).result).toBe("pass");
+  });
+
+  test("a harness with no profile is walk-only when the walk is clean, and fails when it is not", () => {
+    expect(judge(facts({ profile: "none", send: null, ask: null, screens: [] })).result).toBe("walk-only");
+    expect(judge(facts({ profile: "none", send: null, ask: null, screens: [screen({ free: true })] })).result).toBe("fail");
+  });
+});
