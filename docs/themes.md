@@ -14,7 +14,7 @@ Collie ships four themes, and three of them use every part of a theme file. Each
 light on the left and dark on the right.
 
 - **Collie** is the look the app has always had. It is the default, and picking it takes every theme
-  back off. It names no shape, no look and no palette, so every word of it is `default`.
+  back off. It names no shape, no look and no palette, so every word of it is the default word of its list.
 
   ![The Collie theme on the Dashboard, light and dark.](images/themes/collie-home.png)
 
@@ -26,8 +26,8 @@ light on the left and dark on the right.
 
 - **Daylight** is for direct sun and low vision. Body text is 7:1 or better, borders are stronger, and
   blocked is orange while done is blue, so the two stay apart without red and green. It has round corners,
-  rows as lifted cards on a page that deepens toward the foot, and roomier steps. The terminal draws a
-  vivid, high-contrast palette.
+  rows as lifted cards on a page that shifts toward the foot, darker in light and lighter in dark, and
+  roomier steps. The terminal draws a vivid, high-contrast palette.
 
   ![The Daylight theme on the Dashboard, light and dark.](images/themes/daylight-home.png)
 
@@ -37,8 +37,9 @@ light on the left and dark on the right.
 
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
-The table lists every word each theme uses. A cell that says `default` is today's look. The words are
-explained under [Shape](#shape), [Look](#look) and [Terminal palette](#terminal-palette).
+The table lists every word each theme uses. The first word of each list is today's look: `sharp`, `default`,
+`flat`, `page`, `rules` and `caps`. The words are explained under [Shape](#shape), [Look](#look)
+and [Terminal palette](#terminal-palette).
 
 | | Collie | Nightwatch | Daylight | Harbour |
 | --- | --- | --- | --- | --- |
@@ -70,7 +71,8 @@ that the Typeface card wins: choose another face there and it stays, until you p
 display face of a theme is not part of that card: titles keep it. The
 [typefaces](configure.md#your-own-typefaces) have their own section.
 
-The three faces that come with Nightwatch, Daylight and Harbour ship Latin and Latin Extended only, so Cyrillic and CJK text falls to the system face under those themes (the Collie theme keeps its Cyrillic companion).
+The faces these themes use ship Latin plus Latin Extended-A only, so Cyrillic and CJK text falls to the system
+face under those themes (the Collie theme keeps its Cyrillic companion).
 
 ## Import a theme
 
@@ -82,18 +84,22 @@ Import a `.json` file in the **Theme** card, read the preview, and tap **Apply**
 3. Tap **Apply** to keep the theme and switch to it, or **Cancel** to keep nothing.
 
 A **warning** is a contrast report line, such as "dark: status-blocked chip on card measures 3.9. The floor is
-4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours. A **refusal** means the file broke a rule. Collie lists the causes, keeps nothing, and applies nothing. The list
-shows at most 25 causes. A file is refused for any of these:
+4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours.
+
+A **refusal** means the file broke a rule. Collie lists the causes, keeps nothing, and applies nothing. The
+list shows at most 25 causes, then one line "and N more". A file is refused for any of these:
 
 - It is not a JSON object, or it is over 64 KiB.
 - It sets no colour.
-- It has an unknown key, a version Collie does not read, a value that is not a colour, or a typeface Collie does not ship.
+- It has an unknown key, a version Collie does not read, a value that is not a colour, or a typeface Collie
+  does not ship.
 - A shape word is not on its list, or a number stands where a word goes.
 - It has a `surface` block, a `fonts.display` face or an `ansi` block, and says version 1.
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
-- It would be a ninth imported theme.
+- It would be a ninth imported theme. Collie refuses at the **Import** tap, before you pick a file, and again
+  at **Apply**.
 
 Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
 imported". Remove the old theme first, or change the `id`.
@@ -179,7 +185,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
   of the theme Collie for that token.
 - `fonts.ui` is optional: `system`, `grotesk`, `aldrich`, `plex`, `geist` or `atkinson`.
 - `fonts.display` is optional and takes the same six names. See [Look](#look).
-- `surface` is optional. Every key in it is optional too, and a key you leave out is `default`.
+- `surface` is optional. Every key in it is optional too, and a key you leave out takes the default word of its list.
   See [Shape](#shape) and [Look](#look).
 - `ansi` is optional, and it holds all 18 keys or none. See [Terminal palette](#terminal-palette).
 - `$schema` is allowed and ignored. The file is at most 64 KiB.
@@ -201,8 +207,8 @@ A file says which version it is, and Collie writes the lowest version that holds
   has one of them is refused.
 - A file without those blocks may say either. Collie reads both versions, and an export of a theme with
   colours and `fonts.ui` only says 1.
-- A version 2 file does not import into a Collie older than 1.22.0.
-- A version 1 file means the `default` word for every token of `surface`.
+- A version 2 file needs Collie 1.22.0 or newer.
+- A version 1 file means the default word of each list for every token of `surface`.
 
 ### The 43 tokens
 
@@ -238,7 +244,7 @@ Each half takes any of these, in four groups.
 Five words in the `surface` block set the shape of controls, and each key takes one word from a closed list.
 
 A word is a name, never a number. A free radius or a free spacing step could break the tap floor or make a
-square control a stadium. Every word `default` is the look the app had before version 2.
+square control a stadium. The first word of each list is the look the app had before version 2.
 
 | Key | Word | What it does |
 | --- | --- | --- |
@@ -265,7 +271,8 @@ square control a stadium. Every word `default` is the look the app had before ve
 
 ## Look
 
-Five more keys of the `surface` block and one font key set the look of the page, and they follow the same rule of closed words.
+Five more keys of the `surface` block and one font key set the look of the page. They follow the same rule
+of closed words.
 
 | Key | Word | What it does |
 | --- | --- | --- |
@@ -343,18 +350,21 @@ palette of the terminal. It cannot change anything else.
 
 Your pick is on screen from the first frame. A small script reads it before the app loads, so a shipped theme
 does not flash the default first. An imported theme does the same, with one exception. If a token is set in
-only one half, that token shows the default colour for one frame. The app checks the theme again when it loads. A stored theme that
-fails the check is dropped, the device shows Collie, and the browser console says why. The status bar
+only one half, that token shows the default colour for one frame. The app checks the theme again when it
+loads. A stored theme that fails the check is dropped, the device shows Collie, and the browser console says why. The status bar
 follows the theme's two page colours, or its two band colours when the theme says `chrome: band`.
 
 ## Troubleshooting
+
+These are the problems people meet most, with the cause and the fix for each.
 
 - **A theme shows the default colour on one token.** The file left that token out, or the half. Missing
   tokens come from the theme Collie. Add the token to the half you want.
 - **The face did not change.** A theme writes its face once, when you pick it. If you chose another face in
   **Typeface** afterwards, that choice wins. Pick the face again, or pick the theme again.
-- **A shape word does nothing.** The word may be `default`, or the key may be missing. A key you leave
-  out is `default`. Check the spelling against the tables under [Shape](#shape) and [Look](#look).
+- **A shape word does nothing.** The word may be the default word of its list, or the key may be missing.
+  A key you leave out takes the default word. Check the spelling against the tables under [Shape](#shape)
+  and [Look](#look).
 - **The file is refused and names `ansi`.** A palette holds all 18 keys, in dark space, and each colour
   must pass its gate. The refusal names the key and the number it measured.
 - **The theme is gone after clearing browser data.** Imported themes live in this browser only. Import the

@@ -923,7 +923,7 @@ cannot reach: a small section label wears `label-caps`, a list that follows `row
 **What a theme never reaches.** Layout, tap sizes and row heights as free values (`roomy` is a word, and it
 never goes below the default), motion, the type scale, any other free value, and the meaning of a status:
 its icon and its word stay as the status components draw them. The type scale stays out while the app
-holds 131 arbitrary `text-[Npx]` sizes. The Collie dog in the header, the home-screen icon and the splash
+holds about 130 arbitrary `text-[Npx]` sizes. The Collie dog in the header, the home-screen icon and the splash
 look the same under every theme. The terminal mirror keeps its dark space (§8, ADR 0002) under every
 theme. A version 2 theme may name the mirror's palette and ground, authored in dark space, and the light
 half inverts them with the mirror.

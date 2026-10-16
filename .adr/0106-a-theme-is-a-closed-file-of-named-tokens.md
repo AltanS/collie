@@ -105,14 +105,16 @@ Where it says "version 1" or "never themeable", this amendment is the current ru
 2. **The parser reads versions 1 and 2, and writes the lowest that holds the content.** A theme with a
    `surface` block, a `fonts.display` face or an `ansi` block is version 2. A theme without them is version 1,
    so a colour-only export still opens in a reader that knows version 1 alone. A file that says 1 and holds a
-   version 2 block is refused: the file is older than the block. A version 2 file is not read by a Collie older
-   than 1.22.0. This follows decision 12.
+   version 2 block is refused: the file is older than the block. A version 2 file needs Collie 1.22.0 or newer.
+   This follows decision 12 and amends decision 1: the schema has two versions now.
 3. **The `surface` block holds ten keys, each a closed list of words.** `radius` (sharp, soft, round),
    `shadow` (default, flat, lifted), `density` (default, roomy), `weight` (default, bold), `border` (default,
    strong), `ground` (flat, gradient, grain), `chrome` (page, band), `rows` (rules, cards), `icons` (default,
    thin, heavy) and `labels` (caps, sentence). A key left out is its default word, and every default word is
    today's value, held by a test per token. A word that is not on its list, or a number, is refused with the
-   token named. This amends decision 11: the corner radius is a closed word now. A free value is still not.
+   token named. This amends decision 4, which now refuses a word outside its list and a palette that fails a gate. It
+   amends decision 11 for the corner radius and for spacing (`density`): each is a closed word now. A free
+   value is still not.
 4. **Two more version 2 doors beside `surface`.** `fonts.display` names one of the six shipped faces for
    titles and the header name, and the browser fetches it only when a theme names it. `ansi` holds all 18
    colours of the terminal mirror (slots 0 to 15, `ink`, `ground`) or none, opaque, written in dark space.
@@ -131,14 +133,15 @@ Where it says "version 1" or "never themeable", this amendment is the current ru
    bar on the left under `sharp`, a 2px ring on all four sides under `soft` and `round`. It also sets
    `--edge-shadow`, the soft second layer of the ring. DESIGN.md §13 holds the rule.
 7. **The contrast gate grows with the look.** A gradient or a grain is measured at its far end, a band is
-   measured on `secondary`, and the shipped themes keep every check green. If a colour fails a gate, the colour
+   measured on `secondary`, and the status bar follows `secondary` under `band` (amends decision 9, where it
+   followed the page backgrounds). The shipped themes keep every check green. If a colour fails a gate, the colour
    or the word changes, never the gate.
 8. **The exit test holds.** Collie renders the same pixels as before version 2 (22 of 22 captures at zero
    difference against the parent build), and the perf recap stays flat.
 
 **Known limits.**
 
-- **The type scale is not a token.** The app sets 131 sizes as arbitrary `text-[Npx]` classes, and a scale word
+- **The type scale is not a token.** The app sets about 130 sizes as arbitrary `text-[Npx]` classes, and a scale word
   would leave them behind. The conversion of those sizes to steps is the work of 1.23.0, and a type scale
   waits for it.
 - **Under a gradient the three bars keep the flat page colour.** The header, the tab bar and the bottom bar
