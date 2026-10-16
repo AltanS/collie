@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
 import { SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
-import { SURFACE_DEFAULTS, wordDeclarations } from "@/lib/theme/surface";
+import { SURFACE_DEFAULTS, SURFACE_TOKENS, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -114,6 +114,12 @@ describe("the shipped themes", () => {
     expect(Object.keys(theme.dark ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
     expect(SHIPPED_FONTS).toContain(theme.fonts?.ui);
     expect(theme.author).toBe("Collie");
+  });
+
+  it.each(ids)("%s is version 2 and names a word for every shape token, so an export shows the whole shape", (id) => {
+    const theme = shipped(id);
+    expect(theme.version).toBe(2);
+    expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual([...SURFACE_TOKENS].toSorted());
   });
 
   it.each(ids)("%s passes every check of the contrast report in both halves", (id) => {
@@ -340,11 +346,13 @@ describe("every default shape word is today's CSS", () => {
   });
 
   it("writes no shape line for a shipped file without a surface block, and the words for one with", () => {
-    const files = ["collie", "nightwatch"].map((id) => ({ name: `${id}.json`, raw: read(`src/themes/${id}.json`) }));
-    const plain = buildThemesCss(files);
-    expect(plain.ok && plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-/);
+    // Nightwatch ships with a surface block (spec 15); its version 1 copy is the colour-only case.
     const raw = JSON.parse(read("src/themes/nightwatch.json"));
-    const withSurface = buildThemesCss([files[0] ?? { name: "", raw: "" }, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 2, surface: { radius: "soft", density: "roomy" } }) }]);
+    delete raw.surface;
+    const collieFile = { name: "collie.json", raw: read("src/themes/collie.json") };
+    const plain = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 1 }) }]);
+    expect(plain.ok && plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-/);
+    const withSurface = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 2, surface: { radius: "soft", density: "roomy" } }) }]);
     if (!withSurface.ok) throw new Error(withSurface.errors.join("\n"));
     expect(withSurface.css).toContain("  --radius-md: 6px;\n");
     expect(withSurface.css).toContain("  --spacing: 0.28rem;\n");
