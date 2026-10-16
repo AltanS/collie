@@ -321,6 +321,27 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: undefined,
   },
   {
+    id: "muse",
+    binary: "muse",
+    versionOutput: "Muse Code 1.4.7\n",
+    version: "1.4.7",
+    above: "1.4.8",
+    noRunningRow: true,
+    takes: [
+      { anchor: "top", row: "── Voice input (⌥ + v to start) ────────────────" },
+      { anchor: "top", row: "────────────────────────────────" },
+      { anchor: "prompt", row: "❯" },
+      { anchor: "prompt", row: "❯ hello muse draft", draft: "hello muse draft" },
+      { anchor: "bottom", row: "────────────────────────────────" },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  hello muse draft" },
+      { anchor: "bottom", row: "── Voice input (⌥ + v to start) ────────────────" },
+    ],
+    collapse: { text: "[Image #1]", group: "", value: "" },
+    enterWhileRunning: undefined,
+  },
+  {
     id: "omp",
     binary: "omp",
     versionOutput: "omp/18.6.1\n",
