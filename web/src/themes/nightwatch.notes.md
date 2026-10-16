@@ -99,3 +99,10 @@ on page, card or `muted/60`: light 5.98 (slot 5), dark 6.43 (slot 9).
 - `components/ui/badge.tsx` draws its destructive variant as `bg-destructive text-white`, a literal.
   In dark, white on this red is 2.85; the default theme has the same flaw (2.89). No screen uses
   that variant today. Not a token, so not fixed here.
+
+## Shape (schema version 2)
+
+`radius: sharp`, `shadow: flat`, `density: default`, `weight: bold`, `border: strong`: an instrument
+panel at night. On a true black page a shadow draws nothing, so the edges do the work: every border
+is 2px and the text is one step heavier, which Plex's real bold carries without a fake weight. The
+corners stay at Collie's 2px and the rows keep their size, so the on-call phone shows as much as before.

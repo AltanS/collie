@@ -118,6 +118,36 @@ describe("ThemePickerControl", () => {
     expect(localStorage.getItem(LIBRARY_KEY)).toBeNull();
   });
 
+  it("dresses each chip in its own theme's radius and weight, and collie's in the default words", async () => {
+    const { ThemePickerControl, store } = await load([
+      copy("mine", "Mine", (theme) => {
+        theme.version = 2;
+        theme.surface = { radius: "round", weight: "bold", border: "strong" };
+      }),
+    ]);
+    render(<ThemePickerControl />);
+    const group = screen.getByRole("radiogroup", { name: "Theme" });
+    const boxes = within(group).getAllByTestId("theme-chip-shape");
+    const themes = [...store.shippedThemes(), ...store.library()];
+    expect(boxes).toHaveLength(themes.length);
+    const chipVarsOf = (box: HTMLElement) => ({
+      radius: box.style.getPropertyValue("--radius-md"),
+      weight: box.style.getPropertyValue("--font-weight-medium"),
+      spacing: box.style.getPropertyValue("--spacing"),
+      border: box.style.getPropertyValue("--surface-border-width"),
+    });
+    const byName = new Map(boxes.map((box) => [box.textContent, chipVarsOf(box)]));
+    // Collie: the default words, which are the values the page draws without a theme.
+    expect(byName.get("Collie")).toEqual({ radius: "2px", weight: "500", spacing: "", border: "" });
+    // An imported theme's own words; its border word does not reach the chip.
+    expect(byName.get("Mine")).toEqual({ radius: "12px", weight: "600", spacing: "", border: "" });
+    // The wrapper draws no box, so the chips stay direct flex items of the strip.
+    for (const box of boxes) {
+      expect(box).toHaveClass("contents");
+      expect(within(box).getByRole("radio")).toBeInTheDocument();
+    }
+  });
+
   describe("import", () => {
     it("lists every refusal of a refused file, names the key, and offers only Close", async () => {
       const { ThemePickerControl } = await load();
