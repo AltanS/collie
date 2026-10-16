@@ -373,6 +373,38 @@ describe("runLab, when the run is cut short", () => {
     });
   }
 
+  test("an emergency deletes the run folder before it stops tmux, so a SIGKILL after the SIGTERM leaves no login copy", async () => {
+    const { options, labRoot } = setup();
+    const signals = new FakeSignals();
+    let begin: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      begin = resolve;
+    });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const seen: boolean[] = [];
+    const spy = fakes({
+      async session() {
+        begin();
+        await gate;
+        return session(false);
+      },
+      async stopAll() {
+        // tmux is stopped now: the folder must be gone already.
+        seen.push(existsSync(runRoot(labRoot, "claude", "2.1.301")));
+      },
+    });
+    const running = runLab({ ...options, signals }, spy.ports);
+    await started;
+    expect(existsSync(runRoot(labRoot, "claude", "2.1.301"))).toBe(true);
+    await signals.fire("interrupted by SIGTERM");
+    expect(seen).toEqual([false]);
+    release();
+    await running;
+  });
+
   test("a signal before the claim deletes the folder and writes no row", async () => {
     const { options, labRoot, ledger } = setup();
     const signals = new FakeSignals();

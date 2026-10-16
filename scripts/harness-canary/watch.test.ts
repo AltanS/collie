@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { exitCodeOf, parseCli, pending, runCandidates, type Candidate, type CliOptions } from "./lab/cli";
+import { exitCodeOf, parseCli, pending, runCandidates, sweepAtStart, type Candidate, type CliOptions } from "./lab/cli";
 import { claim, findRow, readLedger, settle } from "./lab/lab-ledger";
 import type { LabPorts, SessionFacts } from "./lab/run";
 import { LabDeferred, LabInfraError } from "./lab/seed";
@@ -229,5 +229,28 @@ describe("the lab command line", () => {
     expect(() => parseCli(["--fake-version", "claude=99.0.0"], "/c", {}, "/home/u")).toThrow(/needs --dry-run/);
     const ok = parseCli(["--fake-version", "claude=99.0.0", "--dry-run", "--no-publish"], "/c", {}, "/home/u");
     expect(ok).toMatchObject({ plan: true, publish: false });
+  });
+
+  test("the start sweep removes a stale run folder and kills a dead server, with no run and in a plan", async () => {
+    for (const plan of [false, true]) {
+      const { cli } = setup({ plan });
+      const old = join(cli.labRoot, "claude-2.1.299");
+      mkdirSync(join(old, "config"), { recursive: true });
+      writeFileSync(join(old, "config", ".credentials.json"), "{}");
+      const aged = new Date(NOW - 10 * 60_000);
+      utimesSync(old, aged, aged);
+      const killed: string[] = [];
+      const live = { isAlive: (pid: number) => pid === 1, servers: () => ["harness-lab-1", "harness-lab-9999"], killServer: async (name: string) => void killed.push(name) };
+      const lines = await sweepAtStart(cli, NOW, live);
+      expect(existsSync(old)).toBe(false);
+      expect(killed).toEqual(["harness-lab-9999"]);
+      expect(lines).toEqual(["sweep: removed the run folder of claude-2.1.299", "sweep: killed the tmux server harness-lab-9999"]);
+    }
+  });
+
+  test("a sweep that throws gives one line and does not stop the lab", async () => {
+    const { cli } = setup();
+    const live = { isAlive: () => false, servers: () => { throw new Error("no /tmp"); }, killServer: async () => {} };
+    expect(await sweepAtStart(cli, NOW, live)).toEqual(["sweep failed: no /tmp"]);
   });
 });

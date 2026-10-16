@@ -16,7 +16,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { compareVersions, driftState, installedVersion, loadLedger as loadVerified } from "../harness-drift";
-import { exitCodeOf, fileNotify, parseCli, pending, repoProblem, runCandidates, stateDirOf, summaryLine, USAGE, type Candidate, type CliOptions } from "./lab/cli";
+import { exitCodeOf, fileNotify, parseCli, pending, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, type Candidate, type CliOptions } from "./lab/cli";
 import { HARNESSES } from "./lab/harnesses";
 import { realPorts } from "./lab/ports";
 
@@ -50,6 +50,8 @@ async function main(): Promise<number> {
     console.log(USAGE.replace("bun scripts/harness-canary/lab/main.ts", "bun scripts/harness-canary/watch.ts"));
     return 0;
   }
+  // Before any plan or run: a night with nothing to run still cleans up what an earlier run left.
+  for (const line of await sweepAtStart(cli)) console.log(line);
   if (!cli.plan) {
     const problem = repoProblem(cli.repo);
     if (problem !== null) {

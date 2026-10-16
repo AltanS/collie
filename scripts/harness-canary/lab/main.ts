@@ -10,7 +10,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { exitCodeOf, fileNotify, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, USAGE, pending, type Candidate } from "./cli";
+import { exitCodeOf, fileNotify, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, pending, type Candidate } from "./cli";
 import { FEEDS, readFeed } from "./feeds";
 import { realPorts } from "./ports";
 import { findRow, loadLedger } from "./lab-ledger";
@@ -29,6 +29,9 @@ async function main(): Promise<number> {
     console.log(USAGE);
     return 0;
   }
+
+  // Before any plan or run: a night with nothing to run still cleans up what an earlier run left.
+  for (const line of await sweepAtStart(cli)) console.log(line);
 
   if (!cli.plan) {
     const problem = repoProblem(cli.repo);

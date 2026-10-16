@@ -4,6 +4,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { realLiveness, sweepLab, type Liveness } from "./sweep";
 import { checkSource, defaultLabRoot, LAB_DIR_ENV } from "./clone";
 import { FEEDS } from "./feeds";
 import { HARNESSES } from "./harnesses";
@@ -239,5 +240,23 @@ export function repoProblem(repo: string): string | null {
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
+  }
+}
+
+/**
+ * The sweep that runs at the start of main.ts and watch.ts, before any plan or run. A night with no new
+ * version, or a `--plan`, still removes the run folders and the tmux servers an earlier run left. Returns
+ * one line per thing it did. It never throws: a sweep that fails must not stop the lab.
+ */
+export async function sweepAtStart(cli: CliOptions, now: number = Date.now(), live: Liveness = realLiveness): Promise<string[]> {
+  try {
+    const done = await sweepLab({ labRoot: cli.labRoot, ledgerPath: cli.ledger, now, live });
+    return [
+      ...done.removed.map((name) => `sweep: removed the run folder of ${name}`),
+      ...done.killed.map((name) => `sweep: killed the tmux server ${name}`),
+      ...done.settled.map((name) => `sweep: ${name} was running and its process is dead, so the row is failed`),
+    ];
+  } catch (err) {
+    return [`sweep failed: ${err instanceof Error ? err.message : String(err)}`];
   }
 }

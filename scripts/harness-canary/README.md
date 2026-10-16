@@ -225,9 +225,11 @@ A refresh inside the lab would rotate the person's real refresh token and could 
 The copy has only the access token. The lab refuses to start when that token has less than 25 minutes left.
 A live Claude session refreshes it.
 
-The copy must never outlive the run. A SIGTERM, a SIGINT or an uncaught error stops the tmux server,
-deletes the run folder and writes a `failed` row. At each start the lab also deletes every run folder
-whose ledger row is not a live `running` row. It kills every `harness-lab-<pid>` tmux server whose process is dead.
+The copy must never outlive the run. A SIGTERM, a SIGINT or an uncaught error deletes the run folder first.
+Then it stops the tmux server and writes a `failed` row. A SIGKILL that follows finds no copy.
+`main.ts` and `watch.ts` also sweep before any plan or run, so a night with no new version still cleans up.
+The sweep deletes every run folder whose ledger row is not a live `running` row.
+It kills every `harness-lab-<pid>` tmux server whose process is dead.
 
 The lab redacts every screen, log line and issue body before it writes it. It removes the home folder, the user name,
 the host name, the account display name, the organization name and e-mail addresses.

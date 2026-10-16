@@ -13,7 +13,7 @@
 //
 // The login copy must never outlive the run. Before step 1 the sweep (sweep.ts) removes the folders and
 // the tmux servers that an earlier run left. During the run a SIGTERM, a SIGINT or an uncaught error
-// stops the tmux server, deletes the run directory and writes a `failed` row, then exits.
+// deletes the run directory first, then stops the tmux server and writes a `failed` row, then exits.
 //
 // Nothing here pushes, and nothing opens an issue unless `openIssue` is set.
 
@@ -172,19 +172,20 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
   const cleanup = (): void => {
     rmSync(dirs.root, { recursive: true, force: true });
   };
-  // An emergency ends the run: tmux stopped, the folder (with the login copy) deleted, the row failed.
+  // An emergency ends the run: the folder (with the login copy) deleted first, then tmux stopped, the row failed.
   let claimed = false;
   let ended = false;
   const emergency = async (reason: string): Promise<void> => {
     if (ended) return;
     ended = true;
     log(`lab ${harness} ${version}: emergency: ${reason}`);
+    // The folder with the login copy goes first. A SIGKILL that follows the SIGTERM may arrive while tmux stops.
+    cleanup();
     try {
       await ports.stopAll();
     } catch {
       // The server may be gone already.
     }
-    cleanup();
     if (claimed) {
       try {
         settle(options.ledgerPath, harness, version, { result: "failed", note: reason });
