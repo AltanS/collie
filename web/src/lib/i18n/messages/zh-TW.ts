@@ -75,7 +75,6 @@ export const zhTW: Dictionary = {
   "theme.refusal.font": "字型選擇無效。",
   "theme.refusal.no-half": "此檔案未設定任何顏色。",
   "theme.refusal.reserved-id": "此識別碼屬於隨附的主題。請變更檔案中的 \"id\" 以匯入您的複本。",
-  "theme.refusal.mark": "標頭標記不是隨附的標記之一。",
 
   // --- settings.haptics ---
   "settings.haptics.title": "觸覺回饋",

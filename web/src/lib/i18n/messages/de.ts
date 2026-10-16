@@ -75,7 +75,6 @@ export const de: Dictionary = {
   "theme.refusal.font": "Die Schriftauswahl ist ungültig.",
   "theme.refusal.no-half": "Die Datei legt keine Farben fest.",
   "theme.refusal.reserved-id": "Diese ID gehört zu einem mitgelieferten Design. Ändern Sie \"id\" in der Datei, um Ihre Kopie zu importieren.",
-  "theme.refusal.mark": "Das Kopfzeilenzeichen ist keines der mitgelieferten Zeichen.",
 
   // --- settings.haptics ---
   "settings.haptics.title": "Haptik",

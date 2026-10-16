@@ -70,7 +70,6 @@ export const it: Dictionary = {
   "theme.refusal.font": "La scelta del carattere non è valida.",
   "theme.refusal.no-half": "Il file non imposta alcun colore.",
   "theme.refusal.reserved-id": "Questo ID appartiene a un tema incluso. Modifichi \"id\" nel file per importare la Sua copia.",
-  "theme.refusal.mark": "Il contrassegno dell'intestazione non è tra i contrassegni inclusi.",
   "settings.haptics.title": "Feedback aptico",
   "settings.haptics.description": "Una breve vibrazione quando premi un tasto o una risposta rapida.",
   "settings.install.title": "Installa l'app",

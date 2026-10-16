@@ -74,7 +74,6 @@ export const ja: Dictionary = {
   "theme.refusal.font": "フォントの選択が無効です。",
   "theme.refusal.no-half": "ファイルで色が設定されていません。",
   "theme.refusal.reserved-id": "このIDは同梱のテーマのものです。ファイルをインポートするには、ファイル内の\"id\"を変更してください。",
-  "theme.refusal.mark": "ヘッダーマークが同梱のマークのいずれでもありません。",
 
   // --- settings.haptics ---
   "settings.haptics.title": "ハプティクス",

@@ -70,7 +70,6 @@ export const fr: Dictionary = {
   "theme.refusal.font": "Le choix de police n'est pas valide.",
   "theme.refusal.no-half": "Le fichier ne définit aucune couleur.",
   "theme.refusal.reserved-id": "Cet identifiant appartient à un thème inclus. Modifiez \"id\" dans le fichier pour importer votre copie.",
-  "theme.refusal.mark": "La marque d'en-tête ne fait pas partie des marques incluses.",
   "settings.haptics.title": "Retour haptique",
   "settings.haptics.description": "Une courte vibration lorsque vous appuyez sur une touche ou une réponse rapide.",
   "settings.install.title": "Installer l'application",

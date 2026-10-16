@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
-import { ThemeMark } from "@/components/theme-mark";
+import { CollieMark } from "@/components/collie-mark";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
 import { t, tn } from "@/lib/i18n";
@@ -251,7 +251,7 @@ export function TourSheet({
         {/* 1. MARK AND CLAIM. The same drawn mark the boot splash uses, so the first thing here is
             the thing the operator just watched bloom. No new asset. */}
         <div className="flex flex-col items-center gap-3 px-2 text-center">
-          <ThemeMark size={64} weight="header" paper="var(--card)" />
+          <CollieMark size={64} weight="header" paper="var(--card)" />
           <h2 className="text-xl font-semibold tracking-tight text-balance">{t("tour.title")}</h2>
           <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">{lead}</p>
         </div>

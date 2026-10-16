@@ -70,7 +70,6 @@ export const tr: Dictionary = {
   "theme.refusal.font": "Yazı tipi seçimi geçerli değil.",
   "theme.refusal.no-half": "Dosya hiçbir renk ayarlamıyor.",
   "theme.refusal.reserved-id": "Bu kimlik, birlikte gelen bir temaya ait. Kendi kopyanızı içe aktarmak için dosyadaki \"id\" değerini değiştirin.",
-  "theme.refusal.mark": "Başlık işareti, birlikte gelen işaretlerden biri değil.",
   "settings.haptics.title": "Dokunsal geri bildirim",
   "settings.haptics.description": "Bir tuşa veya hızlı yanıta bastığınızda kısa bir titreşim.",
   "settings.install.title": "Uygulamayı yükle",

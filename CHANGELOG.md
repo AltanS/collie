@@ -117,6 +117,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Thirteen theme and typeface lines read better in it, ja, ko, ru, zh and zh-TW.** The theming review's corrections after the translation pass.
 - **A pane on a machine that takes no text says so plainly.** The locked field names the two causes, an older Collie or the COLLIE_SEND_PROTOCOL setting, and says the keys still work.
 - **Three composer sentences say what to do.** A contested read points at the Screen pill, a torn read says send again, and the cap sentence names the harness and the Confirm button without blaming the typist.
+- **The header keeps the Collie dog under every theme.** A theme changes the colours and one typeface; the dog in the header, the home-screen icon and the splash look the same under all four themes and under an imported one.
 
 ### Fixed
 

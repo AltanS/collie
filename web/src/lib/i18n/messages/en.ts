@@ -96,7 +96,6 @@ export const en = {
   "theme.refusal.font": "The font choice is not valid.",
   "theme.refusal.no-half": "The file sets no colours.",
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.",
-  "theme.refusal.mark": "The header mark is not one of the shipped marks.",
 
   // --- settings.haptics ---
   "settings.haptics.title": "Haptics",

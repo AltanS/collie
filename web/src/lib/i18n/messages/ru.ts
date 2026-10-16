@@ -72,7 +72,6 @@ export const ru: Dictionary = {
   "theme.refusal.font": "Недопустимый выбор шрифта.",
   "theme.refusal.no-half": "Файл не задает цвета.",
   "theme.refusal.reserved-id": "Этот ID принадлежит встроенной теме. Измените \"id\" в файле, чтобы импортировать свою копию.",
-  "theme.refusal.mark": "Метка заголовка не входит в число встроенных меток.",
   "settings.haptics.title": "Тактильный отклик",
   "settings.haptics.description": "Короткая вибрация при нажатии клавиши или быстрого ответа.",
   "settings.install.title": "Установить приложение",

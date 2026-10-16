@@ -74,7 +74,6 @@ export const es: Dictionary = {
   "theme.refusal.font": "La selección de fuente no es válida.",
   "theme.refusal.no-half": "El archivo no define colores.",
   "theme.refusal.reserved-id": "Este identificador pertenece a un tema incluido. Cambie \"id\" en el archivo para importar su copia.",
-  "theme.refusal.mark": "La marca del encabezado no es una de las marcas incluidas.",
 
   // --- settings.haptics ---
   "settings.haptics.title": "Respuesta háptica",

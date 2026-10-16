@@ -28,7 +28,6 @@ import { setMetaColours, type MetaColours } from "@/hooks/use-theme";
 import { designPrefs, setDesignFont, setDesignTheme, subscribeDesign } from "@/lib/design";
 import { hasDocument } from "@/lib/env";
 import { isShippedFont } from "@/lib/shipped-fonts";
-import type { ShippedMark } from "@/lib/shipped-marks";
 import { parseJsonObject } from "@/lib/json";
 
 import {
@@ -38,7 +37,6 @@ import {
   fillHalves,
   isShippedThemeId,
   lightDark,
-  markOf,
   parseTheme,
   toSrgbHex,
   type Theme,
@@ -62,8 +60,6 @@ export interface ActiveTheme {
   id: string;
   theme: Theme;
   source: ThemeSource;
-  /** The header mark to draw: the theme's `mark`, or the dog when the file names none. */
-  mark: ShippedMark;
 }
 
 // ── The shipped themes ──────────────────────────────────────────────────────────────────────────
@@ -215,11 +211,10 @@ export function activeThemeId(): string {
 function resolveActive(): ActiveTheme {
   const id = activeThemeId();
   const shipped = SHIPPED.get(id);
-  if (shipped !== undefined) return { id, theme: shipped, source: "shipped", mark: markOf(shipped) };
+  if (shipped !== undefined) return { id, theme: shipped, source: "shipped" };
   const entry = imported.find((t) => t.id === id);
-  if (entry !== undefined) return { id, theme: entry, source: "imported", mark: markOf(entry) };
-  const fallback = defaultTheme();
-  return { id: DEFAULT_THEME_ID, theme: fallback, source: "shipped", mark: markOf(fallback) };
+  if (entry !== undefined) return { id, theme: entry, source: "imported" };
+  return { id: DEFAULT_THEME_ID, theme: defaultTheme(), source: "shipped" };
 }
 
 /**

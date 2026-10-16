@@ -1,6 +1,6 @@
 // Reading the Collie mark's state out of the DOM, in one place.
 //
-// `CollieMark` has no "running" class to assert on and no second element to look for. Its <style>
+// <CollieMark/> has no "running" class to assert on and no second element to look for. Its <style>
 // is a module constant shared by every instance on the page (a stylesheet inside an inline SVG is
 // document-scoped), so the whole difference between rest and the bloom is a set of CSS custom
 // properties on the element itself, plus the `cm-live` class that starts the animation. That is
@@ -11,7 +11,7 @@
 // running at all. `cm-live` is what starts the orbit, and it is only ever present while `loading`.
 
 /**
- * The one `CollieMark` inside `root`, or `null`. Identified by the inline stylesheet it carries:
+ * The one <CollieMark/> inside `root`, or `null`. Identified by the inline stylesheet it carries —
  * a lucide icon in the same tree is also an <svg>, and nothing else in the app ships CSS inside one.
  */
 export function collieMark(root: ParentNode): SVGSVGElement | null {

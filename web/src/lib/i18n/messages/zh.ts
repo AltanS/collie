@@ -75,7 +75,6 @@ export const zh: Dictionary = {
   "theme.refusal.font": "字体选择无效。",
   "theme.refusal.no-half": "文件未设置任何颜色。",
   "theme.refusal.reserved-id": "此 ID 属于随附主题。修改文件中的 \"id\" 以导入你的副本。",
-  "theme.refusal.mark": "标头标记不是随附的标记之一。",
 
   // --- settings.haptics ---
   "settings.haptics.title": "触觉反馈",

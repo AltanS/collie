@@ -17,7 +17,6 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../json";
 import { SHIPPED_FONTS } from "../shipped-fonts";
-import { DEFAULT_MARK, SHIPPED_MARKS, isShippedMark, type ShippedMark } from "../shipped-marks";
 
 /** The schema version this build reads. A file with any other `version` is refused. */
 export const THEME_VERSION = 1;
@@ -97,8 +96,6 @@ export interface Theme {
   light?: Half;
   dark?: Half;
   fonts?: { ui: string };
-  /** The header mark the theme draws. Absent means the dog, `collie` (M57 spec 09). */
-  mark?: ShippedMark;
 }
 
 export type RefusalCode =
@@ -111,7 +108,6 @@ export type RefusalCode =
   | "unknown-key"
   | "value"
   | "font"
-  | "mark"
   | "no-half"
   | "reserved-id";
 
@@ -140,7 +136,7 @@ export interface ParseThemeOptions {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const NAME_MAX = 40;
 const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "mark"] as const;
+const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -208,7 +204,6 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const light = readHalf(doc, "light", refusals);
   const dark = readHalf(doc, "dark", refusals);
   const fonts = readFonts(doc, refusals);
-  const mark = readMark(doc, refusals);
 
   if (countTokens(light) + countTokens(dark) === 0 && !hasHalfRefusal(refusals)) {
     refusals.push({
@@ -227,7 +222,6 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   if (countTokens(light) > 0) theme.light = light;
   if (countTokens(dark) > 0) theme.dark = dark;
   if (fonts !== undefined) theme.fonts = fonts;
-  if (mark !== undefined) theme.mark = mark;
   return { ok: true, theme };
 }
 
@@ -380,30 +374,6 @@ function readFonts(doc: JsonObject, refusals: Refusal[]): { ui: string } | undef
     return undefined;
   }
   return { ui: shipped };
-}
-
-/** The mark a theme draws: its own, or the dog when its file names none. */
-export function markOf(theme: Theme): ShippedMark {
-  return theme.mark ?? DEFAULT_MARK;
-}
-
-/** How much of a refused `mark` value the message quotes. */
-const MARK_SHOWN_MAX = 40;
-
-/** The theme's `mark`: one id of the closed list of shipped marks, or absent. */
-function readMark(doc: JsonObject, refusals: Refusal[]): ShippedMark | undefined {
-  if (doc.mark === undefined) return undefined;
-  const value = asJsonString(doc.mark);
-  if (value !== undefined && isShippedMark(value)) return value;
-  // The value is named in the message, cut to a length a row in Settings can show.
-  const named = JSON.stringify(doc.mark);
-  const shown = named.length > MARK_SHOWN_MAX ? `${named.slice(0, MARK_SHOWN_MAX)}...` : named;
-  refusals.push({
-    code: "mark",
-    path: "mark",
-    detail: `The mark ${shown} is not one Collie ships. Use one of: ${SHIPPED_MARKS.join(", ")}.`,
-  });
-  return undefined;
 }
 
 function countTokens(half: Half): number {

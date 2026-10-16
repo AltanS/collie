@@ -153,7 +153,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "themes",
-    purpose: "Pick, import, export and write a theme: colours, one typeface and the header mark",
+    purpose: "Pick, import, export and write a theme: colours and one typeface",
     text: themes,
   },
   {

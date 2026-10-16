@@ -1,7 +1,6 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useRef, useState } from "react";
 import { Palette } from "lucide-react";
 
-import { MARKS } from "@/components/marks";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
@@ -14,13 +13,10 @@ import { hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
   DEFAULT_THEME_ID,
-  THEME_TOKENS,
   contrastReport,
   fillHalves,
-  markOf,
   parseTheme,
   toSrgbHex,
-  type FilledHalves,
   type Finding,
   type Refusal,
   type RefusalCode,
@@ -80,7 +76,6 @@ const REFUSAL_KEYS = {
   font: "theme.refusal.font",
   "no-half": "theme.refusal.no-half",
   "reserved-id": "theme.refusal.reserved-id",
-  mark: "theme.refusal.mark",
 } as const satisfies Record<RefusalCode, MessageKey>;
 
 const HALF_KEYS = {
@@ -201,46 +196,6 @@ function Swatches({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
   );
 }
 
-/** One half's tokens as the custom properties the app reads, on a box that wears that half. */
-function halfStyle(values: FilledHalves["light"], half: "light" | "dark"): CSSProperties {
-  const tokens = Object.fromEntries(
-    THEME_TOKENS.flatMap((token) => {
-      const value = values[token];
-      return value === undefined ? [] : [[`--${token}`, value]];
-    }),
-  );
-  const set = { colorScheme: half, background: "var(--background)", color: "var(--foreground)", ...tokens };
-  // SAFETY: every key is `colorScheme`, `background`, `color` or a CSS custom property, and every
-  // value is a string. React passes unknown style keys straight through to the DOM. The cast exists
-  // only because CSSProperties has no index signature for `--*`; it widens nothing.
-  return set as CSSProperties;
-}
-
-/**
- * The file's own header mark, at rest, once on each half's ground. It is drawn from the registry
- * entry for the FILE's `mark` (the dog when it names none), not through ThemeMark, which reads the
- * active theme. Each box carries its half's tokens, so the mark's ink and accents are the file's.
- * The row is a fixed 56px high (DESIGN.md section 2): no mark makes the sheet taller.
- */
-function MarkRow({ theme }: { theme: Theme }) {
-  const Mark = MARKS[markOf(theme)];
-  const filled = fillHalves(theme, collieTheme());
-  return (
-    <div data-slot="theme-preview-mark" className="grid h-14 grid-cols-2 gap-1">
-      {(["light", "dark"] as const).map((half) => (
-        <div
-          key={half}
-          data-half={half}
-          className="flex h-14 items-center justify-center overflow-hidden rounded-sm border border-border"
-          style={halfStyle(filled[half], half)}
-        >
-          <Mark size={40} weight="header" state="idle" paper="var(--background)" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function failureText(finding: Finding): string {
   return t("theme.preview.contrast.fail", {
     half: t(HALF_KEYS[finding.half]),
@@ -252,9 +207,8 @@ function failureText(finding: Finding): string {
 
 /**
  * What an import would change, before it changes anything: the name and author, which halves the
- * file carries, a swatch row per half, the file's header mark on both grounds, and the contrast
- * report. A failed floor WARNS and Apply stays on; only a refusal, which never reaches this sheet,
- * stops an import.
+ * file carries, a swatch row per half, and the contrast report. A failed floor WARNS and Apply stays
+ * on; only a refusal, which never reaches this sheet, stops an import.
  */
 export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProps) {
   useLocale();
@@ -278,8 +232,6 @@ export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProp
             <Swatches theme={theme} half="light" />
             <Swatches theme={theme} half="dark" />
           </div>
-
-          <MarkRow theme={theme} />
 
           <div className="flex flex-col gap-2">
             {halves !== "both" && (
