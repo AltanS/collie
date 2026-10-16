@@ -375,29 +375,29 @@ export const ja: Dictionary = {
   "composer.noEcho.useType": "入力モードを使用",
   "composer.noEcho.dismissAria": "パスワードプロンプト通知を閉じる",
   "composer.protocol.sent": "送信しました",
-  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
-  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
-  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.held.sending": "Sending now.", // TODO wordsmith
-  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
-  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
-  "composer.held.cancel": "Cancel", // TODO wordsmith
-  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
-  "composer.held.resend": "Resend", // TODO wordsmith
-  "composer.held.resendAria": "Resend the message", // TODO wordsmith
-  "composer.held.dismiss": "Dismiss", // TODO wordsmith
-  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
-  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
-  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
-  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
-  "composer.held.submit": "Submit", // TODO wordsmith
-  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
-  "composer.held.discard": "Discard", // TODO wordsmith
-  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
-  "composer.held.wentOut": "It already went out.", // TODO wordsmith
+  "composer.protocol.queued": "キューに追加されました。現在のターンの終了後にエージェントが処理します。",
+  "composer.protocol.held": "キューに追加されました。ターンが終了すると送信されます。",
+  "composer.protocol.expired": "送信されませんでした。30分以内にターンが終了しませんでした。",
+  "composer.protocol.cancelled": "キャンセルされました。エージェントには何も送信されていません。",
+  "composer.held.queued": "キューに追加されました。ターンが終了すると送信されます。",
+  "composer.held.sending": "送信中。",
+  "composer.held.expired": "送信されませんでした。30分以内にターンが終了しませんでした。",
+  "composer.held.paneGone": "送信されませんでした。ペインが閉じました。",
+  "composer.held.failed": "送信されませんでした。ペインを確認してから再送信してください。",
+  "composer.held.cancel": "キャンセル",
+  "composer.held.cancelAria": "キュー内のメッセージをキャンセル",
+  "composer.held.resend": "再送信",
+  "composer.held.resendAria": "メッセージを再送信",
+  "composer.held.dismiss": "閉じる",
+  "composer.held.dismissAria": "メッセージを閉じる",
+  "composer.held.cancelLate": "現在送信中です。キャンセルが間に合いませんでした。",
+  "composer.held.unknown": "テキストがエージェントに届いた可能性があります。チャットを確認してください。",
+  "composer.held.typed": "入力済み、未送信です。テキストはボックスに残っています。",
+  "composer.held.submit": "送信",
+  "composer.held.submitAria": "ボックス内のテキストを送信",
+  "composer.held.discard": "破棄",
+  "composer.held.discardAria": "ボックス内のテキストを破棄",
+  "composer.held.wentOut": "すでに送信されました。",
   "composer.protocol.discarded": "入力欄からテキストを削除しました。下書きはここに残っています。",
   "composer.protocol.draft": "入力欄にはすでに下書きがあります。追加、置換、またはキャンセルしてください。",
   "composer.protocol.typed": "テキストは入力欄にありますが、Enter は押されていません。送信するか破棄してください。",
@@ -405,7 +405,7 @@ export const ja: Dictionary = {
   "composer.protocol.unknown": "Collieはこれが送信されたかどうかを判断できません。画面を確認し、送信されていなければもう一度送信してください。下書きは保持されています。",
   "composer.protocol.busy": "このペインへの別の送信がまだ実行中です。待ってから再試行してください。",
   "composer.protocol.notFree": "入力欄が空いていません。何も入力していません。",
-  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
+  "composer.protocol.agentBusy": "エージェントが処理中です。完了後に再送信してください。",
   "composer.protocol.bound": "読み取りに必要な時間、画面が静止しませんでした。何も入力されませんでした。やり直してください。",
   "composer.protocol.probeFailed": "入力が入力欄に届かなかったため、何も入力していません。ペインを確認してください。",
   "composer.protocol.reservedLead": "/ ! @ で始まるテキストには専用の経路があります。何も入力していません。",
@@ -423,7 +423,7 @@ export const ja: Dictionary = {
   "composer.protocol.commit": "ここに入力",
   "composer.protocol.keys": "キー",
   "composer.protocol.openKeys": "キーを開く",
-  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
+  "composer.protocol.dismissNotice": "この通知を非表示",
   "composer.protocol.capConfirm": "本日、{harness} {version} でCollieがこの画面を読み取れなかった回数は{count}回です。画面を確認し、「確認して入力」をタップしてください。",
   "composer.protocol.commitCap": "確認して入力",
   "sendReceipts.title": "最近の送信",
@@ -433,10 +433,10 @@ export const ja: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "入力済み、未送信",
   "sendReceipts.outcome.refused": "拒絶",
   "sendReceipts.outcome.unknown": "不明",
-  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
-  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
-  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
-  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
+  "sendReceipts.outcome.held": "キューに追加済み",
+  "sendReceipts.outcome.expired": "期限切れ",
+  "sendReceipts.outcome.cancelled": "キャンセル済み",
+  "sendReceipts.queued": "エージェントのターンの後ろにキュー登録済み",
   "sendReceipts.keys": "キー: {keys}",
   "sendReceipts.noKeys": "キーは送信されませんでした。",
   "sendReceipts.gaps": "待機時間: {gaps}",
@@ -533,18 +533,18 @@ export const ja: Dictionary = {
   "chat.status.askMismatch": "ハイライトが選択項目に達しなかったため、何も確認されませんでした",
   "chat.status.askGone": "ダイアログが消えました。Collieが画面を再度読み取りました",
   "chat.status.askUnknown": "回答が送信された証拠はありません。画面に結果が表示されています",
-  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
-  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
-  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
-  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
-  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
-  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
-  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
+  "chat.status.askDesk": "デスク側で先に応答がありました。Collieはタップを処理しませんでした。",
+  "chat.hold.title": "権限: {tool}",
+  "chat.hold.subagent": "サブエージェントからの確認です。画面上ではなく、このカードで回答してください。",
+  "chat.hold.moreLines": "入力は{count}行あります。枠内をスクロールしてすべて確認してください。",
+  "chat.hold.sent": "送信しました。ツールが実行されると、エージェントが処理を続行します。",
+  "chat.hold.desk": "先にデスク側で回答されました。",
+  "chat.hold.keys": "画面カードのキー操作でこのダイアログに回答しました。",
+  "chat.hold.elsewhere": "別のCollieで回答されました。",
+  "chat.hold.void": "フックが停止しました。画面上のダイアログで回答してください。",
+  "chat.hold.timeout": "保留がタイムアウトしました。画面上のダイアログで回答してください。",
+  "chat.hold.mismatch": "リクエストが変更されました。Collieはフックを解放しました。",
+  "chat.hold.cardMismatch": "このカードは保留中のリクエストではありません。Collieは何も送信しませんでした。",
   "chat.status.sendFailed": "送信失敗",
   "chat.status.wizardChanged": "ウィザードが変更されました。更新中",
   "chat.status.noteSaved": "メモを保存しました",
@@ -633,12 +633,12 @@ export const ja: Dictionary = {
   "ask.notAnswerable": "この確認にはスマートフォンから回答できません。",
   "ask.late": "回答済みです。このカードは次回の更新時に消えます。",
   "ask.notTaken": "受け付けられませんでした。しばらくすると質問が再度表示される場合があります。",
-  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
+  "ask.decidedInProgram": "durable agent内で決定されました。",
   "ask.timedOut": "回答前にタイムアウトしました。",
   "ask.expiresIn": "{time}で期限切れになります",
   "ask.expired": "期限切れ",
   "ask.stale": "この確認の内容が変更されました。もう一度確認してから、回答をタップしてください。",
-  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
+  "ask.stale.older": "このマシンで動作しているCollieが古いため、ここから回答を受け付けることができません。更新するか、durable agent内で回答してください。",
   "ask.unknown": "回答が届いたか確認できませんでした。「再試行」をタップするともう一度送信します。",
   "ask.retry": "再試行",
   "ask.refused": "回答は拒否されました。",
@@ -672,17 +672,17 @@ export const ja: Dictionary = {
   "durable.composer.stopMoved": "会話が進んだため、何も停止されませんでした。確認したうえで、必要であれば再度停止してください。",
   "durable.composer.stopUnknown": "停止が届いたか不明です。「停止」をもう一度タップして再試行してください。",
   "durable.composer.maybe": "すでに送信されている可能性があります。再度送信する前にチャットを確認してください。",
-  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
-  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
-  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
-  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
-  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
+  "durable.protocol.askOpen": "durable agentが質問への回答を待っています。先に回答してから送信してください。",
+  "durable.protocol.notRead": "Collieはこの会話を現在読み取れません。少し経ってから再試行してください。",
+  "durable.protocol.notFree": "durable agentは現在メッセージを受け取れません。チャットを確認してから再送信してください。",
+  "durable.protocol.moved": "表示後にdurable agentが別のターンを開始しました。チャットを確認してから再送信してください。",
+  "durable.protocol.busy": "この会話に対する別の送信または回答がまだ実行中です。少し経ってから再試行してください。",
+  "durable.protocol.paneGone": "この会話は現在durable agentの一覧にありません。",
+  "durable.protocol.writeFailed": "durable agentはメッセージを受け付けませんでした。",
+  "durable.protocol.idReused": "このリクエストIDは別のテキストで使用されました。新しいメッセージとして送信するには[送信]をタップしてください。",
+  "durable.protocol.unknown": "durable agentからメッセージ受付の応答がありませんでした。再送信する前にチャットを確認してください。",
+  "durable.protocol.refused": "Collieはメッセージを送信しませんでした。",
+  "durable.protocol.goToQuestion": "質問へ移動",
   "durable.composer.stopMaybe": "停止はすでに適用されている可能性があります。チャットを確認してください。",
   "durable.composer.stopRefused": "停止は拒否されました。",
   "durable.composer.sending": "送信中…",
@@ -708,7 +708,7 @@ export const ja: Dictionary = {
   "conversations.here": "このペインに表示中",
   "conversations.loadMore": "さらに読み込む",
   "conversations.loading": "読み込み中…",
-  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
+  "conversations.empty": "このdurable agentにはまだ会話がありません。",
   "session.experimental": "試験的機能",
   "space.program.line": "{mux}、{where}",
   "space.program.where.local": "ローカル",
@@ -722,9 +722,9 @@ export const ja: Dictionary = {
   "space.program.open.other": "{count} 件のオープンな会話",
   "space.program.waiting.one": "{count} 件の会話が返答待ちです",
   "space.program.waiting.other": "{count} 件の会話が返答待ちです",
-  "home.programs.title": "Durable agents", // TODO wordsmith
-  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
-  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
+  "home.programs.title": "Durable agents",
+  "conversations.unsupported": "このdurable agentは会話一覧を保持していません。",
+  "conversations.unreachable": "durable agentからの応答がありませんでした。少し経ってから再試行してください。",
   "conversations.loadFailed": "会話を読み込めませんでした。再試行してください。",
   "conversations.gone": "この会話はもう存在しません。",
   "conversations.noItems": "この会話にはまだ項目がありません。",
@@ -734,7 +734,7 @@ export const ja: Dictionary = {
   "conversations.reopenFailed": "会話を再度開けませんでした",
   "home.conversations.asks.one": "{count} 件の未解決の質問",
   "home.conversations.asks.other": "{count} 件の未解決の質問",
-  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
+  "newPage.starters.none": "このマシンのdurable agentにはまだスターターがありません。",
   "newPage.starters.label": "スターター",
   "newPage.starters.title": "新しい会話",
   "prompt.feedback.cancel": "キャンセル",
@@ -761,12 +761,12 @@ export const ja: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "先に設定でこのデバイスの通知を有効にしてください。",
   "paneSettings.cacheWatch.globalOn": "設定によりすべてのペインについて警告されるため、このペインも対象に含まれます。",
   "paneSettings.cacheWatch.noSession": "このペインのエージェントはセッションを指定していないため、監視対象がありません。",
-  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
-  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
-  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
-  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
-  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
+  "paneSettings.hooks.live": "フック: 有効",
+  "paneSettings.hooks.none": "フック: なし",
+  "paneSettings.hooks.liveHint": "このペインからエージェント自体のフックが報告します。Collieは各報告の後に画面を再読み込みします。",
+  "paneSettings.hooks.noneHint": "このペインからのフック報告がないため、Collieは画面のみを読み込みます。フックを追加するには「collie hooks install claude --hold-permissions」を実行してください。",
+  "paneSettings.hooks.holds": "フック: 有効、権限を保留中",
+  "paneSettings.hooks.holdsHint": "このペインからエージェント自体のフックが報告します。権限の許可はここでのタップを待機しており、Collieがキーを送信することはありません。",
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "ペイン",
@@ -1130,7 +1130,7 @@ export const ja: Dictionary = {
   "space.space.titleWithLabel": "スペース {label}",
   "space.space.readOnly": "読み取り専用。このデバイスにはスペースの名前を変更する権限がありません。",
   "space.space.hostBlockSuffix": "{hostBlock}。応答があるまで名前の変更は利用できません。",
-  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
+  "space.space.empty.fallback": "このdurable agentにはスペース用のアクションがありません。",
   "space.space.placeholder": "このスペースに名前を付ける",
   "space.readOnly.notPaired": "未ペアリングです。設定からこの端末をペアリングしてください。",
   "space.readOnly.expired": "ペアリングの期限が切れました。設定から再ペアリングしてください。",
@@ -1187,7 +1187,7 @@ export const ja: Dictionary = {
   "connection.connected": "接続済み",
   "connection.reconnecting": "再接続中…",
   "connection.herdrDown": "ホスト上のHerdrが停止しています",
-  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
+  "connection.tokenRefused": "durable agentがトークンを拒否しました。このピアのCOLLIE_DURABLE_TOKENを確認してください。",
   "connection.offlineCantReach": "オフライン: Collieに接続できません",
   "connection.cantReach": "Collieに接続できません",
   "connection.withLastSeen": "{cause} (最終確認 {time})",
@@ -2148,7 +2148,7 @@ export const ja: Dictionary = {
   "pushTitle.machine.mem": "{machine} のメモリが高い状態です",
   "pushTitle.machine.disk": "{machine} のディスクがいっぱいのままです",
   "pushTitle.ask.permission": "{pane} で権限が必要です",
-  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
+  "pushTitle.ask.flood": "{host}上のdurable agentから多数の要求が発生しています",
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistleは{link}の音声モデルです。",

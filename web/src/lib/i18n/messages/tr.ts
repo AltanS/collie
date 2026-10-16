@@ -318,29 +318,29 @@ export const tr: Dictionary = {
   "composer.noEcho.useType": "Type kullanın",
   "composer.noEcho.dismissAria": "Parola istemi bildirimini kapat",
   "composer.protocol.sent": "Gönderildi",
-  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
-  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
-  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.held.sending": "Sending now.", // TODO wordsmith
-  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
-  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
-  "composer.held.cancel": "Cancel", // TODO wordsmith
-  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
-  "composer.held.resend": "Resend", // TODO wordsmith
-  "composer.held.resendAria": "Resend the message", // TODO wordsmith
-  "composer.held.dismiss": "Dismiss", // TODO wordsmith
-  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
-  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
-  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
-  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
-  "composer.held.submit": "Submit", // TODO wordsmith
-  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
-  "composer.held.discard": "Discard", // TODO wordsmith
-  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
-  "composer.held.wentOut": "It already went out.", // TODO wordsmith
+  "composer.protocol.queued": "Kuyruğa alındı. Ajan bu turdan sonra alacak.",
+  "composer.protocol.held": "Kuyruğa alındı. Tur bittiğinde gönderilir.",
+  "composer.protocol.expired": "Gönderilmedi. Tur 30 dakika içinde bitmedi.",
+  "composer.protocol.cancelled": "İptal edildi. Ajana hiçbir şey iletilmedi.",
+  "composer.held.queued": "Kuyruğa alındı. Tur bittiğinde gönderilir.",
+  "composer.held.sending": "Şimdi gönderiliyor.",
+  "composer.held.expired": "Gönderilmedi. Tur 30 dakika içinde bitmedi.",
+  "composer.held.paneGone": "Gönderilmedi. Bölme kapandı.",
+  "composer.held.failed": "Gönderilmedi. Bölmeyi kontrol edin, ardından tekrar gönderin.",
+  "composer.held.cancel": "İptal",
+  "composer.held.cancelAria": "Kuyruktaki mesajı iptal edin",
+  "composer.held.resend": "Yeniden gönder",
+  "composer.held.resendAria": "Mesajı yeniden gönderin",
+  "composer.held.dismiss": "Kapat",
+  "composer.held.dismissAria": "Mesajı kapatın",
+  "composer.held.cancelLate": "Şimdi iletiliyor. İptal işlemi çok geç geldi.",
+  "composer.held.unknown": "Metin ajana ulaşmış olabilir. Sohbeti okuyun.",
+  "composer.held.typed": "Yazıldı, gönderilmedi. Metin hâlâ kutuda.",
+  "composer.held.submit": "Gönder",
+  "composer.held.submitAria": "Kutudaki metni gönderin",
+  "composer.held.discard": "Sil",
+  "composer.held.discardAria": "Kutudaki metni silin",
+  "composer.held.wentOut": "Zaten iletildi.",
   "composer.protocol.discarded": "Metin kutudan kaldırıldı. Taslağın hâlâ burada.",
   "composer.protocol.draft": "Kutuda zaten bir taslak var. Ekle, değiştir veya iptal et.",
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
@@ -348,7 +348,7 @@ export const tr: Dictionary = {
   "composer.protocol.unknown": "Collie bunun gönderilip gönderilmediğini belirleyemiyor. Ekranı okuyun, gitmediyse tekrar gönderin. Taslağınız saklanır.",
   "composer.protocol.busy": "Bu bölmeye başka bir gönderim hâlâ sürüyor. Bekle ve yeniden dene.",
   "composer.protocol.notFree": "Giriş kutusu boş değil. Hiçbir şey yazılmadı.",
-  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
+  "composer.protocol.agentBusy": "Ajan çalışıyor. İşlem bittiğinde tekrar gönderin.",
   "composer.protocol.bound": "Ekran okunacak kadar uzun süre sabit durmadı. Hiçbir şey yazılmadı. Tekrar deneyin.",
   "composer.protocol.probeFailed": "Yazılan giriş kutusuna ulaşmadı, bu yüzden hiçbir şey yazılmadı. Bölmeyi kontrol et.",
   "composer.protocol.reservedLead": "/ ! veya @ ile başlayan metnin kendi yolu var. Hiçbir şey yazılmadı.",
@@ -366,7 +366,7 @@ export const tr: Dictionary = {
   "composer.protocol.commit": "Buraya yaz",
   "composer.protocol.keys": "Tuşlar",
   "composer.protocol.openKeys": "Tuşları Aç",
-  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
+  "composer.protocol.dismissNotice": "Bu bildirimi gizle",
   "composer.protocol.capConfirm": "Collie, bugün {harness} {version} üzerinde bu ekranı {count} kez okuyamadı. Ekranı kontrol edin, ardından Onayla ve yaz'a dokunun.",
   "composer.protocol.commitCap": "Onayla ve yaz",
   "sendReceipts.title": "Son gönderilenler",
@@ -376,10 +376,10 @@ export const tr: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Yazıldı, gönderilmedi",
   "sendReceipts.outcome.refused": "Reddedildi",
   "sendReceipts.outcome.unknown": "Bilinmiyor",
-  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
-  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
-  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
-  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
+  "sendReceipts.outcome.held": "Kuyruğa alındı",
+  "sendReceipts.outcome.expired": "Süresi doldu",
+  "sendReceipts.outcome.cancelled": "İptal edildi",
+  "sendReceipts.queued": "Ajanın turunun arkasında kuyruğa alındı",
   "sendReceipts.keys": "Tuşlar: {keys}",
   "sendReceipts.noKeys": "Hiçbir tuş gönderilmedi.",
   "sendReceipts.gaps": "Beklendi: {gaps}",
@@ -468,18 +468,18 @@ export const tr: Dictionary = {
   "chat.status.askMismatch": "Vurgu seçiminize ulaşmadı, bu nedenle hiçbir şey onaylanmadı",
   "chat.status.askGone": "İletişim kutusu kapandı; Collie ekranı tekrar okudu",
   "chat.status.askUnknown": "Cevabın gittiğine dair kanıt yok; ekran ne olduğunu gösteriyor",
-  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
-  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
-  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
-  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
-  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
-  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
-  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
+  "chat.status.askDesk": "Önce masa yanıt verdi. Collie dokunmanızı kullanmadı.",
+  "chat.hold.title": "İzin: {tool}",
+  "chat.hold.subagent": "Bir alt ajan soruyor. Ekrandan değil, bu kart üzerinden yanıtlayın.",
+  "chat.hold.moreLines": "Girdi {count} satır içeriyor. Tümünü okumak için kutuyu kaydırın.",
+  "chat.hold.sent": "Gönderildi. Araç çalıştığında ajan devam eder.",
+  "chat.hold.desk": "Önce masa yanıt verdi.",
+  "chat.hold.keys": "Bu iletişim kutusunu ekran kartındaki tuşlar yanıtladı.",
+  "chat.hold.elsewhere": "Başka bir Collie yanıt verdi.",
+  "chat.hold.void": "Kanca durdu. İletişim kutusunu ekrandan yanıtlayın.",
+  "chat.hold.timeout": "Bekletme zaman aşımına uğradı. İletişim kutusunu ekrandan yanıtlayın.",
+  "chat.hold.mismatch": "İstek değişti. Collie kancayı serbest bıraktı.",
+  "chat.hold.cardMismatch": "Bu kart bekletilen istek değil. Collie hiçbir şey göndermedi.",
   "chat.status.sendFailed": "Gönderme başarısız",
   "chat.status.wizardChanged": "Sihirbaz değişti, yenileniyor",
   "chat.status.noteSaved": "Not kaydedildi",
@@ -566,12 +566,12 @@ export const tr: Dictionary = {
   "ask.notAnswerable": "Bu soru telefondan cevaplanamaz.",
   "ask.late": "Zaten cevaplandı. Bu kart sonraki güncellemede kalkar.",
   "ask.notTaken": "Kabul edilmedi. Soru birazdan tekrar gösterilebilir.",
-  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
+  "ask.decidedInProgram": "Kalıcı ajan içinde kararlaştırıldı.",
   "ask.timedOut": "Bir yanıt verilmeden önce zaman aşımına uğradı.",
   "ask.expiresIn": "{time} içinde süresi doluyor",
   "ask.expired": "Süresi doldu",
   "ask.stale": "Bu soru değişti. Yeniden okuyun, ardından bir cevaba dokunun.",
-  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
+  "ask.stale.older": "Bu makine daha eski bir Collie çalıştırıyor ve yanıtları buradan alamaz. Makineyi güncelleyin veya kalıcı ajan içinde yanıtlayın.",
   "ask.unknown": "Cevabın ulaştığından emin olunamadı. Yeniden dene seçeneği cevabı bir kez daha gönderir.",
   "ask.retry": "Yeniden dene",
   "ask.refused": "Cevap reddedildi.",
@@ -605,17 +605,17 @@ export const tr: Dictionary = {
   "durable.composer.stopMoved": "Görüşme ilerledi, bu nedenle hiçbir şey durdurulmadı. Kontrol edin, hâlâ istiyorsanız tekrar durdurun.",
   "durable.composer.stopUnknown": "Durdurmanın ulaştığından emin olunamadı. Bir kez daha denemek için Durdur'a tekrar dokunun.",
   "durable.composer.maybe": "Zaten gönderilmiş olabilir. Tekrar göndermeden önce sohbeti kontrol edin.",
-  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
-  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
-  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
-  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
-  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
+  "durable.protocol.askOpen": "Kalıcı ajan bir soruya yanıt bekliyor. Önce yanıtlayın, ardından gönderin.",
+  "durable.protocol.notRead": "Collie şu anda bu sohbeti okuyamıyor. Birazdan tekrar deneyin.",
+  "durable.protocol.notFree": "Kalıcı ajan şu anda mesaj alamıyor. Sohbeti okuyun, ardından tekrar gönderin.",
+  "durable.protocol.moved": "Kalıcı ajan siz baktıktan sonra başka bir tur başlattı. Sohbeti okuyun, ardından tekrar gönderin.",
+  "durable.protocol.busy": "Bu sohbette başka bir gönderme veya yanıtlama işlemi hâlâ sürüyor. Birazdan tekrar deneyin.",
+  "durable.protocol.paneGone": "Bu sohbet şu anda kalıcı ajanın listesinde yok.",
+  "durable.protocol.writeFailed": "Kalıcı ajan mesajı almadı.",
+  "durable.protocol.idReused": "Bu istek kimliği başka bir metin için kullanıldı. Yeni bir mesaj olarak göndermek için Gönder seçeneğine dokunun.",
+  "durable.protocol.unknown": "Kalıcı ajan mesajı aldığını bildirmedi. Tekrar göndermeden önce sohbeti okuyun.",
+  "durable.protocol.refused": "Collie mesajı göndermedi.",
+  "durable.protocol.goToQuestion": "Soruya git",
   "durable.composer.stopMaybe": "Durdurma zaten uygulanmış olabilir. Sohbeti kontrol edin.",
   "durable.composer.stopRefused": "Durdurma reddedildi.",
   "durable.composer.sending": "Gönderiliyor…",
@@ -641,7 +641,7 @@ export const tr: Dictionary = {
   "conversations.here": "Bu bölmede gösteriliyor",
   "conversations.loadMore": "Daha fazla yükle",
   "conversations.loading": "Yükleniyor…",
-  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
+  "conversations.empty": "Bu kalıcı ajanın henüz bir sohbeti yok.",
   "session.experimental": "Deneysel",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "yerel",
@@ -655,9 +655,9 @@ export const tr: Dictionary = {
   "space.program.open.other": "{count} açık konuşma",
   "space.program.waiting.one": "{count} konuşma sizi bekliyor",
   "space.program.waiting.other": "{count} konuşma sizi bekliyor",
-  "home.programs.title": "Durable agents", // TODO wordsmith
-  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
-  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
+  "home.programs.title": "Kalıcı ajanlar",
+  "conversations.unsupported": "Bu kalıcı ajan sohbetlerinin bir listesini tutmuyor.",
+  "conversations.unreachable": "Kalıcı ajan yanıt vermedi. Birazdan tekrar deneyin.",
   "conversations.loadFailed": "Konuşmalar yüklenemedi. Tekrar deneyin.",
   "conversations.gone": "Bu konuşma artık mevcut değil.",
   "conversations.noItems": "Bu konuşmada henüz öge yok.",
@@ -667,7 +667,7 @@ export const tr: Dictionary = {
   "conversations.reopenFailed": "Konuşma yeniden açılamadı",
   "home.conversations.asks.one": "{count} açık soru",
   "home.conversations.asks.other": "{count} açık soru",
-  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
+  "newPage.starters.none": "Bu makinenin kalıcı ajanı henüz bir başlangıç sunmuyor.",
   "newPage.starters.label": "Başlatıcılar",
   "newPage.starters.title": "Yeni konuşma",
   "prompt.feedback.cancel": "İptal",
@@ -689,12 +689,12 @@ export const tr: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "Önce Ayarlar bölümünden bu cihaz için bildirimleri açın.",
   "paneSettings.cacheWatch.globalOn": "Ayarlar her bölme için uyarı verir, bu nedenle bu bölme kapsam dahilindedir.",
   "paneSettings.cacheWatch.noSession": "Bu bölmenin aracısı hiçbir oturum belirtmiyor, bu nedenle izlenecek bir şey yok.",
-  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
-  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
-  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
-  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
-  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
+  "paneSettings.hooks.live": "Kancalar: etkin",
+  "paneSettings.hooks.none": "Kancalar: yok",
+  "paneSettings.hooks.liveHint": "Ajanın kendi kancaları bu bölmeden bildirir. Collie her bildirimden sonra ekranı tekrar okur.",
+  "paneSettings.hooks.noneHint": "Collie bu bölmeden kanca bildirimi almıyor, bu nedenle ekranı tek başına okur. Eklemek için \"collie hooks install claude --hold-permissions\" komutunu çalıştırın.",
+  "paneSettings.hooks.holds": "Kancalar: etkin, izinleri bekletir",
+  "paneSettings.hooks.holdsHint": "Ajanın kendi kancaları bu bölmeden bildirir. Bir izin burada dokunmanızı bekler ve Collie bunun için hiçbir tuş göndermez.",
   "paneActions.title.fallback": "Bölme",
   "paneActions.settings.label": "Bölme ayarları",
   "paneActions.readOnly": "Salt okunur; bu cihazın bölmeleri yeniden adlandırma veya kapatma yetkisi yok.",
@@ -1043,7 +1043,7 @@ export const tr: Dictionary = {
   "space.space.titleWithLabel": "{label} alanı",
   "space.space.readOnly": "Salt okunur. Bu cihazın alanları yeniden adlandırma yetkisi yok.",
   "space.space.hostBlockSuffix": "{hostBlock}. Yanıt verene kadar yeniden adlandırma kullanılamaz.",
-  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
+  "space.space.empty.fallback": "Bu kalıcı ajan bir alan için hiçbir eylem sunmuyor.",
   "space.space.placeholder": "bu alanı adlandırın",
   "space.readOnly.notPaired": "Eşleşmedi, bu cihazı Ayarlar'da eşleyin",
   "space.readOnly.expired": "Eşleme süresi doldu. Ayarlar'da tekrar eşleyin",
@@ -1086,7 +1086,7 @@ export const tr: Dictionary = {
   "connection.connected": "Bağlandı",
   "connection.reconnecting": "Yeniden bağlanıyor…",
   "connection.herdrDown": "Herdr ana makinede çalışmıyor",
-  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
+  "connection.tokenRefused": "Kalıcı ajan belirteci reddetti. Bu eşteki COLLIE_DURABLE_TOKEN değerini kontrol edin.",
   "connection.offlineCantReach": "Çevrimdışı: Collie'ye ulaşılamıyor",
   "connection.cantReach": "Collie'ye ulaşılamıyor",
   "connection.withLastSeen": "{cause}: son görülme {time}",
@@ -1974,7 +1974,7 @@ export const tr: Dictionary = {
   "pushTitle.machine.mem": "{machine} üzerinde bellek yüksek kalıyor",
   "pushTitle.machine.disk": "{machine} üzerinde disk dolu kalıyor",
   "pushTitle.ask.permission": "{pane} bölmesinde izin gerekiyor",
-  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
+  "pushTitle.ask.flood": "{host} üzerindeki bir kalıcı ajan çok sayıda istek iletiyor",
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle, {link} tarafından geliştirilen bir konuşma modelidir.",

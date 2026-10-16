@@ -364,29 +364,29 @@ export const zhTW: Dictionary = {
   "composer.noEcho.useType": "使用「輸入」模式",
   "composer.noEcho.dismissAria": "關閉密碼提示通知",
   "composer.protocol.sent": "已傳送",
-  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
-  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
-  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.held.sending": "Sending now.", // TODO wordsmith
-  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
-  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
-  "composer.held.cancel": "Cancel", // TODO wordsmith
-  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
-  "composer.held.resend": "Resend", // TODO wordsmith
-  "composer.held.resendAria": "Resend the message", // TODO wordsmith
-  "composer.held.dismiss": "Dismiss", // TODO wordsmith
-  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
-  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
-  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
-  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
-  "composer.held.submit": "Submit", // TODO wordsmith
-  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
-  "composer.held.discard": "Discard", // TODO wordsmith
-  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
-  "composer.held.wentOut": "It already went out.", // TODO wordsmith
+  "composer.protocol.queued": "已排入佇列。代理會在這一輪結束後處理。",
+  "composer.protocol.held": "已排入佇列。在這一輪結束時傳送。",
+  "composer.protocol.expired": "未傳送。這一輪未在 30 分鐘內結束。",
+  "composer.protocol.cancelled": "已取消。沒有任何內容傳送給代理。",
+  "composer.held.queued": "已排入佇列。在這一輪結束時傳送。",
+  "composer.held.sending": "正在傳送。",
+  "composer.held.expired": "未傳送。這一輪未在 30 分鐘內結束。",
+  "composer.held.paneGone": "未傳送。窗格已關閉。",
+  "composer.held.failed": "未傳送。請檢查窗格，然後再試一次。",
+  "composer.held.cancel": "取消",
+  "composer.held.cancelAria": "取消排入佇列的訊息",
+  "composer.held.resend": "重新傳送",
+  "composer.held.resendAria": "重新傳送訊息",
+  "composer.held.dismiss": "關閉",
+  "composer.held.dismissAria": "關閉訊息",
+  "composer.held.cancelLate": "訊息正在送出。取消要求送達得太晚。",
+  "composer.held.unknown": "文字可能已送達代理。請查看聊天內容。",
+  "composer.held.typed": "已輸入，未傳送。文字仍在輸入框中。",
+  "composer.held.submit": "傳送",
+  "composer.held.submitAria": "提交輸入框中的文字",
+  "composer.held.discard": "捨棄",
+  "composer.held.discardAria": "捨棄輸入框中的文字",
+  "composer.held.wentOut": "訊息已經送出。",
   "composer.protocol.discarded": "文字已從輸入框移除。你的草稿仍在這裡。",
   "composer.protocol.draft": "輸入框中已有草稿。可附加、取代或取消。",
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",
@@ -394,7 +394,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.unknown": "Collie 無法判定是否已傳送。請查看螢幕，若未送出請重新傳送。系統會保留您的草稿。",
   "composer.protocol.busy": "此窗格的另一次傳送仍在進行。請稍候再試。",
   "composer.protocol.notFree": "輸入框不空閒。未輸入任何內容。",
-  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
+  "composer.protocol.agentBusy": "代理正在處理中。請在完成後再傳送一次。",
   "composer.protocol.bound": "螢幕靜止的時間不足以進行讀取。未輸入任何內容。請重試。",
   "composer.protocol.probeFailed": "輸入沒有進入輸入框，因此未輸入任何內容。請檢查窗格。",
   "composer.protocol.reservedLead": "以 / ! 或 @ 開頭的文字有自己的通道。未輸入任何內容。",
@@ -412,7 +412,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.commit": "在此輸入",
   "composer.protocol.keys": "按鍵",
   "composer.protocol.openKeys": "開啟按鍵",
-  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
+  "composer.protocol.dismissNotice": "隱藏此通知",
   "composer.protocol.capConfirm": "Collie 今天在 {harness} {version} 上無法讀取此螢幕達 {count} 次。請檢查螢幕，然後輕觸「確認並輸入」。",
   "composer.protocol.commitCap": "確認並輸入",
   "sendReceipts.title": "最近傳送",
@@ -422,10 +422,10 @@ export const zhTW: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "已輸入，未傳送",
   "sendReceipts.outcome.refused": "已拒絕",
   "sendReceipts.outcome.unknown": "未知",
-  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
-  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
-  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
-  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
+  "sendReceipts.outcome.held": "已排入佇列",
+  "sendReceipts.outcome.expired": "已過期",
+  "sendReceipts.outcome.cancelled": "已取消",
+  "sendReceipts.queued": "排在代理當前輪次之後",
   "sendReceipts.keys": "按鍵：{keys}",
   "sendReceipts.noKeys": "未傳送任何按鍵。",
   "sendReceipts.gaps": "已等待：{gaps}",
@@ -522,18 +522,18 @@ export const zhTW: Dictionary = {
   "chat.status.askMismatch": "高亮未移至您的選擇，因此未確認任何內容",
   "chat.status.askGone": "對話方塊已消失；Collie 已重新讀取螢幕",
   "chat.status.askUnknown": "無法證明答案已送出；螢幕顯示了發生情況",
-  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
-  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
-  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
-  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
-  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
-  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
-  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
+  "chat.status.askDesk": "工作台先回應了。Collie 沒有採用你的點按。",
+  "chat.hold.title": "權限：{tool}",
+  "chat.hold.subagent": "子代理提出詢問。請在此卡片上回答，不要在螢幕上回答。",
+  "chat.hold.moreLines": "輸入內容有 {count} 行。捲動方塊以閱讀全部內容。",
+  "chat.hold.sent": "已傳送。工具執行時代理會繼續進行。",
+  "chat.hold.desk": "桌面端已先回答。",
+  "chat.hold.keys": "螢幕卡片上的按鍵已回答此對話方塊。",
+  "chat.hold.elsewhere": "另一個 Collie 已回答。",
+  "chat.hold.void": "Hook 已停止。請在螢幕上的對話方塊回答。",
+  "chat.hold.timeout": "暫留逾時。請在螢幕上的對話方塊回答。",
+  "chat.hold.mismatch": "請求已變更。Collie 已放開該 hook。",
+  "chat.hold.cardMismatch": "此卡片不是暫留的請求。Collie 未傳送任何內容。",
   "chat.status.sendFailed": "傳送失敗",
   "chat.status.wizardChanged": "精靈已變動，正在重新整理",
   "chat.status.noteSaved": "備註已儲存",
@@ -622,12 +622,12 @@ export const zhTW: Dictionary = {
   "ask.notAnswerable": "無法從手機回答此提問。",
   "ask.late": "已回答。此資訊卡將在下次更新時消失。",
   "ask.notTaken": "未被接受。該問題可能稍後會再次出現。",
-  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
+  "ask.decidedInProgram": "已在持久代理中決定。",
   "ask.timedOut": "回答前已逾時。",
   "ask.expiresIn": "{time} 後過期",
   "ask.expired": "已過期",
   "ask.stale": "此提問已變更。請重新閱讀，然後輕觸回答。",
-  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
+  "ask.stale.older": "此機器執行的是較舊版本的 Collie，無法在此接收回答。請更新它，或在持久代理中回答。",
   "ask.unknown": "無法確認回答是否已送達。重試會再傳送一次。",
   "ask.retry": "重試",
   "ask.refused": "回答遭到拒絕。",
@@ -661,17 +661,17 @@ export const zhTW: Dictionary = {
   "durable.composer.stopMoved": "對話已繼續進行，因此未停止任何內容。請先確認對話，若仍需停止可再次執行。",
   "durable.composer.stopUnknown": "無法確認是否已收到停止指令。請再次點選「停止」以重試一次。",
   "durable.composer.maybe": "可能已傳送。再次傳送前請先檢查聊天內容。",
-  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
-  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
-  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
-  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
-  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
+  "durable.protocol.askOpen": "持久代理正在等待問題的回答。請先回答該問題，然後再傳送。",
+  "durable.protocol.notRead": "Collie 目前無法讀取此對話。請稍後再試。",
+  "durable.protocol.notFree": "持久代理目前無法接收訊息。請閱讀聊天內容，然後重新傳送。",
+  "durable.protocol.moved": "持久代理在你查看後開始了另一個回合。請閱讀聊天內容，然後重新傳送。",
+  "durable.protocol.busy": "此對話的另一個傳送或回答仍在執行中。請稍後再試。",
+  "durable.protocol.paneGone": "此對話目前不在持久代理的清單中。",
+  "durable.protocol.writeFailed": "持久代理未接收該訊息。",
+  "durable.protocol.idReused": "此請求識別碼已用於其他文字。輕觸「傳送」以作為新訊息傳送。",
+  "durable.protocol.unknown": "持久代理並未表示已接收該訊息。在重新傳送之前，請先閱讀聊天內容。",
+  "durable.protocol.refused": "Collie 未傳送該訊息。",
+  "durable.protocol.goToQuestion": "前往該問題",
   "durable.composer.stopMaybe": "停止指令可能已生效。請檢查聊天內容。",
   "durable.composer.stopRefused": "停止指令已被拒絕。",
   "durable.composer.sending": "正在傳送…",
@@ -697,7 +697,7 @@ export const zhTW: Dictionary = {
   "conversations.here": "顯示於此窗格",
   "conversations.loadMore": "載入更多",
   "conversations.loading": "載入中…",
-  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
+  "conversations.empty": "此持久代理目前沒有任何對話。",
   "session.experimental": "實驗性功能",
   "space.program.line": "{mux}，{where}",
   "space.program.where.local": "本機",
@@ -711,9 +711,9 @@ export const zhTW: Dictionary = {
   "space.program.open.other": "{count} 個開啟的對話",
   "space.program.waiting.one": "{count} 個對話正在等候您",
   "space.program.waiting.other": "{count} 個對話正在等候您",
-  "home.programs.title": "Durable agents", // TODO wordsmith
-  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
-  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
+  "home.programs.title": "持久代理",
+  "conversations.unsupported": "這個持久代理不會保留其對話清單。",
+  "conversations.unreachable": "持久代理未回答。請稍後再試。",
   "conversations.loadFailed": "無法載入對話。請再試一次。",
   "conversations.gone": "此對話已不存在。",
   "conversations.noItems": "此對話尚無任何項目。",
@@ -723,7 +723,7 @@ export const zhTW: Dictionary = {
   "conversations.reopenFailed": "無法重新開啟對話",
   "home.conversations.asks.one": "{count} 個待解決問題",
   "home.conversations.asks.other": "{count} 個待解決問題",
-  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
+  "newPage.starters.none": "此機器的持久代理目前未提供任何入門項目。",
   "newPage.starters.label": "初學者入門",
   "newPage.starters.title": "新對話",
   "prompt.feedback.cancel": "取消",
@@ -750,12 +750,12 @@ export const zhTW: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "請先在「設定」中開啟此裝置的通知。",
   "paneSettings.cacheWatch.globalOn": "「設定」會針對每個窗格發出警告，因此這個窗格也包含在內。",
   "paneSettings.cacheWatch.noSession": "此窗格的 agent 未指定工作階段名稱，因此沒有可監看的內容。",
-  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
-  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
-  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
-  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
-  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
+  "paneSettings.hooks.live": "Hook：運作中",
+  "paneSettings.hooks.none": "Hook：無",
+  "paneSettings.hooks.liveHint": "代理本身的 hook 會從此窗格回報。Collie 會在每次回報後重新讀取螢幕。",
+  "paneSettings.hooks.noneHint": "Collie 沒有來自此窗格的 hook 回報，因此僅讀取螢幕。執行「collie hooks install claude --hold-permissions」以新增它們。",
+  "paneSettings.hooks.holds": "Hook：運作中，保留權限",
+  "paneSettings.hooks.holdsHint": "代理本身的 hook 會從此窗格回報。權限會在此處等待你輕點，Collie 不會為其傳送按鍵。",
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "窗格",
@@ -1116,7 +1116,7 @@ export const zhTW: Dictionary = {
   "space.space.titleWithLabel": "工作區 {label}",
   "space.space.readOnly": "唯讀。此裝置未獲授權重新命名工作區。",
   "space.space.hostBlockSuffix": "{hostBlock}。在收到回應之前，無法進行重新命名。",
-  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
+  "space.space.empty.fallback": "此持久代理未提供空間的任何動作。",
   "space.space.placeholder": "命名此工作區",
   "space.readOnly.notPaired": "尚未配對，請在設定中配對目前裝置",
   "space.readOnly.expired": "配對已到期，請在設定中重新配對",
@@ -1173,7 +1173,7 @@ export const zhTW: Dictionary = {
   "connection.connected": "已連線",
   "connection.reconnecting": "正在重新連線…",
   "connection.herdrDown": "主機上的 Herdr 服務已停止",
-  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
+  "connection.tokenRefused": "持久代理拒絕了權杖。請檢查此節點上的 COLLIE_DURABLE_TOKEN。",
   "connection.offlineCantReach": "離線：無法存取 Collie",
   "connection.cantReach": "無法連線至 Collie",
   "connection.withLastSeen": "{cause}，最後上線時間：{time}",
@@ -2124,7 +2124,7 @@ export const zhTW: Dictionary = {
   "pushTitle.machine.mem": "{machine} 的記憶體持續偏高",
   "pushTitle.machine.disk": "{machine} 的磁碟持續滿載",
   "pushTitle.ask.permission": "{pane} 需要權限",
-  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
+  "pushTitle.ask.flood": "{host} 上的持久代理提出了許多請求",
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle 是 {link} 的語音模型。",

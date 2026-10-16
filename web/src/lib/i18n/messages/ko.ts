@@ -374,29 +374,29 @@ export const ko: Dictionary = {
   "composer.noEcho.useType": "Type 모드 사용",
   "composer.noEcho.dismissAria": "비밀번호 프롬프트 알림 닫기",
   "composer.protocol.sent": "보냄",
-  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
-  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
-  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.held.sending": "Sending now.", // TODO wordsmith
-  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
-  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
-  "composer.held.cancel": "Cancel", // TODO wordsmith
-  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
-  "composer.held.resend": "Resend", // TODO wordsmith
-  "composer.held.resendAria": "Resend the message", // TODO wordsmith
-  "composer.held.dismiss": "Dismiss", // TODO wordsmith
-  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
-  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
-  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
-  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
-  "composer.held.submit": "Submit", // TODO wordsmith
-  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
-  "composer.held.discard": "Discard", // TODO wordsmith
-  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
-  "composer.held.wentOut": "It already went out.", // TODO wordsmith
+  "composer.protocol.queued": "대기열에 추가되었습니다. 에이전트가 이번 턴이 끝난 후 처리합니다.",
+  "composer.protocol.held": "대기열에 추가되었습니다. 턴이 끝나면 전송됩니다.",
+  "composer.protocol.expired": "전송되지 않았습니다. 30분 이내에 턴이 끝나지 않았습니다.",
+  "composer.protocol.cancelled": "취소되었습니다. 에이전트에 아무것도 전송되지 않았습니다.",
+  "composer.held.queued": "대기열에 추가되었습니다. 턴이 끝나면 전송됩니다.",
+  "composer.held.sending": "지금 전송 중입니다.",
+  "composer.held.expired": "전송되지 않았습니다. 30분 이내에 턴이 끝나지 않았습니다.",
+  "composer.held.paneGone": "전송되지 않았습니다. 창이 닫혔습니다.",
+  "composer.held.failed": "전송되지 않았습니다. 창을 확인한 후 다시 전송하십시오.",
+  "composer.held.cancel": "취소",
+  "composer.held.cancelAria": "대기 중인 메시지 취소",
+  "composer.held.resend": "다시 보내기",
+  "composer.held.resendAria": "메시지 재전송",
+  "composer.held.dismiss": "닫기",
+  "composer.held.dismissAria": "메시지 닫기",
+  "composer.held.cancelLate": "지금 전송 중입니다. 취소 요청이 너무 늦었습니다.",
+  "composer.held.unknown": "텍스트가 에이전트에 전달되었을 수 있습니다. 채팅을 확인하십시오.",
+  "composer.held.typed": "입력되었으나 전송되지 않았습니다. 텍스트가 입력 상자에 남아 있습니다.",
+  "composer.held.submit": "보내기",
+  "composer.held.submitAria": "입력 상자의 텍스트 제출",
+  "composer.held.discard": "삭제",
+  "composer.held.discardAria": "입력 상자의 텍스트 삭제",
+  "composer.held.wentOut": "이미 전송되었습니다.",
   "composer.protocol.discarded": "입력란에서 텍스트를 지웠습니다. 초안은 여기에 남아 있습니다.",
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
   "composer.protocol.typed": "텍스트가 입력란에 있지만 Enter는 누르지 않았습니다. 보내거나 버리세요.",
@@ -404,7 +404,7 @@ export const ko: Dictionary = {
   "composer.protocol.unknown": "Collie가 전송 여부를 확인할 수 없습니다. 화면을 읽은 후 전송되지 않았다면 다시 전송하십시오. 작성 중인 초안은 유지됩니다.",
   "composer.protocol.busy": "이 창으로 보내는 다른 작업이 아직 진행 중입니다. 잠시 후 다시 시도하세요.",
   "composer.protocol.notFree": "입력란이 비어 있지 않습니다. 아무것도 입력하지 않았습니다.",
-  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
+  "composer.protocol.agentBusy": "에이전트가 작업 중입니다. 작업이 끝나면 다시 전송하십시오.",
   "composer.protocol.bound": "화면이 읽을 수 있을 만큼 오래 정지해 있지 않았습니다. 아무것도 입력되지 않았습니다. 다시 시도하십시오.",
   "composer.protocol.probeFailed": "입력이 입력란에 닿지 않아 아무것도 입력하지 않았습니다. 창을 확인하세요.",
   "composer.protocol.reservedLead": "/ ! @ 로 시작하는 텍스트는 따로 처리됩니다. 아무것도 입력하지 않았습니다.",
@@ -422,7 +422,7 @@ export const ko: Dictionary = {
   "composer.protocol.commit": "여기에 입력",
   "composer.protocol.keys": "키",
   "composer.protocol.openKeys": "키 열기",
-  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
+  "composer.protocol.dismissNotice": "이 알림 숨기기",
   "composer.protocol.capConfirm": "오늘 Collie가 {harness} {version}에서 이 화면을 {count}회 읽지 못했습니다. 화면을 확인한 다음 확인 후 입력을 탭하십시오.",
   "composer.protocol.commitCap": "확인 후 입력",
   "sendReceipts.title": "최근 전송",
@@ -432,10 +432,10 @@ export const ko: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "입력됨, 전송되지 않음",
   "sendReceipts.outcome.refused": "거부됨",
   "sendReceipts.outcome.unknown": "알 수 없음",
-  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
-  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
-  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
-  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
+  "sendReceipts.outcome.held": "대기 중",
+  "sendReceipts.outcome.expired": "만료됨",
+  "sendReceipts.outcome.cancelled": "취소됨",
+  "sendReceipts.queued": "에이전트의 턴 뒤에 대기 중",
   "sendReceipts.keys": "키: {keys}",
   "sendReceipts.noKeys": "전송된 키가 없습니다.",
   "sendReceipts.gaps": "대기 시간: {gaps}",
@@ -532,18 +532,18 @@ export const ko: Dictionary = {
   "chat.status.askMismatch": "강조 표시가 선택 항목에 도달하지 않아 아무것도 확인되지 않았습니다.",
   "chat.status.askGone": "대화 상자가 사라졌습니다. Collie가 화면을 다시 읽었습니다.",
   "chat.status.askUnknown": "답변이 전달되었다는 증거가 없습니다. 화면에 발생한 결과가 표시됩니다.",
-  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
-  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
-  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
-  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
-  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
-  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
-  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
+  "chat.status.askDesk": "데스크가 먼저 응답했습니다. Collie가 탭 입력을 반영하지 않았습니다.",
+  "chat.hold.title": "권한: {tool}",
+  "chat.hold.subagent": "하위 에이전트가 질문합니다. 화면이 아닌 이 카드에서 답변하십시오.",
+  "chat.hold.moreLines": "입력 내용이 {count}줄입니다. 상자를 스크롤하여 모두 확인하십시오.",
+  "chat.hold.sent": "전송했습니다. 도구가 실행되면 에이전트가 계속 진행합니다.",
+  "chat.hold.desk": "데스크가 먼저 답변했습니다.",
+  "chat.hold.keys": "화면 카드의 키가 이 대화 상자에 답변했습니다.",
+  "chat.hold.elsewhere": "다른 Collie가 답변했습니다.",
+  "chat.hold.void": "후크가 중지되었습니다. 화면의 대화 상자에서 답변하십시오.",
+  "chat.hold.timeout": "대기 시간이 초과되었습니다. 화면의 대화 상자에서 답변하십시오.",
+  "chat.hold.mismatch": "요청이 변경되었습니다. Collie가 후크를 해제했습니다.",
+  "chat.hold.cardMismatch": "이 카드는 보류된 요청이 아닙니다. Collie가 아무것도 보내지 않았습니다.",
   "chat.status.sendFailed": "전송 실패",
   "chat.status.wizardChanged": "위저드 상태 변경 감지, 새로고침 중",
   "chat.status.noteSaved": "메모 저장 완료",
@@ -632,12 +632,12 @@ export const ko: Dictionary = {
   "ask.notAnswerable": "이 질문에는 휴대폰으로 답변할 수 없습니다.",
   "ask.late": "이미 답변했습니다. 이 카드는 다음 업데이트 시 사라집니다.",
   "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",
-  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
+  "ask.decidedInProgram": "durable agent에서 결정되었습니다.",
   "ask.timedOut": "답변하기 전에 시간이 초과되었습니다.",
   "ask.expiresIn": "{time} 후 만료",
   "ask.expired": "만료됨",
   "ask.stale": "이 질문 내용이 변경되었습니다. 다시 확인한 후 답변을 누르십시오.",
-  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
+  "ask.stale.older": "이 컴퓨터는 이전 버전의 Collie를 실행 중이므로 여기에서 답변을 받을 수 없습니다. 업데이트하거나 durable agent에서 답변하십시오.",
   "ask.unknown": "답변이 도달했는지 확실하지 않습니다. 다시 시도하면 한 번 더 전송합니다.",
   "ask.retry": "다시 시도",
   "ask.refused": "답변이 거절되었습니다.",
@@ -671,17 +671,17 @@ export const ko: Dictionary = {
   "durable.composer.stopMoved": "대화가 계속 진행되어 아무것도 중지되지 않았습니다. 대화를 확인한 후 계속 원하시면 다시 중지하십시오.",
   "durable.composer.stopUnknown": "중지가 전달되었는지 확실하지 않습니다. 한 번 다시 시도하려면 '중지'를 다시 탭하십시오.",
   "durable.composer.maybe": "이미 전송되었을 수 있습니다. 다시 보내기 전에 대화를 확인하십시오.",
-  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
-  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
-  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
-  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
-  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
+  "durable.protocol.askOpen": "durable agent가 질문에 대한 답변을 기다리고 있습니다. 먼저 답변한 다음 전송하십시오.",
+  "durable.protocol.notRead": "Collie가 지금은 이 대화를 읽을 수 없습니다. 잠시 후 다시 시도하십시오.",
+  "durable.protocol.notFree": "durable agent가 지금은 메시지를 받을 수 없습니다. 채팅을 확인한 후 다시 전송하십시오.",
+  "durable.protocol.moved": "확인한 후 durable agent가 다른 턴을 시작했습니다. 채팅을 확인한 후 다시 전송하십시오.",
+  "durable.protocol.busy": "이 대화에서 다른 전송이나 답변이 아직 실행 중입니다. 잠시 후 다시 시도하십시오.",
+  "durable.protocol.paneGone": "이 대화는 현재 durable agent의 목록에 없습니다.",
+  "durable.protocol.writeFailed": "durable agent가 메시지를 받지 않았습니다.",
+  "durable.protocol.idReused": "이 요청 ID는 다른 텍스트에 사용되었습니다. 새 메시지로 보내려면 전송을 탭하십시오.",
+  "durable.protocol.unknown": "durable agent가 메시지를 받았다고 표시하지 않았습니다. 다시 보내기 전에 채팅을 확인하십시오.",
+  "durable.protocol.refused": "Collie가 메시지를 보내지 않았습니다.",
+  "durable.protocol.goToQuestion": "질문으로 이동",
   "durable.composer.stopMaybe": "중지가 이미 적용되었을 수 있습니다. 대화를 확인하십시오.",
   "durable.composer.stopRefused": "중지가 거부되었습니다.",
   "durable.composer.sending": "전송 중…",
@@ -707,7 +707,7 @@ export const ko: Dictionary = {
   "conversations.here": "이 창에 표시됨",
   "conversations.loadMore": "더 불러오기",
   "conversations.loading": "불러오는 중…",
-  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
+  "conversations.empty": "이 durable agent에는 아직 대화가 없습니다.",
   "session.experimental": "실험적 기능",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "로컬",
@@ -721,9 +721,9 @@ export const ko: Dictionary = {
   "space.program.open.other": "열린 대화 {count}개",
   "space.program.waiting.one": "대기 중인 대화 {count}개",
   "space.program.waiting.other": "대기 중인 대화 {count}개",
-  "home.programs.title": "Durable agents", // TODO wordsmith
-  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
-  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
+  "home.programs.title": "Durable agents",
+  "conversations.unsupported": "이 durable agent는 대화 목록을 유지하지 않습니다.",
+  "conversations.unreachable": "durable agent가 응답하지 않았습니다. 잠시 후 다시 시도하십시오.",
   "conversations.loadFailed": "대화를 불러올 수 없습니다. 다시 시도하십시오.",
   "conversations.gone": "이 대화는 더 이상 존재하지 않습니다.",
   "conversations.noItems": "이 대화에는 아직 항목이 없습니다.",
@@ -733,7 +733,7 @@ export const ko: Dictionary = {
   "conversations.reopenFailed": "대화를 다시 열 수 없습니다",
   "home.conversations.asks.one": "열린 질문 {count}개",
   "home.conversations.asks.other": "열린 질문 {count}개",
-  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
+  "newPage.starters.none": "이 컴퓨터의 durable agent는 아직 시작 도구를 제공하지 않습니다.",
   "newPage.starters.label": "시작 항목",
   "newPage.starters.title": "새 대화",
   "prompt.feedback.cancel": "취소",
@@ -760,12 +760,12 @@ export const ko: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "먼저 설정에서 이 기기의 알림을 켜십시오.",
   "paneSettings.cacheWatch.globalOn": "설정에서 모든 창에 대해 경고하므로 이 창도 포함됩니다.",
   "paneSettings.cacheWatch.noSession": "이 창의 에이전트가 세션을 지정하지 않으므로 주시할 대상이 없습니다.",
-  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
-  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
-  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
-  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
-  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
+  "paneSettings.hooks.live": "훅: 활성",
+  "paneSettings.hooks.none": "훅: 없음",
+  "paneSettings.hooks.liveHint": "에이전트 자체 훅이 이 창에서 보고합니다. Collie는 각 보고 후에 화면을 다시 읽습니다.",
+  "paneSettings.hooks.noneHint": "Collie가 이 창에서 받은 훅 보고가 없으므로 화면만 읽습니다. 훅을 추가하려면 \"collie hooks install claude --hold-permissions\"를 실행하십시오.",
+  "paneSettings.hooks.holds": "훅: 활성, 권한 보류",
+  "paneSettings.hooks.holdsHint": "에이전트 자체 훅이 이 창에서 보고합니다. 권한 승인은 사용자의 탭 입력을 기다리며, Collie는 이에 대해 키를 전송하지 않습니다.",
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "창",
@@ -1129,7 +1129,7 @@ export const ko: Dictionary = {
   "space.space.titleWithLabel": "스페이스 {label}",
   "space.space.readOnly": "읽기 전용. 이 기기는 스페이스의 이름을 변경할 권한이 없습니다.",
   "space.space.hostBlockSuffix": "{hostBlock}. 응답할 때까지 이름 변경을 사용할 수 없습니다.",
-  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
+  "space.space.empty.fallback": "이 durable agent는 스페이스에 대한 작업을 제공하지 않습니다.",
   "space.space.placeholder": "이 스페이스 이름 지정",
   "space.readOnly.notPaired": "미연결 상태입니다. 설정에서 기기를 연결하십시오.",
   "space.readOnly.expired": "페어링이 만료되었습니다. 설정에서 다시 연결하십시오.",
@@ -1186,7 +1186,7 @@ export const ko: Dictionary = {
   "connection.connected": "연결됨",
   "connection.reconnecting": "재연결 중…",
   "connection.herdrDown": "호스트의 Herdr 프로세스가 중단되었습니다.",
-  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
+  "connection.tokenRefused": "durable agent가 토큰을 거부했습니다. 이 피어에서 COLLIE_DURABLE_TOKEN을 확인하십시오.",
   "connection.offlineCantReach": "오프라인. Collie에 접근할 수 없습니다.",
   "connection.cantReach": "Collie에 접근할 수 없습니다.",
   "connection.withLastSeen": "{cause}. 마지막 확인 시각: {time}",
@@ -2141,7 +2141,7 @@ export const ko: Dictionary = {
   "pushTitle.machine.mem": "{machine}의 메모리가 계속 높음",
   "pushTitle.machine.disk": "{machine}의 디스크가 계속 가득 참",
   "pushTitle.ask.permission": "{pane} 창에 권한 필요",
-  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
+  "pushTitle.ask.flood": "{host}의 durable agent가 많은 요청을 생성하고 있습니다",
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle은 {link}의 음성 모델입니다.",

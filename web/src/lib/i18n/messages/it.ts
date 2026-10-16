@@ -318,29 +318,29 @@ export const it: Dictionary = {
   "composer.noEcho.useType": "Usa Digita",
   "composer.noEcho.dismissAria": "Ignora avviso di richiesta password",
   "composer.protocol.sent": "Inviato",
-  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
-  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
-  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
-  "composer.held.sending": "Sending now.", // TODO wordsmith
-  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
-  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
-  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
-  "composer.held.cancel": "Cancel", // TODO wordsmith
-  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
-  "composer.held.resend": "Resend", // TODO wordsmith
-  "composer.held.resendAria": "Resend the message", // TODO wordsmith
-  "composer.held.dismiss": "Dismiss", // TODO wordsmith
-  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
-  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
-  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
-  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
-  "composer.held.submit": "Submit", // TODO wordsmith
-  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
-  "composer.held.discard": "Discard", // TODO wordsmith
-  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
-  "composer.held.wentOut": "It already went out.", // TODO wordsmith
+  "composer.protocol.queued": "In coda. L'agente lo prende dopo questo turno.",
+  "composer.protocol.held": "In coda. Viene inviato al termine del turno.",
+  "composer.protocol.expired": "Non inviato. Il turno non è terminato entro 30 minuti.",
+  "composer.protocol.cancelled": "Annullato. All'agente non è arrivato nulla.",
+  "composer.held.queued": "In coda. Viene inviato al termine del turno.",
+  "composer.held.sending": "Invio in corso.",
+  "composer.held.expired": "Non inviato. Il turno non è terminato entro 30 minuti.",
+  "composer.held.paneGone": "Non inviato. Il riquadro si è chiuso.",
+  "composer.held.failed": "Non inviato. Controlla il riquadro, poi invia di nuovo.",
+  "composer.held.cancel": "Annulla",
+  "composer.held.cancelAria": "Annulla il messaggio in coda",
+  "composer.held.resend": "Invia di nuovo",
+  "composer.held.resendAria": "Invia di nuovo il messaggio",
+  "composer.held.dismiss": "Ignora",
+  "composer.held.dismissAria": "Ignora il messaggio",
+  "composer.held.cancelLate": "Invio in corso. L'annullamento è arrivato troppo tardi.",
+  "composer.held.unknown": "Il testo potrebbe aver raggiunto l'agente. Leggi la chat.",
+  "composer.held.typed": "Digitato, non inviato. Il testo è ancora nel riquadro.",
+  "composer.held.submit": "Invia",
+  "composer.held.submitAria": "Invia il testo nel riquadro",
+  "composer.held.discard": "Scarta",
+  "composer.held.discardAria": "Scarta il testo nel riquadro",
+  "composer.held.wentOut": "È già stato inviato.",
   "composer.protocol.discarded": "Il testo è stato tolto dal campo. La tua bozza è ancora qui.",
   "composer.protocol.draft": "Il campo contiene già una bozza. Aggiungi, sostituisci o annulla.",
   "composer.protocol.typed": "Il tuo testo è nel campo, ma Invio non è stato premuto. Invialo o scartalo.",
@@ -348,7 +348,7 @@ export const it: Dictionary = {
   "composer.protocol.unknown": "Collie non può determinare se l'invio è avvenuto. Legga lo schermo, quindi invii di nuovo se l'operazione non è riuscita. La Sua bozza viene conservata.",
   "composer.protocol.busy": "Un altro invio a questo riquadro è ancora in corso. Attendi e riprova.",
   "composer.protocol.notFree": "Il campo di input non è libero. Non è stato scritto nulla.",
-  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
+  "composer.protocol.agentBusy": "L'agente sta lavorando. Invia di nuovo quando ha finito.",
   "composer.protocol.bound": "Lo schermo non è rimasto fermo abbastanza a lungo per la lettura. Non è stato digitato nulla. Riprovi.",
   "composer.protocol.probeFailed": "La scrittura non è arrivata nel campo, quindi non è stato scritto nulla. Controlla il riquadro.",
   "composer.protocol.reservedLead": "Un testo che inizia con / ! o @ ha un suo percorso. Non è stato scritto nulla.",
@@ -366,7 +366,7 @@ export const it: Dictionary = {
   "composer.protocol.commit": "Scrivi qui",
   "composer.protocol.keys": "Tasti",
   "composer.protocol.openKeys": "Apri i tasti",
-  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
+  "composer.protocol.dismissNotice": "Nascondi questo avviso",
   "composer.protocol.capConfirm": "Oggi Collie non è riuscito a leggere questo schermo su {harness} {version} per {count} volte. Verifichi lo schermo, poi tocchi Conferma e digita.",
   "composer.protocol.commitCap": "Conferma e digita",
   "sendReceipts.title": "Invii recenti",
@@ -376,10 +376,10 @@ export const it: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Digitato, non inviato",
   "sendReceipts.outcome.refused": "Rifiutato",
   "sendReceipts.outcome.unknown": "Sconosciuto",
-  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
-  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
-  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
-  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
+  "sendReceipts.outcome.held": "In coda",
+  "sendReceipts.outcome.expired": "Scaduto",
+  "sendReceipts.outcome.cancelled": "Annullato",
+  "sendReceipts.queued": "In coda dietro al turno dell'agente",
   "sendReceipts.keys": "Tasti: {keys}",
   "sendReceipts.noKeys": "Nessun tasto inviato.",
   "sendReceipts.gaps": "Attesa: {gaps}",
@@ -468,18 +468,18 @@ export const it: Dictionary = {
   "chat.status.askMismatch": "L'evidenziazione non ha raggiunto la Sua scelta, pertanto nulla è stato confermato",
   "chat.status.askGone": "La finestra di dialogo non è più presente; Collie ha letto nuovamente lo schermo",
   "chat.status.askUnknown": "Nessuna prova dell'invio della risposta; lo schermo mostra l'esito",
-  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
-  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
-  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
-  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
-  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
-  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
-  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
-  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
+  "chat.status.askDesk": "La scrivania ha risposto per prima. Collie non ha usato il tuo tocco.",
+  "chat.hold.title": "Permesso: {tool}",
+  "chat.hold.subagent": "Un subagente chiede qualcosa. Rispondi su questa scheda, non sullo schermo.",
+  "chat.hold.moreLines": "L'input ha {count} righe. Scorri il riquadro per leggerle tutte.",
+  "chat.hold.sent": "Inviato. L'agente continua quando il tool viene eseguito.",
+  "chat.hold.desk": "La scrivania ha risposto per prima.",
+  "chat.hold.keys": "I tasti sulla scheda dello schermo hanno risposto a questa finestra di dialogo.",
+  "chat.hold.elsewhere": "Un altro Collie ha risposto.",
+  "chat.hold.void": "L'hook si è interrotto. Rispondi alla finestra di dialogo sullo schermo.",
+  "chat.hold.timeout": "L'attesa è scaduta. Rispondi alla finestra di dialogo sullo schermo.",
+  "chat.hold.mismatch": "La richiesta è cambiata. Collie ha rilasciato l'hook.",
+  "chat.hold.cardMismatch": "Questa scheda non è la richiesta in attesa. Collie non ha inviato nulla.",
   "chat.status.sendFailed": "Invio non riuscito",
   "chat.status.wizardChanged": "Procedura guidata modificata: aggiornamento in corso",
   "chat.status.noteSaved": "Nota salvata",
@@ -566,12 +566,12 @@ export const it: Dictionary = {
   "ask.notAnswerable": "Non è possibile rispondere a questa richiesta dal telefono.",
   "ask.late": "Risposta già inviata. Questa scheda scompare al prossimo aggiornamento.",
   "ask.notTaken": "Non accettata. La domanda potrebbe essere mostrata di nuovo tra poco.",
-  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
+  "ask.decidedInProgram": "Deciso nell'agente durevole.",
   "ask.timedOut": "Scaduto prima di una risposta.",
   "ask.expiresIn": "Scade tra {time}",
   "ask.expired": "Scaduto",
   "ask.stale": "Questa richiesta è cambiata. La rilegga, poi tocchi una risposta.",
-  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
+  "ask.stale.older": "Questa macchina esegue una versione precedente di Collie e non può ricevere risposte qui. Aggiornala o rispondi nell'agente durevole.",
   "ask.unknown": "Non è certo che la risposta sia arrivata. Riprova la invia ancora una volta.",
   "ask.retry": "Riprova",
   "ask.refused": "La risposta è stata rifiutata.",
@@ -605,17 +605,17 @@ export const it: Dictionary = {
   "durable.composer.stopMoved": "La conversazione è proseguita, quindi nulla è stato interrotto. La controlli, poi interrompa di nuovo se lo desidera ancora.",
   "durable.composer.stopUnknown": "Non è certo che l'interruzione sia arrivata. Tocchi di nuovo Interrompi per riprovare una volta.",
   "durable.composer.maybe": "Potrebbe essere già stato inviato. Controlli la chat prima di inviare di nuovo.",
-  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
-  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
-  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
-  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
-  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
+  "durable.protocol.askOpen": "L'agente durevole attende una risposta a una domanda. Rispondi prima alla domanda, poi invia.",
+  "durable.protocol.notRead": "Collie non può leggere questa conversazione adesso. Riprova tra poco.",
+  "durable.protocol.notFree": "L'agente durevole non può ricevere un messaggio adesso. Leggi la chat, poi invia di nuovo.",
+  "durable.protocol.moved": "L'agente durevole ha iniziato un altro turno dopo che hai guardato. Leggi la chat, poi invia di nuovo.",
+  "durable.protocol.busy": "Un altro invio o un'altra risposta in questa conversazione è ancora in corso. Riprova tra poco.",
+  "durable.protocol.paneGone": "Questa conversazione non è attualmente nell'elenco dell'agente durevole.",
+  "durable.protocol.writeFailed": "L'agente durevole non ha ricevuto il messaggio.",
+  "durable.protocol.idReused": "Questo ID richiesta è stato usato per un altro testo. Tocca Invia per inviarlo come nuovo messaggio.",
+  "durable.protocol.unknown": "L'agente durevole non ha confermato la ricezione del messaggio. Leggi la chat prima di inviarlo di nuovo.",
+  "durable.protocol.refused": "Collie non ha inviato il messaggio.",
+  "durable.protocol.goToQuestion": "Vai alla domanda",
   "durable.composer.stopMaybe": "L'interruzione potrebbe essere già stata applicata. Controlli la chat.",
   "durable.composer.stopRefused": "L'interruzione è stata rifiutata.",
   "durable.composer.sending": "Invio in corso…",
@@ -641,7 +641,7 @@ export const it: Dictionary = {
   "conversations.here": "Mostrato in questo riquadro",
   "conversations.loadMore": "Carica altri",
   "conversations.loading": "Caricamento in corso…",
-  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
+  "conversations.empty": "Questo agente durevole non ha ancora conversazioni.",
   "session.experimental": "Sperimentale",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "locale",
@@ -655,9 +655,9 @@ export const it: Dictionary = {
   "space.program.open.other": "{count} conversazioni aperte",
   "space.program.waiting.one": "{count} conversazione attende una Sua risposta",
   "space.program.waiting.other": "{count} conversazioni attendono una Sua risposta",
-  "home.programs.title": "Durable agents", // TODO wordsmith
-  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
-  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
+  "home.programs.title": "Agenti durevoli",
+  "conversations.unsupported": "Questo agente durevole non conserva un elenco delle sue conversazioni.",
+  "conversations.unreachable": "L'agente durevole non ha risposto. Riprova tra poco.",
   "conversations.loadFailed": "Impossibile caricare le conversazioni. Riprovi.",
   "conversations.gone": "Questa conversazione non esiste più.",
   "conversations.noItems": "Questa conversazione non contiene ancora elementi.",
@@ -667,7 +667,7 @@ export const it: Dictionary = {
   "conversations.reopenFailed": "Impossibile riaprire la conversazione",
   "home.conversations.asks.one": "{count} domanda aperta",
   "home.conversations.asks.other": "{count} domande aperte",
-  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
+  "newPage.starters.none": "L'agente durevole di questa macchina non offre ancora elementi di avvio.",
   "newPage.starters.label": "Elementi di avvio",
   "newPage.starters.title": "Nuova conversazione",
   "prompt.feedback.cancel": "Annulla",
@@ -689,12 +689,12 @@ export const it: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "Attiva prima le notifiche per questo dispositivo nelle Impostazioni.",
   "paneSettings.cacheWatch.globalOn": "Le Impostazioni avvisano per ogni riquadro, quindi questo è coperto.",
   "paneSettings.cacheWatch.noSession": "L'agente di questo riquadro non indica sessioni, nulla da monitorare.",
-  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
-  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
-  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
-  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
-  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
+  "paneSettings.hooks.live": "Hook: attivi",
+  "paneSettings.hooks.none": "Hook: nessuno",
+  "paneSettings.hooks.liveHint": "Gli hook dell'agente inviano report da questo riquadro. Collie legge di nuovo lo schermo dopo ogni report.",
+  "paneSettings.hooks.noneHint": "Collie non riceve report dagli hook da questo riquadro, quindi legge lo schermo da solo. Esegui \"collie hooks install claude --hold-permissions\" per aggiungerli.",
+  "paneSettings.hooks.holds": "Hook: attivi, blocca i permessi",
+  "paneSettings.hooks.holdsHint": "Gli hook dell'agente inviano report da questo riquadro. Un permesso attende un tuo tocco qui, e Collie non invia alcun tasto per confermarlo.",
   "paneActions.title.fallback": "Riquadro",
   "paneActions.settings.label": "Impostazioni riquadro",
   "paneActions.readOnly": "Sola lettura: dispositivo non autorizzato a rinominare o chiudere riquadri.",
@@ -1043,7 +1043,7 @@ export const it: Dictionary = {
   "space.space.titleWithLabel": "Spazio {label}",
   "space.space.readOnly": "Sola lettura. Questo dispositivo non è autorizzato a rinominare gli spazi.",
   "space.space.hostBlockSuffix": "{hostBlock}. Rinomina non è disponibile finché non risponde.",
-  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
+  "space.space.empty.fallback": "Questo agente durevole non offre azioni per uno spazio.",
   "space.space.placeholder": "assegna un nome a questo spazio",
   "space.readOnly.notPaired": "Non associato: associa questo dispositivo in Impostazioni",
   "space.readOnly.expired": "Associazione scaduta. Associa di nuovo in Impostazioni",
@@ -1086,7 +1086,7 @@ export const it: Dictionary = {
   "connection.connected": "Connesso",
   "connection.reconnecting": "Riconnessione…",
   "connection.herdrDown": "Herdr non è attivo sull'host",
-  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
+  "connection.tokenRefused": "L'agente durevole ha rifiutato il token. Controlla COLLIE_DURABLE_TOKEN su questo peer.",
   "connection.offlineCantReach": "Offline: impossibile raggiungere Collie",
   "connection.cantReach": "Impossibile raggiungere Collie",
   "connection.withLastSeen": "{cause} - ultimo avvistamento: {time}",
@@ -1974,7 +1974,7 @@ export const it: Dictionary = {
   "pushTitle.machine.mem": "Memoria sempre alta su {machine}",
   "pushTitle.machine.disk": "Disco sempre pieno su {machine}",
   "pushTitle.ask.permission": "Autorizzazione necessaria in {pane}",
-  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
+  "pushTitle.ask.flood": "Un agente durevole su {host} sta inviando molte richieste",
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle è un modello vocale di {link}.",

@@ -138,6 +138,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The eleven translations carry every 1.22.0 string.** The held send rows, the held permission card, the durable agent sentences and the hook settings speak the eleven languages; the section is called Durable Agents, Agentes duraderos, Agents durables, Agenti durevoli, Agentes duráveis, Kalıcı ajanlar, 持久代理, and Durable agents in Japanese, Korean and Russian.
 - **Collie calls an attached durable program a durable agent in the app, the docs and the help.** The API channel keeps the value `program`.
 - **A release tag stops when an installed agent is newer than its verified version.** `scripts/check-tag.sh` runs `harness-drift.ts --strict` before it prints the tag command. `--accept-drift claude=2.1.301` names a drift on purpose. The version must be the installed one. The tag message and the release page then carry a "Not verified" heading. One sentence under it names the agent and the version. The gate is a reminder. It sees only the agents installed on the machine. Carries M44 spec 08 (M56 spec 10).
 - **The eleven languages carry every 1.22.0 string.** The Durable agents section, the ask receipts, the Theme card, the typeface notes and the composer's Send Protocol sentences are translated; the Appearance card has its own word.
