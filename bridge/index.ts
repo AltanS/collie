@@ -214,6 +214,7 @@ import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
+import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
@@ -1237,6 +1238,8 @@ interface BuiltAdapter {
   readonly adapter: MuxAdapter;
   readonly target: MuxTarget;
   readonly probe?: ProgramProbe;
+  /** A program's structured state and its two writes, for the structured driver (M56 spec 14). */
+  readonly structured?: ProgramPort;
 }
 
 /** The adapter for one terminal session, exactly as every session was built before programs. */
@@ -1259,7 +1262,7 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   const logDir = sourceLogDir(cfg.stateDir, source.name);
   const target: MuxTarget = { endpoint: "", timeoutMs: DEFAULT_TIMEOUT_MS, options: { [DURABLE_LOG_DIR_OPTION]: logDir } };
   const program = createDurableMux(sourceTransportEnv(source), target.options);
-  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() } };
+  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() }, structured: program };
 }
 
 // The Send Protocol's request store (M56 spec 05), one for the bridge, under the state directory.
@@ -1456,6 +1459,13 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     sends && sendStore !== null && askBook !== undefined
       ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
       : undefined;
+  // The structured driver (M56 spec 14): a program session's Surface, Send and Ask from its structured
+  // state, with the Send Protocol on. It is the one driver of its session; no screen fold runs beside it.
+  const driver =
+    sendStore !== null && endpoint.kind === "program" && built.structured !== undefined
+      ? new ProgramDriver({ port: built.structured, store: sendStore, locks, ledger: surfaceLedger ?? undefined })
+      : undefined;
+  if (driver !== undefined) engine.onUpdate((s) => driver.observe(s.agents.map((agent) => agent.paneId)));
 
   // This session's hook edges (M56 spec 11): a terminal session with a Surface and a beacon matcher.
   // Herdr has a matcher for this alone; tmux and zellij use the one that lifts their agents.
@@ -1488,7 +1498,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const withHooks = hooks === undefined ? parts : { ...parts, hooks };
   const withSurface = surface === undefined ? withHooks : { ...withHooks, surface };
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
-  return asks === undefined ? withSend : { ...withSend, asks };
+  const withAsks = asks === undefined ? withSend : { ...withSend, asks };
+  return driver === undefined ? withAsks : { ...withAsks, driver };
 };
 
 const registry = new SessionRegistry({

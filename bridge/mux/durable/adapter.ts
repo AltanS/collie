@@ -64,7 +64,7 @@ import {
   type MuxWorktreeScope,
 } from "../types.ts";
 import type { JsonObject } from "../../json.ts";
-import type { AnswerRequest, Ask, ControlRequest, PaneAction } from "../../types.ts";
+import type { AgentStatus, AnswerRequest, Ask, ControlRequest, PaneAction } from "../../types.ts";
 import { ANSWER_TEXT_BYTES, byteLength, CAPS, isWireId, RENAME_TITLE_MAX, renameTitleOf, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
@@ -95,6 +95,7 @@ import {
   parseStaleControl,
   parseStarterReply,
   SPEAKS,
+  statusOf,
   toMuxSnapshot,
   versionNotice,
   versionRefusal,
@@ -763,6 +764,17 @@ export class DurableMux implements MuxAdapter {
    */
   paneTurn(paneId: string): string | undefined {
     return this.program()?.snapshot.panes.find((pane) => pane.id === paneId)?.turnId;
+  }
+
+  /**
+   * How one pane is doing, from the last layout read (WIRE.md section 5), or `undefined` when the pane
+   * is not in the layout or the program is not reachable. The structured driver reads the turn from it
+   * (bridge/surface/durable-driver.ts, M56 spec 14). Not a port method: only the driver calls it, and it
+   * asks nothing of the program.
+   */
+  paneStatus(paneId: string): AgentStatus | undefined {
+    const pane = this.program()?.snapshot.panes.find((candidate) => candidate.id === paneId);
+    return pane === undefined ? undefined : statusOf(pane);
   }
 
   /**
