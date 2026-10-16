@@ -2056,10 +2056,35 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "muse--palette-hint-moved.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
+  "muse--palette-hint-skills.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
+  "muse--palette-hint.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
   "muse--palette-partial.txt": {
    "harness": "muse",
    "version": "unversioned",
    "state": "dialog"
+  },
+  "muse--palette-skill.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
+  "muse--palette-typed-arg.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
   },
   "muse--quoted-dialogs-bare.txt": {
    "harness": "muse",
