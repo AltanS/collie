@@ -31,9 +31,9 @@ export interface TabBarProps<V extends string> {
 
 /**
  * A bottom tab bar: equal tabs in one row, each an icon over a one-line word, on the band ground
- * (the page colour by default, a theme's `chrome: band` fill otherwise) with one rule above (DESIGN.md §4). It owns the band, the safe area under
- * it and the tabs' look; it owns no words and no state. The dashboard's footer is its first caller
- * (ADR 0066).
+ * (the page colour by default, a theme's `chrome: band` fill otherwise) with one rule above
+ * (DESIGN.md §4). It owns the band, the safe area under it and the tabs' look; it owns no words and
+ * no state. The dashboard's footer is its first caller (ADR 0066).
  *
  * NOTHING MOVES ON A SWITCH (DESIGN.md §2). The active mark is a 2px top edge that every tab
  * reserves, transparent, so a switch recolours an edge and re-lays-out nothing. The word never

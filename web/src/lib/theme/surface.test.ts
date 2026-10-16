@@ -88,8 +88,8 @@ const DESIGN = {
     grain: [
       [
         "--ground-image",
-        "repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 94%, var(--foreground)) 0 1px, transparent 1px 4px), " +
-          "repeating-linear-gradient(-45deg, color-mix(in oklab, var(--background) 94%, var(--foreground)) 0 1px, transparent 1px 4px)",
+        "repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px), " +
+          "repeating-linear-gradient(-45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px)",
       ],
     ],
   },
@@ -111,6 +111,7 @@ const DESIGN = {
       ["--row-corner", "0px"],
       ["--row-shadow", "none"],
       ["--row-inset", "0px"],
+      ["--row-fill", "transparent"],
     ],
     cards: [
       ["--row-gap", "8px"],
@@ -119,6 +120,7 @@ const DESIGN = {
       ["--row-corner", "var(--radius-sm)"],
       ["--row-shadow", "var(--surface-shadow-xs)"],
       ["--row-inset", "8px"],
+      ["--row-fill", "var(--card)"],
     ],
   },
   icons: {
@@ -218,6 +220,7 @@ describe("the shape tokens", () => {
       "--row-corner",
       "--row-shadow",
       "--row-inset",
+      "--row-fill",
       "--icon-stroke",
       "--label-transform",
       "--label-tracking",

@@ -13,9 +13,10 @@ where Nightwatch picks its own values and what it measured. Numbers come from `c
 - `background` is `oklch(0 0 0)`, true black. `card` is L 0.16 and `chrome` L 0.21, both with a
   trace of warm hue 70. The spec asked for about 0.14 and 0.18. At 0.14 the card measured 1.06 on
   black, which reads as no step, so it went to 0.16 (1.08). Chrome went to 0.21 for a second reason:
-  chrome sits on the terminal mirror, which stays `#0a0a0a` under every theme (ADR 0002). At 0.18
-  chrome was 1.05 on the mirror and the grab handle stopped reading as a control. At 0.21 it is
-  1.12, the same step the default theme has.
+  chrome sits on the terminal mirror, which was `#0a0a0a` under every theme until spec 17 gave a
+  theme its own palette. At 0.18 chrome was 1.05 on that mirror and the grab handle stopped reading
+  as a control. At 0.21 it is 1.12, the same step the default theme has; on Nightwatch's own black
+  mirror ground (spec 18) it is 1.19.
 - `foreground` is a warm off-white, L 0.9, not pure white. Less glare at night, still 15.5 on black.
 - `primary` is the one dim amber: `oklch(0.75 0.09 70)`, chroma under 0.1. Its ink is a dark warm
   brown, 8.6 on the amber. As text (`text-primary` on the belt icons) it reads 9.3 on black.

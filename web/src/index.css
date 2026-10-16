@@ -245,8 +245,8 @@
                bottom bar (`bg-band-ground`, `border-band-rule`), today the page colour and --rule;
        rows    the rows of a list group (the `[data-slot="list-group"]` rule below): `--row-gap`
                between rows, `--row-rule` the width of the group's frame, and each row's own
-               `--row-edge` border, `--row-corner` radius and `--row-shadow`, and `--row-inset`,
-               the air around the rows of a list that sits flush in a card or a sheet;
+               `--row-edge` border, `--row-corner` radius, `--row-shadow` and `--row-fill`, and
+               `--row-inset`, the air around the rows of a list that sits flush in a card or a sheet;
        icons   `--icon-stroke`, the stroke of every lucide icon, lucide's own 2;
        labels  `--label-transform` and `--label-tracking`, read by the `label-caps` utility, today's
                `uppercase` and Tailwind's `tracking-wide` (0.025em);
@@ -264,6 +264,7 @@
   --row-corner: 0px;
   --row-shadow: none;
   --row-inset: 0px;
+  --row-fill: transparent;
   --icon-stroke: 2;
   --label-transform: uppercase;
   --label-tracking: 0.025em;
@@ -1173,7 +1174,8 @@
    `data-slot="list-group"` draw their rows through this one rule, so a theme's `rows` word reaches
    them all. Under `rules` (the default) each row has no edge of its own and the line between two rows
    is the bottom border of the upper one, exactly what `divide-y` drew; under `cards` each row has its
-   own border, corner and extra-small shadow, and `--row-gap` of air above it. The corners a painted
+   own border, corner, extra-small shadow and the card fill (`--row-fill`; `transparent` under rules,
+   a row's own background as before), and `--row-gap` of air above it. The corners a painted
    row part reads (`--row-top`, `--row-bottom`, ui/list-group.tsx LIST_ROW_CORNERS) follow each row's
    own corner. In the components layer, so a row's own utilities (a marked row's inset shadow, a
    border of its own, a margin) still win, as they did over `divide-y`. Cards keep the square-corner
@@ -1196,6 +1198,7 @@
       max(var(--row-corner), var(--row-top)) max(var(--row-corner), var(--row-top))
       max(var(--row-corner), var(--row-bottom)) max(var(--row-corner), var(--row-bottom));
     box-shadow: var(--row-shadow);
+    background-color: var(--row-fill);
   }
   [data-slot="list-group"] > :not(:last-child) {
     border-bottom-width: var(--surface-border-width);

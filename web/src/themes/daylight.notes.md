@@ -135,7 +135,7 @@ Every one of the twelve tokens is named in the file.
 | border    | default                | default | The lines are already a step stronger than Collie's.                |
 | ground    | gradient               | flat    | The page deepens toward the foot, so white cards stand out below.   |
 | chrome    | page                   | page    | The bars stay the page colour, so the gradient is the one effect on the page. |
-| rows      | cards                  | rules   | Every row is its own lifted card with a gap, the playful look.      |
+| rows      | cards                  | rules   | Every row is its own lifted card, filled with `card`, with a gap, the playful look. |
 | icons     | default                | default | Lucide's own 2 stroke matches Geist's regular weight.               |
 | labels    | sentence               | caps    | Section labels in sentence case read as friendly, not as legends.   |
 | display   | atkinson               | none    | Titles in Atkinson Hyperlegible, a second face for the low-vision promise. |

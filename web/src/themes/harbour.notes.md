@@ -16,8 +16,9 @@ the gate does not cover.
   0.915, `accent` a step below that at 0.89, so the switcher keeps three separate values (rest,
   hover, active), as in `collie`.
 - Dark `background` is oklch(0.21 0.018 250) (#121920). Nord's own night (#2e3440) is L 0.32; that
-  is too light for status chips at 4.5 and too far from the mirror. 0.21 keeps the Nord hue and sits
-  near the mirror's #0a0a0a. `card` and `chrome` are one raised surface at 0.255, as in `collie`.
+  is too light for status chips at 4.5 and too far from the mirror. 0.21 keeps the Nord hue and sat
+  near Collie's mirror ground `#0a0a0a`; since spec 18 the mirror stands on Harbour's own `#002b36`
+  (see The mirror). `card` and `chrome` are one raised surface at 0.255, as in `collie`.
 - Inks: light `foreground` oklch(0.26 0.025 250) (#1b2530) is Nord's night used as ink; dark
   `foreground` oklch(0.93 0.012 240) is Nord's snow used as ink.
 - `muted-foreground` is nearly neutral (chroma 0.008 light, 0.012 dark). The idle and unknown
@@ -66,15 +67,16 @@ Nord's aurora at the lightness `collie` uses. Chip = ink over the ink at /15 ove
 | --------------- | ------- | ------- | ---- | ---- | ------- | ---- |
 | light background | 5.44   | 5.25    | 5.13 | 5.24 | 6.13    | 5.26 |
 | light card      | 6.04    | 5.78    | 5.63 | 5.80 | 6.72    | 5.78 |
-| light grain line | 4.82   | 4.66    | 4.56 | 4.66 | 5.44    | 4.67 |
+| light grain line | 5.07   | 4.85    | 4.75 | 4.89 | 5.66    | 4.87 |
 | dark background | 5.37    | 7.52    | 6.78 | 6.34 | 5.35    | 7.03 |
 | dark card       | 4.67    | 6.56    | 5.93 | 5.54 | 4.70    | 6.16 |
-| dark grain line | 4.72    | 6.65    | 6.01 | 5.61 | 4.71    | 6.24 |
+| dark grain line | 4.93    | 6.88    | 6.21 | 5.81 | 4.91    | 6.44 |
 
 - Spec 18 moved the six light inks down by 0.02 to 0.03 in lightness (blocked 0.47 to 0.45,
   working 0.47 to 0.45, done 0.46 to 0.44, idle 0.46 to 0.45, unknown 0.42 to 0.41, info 0.46 to
   0.43), because the grain ground's line colour is darker than the page and every chip must clear
-  4.5 on it too. Dark needed no move.
+  4.5 on it too. Dark needed no move. The grain line is the page with 4 percent of `foreground`
+  (surface.ts, `GROUND_GRAIN_LINE`); it was 6 percent when the inks moved, so they keep a margin.
 
 - Hues: blocked 20, working 72 to 80, done 140 to 145, info 225. Blocked and done are 0.24 apart in
   oklab light and 0.23 dark (floor 0.15).
@@ -82,7 +84,7 @@ Nord's aurora at the lightness `collie` uses. Chip = ink over the ink at /15 ove
   than idle, as in `collie`. They needed more chroma than `collie`'s 0.03 because every surface here
   is already blue-grey: at 0.03 they read as plain muted text. RGB distance now: idle to unknown
   20.4 light, 31.8 dark; idle to muted ink 21.3 and 45.0; unknown to muted ink 26.5 and 23.3.
-- Tightest cells: light done on the grain line (4.56), dark blocked on the card (4.67). Darken the
+- Tightest cells: light done on the grain line (4.75), dark blocked on the card (4.67). Darken the
   light one and lighten the dark one if either moves; never the reverse.
 
 ## Syntax
@@ -150,19 +152,23 @@ tokens is named in the file.
 | ansi      | Solarized-like       | none    | The terminal palette editor people know, on Solarized base03.          |
 
 - The palette, dark space. Ground `#002b36` (base03), ink `#839496` (base0, 4.75). Slots: 0
-  `#073642` (base02), 1 `#dc322f` red, 2 `#859900` green, 3 `#eed98a`, 4 `#268bd2` blue, 5
-  `#d33682` magenta, 6 `#2aa198` cyan, 7 `#eee8d5` (base2), 8 `#657b83` (base00), 9 `#cb4b16`
+  `#073642` (base02), 1 `#f0504a` red, 2 `#859900` green, 3 `#eed98a`, 4 `#268bd2` blue, 5
+  `#e8559a` magenta, 6 `#2aa198` cyan, 7 `#eee8d5` (base2), 8 `#657b83` (base00), 9 `#e26a33`
   orange, 10 `#a4b832`, 11 `#f6e7b0`, 12 `#6aaee6`, 13 `#6c71c4` violet, 14 `#5fc4b9`, 15 `#fdf6e3`
-  (base3). Solarized's own accents fill 1 to 6, 9 and 13. Two places leave Solarized: its yellow
+  (base3). Solarized's own accents fill 2, 4, 6 and 13, and a lighter step of them fills 1, 5 and 9.
+  Three places leave Solarized: its red, magenta and orange (`#dc322f`, `#d33682`, `#cb4b16`) read
+  1.74, 1.74 and 1.78 on the light half's inverted ground (ADR 0002), under Collie's own 2.06 and 2.15, so
+  they move a step lighter: 2.05, 2.17 and 2.45 in light, 4.25, 4.43 and 4.53 in dark; its yellow
   `#b58900` has a relative luminance of 0.29 and slot 3 belongs to the bright set (above 0.6), so
   slot 3 is a light Solarized-tinted yellow; and Solarized puts greys in 10, 11, 12 and 14, where
   base01 measures under 3 on base03, so those slots are lighter accents. Lowest slot on the ground:
-  1 at 3.25, then 9 at 3.26 and 5 at 3.30 (floor 3). The bright set has a luminance of 0.70 to 0.92;
+  8 at 3.37, then 13 at 3.43 (floor 3). The bright set has a luminance of 0.70 to 0.92;
   the brightest of the rest is 14 at 0.45.
 - Space Grotesk is one extra woff2 (27 KB), loaded only under this theme, for the titles and the
   header line.
 
 ### Lowest pairs, the whole report (74 checks, 0 fail)
 
-- Light: the done chip on the grain line and destructive text on the grain line, both 4.56.
+- Light: the done chip on the grain line, 4.75, then destructive text on the grain line, 4.77.
+  `rule` on the grain line is 1.39 (floor 1.3).
 - Dark: the blocked chip on a card, 4.67, then the unknown chip on a card, 4.70.

@@ -40,8 +40,10 @@
 //     `--border` edge.
 //   * rows (spec 17): the rows of a list group (`[data-slot="list-group"]`, ui/list-group.tsx and the
 //     hand-rolled lists that carry the slot). `rules` is today's framed group with a line between
-//     rows; `cards` drops the frame and the lines and gives every row its own border, corner and
-//     extra-small shadow, with a gap between rows. index.css holds the one rule that reads these.
+//     rows; `cards` drops the frame and the lines and gives every row its own border, corner,
+//     extra-small shadow and card fill (`--row-fill`, spec 18), with a gap between rows. index.css
+//     holds the one rule that reads these. Under `rules` the fill is `transparent`, a row's own
+//     background as before, and a row's own `bg-*` utility wins in both.
 //   * icons (spec 17): `--icon-stroke`, the stroke width of every lucide icon (`svg.lucide`).
 //   * labels (spec 17): `--label-transform` and `--label-tracking`, read by the `label-caps` utility
 //     every small section label wears.
@@ -121,8 +123,9 @@ function radii(sm: number, md: number, lg: number, xl: number, edge: string, edg
 
 /** The bottom colour of the `gradient` ground: the page with 12 percent of the theme's primary. */
 export const GROUND_GRADIENT_END = { base: "background", mix: "primary", percent: 12 } as const;
-/** The line colour of the `grain` ground: the page with 6 percent of the theme's foreground. */
-export const GROUND_GRAIN_LINE = { base: "background", mix: "foreground", percent: 6 } as const;
+/** The line colour of the `grain` ground: the page with 4 percent of the theme's foreground (6 until
+ *  spec 18: at 6 a rule on the light grain measured 1.32 and a dashed ring was lost in it). */
+export const GROUND_GRAIN_LINE = { base: "background", mix: "foreground", percent: 4 } as const;
 
 /** `color-mix(in oklab, ...)` of one of the two ground colours above, spelled in CSS. */
 function groundMix(m: { base: string; mix: string; percent: number }): string {
@@ -193,6 +196,7 @@ export const SURFACE = {
       ["--row-corner", "0px"],
       ["--row-shadow", "none"],
       ["--row-inset", "0px"],
+      ["--row-fill", "transparent"],
     ],
     cards: [
       ["--row-gap", "8px"],
@@ -201,6 +205,7 @@ export const SURFACE = {
       ["--row-corner", "var(--radius-sm)"],
       ["--row-shadow", "var(--surface-shadow-xs)"],
       ["--row-inset", "8px"],
+      ["--row-fill", "var(--card)"],
     ],
   },
   icons: {

@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 /**
  * The band at the foot of a screen that holds its own controls: a rule above, the band ground (the
  * page colour by default, a theme's `chrome: band` fill otherwise), and the safe area under the
- * buttons so the home indicator never covers one (DESIGN.md §4). It owns the band and nothing in it: no words, no buttons, no state. The Changes
- * screen's Previous / Next pair on a diff is its first caller, and the Back it repeats at the thumb
- * on a phone sits in the same band (DESIGN.md §12).
+ * buttons so the home indicator never covers one (DESIGN.md §4). It owns the band and nothing in
+ * it: no words, no buttons, no state. The Changes screen's Previous / Next pair on a diff is its
+ * first caller, and the Back it repeats at the thumb on a phone sits in the same band (DESIGN.md §12).
  *
  * `sticky bottom-0` keeps it at the foot of a scrolling column it sits inside of; as a sibling under
  * the scroller it simply stays where the layout puts it. Either way the content above can scroll

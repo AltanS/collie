@@ -449,7 +449,7 @@ describe("every default word of spec 17 is today's CSS", () => {
     expect(inline.get("--color-band-rule")).toBe("var(--band-rule)");
   });
 
-  it("rows: rules is the framed group with a border-wide line between rows and no edge, corner, shadow or gap", () => {
+  it("rows: rules is the framed group with a border-wide line between rows and no edge, corner, shadow, gap or fill", () => {
     expect(new Map(defaultOf("rows"))).toEqual(
       new Map([
         ["--row-gap", "0px"],
@@ -458,6 +458,7 @@ describe("every default word of spec 17 is today's CSS", () => {
         ["--row-corner", "0px"],
         ["--row-shadow", "none"],
         ["--row-inset", "0px"],
+        ["--row-fill", "transparent"],
       ]),
     );
     expect(bare).toMatch(/\[data-slot="list-group"\] > :not\(:last-child\) \{\s*border-bottom-width: var\(--surface-border-width\);/);
