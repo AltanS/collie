@@ -41,6 +41,7 @@ const KEYS = [
   "PI_CODING_AGENT_DIR",
   "XDG_DATA_HOME",
   "GROK_HOME",
+  "HERMES_HOME",
   "OPENCLAW_STATE_DIR",
   "COLLIE_SUBMIT_KEYS",
   "COLLIE_TRUSTED_USER",
@@ -244,6 +245,13 @@ describe("loadConfig", () => {
   });
 
   test("COLLIE_HERMES_ROOT relocates Hermes state.db", () => {
+    process.env.COLLIE_HERMES_ROOT = "/srv/hermes";
+    expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes"]);
+  });
+
+  test("Hermes's root follows HERMES_HOME, and the Collie override wins", () => {
+    process.env.HERMES_HOME = "/srv/hermes-home";
+    expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes-home"]);
     process.env.COLLIE_HERMES_ROOT = "/srv/hermes";
     expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes"]);
   });

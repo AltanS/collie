@@ -113,10 +113,10 @@
       "adapter": false,
       "evidence": "No block grammar: a Hermes pane keeps the raw mirror, like pi's. The entry exists for the journal reader beside it (M41/05), and 0.0.0 is the floor, so the first install reads as NEWER.",
       "journal": {
-        "version": "0.0.0",
-        "verified": "2026-09-30",
-        "how": "unverified",
-        "evidence": "bridge/journal/hermes.ts is unit-tested only: no Hermes SessionDB exists on any host we can sweep, so HERMES_KNOWN's three roles are what the first real Hermes will be measured against. 0.0.0 is the floor, so the first install reads as NEWER."
+        "version": "0.22.2",
+        "verified": "2026-10-16",
+        "how": "live sweep",
+        "evidence": "bun scripts/journal-probe.ts on a host running Hermes Agent v0.22.2 with a named default profile: the live session resolved from ~/.hermes/profiles/assistant/state.db (18 turns, user/assistant/note, tool results paired, nothing unrecognised). Before 2026-10-16 the reader looked only at <root>/state.db and could not find a named profile's sessions."
       }
     },
     "openclaw": {

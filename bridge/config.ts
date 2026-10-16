@@ -575,7 +575,9 @@ export function resolveJournalRoots(
       join(env.GROK_HOME ?? join(home, ".grok"), "sessions"),
       env,
     ),
-    hermes: envRoots("COLLIE_HERMES_ROOT", join(home, ".hermes"), env),
+    // Hermes's own home var first, as for the others. A root's named profiles are found under it
+    // (bridge/journal/hermes.ts), so one root serves the default profile and every named one.
+    hermes: envRoots("COLLIE_HERMES_ROOT", env.HERMES_HOME ?? join(home, ".hermes"), env),
     // Muse keeps date-partitioned session logs under the XDG data dir, one session.jsonl per
     // session uuid. Muse publishes no home var of its own, so the Collie override is the only
     // relocation.
