@@ -12,6 +12,8 @@ import { groupPanesByWorkspace } from "@/lib/pane-groups";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
+import { paneSubtitle } from "@/lib/pane-marks";
+import { PaneBadge } from "@/components/pane-badge";
 import { shortenHome } from "@/lib/shorten-home";
 import { bucketOf, isAttention, worstTriage, type TriageKey } from "@/lib/triage";
 import type { AgentStatus, AgentView, Launcher, ServerSummary, TabView } from "@/lib/types";
@@ -435,6 +437,7 @@ function PaneRow({
   // same nine characters, and the tab is the only one of the two that discriminates.
   const name = paneName(pane);
   const { space, tab } = panePlaceParts(pane);
+  const subtitle = paneSubtitle(pane);
   return (
     <button
       id={id}
@@ -469,6 +472,7 @@ function PaneRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-1">
           <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+          <PaneBadge pane={pane} className="shrink-0 self-center" />
           {/* The cache reading trails the name, same corner as the dashboard row (agent-card.tsx,
               via PaneMeta), but without PaneMeta's host and session chips: this sheet asked for the
               cache reading alone, and a crew-wide switcher row is a separate call. `row`, not
@@ -496,6 +500,12 @@ function PaneRow({
             </>
           )}
         </div>
+        {/* A durable program's own line, when it set one (WIRE.md 7.11). A third line only for such a pane. */}
+        {subtitle !== null && (
+          <div data-slot="pane-row-subtitle" className="min-w-0 truncate text-[11px] text-muted-foreground">
+            {subtitle}
+          </div>
+        )}
       </div>
     </button>
   );

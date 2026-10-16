@@ -45,6 +45,12 @@ jobs:
         run: cd web && bun run typecheck
       - name: Test (web)
         run: cd web && bun run test
+      # The corpus rule (M56 spec 10). The web suite above already runs this file. This step gives
+      # the rule its own name in the run log, so a negative trace that reads `free` is easy to find.
+      - name: Corpus rule (golden traces, the negative set never reads free)
+        run: cd web && bunx vitest run src/lib/surface/traces.test.ts
+      - name: Corpus table (every dialog fixture is not free)
+        run: bun scripts/surface-corpus.ts
 
   # The two-instance crew drill (integration/crew-harness.test.ts). ITS OWN JOB, and no `needs`, for
   # the same two reasons the browser tier has one. It is slow for a reason nothing can trim: it boots
@@ -63,11 +69,34 @@ jobs:
       - name: Crew drill
         run: bun run test:crew
 
+  # The backend suite on the Bun floor (issue 438). `check` runs the newest Bun, so a test that only
+  # passes there would never show; MIN_BUN in cli/update-check.ts says the suite passes on the floor,
+  # and this job is what measures it. The version is pinned here and scripts/check-flake-bun.test.ts
+  # fails when it drifts from MIN_BUN. Its own job and no `needs`, like the crew drill, so a failure
+  # lands in the same run as every other one. Backend only: the web suite is Bun-independent (vitest).
+  bun-floor:
+    name: backend tests on the Bun floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      - name: Test (bridge)
+        run: bun test ./bridge
+      - name: Test (cli)
+        run: bun test ./cli
+      - name: Test (scripts)
+        run: bun test ./scripts
+
   # The durable example (M50 spec 10). Its own job: the example is a program with its own lockfile,
   # and Pi Durable never enters the root install. In `check`, bridge/mux/durable/example.test.ts
   # skips for want of that install; here it runs, so the wire, the adapter and the example are proven
   # to agree. Linux only, and never in windows.yml: the example's descendant check needs /proc and
-  # SO_PEERCRED, and a Windows socket has no owner for the adapter to check.
+  # SO_PEERCRED, and a Windows socket has no owner for the adapter to check. The Cloudflare example
+  # is parked under experiments/ (M55 spec 04) and is in no CI job.
   durable-example:
     name: durable example
     runs-on: ubuntu-latest
@@ -82,17 +111,16 @@ jobs:
         run: cd examples/durable-member && bun run typecheck
       - name: Test (example)
         run: cd examples/durable-member && bun test
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install (cloudflare example)
-        run: cd examples/durable-member-cloudflare && npm ci --ignore-scripts
-      - name: Typecheck (cloudflare example)
-        run: cd examples/durable-member-cloudflare && npm run typecheck
-      - name: Test (cloudflare example)
-        run: cd examples/durable-member-cloudflare && npm test
       - name: Test (the adapter against the example)
         run: bun test bridge/mux/durable
+      # The durable SDK as the npm package a program installs (M55 spec 10, ADR 0105): build it, check the tarball's
+      # file list, install the tarball into a fresh project, and run one approval round trip on Node 22 and on Bun.
+      # It never publishes; there is no npm token in CI.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Pack check (the SDK package)
+        run: scripts/sdk-pack-check.sh
 
   # The browser tier (M26 spec 01). NO `needs`: a lint failure and a browser failure both have to
   # report in one run, so this job starts beside `check` rather than behind it. It installs only

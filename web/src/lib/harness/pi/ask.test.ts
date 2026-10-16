@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
 import { promptsEqual, promptsSameIdentity, type PromptModel } from "../prompt-model";
-import { detectPiQuestion, piModalOnScreen, readPiFrame } from "./ask";
+import { detectPiQuestion, piModalOnScreen, piQuestionBanner, readPiFrame } from "./ask";
 import { ruleAbove, tailRule } from "./composer";
 import { keyHintPairs } from "./footer";
+import { buildBlocks } from "../index";
 import { piAdapter } from "./index";
+import { piView } from "./panel";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
 const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
@@ -67,6 +69,19 @@ const LIFTS_397 = new Map<string, Expect>([
   // The same question beside OmO's side panel: read from the rows cut at the panel, and bound to
   // those columns (panel.ts, index.ts).
   ["pi--omo-v5130-panel-question.txt", "digit"],
+  // The same capture cut where an 18-row pane cuts it: the bottom rule and the status rows are off
+  // the screen, the footer is not (fixtures README, derived).
+  ["pi--omo-v5130-panel-question-cut.txt", "digit"],
+  // Run with NO_COLOR=1, which neither pi 0.87.1 nor OmO 5.1.30 honours: the same paint, the same read.
+  ["pi--v0871-nocolor-question.txt", "walk"],
+  ["pi--omo-v5130-nocolor-question.txt", "digit"],
+  // pi 1.2.0's folder trust prompt: not a question, read by pi/trust.ts, plan (a) from its footer.
+  ["pi--trust-prompt.txt", "walk"],
+  ["pi--trust-prompt-moved.txt", "walk"],
+  // gentle-pi 4.2.0's ask_user_choice on pi 1.3.0 under Gentle Shell: unnumbered rows, and no status
+  // row under the bottom rule (issue 455).
+  ["pi--v130-gentle-choice.txt", "walk"],
+  ["pi--v130-gentle-choice-moved.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -88,6 +103,9 @@ const RAW_MODALS = new Set([
   "pi--omo-v5130-picker-tree.txt",
   "pi--omo-v5130-picker-resume.txt",
   "pi--omo-v5130-panel-picker-tree.txt",
+  // Dialogs taller than the pane, cut from the captures above (fixtures README, derived).
+  "pi--omo-v5130-panel-question-cut-footer.txt",
+  "pi--omo-v5130-panel-picker-tree-cut.txt",
   "pi--v110-stock-picker-resume.txt",
   "pi--v110-stock-picker-tree.txt",
   // pi 1.2.0's /settings and /scoped-models, told by their hint rows (listDialogHint, footer.ts).
@@ -171,6 +189,119 @@ describe("plan (a): arrows move and Enter selects", () => {
     expect(prompt(load("pi--v110-questionnaire-tabs-second.txt")).caption).toBe("Size");
     expect(prompt(load("pi--v110-tabs-single.txt")).caption).toBe("Auth");
     expect(prompt(load("pi--v0871-questionnaire-single.txt")).caption).toBeUndefined();
+  });
+});
+
+// Issue 455: gentle-pi's ask_user_choice and pi's own selector (ctx.ui.confirm, ctx.ui.select) print
+// unnumbered rows at pointer column 1 (` → Label`, `   Label`), and under Gentle Shell nothing
+// stands under the bottom rule.
+describe("unnumbered rows, and a frame with no status row (issue 455)", () => {
+  const gentle = raw("pi--v130-gentle-choice.txt");
+  const pointed = (label: string) => ` \x1b[0m\x1b[38;2;157;157;157m→ ${label}\x1b[0m`;
+
+  it("reads the frame and the Escape card when the bottom rule is the last row", () => {
+    const lines = load("pi--v130-gentle-choice.txt");
+    expect(lineText(lines.at(-1)!).trimEnd()).toMatch(/^─{200}$/);
+    expect(readPiFrame(lines)?.footer.escapeVerb).toBe("cancel");
+    expect(piModalOnScreen(lines)).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+  });
+
+  it("walks gentle-pi's ask_user_choice with arrows and Enter, descriptions kept, no digit", () => {
+    const model = prompt(load("pi--v130-gentle-choice.txt"));
+    expect(model.question).toBe("Pick a color for the Collie probe");
+    expect(model.family).toBe("select");
+    expect(model.options).toEqual([
+      { label: "Red", description: "Warm and loud", keys: ["Enter"], keyLabel: "→" },
+      { label: "Green", description: "Calm and natural", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Blue", description: "Cool and deep", keys: ["Down", "Down", "Enter"], keyLabel: "" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(model.feedback).toBeUndefined();
+  });
+
+  it("walks from the pointer a real Down moved, and the move changes signature but not coreSignature", () => {
+    const moved = prompt(load("pi--v130-gentle-choice-moved.txt"));
+    expect(moved.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Down", "Enter"], ["Escape"]]);
+    const before = prompt(load("pi--v130-gentle-choice.txt"));
+    expect(moved.signature).not.toBe(before.signature);
+    expect(moved.coreSignature).toBe(before.coreSignature);
+  });
+
+  it("keeps gentle-pi's Other… row a free-text field, never a button, and leaves a pointer on it raw", () => {
+    const other = replaceLast(replaceLast(gentle, "   Blue", "   Other…"), "Cool and deep", "Provide a custom response");
+    const model = prompt(linesOf(other));
+    expect(model.options.map((o) => o.label)).toEqual(["Red", "Green", "Cancel"]);
+    expect(model.feedback).toEqual({ key: "", focused: false, text: "", purpose: "free-text" });
+    const focused = replaceLast(replaceLast(other, pointed("Red"), "   Red"), "   Other…", pointed("Other…"));
+    expect(detectPiQuestion(linesOf(focused))).toBeNull();
+    expect(piModalOnScreen(linesOf(focused))).toBe(true);
+  });
+
+  /** pi 1.3.0's ExtensionSelectorComponent, the selector behind ctx.ui.confirm and ctx.ui.select, as
+   *  its source draws it: rule, blank, title, blank, options, blank, footer, blank, rule. Built from the
+   *  source, not captured. */
+  const selector = (status: string[] = []) => {
+    const rule = `\x1b[38;2;95;135;255m${"─".repeat(60)}\x1b[0m`;
+    return linesOf([
+      rule,
+      "",
+      " \x1b[1;38;2;138;190;183mAllow guarded git push?\x1b[0m",
+      "",
+      " \x1b[38;2;138;190;183m→ \x1b[0m\x1b[38;2;138;190;183mYes\x1b[0m",
+      "   \x1b[38;2;212;212;212mNo\x1b[0m",
+      "",
+      " \x1b[38;2;128;128;128m↑↓\x1b[0m\x1b[38;2;102;102;102m navigate\x1b[0m  \x1b[38;2;128;128;128menter\x1b[0m" +
+        "\x1b[38;2;102;102;102m select\x1b[0m  \x1b[38;2;128;128;128mescape/ctrl+c\x1b[0m\x1b[38;2;102;102;102m cancel\x1b[0m",
+      "",
+      rule,
+      ...status,
+    ].join("\n"));
+  };
+
+  it("walks pi's own confirm selector, with a status row under it or none", () => {
+    for (const lines of [selector(), selector(["\x1b[38;2;102;102;102m~/project\x1b[0m"])]) {
+      const model = prompt(lines);
+      expect(model.question).toBe("Allow guarded git push?");
+      expect(model.options).toEqual([
+        { label: "Yes", keys: ["Enter"], keyLabel: "→" },
+        { label: "No", keys: ["Down", "Enter"], keyLabel: "" },
+        { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+      ]);
+    }
+  });
+
+  it.each([
+    ["two pointers", replaceLast(gentle, "   Green", pointed("Green"))],
+    ["no pointer", replaceLast(gentle, pointed("Red"), "   Red")],
+    ["the pointer at column 0, where pi's palette and pickers draw it", replaceLast(replaceLast(replaceLast(gentle,
+      pointed("Red"), "\x1b[0m\x1b[38;2;157;157;157m→ Red\x1b[0m "), "   Green", "  Green "), "   Blue", "  Blue ")],
+    ["a label wrapped back to column 1", replaceLast(gentle, "    \x1b[0m\x1b[38;2;157;157;157mCalm", " continued\n    \x1b[0m\x1b[38;2;157;157;157mCalm")],
+    ["a free-text row before the last option", replaceLast(gentle, "   Green", "   Other…")],
+    ["a footer that names digits, not Enter, as select", replaceLast(gentle, "Enter select", "1-9 select")],
+  ])("declines %s", (_name, text) => {
+    expect(text).not.toBe(gentle);
+    expect(detectPiQuestion(linesOf(text))).toBeNull();
+  });
+
+  it("still refuses the frame once plain output follows the bottom rule", () => {
+    const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+    const lines = load("pi--v130-gentle-choice.txt");
+    expect(detectPiQuestion([...lines, plain("$ ")])).toBeNull();
+    expect(readPiFrame([...lines, plain("$ ")])).toBeNull();
+    // Not asserted: `piModalOnScreen`. Since the open-frame read (00c6f251), a painted key-hint row
+    // over a rule with rows under it reads as a picker (`/tree` puts its hints over an inner rule), so
+    // the Escape card may stand here. It offers Escape only, never an option, and no composer is ready.
+    const blocks = buildBlocks([...lines, plain("$ ")], { agent: "pi" });
+    expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false);
+    expect(piAdapter.composerReady?.([...lines, plain("$ ")])).toBe(false);
+  });
+
+  it("needs a top rule of the same width and colour above a bare bottom rule", () => {
+    const lines = load("pi--v130-gentle-choice.txt");
+    const recoloured = linesOf(replaceLast(gentle, "\x1b[38;2;157;157;157m─", "\x1b[38;2;1;2;3m─"));
+    expect(readPiFrame(recoloured)).toBeNull();
+    expect(readPiFrame(lines.slice(1))).toBeNull();
   });
 });
 
@@ -398,6 +529,115 @@ describe("piModalOnScreen", () => {
   });
 });
 
+// OmO's banner gets one cue in Chat (session-stream.tsx), never a card: a send answers it.
+describe("OmO's question banner", () => {
+  const banner = raw("pi--omo-v5130-question-banner.txt");
+
+  it("reads as a question pending over a ready editor, and lifts nothing", () => {
+    const lines = linesOf(banner);
+    expect(piQuestionBanner(lines)).toBe(true);
+    expect(piAdapter.questionPending?.(lines)).toBe(true);
+    expect(piAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
+    expect(buildBlocks(lines, { agent: "pi" }).map((block) => block.kind)).toEqual(["raw"]);
+  });
+
+  it("is the only screen in the corpus that reads so", () => {
+    expect(PI_FIXTURES.filter((name) => piAdapter.questionPending?.(load(name)))).toEqual(["pi--omo-v5130-question-banner.txt"]);
+  });
+
+  it("needs the painted `?` and the banner standing on the editor", () => {
+    // The same words typed as plain text: not OmO's banner.
+    const plain = banner.replace("\x1b[1m\x1b[38;2;228;101;225m?\x1b[0m", "?");
+    expect(plain).not.toBe(banner);
+    expect(piQuestionBanner(linesOf(plain))).toBe(false);
+    // A blank row between the banner and the editor: the banner does not stand on it.
+    const apart = banner.replace("or just type your reply", "or just type your reply\x1b[0m\n");
+    expect(apart).not.toBe(banner);
+    expect(piQuestionBanner(linesOf(apart))).toBe(false);
+    // An editor with no banner over it.
+    expect(piQuestionBanner(load("pi--omo-v5130-plain-idle.txt"))).toBe(false);
+  });
+});
+
+// OmO's fullscreen mode draws a dialog from the top down, so on a short pane its bottom rule and the
+// status rows are off the screen (ASK_NOTES.md, "A dialog taller than the pane"). The
+// fixtures are real captures cut where a short pane cuts them (fixtures README, derived).
+describe("a dialog taller than the pane", () => {
+  const cut = (name: string, rows: number) => load(name).slice(0, rows);
+  const kinds = (lines: StyledLine[]) => buildBlocks(lines, { agent: "pi" }).map((block) => block.kind);
+
+  it("lifts a question beside the panel whose footer is still on the screen, bound to the frame's columns", () => {
+    const lines = load("pi--omo-v5130-panel-question-cut.txt");
+    expect(lines.some((line) => /^─{8,}$/.test(lineText(line).trimEnd()))).toBe(false);
+    const card = buildBlocks(lines, { agent: "pi" }).find((block) => block.kind === "prompt-select");
+    if (card?.kind !== "prompt-select") throw new Error("no card");
+    expect(card.prompt.question).toBe("Pick a color?");
+    expect(card.prompt.options.map((o) => [o.label, o.keys])).toEqual([["Red", ["1"]], ["Green", ["2"]], ["Cancel", ["Escape"]]]);
+    expect(card.prompt.bindColumns).toEqual({ start: 0, end: 91 });
+    // The region runs from the top rule to the footer, the screen's last row, and carries no panel.
+    const region = card.prompt.signature.split("\n");
+    expect(region[0]).toMatch(/^─{91}$/);
+    expect(region.at(-1)).toMatch(/esc cancel$/);
+    expect(card.prompt.signature).not.toMatch(/MEMORY|CONTEXT|TOOLS|facts/);
+    // The same question cut on the full screen binds the same buttons.
+    const whole = buildBlocks(load("pi--omo-v5130-panel-question.txt"), { agent: "pi" }).find((block) => block.kind === "prompt-select");
+    expect(whole?.kind === "prompt-select" ? whole.prompt.options : []).toEqual(card.prompt.options);
+  });
+
+  it.each(["pi--omo-v5130-panel-question-cut-footer.txt", "pi--omo-v5130-panel-picker-tree-cut.txt"])(
+    "%s: with no footer to take keys from, the Escape card",
+    (name) => {
+      const lines = load(name);
+      expect(piModalOnScreen(piView(lines).lines)).toBe(true);
+      expect(piAdapter.composerReady?.(lines)).toBe(false);
+      expect(kinds(lines)).toEqual(["unread-dialog"]);
+    },
+  );
+
+  it("reads the same cut without the panel, unbound", () => {
+    // pi--omo-v5130-plain-question.txt: rule, blank, title, strip, question, options, trailer, footer
+    // (row 9), blank, bottom rule, status rows.
+    const lines = cut("pi--omo-v5130-plain-question.txt", 10);
+    expect(piView(lines).cropped).toBe(false);
+    const question = detectPiQuestion(lines);
+    if (question?.kind !== "prompt-select") throw new Error("no card");
+    expect(question.model.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["Escape"]]);
+    expect(question.model.bindColumns).toBeUndefined();
+    // Cut above the options, the title alone proves nothing.
+    expect(piModalOnScreen(cut("pi--omo-v5130-plain-question.txt", 5))).toBe(false);
+    // Cut just under the first option, it is a modal with no keys.
+    const first = cut("pi--omo-v5130-plain-question.txt", 6);
+    expect(piModalOnScreen(first)).toBe(true);
+    expect(detectPiQuestion(first)).toBeNull();
+  });
+
+  it("claims no modal on an editor cut below its top rule, a plain title, a shell prompt or a short rule", () => {
+    const idle = load("pi--omo-v5130-plain-idle.txt");
+    const promptRow = idle.findIndex((line) => lineText(line).startsWith("❯"));
+    expect(promptRow).toBeGreaterThan(0);
+    expect(piModalOnScreen(idle.slice(0, promptRow + 1))).toBe(false);
+    const question = cut("pi--omo-v5130-plain-question.txt", 10);
+    const plainTitle = question.map((line, i) => (i === 2 ? { segments: [{ text: lineText(line), style: {}, muted: false }] } : line));
+    expect(piModalOnScreen(plainTitle)).toBe(false);
+    expect(piModalOnScreen([...question, { segments: [{ text: "$ ", style: {}, muted: false }] }])).toBe(false);
+    const rule = (n: number): StyledLine => ({ segments: [{ text: "─".repeat(n), style: {}, fg: "#888888", muted: false }] });
+    const heading: StyledLine = { segments: [{ text: " Notes", style: {}, fg: "#ff00ff", muted: false }] };
+    const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+    const body = [plain(""), plain(" > 1. a row of a table that runs wider than the rule above it"), plain("   2. two"), plain("   3. three")];
+    expect(piModalOnScreen([rule(20), heading, ...body])).toBe(false);
+    expect(piModalOnScreen([rule(80), heading, ...body])).toBe(true);
+  });
+
+  // The limit, stated: a dialog quoted in prose and cut at the screen's last row, with no editor and
+  // no status rows under it, is pi's own open frame as far as the screen can tell. While pi runs its
+  // editor is at the tail; after it exits the shell prompt is (the test above).
+  it("states the limit: a quoted dialog cut inside its frame reads as an open frame", () => {
+    const quoted = load("pi--prose-quoted-dialog-then-shell.txt");
+    const footer = quoted.findLastIndex((line) => lineText(line).includes("Esc to cancel"));
+    expect(detectPiQuestion(quoted.slice(0, footer + 1))?.kind).toBe("prompt-select");
+  });
+});
+
 // pi 1.2.0's /settings and /scoped-models draw a search input row (`> ` and the cursor cell) that read
 // as a ready editor. Their hint rows are not all key/action pairs, so listDialogHint names them.
 describe("pi 1.2.0 list dialogs (found capturing #442)", () => {
@@ -485,26 +725,27 @@ describe("a quoted dialog is not a dialog", () => {
     return lines.slice(0, bottom + 1);
   };
 
-  it("with no editor below, the tail rules refuse the quoted block, with a shell prompt under it or nothing", () => {
-    for (const lines of [load("pi--prose-quoted-dialog-then-shell.txt"), atTail()]) {
-      expect(detectPiQuestion(lines)).toBeNull();
-      expect(piModalOnScreen(lines)).toBe(false);
-    }
+  it("with no editor below, the tail rules refuse the quoted block once a shell prompt follows it", () => {
+    const lines = load("pi--prose-quoted-dialog-then-shell.txt");
+    expect(detectPiQuestion(lines)).toBeNull();
+    expect(piModalOnScreen(lines)).toBe(false);
     expect(lineText(atTail().at(-1)!)).toMatch(/^─{8,}/);
   });
 
-  // Without an editor below, the quoted rows lift only when EVERY tail rule holds: one to four
-  // non-rule rows under the bottom rule and nothing else, every one styled but the last, which may
-  // be plain when a styled row stands above it (pi's extension-status line); two full rules of one length and
-  // colour; a styled footer row of known key hints that names Esc, at most one blank row above the
-  // bottom rule; and the option shape. That is pi's own screen, so a styled row under a quoted block
-  // is the one case the screen cannot tell apart. A walked tap there still sends no Enter: the pointer
+  // Without an editor below, the quoted rows lift only when EVERY tail rule holds: nothing under the
+  // bottom rule, or one to four non-rule rows and nothing else, every one styled but the last, which
+  // may be plain when a styled row stands above it (pi's extension-status line); two full rules of one
+  // length and colour; a styled footer row of known key hints that names Esc, at most one blank row
+  // above the bottom rule; and the option shape. That is pi's own screen, so a quoted block at the very
+  // tail, or with a styled row under it, is the one case the screen cannot tell apart. A walked tap there still sends no Enter: the pointer
   // never moves, the poll times out (lib/prompt-action.ts).
   it("states the limit: a quoted block at the tail lifts only when every tail rule holds", () => {
     const quoted = atTail();
     const styled = (t: string): StyledLine => ({ segments: [{ text: t, style: {}, muted: true }] });
     const plain: StyledLine = { segments: [{ text: "$ ", style: {}, muted: false }] };
-    expect(detectPiQuestion(quoted)).toBeNull();
+    // Nothing under the bottom rule is pi's own screen too since issue 455: Gentle Shell replaces pi's
+    // footer, so a live dialog ends at its bottom rule, byte for byte the quoted block cut here.
+    expect(detectPiQuestion(quoted)?.kind).toBe("prompt-select");
     expect(detectPiQuestion([...quoted, plain])).toBeNull();
     expect(detectPiQuestion([...quoted, plain, styled("a")])).toBeNull();
     expect(detectPiQuestion([...quoted, styled("a"), plain, plain])).toBeNull();

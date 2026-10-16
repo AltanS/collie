@@ -1,0 +1,117 @@
+{
+  "id": "pi",
+  "identity": {
+    "binary": "pi",
+    "versionCommand": [
+      "pi",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "0.85.0 - 1.1.0",
+      "status": "verified",
+      "verifiedThrough": "1.1.0",
+      "verifiedOn": "2026-10-12"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "walk": "interior",
+      "top": {
+        "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―].*?)\\s+─+)?$",
+        "minCells": 8,
+        "column": 0
+      },
+      "prompt": {
+        "pattern": "^(?:❯ ?)? {0,2}(?<draft>(?:(?!\\s{8,}\\S).)*)(?:\\s{8,}\\S.*)?$",
+        "column": 0,
+        "maxColumn": 2
+      },
+      "bottom": {
+        "pattern": "^─+$",
+        "minCells": 8,
+        "column": 0
+      },
+      "continuationIndent": 0,
+      "maxDraftRows": 30,
+      "maxTailRows": 60,
+      "under": "^(?:[~/…⎇]|\\d[\\d.]*%)"
+    },
+    "placeholders": {
+      "texts": [],
+      "sgr": 2
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 6
+      },
+      "below": {
+        "maxRows": 4,
+        "footerMaxRows": 4
+      }
+    },
+    "runningRows": [
+      "^\\s*[⠀-⣿•] Working\\b",
+      "\\bWorking\\s*\\(.*esc to interrupt\\)",
+      "^─+\\s+[⠀-⣿]\\s+Working\\b"
+    ],
+    "dialogsInBox": true
+  },
+  "keys": {
+    "submit": {
+      "default": [
+        "alt+Enter"
+      ],
+      "win32": [
+        "ctrl+q"
+      ]
+    },
+    "commandSubmit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    },
+    "enterWhileRunning": "steers",
+    "queueKey": {
+      "default": "alt+Enter",
+      "win32": "ctrl+q"
+    },
+    "queuedRow": {
+      "pattern": "^\\s*Follow-up: (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$",
+      "hintGap": 0
+    }
+  },
+  "collapse": {
+    "pattern": "\\[paste #\\d+ (?:\\+(?<lines>\\d+) lines|(?<chars>\\d+) chars)\\]"
+  },
+  "reservedLeads": [
+    "/",
+    "!"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "verified",
+    "note": "M56 spec 01 lab, 2026-10-15, pi: inert in every dialog without a text field on Herdr, tmux and zellij; the box shows it as a plain character; fallback ¤; live sends passed on pi 0.87.1, inside the range, with Enter at first and Alt+Enter on an idle box (2026-10-16)"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {}
+}

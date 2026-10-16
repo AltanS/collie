@@ -143,6 +143,20 @@ export function useLive(paneId: string, scope?: Scope): boolean {
   return live;
 }
 
+/**
+ * When the last successful read of `paneId` landed (epoch ms), for a component: re-renders when a read
+ * lands. Undefined while the pane is not live (a dropped link, a saved copy), which is when the age of
+ * the last read is not a sentence worth saying. The way out names a stale Surface by it (M56 spec 07).
+ */
+export function useReadAt(paneId: string, scope?: Scope): number | undefined {
+  const key = paneScopeKey(scope, paneId);
+  return useSyncExternalStore(
+    subscribe,
+    () => stamps.get(key),
+    () => undefined,
+  );
+}
+
 // The browser says it lost the network: nothing is live until a read succeeds again.
 globalThis.addEventListener?.("offline", markAllDead);
 

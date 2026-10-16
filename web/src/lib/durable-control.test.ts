@@ -123,7 +123,7 @@ describe("what an answer does to the composer", () => {
     expect(readThrown(403, "not paired")).toMatchObject({ note: "refused", detail: "not paired", keepId: false });
   });
 
-  it("every reading has a sentence in the catalog, for a send and a stop", () => {
+  it("every reading has a sentence in the catalog, for a send, a stop and a program action", () => {
     const results: ControlResult[] = [
       { outcome: "ok" },
       { outcome: "stale", askIds: [] },
@@ -134,7 +134,7 @@ describe("what an answer does to the composer", () => {
       { outcome: "refused", reason: "request-id-reused", detail: "" },
     ];
     for (const result of results) {
-      for (const kind of ["send", "stop"] as const) {
+      for (const kind of ["send", "stop", "action"] as const) {
         const key = noteKey(readControl(result), kind);
         expect(t(key)).not.toBe(key);
         expect(t(key)).not.toMatch(/\u2014/u);

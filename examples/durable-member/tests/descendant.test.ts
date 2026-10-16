@@ -6,8 +6,8 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { api } from "./client.ts";
-import { type Collie, openCollie, type PaneHandle } from "../sdk/index.ts";
-import { peerCredsAvailable, peerOf, relationOf } from "../sdk/peer.ts";
+import { type Collie, openCollie, type PaneHandle } from "../../../packages/durable-sdk/src/index.ts";
+import { peerCredsAvailable, peerOf, relationOf } from "../../../packages/durable-sdk/src/peer.ts";
 import { cleanup, dialFrom, tmp, waitFor } from "./util.ts";
 
 let collie: Collie;

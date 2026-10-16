@@ -109,7 +109,7 @@ describe("herdr 0.9.3: the repo comes from worktree.list", () => {
     expect("folder" in scratch).toBe(false);
   });
 
-  test("foregroundProcesses answers the seeded argv, null argv as no argv", async () => {
+  test("foregroundProcesses answers the seeded argv and pid, null argv as no argv", async () => {
     const fake = new FakeHerdr();
     const [first] = await fake.listPanes();
     const paneId = first?.pane_id ?? "missing";
@@ -121,8 +121,8 @@ describe("herdr 0.9.3: the repo comes from worktree.list", () => {
     const result = await mux.foregroundProcesses(paneId);
     expect(result.ok).toBe(true);
     expect(result.ok ? result.value : null).toEqual([
-      { argv: ["muse", "resume", "abc"] },
-      { argv: [] },
+      { argv: ["muse", "resume", "abc"], pid: 7 },
+      { argv: [], pid: 8 },
     ]);
   });
 

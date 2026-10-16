@@ -45,15 +45,30 @@ export type ChatToolCall = WithOutput<ToolCall>;
  * with something waiting on a call can name the card directly, with no table in between.
  */
 export type ChatItem =
-  | { id: string; ts?: string; kind: "user"; text: string }
-  | { id: string; ts?: string; kind: "reply"; text: string }
-  | { id: string; ts?: string; kind: "thinking"; text: string }
-  | { id: string; ts?: string; kind: "notice"; text: string; note?: true }
+  // `requestId`: the send that made this line, when the program says so (a durable pane): the phone's own pending line
+  // is matched to it and replaced (lib/durable-pending.ts).
+  | { id: string; ts?: string; kind: "user"; text: string; requestId?: string }
+  // `partial`: the program is still writing this text and will write it again under the same id (a durable pane,
+  // WIRE.md 7.15). The card draws a cursor at its end until the flag goes.
+  | { id: string; ts?: string; kind: "reply"; text: string; partial?: true }
+  | { id: string; ts?: string; kind: "thinking"; text: string; partial?: true }
+  | { id: string; ts?: string; kind: "notice"; text: string; note?: true; partial?: true }
   // A compaction. `text` is the agent's recap of its own history and is present only when the reader
   // asked for it (Settings → Appearance → Compaction summaries); without it the item is a one-line
   // marker, so the recap's thousands of characters are never built into a block at all.
   | { id: string; ts?: string; kind: "compacted"; text?: string }
   | { id: string; ts?: string; kind: "tool"; tool: ChatToolCall; status: ChatToolStatus };
+
+/**
+ * The item as a finished text: `partial` dropped. A text the program was writing when the pane stopped working will not
+ * grow any more (WIRE.md 7.15 lets a reader draw it as final), so no cursor is left on it.
+ */
+export function finished(item: ChatItem): ChatItem {
+  if (item.kind === "reply") return { id: item.id, ts: item.ts, kind: "reply", text: item.text };
+  if (item.kind === "thinking") return { id: item.id, ts: item.ts, kind: "thinking", text: item.text };
+  if (item.kind === "notice" && item.partial === true) return { id: item.id, ts: item.ts, kind: "notice", text: item.text, note: item.note };
+  return item;
+}
 
 /**
  * A call plus what it printed, on the kinds that can carry it.
@@ -130,6 +145,9 @@ export function itemsOf(entry: TranscriptEntry, showCompactions = false): ChatIt
   }
   const said = entry.role === "user" ? "user" : entry.role === "assistant" ? "reply" : "notice";
   const items: ChatItem[] = [];
+  // Only a turn the program is still writing, and only a text a person reads: never a tool, never the user's own line.
+  const grows = entry.partial === true && entry.role !== "user" ? ({ partial: true } as const) : {};
+  const asked = entry.role === "user" && entry.requestId !== undefined ? { requestId: entry.requestId } : {};
   entry.parts.forEach((part, i) => {
     const id = part.kind === "tool" && part.id ? part.id : `${entry.uuid}:${i}`;
     switch (part.kind) {
@@ -139,12 +157,14 @@ export function itemsOf(entry: TranscriptEntry, showCompactions = false): ChatIt
         if (!part.text.trim()) return;
         items.push(
           said === "notice"
-            ? { id, ts, kind: said, text: part.text, note: true }
-            : { id, ts, kind: said, text: part.text },
+            ? { id, ts, kind: said, text: part.text, note: true, ...grows }
+            : said === "user"
+              ? { id, ts, kind: said, text: part.text, ...asked }
+              : { id, ts, kind: said, text: part.text, ...grows },
         );
         return;
       case "thinking":
-        if (part.text.trim()) items.push({ id, ts, kind: "thinking", text: part.text });
+        if (part.text.trim()) items.push({ id, ts, kind: "thinking", text: part.text, ...grows });
         return;
       case "image":
         // There is no image block. A notice naming the URL is visible and honest; dropping the part

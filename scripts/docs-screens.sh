@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regenerate the phone-sized screenshots of the update flow and the PWA install card under
-# docs/images/updates/.
+# Regenerate the phone-sized screenshots of the docs: the update flow and the PWA install card
+# under docs/images/updates/, and a durable agent's surfaces under docs/images/programs/.
 #
 # Source: the states playground (web/src/playground/), served by Vite at
 # http://127.0.0.1:5199/playground.html. Uses the `agent-browser` CLI to drive a headless
@@ -29,11 +29,28 @@
 #     flipped on to reach the post-run "Tap to reload" state and flipped back off after,
 #     because that toggle drives a page-wide singleton every other band card also reads.
 #
-# Usage: scripts/docs-screens.sh
+# The programs set (docs/durable-agents-on-the-phone.md) comes from the playground's "Programs
+# home" section (web/src/playground/sections/programs.tsx), reached at #programs. Each shot is one
+# card's component, found by the card's `data-state` handle rather than its prose label, and cropped
+# to its own box. Those components are `max-w-[390px]`, so the programs set runs at a 1600px
+# viewport, where the grid's columns are wide enough for the full 390. The crew card ("4: two
+# machines, one section") is left out on purpose: its fixture names real machines of the tailnet.
+#
+# Usage: scripts/docs-screens.sh [all|updates|programs]   (default: all)
 set -euo pipefail
+
+WHICH="${1:-all}"
+case "$WHICH" in
+  all | updates | programs) ;;
+  *)
+    echo "usage: scripts/docs-screens.sh [all|updates|programs]" >&2
+    exit 2
+    ;;
+esac
 
 REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
 OUT_DIR="$REPO_ROOT/docs/images/updates"
+PROGRAMS_DIR="$REPO_ROOT/docs/images/programs"
 PLAYGROUND_URL="http://127.0.0.1:5199/playground.html"
 
 if ! command -v agent-browser >/dev/null 2>&1; then
@@ -52,7 +69,6 @@ if ! curl -fsS -o /dev/null "$PLAYGROUND_URL"; then
   exit 1
 fi
 
-mkdir -p "$OUT_DIR"
 
 SESSION="$(agent-browser session id --scope worktree --prefix collie-docs-shots)"
 AB() { agent-browser --session "$SESSION" "$@"; }
@@ -85,12 +101,6 @@ print(int(d["x"]), int(d["y"]), int(d["width"]), int(d["height"]))
 '
 }
 
-AB set viewport 1440 1000
-AB set media light
-AB open "$PLAYGROUND_URL"
-AB wait --load networkidle
-sleep 1
-
 # Tag the phone-frame element inside the card labelled "$1" with data-shot="$2".
 tag_phone_frame() {
   local label="$1" id="$2"
@@ -120,6 +130,65 @@ tag_stage() {
 })()
 EOF
 }
+
+# Tag the component inside the card whose `data-state` is "$1" with data-shot="$2": the phone frame
+# when the card draws one, else the first element of the card's component row.
+tag_card_component() {
+  local state="$1" id="$2"
+  cat <<EOF | AB eval --stdin
+(function() {
+  const card = document.querySelector('[data-state=' + JSON.stringify(${state@Q}) + ']');
+  if (!card) throw new Error('card not found: ' + ${state@Q});
+  const slot = card.querySelector(':scope > div[style*="grid-row: 3"]');
+  const target = slot.querySelector('[data-pg-frame]') || slot.firstElementChild;
+  target.setAttribute('data-shot', ${id@Q});
+})()
+EOF
+}
+
+# Shoot one card of the programs set into docs/images/programs/"$2".
+shoot_program_card() {
+  local state="$1" out="$2"
+  echo "== programs/$out"
+  tag_card_component "$state" "$state"
+  scroll_shot_to_top "$state"
+  AB screenshot "$TMP/full.png"
+  read -r x y w h < <(box_of "$state")
+  if [ "$w" -ne 390 ]; then
+    echo "error: $state is ${w}px wide, not 390; widen the viewport" >&2
+    exit 1
+  fi
+  crop "$TMP/full.png" "$w" "$h" "$x" "$y" "$PROGRAMS_DIR/$out"
+}
+
+if [ "$WHICH" != updates ]; then
+  mkdir -p "$PROGRAMS_DIR"
+  AB set viewport 1600 1000
+  AB open "$PLAYGROUND_URL#programs"
+  AB wait --load networkidle
+  # A fresh `open` drops the emulated colour scheme, so light mode is asserted again (see below).
+  AB set media light
+  sleep 1
+  shoot_program_card programs-above programs-section-waiting.png
+  shoot_program_card durable-home conversation-list.png
+  # Shot first among the ask cards: its line counts down from 4 min 30 s on mount.
+  shoot_program_card ask-expires-in ask-permission-time-left.png
+  shoot_program_card ask-decided-in-program ask-decided-in-program.png
+  shoot_program_card ask-program-refused program-refused-version.png
+  echo "done: $PROGRAMS_DIR"
+  ls -la "$PROGRAMS_DIR"
+fi
+
+if [ "$WHICH" = programs ]; then
+  exit 0
+fi
+
+mkdir -p "$OUT_DIR"
+AB set viewport 1440 1000
+AB open "$PLAYGROUND_URL"
+AB wait --load networkidle
+AB set media light
+sleep 1
 
 echo "== settings-updates-row.png"
 tag_phone_frame "settings — lead of a crew, three devices paired" settings-row

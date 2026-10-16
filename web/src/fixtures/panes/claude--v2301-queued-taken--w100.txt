@@ -1,0 +1,40 @@
+  man. They installed it in two hours. It blinked on at dusk, steady and bright.
+
+  Tomas packed his bag on Saturday. He stood at the top of the tower one last time. He put his hand
+  on the old brass lens. It was cold. 
+
+  Below, a small boat came across the water. The girl rowed it herself. She climbed the steps, out
+  of breath, and held out a paper bag. Inside was a loaf of warm bread.
+  
+  "My father says thank you," she said. "He says the machine could not have done it."
+
+  Tomas smiled. The machine would do fine on most nights. It would never be wrong about the time or
+  the weather. But it would never hear a call, and it would never choose to answer.
+
+  "Tell your father the machine is a good lamp," he said. "But someone must still watch the sea."
+
+  The girl looked at him. "Then I will learn," she said.
+
+  Tomas laughed for the first time in weeks. He took her hand and showed her the first flash of the
+  signal.
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mBaked for 16s · done 12:38 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mthen give it a title[0m[48;2;55;55;55m                                                                              [0m
+ 
+[0m[38;2;255;255;255m● [0mThe story already had a working title, "The Last Keeper". But the ending shows that Tomas is not
+  the last keeper, because the girl will learn the signal. So here is a better title:
+
+  [0m[1mThe Light That Answers[0m 
+ 
+  It fits the final idea of the story. A machine can shine, but only a person can hear a call and
+  choose to answer it.
+
+[0m[38;2;153;153;153m✻ Cogitated for 1s · done 12:38 PM[0m
+
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+❯ 
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m3%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m94%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m5h:[0m[38;5;71m2%[0m[38;5;246m/4h:51m[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;179m56%[0m[38;5;246m/4d:14h[0m
+  [0m[38;5;75m[Sonnet[0m[38;5;246m·high[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m~/.cache/collie-lab/m56-queue-lab/project[0m[38;2;153;153;153m [0m[38;5;109mon HEAD[0m[38;5;179m*[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← 11 agents[0m

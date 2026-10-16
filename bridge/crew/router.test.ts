@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotView } from "../sessions.ts";
-import { MUX_LOGO_PATH, type SnapshotResponse } from "../types.ts";
+import { MUX_LOGO_PATH, type SessionCard, type SnapshotResponse } from "../types.ts";
 import { CREW_PREFLIGHT_MAX_CHECKS, CREW_PREFLIGHT_TRUNCATED_ID, peerPreflightWire } from "../update-action.ts";
 import { MEMBER_HEADER } from "./admission.ts";
 import { HANDOVER_TTL_MS, mintInvite, type EnrollResponse } from "./enrollment.ts";
@@ -192,6 +192,39 @@ describe("GET /crew/v1/hello — behind both factors", () => {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
     expect(Object.hasOwn(await res.json(), "mux")).toBe(false);
+  });
+
+  test("a machine that runs a durable program carries its session cards; one that runs none sends no key (M55)", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const cards: SessionCard[] = [
+      { name: "default", kind: "terminal", mux: "herdr", caps: { typeText: true }, where: "local", state: "ready", experimental: false },
+      { name: "desk", kind: "program", mux: "Support desk", caps: { typeText: false, steerTurn: true }, where: "local", state: "starting", experimental: true },
+    ];
+    const carded = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null, sessions: () => cards });
+    const res = (await call(carded, CREW_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk", sessions: cards });
+    // A terminal-only machine answers null: its `hello` is the bytes it always was.
+    const plain = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null, sessions: () => null });
+    const again = (await call(plain, CREW_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0 + 1) },
+    }))!;
+    expect(Object.hasOwn(await again.json(), "sessions")).toBe(false);
+  });
+
+  test("a build that computes a Surface sends its reader version; one that does not sends no key (M56 spec 09)", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const withReader = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null, surfaceVersion: 1 });
+    const res = (await call(withReader, CREW_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk", surfaceVersion: 1 });
+    const without = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null });
+    const again = (await call(without, CREW_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0 + 1) },
+    }))!;
+    expect(Object.hasOwn(await again.json(), "surfaceVersion")).toBe(false);
   });
 
   test("a router built without a version simply omits the field — absent, never empty (§7.1)", async () => {

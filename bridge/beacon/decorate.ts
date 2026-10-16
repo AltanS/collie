@@ -109,7 +109,7 @@ export interface BeaconMatcher {
    * inside this scope? Any prefixing or normalisation a multiplexer's Collie ids need is applied
    * here, and the scope check is part of the answer.
    */
-  matches(pane: MuxPane, marker: BeaconMarker, scope: string): boolean;
+  matches(pane: Pick<MuxPane, "paneId">, marker: BeaconMarker, scope: string): boolean;
   /**
    * What the operator reads while the hooks are NOT installed, per capability this would have lifted.
    *
@@ -321,7 +321,7 @@ export function withAgentBeacons(
     refresh: () => adapter.refresh(),
     readGrid: (paneId, request) => adapter.readGrid(paneId, request),
     typeText: (paneId, text) => adapter.typeText(paneId, text),
-    sendKeys: (paneId, keys) => adapter.sendKeys(paneId, keys),
+    writeKeys: (paneId, keys) => adapter.writeKeys(paneId, keys),
     renamePane: (paneId, label) => adapter.renamePane(paneId, label),
     closePane: (paneId) => adapter.closePane(paneId),
     setFocus: (paneId) => adapter.setFocus(paneId),

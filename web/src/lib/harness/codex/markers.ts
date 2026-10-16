@@ -290,6 +290,28 @@ function isRightNotice(segments: AnsiSegment[]): boolean {
   return chars <= MAX_STATUS_FIELD_CHARS;
 }
 
+// Codex 0.163.0 draws ` · ← for agents` on the status row itself, after the last field (#454; the
+// 0.157.0 key-hint row carries the same words on its own row, and why the 0.163.0 pane shows the hint
+// is not known). Three segments: the ordinary separator, the `←` key in BOLD, and ` for agents` in the
+// separator's own quiet paint. Neither of the last two is a field or a separator, so the row was
+// refused and the pane had no composer. It is accepted only as the row's tail, exactly these words,
+// the glue in the row's one separator paint, so a hint anywhere else and an unpainted echo stay
+// refused. The key's bold is not asked for: the words, the position and the glue paint already
+// decide, and invariants.test.ts repaints the whole band with bold off.
+const AGENTS_HINT_KEY = "\u2190";
+const AGENTS_HINT_GLUE = " for agents";
+
+/** True when `segments[i]` is the row's separator (in `paint`) and the two segments after it are the
+ *  daemon hint: a `←` with no fill, then ` for agents` in that same separator paint. */
+function isAgentsHint(segments: AnsiSegment[], i: number, paint: string): boolean {
+  const key = segments[i + 1];
+  const glue = segments[i + 2];
+  if (key === undefined || glue === undefined) return false;
+  if (key.text !== AGENTS_HINT_KEY || key.bg !== undefined) return false;
+  if (key.italic === true || key.underline === true) return false;
+  return glue.text === AGENTS_HINT_GLUE && separatorPaint(glue) === paint;
+}
+
 /** Trailing renderer padding is FOLDED, not matched: whitespace-only tail segments are dropped
  *  and the last surviving segment is rstripped, the same normalisation `rstrip` does to text.
  *  Returns null when nothing survives. */
@@ -350,6 +372,15 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
     if (suffix !== null) {
       if (fields < MIN_STATUS_FIELDS || i !== segments.length - 1) return false;
       fields++;
+      break;
+    }
+    // The daemon hint: this separator, then `←` and `for agents`, as the row's last segments before
+    // an optional gap and notice. Not a field, so it never counts toward the two.
+    if (isAgentsHint(segments, i, paint)) {
+      if (fields < MIN_STATUS_FIELDS) return false;
+      const after = i + 3;
+      if (after === segments.length) break;
+      if (!isGapSegment(segments[after]!) || !isRightNotice(segments.slice(after + 1))) return false;
       break;
     }
     // A busy row: this separator, then a spinner frame as the very last segment. The frame is not a

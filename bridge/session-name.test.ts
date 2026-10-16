@@ -16,6 +16,9 @@ const FIXTURES = join(import.meta.dir, "..", "web", "src", "fixtures", "panes");
 const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const stripAnsi = (s: string) => s.replace(SGR, "");
 const fixture = (name: string) => stripAnsi(readFileSync(join(FIXTURES, `${name}.txt`), "utf8"));
+// The box's bottom edge. The name is read off a whole input frame (top edge, prompt row, bottom edge),
+// the shape the frame module finds (M56 spec 03), so the hand-written boxes below carry all three.
+const BOTTOM = "─".repeat(32);
 
 describe("extractClaudeSessionName — named sessions", () => {
   test("reads the name embedded in the rule above the ❯ prompt (fixture)", () => {
@@ -37,13 +40,13 @@ describe("extractClaudeSessionName — named sessions", () => {
   });
 
   test("trims trailing rule decoration and surrounding whitespace", () => {
-    const text = ["────── my-session ──────   ", "❯ some queued draft"].join("\n");
+    const text = ["────── my-session ──────   ", "❯ some queued draft", BOTTOM].join("\n");
     expect(extractClaudeSessionName(text)).toBe("my-session");
   });
 
   test("accepts a single-word and a spaced multi-word name alike", () => {
-    expect(extractClaudeSessionName(["──── solo ──", "❯"].join("\n"))).toBe("solo");
-    expect(extractClaudeSessionName(["──── two words here ──", "❯"].join("\n"))).toBe(
+    expect(extractClaudeSessionName(["──── solo ──", "❯", BOTTOM].join("\n"))).toBe("solo");
+    expect(extractClaudeSessionName(["──── two words here ──", "❯", BOTTOM].join("\n"))).toBe(
       "two words here",
     );
   });
@@ -56,7 +59,8 @@ const ESC = String.fromCharCode(27);
 const sgr = (codes: string) => `${ESC}[${codes}m`;
 const RULE = "────────────";
 const GREY = "38;2;136;136;136";
-const box = (rule: string) => [rule, `${sgr("0")}${sgr("38;2;153;153;153")}❯${sgr("0")}`].join("\n");
+const box = (rule: string) =>
+  [rule, `${sgr("0")}${sgr("38;2;153;153;153")}❯${sgr("0")}`, `${sgr("0")}${sgr(GREY)}${BOTTOM}${sgr("0")}`].join("\n");
 
 describe("extractClaudeSessionName — styled reads", () => {
   test("reads a /rename name drawn in the rule's own colour", () => {
@@ -104,6 +108,7 @@ describe("extractClaudeSessionName — styled reads", () => {
       `${sgr("38;2;220;38;38")}scrollback`,
       `${RULE} ${sgr("38;2;0;0;0")}${sgr("48;2;220;38;38")}my-name${sgr("49")}${sgr("38;2;220;38;38")} ─${sgr("0")}`,
       `${sgr("0")}❯`,
+      BOTTOM,
     ].join("\n");
     expect(extractClaudeSessionName(text)).toBe("my-name");
   });
@@ -125,7 +130,7 @@ describe("extractClaudeSessionName — styled reads", () => {
   test("without any colour the badge still reads as a name (the known limit)", () => {
     // A multiplexer that drops colour leaves nothing to tell the two apart, so the words are taken
     // as a name rather than lose a real one.
-    expect(extractClaudeSessionName(["──── ultracode ─", "❯"].join("\n"))).toBe("ultracode");
+    expect(extractClaudeSessionName(["──── ultracode ─", "❯", BOTTOM].join("\n"))).toBe("ultracode");
   });
 });
 
@@ -155,6 +160,16 @@ describe("extractClaudeSessionName — no name / no false positives", () => {
     expect(extractClaudeSessionName(menu)).toBeUndefined();
   });
 
+  test("a rule over a ❯ row with no bottom edge is no input box, so it says nothing", () => {
+    expect(extractClaudeSessionName(["──────── half-box ────────", "❯ "].join("\n"))).toBeUndefined();
+  });
+
+  test("a box in shell mode (the ❯ painted as !) is an unnamed box, not a missing one", () => {
+    // claude-lab--mode-bash--w82.txt: `!` mode on an unnamed session. The old reader knew only the ❯
+    // and said nothing; the frame module reads the profile's prompt anchor, which knows the bang.
+    expect(extractClaudeSessionName(fixture("claude-lab--mode-bash--w82"))).toBeNull();
+  });
+
   test("returns undefined for empty text", () => {
     expect(extractClaudeSessionName("")).toBeUndefined();
   });
@@ -170,6 +185,7 @@ describe("extractClaudeSessionName — bottommost prompt wins", () => {
       "hello",
       "──────────────────────────────────",
       "❯ ",
+      BOTTOM,
     ].join("\n");
     expect(extractClaudeSessionName(text)).toBeNull();
   });
@@ -181,6 +197,7 @@ describe("extractClaudeSessionName — bottommost prompt wins", () => {
       "output",
       "──────── real-name ────────",
       "❯ ",
+      BOTTOM,
     ].join("\n");
     expect(extractClaudeSessionName(text)).toBe("real-name");
   });

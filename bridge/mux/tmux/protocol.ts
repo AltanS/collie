@@ -357,6 +357,11 @@ export function saysMissing(stderr: string): boolean {
   return MISSING_TARGET.test(stderr);
 }
 
+/** Whether this stderr is tmux 3.7 refusing `send-keys` because the client it picked is read-only. */
+export function saysReadOnlyClient(stderr: string): boolean {
+  return READ_ONLY_CLIENT.test(stderr);
+}
+
 /** Whether this stderr says the tmux server itself is not there. */
 export function saysNoServer(stderr: string): boolean {
   return NO_SERVER.test(stderr);
@@ -419,6 +424,31 @@ export function classifyControlLine(line: string): TmuxControlLine {
     return paneId.startsWith("%") && paneId.length > 1 ? { kind: "pane", paneId } : { kind: "ignore" };
   }
   return TOPOLOGY_NOTIFICATIONS.has(verb) ? { kind: "topology" } : { kind: "ignore" };
+}
+
+/**
+ * What tmux 3.7 prints when `send-keys` lands on a read-only client (commit 49bb43047d, "Allow copy
+ * mode to work for readonly clients"). Read off tmux 3.7c in a lab, with this adapter's own watcher
+ * attached: `send-keys -t %0 -- a` exits 1 with exactly this line and sends nothing.
+ */
+const READ_ONLY_CLIENT = /^client is read-only$/m;
+
+/**
+ * A client name no tmux client can have. tmux 3.7 resolves the "target client" of `send-keys` to the
+ * most recently active client of the pane's session, and refuses when that client is read-only, which
+ * Collie's own watcher always is. Naming a client that does not exist makes the lookup fail quietly
+ * (`send-keys` carries CMD_CLIENT_CANFAIL), so tmux sends the keys to the pane and asks no client.
+ */
+export const NO_TARGET_CLIENT = "collie-no-client";
+
+/**
+ * The argv for `send-keys` to one pane. `--` ends tmux's own flags, so a key that is a bare `-` is a
+ * key and not a flag. With `withoutClient` the call names {@link NO_TARGET_CLIENT} (`-c` exists on
+ * `send-keys` since tmux 3.3, so only the retry after a read-only refusal uses it).
+ */
+export function sendKeysArgs(paneId: string, keys: readonly string[], withoutClient: boolean): string[] {
+  const client = withoutClient ? ["-c", NO_TARGET_CLIENT] : [];
+  return ["send-keys", ...client, "-t", paneId, "--", ...keys];
 }
 
 /**

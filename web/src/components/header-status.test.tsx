@@ -38,6 +38,18 @@ describe("HeaderStatus — swaps the title for a live status, in place", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
   });
 
+  it("paints the note tone in the info blue and the warn tone in the working colour", () => {
+    render(
+      <HeaderStatus>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    act(() => setStatus("The desk answered first.", "note"));
+    expect(screen.getByRole("status").className).toContain("text-status-info");
+    act(() => setStatus("Reconnecting", "warn"));
+    expect(screen.getByRole("status").className).toContain("text-status-working");
+  });
+
   it("brings the title back once the status auto-clears", () => {
     render(
       <HeaderStatus>

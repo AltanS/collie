@@ -1,14 +1,19 @@
 import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
+import { PaneBadge } from "@/components/pane-badge";
 import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
+import { paneProgress, paneSubtitle } from "@/lib/pane-marks";
+import { Progress } from "@/components/ui/progress";
+import { t } from "@/lib/i18n";
 import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
 import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -198,6 +203,14 @@ export function AgentCard({
   // than the tab beside it but never takes the whole line. No branch (no checkout, an older bridge or
   // crew member, or a reading not taken yet) draws exactly the line drawn before it existed.
   const head = paneGitHead(agent);
+  // A durable program's own line under the title (WIRE.md 7.11). A flat row has a stated 44px, so there the
+  // subtitle TAKES the detail slot (a program's panes share one workspace heading, and the subtitle is the
+  // fact that tells them apart); a card has no stated height, so it carries the subtitle on a line of its own.
+  const subtitle = paneSubtitle(agent);
+  const subtitleInSlot = flat && subtitle !== null;
+  // How far a working durable conversation is (WIRE.md 7.12): a 1px line along the bottom edge, inside the
+  // straight run between the corners. It adds no height, so a row with one is the height of a row without.
+  const progress = paneProgress(agent);
   const hasRest = detailLead !== null || detailTail !== null;
   // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
   // via `tabTitle` (`lib/pane-name.ts`) — or, when the raw label carries no digit at all, nothing:
@@ -237,6 +250,9 @@ export function AgentCard({
         // from a line that doesn't follow them. Corners belong to where the row sits, never to what
         // it is doing, so a blocked flat row stays square too and takes a left rail instead.
         flat && "transition-colors hover:bg-muted/50",
+        // ...except at the GROUP's corners under a soft or round theme: the first and last row's
+        // fills follow the group's rounded corner there (LIST_ROW_CORNERS, 0 at Collie's 2px).
+        flat && LIST_ROW_CORNERS,
       )}
     >
       <Shell
@@ -245,8 +261,9 @@ export function AgentCard({
           // ListGroup, so its content lands on the same x as a card row's content BY CONSTRUCTION
           // (14 + 1 on both sides) — the hand-computed 15px this replaced was faking exactly that
           // alignment against a group that had no border to supply the 1px.
+          "relative",
           flat
-            ? "flex flex-row items-center gap-3 px-3.5 py-2.5"
+            ? cn("flex flex-row items-center gap-3 px-3.5 py-2.5", LIST_ROW_CORNERS)
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // Every flat row states its own pitch — `py-0` because the height IS the statement, and
           // the flat row's own `py-2.5` around two lines would make it 56px and the number would
@@ -318,6 +335,9 @@ export function AgentCard({
             {/* A finished pane you haven't opened yet: the square (ui/unseen-mark.tsx). Right after
                 the name, never before it, and its slot is reserved on a flat row so the name
                 truncates at one width whether the mark is drawn or not. */}
+            {/* The program's small mark (a count, or a short word), 16px like the tile so line 1 holds
+                its height. Nothing without one. */}
+            <PaneBadge pane={agent} className="shrink-0 self-center" />
             <UnseenMark on={unseen} reserve={flat} className="ml-2" />
             <PaneMeta
               host={agent.host}
@@ -331,7 +351,12 @@ export function AgentCard({
               its own is a one-line row. A workspace-grouped row is the exception: its slot is
               always there, holding the tab's name or its position — UNLESS neither is available,
               which skips the slot outright and centres the name in the 44px row instead. */}
-          {!skipBlankSlot && (inPlace || hasRest || head !== null) && (
+          {subtitleInSlot && (
+            <div data-slot="agent-row-detail" className="h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">
+              {subtitle}
+            </div>
+          )}
+          {!subtitleInSlot && !skipBlankSlot && (inPlace || hasRest || head !== null) && (
             <div
               data-slot="agent-row-detail"
               className={cn(
@@ -395,6 +420,11 @@ export function AgentCard({
               (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
               shell, still sorts where an unknown status sorts, and still opens the same view.
               Withheld on any flat row, whose height is stated; see `flat` above. */}
+          {!flat && subtitle !== null && (
+            <p data-slot="agent-row-subtitle" className="mt-0.5 min-w-0 truncate text-xs text-muted-foreground">
+              {subtitle}
+            </p>
+          )}
           {!flat && <PaneHint hint={agent.hint} />}
         </div>
 
@@ -405,6 +435,14 @@ export function AgentCard({
           <span className="sr-only">{stale ? statusLabelPast(agent.status) : statusLabel(agent.status)}</span>
         ) : (
           <StatusBadge status={agent.status} past={stale} />
+        )}
+        {progress !== null && (
+          <Progress
+            value={progress.value}
+            label={t("chat.progress.aria")}
+            size="hairline"
+            className="pointer-events-none absolute inset-x-3.5 bottom-0 w-auto"
+          />
         )}
       </Shell>
     </button>

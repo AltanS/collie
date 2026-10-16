@@ -111,7 +111,7 @@ export function resolveDurableUrl(configured: string | undefined): DurableUrl {
   const prefix = url.pathname.replace(/\/+$/u, "");
   // A URL path, not a file path: a `session` segment anywhere would double the route prefix.
   if (/(?:^|\/)session(?:\/|$)/u.test(prefix)) {
-    return { ok: false, detail: `${DURABLE_URL_ENV} names the program's base only; leave out /session/v1, the adapter adds it` };
+    return { ok: false, detail: `${DURABLE_URL_ENV} names the durable agent's base only; leave out /session/v1, the adapter adds it` };
   }
   return { ok: true, base: `${url.origin}${prefix}`, loopback, bytes };
 }
@@ -174,7 +174,7 @@ function describeHttpFailure(err: Error, timeoutMs: number, timedOut: boolean): 
 function tokenRefusal(response: Response): DurableUnreachable | null {
   if (response.status !== 401 && response.status !== 403) return null;
   void response.body?.cancel();
-  return new DurableUnreachable(`${TOKEN_REFUSED}: the program answered ${String(response.status)}`);
+  return new DurableUnreachable(`${TOKEN_REFUSED}: the durable agent answered ${String(response.status)}`);
 }
 
 // ── The client ────────────────────────────────────────────────────────────────

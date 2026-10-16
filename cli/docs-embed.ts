@@ -23,10 +23,19 @@ import commands from "../docs/commands.md" with { type: "text" };
 import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
+import durableAgents from "../docs/durable-agents.md" with { type: "text" };
+import durableAgentsOnThePhone from "../docs/durable-agents-on-the-phone.md" with { type: "text" };
+import durableAgentsSecurity from "../docs/durable-agents-security.md" with { type: "text" };
+import durableAgentsTroubleshooting from "../docs/durable-agents-troubleshooting.md" with { type: "text" };
+import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
+import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
+import sessions from "../docs/sessions.md" with { type: "text" };
+import terminology from "../docs/terminology.md" with { type: "text" };
+import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
@@ -48,7 +57,7 @@ export interface DocPage {
 }
 
 /**
- * The fourteen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
+ * Every page in an OPERATOR'S READING ORDER: the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -93,19 +102,59 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: crew,
   },
   {
+    name: "durable-agents",
+    purpose: "Show your own durable agent on your phone: attach it, its tokens, its files, its versions",
+    text: durableAgents,
+  },
+  {
+    name: "durable-agents-on-the-phone",
+    purpose: "What a durable agent's section, conversations, questions and receipts look like on the phone",
+    text: durableAgentsOnThePhone,
+  },
+  {
+    name: "durable-agents-troubleshooting",
+    purpose: "A durable agent that does not show up or says Unreachable: first checks, every reason, doctor rows, cases",
+    text: durableAgentsTroubleshooting,
+  },
+  {
+    name: "durable-agents-security",
+    purpose: "What a durable agent can and cannot do, the trust rules per transport, text cleaning, the audit log",
+    text: durableAgentsSecurity,
+  },
+  {
+    name: "durable-sdk",
+    purpose: "Every part of the npm package a durable agent uses: entries, panes, questions, hooks, caps",
+    text: durableSdk,
+  },
+  {
+    name: "durable-wire",
+    purpose: "What travels between Collie and a durable agent: routes, hello, asks, transports, limits",
+    text: durableWire,
+  },
+  {
     name: "upgrading",
     purpose: "Update from the phone or the terminal, roll back, update a crew, cross a major",
     text: upgrading,
   },
   {
+    name: "sessions",
+    purpose: "What a session is, and where sessions come from: a terminal or a durable agent",
+    text: sessions,
+  },
+  {
     name: "multiplexers",
-    purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each backend can answer",
+    purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each terminal can answer",
     text: multiplexers,
   },
   {
     name: "voice-and-push",
     purpose: "The microphone in the composer, and notifications when an agent waits on you",
     text: voiceAndPush,
+  },
+  {
+    name: "themes",
+    purpose: "Pick, import, export and write a theme: colours, shape, look and terminal palette",
+    text: themes,
   },
   {
     name: "security",
@@ -116,6 +165,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "deployment",
     purpose: "Front doors other than the default, and several Collies on one host",
     text: deployment,
+  },
+  {
+    name: "terminology",
+    purpose: "Collie's words in plain words, beside the names other tools use",
+    text: terminology,
   },
   {
     name: "troubleshooting",

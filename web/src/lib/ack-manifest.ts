@@ -60,6 +60,22 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The composer empties and the sent text appears in the mirror; the Send button holds its busy tone until the bridge has verified the reply landed (lib/reply-action.ts).",
   },
+  postSend: {
+    channel: "echo",
+    why: "The Send Protocol's request (M56 spec 05): the Send button holds its busy tone until the bridge answers with a receipt; a sent text empties the composer and appears in the mirror, any other outcome lands as a status line and, where it has one, an offer strip at the thumb.",
+  },
+  postProgramSend: {
+    channel: "echo",
+    why: "The Send Protocol's request for a program on this machine (M56 spec 14): the field holds Sending until the bridge answers; a sent text moves to the thread as a pending line the program's own line replaces, and any other outcome lands at the thumb as the terminal composer's notice.",
+  },
+  cancelHeldSend: {
+    channel: "silent",
+    why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",
+  },
+  postAskAnswer: {
+    channel: "echo",
+    why: "A tap on a dialog card as one Answer to the bridge's ask (M56 spec 08): a sent answer reads as Sent and the mirror shows the dialog moving on; a changed or gone dialog lands as a status line and the card redraws from the next read.",
+  },
   sendKeys: {
     channel: "echo",
     // TWO paths reach this one export, and the second is the reason `"silent"` is a real value in
@@ -99,6 +115,14 @@ export const ACK_MANIFEST = {
   renameTab: {
     channel: "status",
     why: "Same as renamePane, one dimension up: the sheet is gone and the tab strip has not re-rendered yet.",
+  },
+  renameSpace: {
+    channel: "status",
+    why: "Same as renameTab, one dimension up again: the sheet is gone and the space strip has not re-rendered yet.",
+  },
+  reopenDurableConversation: {
+    channel: "silent",
+    why: "Success moves the screen: the person lands on the reopened pane, or back on the list, which is the acknowledgement. A refusal says why on the status line, and the Reopen button stays pressable for another try.",
   },
   closeTab: {
     channel: "echo",

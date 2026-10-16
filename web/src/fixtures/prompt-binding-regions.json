@@ -1,5 +1,20 @@
 [
   {
+    "fixture": "agy--ask-multi.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Which fruits do you like?\n\n> 1. [ ] apple\n  2. [ ] banana\n  3. [ ] cherry\n  4. Write-in...\n\n  ↑/↓ Navigate · space Toggle · enter Submit · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
+    "fixture": "agy--ask-two-q1.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/2: Which animal do you like?\n\n> 1. cat\n  2. dog\n  3. fox\n  4. Write-in...\n\n  ↑/↓ Navigate · → Next · enter Select · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
+    "fixture": "agy--ask-two-q2.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 2/2: Which drink do you want?\n\n> 1. tea\n  2. coffee\n  3. Write-in...\n\n  ↑/↓ Navigate · ← Back · enter Submit All · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
     "fixture": "agy--permission-bash.txt",
     "detector": "menu",
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   ls -la /tmp\n\nDo you want to proceed?\n> 1. Yes\n  2. Yes, and always allow in this conversation for commands that start with 'ls'\n  3. Yes, and always allow for commands that start with 'ls' (Persist to settings.json)\n  4. No\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                                                                                                                                                                                                   Gemini 3.7 Flash · low"
@@ -18,6 +33,16 @@
     "fixture": "agy--select-menu.txt",
     "detector": "menu",
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Which color theme should the dashboard use?\n\n> 1. Red\n  2. Green\n  3. Blue\n  4. Write-in...\n\n  ↑/↓ Navigate · enter Select · esc Skip\nesc to cancel                                                                                                                                                                                                   Gemini 3.7 Flash · low"
+  },
+  {
+    "fixture": "agy--slash-exact.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n> /model  Set a model, or run a single prompt on another model\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
+  },
+  {
+    "fixture": "agy--slash-partial.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n> /model                        Set a model, or run a single prompt on another model\n  /remote-control               Turn on remote control for this session (off to disable)\n  /permissions                  Manage tool permissions\n  /teamwork-preview             Invoke a team of agents to autonomously tackle large projects.\n  /agy-customizations           Comprehensive guide and reference for the Antigravity Customization System. Use to ...\n   ↓ 1 more\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                                                                                   Gemini 3.8 Flash · high"
   },
   {
     "fixture": "claude--menu-effort-slider.txt",
@@ -623,6 +648,16 @@
     "fixture": "claude-lab--menu-model-picker-v2291--w82.txt",
     "detector": "menu",
     "region": "─────────────────────────────────────────────────────────────────────────────────\n  Select model\n  Switch between Claude models. Your pick becomes the default for new sessions.\n  For other/previous model names, specify with --model.\n\n    1.  Default (recommended)  Opus 5.5 · Best for everyday, complex tasks\n    2.  Opus 5.5               For complex work and everyday tasks\n    3.  Fable 5.1              For your toughest challenges\n  ❯ 4.  Sonnet 5.5 ✔           Most efficient for simpler tasks\n    5.  Haiku 4.5              Fastest for quick answers\n    6.  Sonnet 5               Efficient for routine tasks\n    7.  Opus 5                 Best for everyday, complex tasks\n    8.  Fable 5                Most capable for your hardest and \n                               longest-running tasks\n    9.  Opus 4.8               Best for everyday, complex tasks\n  ↓ 10. Opus 4.7               Best for everyday, complex tasks\n     … +2 models\n\n  ◐ Medium effort (default) ←/→ to adjust\n\n  Enter to set as default · s to use this session only · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--menu-model-picker-v2300--w119.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Select model\n  Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, \n  specify with --model.\n\n  ❯ 1.  Default (recommended) ✔  Sonnet 5.5 · Efficient for routine tasks\n    2.  Opus 5.5                 For complex work and everyday tasks\n    3.  Fable 5.1                For your toughest challenges\n    4.  Sonnet 5.5               Most efficient for simpler tasks\n    5.  Haiku 5.5                Fastest for quick answers\n    6.  Haiku 4.5                Fastest for quick answers\n    7.  Sonnet 5                 Efficient for routine tasks\n    8.  Opus 5                   Best for everyday, complex tasks\n    9.  Fable 5                  Most capable for your hardest and longest-running tasks\n  ↓ 10. Opus 4.8                 Best for everyday, complex tasks\n     … +3 models\n\n  ● High effort ←/→ to adjust\n\n  Enter to set as default · s to use this session only · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--menu-model-picker-v2301--w119.txt",
+    "detector": "menu",
+    "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Select model\n  Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, \n  specify with --model.\n\n  ❯ 1.  Default (recommended) ✔  Sonnet 5.5 · Efficient for routine tasks\n    2.  Opus 5.5                 For complex work and everyday tasks\n    3.  Fable 5.1                For your toughest challenges\n    4.  Sonnet 5.5               Most efficient for simpler tasks\n    5.  Haiku 5.5                Fastest for quick answers\n    6.  Haiku 4.5                Fastest for quick answers\n    7.  Sonnet 5                 Efficient for routine tasks\n    8.  Opus 5                   Best for everyday, complex tasks\n    9.  Fable 5                  Most capable for your hardest and longest-running tasks\n  ↓ 10. Opus 4.8                 Best for everyday, complex tasks\n     … +3 models\n\n  ◐ Medium effort (default) ←/→ to adjust\n\n  Enter to set as default · s to use this session only · Esc to cancel"
   },
   {
     "fixture": "claude-lab--menu-resume-picker-v2291--w83.txt",

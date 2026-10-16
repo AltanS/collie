@@ -76,7 +76,7 @@ export function FontSettingsControl() {
         </div>
       </div>
 
-      <div className="divide-y divide-border border-t border-border">
+      <div data-slot="list-group" className="border-t border-border">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <label htmlFor="pref-font-family" className="text-sm font-medium">
             {t("settings.fonts.family")}
@@ -194,7 +194,9 @@ export function FontSettingsControl() {
         <div
           aria-hidden="true"
           className={cn(
-            "h-12 overflow-hidden px-4 py-4 leading-none",
+            // The card's bottom corners, two pixels inside, so the square dark strip does not
+            // cover them under a soft or round theme; 0 at Collie's 2px.
+            "h-12 overflow-hidden rounded-b-[max(0px,calc(var(--radius-xl)_-_2px))] px-4 py-4 leading-none",
             MIRROR_SPACE,
             MIRROR_INVERT,
             sampleFace.className,

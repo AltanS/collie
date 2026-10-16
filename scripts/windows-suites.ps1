@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 99 in all, each one named, with its reason:
-#              bridge 62. 5 are the POSIX-only and engine cases below, 21 are the durable example apps, and
-#                36 are the durable socket tests (see "Durable, bridge" below).
+#              Today, 117 in all, each one named, with its reason:
+#              bridge 75. 5 are the POSIX-only and engine cases below, 4 are the hold socket tests, 30 are the
+#                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
 #                - "commandFileProblem: regular executable passes, symlinks are followed" (the
@@ -31,13 +31,25 @@
 #                to end > a 13 s WAV becomes text through a real child of this Collie". It runs only
 #                where COLLIE_TEST_WHISTLE_DIR holds the measured model, which is never committed, so
 #                no CI job or VM has it (Linux CI skips it too).
-#              Durable, bridge (21 + 36). Windows has no socket transport (WIRE.md section 1A), so a test
+#              The hold socket, bridge (4). Windows builds no hold socket yet, so every permission there stays a
+#                screen ask (CHANGELOG, M56 spec 12). The four tests of the "the hold socket" block in
+#                bridge/surface/hook-ask.test.ts are `test.skipIf` on win32:
+#                Each name sits on one line, so the pin test can find it:
+#                - "owner-only: the folder is 0700, the socket 0600; a second bridge on the same path does not take it" (a POSIX socket file with an owner-only mode)
+#                - "a pid the bridge cannot place is dropped with one log line, and the connection closes with no decision" (it dials that socket)
+#                - "a placed request reaches the session; the decision travels back as one line" (the same)
+#                - "an unparsed line is dropped" (the same)
+#              Durable, bridge (30 + 36). Windows has no socket transport (WIRE.md section 1A), so a test
 #                that is about the Unix socket itself cannot run there. The tests about the wire (controls,
 #                asks, answers, receipts, events, Chat, starters, the conformance suite) run on Windows
-#                against the fake program on 127.0.0.1 (`FakeDurableProgram.startWire`). The 21 are every
-#                test of bridge/mux/durable/example.test.ts (10) and example-cloudflare.test.ts (11): the
-#                example apps listen on a Unix socket or need `wrangler`. The 36 are
-#                bridge/mux/durable/client.test.ts: "the privacy check", "the path walk" and "the request"
+#                against the fake program on 127.0.0.1 (`FakeDurableProgram.startWire`). The 30 are every
+#                test of bridge/mux/durable/example.test.ts (12), example-hello.test.ts (6) and
+#                example-cloudflare.test.ts (12): the durable example speaks over a Unix socket (or needs
+#                `wrangler`), and Windows attaches a program over HTTPS, so none of them runs there. A file's
+#                count is its tests plus the skipped placeholder, the beforeAll and the afterAll that Bun
+#                counts with them. The VM run of release-1.22 counted bridge 71, nine more than the 62 this
+#                budget held before example-hello.test.ts (6) and three more counted in the other two files.
+#                The 36 are bridge/mux/durable/client.test.ts: "the privacy check", "the path walk" and "the request"
 #                (26; the socket client's owner, mode, link and path rules, and its deadline and size cap on
 #                a socket); bridge/mux/durable/adapter.test.ts (6: the factory reading
 #                COLLIE_DURABLE_SOCKET, the startup line, socket path rules, a program that asks for a token,
@@ -45,20 +57,27 @@
 #                handed a socket path), asks.test.ts (a socket with nothing listening) and
 #                http-client.test.ts (the socket client sends no Authorization header), one each; and
 #                bridge/durable/log.test.ts (a mode 0755 folder put back to 0700).
-#              cli 14. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 17. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
-#                platform. The other 2:
+#                platform. The other 5:
 #                "a per-call override wins over the Exec's own environment (#283) > a child
-#                killed by a signal says which one" (Windows has no POSIX signals), and
+#                killed by a signal says which one" (Windows has no POSIX signals),
 #                "collie _whistle-transcribe - the real engine, end to end > a child of this checkout's CLI turns 10.4 s of speech into text"
-#                (the same missing model as the bridge case).
-#              scripts 23: every test of scripts/install.test.ts ("scripts/install.sh > ..."):
+#                (the same missing model as the bridge case), and the 3 tests of
+#                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
+#                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
+#                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
+#              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
+#                The other 2 are in the harness lab (scripts/harness-canary/lab/):
+#                - "POSIX only: the login copy has mode 600" in seed.test.ts (Windows has no file modes)
+#                - "a real throwaway server starts, shows its pane, stops, and leaves no socket" in tmux.test.ts
+#                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 62,
-  [int]$MaxSkipsCli = 14,
-  [int]$MaxSkipsScripts = 23
+  [int]$MaxSkipsBridge = 75,
+  [int]$MaxSkipsCli = 17,
+  [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
 $ErrorActionPreference = "Continue"

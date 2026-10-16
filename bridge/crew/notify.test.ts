@@ -343,6 +343,25 @@ describe("a peer's pane that carries asks", () => {
     expect(blockedPanes(push)).toBe(1);
   });
 
+  test("two programs on one member that use the same tool call id each push once (M55: the session is in the key)", () => {
+    const { clock, push, peer } = guarded();
+    const desk = { session: "desk" };
+    const cloud = { session: "cloud" };
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { ...desk, asks: [] }), pane("conv-2", "working", "durable", { ...cloud, asks: [] })]));
+    peer.observe(
+      "laptop",
+      body([
+        pane("conv-1", "blocked", "durable", { ...desk, asks: [ask("a1", "call-1")] }),
+        pane("conv-2", "blocked", "durable", { ...cloud, asks: [ask("a1", "call-1")] }),
+      ]),
+    );
+    clock.fireAll();
+    // The guard let both through: the host's summary counts two blocked panes. Keyed by host and
+    // tool call alone, the second would have read as known and been shown quietly.
+    const sent = push.sent.filter((m) => m.type !== "clear");
+    expect(sent.at(-1)).toMatchObject({ titleCode: "herd.blocked", titleDetail: { count: 2 } });
+  });
+
   test("re-ask: a restarted program's same question under a new ask id is shown, not pushed", () => {
     const { clock, push, peer, tick } = guarded();
     peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
@@ -393,6 +412,70 @@ describe("a peer's pane that carries asks", () => {
     for (const leak of ["hunter2", "curl", "rm -rf", "shell wants"]) expect(text).not.toContain(leak);
   });
 
+  test("push words the program chose lead the push after the pane's name, with the line as the body", () => {
+    const { clock, push, peer } = guarded();
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    const chosen = { ...ask("a1", "call-1"), push: { title: "Ticket 400 needs a yes", line: "write_note wants to add one line to notes.txt" } };
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [chosen] })]));
+    clock.fireAll();
+    const msg = push.sent.find((m) => m.type !== "clear");
+    expect(msg?.title).toBe("durable: Ticket 400 needs a yes");
+    // The program's words are not Collie's to translate, so the title carries no code.
+    expect(msg?.titleCode).toBeUndefined();
+    expect(msg?.body).toBe("laptop · write_note wants to add one line to notes.txt");
+    // The ask's own title and tool line still never cross.
+    expect(JSON.stringify(msg)).not.toContain("shell wants");
+  });
+
+  test("a push title alone keeps the place as the body, and a push line alone keeps the generic headline", () => {
+    const titleOnly = guarded();
+    titleOnly.peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    titleOnly.peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [{ ...ask("a1", "call-1"), push: { title: "Needs a yes" } }] })]));
+    titleOnly.clock.fireAll();
+    const first = titleOnly.push.sent.find((m) => m.type !== "clear");
+    expect(first?.title).toBe("durable: Needs a yes");
+    expect(first?.body).toBe("laptop · collie");
+
+    const lineOnly = guarded();
+    lineOnly.peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    lineOnly.peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [{ ...ask("a1", "call-1"), push: { line: "One line." } }] })]));
+    lineOnly.clock.fireAll();
+    const second = lineOnly.push.sent.find((m) => m.type !== "clear");
+    expect(second?.titleCode).toBe("ask.permission");
+    expect(second?.title).toBe("Permission needed in durable");
+    expect(second?.body).toBe("laptop · One line.");
+  });
+
+  test("the lead cleans and cuts the words a member sent, and ignores a push that is not text", () => {
+    const { clock, push, peer } = guarded();
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    const hostile = { ...ask("a1", "call-1"), push: { title: `T\u0007${"t".repeat(100)}\u202e`, line: `${"l".repeat(300)}`, extra: "ignored" } };
+    peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [hostile] })]));
+    clock.fireAll();
+    const msg = push.sent.find((m) => m.type !== "clear");
+    // 60 characters of the title (the control and the direction mark are gone), 120 of the line.
+    expect(msg?.title).toBe(`durable: T${"t".repeat(59)}`);
+    expect(msg?.body).toBe(`laptop · ${"l".repeat(120)}`);
+
+    const odd = guarded();
+    odd.peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    const wrong = { ...ask("a1", "call-1"), push: { title: 7, line: null } };
+    odd.peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [JSON.parse(JSON.stringify(wrong))] })]));
+    odd.clock.fireAll();
+    expect(odd.push.sent.find((m) => m.type !== "clear")?.title).toBe("Permission needed in durable");
+  });
+
+  test("the words change nothing about the guard: a repeated ask with words pushes once", () => {
+    const { clock, push, peer } = guarded();
+    const chosen = { ...ask("a1", "call-1"), push: { title: "Needs a yes" } };
+    peer.observe("laptop", body([pane("conv-1", "working", "durable", { asks: [] })]));
+    for (let i = 0; i < 4; i++) {
+      peer.observe("laptop", body([pane("conv-1", "blocked", "durable", { asks: [chosen] })]));
+      clock.fireAll();
+    }
+    expect(blockedPanes(push)).toBe(1);
+  });
+
   test("past 30 pushes in an hour, the lead sends one summary for the host and then nothing", () => {
     const { clock, push, peer, tick } = guarded();
     const panes: ReturnType<typeof pane>[] = [];
@@ -406,7 +489,7 @@ describe("a peer's pane that carries asks", () => {
     floods = push.sent.filter((m) => m.titleCode === "ask.flood").length;
     expect(floods).toBe(1);
     const summary = push.sent.find((m) => m.titleCode === "ask.flood");
-    expect(summary?.title).toBe("A program on laptop is raising many asks");
+    expect(summary?.title).toBe("A durable agent on laptop is raising many asks");
     expect(summary?.host).toBe("laptop");
   });
 });

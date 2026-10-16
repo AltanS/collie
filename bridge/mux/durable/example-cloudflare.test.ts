@@ -9,31 +9,33 @@ import type { DurableEventSink } from "./events.ts";
 import type { DurableEvent, DurablePane } from "./protocol.ts";
 import { buildDurableTransport, chooseDurableTransport } from "./transport.ts";
 
-// THE CLOUDFLARE EXAMPLE, DRIVEN BY THE REAL ADAPTER OVER THE HTTPS TRANSPORT (M50 spec 13).
-// `examples/durable-member-cloudflare` is the program a person deploys behind a bearer token. This runs
+// THE CLOUDFLARE EXPERIMENT, DRIVEN BY THE REAL ADAPTER OVER THE HTTPS TRANSPORT (M50 spec 13).
+// `experiments/durable-member-cloudflare` is the program a person deploys behind a bearer token. It moved out of
+// examples/ in M55 spec 04: it is experimental and in no CI job, so this test runs only when a person sets
+// COLLIE_CLOUDFLARE_EXPERIMENT=1 after `npm ci` in that folder. CI does not set it. This runs
 // it under `wrangler dev` on 127.0.0.1 (the one plain-http exception of WIRE.md section 1B) and drives
 // the same adapter as example.test.ts through `chooseDurableTransport` and `buildDurableTransport`, so
 // the URL rule, the token rule, the HTTP client and the Worker agree on the bytes.
 //
-// It needs the example's own install (`npm ci` in that folder) and a Node on PATH, so without them it
+// It needs the flag, the experiment's own install (`npm ci` in that folder) and a Node on PATH, so without them it
 // skips and says so. It skips on Windows, where wrangler's process group cannot be stopped this way.
 //
 // The token reaches wrangler through an `--env-file` in a 0700 temp folder, as `smoke.ts` does, and
 // not through `--var`, which would put it on the command line where `ps` shows it. The token is made
 // at run time and is never a literal in this file.
 
-const EXAMPLE = join(import.meta.dir, "..", "..", "..", "examples", "durable-member-cloudflare");
+const EXAMPLE = join(import.meta.dir, "..", "..", "..", "experiments", "durable-member-cloudflare");
 const WRANGLER = join(EXAMPLE, "node_modules", ".bin", "wrangler");
 const NODE = Bun.which("node");
 
-const SKIP_REASON =
-  process.platform === "win32"
-    ? "the Cloudflare example test does not run on Windows"
-    : NODE === null
-      ? "no node on PATH: wrangler needs Node 22 or later"
-      : !existsSync(WRANGLER)
-        ? "example deps not installed: run npm ci in examples/durable-member-cloudflare"
-        : "";
+function skipReason(): string {
+  if (process.env.COLLIE_CLOUDFLARE_EXPERIMENT !== "1") return "the Cloudflare experiment is not in CI: set COLLIE_CLOUDFLARE_EXPERIMENT=1 to run it";
+  if (process.platform === "win32") return "the Cloudflare example test does not run on Windows";
+  if (NODE === null) return "no node on PATH: wrangler needs Node 22 or later";
+  if (!existsSync(WRANGLER)) return "example deps not installed: run npm ci in experiments/durable-member-cloudflare";
+  return "";
+}
+const SKIP_REASON = skipReason();
 const RUNS = SKIP_REASON === "";
 if (!RUNS) {
   // Bun prints no name for a skipped test, so the reason goes to the log as well.
@@ -197,7 +199,7 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     const session = adapter.program()?.session;
     expect(session?.version).toBe(1);
     expect(session?.hostName).toBe("durable-member-cloudflare");
-    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true });
+    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: true, reopen: true });
   });
 
   test("cloudflare: the snapshot holds the ticket a first start opens, and it waits on one ask", async () => {
@@ -205,7 +207,8 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect(mux.panes.length).toBeGreaterThanOrEqual(1);
     const first = mux.panes[0];
     expect(first?.agent).toBe("durable");
-    expect(first?.tabLabel).toBe("Inbox");
+    expect(first?.tabLabel).toBe("Tickets");
+    expect(first?.terminalTitle).toBe("Maria Lopez");
     ticket = first?.paneId ?? "";
     const asks = await until("an open ask", async () => {
       await adapter.refresh();
@@ -216,10 +219,10 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect((await pane(ticket))?.state).toBe("waiting");
   });
 
-  test("cloudflare: the events reader reads the history, then only what came after its cursor", async () => {
+  test("cloudflare: the events reader reads the pane's events, then only the newer ones", async () => {
     await adapter.syncEvents();
     const first = recorder.all(ticket);
-    expect(first.some((event) => event.type === "item" && event.item.kind === "user" && event.item.text.includes("Triage ticket"))).toBe(true);
+    expect(first.some((event) => event.type === "item" && event.item.kind === "user" && event.item.text.startsWith("Maria Lopez writes:"))).toBe(true);
     expect(first.some((event) => event.type === "ask")).toBe(true);
     expect(first.some((event) => event.type === "reset")).toBe(false);
     const before = recorder.batches.get(ticket)?.length ?? 0;
@@ -234,11 +237,12 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: true } });
     await until("the ticket idle", async () => ((await pane(ticket))?.state === "idle" ? true : undefined), 15_000);
-    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(true);
+    // The look-up answered and closed itself, so no pane is left under Look-ups.
+    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(false);
     await adapter.syncEvents();
     const after = recorder.all(ticket);
     expect(after.filter((event) => event.type === "ask-closed" && event.by === "phone")).toHaveLength(1);
-    expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.includes("The helper says"))).toBe(true);
+    expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.startsWith("Found it."))).toBe(true);
   });
 
   test("cloudflare: a send starts a new turn, and a stop ends it with a settled event and no item", async () => {
@@ -258,19 +262,58 @@ describe.skipIf(!RUNS)("the Cloudflare example against the real adapter over HTT
     expect(events).toContainEqual({ type: "settled", inputId: expect.any(String), requestId: sendId, status: "unanswered", reason: "aborted" });
     const sent = events.findIndex((event) => event.type === "item" && event.item.kind === "user" && event.item.text === "one more thing");
     expect(sent).toBeGreaterThan(-1);
-    expect(events.slice(sent + 1).some((event) => event.type === "item" && (event.item.kind === "reply" || event.item.kind === "notice"))).toBe(false);
+    // The stop adds no item of its own: no notice, and no reply except the one that was growing, which ends where it was cut
+    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.15).
+    const after = events.slice(sent + 1).flatMap((event) => (event.type === "item" ? [event.item] : []));
+    expect(after.some((item) => item.kind === "notice")).toBe(false);
+    const replies = after.filter((item) => item.kind === "reply");
+    expect(new Set(replies.map((item) => item.id)).size).toBeLessThanOrEqual(1);
+    expect(replies.length === 0 || !("partial" in (replies.at(-1) ?? {}))).toBe(true);
   });
 
   test("cloudflare: a starter opens a new pane, and a repeat with the same request id opens nothing", async () => {
     const listed = await adapter.listStarters();
-    expect(listed.starters.map((starter) => starter.id)).toContain("new-triage");
+    expect(listed.starters.map((starter) => starter.id)).toContain("sign-in");
     const requestId = crypto.randomUUID();
-    const started = await adapter.startStarter("new-triage", requestId);
+    const started = await adapter.startStarter("sign-in", requestId);
     if (started.kind !== "started") throw new Error(`the starter did not start: ${JSON.stringify(started)}`);
     expect(started.replayed).toBe(false);
     expect(started.paneId).not.toBe(ticket);
     expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.id === started.paneId)).toBe(true);
-    expect(await adapter.startStarter("new-triage", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
+    expect(await adapter.startStarter("sign-in", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
     expect(adapter.program()?.snapshot.panes.filter((candidate) => candidate.tabId === "triage:inbox")).toHaveLength(2);
   });
+  test("cloudflare: history lists the ticket and its items from the program, and a close then a reopen bring it back", async () => {
+    // Run alone (a `-t` filter), the earlier tests did not name the ticket: find the first one under Tickets.
+    if (ticket === "") {
+      ticket = await until("the first ticket", async () => {
+        await adapter.refresh();
+        return adapter.program()?.snapshot.panes.find((candidate) => candidate.tabId === "triage:inbox")?.id;
+      });
+    }
+    await adapter.refresh();
+    expect(adapter.capabilities.supports.programHistory).toBe(true);
+    expect(adapter.capabilities.supports.reopenConversation).toBe(true);
+    const list = await adapter.listConversations({});
+    if (!list.ok) throw new Error(list.detail);
+    const row = list.value.items.find((item) => item.id === ticket);
+    expect(row).toMatchObject({ state: "open", paneId: ticket, workspaceId: "triage", tabId: "triage:inbox" });
+    const items = await adapter.conversationItems(ticket, {});
+    if (!items.ok) throw new Error(items.detail);
+    expect(items.value.items.length).toBe(row?.items ?? -1);
+    expect(items.value.items.some((item) => item.kind === "user")).toBe(true);
+    expect(await adapter.conversationItems("conv-99999", {})).toMatchObject({ ok: false, reason: "gone" });
+
+    expect(await adapter.closePane(ticket)).toEqual({ ok: true, value: undefined });
+    const closed = await adapter.listConversations({});
+    if (!closed.ok) throw new Error(closed.detail);
+    expect(closed.value.items.find((item) => item.id === ticket)).toMatchObject({ state: "closed" });
+    expect(closed.value.items.find((item) => item.id === ticket)?.paneId).toBeUndefined();
+    // The closed conversation is still served whole, by the program.
+    const kept = await adapter.conversationItems(ticket, {});
+    expect(kept.ok && kept.value.items.map((item) => item.id)).toEqual(items.value.items.map((item) => item.id));
+
+    expect(await adapter.reopenConversation(ticket)).toEqual({ ok: true, value: { paneId: ticket } });
+    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.id === ticket)).toBe(true);
+  }, 20_000);
 });

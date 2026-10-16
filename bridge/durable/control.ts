@@ -1,5 +1,11 @@
-// `POST /api/pane/:id/send` AND `/abort`: A CONTROL ON A SCREENLESS PANE NAMES THE TURN IT SAW
+// `POST /api/pane/:id/send`, `/abort` AND `/action`: A CONTROL ON A SCREENLESS PANE NAMES THE TURN IT SAW
 // (ADR 0101).
+//
+// `/action` (M53 spec 07) is the third act and follows the other two line by line: the same receipt, the
+// same replay, the same unknown-outcome rule. It differs in one thing. A belt button belongs to the
+// pane, so the turn is OPTIONAL in its body: a phone that names the turn it saw gets `stale` when the
+// turn has moved, and one that names none is not checked. Its digest is the pane, the action id and the
+// turn when there is one.
 //
 // A pane with a screen has a read-back: the bridge reads the screen before it presses Enter, and a
 // screen that moved refuses the send. A durable pane has no screen, so the phone names what it
@@ -83,7 +89,7 @@ export type ControlState = "pending" | "unknown" | "unsent" | "ok" | "stale" | "
 const OPEN_STATES: ReadonlySet<ControlState> = new Set(["pending", "unknown", "unsent"]);
 
 /**
- * One send or abort a phone made, under its request id. Ids and the outcome only: the text itself is
+ * One send, abort or belt action a phone made, under its request id. Ids and the outcome only: the text itself is
  * not kept, only inside the payload digest, so a different text under the same request id is refused.
  */
 export interface ControlReceipt {
@@ -92,7 +98,8 @@ export interface ControlReceipt {
   at: number;
   paneId: string;
   act: ControlAct;
-  target: ControlTarget["kind"];
+  /** What `targetId` names: the turn or the ask a send or abort saw, or `action` for a belt action's id. */
+  target: ControlTarget["kind"] | "action";
   targetId: string;
   /** For a send. */
   steer?: boolean;
@@ -122,6 +129,8 @@ export class ControlReceiptStore extends ReceiptFileStore<ControlReceipt, Contro
 
 /** What one control asks for, as a digest. */
 export function controlDigest(paneId: string, request: ControlRequest): string {
+  // An action names the pane, its id and the turn when the phone sent one: no turn is its own value.
+  if (request.act === "action") return payloadDigest([request.act, paneId, request.actionId, request.turnId ?? ""]);
   const named = [request.act, paneId, request.target.kind, request.target.id];
   return payloadDigest(request.act === "send" ? [...named, request.steer, request.text] : named);
 }
@@ -174,6 +183,9 @@ export interface ControlDeps {
 /** The refusal for a pane whose adapter takes no guarded controls (ADR 0022's word, `unsupported`). */
 export const NO_CONTROLS = "This pane takes no send or stop by turn.";
 
+/** The same refusal for a belt action. */
+export const NO_ACTIONS = "This pane takes no durable agent actions.";
+
 /** The refusal `/reply` and `/keys` answer on a pane that takes guarded controls instead (ADR 0101). */
 export const NO_RAW_INPUT = "This conversation has no terminal. Send text with the turn you saw instead of typed keys.";
 
@@ -191,7 +203,7 @@ export function rawInputRefusal(adapter: Pick<MuxAdapter, "controlTurn">): Contr
 }
 
 /** The refusal for a request id already used for another payload. Nothing is sent. */
-export const CONTROL_ID_REUSED = "This request id was already used for another send or stop.";
+export const CONTROL_ID_REUSED = "This request id was already used for another send, stop or action.";
 
 /** The reply a settled receipt gives again. `null` for an open one: that one is sent again. */
 function replayOf(receipt: ControlReceipt): ControlReply | null {
@@ -263,7 +275,7 @@ function settleOnce(outcome: MuxControlOutcome): Settled {
 }
 
 /**
- * One send or one abort, from the phone. `body` is the parsed JSON, or undefined when it was not JSON.
+ * One send, one abort or one belt action, from the phone. `body` is the parsed JSON, or undefined when it was not JSON.
  */
 export function controlPane(
   act: ControlRequest["act"],
@@ -275,7 +287,7 @@ export function controlPane(
   if (request === null) return Promise.resolve({ status: 400, text: "bad body" });
   // Bound: a raw adapter keeps its methods on a prototype, and they read `this`.
   const controlTurn = deps.adapter.controlTurn?.bind(deps.adapter);
-  if (controlTurn === undefined) return Promise.resolve(refused("unsupported", NO_CONTROLS));
+  if (controlTurn === undefined) return Promise.resolve(refused("unsupported", act === "action" ? NO_ACTIONS : NO_CONTROLS));
 
   // SYNCHRONOUS from here to `track`: two taps with one request id must not both get past the look.
   const { receipts } = deps;
@@ -302,8 +314,8 @@ function firstReceipt(paneId: string, request: ControlRequest, at: number): Cont
     at,
     paneId,
     act: request.act,
-    target: request.target.kind,
-    targetId: request.target.id,
+    target: request.act === "action" ? "action" : request.target.kind,
+    targetId: request.act === "action" ? request.actionId : request.target.id,
     digest: controlDigest(paneId, request),
     state: "pending",
   };
@@ -336,7 +348,10 @@ async function send(
   }
   await receipts.record(receipt);
   const detail: AuditDetail = { requestId: request.requestId, outcome: settled.reply.body.outcome };
-  if (request.target.kind === "turn") detail.turnId = request.target.id;
+  if (request.act === "action") {
+    detail.actionId = request.actionId;
+    if (request.turnId !== undefined) detail.turnId = request.turnId;
+  } else if (request.target.kind === "turn") detail.turnId = request.target.id;
   else detail.askId = request.target.id;
   // The text a person sent, as the reply route records it. The receipt keeps only its hash.
   if (request.act === "send") {

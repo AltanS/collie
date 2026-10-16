@@ -94,6 +94,30 @@ export function timeAgoShort(ts: number, now: number = Date.now()): string {
   return `${Math.floor(hrs / 24)}d`;
 }
 
+/** How long until a moment, as {@link timeLeft} reads it: the time left in words, or that it passed. */
+export type TimeLeft = { kind: "left"; text: string } | { kind: "expired" };
+
+/**
+ * The time left until an ISO 8601 moment, for a countdown such as an ask's expiry: "40 s" under a minute,
+ * then "4 min", "2 h" and "3 d", each rounded down so the line never promises more time than there is.
+ * `expired` from the moment on. Null when `expiresAt` is not a time. PURE: the clock is `now`, epoch ms,
+ * so a caller ticks it (lib/cache-clock.ts) and a test passes it. The unit letters are the compact,
+ * untranslated convention {@link timeAgoShort} uses; the sentence around them is translated.
+ */
+export function timeLeft(expiresAt: string, now: number): TimeLeft | null {
+  const at = Date.parse(expiresAt);
+  if (!Number.isFinite(at)) return null;
+  const ms = at - now;
+  if (ms <= 0) return { kind: "expired" };
+  const secs = Math.ceil(ms / 1000);
+  if (secs < 60) return { kind: "left", text: `${secs} s` };
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return { kind: "left", text: `${mins} min` };
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return { kind: "left", text: `${hrs} h` };
+  return { kind: "left", text: `${Math.floor(hrs / 24)} d` };
+}
+
 /**
  * Wall-clock "HH:MM" in the phone's own timezone, formatted in the active APP locale (not the
  * browser default) — for "last seen 14:32" on a disconnected render. A clock time, not an age,

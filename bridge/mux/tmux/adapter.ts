@@ -99,6 +99,8 @@ import {
   parseListing,
   saysMissing,
   saysNoServer,
+  saysReadOnlyClient,
+  sendKeysArgs,
   type TmuxClient,
   type TmuxListing,
   type TmuxPaneRecord,
@@ -405,6 +407,18 @@ export class TmuxMux implements MuxAdapter {
   }
 
   /**
+   * One bracketed paste (M56 spec 05): the same buffer as {@link typeText}, pasted with `-p`, so tmux
+   * wraps it in the paste markers when, and only when, the program asked for bracketed paste. Collie
+   * never writes the markers itself. The Send Protocol is the one caller and never passes a line break.
+   */
+  async pasteText(paneId: string, text: string): Promise<MuxAck> {
+    if (text.length === 0) return muxAck();
+    const args = ["load-buffer", "-b", TYPE_BUFFER, "-", ";", "paste-buffer", "-d", "-p", "-b", TYPE_BUFFER, "-t", paneId];
+    const result = await this.attemptRun(args, text);
+    return result.ok ? muxAck() : result;
+  }
+
+  /**
    * Keys in the contract's spelling, translated and applied in order.
    *
    * The whole batch is translated BEFORE anything is spawned: a batch containing one chord tmux
@@ -412,7 +426,7 @@ export class TmuxMux implements MuxAdapter {
    * its front half leaves the pane somewhere the caller cannot reason about (MUX_CONTRIBUTING.md).
    * `--` ends tmux's own flags, so a key that is a bare `-` is a key and not a flag.
    */
-  async sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+  async writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
     const translated: string[] = [];
     for (const key of keys) {
       const result = toTmuxKey(key);
@@ -429,8 +443,13 @@ export class TmuxMux implements MuxAdapter {
       translated.push(result.key);
     }
     if (translated.length === 0) return muxAck();
-    const result = await this.attemptRun(["send-keys", "-t", paneId, "--", ...translated]);
-    return result.ok ? muxAck() : result;
+    const result = await this.attemptRun(sendKeysArgs(paneId, translated, false));
+    if (result.ok) return muxAck();
+    if (result.reason !== "refused" || !saysReadOnlyClient(result.detail)) return result;
+    // tmux 3.7 picked a read-only client (Collie's own watcher) as the target client and sent
+    // nothing, so asking again with no client named cannot double-send.
+    const retry = await this.attemptRun(sendKeysArgs(paneId, translated, true));
+    return retry.ok ? muxAck() : retry;
   }
 
   /**

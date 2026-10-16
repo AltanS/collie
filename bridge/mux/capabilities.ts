@@ -37,6 +37,7 @@ export const MUX_CAPABILITIES = [
   "setFocus",
   "createTab",
   "renameTab",
+  "renameSpace",
   "closeTab",
   "createSpace",
   "listWorktrees",
@@ -45,6 +46,12 @@ export const MUX_CAPABILITIES = [
   "pushTopologyEvents",
   "pushPaneEvents",
   "listSessions",
+  "steerTurn",
+  "abortTurn",
+  "starters",
+  "programActions",
+  "programHistory",
+  "reopenConversation",
 ] as const;
 
 /** One declarable capability. */
@@ -93,7 +100,10 @@ export const MUX_CAPABILITY_ROUTES = {
   setFocus:
     "POST /api/pane/:id/focus — the pane action sheet's \"Show in terminal\" row, the one act by which the phone moves the operator's own screen. Absent ⇒ the row is not there (hide the meaningless), and the phone can still SEE which pane the terminal shows, because `MuxPane.focused` is on the floor.",
   createTab: "POST /api/tab — a new tab in a space, opening a fresh shell.",
-  renameTab: "POST /api/tab/:id/rename.",
+  renameTab:
+    "POST /api/tab/:id/rename. A durable agent declares it from its own `caps.rename` (WIRE.md section 7.8); every other adapter declares it from its multiplexer's tab rename.",
+  renameSpace:
+    "POST /api/space/:id/rename: set a space's name. Only a durable agent declares it today, from its own `caps.rename` (WIRE.md section 7.8); the phone draws the Rename row of the space sheet when it is declared. Absent ⇒ no Rename row, and the space chip opens no sheet.",
   closeTab: "POST /api/tab/:id/close — a bulk pane-close.",
   createSpace: "POST /api/workspace — a new space, opening a fresh shell.",
   listWorktrees:
@@ -108,6 +118,18 @@ export const MUX_CAPABILITY_ROUTES = {
     "bridge/event-poker.ts — one pane's content or status changing arrives as a push. Same fallback, same promise.",
   listSessions:
     "bridge/sessions.ts `SessionRegistry.refresh()`, the OTHER instances of this multiplexer on this machine, each with the endpoint to dial it, so one bridge can front them all. It fills the snapshot's `sessions` list and what `?session=<name>` can select. ABSENT IS THE DEFAULT AND IT IS THE HARMLESS DIRECTION: the registry pins to the primary, the phone sees the one session it saw before this capability existed, and nothing scans anything. Stated here rather than left implicit, because the absence of this key decides whether a filesystem or a process listing is walked at all (M22 counsel).",
+  steerTurn:
+    "POST /api/pane/:id/send with `steer: true` (ADR 0101): text for the turn that is running. Only a durable agent can declare it, from its own `caps.steer` (WIRE.md section 4); the phone draws the Steer button in the belt when it is declared. Absent ⇒ no Steer button.",
+  abortTurn:
+    "POST /api/pane/:id/abort (ADR 0101): stop the running turn. Only a durable agent can declare it, from its own `caps.abort`; the phone draws the Stop button in the belt when it is declared. Absent ⇒ no Stop button.",
+  programActions:
+    "POST /api/pane/:id/action (M53 spec 07): run one of the buttons the durable agent lists for a pane (`actions` on the pane, up to four, each with a label and an icon). Only a durable agent can declare it, from its own `caps.actions` (WIRE.md section 4); the phone draws the durable agent's buttons in its section of the belt when it is declared. Absent ⇒ no durable agent buttons.",
+  programHistory:
+    "GET /api/durable/conversations and GET /api/durable/conversation/:id/items (M53 spec 11): the durable agent's own list of its conversations, open and closed, and the items of one, served by the durable agent and not by the bridge's log. Only a durable agent can declare it, from its own `caps.history` (WIRE.md 7.16); the phone draws the History row in the space sheet and leads the pane sheet's History row to the list when it is declared. Absent ⇒ no list, and History stays per pane.",
+  reopenConversation:
+    "POST /api/durable/conversation/:id/reopen (M53 spec 11): show a closed conversation again, under the same pane id. Only a durable agent can declare it, from its own `caps.reopen` (WIRE.md 7.16); the read-only view of a closed conversation draws a Reopen button when it is declared. Absent ⇒ no Reopen button.",
+  starters:
+    "GET /api/launchers rows of `source: \"program\"` and POST /api/launch with a `starter` (ADR 0102). Only a durable agent can declare it, from its own `caps.starters`; the phone then draws the new-tab and new-space buttons and sends them to the New page. Absent ⇒ those buttons stay hidden where `createTab` and `createSpace` are absent.",
 } satisfies Record<MuxCapability, string>;
 
 /**
@@ -206,6 +228,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     setFocus: claimed.has("setFocus"),
     createTab: claimed.has("createTab"),
     renameTab: claimed.has("renameTab"),
+    renameSpace: claimed.has("renameSpace"),
     closeTab: claimed.has("closeTab"),
     createSpace: claimed.has("createSpace"),
     listWorktrees: claimed.has("listWorktrees"),
@@ -214,6 +237,12 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     pushTopologyEvents: claimed.has("pushTopologyEvents"),
     pushPaneEvents: claimed.has("pushPaneEvents"),
     listSessions: claimed.has("listSessions"),
+    steerTurn: claimed.has("steerTurn"),
+    abortTurn: claimed.has("abortTurn"),
+    starters: claimed.has("starters"),
+    programActions: claimed.has("programActions"),
+    programHistory: claimed.has("programHistory"),
+    reopenConversation: claimed.has("reopenConversation"),
   } satisfies Record<MuxCapability, boolean>;
   return {
     supports,

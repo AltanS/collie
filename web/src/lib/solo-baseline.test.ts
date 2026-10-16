@@ -74,6 +74,15 @@ const SESSION_SUMMARY_KEYS = {
   working: true,
   blocked: true,
   host: true,
+  // The session card (M55): optional on the type, absent from a solo body with no program session.
+  kind: true,
+  mux: true,
+  caps: true,
+  where: true,
+  state: true,
+  experimental: true,
+  // Rides only on a program card refused for its wire version (M55 spec 14), so no solo byte moved.
+  notice: true,
 } satisfies Record<keyof SessionSummary, true>;
 
 const AGENT_VIEW_KEYS = {
@@ -126,6 +135,24 @@ const AGENT_VIEW_KEYS = {
   // only on a pane with no screen and absent from an older bridge or peer.
   asks: true,
   turnId: true,
+  // Not crew dimensions: a durable program's line under the title and its small mark (WIRE.md 7.11),
+  // present only on a pane with no screen and absent from an older bridge or peer.
+  subtitle: true,
+  badge: true,
+  progress: true,
+  // Not a crew dimension either: the belt buttons a durable program lists for a pane (M53 spec 07), present only on a pane that has some.
+  actions: true,
+  // Not a crew dimension: the pane's input surface (M56 spec 04), present only while the bridge runs Surface shadow mode.
+  surface: true,
+  // Not a crew dimension: the pane's hook-held permission (M56 spec 12), with `surface` only.
+  hold: true,
+  // Not a crew dimension: the pane's hook source, live or none (M56 spec 11), present only with `surface`.
+  hooks: true,
+  // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
+  // and it is off by default, so it is absent on every pane here and no golden byte moved.
+  sendProtocol: true,
+  // Not a crew dimension: the pane's held sends (M56 spec 15), present only while a send waits for the turn to end.
+  held: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -218,14 +245,19 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     // the golden object above pins — and this list is the tripwire against a quiet third.
     expect(AGENT_VIEW_KEYS.session).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
+      "actions",
       "agent",
       "asks",
+      "badge",
       "cache",
       "cwd",
       "focused",
       "gitHead",
       "hasSession",
+      "held",
       "hint",
+      "hold",
+      "hooks",
       "host",
       "kind",
       "lastActiveAt",
@@ -233,11 +265,15 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "model",
       "paneId",
       "paneLabel",
+      "progress",
       "readableLines",
+      "sendProtocol",
       "session",
       "sessionName",
       "soleTabName",
       "status",
+      "subtitle",
+      "surface",
       "tabId",
       "tabLabel",
       "tabPosition",

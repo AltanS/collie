@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
+import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
+import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
 import { cmdBuild } from "./build.ts";
 import {
   cmdConfig,
@@ -92,6 +94,7 @@ import {
   type SttDeps,
 } from "./stt.ts";
 import { cmdSttWhistle } from "./stt-whistle.ts";
+import { cmdDurable, cmdDurableAttach, cmdDurableDetach, cmdDurableList, DURABLE_SUBCOMMANDS, type DurableAttachDeps } from "./durable-attach.ts";
 import { realExec, realFiles } from "./sys.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
@@ -272,12 +275,44 @@ function configVerbDeps(io: Io): ConfigDeps {
   return configDeps(loadContext(io.err), io, realFiles);
 }
 
+/**
+ * `durable`: the context, the filesystem, the one network read `list` makes of this instance's own
+ * bridge, and the restart verb. The restart is built here and called ONLY by `--restart`; it is the
+ * same `cmdRestart` the `restart` verb runs, so it restarts the unit that owns this binary's checkout.
+ */
+function durableVerbDeps(io: Io): DurableAttachDeps {
+  const deps = lifecycleDeps(io);
+  return {
+    ctx: deps.ctx,
+    io,
+    files: deps.files,
+    exec: deps.exec,
+    fetch: (url, init) => fetch(url, init),
+    restart: () => cmdRestart(deps),
+  };
+}
+
 function beaconDeps(): BeaconEmitDeps {
   return {
     ctx: loadContext(() => {}),
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     agentPid: process.ppid,
+    uid: process.getuid?.(),
+  };
+}
+
+function holdDeps(): HoldDeps {
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    agentPid: process.ppid,
+    uid: process.getuid?.(),
+    connect: netConnect,
+    print: async (text) => {
+      await Bun.write(Bun.stdout, `${text}\n`);
+    },
   };
 }
 
@@ -557,12 +592,12 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "install",
-        summary: "register the beacon hooks: `hooks install claude`",
+        summary: "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions), or `hooks install codex`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
         name: "uninstall",
-        summary: "remove only the entries collie owns: `hooks uninstall claude`",
+        summary: "remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`",
         run: (args, s) => cmdHooksUninstall(hooksDeps(s.io), args),
       },
       {
@@ -575,13 +610,19 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit` — an agent hook's payload in, one beacon file out",
+    summary: "internal: `beacon emit` and `beacon hold`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
         name: "emit",
         summary: "internal: write this pane's beacon from the hook payload on stdin",
-        run: () => runBeaconEmit(beaconDeps),
+        // `collie beacon emit codex <payload>` is the Codex notify command (cli/codex-notify.ts).
+        run: (args) => (args[0] === CODEX_NOTIFY_HARNESS ? runCodexNotify(beaconDeps, args.slice(1)) : runBeaconEmit(beaconDeps)),
+      },
+      {
+        name: "hold",
+        summary: "internal: hold one permission request for a tap on the phone (M56 spec 12)",
+        run: () => runBeaconHold(holdDeps),
       },
     ],
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets
@@ -718,6 +759,32 @@ export const COMMANDS: readonly Command[] = [
     ],
     // Bare or misspelt lands here, and `cmdConfig` owns that message — as `cmdStt` does.
     run: (args, s) => cmdConfig(configVerbDeps(s.io), args),
+  },
+  // ── Durable programs (M55, ADR 0104) ───────────────────────────────────────
+  // Declared beside `config` because it is the same shape of verb: a tree the operator's own
+  // terminal drives, over a file in their own config dir. `attach` and `detach` write
+  // `sources.json` and restart nothing unless `--restart` is given.
+  {
+    name: "durable",
+    summary: `durable agents this Collie shows as sessions: ${DURABLE_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "attach",
+        summary: "add a durable agent: <name> --socket <path> | --url <url> --token-env <VAR> (--restart)",
+        run: (args, s) => cmdDurableAttach(durableVerbDeps(s.io), args),
+      },
+      {
+        name: "detach",
+        summary: "remove a durable agent by name (--restart)",
+        run: (args, s) => cmdDurableDetach(durableVerbDeps(s.io), args),
+      },
+      {
+        name: "list",
+        summary: "the attached durable agents and what the running bridge says of each",
+        run: (_args, s) => cmdDurableList(durableVerbDeps(s.io)),
+      },
+    ],
+    run: async (args, s) => await cmdDurable(durableVerbDeps(s.io), args),
   },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
   // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the

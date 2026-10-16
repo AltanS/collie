@@ -7,16 +7,27 @@ import {
   ASKS_SHOWN,
   asksAt,
   blockOf,
+  decidedOf,
+  EMPTY_DRAFT,
   effectKey,
+  formFields,
+  formReady,
+  formValues,
   freshCard,
   MAX_ASK_OPTIONS,
+  MAX_CHOICE_OPTIONS,
+  MAX_FORM_FIELDS,
   optionTone,
   parseAsk,
+  pickedAfter,
   polled,
   pressed,
   secondaryLabel,
+  sent,
   shownAsks,
   tapped,
+  textLimit,
+  textReady,
   visibleOptions,
 } from "./ask";
 import { t } from "./i18n";
@@ -162,6 +173,13 @@ describe("the card's state", () => {
     expect(answered(tapped(first, "yes", "r"), { outcome: "too-late" }).phase).toBe("late");
   });
 
+  it("too late keeps who decided first when the answer said, and nothing when it did not", () => {
+    const decided = { by: "timeout" as const, at: "2026-10-15T09:30:00.000Z" };
+    expect(answered(tapped(first, "yes", "r"), { outcome: "too-late", decided })).toMatchObject({ phase: "late", decided });
+    expect(answered(tapped(first, "yes", "r"), { outcome: "too-late" }).decided).toBeNull();
+    expect(first.decided).toBeNull();
+  });
+
   it("stale replaces the card with the returned ask and asks for a fresh tap", () => {
     const newer = ask({ revision: 2, title: "Run it as root?" });
     const s = answered(tapped(first, "yes", "r"), { outcome: "stale", ask: newer });
@@ -274,5 +292,126 @@ describe("an ask out of a response body", () => {
 
   it("drops a tool block it cannot read, and keeps the ask", () => {
     expect(parseAsk({ ...good, tool: { name: 3 } })?.tool).toBeUndefined();
+  });
+
+  it("reads expiresAt when it is a time, and treats anything else as none", () => {
+    expect(parseAsk({ ...good, expiresAt: "2026-10-15T10:04:00.000Z" })?.expiresAt).toBe("2026-10-15T10:04:00.000Z");
+    expect(parseAsk({ ...good, expiresAt: "soon" })).not.toHaveProperty("expiresAt");
+    expect(parseAsk({ ...good, expiresAt: 1760000000 })).not.toHaveProperty("expiresAt");
+    expect(parseAsk(good)).not.toHaveProperty("expiresAt");
+  });
+});
+
+describe("who decided a too-late answer", () => {
+  it("reads the three words with a time, and nothing else", () => {
+    for (const by of ["phone", "program", "timeout"]) {
+      expect(decidedOf({ by, at: "2026-10-15T09:30:00.000Z" })).toEqual({ by, at: "2026-10-15T09:30:00.000Z" });
+    }
+    expect(decidedOf({ by: "stopped", at: "2026-10-15T09:30:00.000Z" })).toBeUndefined();
+    expect(decidedOf({ by: "program", at: "later" })).toBeUndefined();
+    expect(decidedOf({ by: "program" })).toBeUndefined();
+    expect(decidedOf(undefined)).toBeUndefined();
+  });
+});
+
+describe("more kinds of ask", () => {
+  const plain = (id: string): AskOption => ({ id, label: `Pick ${id}` });
+  const choice = (over: Partial<Ask> = {}) => ask({ kind: "choice", options: ["a", "b", "c"].map(plain), ...over });
+  const text = (over: Partial<Ask> = {}) => ask({ kind: "text", options: [], ...over });
+  const form = (over: Partial<Ask> = {}) =>
+    ask({
+      kind: "form",
+      options: [],
+      fields: [
+        { id: "summary", label: "Summary", kind: "text", required: true, maxLength: 10 },
+        { id: "queue", label: "Queue", kind: "choice", options: ["a", "b"].map(plain) },
+        { id: "urgent", label: "Urgent", kind: "toggle", required: true },
+      ],
+      ...over,
+    });
+
+  const lines = (typed: Record<string, string>) => ({ lines: typed, flags: {} });
+
+  it("answerable: each kind needs what it is answered with", () => {
+    expect(answerable(choice())).toBe(true);
+    expect(answerable(choice({ options: [] }))).toBe(false);
+    expect(answerable(text())).toBe(true);
+    expect(answerable(form())).toBe(true);
+    expect(answerable(form({ fields: [] }))).toBe(false);
+    expect(answerable(form({ fields: undefined }))).toBe(false);
+    expect(answerable(form({ fields: [{ id: "q", label: "Q", kind: "choice", options: [] }] }))).toBe(false);
+    expect(answerable(ask({ kind: "dial" }))).toBe(false);
+  });
+
+  it("a choice draws its first eight options, with no effect to withhold; a permission still draws six", () => {
+    const many = Array.from({ length: 10 }, (_, i) => plain(`o${i}`));
+    expect(visibleOptions(choice({ options: many }))).toHaveLength(MAX_CHOICE_OPTIONS);
+    expect(visibleOptions(ask({ options: Array.from({ length: 10 }, (_, i) => option(`o${i}`)) }))).toHaveLength(MAX_ASK_OPTIONS);
+  });
+
+  it("a permission option with no effect is not drawn", () => {
+    expect(visibleOptions(ask({ options: [plain("x"), option("y")] })).map((o) => o.id)).toEqual(["y"]);
+  });
+
+  it("a form draws its first six fields", () => {
+    const fields = Array.from({ length: 9 }, (_, i) => ({ id: `f${i}`, label: "F", kind: "toggle" as const }));
+    expect(formFields(form({ fields }))).toHaveLength(MAX_FORM_FIELDS);
+  });
+
+  it("textLimit reads 500 when the program names none; textReady wants a non-blank line within the limit", () => {
+    expect(textLimit({})).toBe(500);
+    expect(textLimit({ maxLength: 12 })).toBe(12);
+    expect(textReady("", {})).toBe(false);
+    expect(textReady("   ", {})).toBe(false);
+    expect(textReady("ok", { maxLength: 2 })).toBe(true);
+    expect(textReady("ooo", { maxLength: 2 })).toBe(false);
+    expect(textReady("  ok  ", { maxLength: 2 })).toBe(true); // the line is sent trimmed
+    expect(textReady("🙂🙂", { maxLength: 2 })).toBe(true); // characters, not code units
+  });
+
+  it("pickedAfter: a single choice replaces, a multiple one flips the id", () => {
+    expect(pickedAfter(["a"], "b", false)).toEqual(["b"]);
+    expect(pickedAfter(["a"], "b", true)).toEqual(["a", "b"]);
+    expect(pickedAfter(["a", "b"], "a", true)).toEqual(["b"]);
+  });
+
+  it("formReady: a required text field needs a line, a toggle always has a value, a text over its limit blocks", () => {
+    expect(formReady(form(), EMPTY_DRAFT)).toBe(false);
+    expect(formReady(form(), lines({ summary: "   " }))).toBe(false);
+    expect(formReady(form(), lines({ summary: "ok" }))).toBe(true);
+    expect(formReady(form(), lines({ summary: "x".repeat(11) }))).toBe(false);
+    expect(formReady(form({ fields: [{ id: "queue", label: "Q", kind: "choice", required: true, options: [plain("a")] }] }), EMPTY_DRAFT)).toBe(false);
+    expect(formReady(form({ fields: [{ id: "queue", label: "Q", kind: "choice", required: true, options: [plain("a")] }] }), lines({ queue: "a" }))).toBe(true);
+  });
+
+  it("formValues: filled fields only, text trimmed, every toggle as a boolean", () => {
+    expect(formValues(form(), { lines: { summary: "  hi  ", queue: "b" }, flags: { urgent: true } })).toEqual({ summary: "hi", queue: "b", urgent: true });
+    expect(formValues(form(), lines({ summary: "hi", queue: "" }))).toEqual({ summary: "hi", urgent: false });
+  });
+
+  it("sent keeps the whole answer for Try again, and an option id only when the answer is one option", () => {
+    const first = freshCard(choice());
+    const one = sent(first, { optionIds: ["a"] }, "r1");
+    expect(one).toMatchObject({ phase: "sending", requestId: "r1", answer: { optionIds: ["a"] }, optionId: null });
+    expect(tapped(freshCard(ask()), "yes", "r2")).toMatchObject({ optionId: "yes", answer: { optionId: "yes" } });
+    expect(answered(one, { outcome: "unknown" })).toMatchObject({ phase: "unknown", answer: { optionIds: ["a"] }, requestId: "r1" });
+    expect(answered(one, { outcome: "stale" })).toMatchObject({ phase: "stale", answer: null, requestId: null });
+  });
+
+  it("parseAsk reads a choice, a text ask and a form, and drops one with a broken field", () => {
+    const good = { id: "a", kind: "choice", toolCallId: "t", revision: 1, title: "Q", itemId: "i", options: [{ id: "x", label: "X" }], multiple: true };
+    expect(parseAsk(good)).toEqual(good);
+    const line = { id: "a", kind: "text", toolCallId: "t", revision: 1, title: "Q", itemId: "i", options: [], placeholder: "hint", maxLength: 30 };
+    expect(parseAsk(line)).toEqual(line);
+    const fields = [
+      { id: "s", label: "S", kind: "text", required: true, maxLength: 5 },
+      { id: "q", label: "Q", kind: "choice", options: [{ id: "x", label: "X" }] },
+      { id: "u", label: "U", kind: "toggle" },
+    ];
+    const whole = { id: "a", kind: "form", toolCallId: "t", revision: 1, title: "Q", itemId: "i", options: [], fields };
+    expect(parseAsk(whole)).toEqual(whole);
+    expect(parseAsk({ ...whole, fields: [{ id: "s", label: "S", kind: "dial" }] })).toBeUndefined();
+    expect(parseAsk({ ...whole, fields: [{ id: "q", label: "Q", kind: "choice", options: [{ id: "x" }] }] })).toBeUndefined();
+    expect(parseAsk({ ...good, options: [{ id: "x", label: "X", effect: "sudo" }] })).toBeUndefined();
   });
 });

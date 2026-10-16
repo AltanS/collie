@@ -6,7 +6,7 @@ import { splitLines } from "../blocks";
 import { describeAdapterConformance } from "./conformance";
 import { buildBlocks } from "./index";
 import { piAdapter } from "./pi";
-import { draftCarriesSend } from "../reply-action";
+import { draftCarriesSend } from "../draft-match";
 import { adapterFor } from "./registry";
 
 const PANES = join(import.meta.dirname, "../../fixtures/panes");
@@ -37,12 +37,15 @@ describeAdapterConformance(piAdapter, {
 
 describe("pi adapter routing", () => {
   it("lifts every question screen the corpus proves, and no fewer", () => {
-    expect(lifted).toHaveLength(40);
+    expect(lifted).toHaveLength(47);
   });
 
   it.each([
     ["pi--omo-v5130-single-described.txt", "prompt-select"],
     ["pi--omo-v5130-panel-question.txt", "prompt-select"],
+    ["pi--omo-v5130-panel-question-cut.txt", "prompt-select"],
+    ["pi--v0871-nocolor-question.txt", "prompt-select"],
+    ["pi--omo-v5130-nocolor-question.txt", "prompt-select"],
     ["pi--v0871-question-single.txt", "prompt-select"],
     ["pi--v110-questionnaire-submit-ready.txt", "wizard"],
   ])("lifts %s through the public pi dispatch", (name, kind) => {
@@ -64,6 +67,8 @@ describe("pi adapter routing", () => {
     "pi--omo-v5130-picker-tree.txt",
     "pi--omo-v5130-picker-resume.txt",
     "pi--omo-v5130-panel-picker-tree.txt",
+    "pi--omo-v5130-panel-question-cut-footer.txt",
+    "pi--omo-v5130-panel-picker-tree-cut.txt",
     "pi--v110-stock-picker-resume.txt",
     "pi--v110-stock-picker-tree.txt",
   ])("offers only the printed Escape key on the unmodelled %s", (name) => {
@@ -107,6 +112,22 @@ describe("pi adapter routing", () => {
     expect(piAdapter.extractInputDraft(lines)).toBe(draft);
     expect(piAdapter.composerPrompt?.(lines)).not.toBeNull();
     expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
+  });
+
+  // NO_COLOR=1 (captured 2026-10-15, fixtures README): pi 0.87.1 and OmO 5.1.30 both had the variable
+  // in their environment and painted every row as before, so the paint-based readers read them as
+  // they read the colour captures. No monochrome pi screen exists to read, so none is guessed at.
+  it.each([
+    ["pi--v0871-nocolor-draft.txt", "collie stock pi draft probe"],
+    ["pi--omo-v5130-nocolor-idle.txt", null],
+  ])("reads %s, run with NO_COLOR=1, as a composer bound to its frame", (name, draft) => {
+    const lines = load(name);
+    expect(piAdapter.composerReady?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBe(draft);
+    expect(piAdapter.composerPrompt?.(lines)).not.toBeNull();
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
+    // Painted, as without NO_COLOR: the status rows carry colour.
+    expect(piAdapter.extractStatusLines(lines)[0]!.segments.some((s) => s.fg !== undefined)).toBe(true);
   });
 
   // The side panel (#412): the editor is read from rows cropped at the panel, so no panel text
@@ -204,5 +225,56 @@ describe("pi adapter routing", () => {
     const [block] = buildBlocks(lines, { agent: "pi" });
     expect(block?.kind).toBe("raw");
     expect(block?.kind === "raw" ? block.lines.length : 0).toBeLessThan(lines.length);
+  });
+});
+
+describe("pi: the folder trust prompt lifts as a walked trust card (1.2.0)", () => {
+  const promptOf = (lines: ReturnType<typeof load>) => {
+    const block = piAdapter.buildBlocks(lines).find((b) => b.kind === "prompt-select");
+    return block?.kind === "prompt-select" ? block.prompt : null;
+  };
+
+  it("walks from the pointer to each option, and Escape cancels, as the footer names them", () => {
+    const prompt = promptOf(load("pi--trust-prompt.txt"));
+    expect(prompt?.family).toBe("trust");
+    expect(prompt?.question).toBe("Trust project folder?");
+    expect(prompt?.options.map((o) => [o.label, o.keys.join("+")])).toEqual([
+      ["Trust", "Enter"],
+      ["Trust parent folder", "Down+Enter"],
+      ["Trust (this session only)", "Down+Down+Enter"],
+      ["Do not trust", "Down+Down+Down+Enter"],
+      ["Do not trust (this session only)", "Down+Down+Down+Down+Enter"],
+      ["Cancel", "Escape"],
+    ]);
+    expect(piAdapter.composerReady?.(load("pi--trust-prompt.txt"))).toBe(false);
+  });
+
+  it("names the parent folder, wrapped on screen, as that option's description", () => {
+    const parent = promptOf(load("pi--trust-prompt.txt"))?.options[1];
+    expect(parent?.description).toMatch(/^\(\/tmp\/collie-pi-sandbox\/\S+\/sandboxdir\)$/);
+  });
+
+  it("walks up from a moved pointer; the signature moves and the core does not", () => {
+    const first = promptOf(load("pi--trust-prompt.txt"));
+    const moved = promptOf(load("pi--trust-prompt-moved.txt"));
+    expect(moved?.options.slice(0, 3).map((o) => o.keys.join("+"))).toEqual(["Up+Enter", "Enter", "Down+Enter"]);
+    expect(moved?.signature).not.toBe(first?.signature);
+    expect(moved?.coreSignature).toBe(first?.coreSignature);
+  });
+
+  it("starts the card at the first option, so the folder and the explanation stay in the mirror", () => {
+    const [raw, card] = piAdapter.buildBlocks(load("pi--trust-prompt.txt"));
+    expect(card?.kind === "prompt-select" && card.lines.map((l) => l.segments.map((g) => g.text).join(""))[0]?.trim()).toBe(
+      "→ Trust",
+    );
+    const mirror = raw?.kind === "raw" ? raw.lines.map((l) => l.segments.map((g) => g.text).join("")).join("\n") : "";
+    expect(mirror).toContain("This allows pi to load .pi settings");
+  });
+
+  it("does not lift a list holding an option it does not know", () => {
+    const rows = load("pi--trust-prompt.txt").map((l) =>
+      l.segments.map((g) => g.text).join("").replace("Do not trust (this session only)", "Trust everything forever        "),
+    );
+    expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
   });
 });

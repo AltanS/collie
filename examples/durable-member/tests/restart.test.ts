@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PaneRegistry } from "../pi-durable/index.ts";
-import { askIdFor, createCore } from "../sdk/core/index.ts";
+import { askIdFor, createCore } from "../../../packages/durable-sdk/src/core/index.ts";
 import { api, type Dial } from "./client.ts";
 import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, pane, tmp, waitFor } from "./util.ts";
 
@@ -42,20 +42,21 @@ describe("restart with an open ask", () => {
     expect(snap.panes.find((x) => x.id === main)!.state).toBe("waiting");
   });
 
-  test("SIGKILL, start again: same pane id, same history, new epoch", async () => {
+  test("SIGKILL, start again: same pane id, same items, new epoch", async () => {
     await kill("SIGKILL");
     await boot();
     const snap = (await api.snapshot(d)).body;
     expect(snap.epoch).not.toBe(oldEpoch);
     const p = snap.panes.find((x) => x.id === main)!;
-    expect(p).toMatchObject({ title: expect.stringContaining("Ticket"), tabId: "triage:inbox" });
+    // Named again from its first message, as the first start named it.
+    expect(p).toMatchObject({ title: "Maria Lopez", subtitle: "Can't sign in after a password reset", tabId: "triage:inbox" });
     const events = await allEvents(d, main);
     expect(events.some((e) => e.type === "item" && e.item.kind === "user")).toBe(true);
     expect(events.some((e) => e.type === "item" && e.item.kind === "tool" && e.item.tool.name === "write_note")).toBe(true);
     expect(events.some((e) => e.type === "synced")).toBe(true);
   });
 
-  test("after the wake the open ask has the same id: Pi re-runs the hook before the app is ready", async () => {
+  test("after the wake the open ask has the same id: Pi re-runs the waiting tool call before the app is ready", async () => {
     // No wait: the first snapshot the restarted app serves carries the ask, by contract (WIRE.md 8.2).
     const p = (await pane(d, main))!.openAsks[0]!;
     expect(p.id).toBe(oldAsk); // derived from the pane and the tool call, so the same across the restart
@@ -73,17 +74,18 @@ describe("restart with an open ask", () => {
   test("an answer to the id listed before the restart lands: taken, and the tool ran once (same id)", async () => {
     expect((await api.answer(d, main, oldAsk, "allow", { revision: 1 })).body).toEqual({ result: "taken" });
     await waitFor("idle", async () => (await pane(d, main))?.state === "idle");
-    const helper = (await api.snapshot(d)).body.panes.find((x) => x.tabId === "triage:helpers");
-    expect(helper).toBeTruthy();
+    // The look-up ran and closed itself once it answered: the history lists it, closed.
+    const lookups = (await api.conversations(d)).body.items.filter((row) => row.tabId === "triage:helpers");
+    expect(lookups.map((row) => row.state)).toEqual(["closed"]);
     const lines = readFileSync(join(dir, "notes.txt"), "utf8").split("\n").filter(Boolean);
     expect(lines).toHaveLength(1);
   });
 
-  test("a second restart with nothing open: both panes come back idle with their history, and no new ticket", async () => {
+  test("a second restart with nothing open: the ticket comes back idle with its items, the closed look-up stays closed, and no new ticket", async () => {
     await kill("SIGKILL");
     await boot();
     const snap = (await api.snapshot(d)).body;
-    expect(snap.panes.map((x) => [x.tabId, x.state]).sort()).toEqual([["triage:helpers", "idle"], ["triage:inbox", "idle"]]);
+    expect(snap.panes.map((x) => [x.tabId, x.state]).sort()).toEqual([["triage:inbox", "idle"]]);
     const events = await allEvents(d, main);
     expect(events.filter((e) => e.type === "item" && e.item.kind === "reply").length).toBe(1);
     expect(events.at(-1)).toMatchObject({ type: "state", state: "idle" });
@@ -91,7 +93,7 @@ describe("restart with an open ask", () => {
   });
 
   test("a polite SIGTERM with an open ask is no answer: nothing is denied, the ask comes back after the restart with the same id", async () => {
-    const id = (await api.start(d, "new-triage")).body.paneId;
+    const id = (await api.start(d, "sign-in")).body.paneId;
     const first = await waitFor("ask", () => firstAsk(d, id));
     const t0 = Date.now();
     await kill("SIGTERM");

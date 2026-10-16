@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Eye, EyeOff, File, FileInput, FileMinus, FilePen, FilePlus, Folder, FolderPlus, Link2 } from "lucide-react";
 
 import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_WORD, TREE_TONE } from "@/components/changes-view";
-import { ListGroup } from "@/components/ui/list-group";
+import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { Segmented } from "@/components/ui/segmented";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
@@ -222,7 +222,7 @@ export function FileRows({
 }) {
   useLocale();
   return (
-    <ListGroup as="ul" data-slot="file-rows">
+    <ListGroup as="ul" data-list="file-rows">
       {entries.map((entry) => {
         const mark = marks?.get(entry.name);
         const Icon = mark?.kind === "change" ? changedIcon(entry.kind, mark.status) : KIND_ICON[entry.kind];
@@ -234,7 +234,7 @@ export function FileRows({
               type="button"
               onClick={() => onOpen(entry)}
               aria-label={rowLabel(entry, mark)}
-              className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50"
+              className={cn("flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50", LIST_ROW_CORNERS)}
             >
               <Icon
                 aria-hidden

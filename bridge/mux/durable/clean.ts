@@ -38,11 +38,23 @@ export const CAPS = {
   panes: 256,
   openAsksPerPane: 50,
   optionsPerAsk: 6,
+  /** Options of a `choice` ask, and of a `choice` field of a form (WIRE.md 7.14). */
+  choiceOptions: 8,
+  /** Fields of a `form` ask. */
+  formFields: 6,
   starters: 50,
+  /** Belt actions per pane (WIRE.md section 4, `PaneAction`). */
+  actionsPerPane: 4,
   /** Events in one plain events reply. */
   eventsPerReply: 1000,
   /** Items in a reset view, the newest. */
   resetItems: 2000,
+  /** A history cursor, in bytes (WIRE.md 7.16). */
+  historyCursor: 512,
+  /** Rows in one `conversations` page. */
+  conversationsPerPage: 100,
+  /** Items in one page of a conversation's history. */
+  historyItems: 1000,
 } as const;
 
 /** The reply caps of WIRE.md section 6, in bytes. */
@@ -50,6 +62,10 @@ export const REPLY_CAPS = {
   hello: 16 * 1024,
   snapshot: 4 * 1024 * 1024,
   events: 8 * 1024 * 1024,
+  /** A page of the program's conversation list (WIRE.md 7.16): 100 rows. */
+  conversations: 1024 * 1024,
+  /** A page of one conversation's items (WIRE.md 7.16). */
+  conversationItems: 8 * 1024 * 1024,
   post: 16 * 1024,
 } as const;
 
@@ -166,3 +182,139 @@ export function changedByCleaning(text: string, rule: TextRule): boolean {
 export function isWireId(value: string): boolean {
   return byteLength(value) <= CAPS.id && isValidMuxId(value);
 }
+
+/** The longest belt action label, in characters (code points). WIRE.md section 4. */
+export const ACTION_LABEL_MAX = 16;
+
+/** A belt action label, cleaned and cut to {@link ACTION_LABEL_MAX} characters. Empty when nothing is left. */
+export function actionLabelOf(label: string): string {
+  return [...cleanText(label, lineRule(CAPS.starterLabel)).trim()].slice(0, ACTION_LABEL_MAX).join("").trim();
+}
+
+/** The longest push title and push line an ask may carry, in characters (code points). WIRE.md section 6. */
+export const PUSH_TITLE_MAX = 60;
+export const PUSH_LINE_MAX = 120;
+
+/** One part of an ask's push words: cleaned as a one-line string, trimmed and cut to `max` characters. May be empty. */
+export function pushPartOf(text: string, max: number): string {
+  return [...cleanText(text, lineRule(CAPS.askTitle)).trim()].slice(0, max).join("").trim();
+}
+
+/** The longest title a rename may carry, in characters (code points). WIRE.md section 7.8. */
+export const RENAME_TITLE_MAX = 120;
+
+/**
+ * The title a rename asks for: trimmed, 1 to {@link RENAME_TITLE_MAX} characters, no control character.
+ * Null when it breaks the rule, so nothing leaves that the program would answer 400.
+ */
+export function renameTitleOf(title: string): string | null {
+  const trimmed = title.trim();
+  if (trimmed === "" || [...trimmed].length > RENAME_TITLE_MAX) return null;
+  for (const symbol of trimmed) {
+    if (isControl(symbol.codePointAt(0) ?? 0)) return null;
+  }
+  return trimmed;
+}
+
+// ── Subtitle and badge (WIRE.md section 7.11) ─────────────────────────────────
+
+/** The longest subtitle, in characters (code points). */
+export const SUBTITLE_MAX = 120;
+
+/** The longest text badge, in characters (code points). */
+export const BADGE_TEXT_MAX = 12;
+
+/** The largest count badge. A count is an integer from 0 to this. */
+export const BADGE_COUNT_MAX = 9999;
+
+/** One small mark next to a pane's title: a count or a short word. Exactly one of the two keys. */
+export type Badge = { readonly count: number } | { readonly text: string };
+
+/**
+ * Clean one display string that is capped in characters, not bytes: control characters, direction
+ * marks and zero-width characters out, trimmed, then cut at a whole code point with `…` as the last
+ * character when it was over `maxChars`. Undefined when nothing is left.
+ */
+export function shortLine(text: string, maxChars: number): string | undefined {
+  // Four bytes a character is the widest a code point gets, so this step never cuts on its own.
+  const cleaned = cleanText(text, lineRule(maxChars * 4 + ELLIPSIS_BYTES)).trim();
+  if (cleaned === "") return undefined;
+  const symbols = [...cleaned];
+  if (symbols.length <= maxChars) return cleaned;
+  return `${symbols.slice(0, maxChars - 1).join("")}${ELLIPSIS}`;
+}
+
+// ── Ask kinds (WIRE.md section 7.14) ──────────────────────────────────────────
+
+/** The longest `placeholder` of a `text` ask, in characters (code points). */
+export const PLACEHOLDER_MAX = 60;
+
+/** The largest `maxLength` of a `text` ask or a text field, in characters. */
+export const ANSWER_TEXT_MAX = 2000;
+
+/** The `maxLength` a text ask or a text field has when the program names none. */
+export const ANSWER_TEXT_DEFAULT = 500;
+
+/** The most bytes a text answer may take: {@link ANSWER_TEXT_MAX} characters at four bytes each. */
+export const ANSWER_TEXT_BYTES = ANSWER_TEXT_MAX * 4;
+
+// ── Rich items (WIRE.md section 7.13) ─────────────────────────────────────────
+
+/** The largest `text` of a markdown or code item, in bytes. */
+export const ITEM_RICH_BYTES = 32768;
+
+/** The longest code language, in characters. */
+export const LANG_MAX = 24;
+
+/** The longest link target, in characters (UTF-16 units, as a URL is measured). */
+export const HREF_MAX = 2048;
+
+/** The longest link label, in characters (code points). */
+export const LINK_LABEL_MAX = 120;
+
+const LANG_RULE = /^[A-Za-z0-9_+#.-]+$/u;
+const WHITESPACE = /\s/u;
+
+/**
+ * A code item's language: 1 to 24 of letters, digits and `_ + # . -`, after a trim. Anything else reads as no
+ * language and the block is kept. The strictness is the point: the name goes after a fence in markdown, and a
+ * name with a backtick or a newline could close that fence early.
+ */
+export function langOf(text: string): string | undefined {
+  const trimmed = text.trim();
+  return trimmed.length >= 1 && trimmed.length <= LANG_MAX && LANG_RULE.test(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * A link item's target: an `https://` URL of at most 2048 characters with a host, no user or password, and no
+ * whitespace, control or invisible character. Returns the URL as the platform writes it, or undefined for
+ * anything else (`http:`, `javascript:`, `data:`, a relative path and a malformed URL all read as undefined).
+ */
+export function httpsHrefOf(text: string): string | undefined {
+  if (text === "" || text.length > HREF_MAX || WHITESPACE.test(text)) return undefined;
+  if (changedByCleaning(text, lineRule(HREF_MAX * 4))) return undefined;
+  if (!URL.canParse(text)) return undefined;
+  const url = new URL(text);
+  if (url.protocol !== "https:" || url.hostname === "" || url.username !== "" || url.password !== "") return undefined;
+  return url.href.length <= HREF_MAX ? url.href : undefined;
+}
+
+// ── Progress (WIRE.md section 7.12) ───────────────────────────────────────────
+
+/** The most steps a progress carries. */
+export const PROGRESS_STEPS_MAX = 12;
+
+/** The longest step or percent label, in characters (code points). */
+export const PROGRESS_LABEL_MAX = 60;
+
+export type StepState = "done" | "running" | "todo";
+
+export interface ProgressStep {
+  readonly label: string;
+  readonly state: StepState;
+}
+
+/** How far a working pane is: a list of steps, or a percent. */
+export type Progress =
+  | { readonly kind: "steps"; readonly steps: readonly ProgressStep[] }
+  | { readonly kind: "percent"; readonly value: number; readonly label?: string };

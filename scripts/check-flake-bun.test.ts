@@ -90,6 +90,31 @@ describe("flake.nix and MIN_BUN", () => {
   });
 });
 
+describe("the floor job runs MIN_BUN", () => {
+  test("ci.yml has a bun-floor job that sets up exactly MIN_BUN and runs the three backend suites", () => {
+    const workflow = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
+    // SAFETY: `Bun.YAML.parse` answers plain data; the fields read are compared against strings.
+    const parsed = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, { needs?: unknown; if?: unknown; "continue-on-error"?: unknown; steps: { uses?: string; run?: string; if?: unknown; "continue-on-error"?: unknown; with?: Record<string, string> }[] }>;
+    };
+    const job = parsed.jobs["bun-floor"];
+    expect(job).toBeDefined();
+    expect(job!.needs).toBeUndefined();
+    // A floor that can be skipped or allowed to fail measures nothing.
+    expect(job!.if).toBeUndefined();
+    expect(job!["continue-on-error"]).toBeUndefined();
+    for (const step of job!.steps) {
+      expect(step.if).toBeUndefined();
+      expect(step["continue-on-error"]).toBeUndefined();
+    }
+    const setup = job!.steps.filter((s) => s.uses?.startsWith("oven-sh/setup-bun@") === true);
+    expect(setup).toHaveLength(1);
+    expect(String(setup[0]?.with?.["bun-version"])).toBe(minBun());
+    const runs = job!.steps.map((s) => s.run);
+    for (const suite of ["./bridge", "./cli", "./scripts"]) expect(runs).toContain(`bun test ${suite}`);
+  });
+});
+
 describe("the Windows check runs the flake's Bun", () => {
   test("windows.yml pins setup-bun to flake.nix's bunVersion", () => {
     const workflow = readFileSync(join(ROOT, ".github", "workflows", "windows.yml"), "utf8");
@@ -101,21 +126,30 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 99 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 117 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([62, 14, 23]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([75, 17, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
-    // case that needs the uncommitted model, the 21 durable example tests and the 36 durable socket
-    // tests; the comment names them all.
+    // case that needs the uncommitted model, the 4 hold socket tests, the 30 durable example tests and
+    // the 36 durable socket tests; the comment names them all.
     const localCli = readFileSync(join(ROOT, "bridge", "stt", "local-cli.test.ts"), "utf8");
     const posixOnly = [...localCli.matchAll(/test\.if\(posix\)\("([^"]+)"/g)].map((m) => m[1]!);
     expect(posixOnly).toHaveLength(4);
-    expect(budget("Bridge")).toBe(posixOnly.length + 1 + 21 + 36);
-    expect(budget("Cli")).toBe(2 + 12);
+    const holdSocket = [...readFileSync(join(ROOT, "bridge", "surface", "hook-ask.test.ts"), "utf8").matchAll(/test\.skipIf\(POSIX_ONLY\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(holdSocket).toHaveLength(4);
+    for (const name of holdSocket) expect(script).toContain(name);
+    expect(budget("Bridge")).toBe(posixOnly.length + 1 + holdSocket.length + 30 + 36);
+    // The cli allowance adds the three real runs of the POSIX install leg a crew member runs.
+    expect(budget("Cli")).toBe(2 + 12 + 3);
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
     expect(script).toContain("a child of this checkout's CLI turns 10.4 s of speech into text");
+    expect(script).toContain("installScript from a shallow lead, run for real");
+    // The scripts allowance is the 23 install.sh tests plus the two harness lab skips the script names.
+    expect(budget("Scripts")).toBe(23 + 2);
+    expect(script).toContain("POSIX only: the login copy has mode 600");
+    expect(script).toContain("a real throwaway server starts, shows its pane, stops, and leaves no socket");
     expect(script).not.toContain("[int]$MaxSkips = ");
     expect(script).toContain("if ($skip -gt $skipBudget[$name])");
   });

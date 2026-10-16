@@ -24,7 +24,8 @@ import type {
   TranscriptPart,
   WorkspaceView,
 } from "@/lib/types";
-import { asJsonString, parseJsonObject } from "@/lib/json";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
+import type { Surface } from "@/lib/surface/surface";
 
 import { censusFor, fixtureMachinesSolo, historyFor } from "./machine-fixtures";
 
@@ -40,6 +41,8 @@ export const fixtureAgents: AgentView[] = [
     status: "blocked",
     cwd: "/home/you/webapp",
     focused: false,
+    // The bridge runs the Send Protocol for every terminal pane (on by default since M56 spec 06).
+    sendProtocol: true,
   },
   {
     paneId: "w2:p1",
@@ -51,6 +54,7 @@ export const fixtureAgents: AgentView[] = [
     status: "working",
     cwd: "/home/you/collie",
     focused: true,
+    sendProtocol: true,
   },
 ];
 
@@ -66,6 +70,7 @@ export const fixtureShellPanes: AgentView[] = [
     cwd: "/home/you/collie",
     focused: false,
     kind: "shell",
+    sendProtocol: true,
   },
 ];
 
@@ -157,6 +162,7 @@ export const fixtureCrewAgents: AgentView[] = [
     cwd: "/home/you/moonward",
     focused: false,
     host: "workshop",
+    sendProtocol: true,
   },
 ];
 
@@ -441,6 +447,108 @@ const BOX_RULE = "─".repeat(40);
  */
 export function paneTextWithDraft(base = "hello from the pane"): string {
   return `${base}\n${BOX_RULE}\n❯ ${typedDraft}\n${BOX_RULE}`;
+}
+
+// ── The fake bridge's Send Protocol (M56 spec 06) ────────────────────────────────────────────────
+// Every text the composer sends is one request to `POST /api/send` (a pane on this machine) or to the
+// pane's reply route with an `id` (a pane on a crew member, which answers under `send`). The fake
+// records each request and answers `sent` unless a test answers otherwise with `sendHandler`.
+
+/** One request the fake bridge took, with the machine it was for when the pane is on a member. */
+export interface SentRequest {
+  id: string;
+  pane: string;
+  text: string;
+  mode: string;
+  rowsHash?: string;
+  /** The person's extra confirm after the cap's notice (M56 spec 09). */
+  capAck?: boolean;
+  /** A resend of an ended held row (M56 spec 15): the old request id; the text is empty. */
+  resendOf?: string;
+  host?: string;
+}
+let sends: SentRequest[] = [];
+/** The Send Protocol requests the fake bridge took in this test, oldest first. */
+export function recordedSends(): readonly SentRequest[] {
+  return sends;
+}
+/** Reset between tests (msw.ts afterEach). */
+export function resetSends(): void {
+  sends = [];
+}
+
+/** The parts of an answer a test names; everything else is a plain receipt. */
+export interface SendAnswerParts {
+  readonly offers?: readonly string[];
+  readonly rowsHash?: string;
+  readonly surface?: Surface;
+  readonly detail?: string;
+  /** The cap's answer (M56 spec 09): the count, the limit, the harness and its version. */
+  readonly cap?: { readonly count: number; readonly limit: number; readonly harness: string; readonly version: string };
+  /** The receipt's `queued`: the send went in while the turn ran and waits for its end. */
+  readonly queued?: boolean;
+}
+
+/** An answer body the way the bridge writes one: a receipt with the outcome and reason, then the offers. */
+export function sendAnswer(id: string, outcome: string | null, reason?: string, parts: SendAnswerParts = {}): JsonObject {
+  const body: JsonObject = { offers: [...(parts.offers ?? [])] };
+  if (outcome !== null) {
+    const receipt: JsonObject = reason === undefined ? { requestId: id, outcome, keys: [] } : { requestId: id, outcome, reason, keys: [] };
+    if (parts.queued === true) receipt.queued = true;
+    body.receipt = receipt;
+  }
+  if (parts.rowsHash !== undefined) body.rowsHash = parts.rowsHash;
+  if (parts.surface !== undefined) body.surface = parseJsonObject(JSON.stringify(parts.surface)) ?? {};
+  if (parts.detail !== undefined) body.detail = parts.detail;
+  if (parts.cap !== undefined) body.cap = { ...parts.cap };
+  return body;
+}
+
+function sentRequest(body: JsonObject | undefined, pane: string, host: string | null): SentRequest {
+  const rowsHash = asJsonString(body?.rowsHash);
+  const request: SentRequest = {
+    id: asJsonString(body?.id) ?? "",
+    pane,
+    text: asJsonString(body?.text) ?? "",
+    mode: asJsonString(body?.mode) ?? "send",
+  };
+  if (rowsHash !== undefined) request.rowsHash = rowsHash;
+  if (body?.capAck === true) request.capAck = true;
+  const resendOf = asJsonString(body?.resendOf);
+  if (resendOf !== undefined) request.resendOf = resendOf;
+  if (host !== null) request.host = host;
+  return request;
+}
+
+/**
+ * Answer every Send Protocol request with `answer` (this machine and crew members alike), recording
+ * each one. Use with `server.use(...)`.
+ */
+export function sendHandler(answer: (request: SentRequest) => JsonObject) {
+  return [
+    http.post("/api/send", async ({ request }) => {
+      const body = parseJsonObject(await request.text());
+      const sent = sentRequest(body, asJsonString(body?.pane) ?? "", null);
+      sends.push(sent);
+      return HttpResponse.json(answer(sent));
+    }),
+    http.post(/\/api\/pane\/[^/]+\/reply/, async ({ request }) => {
+      const url = new URL(request.url);
+      const body = parseJsonObject(await request.text());
+      // The old reply shape (no request id) is the dialog-note and prompt paths: keep the fake pane honest.
+      if (asJsonString(body?.id) === undefined) {
+        recordReply({ text: asJsonString(body?.text) ?? "", submit: body?.submit === true });
+        return HttpResponse.json({ ok: true });
+      }
+      const pane = decodeURIComponent(url.pathname.split("/")[3] ?? "");
+      const sent = sentRequest(body, pane, url.searchParams.get("host"));
+      sends.push(sent);
+      const send = answer(sent);
+      const receipt = asJsonObject(send.receipt);
+      const ok = receipt === undefined || receipt.outcome === "sent" || receipt.outcome === "effective" || receipt.outcome === "discarded";
+      return HttpResponse.json({ ok, send });
+    }),
+  ];
 }
 
 // Default happy-path handlers; individual tests can override via server.use(...).
@@ -754,6 +862,8 @@ export function fixtureFileImage(path: string): Uint8Array | null {
 }
 
 export const handlers = [
+  // The session page's recent sends (M56 spec 09): none, unless a test says otherwise.
+  http.get("/api/send/receipts", () => HttpResponse.json({ receipts: [] })),
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),
@@ -825,10 +935,9 @@ export const handlers = [
       upserts: fixtureTranscript.map((e, i) => Object.assign({}, e, { seq: FIXTURE_SEQ_BASE + i })),
     }),
   ),
-  http.post<never, { text?: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-    recordReply(await request.json());
-    return HttpResponse.json({ ok: true });
-  }),
+  // Every text from the composer: one Send Protocol request, answered `sent`. The reply route's old
+  // shape (dialog notes, prompt fields) keeps the fake pane's input line honest, as before.
+  ...sendHandler((request) => sendAnswer(request.id, "sent")),
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/rename$/, () => HttpResponse.json({ ok: true })),

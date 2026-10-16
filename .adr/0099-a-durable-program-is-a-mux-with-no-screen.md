@@ -5,6 +5,8 @@
 - **Shipped in:** pending (1.21.0)
 - **Amended in scope by:** [ADR 0103](./0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md),
   points 3 and 4: a program the person deployed behind TLS is reached at a URL with a bearer token
+- **Amended in scope by:** [ADR 0104](./0104-a-program-is-a-session.md): a program can also be a
+  session of the Collie that drives the terminal mux, with no second Collie
 - **Trail:** a durable agent program (Pi Durable) that owns its conversations, has no terminal, and
   wanted a way into the crew · `bridge/mux/types.ts` (`snapshot`, `watch`) ·
   `bridge/mux/capabilities.ts` · `bridge/mux/registry.ts` (`MUX_ADAPTERS`) ·
@@ -96,6 +98,43 @@ adapter in the registry, and the crew is unchanged.**
     drives two multiplexers is a larger change and is not part of this one.
 11. **The crew protocol does not change.** `CREW_PROTOCOL_VERSION` stays 2. The lead tags the host
     on the merged census as it does for any peer. Anything this adds to the phone API is additive.
+12. **A rename is a cap on the wire.** The program owns its layout, so a workspace or a tab is
+    renamed only when the program says it takes one: `caps.rename` in the hello, and one route,
+    `POST /rename`, with a request id and a refusal of its own (422 `rename-refused`). The adapter
+    declares the tab capability `renameTab` from that cap, as it declares `steerTurn`, `abortTurn`
+    and `starters` from theirs, so the phone draws its usual rename control with no durable special
+    case. A pane is not renamed: its title is the conversation's. `renamePane` stays undeclared.
+    A workspace is renamed through a new capability, `renameSpace` (an optional method of the port,
+    `POST /api/space/:id/rename`), which only a durable program declares, from the same `caps.rename`.
+    The phone draws a Rename row in a new space sheet for it. Added to version 1 before the wire
+    shipped, so there is no version 2.
+13. **A close is a cap on the wire.** The same rule as a rename: the program owns its layout, so a
+    conversation or a tab is closed only when the program says it closes one, `caps.close` in the
+    hello and one route, `POST /close`, with a request id and a refusal of its own (422
+    `close-refused`). What a close means (archive, delete, end) is the program's call; it removes the
+    target and what is inside it, and every open ask on those panes closes as `stopped`, so nothing
+    answers itself. The adapter declares the existing `closePane` and `closeTab` from that cap, so the
+    phone draws its usual close controls with no durable special case. A workspace close is on the wire
+    but has no capability, because the phone has no control for it. Added to version 1 before the wire
+    shipped, so there is no version 2.
+14. **Program actions are a cap on the wire.** A program lists up to four buttons per conversation
+    (`actions` on the pane, with a label of at most 16 characters and one of twelve icon names), and a
+    tap is `POST /pane/:id/action` with a request id, the action id and, when the phone has one, the
+    turn it saw. The cap is `caps.actions`, and the adapter declares a new capability, `programActions`,
+    from it. The route is a third act of ADR 0101's controls, so it has the same receipt, the same
+    replay, the same unknown-outcome rule and the same `stale` refusal, and the adapter hands it to
+    `controlTurn` as an `action` control. The phone draws the buttons in the durable section of the
+    belt, after Steer and Stop. Added to version 1 before the wire shipped, so there is no version 2.
+15. **History is the program's, and the session id is its conversation id (M53 spec 11, 2026-10-13).** A
+    program that keeps its conversations serves them: `caps.history`, `GET /conversations` and
+    `GET /conversation/:id/items`, open and closed, paged by an opaque cursor. `caps.reopen` and
+    `POST /reopen` show a closed one again under the same pane id. `Pane.sessionId` is no longer reserved:
+    it is the conversation id the program serves history under, or null when the program cannot keep it
+    the same across a restart, and the adapter names the pane's session `sessionId ?? pane.id`. The log
+    of point 8 keeps that name and becomes a cache: Chat on a live pane still reads it, the read-only view
+    of a closed conversation reads the program, and the events reader saves its cursor beside the log, so
+    a bridge restart reads nothing twice. The adapter declares `programHistory` and `reopenConversation`
+    from the two caps. Additive, so the version stays 1.
 
 ## Consequences
 

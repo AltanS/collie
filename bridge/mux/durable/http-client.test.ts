@@ -130,15 +130,15 @@ describe("the http transport: hello", () => {
     const program = await startProgram(token);
     program.hello.service = undefined;
     const adapter = new DurableMux(new DurableHttpClient(program.url, token), new FakeDurableClock());
-    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable program");
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable agent");
   });
 
   test("a version range that does not meet is incompatible over http, as on the socket", async () => {
     const token = testToken();
     const program = await startProgram(token);
     program.range = { min: 2, max: 3 };
-    const adapter = new DurableMux(new DurableHttpClient(program.url, token), new FakeDurableClock());
-    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program speaks 2..3, this Collie speaks 1..1");
+    const adapter = new DurableMux(new DurableHttpClient(program.url, token), new FakeDurableClock(), null, () => {});
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: the durable agent speaks 2..3, this Collie speaks 1..1");
   });
 });
 
@@ -147,13 +147,13 @@ describe("the http transport: a refused token", () => {
     const program = await startProgram(testToken());
     const clock = new FakeDurableClock();
     const adapter = new DurableMux(new DurableHttpClient(program.url, testToken()), clock);
-    expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the program answered 401`);
+    expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the durable agent answered 401`);
     expect(program.requests).toHaveLength(1);
     // The bridge's fast poll is 1.5 s while the watch is down. Inside the 10 s down-gap every caller
     // gets the same answer, and nothing is sent.
     for (let i = 0; i < 6; i += 1) {
       clock.advance(1500);
-      expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the program answered 401`);
+      expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the durable agent answered 401`);
     }
     expect(program.requests).toHaveLength(1);
     clock.advance(DURABLE_BUDGETS.https.downGapMs);
@@ -174,7 +174,7 @@ describe("the http transport: a refused token", () => {
     clock.advance(DURABLE_BUDGETS.https.idlePollMs);
     expect((await adapter.poll()).ok).toBe(true);
     clock.advance(DURABLE_BUDGETS.https.idlePollMs);
-    expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the program answered 401`);
+    expect(verdict(await adapter.poll())).toBe(`unreachable: ${TOKEN_REFUSED}: the durable agent answered 401`);
   });
 
   test("a 403 is token-refused too, and a write with a refused token is unreachable: nothing ran (http)", async () => {
@@ -185,7 +185,7 @@ describe("the http transport: a refused token", () => {
     expect((await adapter.poll()).ok).toBe(true);
     program.override = () => new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
     const request: ControlRequest = { act: "abort", requestId: UUID[3], target: { kind: "turn", id: "turn-01-a" } };
-    expect(await adapter.controlTurn("conv-01", request)).toEqual({ kind: "unreachable", detail: `${TOKEN_REFUSED}: the program answered 403` });
+    expect(await adapter.controlTurn("conv-01", request)).toEqual({ kind: "unreachable", detail: `${TOKEN_REFUSED}: the durable agent answered 403` });
     expect(program.aborts).toEqual([]);
   });
 });

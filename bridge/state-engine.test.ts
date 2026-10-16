@@ -423,7 +423,7 @@ describe("StateEngine — snapshot shaping", () => {
     const { herdr, engine, poll } = makeEngine();
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
     const good = herdr.sessionSnapshot.bind(herdr);
-    herdr.sessionSnapshot = () => Promise.reject(new Error("token-refused: the program answered 401"));
+    herdr.sessionSnapshot = () => Promise.reject(new Error("token-refused: the durable agent answered 401"));
     await poll();
     expect([engine.current().bridge, engine.current().muxFault]).toEqual(["disconnected", "token-refused"]);
     herdr.sessionSnapshot = good;
@@ -630,10 +630,11 @@ describe("StateEngine — snapshot vs legacy path", () => {
 });
 
 describe("StateEngine — session name enrichment", () => {
-  // A named claude input box: the rule above the ❯ prompt carries the /rename session name.
-  const named = (name: string) => [`──────── ${name} ──`, "❯ "].join("\n");
+  // A named claude input box: the rule above the ❯ prompt carries the /rename session name. The box
+  // is a whole input frame (top edge, prompt, bottom edge), the shape the frame module finds.
+  const named = (name: string) => [`──────── ${name} ──`, "❯ ", "────────────────"].join("\n");
   // An unnamed input box (plain rule) — no session name to extract.
-  const plainBox = ["────────────────", "❯ "].join("\n");
+  const plainBox = ["────────────────", "❯ ", "────────────────"].join("\n");
 
   // A fake herdr that also serves per-pane text, so enrichSessionNames has something to read. The
   // production StateEngine short-circuits when `readPane` is absent (the other fakes here omit it),
@@ -1159,6 +1160,61 @@ describe("terminalTitleIsStale", () => {
     expect(view.terminalTitle).toBe("✳ waiting for soak time");
     // Absent, exactly as every other optional field on the wire is when it has nothing to say.
     expect("terminalTitleStale" in view).toBe(false);
+  });
+});
+
+// A DURABLE PANE'S SUBTITLE AND BADGE reach the view, and a pane without them gains no key (WIRE.md 7.11).
+describe("StateEngine: subtitle and badge", () => {
+  function durablePane(fields: Partial<MuxPane>): MuxPane {
+    return {
+      paneId: "conv-01",
+      spaceId: "ws",
+      spaceLabel: "Triage",
+      spaceNumber: 1,
+      tabId: "ws:inbox",
+      cwd: "/srv/triage",
+      focused: false,
+      alive: true,
+      agent: "durable",
+      status: "idle",
+      ...fields,
+    };
+  }
+
+  async function viewsOf(panes: readonly MuxPane[]) {
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes, spaces: [], tabs: [] }),
+    };
+    // SAFETY: a poll of panes that name no Claude session reaches `snapshot()` and `reachable()` and
+    // nothing else, and the stub has both.
+    const engine = new StateEngine(stub as MuxAdapter, 1500);
+    await engine["poll"]();
+    return engine.current();
+  }
+
+  test("the subtitle and the badge ride onto the view", async () => {
+    const now = await viewsOf([
+      durablePane({ subtitle: "a customer cannot log in", badge: { count: 2 } }),
+      durablePane({ paneId: "conv-02", badge: { text: "new" } }),
+    ]);
+    const all = [...now.agents, ...now.shellPanes];
+    expect(all.find((v) => v.paneId === "conv-01")?.subtitle).toBe("a customer cannot log in");
+    expect(all.find((v) => v.paneId === "conv-01")?.badge).toEqual({ count: 2 });
+    expect(all.find((v) => v.paneId === "conv-02")?.badge).toEqual({ text: "new" });
+  });
+
+  test("progress rides onto the view too", async () => {
+    const now = await viewsOf([durablePane({ status: "working", progress: { kind: "percent", value: 30 } })]);
+    expect([...now.agents, ...now.shellPanes][0]?.progress).toEqual({ kind: "percent", value: 30 });
+  });
+
+  test("a pane without them gains neither key", async () => {
+    const now = await viewsOf([durablePane({})]);
+    const view = [...now.agents, ...now.shellPanes][0]!;
+    expect("subtitle" in view).toBe(false);
+    expect("badge" in view).toBe(false);
+    expect("progress" in view).toBe(false);
   });
 });
 

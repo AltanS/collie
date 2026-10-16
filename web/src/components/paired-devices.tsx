@@ -113,7 +113,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       )}
 
       {data.devices.length > 0 && (
-        <ul className="divide-y divide-border border-t border-border">
+        <ul data-slot="list-group" className="border-t border-border">
           {data.devices.map((d) => (
             <DeviceRow
               key={d.label}

@@ -31,7 +31,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "../ansi";
 import { lineText, splitLines, type StyledLine } from "../blocks";
-import { draftCarriesSend } from "../reply-action";
+import { draftCarriesSend } from "../draft-match";
 import { displayWidth } from "../text-width";
 import { agyAdapter } from "./agy";
 import { claudeAdapter } from "./claude";
@@ -314,6 +314,7 @@ const COMPOSERS: Composer[] = [
       "codex--v0157-draft-notice.txt",
       "codex--v0157-busy-streaming.txt",
       "codex--reporter-294-busy-agents-hint.txt",
+      "codex--v0163-agents-hint-warnings.txt",
     ],
     band(texts) {
       let status = texts.length - 1;
@@ -633,6 +634,7 @@ const CODEX_READ_BY_PAINT = [
   "codex--v0157-draft-notice.txt",
   "codex--v0157-busy-streaming.txt",
   "codex--reporter-294-busy-agents-hint.txt",
+  "codex--v0163-agents-hint-warnings.txt",
 ];
 
 /**

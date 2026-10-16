@@ -34,6 +34,8 @@
     // A program of its own, with its own package.json, lockfile, typecheck and tests (M50 spec 10). It is
     // example code a reader copies, written to the wire rather than to this codebase's rules.
     "examples/**",
+    // The parked Cloudflare example (M55 spec 04): its own package.json, lockfile and tests, in no CI job.
+    "experiments/**",
     // Vendored byte for byte and pinned by hash (ADR 0096 Decision 6): a lint fix would change the served bytes.
     "web/public/stt/**",
     "assets/**",
@@ -81,7 +83,7 @@
   },
   "overrides": [
     {
-      // Herdr socket + HTTP wire parsing: these modules ARE the I/O boundary the rule tells you to parse at, so `typeof` here is the parse, not a dodge of one. A schema validator instead of hand-rolled checks is a real future improvement but explicitly out of scope for M8. `mux/zellij/protocol.ts` joined the list in M10/05 for exactly the same role on the other multiplexer: it decodes `zellij action list-panes --json` and the `subscribe` stream — a third-party JSON format that drifts between zellij releases — and every `typeof` in it sits inside that file's own field readers. `mux/herdr/machine-list.ts` joined it in M22/07 for the same role on a third surface: it decodes `herdr machine list --json`, a client-side format Herdr owns and Collie does not, and its `typeof` checks all sit inside `parseHerdrMachines` and the two field readers beside it. `mux/tuios/client.ts` is the same boundary for the tuios daemon's JSON verb socket, and its `typeof` checks sit inside its four field readers.
+      // Herdr socket + HTTP wire parsing: these modules ARE the I/O boundary the rule tells you to parse at, so `typeof` here is the parse, not a dodge of one. A schema validator instead of hand-rolled checks is a real future improvement but explicitly out of scope for M8. `mux/zellij/protocol.ts` joined the list in M10/05 for exactly the same role on the other multiplexer: it decodes `zellij action list-panes --json` and the `subscribe` stream — a third-party JSON format that drifts between zellij releases — and every `typeof` in it sits inside that file's own field readers. `mux/herdr/machine-list.ts` joined it in M22/07 for the same role on a third surface: it decodes `herdr machine list --json`, a client-side format Herdr owns and Collie does not, and its `typeof` checks all sit inside `parseHerdrMachines` and the two field readers beside it. `mux/tuios/client.ts` is the same boundary for the tuios daemon's JSON verb socket, and its `typeof` checks sit inside its four field readers. `sources.ts` joined it in M55 for `config.ts`'s role on the operator's `sources.json`: every `typeof` in it sits inside `parseSources` and its field readers.
       "files": [
         "**/bridge/mux/herdr/client.ts",
         "**/bridge/mux/tern/protocol.ts",
@@ -93,6 +95,7 @@
         "**/bridge/wire.ts",
         "**/bridge/types.ts",
         "**/bridge/config.ts",
+        "**/bridge/sources.ts",
         "**/bridge/uploads.ts"
       ],
       "rules": {

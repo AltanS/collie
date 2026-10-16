@@ -222,7 +222,7 @@ export function DisplayPrefsContent({
   // terminal, and the rows must answer for the terminal it is actually drawing.
   const chat = paneView?.showing === "chat";
   return (
-    <div className="divide-y divide-border">
+    <div data-slot="list-group">
       {paneView && paneView.terminalOffered !== false && <ViewRow view={paneView} />}
       {chat && paneView ? (
         <>

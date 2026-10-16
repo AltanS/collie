@@ -2,6 +2,7 @@ import { act, createEvent, fireEvent, render, within } from "@testing-library/re
 
 import { AgentCard } from "./agent-card";
 import { fixtureAgents } from "@/test/handlers";
+import type { JsonValue } from "@/lib/json";
 import type { AgentView } from "@/lib/types";
 
 // The row's ANATOMY, which is the thing that keeps getting re-argued: line 1 is the pane's NAME
@@ -391,5 +392,84 @@ describe("AgentCard — the branch on line 2", () => {
     const odd: AgentView["gitHead"] = JSON.parse('{"kind":"tag","name":"v1"}');
     const { container } = render(<AgentCard agent={agent({ tabLabel: "review", gitHead: odd })} onClick={() => {}} />);
     expect(branchLabel(container)).toBeNull();
+  });
+});
+
+// A durable program's subtitle and badge (WIRE.md 7.11).
+// A crew peer's pane arrives unchecked, so these cases hand the card the wrong shapes a peer could send.
+// SAFETY: the card reads both fields through the JSON guards (lib/pane-marks.ts), which is what the cases test.
+const wrongBadge = (value: JsonValue): AgentView["badge"] => value as AgentView["badge"];
+// SAFETY: as above, for the subtitle.
+const wrongSubtitle = (value: JsonValue): AgentView["subtitle"] => value as AgentView["subtitle"];
+
+describe("AgentCard: subtitle and badge", () => {
+  const badgeOf = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-badge"]');
+
+  it("draws a count badge on line 1, next to the name, and a subtitle on a line of its own on a card", () => {
+    const { container } = render(
+      <AgentCard agent={agent({ sessionName: "Ticket #3", subtitle: "a customer cannot log in", badge: { count: 2 } })} onClick={() => {}} />,
+    );
+    expect(line1(container)).toContainElement(badgeOf(container));
+    expect(badgeOf(container)).toHaveTextContent("2");
+    expect(container.querySelector('[data-slot="agent-row-subtitle"]')).toHaveTextContent("a customer cannot log in");
+    // The place line is still there: a card has room for both.
+    expect(line2(container)).toHaveTextContent("webapp");
+  });
+
+  it("draws a text badge, and nothing for a zero count or a badge of the wrong shape", () => {
+    const text = render(<AgentCard agent={agent({ badge: { text: "new" } })} onClick={() => {}} />);
+    expect(badgeOf(text.container)).toHaveTextContent("new");
+    for (const badge of [{ count: 0 }, { count: 1.5 }, { text: " " }, { count: 2, text: "x" }, 5, "3"]) {
+      const { container } = render(<AgentCard agent={agent({ badge: wrongBadge(badge) })} onClick={() => {}} />);
+      expect(badgeOf(container)).toBeNull();
+    }
+  });
+
+  it("takes the detail slot for the subtitle on a flat row, so the row keeps its stated height", () => {
+    const { container } = render(
+      <AgentCard agent={agent({ subtitle: "helping ticket 4" })} density="row" scope="place" onClick={() => {}} />,
+    );
+    expect(line2(container)).toHaveTextContent("helping ticket 4");
+    expect(line2(container)).toHaveClass("h-4");
+    expect(container.querySelector('[data-slot="agent-row-subtitle"]')).toBeNull();
+  });
+
+  it("draws neither for a pane that has none, and ignores a subtitle that is not text", () => {
+    const { container } = render(<AgentCard agent={agent()} onClick={() => {}} />);
+    expect(badgeOf(container)).toBeNull();
+    expect(container.querySelector('[data-slot="agent-row-subtitle"]')).toBeNull();
+    const odd = render(<AgentCard agent={agent({ subtitle: wrongSubtitle(5) })} onClick={() => {}} />);
+    expect(odd.container.querySelector('[data-slot="agent-row-subtitle"]')).toBeNull();
+  });
+});
+
+describe("AgentCard: progress", () => {
+  const bar = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="progress"]');
+
+  it("draws a hairline bar on a working card, filled by the share of steps done", () => {
+    const steps = [
+      { label: "read the ticket", state: "done" as const },
+      { label: "write a note", state: "running" as const },
+      { label: "reply", state: "todo" as const },
+      { label: "close", state: "todo" as const },
+    ];
+    const { container } = render(<AgentCard agent={agent({ status: "working", progress: { kind: "steps", steps } })} onClick={() => {}} />);
+    expect(bar(container)).toHaveAttribute("data-size", "hairline");
+    expect(bar(container)).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("draws a percent, also on a flat row, and adds no line to the row", () => {
+    const { container } = render(
+      <AgentCard agent={agent({ status: "working", progress: { kind: "percent", value: 60 } })} density="row" scope="place" onClick={() => {}} />,
+    );
+    expect(bar(container)).toHaveAttribute("aria-valuenow", "60");
+    expect(container.querySelector('[data-slot="agent-row-subtitle"]')).toBeNull();
+  });
+
+  it("draws no bar on an idle pane that still carries one, nor on a pane without one", () => {
+    const idle = render(<AgentCard agent={agent({ status: "idle", progress: { kind: "percent", value: 60 } })} onClick={() => {}} />);
+    expect(bar(idle.container)).toBeNull();
+    const none = render(<AgentCard agent={agent({ status: "working" })} onClick={() => {}} />);
+    expect(bar(none.container)).toBeNull();
   });
 });

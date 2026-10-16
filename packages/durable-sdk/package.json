@@ -1,0 +1,74 @@
+{
+  "name": "@colliepwa/durable-sdk",
+  "version": "0.1.0",
+  "description": "Show a durable agent on your phone through Collie: approvals, chat and history over a private socket. Experimental.",
+  "license": "MIT",
+  "author": "Altan Sarisin",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.19"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AltanS/collie.git",
+    "directory": "packages/durable-sdk"
+  },
+  "homepage": "https://colliepwa.dev/docs/durable-agents",
+  "bugs": "https://github.com/AltanS/collie/issues",
+  "keywords": [
+    "collie",
+    "durable",
+    "agent",
+    "approval",
+    "pi-durable"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./bun": {
+      "types": "./dist/bun/index.d.ts",
+      "default": "./dist/bun/index.js"
+    },
+    "./pi": {
+      "types": "./dist/pi/index.d.ts",
+      "default": "./dist/pi/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/chord": ">=1.1.0 <2",
+    "@earendil-works/pi-ai": ">=1.1.0 <2",
+    "@earendil-works/pi-durable": ">=1.1.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/chord": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-durable": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2"
+  }
+}

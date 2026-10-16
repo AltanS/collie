@@ -1,4 +1,4 @@
-import { itemsOf, toolOf, toolStatus, withToolOutput } from "./chat-items";
+import { finished, itemsOf, toolOf, toolStatus, withToolOutput } from "./chat-items";
 import type { ToolCall, TranscriptEntry, TranscriptPart } from "./types";
 
 // The translation from a journal turn to the blocks Chat draws. The load-bearing rules: a turn that
@@ -149,5 +149,33 @@ describe("withToolOutput", () => {
       { kind: "delete", path: "a.ts" },
     ];
     for (const call of calls) expect(withToolOutput(call, "out")).toEqual(call);
+  });
+});
+
+describe("a durable turn that is still being written, and a line with a request id (WIRE.md 7.15)", () => {
+  it("carries partial onto a reply, a thinking block and a notice, and never onto the person's own line", () => {
+    const text: TranscriptPart[] = [{ kind: "text", text: "Hel" }];
+    expect(itemsOf(entry({ partial: true, parts: text }))[0]).toMatchObject({ kind: "reply", partial: true });
+    expect(itemsOf(entry({ partial: true, parts: [{ kind: "thinking", text: "hm" }] }))[0]).toMatchObject({ kind: "thinking", partial: true });
+    expect(itemsOf(entry({ role: "note", partial: true, parts: text }))[0]).toMatchObject({ kind: "notice", partial: true });
+    expect(itemsOf(entry({ role: "user", partial: true, parts: text }))[0]).not.toHaveProperty("partial");
+    expect(itemsOf(entry({ parts: text }))[0]).not.toHaveProperty("partial");
+  });
+
+  it("carries a request id onto the person's line only", () => {
+    const text: TranscriptPart[] = [{ kind: "text", text: "go" }];
+    expect(itemsOf(entry({ role: "user", requestId: "req-1", parts: text }))[0]).toMatchObject({ kind: "user", requestId: "req-1" });
+    expect(itemsOf(entry({ role: "assistant", requestId: "req-1", parts: text }))[0]).not.toHaveProperty("requestId");
+    expect(itemsOf(entry({ role: "user", parts: text }))[0]).not.toHaveProperty("requestId");
+  });
+
+  it("finished drops partial and nothing else", () => {
+    const [grown] = itemsOf(entry({ partial: true, parts: [{ kind: "text", text: "Half" }] }));
+    expect(grown).toMatchObject({ partial: true });
+    const done = finished(grown!);
+    expect(done).toMatchObject({ kind: "reply", text: "Half", id: grown!.id });
+    expect(done).not.toHaveProperty("partial");
+    const [tool] = itemsOf(entry({ parts: [toolPart({ id: "t1" })] }));
+    expect(finished(tool!)).toBe(tool);
   });
 });

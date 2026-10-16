@@ -167,7 +167,7 @@ export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAda
     readGrid: (paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> =>
       adapter.readGrid(paneId, request),
     typeText: (paneId: string, txt: string): Promise<MuxAck> => adapter.typeText(paneId, txt),
-    sendKeys: (paneId: string, keys: readonly string[]): Promise<MuxAck> => adapter.sendKeys(paneId, keys),
+    writeKeys: (paneId: string, keys: readonly string[]): Promise<MuxAck> => adapter.writeKeys(paneId, keys),
     renamePane: (paneId: string, label: string | null): Promise<MuxAck> => adapter.renamePane(paneId, label),
     closePane: (paneId: string): Promise<MuxAck> => adapter.closePane(paneId),
     setFocus: (paneId: string): Promise<MuxAck> => adapter.setFocus(paneId),

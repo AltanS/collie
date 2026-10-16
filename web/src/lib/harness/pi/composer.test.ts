@@ -375,6 +375,39 @@ describe("OmO default install (issue 416)", () => {
   });
 });
 
+describe("pi with an empty footer (issue 445)", () => {
+  const bare = (draft: string) => [row(rule), row(draft), row(rule)];
+
+  it("reads the editor when the bottom rule is the last non-blank row", () => {
+    const lines = [...bare("hello"), row(""), row("")];
+    expect(locateComposer(lines)).toEqual({ layout: "stock", top: 0, bottom: 2, statusStart: 3, end: 3 });
+    expect(composerDraft(lines)).toBe("hello");
+    expect(composerPrompt(lines)).toBe(`${rule}\nhello\n${rule}`);
+    expect(composerStatusLines(lines)).toEqual([]);
+  });
+
+  it("reads the empty editor with no draft", () => {
+    expect(composerDraft(bare(""))).toBeNull();
+    expect(locateComposer(bare(""))).not.toBeNull();
+  });
+
+  it("still reads the editor when status rows stand under the rule", () => {
+    const lines = [...bare("hello"), row(`${blue}~/proj`), row(`${blue}model`)];
+    expect(locateComposer(lines)).toEqual({ layout: "stock", top: 0, bottom: 2, statusStart: 3, end: 5 });
+  });
+
+  it("refuses a lone rule, a rule with no matching top rule, and a differently styled pair", () => {
+    expect(locateComposer([row(rule)])).toBeNull();
+    expect(locateComposer([row("some text"), row("more"), row(rule)])).toBeNull();
+    expect(locateComposer([row(`${blue}${rule}`), row("hello"), row(rule)])).toBeNull();
+  });
+
+  it("refuses a pane whose last row is not a full-width rule", () => {
+    expect(tailRule([row(rule), row("hello"), row("───")])).toBeNull();
+    expect(tailRule([row(rule), row("hello")])).toBeNull();
+  });
+});
+
 // Design point 1 of issue 416 loosened the status rows by one plain last row. Nothing outside pi's
 // own captures reads as a pi editor because of it: the same three agy screens did before.
 describe("the status rule across the whole corpus", () => {
@@ -384,7 +417,7 @@ describe("the status rule across the whole corpus", () => {
   it("finds a pi editor in no other harness's capture but agy's prompt rows", () => {
     expect(foreign.length).toBeGreaterThan(400);
     const found = foreign.filter((name) => locateComposer(fixture(name.slice(0, -4))) !== null);
-    expect(found).toEqual(["agy--done.txt", "agy--fresh-idle.txt", "agy--working.txt"]);
+    expect(found).toEqual(["agy--after-plan-idle.txt", "agy--done.txt", "agy--fresh-idle.txt"]);
   });
 
   it("keeps prose under a markdown rule out: a plain row straight under the rule is not a status row", () => {

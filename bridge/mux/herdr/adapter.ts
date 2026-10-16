@@ -28,6 +28,7 @@ import type { DialMode } from "../../dial.ts";
 import type { ForegroundProcess } from "../../journal/types.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import { herdrMachineCandidates } from "./machine-list.ts";
+import { herdrBeaconMatcher } from "./markers.ts";
 import { herdrSessionSource } from "./sessions.ts";
 import { HERDR_LOGO_SVG } from "./logo.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
@@ -443,7 +444,7 @@ export class HerdrMux implements MuxAdapter {
   async foregroundProcesses(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>> {
     try {
       const info = await this.client.processInfo(paneId);
-      return muxOk((info.foreground_processes ?? []).map((p) => ({ argv: p.argv ?? [] })));
+      return muxOk((info.foreground_processes ?? []).map((p) => (Number.isInteger(p.pid) && p.pid > 0 ? { argv: p.argv ?? [], pid: p.pid } : { argv: p.argv ?? [] })));
     } catch (err) {
       return transportRefusal(err);
     }
@@ -460,7 +461,7 @@ export class HerdrMux implements MuxAdapter {
    * sequence, and delivering its front half is worse than delivering none of it (the pane would be
    * left mid-chord with no way for the caller to know where it stopped).
    */
-  async sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+  async writeKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
     const translated: string[] = [];
     for (const key of keys) {
       const result = toHerdrKey(key);
@@ -770,6 +771,14 @@ export const herdrMuxFactory: MuxAdapterFactory = {
       new HerdrClient(target.endpoint, target.timeoutMs || DEFAULT_TIMEOUT_MS, dialModeOf(target.options)),
       herdrSessionSource(target.endpoint),
     );
+  },
+  /**
+   * Herdr's half of the beacon join (M56 spec 11). Herdr sees agents on its own, so the decorator
+   * never wraps this adapter for identity (bridge/index.ts `withBeaconsIfBlind`). The matcher is
+   * for the hook edges alone: it places an edge's `HERDR_PANE_ID` on a pane of this socket.
+   */
+  beaconMatcher(target: MuxTarget) {
+    return herdrBeaconMatcher(HERDR_MUX, target.endpoint);
   },
   describeTarget(endpoint: string) {
     return `socket ${endpoint}`;

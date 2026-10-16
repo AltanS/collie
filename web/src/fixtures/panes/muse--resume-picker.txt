@@ -1,0 +1,40 @@
+
+[0m[38;2;103;108;116m  [0m[1m[38;2;204;211;219mResume a previous session[0m
+[0m[38;2;90;160;255m  ⟩ [0m[38;2;103;108;116mSearch Name / Description[0m
+[0m[38;2;103;108;116m  [0m[38;2;138;144;152mFilter: [0m[1m[38;2;90;160;255m[Cwd][0m[38;2;103;108;116m All Claude Codex  [0m[38;2;138;144;152mSort: [0m[1m[38;2;138;144;152m[Updated][0m[38;2;103;108;116m Created[0m
+[0m[38;2;103;108;116m  Other workspaces are hidden[0m
+[0m[38;2;90;160;255m⟩ [0m[38;2;103;108;116m1h ago      [0m[1m[38;2;204;211;219moak-thebe · Reply with only OK.[0m
+[0m[38;2;103;108;116m  2d ago      [0m[38;2;204;211;219mtawny-albiorix · Reply with only OK.[0m
+[0m[38;2;103;108;116m  2d ago      [0m[38;2;204;211;219msky-crater · Reply with only OK.[0m
+[0m[38;2;103;108;116m  2d ago      [0m[38;2;204;211;219mseaglass-apogee · Reply with only OK.[0m
+[0m[38;2;103;108;116m  2d ago      [0m[38;2;204;211;219mchalk-libration · Reply with only OK.[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0m[38;2;103;108;116m  1 / 5 · 20%  enter resume  esc exit  ctrl+c exit  tab focus sort/filter  ←/→ change option[0m
+[0m[38;2;103;108;116m  ctrl+o comfortable view  ctrl+t transcript  ctrl+e expand  ↑/↓ browse  pgup/pgdn page[0m

@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { brotliDecompressSync } from "node:zlib";
 
 import {
   DEFAULT_FONT,
@@ -11,7 +12,7 @@ import {
 import { acceptOperatorFonts, operatorFontCss, operatorFontUrl } from "@/lib/operator-fonts";
 import { DEFAULT_UI_FONT_URL, FONT_URLS, UI_COMPANION_FONT_URLS, UI_FONT_URLS } from "@/lib/sw-routes";
 
-// Collie ships five webfonts — two Nerd Font symbol subsets, two UI typefaces and a Cyrillic companion — and the design
+// Collie ships eight webfonts: two Nerd Font symbol subsets, five UI typefaces and a Cyrillic companion. The design
 // rests on facts that are silent when broken: the stylesheet, the service worker and the disk agree
 // on which files exist; the symbol faces stay range-restricted so they stay lazy; the UI face is
 // preloaded and metric-matched so its swap moves nothing; and none of them re-enters the precache.
@@ -118,7 +119,7 @@ describe("the UI typefaces", () => {
   // splash render in the system font and the app change voice on hand-off — which is the exact bug
   // this splash block exists to prevent, just for a different reader.
   it("re-declares every shipped face for the pre-CSS boot splash", () => {
-    for (const family of ["Space Grotesk", "Aldrich"]) {
+    for (const family of ["Space Grotesk", "IBM Plex Sans", "Geist", "Atkinson Hyperlegible Next", "Aldrich"]) {
       expect(html).toContain(`font-family: "${family}";`);
       expect(html).toContain(`font-family: "${family} Fallback";`);
     }
@@ -129,6 +130,9 @@ describe("the UI typefaces", () => {
   it("mirrors the typeface root classes into the boot splash", () => {
     expect(html).toContain(":root.font-system");
     expect(html).toContain(":root.font-grotesk");
+    expect(html).toContain(":root.font-plex");
+    expect(html).toContain(":root.font-geist");
+    expect(html).toContain(":root.font-atkinson");
   });
 
   it("is small enough to sit on the critical path", () => {
@@ -177,7 +181,13 @@ describe("the Cyrillic companion", () => {
 
   // Each metric stand-in is tuned to its face's LATIN. Without a range it also catches Cyrillic,
   // which then renders at 113% (Aldrich) or 107.5% (Space Grotesk) of a system face for no reason.
-  it.each(["Aldrich Fallback", "Space Grotesk Fallback"])(
+  it.each([
+    "Aldrich Fallback",
+    "Space Grotesk Fallback",
+    "IBM Plex Sans Fallback",
+    "Geist Fallback",
+    "Atkinson Hyperlegible Next Fallback",
+  ])(
     "keeps the %s stand-in off Cyrillic with a Latin-only range, in both copies",
     (family) => {
       for (const [name, source] of [["index.css", css], ["index.html", html]] as const) {
@@ -324,7 +334,10 @@ describe("theme-init.js and lib/design.ts agree", () => {
     // The default wears no class on either side — that is what keeps JavaScript off the first-paint
     // path for every device that never opened the setting.
     expect(fontClass(DEFAULT_FONT)).toBe("");
-    expect(init).not.toContain(`"${DEFAULT_FONT}"`);
+    // The generated table line names every face as a theme's DISPLAY face (M57 spec 17), which is a
+    // custom property and never a class; the rest of the script must not name the default.
+    const withoutTable = init.split("\n").filter((line) => !line.startsWith("  var SURFACE = ")).join("\n");
+    expect(withoutTable).not.toContain(`"${DEFAULT_FONT}"`);
   });
 
   // Operator faces get NO pre-paint path: their family name only exists once /api/config answers,
@@ -344,5 +357,124 @@ describe("theme-init.js and lib/design.ts agree", () => {
       const cls = fontClass(font);
       if (cls !== "") expect(css).toContain(`:root.${cls}`);
     }
+  });
+});
+
+// ── What the three theme faces do not draw ──────────────────────────────────────────────────────
+//
+// IBM Plex Sans, Geist and Atkinson Hyperlegible Next ship as Latin and Latin Extended subsets
+// (U+0020-017F and a few marks). Cyrillic and CJK text under Nightwatch, Daylight or Harbour falls
+// to the system face, and only Aldrich, the default, has a Cyrillic companion. That is a decision,
+// not an accident, and it is silent when it breaks: a future subset that grew a Cyrillic range
+// would change the page's metrics for a language nobody tested. So this reads the files, not the
+// stylesheet. It parses the WOFF2 container just far enough to read the `cmap` table (the one table
+// WOFF2 never transforms) and lists the code points each face maps.
+describe("the Latin-only theme faces", () => {
+  // WOFF2 spec, section 5: the 63 known table tags by index, and the two tables with a transform.
+  const KNOWN_TAGS = [
+    "cmap", "head", "hhea", "hmtx", "maxp", "name", "OS/2", "post", "cvt ", "fpgm", "glyf", "loca", "prep",
+    "CFF ", "VORG", "EBDT", "EBLC", "gasp", "hdmx", "kern", "LTSH", "PCLT", "VDMX", "vhea", "vmtx", "BASE",
+    "GDEF", "GPOS", "GSUB", "EBSC", "JSTF", "MATH", "CBDT", "CBLC", "COLR", "CPAL", "SVG ", "sbix", "acnt",
+    "avar", "bdat", "bloc", "bsln", "cvar", "fdsc", "feat", "fmtx", "fvar", "gvar", "hsty", "just", "lcar",
+    "mort", "morx", "opbd", "prop", "trak", "Zapf", "Silf", "Glat", "Gloc", "Feat", "Sill",
+  ];
+
+  function mappedCodePoints(file: string): number[] {
+    const buf = readFileSync(resolve(root, "public/fonts", file));
+    expect(buf.toString("latin1", 0, 4), file).toBe("wOF2");
+    const numTables = buf.readUInt16BE(12);
+    const compressedSize = buf.readUInt32BE(20);
+    let at = 48;
+    const base128 = () => {
+      let n = 0;
+      for (let i = 0; i < 5; i += 1) {
+        const byte = buf.readUInt8(at);
+        at += 1;
+        n = n * 128 + (byte & 0x7f);
+        if ((byte & 0x80) === 0) return n;
+      }
+      throw new Error(`${file}: a UIntBase128 longer than five bytes`);
+    };
+    const sizes: { tag: string; size: number }[] = [];
+    for (let i = 0; i < numTables; i += 1) {
+      const flags = buf.readUInt8(at);
+      at += 1;
+      const index = flags & 0x3f;
+      let tag = KNOWN_TAGS[index] ?? "";
+      if (index === 0x3f) {
+        tag = buf.toString("latin1", at, at + 4);
+        at += 4;
+      }
+      const version = flags >> 6;
+      const original = base128();
+      const glyphTable = tag === "glyf" || tag === "loca";
+      const transformed = glyphTable ? version === 0 : version !== 0;
+      sizes.push({ tag, size: transformed ? base128() : original });
+    }
+    const data = brotliDecompressSync(buf.subarray(at, at + compressedSize));
+    let offset = 0;
+    let cmap: Buffer | undefined;
+    for (const { tag, size } of sizes) {
+      if (tag === "cmap") cmap = data.subarray(offset, offset + size);
+      offset += size;
+    }
+    expect(cmap, `${file} has a cmap`).toBeDefined();
+    const table = cmap!;
+    const points: number[] = [];
+    const subtables = table.readUInt16BE(2);
+    for (let i = 0; i < subtables; i += 1) {
+      const sub = table.readUInt32BE(4 + i * 8 + 4);
+      const format = table.readUInt16BE(sub);
+      if (format === 4) {
+        const segments = table.readUInt16BE(sub + 6) / 2;
+        for (let s = 0; s < segments; s += 1) {
+          const end = table.readUInt16BE(sub + 14 + s * 2);
+          const start = table.readUInt16BE(sub + 16 + segments * 2 + s * 2);
+          for (let c = start; c <= end && c < 0xffff; c += 1) points.push(c);
+        }
+      } else if (format === 12) {
+        const groups = table.readUInt32BE(sub + 12);
+        for (let g = 0; g < groups; g += 1) {
+          const start = table.readUInt32BE(sub + 16 + g * 12);
+          const end = table.readUInt32BE(sub + 20 + g * 12);
+          for (let c = start; c <= end; c += 1) points.push(c);
+        }
+      }
+    }
+    return points;
+  }
+
+  const faces = [
+    ["plex", "ui-ibm-plex-sans-3.201-latin.woff2", "font-plex"],
+    ["geist", "ui-geist-1.800-latin.woff2", "font-geist"],
+    ["atkinson", "ui-atkinson-hyperlegible-next-2.001-latin.woff2", "font-atkinson"],
+  ] as const;
+
+  // The control: the same reader finds Cyrillic in the one face that has it, so an empty answer above
+  // means the face has none, not that the reader sees nothing.
+  it("reads Cyrillic out of the Cyrillic companion", () => {
+    const points = mappedCodePoints("ui-play-2.101-cyrillic.woff2");
+    expect(points.filter((c) => c >= 0x400 && c <= 0x4ff).length).toBeGreaterThan(50);
+  });
+
+  it.each(faces)("%s maps Latin, and no Cyrillic and no CJK", (_name, file) => {
+    const points = mappedCodePoints(file);
+    expect(points).toContain(0x41);
+    expect(points).toContain(0x151); // Latin Extended-A, an o with a double acute
+    const inCyrillic = points.filter((c) => c >= 0x400 && c <= 0x4ff);
+    const inCjk = points.filter(
+      (c) => (c >= 0x2e80 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7af) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0x20000 && c <= 0x2fa1f),
+    );
+    expect(inCyrillic).toEqual([]);
+    expect(inCjk).toEqual([]);
+  });
+
+  // The system stack is what draws the text the face cannot. A face whose stack ended at its own name
+  // would paint a Russian or Japanese string in the browser's default serif.
+  it.each(faces)("the %s stack names a system fallback after the face and its stand-in", (_name, _file, cls) => {
+    const block = new RegExp(`:root\\.${cls}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    const stack = /--font-sans:\s*([\s\S]*?);/.exec(block)?.[1] ?? "";
+    expect(stack).toMatch(/Fallback",\s*ui-sans-serif,\s*system-ui/);
+    expect(stack.trim().endsWith("sans-serif")).toBe(true);
   });
 });

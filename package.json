@@ -1,6 +1,6 @@
 {
   "name": "collie",
-  "version": "1.21.3",
+  "version": "1.22.0",
   "private": true,
   "license": "MIT",
   "description": "Collie — a mobile web UI to monitor and reply to the AI agents in your terminal, over Tailscale",
@@ -11,6 +11,7 @@
     "build": "bun run cli/main.ts build",
     "build:web": "cd web && bun run build",
     "build:cli": "bun run scripts/build-cli.ts",
+    "sdk:build": "bun scripts/sdk-build.ts",
     "web:dev": "cd web && bun run dev",
     "lint": "oxlint --max-warnings 0",
     "lint:fix": "oxlint --fix --max-warnings 0",
@@ -19,7 +20,8 @@
     "test:crew": "bun test ./integration/crew-harness.test.ts",
     "typecheck": "bunx tsc --noEmit && bunx tsc --noEmit -p tsconfig.contract.json",
     "harness:drift": "bun scripts/harness-drift.ts",
-    "canary": "bun scripts/harness-canary/run.ts"
+    "canary": "bun scripts/harness-canary/run.ts",
+    "harness:lab": "bun scripts/harness-canary/lab/main.ts"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",

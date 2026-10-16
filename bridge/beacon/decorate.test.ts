@@ -9,6 +9,7 @@ import {
   muxAck,
   muxGone,
   muxOk,
+  type MuxAck,
   type MuxAdapter,
   type MuxGridRequest,
   type MuxOutcome,
@@ -77,10 +78,16 @@ class StubAdapter implements MuxAdapter {
   /** The two control methods (ADR 0101), when a case gives them. Absent by default, like every
    *  adapter whose panes have a screen. */
   paneTurn?: MuxAdapter["paneTurn"];
+  paneActions?: MuxAdapter["paneActions"];
   controlTurn?: MuxAdapter["controlTurn"];
+  renameSpace?: MuxAdapter["renameSpace"];
+  listConversations?: MuxAdapter["listConversations"];
+  conversationItems?: MuxAdapter["conversationItems"];
+  reopenConversation?: MuxAdapter["reopenConversation"];
   /** The foreground argv, when a case gives it one. Absent by default, like a multiplexer
    *  without the call — the decorators must carry it without inventing it. */
   foregroundProcesses?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
+  pasteText?: (paneId: string, text: string) => Promise<MuxAck>;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -119,8 +126,8 @@ class StubAdapter implements MuxAdapter {
     return Promise.resolve(muxAck());
   }
 
-  sendKeys(paneId: string, keys: readonly string[]) {
-    this.note("sendKeys", paneId, keys);
+  writeKeys(paneId: string, keys: readonly string[]) {
+    this.note("writeKeys", paneId, keys);
     return Promise.resolve(muxAck());
   }
 
@@ -282,10 +289,16 @@ describe("a decorator preserves the adapter's whole surface", () => {
     openAsks: true,
     answerAsk: true,
     paneTurn: true,
+    paneActions: true,
     controlTurn: true,
     foregroundProcesses: true,
+    pasteText: true,
+    renameSpace: true,
+    listConversations: true,
+    conversationItems: true,
+    reopenConversation: true,
     typeText: true,
-    sendKeys: true,
+    writeKeys: true,
     renamePane: true,
     closePane: true,
     setFocus: true,
@@ -324,8 +337,14 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.openAsks = () => [];
     stub.answerAsk = () => Promise.resolve(muxOk({ kind: "taken", replayed: false }));
     stub.paneTurn = () => "turn-1";
+    stub.paneActions = () => undefined;
     stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
     stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
+    stub.pasteText = () => Promise.resolve(muxAck());
+    stub.renameSpace = () => Promise.resolve(muxAck());
+    stub.listConversations = () => Promise.resolve(muxOk({ items: [] }));
+    stub.conversationItems = () => Promise.resolve(muxOk({ items: [], more: false }));
+    stub.reopenConversation = () => Promise.resolve(muxOk({}));
     return stub;
   }
 
@@ -358,7 +377,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     expect("readLogicalText" in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     // The ask methods too (ADR 0100): a screen adapter must never come out looking like it answers by id.
     // And the control methods (ADR 0101): a screen adapter must never come out refusing `/reply`.
-    for (const field of ["openAsks", "answerAsk", "paneTurn", "controlTurn"]) {
+    for (const field of ["openAsks", "answerAsk", "paneTurn", "paneActions", "controlTurn", "renameSpace", "listConversations", "conversationItems", "reopenConversation"]) {
       expect(field in decorate(new StubAdapter(), [])).toBe(false);
       expect(field in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
     }
@@ -389,7 +408,7 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
     expect(await decorated.reachable()).toBe(true);
     expect(await decorated.readGrid("%1", request)).toEqual(await adapter.readGrid("%1", request));
     await decorated.typeText("%1", "hello");
-    await decorated.sendKeys("%1", ["ctrl+c"]);
+    await decorated.writeKeys("%1", ["ctrl+c"]);
     await decorated.renamePane("%1", null);
     await decorated.closePane("%1");
     await decorated.setFocus("%1");
@@ -403,7 +422,7 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
     expect(seen).toEqual([
       { method: "reachable", args: [] },
       { method: "typeText", args: ["%1", "hello"] },
-      { method: "sendKeys", args: ["%1", ["ctrl+c"]] },
+      { method: "writeKeys", args: ["%1", ["ctrl+c"]] },
       { method: "renamePane", args: ["%1", null] },
       { method: "closePane", args: ["%1"] },
       { method: "setFocus", args: ["%1"] },

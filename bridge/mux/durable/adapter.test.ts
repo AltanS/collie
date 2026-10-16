@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync } from "node:fs";
 
 import { MUX_CAPABILITIES } from "../capabilities.ts";
+import { muxConfigBody } from "../../server.ts";
 import { buildMuxRegistry, createMux, MUX_ADAPTERS } from "../registry.ts";
 import type { MuxOutcome, MuxSnapshot } from "../types.ts";
 import {
@@ -72,6 +73,30 @@ describe("capabilities", () => {
     }
   });
 
+  test("steerTurn, abortTurn and starters follow the program's own caps, and are absent before the first read", async () => {
+    const { adapter, program, tick } = await rig();
+    const program3 = ["steerTurn", "abortTurn", "starters"] as const;
+    // Fail closed: no read yet, so no cap is known and the phone draws none of the controls.
+    for (const cap of program3) expect(adapter.capabilities.supports[cap]).toBe(false);
+
+    expect((await adapter.snapshot()).panes.length).toBeGreaterThan(0);
+    for (const cap of program3) expect(adapter.capabilities.supports[cap]).toBe(true);
+    // They are published by the same body `/api/config` serves.
+    const wire = muxConfigBody(adapter);
+    for (const cap of program3) expect(wire.capabilities[cap]).toBe(true);
+    expect(adapter.capabilities.supports.createTab).toBe(false);
+
+    // A program that declares only some of them gets only those; the old reading is replaced by the new.
+    program.hello.caps.steer = false;
+    program.hello.caps.starters = false;
+    program.restart();
+    tick();
+    await adapter.snapshot();
+    expect(adapter.capabilities.supports.steerTurn).toBe(false);
+    expect(adapter.capabilities.supports.starters).toBe(false);
+    expect(adapter.capabilities.supports.abortTurn).toBe(true);
+  });
+
   test("the topology latency is the slowest the watch polls", async () => {
     const { adapter } = await rig();
     expect(adapter.capabilities.topologyLatency).toEqual({ kind: "bounded", ms: DURABLE_BUDGETS.socket.idlePollMs });
@@ -83,7 +108,7 @@ describe("capabilities", () => {
     const answers = [
       ["paneGrid", await adapter.readGrid("conv-01", { scope: "viewport", lines: 10, styling: "strip" })],
       ["typeText", await adapter.typeText("conv-01", "hi")],
-      ["sendKeys", await adapter.sendKeys("conv-01", ["Enter"])],
+      ["sendKeys", await adapter.writeKeys("conv-01", ["Enter"])],
       ["renamePane", await adapter.renamePane("conv-01", "x")],
       ["closePane", await adapter.closePane("conv-01")],
       ["setFocus", await adapter.setFocus("conv-01")],
@@ -295,14 +320,19 @@ describe("version negotiation", () => {
     expect(hellos.map((request) => request.version)).toEqual([null, "1"]);
   });
 
-  test("no overlap is unreachable with the ranges named, nothing else is called, and the census is never empty", async () => {
-    const { adapter, program, tick } = await rig();
+  test("no overlap is unreachable with the ranges named, only hello is called, and the census is never empty", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const clock = new FakeDurableClock();
+    const adapter = new DurableMux(program.wire(), clock, null, () => {});
     program.range = { min: 2, max: 3 };
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program speaks 2..3, this Collie speaks 1..1");
-      tick();
+      expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: the durable agent speaks 2..3, this Collie speaks 1..1");
+      clock.advance(MIN_SNAPSHOT_GAP_MS);
     }
-    expect(paths(program)).toEqual(["/hello", "/hello", "/hello"]);
+    // The second hello is the one telling call of this epoch (WIRE.md section 2): it carries this Collie's version.
+    expect(paths(program)).toEqual(["/hello", "/hello", "/hello", "/hello"]);
+    expect(program.requests.map((request) => request.version)).toEqual([null, "1", null, null]);
     expect(await adapter.reachable()).toBe(false);
   });
 
@@ -310,7 +340,7 @@ describe("version negotiation", () => {
   test.skipIf(SOCKET_ONLY_SKIP)("a program that asks for a token is incompatible", async () => {
     const { adapter, program } = await rig();
     program.asksForToken = true;
-    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program asks for a token");
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: the durable agent asks for a token");
   });
 
   test("a 409 on a later call is incompatible, is not retried at that version, and hello starts over", async () => {
@@ -318,7 +348,7 @@ describe("version negotiation", () => {
     await adapter.snapshot();
     program.range = { min: 2, max: 2 };
     tick();
-    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: program speaks 2..2, this Collie speaks 1..1");
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: the durable agent speaks 2..2, this Collie speaks 1..1");
     program.range = { min: 1, max: 1 };
     tick();
     expect(verdict(await adapter.poll())).toBe("ok");
@@ -338,17 +368,17 @@ describe("version negotiation", () => {
 });
 
 describe("the service name and the hysteresis", () => {
-  test("a socket whose hello names no durable service is incompatible: not a durable program", async () => {
+  test("a socket whose hello names no durable service is incompatible: not a durable agent", async () => {
     const { adapter, program } = await rig();
     program.hello.service = undefined;
-    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable program");
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable agent");
     expect(paths(program)).toEqual(["/hello"]);
   });
 
   test("another program on the socket, answering its own JSON, is named the same way", async () => {
     const { adapter, program } = await rig();
     program.override = (path) => (path.endsWith("/hello") ? Response.json({ name: "some-other-daemon", version: "3.1" }) : undefined);
-    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable program");
+    expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable agent");
   });
 
   test("one failed read keeps the last layout; the second in a row is unreachable", async () => {
@@ -540,8 +570,8 @@ describe("snapshot reads", () => {
   test("a failed read counts toward the floor, so a down program is asked once per interval", async () => {
     const { adapter, program, tick } = await rig();
     program.override = () => new Response("boom", { status: 500 });
-    expect(verdict(await adapter.poll())).toBe("unreachable: program answered 500");
-    expect(verdict(await adapter.poll())).toBe("unreachable: program answered 500");
+    expect(verdict(await adapter.poll())).toBe("unreachable: the durable agent answered 500");
+    expect(verdict(await adapter.poll())).toBe("unreachable: the durable agent answered 500");
     expect(program.requests).toHaveLength(1);
     program.override = null;
     tick();
@@ -661,16 +691,16 @@ describe("starters (WIRE.md sections 7.6 and 7.7)", () => {
     program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "not-supported" }, { status: 409 }) : undefined);
     expect(await adapter.startStarter("notes-new", REQUEST)).toMatchObject({ kind: "unsupported" });
     program.override = null;
-    expect(await adapter.startStarter("nope", REQUEST)).toEqual({ kind: "refused", detail: "program answered 404 no-such-starter" });
+    expect(await adapter.startStarter("nope", REQUEST)).toEqual({ kind: "refused", detail: "the durable agent answered 404 no-such-starter" });
     expect(await adapter.startStarter("notes-new", REQUEST)).toMatchObject({ kind: "started" });
     program.snapshot.starters.push({ id: "other", label: "Other" });
-    expect(await adapter.startStarter("other", REQUEST)).toEqual({ kind: "refused", detail: "program answered 409 request-id-reused" });
+    expect(await adapter.startStarter("other", REQUEST)).toEqual({ kind: "refused", detail: "the durable agent answered 409 request-id-reused" });
   });
 
   test("a 5xx, an unreadable reply and a dropped connection are an unknown outcome, never a retry", async () => {
     const { adapter, program } = await rig();
     program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "internal" }, { status: 500 }) : undefined);
-    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unknown", detail: "program answered 500" });
+    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unknown", detail: "the durable agent answered 500" });
     program.override = (path) => (path.includes("/starter/") ? new Response("<html>") : undefined);
     expect((await adapter.startStarter("notes-new", REQUEST)).kind).toBe("unknown");
     program.override = (path) => (path.includes("/starter/") ? new Response("x".repeat(20_000)) : undefined);
@@ -684,7 +714,7 @@ describe("starters (WIRE.md sections 7.6 and 7.7)", () => {
   test("a 500 receipt-dropped (a program that capped its receipts) is an unknown outcome, never a retry", async () => {
     const { adapter, program } = await rig();
     program.override = (path) => (path.includes("/starter/") ? Response.json({ code: "receipt-dropped" }, { status: 500 }) : undefined);
-    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unknown", detail: "program answered 500" });
+    expect(await adapter.startStarter("notes-new", REQUEST)).toEqual({ kind: "unknown", detail: "the durable agent answered 500" });
     expect(program.requests.filter((request) => request.method === "POST")).toHaveLength(1);
   });
 

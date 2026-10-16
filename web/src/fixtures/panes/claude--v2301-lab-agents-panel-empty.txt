@@ -1,0 +1,40 @@
+[38;5;174m ▝▝   ▝▝ [39m  [38;5;246m~/.cache/sample-lab/lab-0000-00/work             [39m
+
+  Get to finished work sooner with Opus 5.5. Switch anytime with [38;5;153m/model[39m.
+  [38;5;246m1 more notice hidden[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mUse the Agent tool to start one background subagent (run_in_background true) whose only job is to run the Bash [39m
+  [38;5;231mcommand sleep 400 and then reply done. Do not wait for it. After you launch it, reply with the word launched.[39m
+
+[38;5;114m[49m●[39m [1mAgent[0m(Run sleep 400 in background) [38;5;246mSonnet 5.5[39m
+[38;5;246m  ⎿  [39mBackgrounded agent[38;5;246m (↓ to manage · ctrl+o to expand)[39m
+
+[38;5;231m●[39m launched
+
+[38;5;246m✻[39m [38;5;246mWaiting for [1m1[0m[38;5;246m background agent to finish[39m
+
+[38;5;246m› Message from @general-purpose (ctrl+o to expand)[39m
+
+[38;5;231m●[39m The background agent is still running. It reports that the foreground [38;5;153msleep 400[39m was blocked, so it moved the sleep to
+  a background job. It has not finished yet. I will wait for its completion notification. No action is needed from you.
+
+[38;5;114m●[39m Agent "Run sleep 400 in background" is waiting on its own background work[38;5;246m · 9s[39m
+
+[38;5;231m●[39m The sleep agent has stopped. Its own background [38;5;153msleep 400[39m is still running, so its result is interim. The agent should
+  notify again when that job finishes. I will report the final result when it arrives. No action is needed from you.
+
+[38;5;246m✻[39m [38;5;246mBrewed for 16s · done 9:06 PM · 1 shell still running[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mReply with the single word pong.[39m
+
+[38;5;231m[49m●[39m pong
+
+[38;5;246m✻[39m [38;5;246mWorked for 1s · done 9:07 PM · 1 shell still running[39m
+                                                                                          [38;5;246mCtrl+Y to paste deleted text[39m
+[38;5;244m─────────────────────────────────────────────────────────────────────────────────────────────────────────── lab-sample ─
+[39m❯ [2mreply with the single word ping[0m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;220m⏵⏵ auto mode on[38;5;246m · [38;5;44m1 shell[38;5;246m · ← for agents · ↓ to manage[39m
+
+[1m  ● main[0m
+[38;5;246m  ◯ general-purpose[39m  [38;5;246mRun sleep 400 in background[39m                                                   [38;5;246m9s · ↓ 31.2k tokens[39m

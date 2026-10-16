@@ -149,7 +149,7 @@ The first run checks for Herdr, tmux, and zellij, then writes your choice to `.e
 On Herdr, open a pane and run `claude`. Herdr flags the pane as an agent to Collie.
 
 On tmux or zellij, install beacon hooks once per host. This lets Collie distinguish agents from
-plain shells. Next, open a window or tab in the session Collie mirrors, then launch Claude Code:
+plain shells. Next, open a window or tab in the tmux or zellij session Collie mirrors, then launch Claude Code:
 
 ```bash
 collie hooks install claude    # once per host, Linux only
@@ -158,7 +158,7 @@ claude
 ```
 
 Collie mirrors the default tmux server unless you set `COLLIE_MUX_ENDPOINT_TMUX`. The `claude`
-session from above appears automatically.
+tmux session from above appears automatically.
 
 Running Claude Code instances do not reload settings automatically. Restart Claude Code after you
 install hooks. See [Collie writes hooks into Claude's own

@@ -88,7 +88,7 @@ class FakeMux {
     this.texts.push([paneId, text]);
     return Promise.resolve(this.failText ? muxRefused("pane is gone") : muxAck());
   }
-  sendKeys(_paneId: string, keys: string[]): Promise<MuxAck> {
+  writeKeys(_paneId: string, keys: string[]): Promise<MuxAck> {
     this.keys.push(keys);
     return Promise.resolve(muxAck());
   }

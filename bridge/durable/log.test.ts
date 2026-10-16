@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { isPrivateFile, privateTestDir } from "../mux/durable/fixture.ts";
 import { HOST } from "../host.ts";
 import { parseLogRow, type DurableAsk, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
-import { DurableLogs, durableLogDir, GAP_NOTICE, gapItemId, HOST_MAX_BYTES, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
+import { cursorFileName, DurableLogs, durableLogDir, GAP_NOTICE, gapItemId, HOST_MAX_BYTES, LOG_KEEP_ITEMS, LOG_MAX_BYTES, logFileName, PaneLog } from "./log.ts";
 
 const dirs: string[] = [];
 
@@ -176,6 +176,20 @@ describe("append", () => {
     expect(kinds(await rows(path))).toEqual(["ask", "ask-closed"]);
   });
 
+  test("an ask-closed row carries the ask's title, read back from the file after a restart too; an older row without one parses", async () => {
+    const { log, path } = await newLog();
+    await log.apply([{ type: "ask", ask: ask("a1") }, { type: "ask-closed", askId: "a1", by: "timeout" }]);
+    expect((await rows(path)).at(-1)).toMatchObject({ k: "ask-closed", askId: "a1", by: "timeout", title: "write_note wants to write /tmp/x" });
+    expect(parseLogRow(JSON.stringify({ k: "ask-closed", at: "2026-10-15T09:00:00.000Z", askId: "old", by: "program" }))).toEqual({
+      k: "ask-closed",
+      at: "2026-10-15T09:00:00.000Z",
+      askId: "old",
+      by: "program",
+      waitedMs: undefined,
+      title: undefined,
+    });
+  });
+
   test("a remove event removes nothing and writes nothing", async () => {
     const { log, path } = await newLog();
     await log.apply([text("i1", "keep me"), { type: "remove", id: "i1" }]);
@@ -186,6 +200,88 @@ describe("append", () => {
     const { log, path } = await newLog();
     await Promise.all([log.apply([text("i1", "one")]), log.apply([text("i2", "two")]), log.apply([text("i3", "three")])]);
     expect(itemIds(await rows(path))).toEqual(["i1", "i2", "i3"]);
+  });
+});
+
+describe("a reply that grows (partial and replace)", () => {
+  const grown = (id: string, body: string, partial = true): DurableEvent => ({
+    type: "item",
+    item: partial ? { id, kind: "reply", text: body, partial: true } : { id, kind: "reply", text: body },
+  });
+  /** The latest version of each item in the file, in order of first appearance: what a reader holds. */
+  const held = (list: readonly LogRow[]): Map<string, LogRow> => {
+    const out = new Map<string, LogRow>();
+    for (const row of list) if (row.k === "item") out.set(row.item.id, row);
+    return out;
+  };
+
+  test("each version is a row for the SAME id, and the final one has no partial: one item, not a row per version", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Hel")]);
+    await log.apply([grown("r1", "Hello, wor")]);
+    await log.apply([grown("r1", "Hello, world", false)]);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["r1", "r1", "r1"]);
+    expect([...held(written).keys()]).toEqual(["r1"]);
+    const last = held(written).get("r1");
+    expect(last?.k === "item" && last.item.kind === "reply" && [last.item.text, "partial" in last.item]).toEqual(["Hello, world", false]);
+  });
+
+  test("versions in one batch write one row: only the last is news, so the file grows with the polls and not with the writes", async () => {
+    const { log, path } = await newLog();
+    expect(await log.apply([grown("r1", "H"), grown("r1", "He"), grown("r1", "Hel"), text("other", "x")])).toBe(2);
+    expect(await log.apply([grown("r1", "Hell"), grown("r1", "Hello", false)])).toBe(1);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["r1", "other", "r1"]);
+    const last = held(written).get("r1");
+    expect(last?.k === "item" && "partial" in last.item).toBe(false);
+  });
+
+  test("the same version twice writes once, and a final version identical in text still replaces a partial one", async () => {
+    const { log, path } = await newLog();
+    expect(await log.apply([grown("r1", "Hello")])).toBe(1);
+    expect(await log.apply([grown("r1", "Hello")])).toBe(0);
+    expect(await log.apply([grown("r1", "Hello", false)])).toBe(1);
+    expect(itemIds(await rows(path))).toEqual(["r1", "r1"]);
+  });
+
+  test("a reopened log reads the partial flag back, so a repeat is skipped and a new version still lands", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Hel")]);
+    const again = new PaneLog(path);
+    expect(await again.apply([grown("r1", "Hel")])).toBe(0);
+    expect(await again.apply([grown("r1", "Hello", false)])).toBe(1);
+    expect(itemIds(await rows(path))).toEqual(["r1", "r1"]);
+  });
+
+  test("a reset view that does not list a partial reply finishes it once, as it stood, without partial", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Half of an ans"), text("i2", "two")]);
+    await log.apply([{ type: "reset" }, text("i2", "two"), { type: "synced" }]);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["r1", "i2", "r1"]);
+    const last = held(written).get("r1");
+    expect(last?.k === "item" && last.item.kind === "reply" && [last.item.text, "partial" in last.item]).toEqual(["Half of an ans", false]);
+    // Once only: another reset writes nothing more for it.
+    expect(await log.apply([{ type: "reset" }, text("i2", "two"), { type: "synced" }])).toBe(0);
+  });
+
+  test("a reset view that lists the reply keeps its version, even a partial one", async () => {
+    const { log, path } = await newLog();
+    await log.apply([grown("r1", "Half")]);
+    await log.apply([{ type: "reset" }, grown("r1", "Half of it"), { type: "synced" }]);
+    const last = held(await rows(path)).get("r1");
+    expect(last?.k === "item" && last.item.kind === "reply" && [last.item.text, last.item.partial]).toEqual(["Half of it", true]);
+  });
+
+  test("a user line that gains its request id is a replacement of the same id", async () => {
+    const { log, path } = await newLog();
+    await log.apply([text("u1", "hi", "user")]);
+    await log.apply([{ type: "item", item: { id: "u1", kind: "user", text: "hi", requestId: "req-1" } }]);
+    const written = await rows(path);
+    expect(itemIds(written)).toEqual(["u1", "u1"]);
+    const last = held(written).get("u1");
+    expect(last?.k === "item" && last.item.kind === "user" && last.item.requestId).toBe("req-1");
   });
 });
 
@@ -357,7 +453,7 @@ describe("size cap", () => {
     expect(itemIds(kept)).toEqual(["first", "big", "last"]);
     const first = kept[0];
     expect(first?.at).toBe("2026-10-12T08:00:00.000Z");
-    expect(first?.k === "item" && first.item.kind !== "tool" && first.item.text).toBe("no ts of its own, edited");
+    expect(first?.k === "item" && "text" in first.item && first.item.text).toBe("no ts of its own, edited");
   });
 
   test("a rewrite that keeps huge items stops at three quarters of the cap, so the next one is far away", async () => {
@@ -421,6 +517,70 @@ describe("the machine's byte cap", () => {
     // A pane whose log was deleted writes a fresh one on its next event.
     await logs.apply("oldest", big("e"));
     expect(await readdir(folder)).toContain(logFileName("oldest"));
+  });
+  test("cursor: the cap deletes a log's cursor with it, and says each deleted file in one line", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    const logs = new DurableLogs(folder, () => Date.now(), { maxBytes: LOG_MAX_BYTES, keepItems: LOG_KEEP_ITEMS }, 3000);
+    const big = (id: string) => [text(id, "x".repeat(900))];
+    await logs.apply("oldest", big("a"));
+    await logs.saveCursor("oldest", { epoch: "e1", after: 1 });
+    await logs.apply("middle", big("b"));
+    await logs.saveCursor("middle", { epoch: "e1", after: 1 });
+    await utimes(join(folder, logFileName("oldest")), new Date(1_000_000), new Date(1_000_000));
+    await utimes(join(folder, logFileName("middle")), new Date(2_000_000), new Date(2_000_000));
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await logs.apply("newest", big("c"));
+      await logs.apply("newest", big("d"));
+      const left = await readdir(folder);
+      const deleted = ["oldest", "middle"].filter((key) => !left.includes(logFileName(key)));
+      expect(deleted[0]).toBe("oldest");
+      // One line per deleted file, naming it, and nothing else said.
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(lines).toHaveLength(deleted.length);
+      deleted.forEach((key, n) => {
+        expect(lines[n]).toContain(logFileName(key));
+        expect(lines[n]).toContain("deleted the oldest pane log");
+      });
+      // A deleted log's cursor is gone with it; a kept log keeps its own.
+      for (const key of ["oldest", "middle"]) expect(left.includes(cursorFileName(key))).toBe(!deleted.includes(key));
+    } finally {
+      warn.mockRestore();
+    }
+    expect(await logs.loadCursor("oldest")).toBeNull();
+  });
+});
+
+describe("the saved cursor", () => {
+  test("cursor: saved beside the log as a private file, read back, and deleted with null", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    const logs = new DurableLogs(folder);
+    expect(await logs.loadCursor("conv-1")).toBeNull();
+    await logs.saveCursor("conv-1", { epoch: "e1", after: 7 });
+    expect(await logs.loadCursor("conv-1")).toEqual({ epoch: "e1", after: 7 });
+    await logs.saveCursor("conv-1", { epoch: "e2", after: 3 });
+    expect(await logs.loadCursor("conv-1")).toEqual({ epoch: "e2", after: 3 });
+    const names = await readdir(folder);
+    // One file, no temporary left behind, and its name is the log's with another ending.
+    expect(names).toEqual([cursorFileName("conv-1")]);
+    expect(cursorFileName("conv-1").replace(".cursor.json", ".jsonl")).toBe(logFileName("conv-1"));
+    if (HOST.platform !== "win32") expect(isPrivateFile(join(folder, cursorFileName("conv-1")))).toBe(true);
+    await logs.saveCursor("conv-1", null);
+    expect(await readdir(folder)).toEqual([]);
+    await logs.saveCursor("conv-1", null);
+  });
+
+  test("cursor: a torn or foreign cursor file reads as none, so the reader starts at 0", async () => {
+    const dir = await tempDir();
+    const folder = join(dir, "durable");
+    await mkdir(folder, { recursive: true });
+    const logs = new DurableLogs(folder);
+    for (const body of ['{"epoch":"e1","aft', "[]", '{"epoch":"","after":1}', '{"epoch":"e1","after":-1}', '{"epoch":"e1","after":1.5}']) {
+      await writeFile(join(folder, cursorFileName("conv-1")), body);
+      expect(await logs.loadCursor("conv-1")).toBeNull();
+    }
   });
 });
 

@@ -1,0 +1,40 @@
+ 
+  [0m[38;2;99;168;248m>_ [0m[1mOpenAI Codex[0m[2m (v0.162.1)[0m
+     [0m[2m~/sandbox/collie-lab/m56slice0/work[0m
+
+[0m[2m  To get started, describe a task or try one of these commands:[0m
+
+  /init[0m[2m - create an AGENTS.md file with instructions for Codex[0m
+  /status[0m[2m - show current session configuration[0m
+  /permissions[0m[2m - choose what Codex is allowed to do[0m
+  /model[0m[2m - choose what model and reasoning effort to use[0m
+  /review[0m[2m - review any changes and find issues[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [0m[1mSelect Model and Effort[0m
+
+
+  1. GPT-6.1-Sol           [0m[2mLatest workhorse model for coding and everyday work.[0m
+  2. GPT-6-Astra           [0m[2mFrontier intelligence for the most demanding work.[0m
+  3. GPT-6-Sol             [0m[2mPrevious generation workhorse model.[0m
+[0m[1m[7m› 4. GPT-6-Luna (current)  [0m[7mFast and affordable model for easier tasks.[0m[1m[7m            [0m
+  5. GPT-5.6-Sol           [0m[2mOlder generation workhorse model.[0m
+  6. GPT-5.6-Terra         [0m[2mOlder balanced model for straightforward work.[0m
+  7. GPT-5.6-Luna          [0m[2mOlder fast and efficient model.[0m
+  8. GPT-5.5               [0m[2mLegacy coding model.[0m
+
+  [0m[1menter[0m[2m select · [0m[1mesc[0m[2m back                                                         [0m

@@ -299,7 +299,7 @@ export type TuiosRpc = Pick<
   | "listAgents"
   | "capturePane"
   | "sendText"
-  | "sendKeys"
+  | "writeKeys"
   | "renameWindow"
   | "closeWindow"
   | "focusWindow"
@@ -464,7 +464,7 @@ export class TuiosClient {
   }
 
   /** Keys in tuios's own grammar, space-separated. The daemon parses every token before sending. */
-  async sendKeys(session: string, window: string, keys: string): Promise<void> {
+  async writeKeys(session: string, window: string, keys: string): Promise<void> {
     await this.request("send-keys", { session, window, keys });
   }
 

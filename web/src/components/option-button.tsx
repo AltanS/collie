@@ -143,6 +143,7 @@ export function PromptPanel({
       {raw !== undefined && !showRaw && (
         <button
           ref={terminalControlRef}
+          data-slot="card-view-toggle"
           type="button"
           aria-label={terminalAria}
           onClick={() => setShowRaw(true)}
@@ -157,6 +158,7 @@ export function PromptPanel({
           <RawMirror lines={raw} wrap={wrap} />
           <button
             ref={backControlRef}
+            data-slot="card-view-toggle"
             type="button"
             aria-label={backLabel}
             onClick={() => setShowRaw(false)}
@@ -183,7 +185,7 @@ export function OptionGroupCaption({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 pl-0.5">
       {accentTick}
-      <span className="font-content text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="font-content text-[11px] font-medium label-caps text-muted-foreground">
         {children}
       </span>
     </div>

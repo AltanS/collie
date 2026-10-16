@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { api, call } from "./client.ts";
-import { openCollie } from "../sdk/index.ts";
+import { openCollie } from "../../../packages/durable-sdk/src/index.ts";
 import { protocolSuite } from "./protocol-suite.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";
 
@@ -12,8 +12,8 @@ afterAll(cleanup);
 
 protocolSuite({
   name: "over the socket",
-  async open({ hostName, caps }) {
-    const collie = await openCollie({ callerCheck: "off", socket: join(tmp(), "run", "s.sock"), hostName, caps });
+  async open({ hostName, caps, hooks, onRename }) {
+    const collie = await openCollie({ callerCheck: "off", socket: join(tmp(), "run", "s.sock"), hostName, caps, hooks, onRename });
     return { collie, dial: { socket: collie.address, version: 1 } };
   },
 });
@@ -23,14 +23,14 @@ const filesUnder = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(join(dir, e.name)) : [join(dir, e.name)]));
 
 describe("no token", () => {
-  test("there is no 401: an Authorization header is not read, and no code in sdk/ reads a token", async () => {
+  test("there is no 401: an Authorization header is not read, and no code in the SDK reads a token", async () => {
     const c = await openCollie({ callerCheck: "off", socket: join(tmp(), "tok.sock"), hostName: "t" });
     c.ready();
     const d = { socket: c.address, version: 1 };
     expect((await call({ ...d }, "GET", "/hello", undefined, { authorization: "Bearer nope" })).status).toBe(200);
     expect((await call(d, "GET", "/snapshot", undefined, { authorization: "Bearer nope" })).status).toBe(200);
     await c.close();
-    const code = filesUnder(new URL("../sdk/", import.meta.url).pathname).map((f) => readFileSync(f, "utf8")).join("\n");
+    const code = filesUnder(new URL("../../../packages/durable-sdk/src/", import.meta.url).pathname).map((f) => readFileSync(f, "utf8")).join("\n");
     expect(code).not.toMatch(/bearer|authorization|DM_TOKEN|timingSafeEqual|\btcp:/i);
   });
 });

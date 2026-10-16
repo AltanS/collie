@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonValue } from "../../json.ts";
 import { CAPS } from "./clean.ts";
 import { hasHostileChars, helloFixture, hostileText, snapshotFixture, type FakeSnapshot } from "./fixture.ts";
 import {
+  askForWire,
   DURABLE_SERVICE,
   NOT_A_DURABLE_PROGRAM,
   incompatibleDetail,
@@ -46,7 +48,7 @@ describe("version negotiation", () => {
 
   test("the detail starts with incompatible and names both ranges", () => {
     expect(incompatibleDetail({ min: 2, max: 3 })).toBe(
-      "incompatible: program speaks 2..3, this Collie speaks 1..1",
+      "incompatible: the durable agent speaks 2..3, this Collie speaks 1..1",
     );
     expect(incompatibleDetail(null)).toBe("incompatible");
   });
@@ -62,7 +64,7 @@ describe("hello", () => {
         hostName: "denis-laptop",
         epoch: EPOCH,
         ready: true,
-        caps: { asks: true, starters: true, send: true, steer: true, abort: true },
+        caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false, actions: false, history: false, reopen: false },
       },
     });
   });
@@ -71,7 +73,7 @@ describe("hello", () => {
     const parsed = parseHello(
       JSON.stringify({ service: "collie-durable", protocol: { min: 1, max: 1 }, host: null, epoch: EPOCH, ready: false, caps: { asks: null, send: true } }),
     );
-    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false });
+    expect(parsed.ok && parsed.value.caps).toEqual({ asks: false, starters: false, send: true, steer: false, abort: false, rename: false, close: false, actions: false, history: false, reopen: false });
     expect(parsed.ok && parsed.value.hostName).toBe("");
   });
 
@@ -103,7 +105,7 @@ describe("hello", () => {
     expect(Buffer.byteLength(parsed.value.hostName)).toBeLessThanOrEqual(CAPS.hostName);
   });
 
-  test("a hello without the service name is not a durable program, whatever else it says", () => {
+  test("a hello without the service name is not a durable agent, whatever else it says", () => {
     const base = { protocol: { min: 1, max: 1 }, host: { name: "h" }, epoch: EPOCH, ready: true, caps: {} };
     for (const service of [undefined, null, "", "collie", "Collie-Durable", 1]) {
       expect(parseHello(JSON.stringify({ ...base, service }))).toEqual({ ok: false, detail: NOT_A_DURABLE_PROGRAM });
@@ -240,18 +242,109 @@ describe("snapshot fixture", () => {
     expect(closed.ok && closed.value.starters).toEqual([]);
   });
 
-  // M50 spec 14: wire v1 reserves `sessionId` on every pane for the machine-scoped session id. The adapter reads a
-  // pane with it, null or a string, exactly as one without it, and keeps nothing of it today.
-  test("a pane's reserved sessionId, null or a string, is read and ignored", () => {
+  // M53 spec 11: `sessionId` is the conversation id the program serves the pane's history under (WIRE.md 7.16). Null, or
+  // an id that breaks the rule, reads as absent and the pane id stands in; a good one keys the journal's log.
+  test("history: a pane's sessionId keys its log; null or a bad one reads as absent, and the pane id stands in", () => {
     const plain = toMuxSnapshot(read());
-    for (const sessionId of [null, "s-1"]) {
+    for (const sessionId of [null, "a b", 7]) {
       const snapshot = read((raw) => {
         for (const pane of raw.panes) Object.assign(pane, { sessionId });
       });
-      expect(snapshot.panes.map((pane) => pane.id)).toEqual(read().panes.map((pane) => pane.id));
       expect(snapshot.panes.every((pane) => !("sessionId" in pane))).toBe(true);
       expect(toMuxSnapshot(snapshot)).toEqual(plain);
     }
+    const named = read((raw) => {
+      for (const pane of raw.panes) Object.assign(pane, { sessionId: `s-${pane.id}` });
+    });
+    expect(named.panes.map((pane) => pane.sessionId)).toEqual(read().panes.map((pane) => `s-${pane.id}`));
+    expect(toMuxSnapshot(named).panes.map((pane) => pane.agentSession)).toEqual(read().panes.map((pane) => ({ kind: "id", value: `s-${pane.id}` })));
+    expect(toMuxSnapshot(named).panes.map((pane) => pane.paneId)).toEqual(plain.panes.map((pane) => pane.paneId));
+  });
+
+  test("a pane's subtitle and badge are read cleaned, mapped onto the mux pane, and left out when absent", () => {
+    const snapshot = read((raw) => {
+      Object.assign(raw.panes[0] ?? {}, { subtitle: " a customer cannot log in\u200b ", badge: { count: 3 } });
+      Object.assign(raw.panes[1] ?? {}, { subtitle: 7, badge: { count: 99999 } });
+    });
+    expect(snapshot.panes[0]?.subtitle).toBe("a customer cannot log in");
+    expect(snapshot.panes[0]?.badge).toEqual({ count: 3 });
+    // A bad value reads as absent and never drops the pane.
+    expect(snapshot.panes).toHaveLength(read().panes.length);
+    expect(snapshot.panes[1]?.subtitle).toBeUndefined();
+    expect(snapshot.panes[1]?.badge).toBeUndefined();
+    const mux = toMuxSnapshot(snapshot);
+    expect(mux.panes[0]?.subtitle).toBe("a customer cannot log in");
+    expect(mux.panes[0]?.badge).toEqual({ count: 3 });
+    expect("subtitle" in (mux.panes[1] ?? {})).toBe(false);
+    expect("badge" in (mux.panes[1] ?? {})).toBe(false);
+  });
+
+  test("a bad subtitle or badge is dropped alone: wrong type, a count out of range, both keys, nothing left", () => {
+    const bads: [string, object][] = [
+      ["a number subtitle", { subtitle: 7 }],
+      ["an empty subtitle", { subtitle: " \u200b " }],
+      ["a count over 9999", { badge: { count: 10000 } }],
+      ["a negative count", { badge: { count: -1 } }],
+      ["a fractional count", { badge: { count: 1.5 } }],
+      ["a text count", { badge: { count: "3" } }],
+      ["both keys", { badge: { count: 2, text: "two" } }],
+      ["neither key", { badge: {} }],
+      ["a text with nothing left", { badge: { text: "\u0007" } }],
+      ["a badge that is not an object", { badge: 3 }],
+    ];
+    for (const [label, extra] of bads) {
+      const snapshot = read((raw) => Object.assign(raw.panes[0] ?? {}, extra));
+      expect([label, snapshot.panes[0]?.subtitle, snapshot.panes[0]?.badge]).toEqual([label, undefined, undefined]);
+      expect(snapshot.panes).toHaveLength(read().panes.length); // the pane itself is kept
+    }
+  });
+
+  test("progress: steps and a percent are read, cleaned and capped", () => {
+    const progressOfPane = (progress: JsonValue) => read((raw) => Object.assign(raw.panes[0] ?? {}, { progress })).panes[0]?.progress;
+    expect(progressOfPane({ kind: "steps", steps: [{ label: " read ", state: "done" }, { label: "write", state: "running" }, { label: "reply", state: "todo" }] })).toEqual({
+      kind: "steps",
+      steps: [{ label: "read", state: "done" }, { label: "write", state: "running" }, { label: "reply", state: "todo" }],
+    });
+    expect(progressOfPane({ kind: "percent", value: 40.5, label: "uploading" })).toEqual({ kind: "percent", value: 40.5, label: "uploading" });
+    expect(progressOfPane({ kind: "percent", value: 0 })).toEqual({ kind: "percent", value: 0 });
+    expect(progressOfPane({ kind: "percent", value: 100, label: 7 })).toEqual({ kind: "percent", value: 100 }); // a bad label is left out alone
+    const many = Array.from({ length: 20 }, (_, index) => ({ label: `step ${index}`, state: "todo" }));
+    const kept = progressOfPane({ kind: "steps", steps: many });
+    expect(kept?.kind === "steps" ? kept.steps : []).toHaveLength(12);
+    const long = progressOfPane({ kind: "percent", value: 5, label: "x".repeat(200) });
+    expect([...(long?.kind === "percent" ? (long.label ?? "") : "")]).toHaveLength(60);
+  });
+
+  test("progress: a bad shape is dropped alone, and never drops the pane", () => {
+    const bads: [string, JsonValue][] = [
+      ["a string", "half way"],
+      ["an unknown kind", { kind: "ring", value: 3 }],
+      ["a value over 100", { kind: "percent", value: 101 }],
+      ["a negative value", { kind: "percent", value: -1 }],
+      ["a text value", { kind: "percent", value: "40" }],
+      ["no steps", { kind: "steps", steps: [] }],
+      ["steps that are not a list", { kind: "steps", steps: "a" }],
+      ["a step with an unknown state", { kind: "steps", steps: [{ label: "a", state: "paused" }] }],
+      ["a step with no label", { kind: "steps", steps: [{ state: "done" }] }],
+      ["a step with a label of nothing", { kind: "steps", steps: [{ label: "\u200b", state: "done" }] }],
+    ];
+    for (const [label, progress] of bads) {
+      const snapshot = read((raw) => Object.assign(raw.panes[0] ?? {}, { progress }));
+      expect([label, snapshot.panes[0]?.progress]).toEqual([label, undefined]);
+      expect(snapshot.panes).toHaveLength(read().panes.length);
+    }
+  });
+
+  test("a badge takes a count from 0 to 9999 or a text cut to 12 characters, and a null key reads as absent", () => {
+    const badgeOfPane = (badge: Record<string, string | number | null>) => read((raw) => Object.assign(raw.panes[0] ?? {}, { badge })).panes[0]?.badge;
+    expect(badgeOfPane({ count: 0 })).toEqual({ count: 0 });
+    expect(badgeOfPane({ count: 9999 })).toEqual({ count: 9999 });
+    expect(badgeOfPane({ text: " new\u200b " })).toEqual({ text: "new" });
+    expect(badgeOfPane({ text: "x".repeat(40) })).toEqual({ text: `${"x".repeat(11)}…` });
+    expect(badgeOfPane({ count: null, text: "hot" })).toEqual({ text: "hot" });
+    expect(badgeOfPane({ count: 3, text: null })).toEqual({ count: 3 });
+    const long = read((raw) => Object.assign(raw.panes[0] ?? {}, { subtitle: "é".repeat(300) })).panes[0]?.subtitle ?? "";
+    expect([...long]).toHaveLength(120);
   });
 
   test("a snapshot without rev, epoch or its lists is not a snapshot", () => {
@@ -348,6 +441,37 @@ describe("the id rule drops what hangs from a bad id", () => {
 
 describe("clean: every string in a snapshot is cleaned and capped", () => {
   const hostile = (field: string) => hostileText(field);
+
+  test("an ask's push words are cleaned and cut to 60 and 120 characters, and a part that is empty or not text reads as absent", () => {
+    let first = true;
+    const nextPush = () => {
+      const words = first ? { title: `${hostile("t")}${"é".repeat(100)}`, line: `  ${"l".repeat(300)}` } : { title: "", line: "\u0007\u200b" };
+      first = false;
+      return words;
+    };
+    const snapshot = read((raw) => {
+      raw.panes = raw.panes.map((pane) =>
+        Object.assign({}, pane, { openAsks: pane.openAsks.map((ask) => Object.assign({}, ask, { push: nextPush() })) }),
+      );
+    });
+    const asks = snapshot.panes.flatMap((pane) => pane.openAsks);
+    expect(asks.length).toBeGreaterThan(0);
+    const pushed = asks.find((ask) => ask.push?.title !== undefined);
+    expect(pushed).toBeDefined();
+    expect([...(pushed?.push?.title ?? "")].length).toBeLessThanOrEqual(60);
+    expect(hasHostileChars(pushed?.push?.title ?? "")).toBe(false);
+    expect(pushed?.push?.line).toBe("l".repeat(120));
+    for (const ask of asks) if (ask !== pushed) expect(ask.push).toBeUndefined();
+  });
+
+  test("an ask without push words carries no push key, and the wire form copies the words", () => {
+    const asks = read().panes.flatMap((pane) => pane.openAsks);
+    expect(asks.length).toBeGreaterThan(0);
+    for (const ask of asks) expect(Object.hasOwn(ask, "push")).toBe(false);
+    const withWords = { ...asks[0]!, push: { title: "Needs a yes" } };
+    expect(askForWire(withWords).push).toEqual({ title: "Needs a yes" });
+    expect(Object.hasOwn(askForWire(asks[0]!), "push")).toBe(false);
+  });
 
   test("clean titles, harness and starter labels pass through the same cleaning", () => {
     const snapshot = read((raw) => {

@@ -20,6 +20,19 @@
 // running one appends no item, settles the input as unanswered with the reason `aborted`, closes the
 // open asks `by: "stopped"` and leaves the pane idle.
 //
+// It takes `POST /rename` as WIRE.md 7.8 describes it: a workspace or a tab by kind and id, a title of 1 to
+// 120 characters, the cap checked, a repeat of a request id answered `replayed`, and a refusal (422
+// `rename-refused`) when a test sets `renameRefusal`. A rename changes the title and `rev` rises.
+//
+// It takes `POST /close` as WIRE.md 7.9 describes it: a pane, a tab or a workspace by kind and id, the cap checked, a
+// repeat of a request id answered `replayed`, and a refusal (422 `close-refused`) when a test sets `closeRefusal`. A
+// close takes the target and everything inside it out of the layout, and `rev` rises.
+//
+// It serves its own history as WIRE.md 7.16 describes it, when `caps.history` is set: `GET /conversations`
+// from the `conversations` a test lists (newest first, paged by `c<n>`) and `GET /conversation/:id/items` from
+// each one's items (paged by `i<n>`). It takes `POST /reopen` when `caps.reopen` is set: a pane it closed comes back
+// under the same id, in its tab, and `rev` rises; a refusal (422 `reopen-refused`) when a test sets `reopenRefusal`.
+//
 // It also serves `GET /pane/:id/events` as WIRE.md 7.2 describes it. Each pane has an event log
 // whose cursor counts every event appended in this epoch, a tail of the newest events (1000, or what
 // a test sets), and a model of the pane's current view (its items by id, its open asks, its state).
@@ -55,9 +68,14 @@ import { DurableHttpClient } from "./http-client.ts";
 import recordedHello from "./fixtures/hello.json";
 import recordedSnapshot from "./fixtures/snapshot.json";
 import {
+  parseActionPost,
   parseAnswerPost,
+  type DurableAnswerBody,
+  parseClosePost,
   parseControlPost,
   parseEvents,
+  parseRenamePost,
+  parseReopenPost,
   type DurableAsk,
   type DurablePane,
   type DurableStarter,
@@ -79,8 +97,25 @@ export interface FakeHello {
     send?: boolean;
     steer?: boolean;
     abort?: boolean;
+    rename?: boolean;
+    close?: boolean;
+    actions?: boolean;
+    history?: boolean;
+    reopen?: boolean;
     terminal?: boolean;
   };
+}
+
+/** One conversation of the fake's history (WIRE.md 7.16): its row, as served, and its items, oldest first. */
+export interface FakeConversation {
+  row: JsonObject;
+  items: JsonObject[];
+}
+
+/** A reopen the fake took. */
+export interface FakeReopen {
+  readonly requestId: string;
+  readonly id: string;
 }
 
 /** A `snapshot` document as the fake serves it. `rev` and `epoch` come from the fake's state. */
@@ -187,7 +222,10 @@ export interface FakeAnswer {
   readonly paneId: string;
   readonly askId: string;
   readonly toolCallId: string;
+  /** The option of a permission, the picks of a choice joined by a comma, and empty for a text or a form. */
   readonly optionId: string;
+  /** What was answered, as the program read it. */
+  readonly answer: DurableAnswerBody;
   readonly requestId: string;
 }
 
@@ -260,6 +298,29 @@ export interface AnswerDoc {
   replayed?: true;
 }
 
+/** One rename the fake took (WIRE.md section 7.8). A replay is not one. */
+export interface FakeRename {
+  readonly requestId: string;
+  readonly kind: "workspace" | "tab";
+  readonly id: string;
+  readonly title: string;
+}
+
+/** One close the fake took (WIRE.md section 7.9). A replay is not one. */
+export interface FakeClose {
+  readonly requestId: string;
+  readonly kind: "pane" | "tab" | "workspace";
+  readonly id: string;
+}
+
+/** One belt action the fake ran (WIRE.md section 7.10). A replay is not one. */
+export interface FakeAction {
+  readonly requestId: string;
+  readonly paneId: string;
+  readonly actionId: string;
+  readonly turnId: string | null;
+}
+
 /** What a send or an abort answers. */
 export interface ControlDoc {
   ok: true;
@@ -268,7 +329,7 @@ export interface ControlDoc {
 
 function reply(
   status: number,
-  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc | ControlDoc,
+  body: HelloDoc | SnapshotDoc | ProblemDoc | EventsDoc | StarterReplyDoc | AnswerDoc | ControlDoc | JsonObject,
   etag?: string,
 ): Response {
   const headers = new Headers({ "content-type": "application/json" });
@@ -313,6 +374,8 @@ export class FakeDurableProgram {
   readonly answers: FakeAnswer[] = [];
   /** The first reply per request id, and the pane it was for (WIRE.md section 7.6). */
   private readonly answered = new Map<string, { paneId: string; reply: AnswerDoc }>();
+  /** The first decision of each ask the phone answered, by ask id: what a second answer's 409 `decided` carries (WIRE.md 7.3). */
+  readonly decided = new Map<string, JsonObject>();
 
   /** Every send the fake took, in order. A replay is not a second entry. */
   readonly sends: FakeSend[] = [];
@@ -323,6 +386,34 @@ export class FakeDurableProgram {
   /** The input running on a pane, from the send that started it. */
   private readonly running = new Map<string, { inputId: string; requestId: string }>();
   private turnsMinted = 0;
+
+  /** Every rename the fake took, in order. A replay is not a second entry. */
+  readonly renames: FakeRename[] = [];
+  /** When set, the next renames fail with 422 `rename-refused` and this message, and store nothing. */
+  renameRefusal: string | null = null;
+  private readonly renamedByRequest = new Map<string, FakeRename>();
+
+  /** Every close the fake took, in order. A replay is not a second entry. */
+  readonly closes: FakeClose[] = [];
+  /** When set, the next closes fail with 422 `close-refused` and this message, and change nothing. */
+  closeRefusal: string | null = null;
+  private readonly closedByRequest = new Map<string, FakeClose>();
+
+  /** The program's history, newest first (WIRE.md 7.16). Served only with `caps.history`. */
+  conversations: FakeConversation[] = [];
+  /** Every reopen the fake took, in order. A replay is not a second entry. */
+  readonly reopens: FakeReopen[] = [];
+  /** When set, the next reopens fail with 422 `reopen-refused` and this message, and change nothing. */
+  reopenRefusal: string | null = null;
+  private readonly reopenedByRequest = new Map<string, FakeReopen>();
+  /** The panes a close took out, by conversation id (`sessionId`, else the pane id), so a reopen can put one back. */
+  private readonly closedPanes = new Map<string, DurablePane>();
+
+  /** Every belt action the fake ran, in order. A replay is not a second entry. */
+  readonly actionsRun: FakeAction[] = [];
+  /** When set, the next actions fail with 422 `action-refused` and this message, and change nothing. */
+  actionRefusal: string | null = null;
+  private readonly actedByRequest = new Map<string, FakeAction>();
 
   private server: ReturnType<typeof Bun.serve> | null = null;
   /** The TCP port over HTTP, kept so a dropped listener comes back on the same URL. */
@@ -542,7 +633,10 @@ export class FakeDurableProgram {
     }
     const version = Number(header);
     const inside = Number.isInteger(version) && version >= this.range.min && version <= this.range.max;
-    return inside ? null : reply(409, { code: "incompatible", range: this.range });
+    if (inside) return null;
+    // The refusal names both sides (WIRE.md section 2): the version the caller sent, and the program's range.
+    const refusal = Number.isInteger(version) ? { refusal: { code: "version", collie: [version, version], program: [this.range.min, this.range.max] } } : {};
+    return reply(409, { code: "incompatible", range: this.range, ...refusal });
   }
 
   private async handle(request: Request): Promise<Response> {
@@ -582,6 +676,14 @@ export class FakeDurableProgram {
     if (request.method === "POST" && starter !== null) return this.handleStarter(decodeURIComponent(starter[1] ?? ""), body ?? "");
     const answerRoute = /^\/pane\/([^/]+)\/answer$/.exec(route);
     if (request.method === "POST" && answerRoute !== null) return this.answer(decodeURIComponent(answerRoute[1] ?? ""), body ?? "");
+    if (request.method === "POST" && route === "/rename") return this.handleRename(body ?? "");
+    if (request.method === "POST" && route === "/close") return this.handleClose(body ?? "");
+    if (request.method === "GET" && route === "/conversations") return this.conversationsReply(url.searchParams);
+    const itemsRoute = /^\/conversation\/([^/]+)\/items$/.exec(route);
+    if (request.method === "GET" && itemsRoute !== null) return this.itemsReply(decodeURIComponent(itemsRoute[1] ?? ""), url.searchParams);
+    if (request.method === "POST" && route === "/reopen") return this.handleReopen(body ?? "");
+    const actionRoute = /^\/pane\/([^/]+)\/action$/.exec(route);
+    if (request.method === "POST" && actionRoute !== null) return this.handleAction(decodeURIComponent(actionRoute[1] ?? ""), body ?? "");
     const controlRoute = /^\/pane\/([^/]+)\/(send|abort)$/.exec(route);
     if (request.method === "POST" && controlRoute !== null) {
       const act = controlRoute[2] === "send" ? "send" : "abort";
@@ -678,12 +780,146 @@ export class FakeDurableProgram {
     return reply(200, { paneId });
   }
 
+  /**
+   * `POST /rename` (WIRE.md section 7.8): the body, then the cap, then the request id memory, then the
+   * target, then the program's say. A failure stores nothing, so the same id may try again.
+   */
+  private handleRename(text: string): Response {
+    const post = parseRenamePost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    // The tests mint UUIDs, as the adapter does.
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, kind, id, title } = post;
+    if (this.hello.caps.rename !== true) return reply(409, { code: "not-supported" });
+
+    const earlier = this.renamedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.kind !== kind || earlier.id !== id || earlier.title !== title) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    const found = kind === "tab" ? this.snapshot.tabs.some((tab) => tab.id === id) : this.snapshot.workspaces.some((workspace) => workspace.id === id);
+    if (!found) return reply(404, { code: "no-such-target" });
+    if (this.renameRefusal !== null) return reply(422, { code: "rename-refused", message: this.renameRefusal });
+
+    if (kind === "tab") this.renameTab(id, title);
+    else {
+      this.snapshot.workspaces = this.snapshot.workspaces.map((workspace) => (workspace.id === id ? { ...workspace, title } : workspace));
+      this.touch();
+    }
+    const rename: FakeRename = { requestId, kind, id, title };
+    this.renamedByRequest.set(requestId, rename);
+    this.renames.push(rename);
+    return reply(200, { ok: true });
+  }
+
+  /**
+   * `POST /close` (WIRE.md section 7.9): the body, then the cap, then the request id memory, then the target, then the
+   * program's say. A close takes the target and everything inside it out of the layout, which takes the open asks
+   * of those panes with it. A failure changes nothing, so the same id may try again.
+   */
+  private handleClose(text: string): Response {
+    const post = parseClosePost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, kind, id } = post;
+    if (this.hello.caps.close !== true) return reply(409, { code: "not-supported" });
+
+    const earlier = this.closedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.kind !== kind || earlier.id !== id) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    const found =
+      kind === "pane"
+        ? this.snapshot.panes.some((pane) => pane.id === id)
+        : kind === "tab"
+          ? this.snapshot.tabs.some((tab) => tab.id === id)
+          : this.snapshot.workspaces.some((workspace) => workspace.id === id);
+    if (!found) return reply(404, { code: "no-such-target" });
+    if (this.closeRefusal !== null) return reply(422, { code: "close-refused", message: this.closeRefusal });
+
+    const goneTabs = new Set(
+      kind === "tab" ? [id] : kind === "workspace" ? this.snapshot.tabs.filter((tab) => tab.workspaceId === id).map((tab) => tab.id) : [],
+    );
+    for (const pane of this.snapshot.panes) {
+      if (kind === "pane" ? pane.id === id : goneTabs.has(pane.tabId)) this.closedPanes.set(pane.sessionId ?? pane.id, { ...pane, openAsks: [] });
+    }
+    this.snapshot.panes = this.snapshot.panes.filter((pane) => (kind === "pane" ? pane.id !== id : !goneTabs.has(pane.tabId)));
+    this.snapshot.tabs = this.snapshot.tabs.filter((tab) => !goneTabs.has(tab.id));
+    if (kind === "workspace") this.snapshot.workspaces = this.snapshot.workspaces.filter((workspace) => workspace.id !== id);
+    this.touch();
+    const close: FakeClose = { requestId, kind, id };
+    this.closedByRequest.set(requestId, close);
+    this.closes.push(close);
+    return reply(200, { ok: true });
+  }
+
+  /** A page of a history route: `after` as `<letter><n>`, `limit` from 1 to `max`. Null for a bad one (400). */
+  private pageOf(query: URLSearchParams, letter: string, max: number): { from: number; limit: number } | null {
+    const after = query.get("after");
+    const limitText = query.get("limit");
+    const from = after === null ? 0 : new RegExp(`^${letter}(\\d+)$`).exec(after)?.[1];
+    if (from === undefined) return null;
+    if (limitText !== null && !/^[1-9]\d*$/.test(limitText)) return null;
+    return { from: Number(from), limit: Math.min(limitText === null ? max : Number(limitText), max) };
+  }
+
+  /** `GET /conversations` (WIRE.md 7.16): the rows newest first, at most 100 a page. */
+  private conversationsReply(query: URLSearchParams): Response {
+    if (this.hello.caps.history !== true) return reply(409, { code: "not-supported" });
+    const page = this.pageOf(query, "c", 100);
+    if (page === null) return reply(400, { code: "bad-cursor" });
+    const end = page.from + page.limit;
+    const doc: JsonObject = { items: this.conversations.slice(page.from, end).map((conversation) => conversation.row) };
+    return reply(200, end < this.conversations.length ? { ...doc, next: `c${String(end)}` } : doc);
+  }
+
+  /** `GET /conversation/:id/items` (WIRE.md 7.16): oldest first, at most 1000 a page. */
+  private itemsReply(id: string, query: URLSearchParams): Response {
+    if (this.hello.caps.history !== true) return reply(409, { code: "not-supported" });
+    const page = this.pageOf(query, "i", 1000);
+    if (page === null) return reply(400, { code: "bad-cursor" });
+    const conversation = this.conversations.find((candidate) => candidate.row.id === id);
+    if (conversation === undefined) return reply(404, { code: "no-such-conversation" });
+    const end = page.from + page.limit;
+    const items = conversation.items.slice(page.from, end);
+    return reply(200, end < conversation.items.length ? { items, next: `i${String(end)}`, more: true } : { items, more: false });
+  }
+
+  /**
+   * `POST /reopen` (WIRE.md 7.16): the body, then the cap, then the request id memory, then the target, then the
+   * program's say. An open conversation answers ok and changes nothing. A pane this fake closed comes back.
+   */
+  private handleReopen(text: string): Response {
+    const post = parseReopenPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, id } = post;
+    if (this.hello.caps.reopen !== true) return reply(409, { code: "not-supported" });
+    const earlier = this.reopenedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.id !== id) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    if (this.snapshot.panes.some((pane) => (pane.sessionId ?? pane.id) === id)) return reply(200, { ok: true });
+    const pane = this.closedPanes.get(id);
+    if (pane === undefined) return reply(404, { code: "no-such-target" });
+    if (this.reopenRefusal !== null) return reply(422, { code: "reopen-refused", message: this.reopenRefusal });
+    this.closedPanes.delete(id);
+    this.snapshot.panes = [...this.snapshot.panes, pane];
+    this.touch();
+    const reopen: FakeReopen = { requestId, id };
+    this.reopenedByRequest.set(requestId, reopen);
+    this.reopens.push(reopen);
+    return reply(200, { ok: true });
+  }
+
   /** `POST /pane/:id/answer`, as WIRE.md section 7.3 says a program answers it. */
   private answer(paneId: string, text: string): Response {
     const post = parseAnswerPost(text);
     if (post === "bad-json") return reply(400, { code: "bad-json" });
     if (post === null) return reply(400, { code: "bad-body" });
-    const { requestId, askId, revision, optionId } = post;
+    const { requestId, askId, revision } = post;
     const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return reply(404, { code: "no-such-pane" });
     const earlier = this.answered.get(requestId);
@@ -693,15 +929,26 @@ export class FakeDurableProgram {
     }
     const ask = pane.openAsks.find((open) => open.id === askId);
     let answer: AnswerDoc;
+    const first = this.decided.get(askId);
+    // A second answer to an ask the program remembers deciding: 409 `decided`, with the first outcome (WIRE.md 7.3).
+    if (ask === undefined && first !== undefined) return reply(409, { code: "decided", outcome: first });
     if (ask === undefined) {
       answer = { result: "too-late" };
     } else if (ask.revision !== revision) {
       return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((open) => open.id), ask });
-    } else if (!ask.options.some((option) => option.id === optionId)) {
+    } else if (badAnswer(ask, post.answer) === "bad-option") {
       return reply(400, { code: "bad-option" });
+    } else if (badAnswer(ask, post.answer) === "bad-body") {
+      return reply(400, { code: "bad-body" });
     } else {
       // Resolved: the ask closes with `by: "phone"`, and the pane waits only while another is open.
-      this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId, requestId });
+      this.answers.push({ paneId, askId, toolCallId: ask.toolCallId, optionId: optionOf(post.answer), answer: post.answer, requestId });
+      const optionId = post.answer.kind === "option" ? post.answer.optionId : undefined;
+      const effect = ask.options.find((option) => option.id === optionId)?.effect;
+      const outcome: JsonObject = { decidedBy: "phone", decidedAt: new Date().toISOString() };
+      if (optionId !== undefined) outcome.optionId = optionId;
+      if (effect !== undefined) outcome.effect = effect;
+      this.decided.set(askId, outcome);
       const left = pane.openAsks.filter((open) => open.id !== askId);
       this.snapshot.panes = this.snapshot.panes.map((candidate) =>
         candidate.id === paneId ? { ...candidate, openAsks: left, state: left.length > 0 ? "waiting" : "working" } : candidate,
@@ -711,6 +958,36 @@ export class FakeDurableProgram {
     }
     this.answered.set(requestId, { paneId, reply: answer });
     return reply(200, answer);
+  }
+
+  /**
+   * `POST /pane/:id/action` (WIRE.md section 7.10): the body, then the pane, then the request id memory, then the cap,
+   * then the turn when the phone named one, then the action, then the program's say. A failure stores nothing, so
+   * the same request id may try again.
+   */
+  private handleAction(paneId: string, text: string): Response {
+    const post = parseActionPost(text);
+    if (post === "bad-json") return reply(400, { code: "bad-json" });
+    if (post === null || !isRequestId(post.requestId)) return reply(400, { code: "bad-body" });
+    const { requestId, actionId, turnId } = post;
+    const pane = this.snapshot.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return reply(404, { code: "no-such-pane" });
+    const earlier = this.actedByRequest.get(requestId);
+    if (earlier !== undefined) {
+      if (earlier.paneId !== paneId || earlier.actionId !== actionId || earlier.turnId !== turnId) return reply(409, { code: "request-id-reused" });
+      return reply(200, { ok: true, replayed: true });
+    }
+    if (this.hello.caps.actions !== true) return reply(409, { code: "not-supported" });
+    if (turnId !== null && turnId !== pane.turnId) return reply(409, { code: "stale", turnId: pane.turnId, askIds: pane.openAsks.map((ask) => ask.id) });
+    const row = (pane.actions ?? []).find((candidate) => candidate.id === actionId);
+    if (row === undefined) return reply(404, { code: "no-such-action" });
+    if (this.actionRefusal !== null) return reply(422, { code: "action-refused", message: this.actionRefusal });
+    if (row.disabled === true || row.busy === true) return reply(422, { code: "action-refused" });
+
+    const run: FakeAction = { requestId, paneId, actionId, turnId };
+    this.actedByRequest.set(requestId, run);
+    this.actionsRun.push(run);
+    return reply(200, { ok: true });
   }
 
   /**
@@ -750,7 +1027,7 @@ export class FakeDurableProgram {
     this.sends.push({ paneId: pane.id, requestId, text, steer, turnId, askId });
     const busy = pane.state === "working" || pane.state === "waiting";
     if (busy && !steer) return;
-    this.appendEvent(pane.id, { type: "item", item: { id: `user-${requestId}`, kind: "user", text } });
+    this.appendEvent(pane.id, { type: "item", item: { id: `user-${requestId}`, kind: "user", text, requestId } });
     if (busy) return;
     this.turnsMinted += 1;
     this.running.set(pane.id, { inputId: `input-${requestId}`, requestId });
@@ -858,6 +1135,9 @@ const ONE_IDLE_CENSUS_MS = DURABLE_BUDGETS.https.idlePollMs;
  */
 export async function durableWorld(): Promise<MuxConformanceWorld> {
   const program = await FakeDurableProgram.startWire();
+  // The recorded hello declares no `rename`. This world's program does, so the suite proves it works.
+  program.hello.caps.rename = true;
+  program.hello.caps.close = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(program.wire(), clock);
   const change = (act: () => void): Promise<void> => {
@@ -897,6 +1177,8 @@ export const durableConformanceFixture: MuxConformanceFixture = {
 export async function durableHttpWorld(): Promise<MuxConformanceWorld> {
   const token = testToken();
   const program = await FakeDurableProgram.startHttp(token);
+  program.hello.caps.rename = true;
+  program.hello.caps.close = true;
   const clock = new FakeDurableClock();
   const adapter = new DurableMux(new DurableHttpClient(program.url, token), clock);
   const change = (act: () => void): Promise<void> => {
@@ -926,3 +1208,51 @@ export const durableHttpConformanceFixture: MuxConformanceFixture = {
   variant: "https with a bearer token",
   create: durableHttpWorld,
 };
+
+// ── What a program checks in an answer (WIRE.md 7.14) ─────────────────────────
+
+/** The `optionId` a recorded answer shows: the option, the picks joined, or empty. */
+function optionOf(answer: DurableAnswerBody): string {
+  if (answer.kind === "option") return answer.optionId;
+  return answer.kind === "options" ? answer.optionIds.join(",") : "";
+}
+
+/**
+ * Whether the answer fits the ask, as a program answers it: `null` when it does, `bad-option` for an id the ask does
+ * not offer, and `bad-body` for the wrong shape, a text over its `maxLength`, or a form that misses a required field.
+ */
+function badAnswer(ask: DurableAsk, answer: DurableAnswerBody): "bad-option" | "bad-body" | null {
+  if (ask.kind === "choice") {
+    if (answer.kind !== "options") return "bad-body";
+    if (!answer.optionIds.every((id) => ask.options.some((option) => option.id === id))) return "bad-option";
+    return answer.optionIds.length === 1 || ask.multiple === true ? null : "bad-body";
+  }
+  if (ask.kind === "text") {
+    if (answer.kind !== "text") return "bad-body";
+    return [...answer.text].length >= 1 && [...answer.text].length <= (ask.maxLength ?? 500) ? null : "bad-body";
+  }
+  if (ask.kind === "form") {
+    if (answer.kind !== "values") return "bad-body";
+    const fields = ask.fields ?? [];
+    for (const key of Object.keys(answer.values)) {
+      if (!fields.some((field) => field.id === key)) return "bad-body";
+    }
+    for (const field of fields) {
+      const value = answer.values[field.id];
+      if (value === undefined) {
+        if (field.required === true) return "bad-body";
+        continue;
+      }
+      if (field.kind === "toggle") {
+        if (value !== true && value !== false) return "bad-body";
+        continue;
+      }
+      if (value === true || value === false || Array.isArray(value)) return "bad-body";
+      if (field.kind === "text" && [...value].length > (field.maxLength ?? 500)) return "bad-body";
+      if (field.kind === "choice" && !(field.options ?? []).some((option) => option.id === value)) return "bad-option";
+    }
+    return null;
+  }
+  if (answer.kind !== "option") return "bad-body";
+  return ask.options.some((option) => option.id === answer.optionId) ? null : "bad-option";
+}

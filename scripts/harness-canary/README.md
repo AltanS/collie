@@ -137,6 +137,124 @@ a vendor can change what it paints without changing what it writes. `bun run har
 row per reader for that reason. A block is added by hand, never by a run — the canary refreshes
 facts, it does not decide which readers an agent has.
 
+## The nightly lab (M56 spec 10)
+
+`bun run harness:lab` runs each new agent version through a lab, once. The lab carries four older specs of milestone M44.
+They are the slash-command walk (spec 05), the run on a version change (spec 06),
+the corpus rule in CI (spec 07) and the soft release gate (spec 08).
+
+```sh
+bun run harness:lab --plan                       # read the feeds and the ledger, run nothing
+bun run harness:lab                              # run each version that has no row, at most four
+bun run harness:lab --version claude=2.1.301     # one named pair
+bun run harness:lab --version claude=2.1.301 --no-publish   # run the legs, make no commit
+bun scripts/harness-canary/watch.ts              # the same lab, for an installed agent newer than the ledger
+```
+
+**The feeds.** Claude Code and Codex use the npm dist-tag `latest`. pi and opencode use the latest GitHub release.
+A feed is a plain HTTPS GET with no token.
+
+**One run.** The lab installs the binary at that version with `npm install` into its own folder, never global.
+It starts a throwaway tmux server with `tmux -f /dev/null -L harness-lab-<pid>`. The person's tmux server is never touched.
+Claude gets an isolated `CLAUDE_CONFIG_DIR` under `~/.cache/collie-lab/harness-lab/<harness>-<version>/`.
+Claude starts with `--strict-mcp-config` and an empty MCP config, so no MCP server of the person runs.
+The lab deletes that folder at the end.
+
+1. The walk. The lab types `/` and reads the whole slash menu.
+   It takes each command on the safe list in `slash-commands.json` and types it.
+   It checks that the menu points at the command. Only then it presses Enter.
+   It reads the screen with the Surface and presses Escape until the box is free.
+   A command on neither list is reported as unclassified and never sent.
+   A command that changes an account setting on the server is on the unsafe list.
+2. The Surface reads every screen the walk reaches.
+   When a dialog screen reads `free`, the lab presses Escape once and ends the walk.
+   The run is then a fail, and it makes no send and no ask.
+3. One probed send. The lab sends one short message through the send protocol and reads the receipt.
+4. One ask answer. The lab asks for a command that needs a permission, lifts the dialog and answers No through the protocol.
+   The file the command would make must not exist.
+
+**Pass.** No dialog screen reads `free`. The send settles. The ask answer settles (`sent` or `effective`), and the declined file does not exist.
+A dialog that no reader lifts is a fail, and the reason says so.
+Only a harness with a profile under `web/src/lib/surface/profiles/` runs steps 3 and 4.
+The others run the walk only, and the row says `walk-only`.
+
+**The lab clone.** The lab never writes into the repo it is given. It keeps a clone under
+`~/.cache/collie-lab/harness-lab/clone`. It makes the clone from the origin URL of `--repo` on first use.
+It resets the clone to `origin/main` before each pass commit.
+The lab refuses a `--repo` under `~/apps` and a checkout with a detached HEAD.
+
+**What a pass leaves.** One commit on the branch `harness-lab/<harness>-<version>`, in the lab clone.
+A scratch worktree sits under `~/.cache/collie-lab/harness-lab/worktrees/`.
+The commit touches two files: `web/src/lib/harness/verified-versions.json` and the profile's verified range.
+The run log is the commit body, and the body states the real send and ask results.
+The script never pushes. A person reads the branch and merges it.
+A pass whose commit fails writes a `failed` row with the reason, not a `pass` row.
+
+**What a fail leaves.** An issue as files, `issues/<harness>-<version>.json` and `.md`, under the lab folder.
+They hold the title, the label `harness-drift`, the redacted screens, the Surface verdict of every screen and the counters.
+The ritual never opens the issue. The issue is public, so a person shows the draft to Altan and posts it after a yes.
+`gh issue create` runs only with `--open-issue` on a hand run. It checks first that the label exists in the target repo.
+It says so, and stops, when the label is missing.
+
+**To run a failed version again.** Delete its row from the ledger file by hand, then run the lab.
+The lab has no `--retry` flag on purpose, because a flag could repeat a paid action without a person looking.
+Read the log first. A `failed` row names the reason in its note.
+
+### What one run costs, and what stops a repeat
+
+- Time: about one minute of machine time. The first live run on Claude 2.1.301 took 49 seconds.
+  It did an npm install, read 98 menu commands, sent 19 safe commands and made three model turns.
+- Model turns: at most four, on the person's Claude subscription. The plan uses three: the send, the ask request and what Claude does after a No.
+  A harness without a profile uses none. The ritual's own `claude -p` session is extra: Sonnet, at most 25 turns.
+- Keys: the lab presses about 150 keys. Most of them are Down presses that read the menu.
+- Network: the feed reads, and one npm install of about 250 MB.
+- A `(harness, version)` pair that has a row in the lab ledger never runs again. Pass, fail, failed and walk-only all count.
+  The ledger is `~/.local/state/collie-harness-lab/ledger.json`. Set `COLLIE_HARNESS_LAB_LEDGER` to use another path.
+- The lab writes a `running` row, with its process id, before its first paid step.
+  A run that dies leaves that row. The next run start turns a row with a dead process into `failed`.
+  After three hours any `running` row becomes `failed` too. So the next night skips the pair.
+- A run that cannot finish writes a `failed` row. The install is tried twice, because it costs no model turn. Nothing else is retried.
+- A run that cannot start writes no row and costs nothing. This happens when the Claude login has less than 25 minutes left, or tmux or npm is missing.
+  It writes one line to `notify.log`, so a silent night is visible. The next run tries again.
+- The operator is told once per version and verdict. The ledger row keeps what was told.
+
+### How it protects the login
+
+The lab copies `~/.claude/.credentials.json` into the isolated folder with the refresh token removed.
+A refresh inside the lab would rotate the person's real refresh token and could log them out.
+The copy has only the access token. The lab refuses to start when that token has less than 25 minutes left.
+A live Claude session refreshes it.
+
+The copy must never outlive the run. A SIGTERM, a SIGINT or an uncaught error deletes the run folder first.
+Then it stops the tmux server and writes a `failed` row. A SIGKILL that follows finds no copy.
+`main.ts` and `watch.ts` also sweep before any plan or run, so a night with no new version still cleans up.
+The sweep deletes every run folder whose ledger row is not a live `running` row.
+It kills every `harness-lab-<pid>` tmux server whose process is dead.
+
+The lab redacts every screen, log line and issue body before it writes it. It removes the home folder, the user name,
+the host name, the account display name, the organization name and e-mail addresses.
+It also removes anything shaped like a key or a token. A word such as `skill` is not a key.
+
+### The ritual
+
+The darius ritual `nightly-harness-lab` is defined in the workspace `.darius.toml` with `mode = "off"`.
+It is not enabled. Altan and the lead enable it later.
+Its skill file says the same cost and stop rule. The darius timer runs every 15 minutes,
+so a mode change during the day starts a run at once.
+`watch.ts` is not part of the ritual. A person runs it by hand. It shares the ledger with the lab.
+
+### The soft release gate (M44 spec 08)
+
+`bun scripts/harness-drift.ts --strict` exits 1 when an installed agent is newer than its verified version.
+`scripts/check-tag.sh` runs it before it prints the tag command.
+To tag over a drift, name it on purpose: `scripts/check-tag.sh --accept-drift claude=2.1.301`.
+The version must be the installed one. The tag message then carries `Not verified: claude 2.1.301`.
+The release page gets a small heading `Not verified` and one sentence that names the agent and the version.
+
+This gate is a reminder, not proof. It sees only the agents installed on this machine.
+It starts no agent and makes no network call. It never says that a reader is right.
+The gate tells you to merge a lab branch only when that branch is in the lab clone.
+
 ## How it stays off the operator's panes
 
 - **Its own session.** The canary starts `herdr --session collie-canary server` and refuses to

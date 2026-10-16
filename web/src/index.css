@@ -217,6 +217,80 @@
      are hard-set to the same 2px: the stock shadcn calc() ramp subtracts up to 4px, which at this
      base computes negative and is invalid. */
   --radius: 2px;
+  /* THE SHAPE A THEME MAY PICK (schema version 2, lib/theme/surface.ts). Tailwind copies a shadow
+     step's value and the bare border width into every utility at build time, so `@theme inline`
+     below points them here, and a theme's `shadow` and `border` words set these properties. The
+     values are Tailwind 4.3.1's own (theme.css), so the default look is the one the app always had.
+     The radius steps, the spacing step and the two weights need no such door: utilities read them
+     through var() already. src/themes/themes.test.ts holds every default word equal to these. */
+  --surface-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --surface-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --surface-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --surface-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --surface-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --surface-border-width: 1px;
+  /* The offsets of the inset shadow that marks a selected or blocked row, used as
+     `shadow-[var(--edge-accent)_<colour>]`. The radius word sets it: under square corners the mark is
+     a 2px bar on the left edge, under soft or round corners a 2px ring on all four sides, because a
+     left accent bar is never combined with rounded corners. This is the sharp value. A marked row's
+     second shadow layer is --edge-shadow: none under sharp, a soft shadow with the ring. */
+  --edge-accent: inset 2px 0 0 0;
+  --edge-shadow: 0 0 #0000;
+  /* THE SEVEN MORE A THEME MAY PICK (M57 spec 17, lib/theme/surface.ts). Each is the value the app
+     drew before, so the Collie theme sets none of them and looks the same:
+       ground  `--ground-image`, painted on `html` over the page colour (the html rule below);
+       chrome  `--band-ground` and `--band-rule`, the fill and edge of the header, the tab bar and the
+               bottom bar (`bg-band-ground`, `border-band-rule`), today the page colour and --rule;
+       rows    the rows of a list group (the `[data-slot="list-group"]` rule below): `--row-gap`
+               between rows, `--row-rule` the width of the group's frame, and each row's own
+               `--row-edge` border, `--row-corner` radius, `--row-shadow` and `--row-fill`, and
+               `--row-inset`, the air around the rows of a list that sits flush in a card or a sheet;
+       icons   `--icon-stroke`, the stroke of every lucide icon, lucide's own 2;
+       labels  `--label-transform` and `--label-tracking`, read by the `label-caps` utility, today's
+               `uppercase` and Tailwind's `tracking-wide` (0.025em);
+       display `--font-display`, the face of `h1`, `h2` and the header's brand line, the UI face
+               unless a theme names one of the stacks below.
+     The mirror's own ink and ground are NOT declared here: lib/ansi.ts and components/mirror-space.ts
+     read `var(--mirror-ink, #fafafa)` and `var(--mirror-ground, #0a0a0a)`, so only a theme's `ansi`
+     block sets them. src/themes/themes.test.ts holds every default word equal to these. */
+  --ground-image: none;
+  --band-ground: var(--background);
+  --band-rule: var(--rule);
+  --row-gap: 0px;
+  --row-rule: var(--surface-border-width);
+  --row-edge: 0px;
+  --row-corner: 0px;
+  --row-shadow: none;
+  --row-inset: 0px;
+  --row-fill: transparent;
+  --icon-stroke: 2;
+  --label-transform: uppercase;
+  --label-tracking: 0.025em;
+  --font-display: var(--font-sans);
+  /* The six shipped faces as stacks a theme's display face can name (`--font-display:
+     var(--face-<id>)`). The same stacks as the `:root.font-*` blocks and the @theme default below,
+     held equal by src/fonts.test.ts. A stack names a family; the browser fetches its file only when a
+     drawn element asks for it, so a stack nobody uses costs no byte. */
+  --face-system:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --face-grotesk:
+    "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-aldrich:
+    "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-plex:
+    "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-geist:
+    "Geist", "Geist Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-atkinson:
+    "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
@@ -500,6 +574,12 @@
   --ansi-15: #ffffff;
 }
 
+/* Every shipped theme other than the default, one `:root[data-theme="<id>"]` block each, generated
+   from src/themes/*.json by scripts/build-themes.ts. It sits right after the token block so a theme
+   block wins by order as well as by specificity. The default theme `collie` writes no block: its
+   values are the tokens above, and src/themes/themes.test.ts holds the two equal. */
+@import "./themes.css";
+
 /* Explicit pins. Class-based so theme-init.js can set them before first paint. */
 :root.light {
   color-scheme: light;
@@ -508,15 +588,30 @@
   color-scheme: dark;
 }
 
-@theme inline {
-  /* One radius, four names. There is no ramp to walk: sm/md/lg/xl all resolve to the same 2px, so
-     `rounded-md` and `rounded-xl` are the same corner and no component can drift rounder than its
-     neighbour by picking a bigger step. Written out rather than left as calc(): at --radius: 2px
-     the stock `- 2px` and `- 4px` forms compute 0 and -2px, and a negative radius is invalid. */
+@theme {
+  /* One radius, four names. In the Collie theme there is no ramp to walk: sm/md/lg/xl all resolve
+     to the same 2px, so `rounded-md` and `rounded-xl` are the same corner and no component can drift
+     rounder than its neighbour by picking a bigger step. Written out rather than left as calc(): at
+     --radius: 2px the stock `- 2px` and `- 4px` forms compute 0 and -2px, and a negative radius is
+     invalid. In `@theme` and not `@theme inline` (schema version 2): `rounded-md` then compiles to
+     `var(--radius-md)`, which a theme's `radius` word sets (lib/theme/surface.ts). */
   --radius-sm: 2px;
   --radius-md: 2px;
   --radius-lg: 2px;
   --radius-xl: 2px;
+}
+
+@theme inline {
+  /* The shadow steps the app uses and the bare border width, each pointed at its `--surface-*`
+     property in :root (see there), because Tailwind writes these values into the utility itself. */
+  --shadow: var(--surface-shadow);
+  --shadow-xs: var(--surface-shadow-xs);
+  --shadow-sm: var(--surface-shadow-sm);
+  --shadow-md: var(--surface-shadow-md);
+  --shadow-lg: var(--surface-shadow-lg);
+  --shadow-xl: var(--surface-shadow-xl);
+  --shadow-2xl: var(--surface-shadow-2xl);
+  --default-border-width: var(--surface-border-width);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -541,6 +636,8 @@
   --color-input: var(--input);
   --color-rule: var(--rule);
   --color-ring: var(--ring);
+  --color-band-ground: var(--band-ground);
+  --color-band-rule: var(--band-rule);
 
   --color-status-blocked: var(--status-blocked);
   --color-status-working: var(--status-working);
@@ -657,9 +754,10 @@
  * drawn from the same idea — geometric skeleton, monotone stroke, cut terminals — so the wordmark
  * at 18px reads as one drawing with the mark beside it. Its cost is the small end: x-height is
  * 486/1000, the lowest of the three faces measured, so 11px uppercase labels and the 13px tier are
- * where it has to be judged. The other two candidates (IBM Plex Sans 3.201, Geist 1.800) are on
- * disk in public/fonts/ and wired into the playground's "UI typeface" card behind a live switcher —
- * that card is where a candidate is AUDITIONED before anyone argues for shipping it.
+ * where it has to be judged. IBM Plex Sans 3.201 and Geist 1.800 were tried in the playground's
+ * "UI typeface" card first and now ship as the faces of the themes Nightwatch and daylight, beside
+ * Atkinson Hyperlegible Next for harbour (see their blocks below). That card is still where a new
+ * candidate is tried at real sizes before anyone argues for shipping it.
  *
  * WEIGHT. 27 KB, subset to Latin + Latin-Ext-A + the punctuation this app actually prints (·, —, …,
  * ‹›, arrows, ×, ✓) and instanced to wght 400–700. Compare 641 KB / 504 KB for the two Nerd Font
@@ -677,8 +775,8 @@
  * moved there), so on a warm tailnet its swap usually never happens at all. Measured in Chrome by forcing the swap with an observer running: see the
  * stand-in's own comment below for what it is matching and why one table covers every platform.
  *
- * Space Grotesk is SIL OFL 1.1 — public/fonts/LICENSE-space-grotesk.txt. The two other candidates
- * ship their licences beside it. */
+ * Space Grotesk is SIL OFL 1.1, public/fonts/LICENSE-space-grotesk.txt. Every other face ships its
+ * licence beside it. */
 @font-face {
   font-family: "Space Grotesk";
   src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
@@ -711,6 +809,116 @@
   /* Latin only, for the reason Aldrich's stand-in below gives: the 107.53% was measured on Space
      Grotesk's Latin, so Russian used to land here ~7.5% too large. Cyrillic now skips it for the
      plain system stack. Keep in step with the same block in index.html. */
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* IBM Plex Sans, the face of the theme Nightwatch (M57). A reader gets it by picking that theme,
+ * which writes `plex` into the Typeface setting once, or by picking it on the Typeface card. Built
+ * by the same scripts/build-ui-font.sh run as the faces around it: wdth pinned to 100, wght kept at
+ * 400 to 700, subset to the same Latin ranges, 34 KB. Its bold is a real bold, so the base layer's
+ * `font-synthesis-weight: none` changes nothing here. Its figures are tabular by default.
+ *
+ * It is not preloaded and not precached: like Space Grotesk it is fetched the first time a reader
+ * chooses it, and the SW keeps it from then on (lib/sw-routes.ts UI_FONT_URLS). Declared here,
+ * between Space Grotesk and Aldrich, because fonts.test.ts compares this file's URL order with
+ * FONT_URLS and Aldrich's Cyrillic companion must stay last.
+ *
+ * IBM Plex Sans is SIL OFL 1.1, public/fonts/LICENSE-ibm-plex-sans.txt. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/ui-ibm-plex-sans-3.201-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Plex's own metric-matched stand-in, on the same terms as the two beside it: `local()` only, one
+   metric family, numbers printed by scripts/build-ui-font.sh, Latin only by `unicode-range` so
+   Cyrillic skips it. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 101.21%;
+  ascent-override: 101.27%;
+  descent-override: 27.17%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* Geist, the face of the theme `daylight` (M57). Built by the same scripts/build-ui-font.sh run,
+ * subset to the same ranges, 23 KB, instanced to wght 400 to 700 like Space Grotesk, so its bold is
+ * a real drawn weight and `font-synthesis-weight: none` costs it nothing. Plain geometric shapes,
+ * open counters and a tall x-height: the reason the daylight theme picked it for sun and low vision.
+ * Opt-in like every face but the default: fetched when a reader picks it, never preloaded.
+ *
+ * Geist is SIL OFL 1.1, public/fonts/LICENSE-geist.txt. */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/ui-geist-1.800-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Geist's own metric-matched stand-in, on the same terms as the two above: `local()` only, one
+   metric family, Latin only by `unicode-range`. Recomputed by scripts/build-ui-font.sh on
+   2026-10-15 (the playground's older copy read 103.03 / 97.54; Arimo moved upstream since). Do not
+   hand-edit. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "Geist Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 103.04%;
+  ascent-override: 97.53%;
+  descent-override: 28.63%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
+/* Atkinson Hyperlegible Next, the face of the theme `harbour` (M57) and a Typeface choice of its
+ * own. Drawn for the Braille Institute for readers with low vision: open apertures, and letters
+ * that are hard to mistake for each other (I, l and 1; 0 and O; rn and m). That is the reason it
+ * sits beside a terminal palette, where a path or a hash is read one character at a time.
+ *
+ * REAL WEIGHTS. The upstream file is variable on wght 200-800; the subset is instanced to 400-700
+ * like Space Grotesk, so the 500 and 600 the app asks for are drawn, not synthesised. 23 KB, cut by
+ * the same scripts/build-ui-font.sh ranges and features (tnum kept). Not preloaded: it is fetched
+ * when a reader or a theme picks it.
+ *
+ * `unicode-range` is the subset's own Latin range, so Cyrillic and every other script skip this
+ * face and its stand-in and fall to the system stack.
+ *
+ * Atkinson Hyperlegible Next 2.001 is SIL OFL 1.1, from github.com/googlefonts/atkinson-hyperlegible-next
+ * at commit 7925f50f: public/fonts/LICENSE-atkinson-hyperlegible-next.txt. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+/* Its metric-matched stand-in, on the same terms as the two beside it: `local()` only, the same one
+   metric family, Latin only, and every number printed by scripts/build-ui-font.sh. The face is
+   close to Arial in width (98.99%) but its line box is taller, so the overrides are its own. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 98.99%;
+  ascent-override: 99.4%;
+  descent-override: 31.92%;
+  line-gap-override: 0%;
   unicode-range:
     U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
@@ -799,7 +1007,7 @@
 
 /* ── The typeface setting: CSS owns every stack, JavaScript only swaps a class ───────────────────
  *
- * THE WHOLE MECHANISM IS THESE THREE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
+ * THE WHOLE MECHANISM IS THESE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
  * first paint and adds ONE class to <html>; `lib/design.ts` swaps it at runtime. Neither ever holds
  * a font list, sets a family, or writes a custom property — because a font stack in JavaScript is a
  * second source of truth for something this file already states, and the two would drift.
@@ -827,6 +1035,24 @@
   --font-sans:
     "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-plex {
+  --font-sans:
+    "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-geist {
+  --font-sans:
+    "Geist", "Geist Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-atkinson {
+  --font-sans:
+    "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
 /* An operator's own face (theme.toml, ADR 0033). The FAMILY NAME is the one thing this file cannot
@@ -893,18 +1119,105 @@
        axis and is untouched by this. */
     font-synthesis-weight: none;
   }
+  /* WHAT DENSITY NEVER GROWS (schema version 2, lib/theme/surface.ts). A theme's `roomy` word
+     raises `--spacing`, and every `size-*`, `p-*` and `h-*` grows with it. An icon and the header
+     mark box keep the default step here, so a 24px icon stays 24px and the dog sits in its 44px box
+     under every density. The default step in its own unit (0.25rem, 4px at the default root size),
+     so a browser with a larger default font sees exactly what it saw before. */
+  svg,
+  [data-slot="collie-mark"] {
+    --spacing: 0.25rem;
+  }
+  /* THE ICON STROKE (M57 spec 17). lucide-react puts the class `lucide` and the attribute
+     `stroke-width="2"` on every icon it draws; a CSS value beats a presentation attribute, and the
+     paths inherit it. The default is lucide's own 2. Hand-drawn svgs carry no `lucide` class and keep
+     their own widths. In the base layer, so a `stroke-*` utility on one icon still wins. */
+  svg.lucide {
+    stroke-width: var(--icon-stroke);
+  }
+  /* THE DISPLAY FACE (M57 spec 17). The page titles and the header's brand line wear
+     `--font-display`, which is the UI face unless a theme names another. Every `h1` and `h2` the app
+     draws is chrome (agent markdown renders its headings as `div`s, components/markdown-text.tsx), and
+     a `font-*` utility on one still wins, as this sits in the base layer. */
+  h1,
+  h2,
+  [data-slot="header-identity"] {
+    font-family: var(--font-display);
+  }
   html {
     /* Respect notches; keep the app glued to the viewport edges on mobile. */
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+    /* THE PAGE IS PAINTED HERE, not on body (M57 spec 17). The root's background is the canvas, so
+       this is the colour every gap and every overscroll shows, as body's used to be. A theme's
+       `ground` word lays `--ground-image` over it: `none` for Collie, so the pixels are the ones
+       body drew. `min-height: 100%` makes a gradient span at least the viewport. No
+       `background-attachment: fixed`: mobile WebKit ignores it and Android Chrome repaints the
+       whole ground on every scroll frame. The browser-chrome colour is the flat top edge of the
+       ground (use-theme.ts), which is where every gradient starts. */
+    min-height: 100%;
+    background-color: var(--background);
+    background-image: var(--ground-image);
   }
   body {
-    @apply bg-background text-foreground;
+    /* No fill of its own: a body fill would cover the ground on html. The canvas under it is
+       html's `--background`, the colour this rule used to paint. */
+    @apply text-foreground;
     /* Spelled here rather than left to Tailwind's `--default-font-family`, so the app's face is a
        fact you can read in this file instead of a preflight default you have to know about. */
     font-family: var(--font-sans);
     overscroll-behavior-y: none;
   }
+}
+
+/* THE ROWS OF A LIST GROUP (M57 spec 17). ui/list-group.tsx and the hand-rolled lists that carry
+   `data-slot="list-group"` draw their rows through this one rule, so a theme's `rows` word reaches
+   them all. Under `rules` (the default) each row has no edge of its own and the line between two rows
+   is the bottom border of the upper one, exactly what `divide-y` drew; under `cards` each row has its
+   own border, corner, extra-small shadow and the card fill (`--row-fill`; `transparent` under rules,
+   a row's own background as before), and `--row-gap` of air above it. The corners a painted
+   row part reads (`--row-top`, `--row-bottom`, ui/list-group.tsx LIST_ROW_CORNERS) follow each row's
+   own corner. In the components layer, so a row's own utilities (a marked row's inset shadow, a
+   border of its own, a margin) still win, as they did over `divide-y`. Cards keep the square-corner
+   rule: under `sharp` a card row has Collie's 2px corner and a marked row its left bar; under soft or
+   round the radius word's ring replaces the bar. A list without a frame of its own sits flush in a
+   card or a sheet, so under `cards` its rows get `--row-inset` of air from the card's edges and from
+   its rounded corners; ui/list-group.tsx and the key board editor draw their own frame and opt out
+   with `p-0`. */
+@layer components {
+  [data-slot="list-group"] {
+    padding: var(--row-inset);
+  }
+  [data-slot="list-group"] > * {
+    --row-top: max(0px, calc(var(--row-corner) - 2px));
+    --row-bottom: max(0px, calc(var(--row-corner) - 2px));
+    border-width: var(--row-edge);
+    /* A card row's own corner; under rules, the group's inner corner on the first and last row (0 at
+       Collie's 2px), so a row that paints itself does not cover the frame's rounded corner. */
+    border-radius:
+      max(var(--row-corner), var(--row-top)) max(var(--row-corner), var(--row-top))
+      max(var(--row-corner), var(--row-bottom)) max(var(--row-corner), var(--row-bottom));
+    box-shadow: var(--row-shadow);
+    background-color: var(--row-fill);
+  }
+  [data-slot="list-group"] > :not(:last-child) {
+    border-bottom-width: var(--surface-border-width);
+  }
+  [data-slot="list-group"] > :not(:first-child) {
+    margin-top: var(--row-gap);
+  }
+}
+
+/* THE SMALL SECTION LABEL (M57 spec 17): the uppercase, slightly tracked tier every section name
+   wears (ui/section-label.tsx and the hand-written labels). A theme's `labels` word sets the two
+   properties; the defaults are `uppercase` and Tailwind's `tracking-wide`, 0.025em. `label-tracking`
+   is the same spacing for a label written as it is (a SectionLabel with `caps={false}`). */
+@utility label-caps {
+  text-transform: var(--label-transform, uppercase);
+  letter-spacing: var(--label-tracking, 0.025em);
+}
+@utility label-tracking {
+  letter-spacing: var(--label-tracking, 0.025em);
 }
 
 /* React Router's view transitions stay off (removed). But React Router can still fire document.startViewTransition
@@ -989,6 +1302,61 @@
 @media (prefers-reduced-motion: reduce) {
   .status-turn {
     animation: none;
+  }
+}
+
+/* A REPLY THE PROGRAM IS STILL WRITING (components/chat-cards.tsx `Growing`, WIRE.md 7.15). The cursor is a pseudo-element
+   at the end of the last block of the markdown, so it takes no row of its own and its going moves no line (DESIGN.md §2). A
+   block bar the height of the text, blinking on a hard step; under reduced motion it stands still, which still says "more
+   is coming" and needs no movement to say it. */
+.stream-grow > div > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5ch;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  opacity: 0.55;
+  animation: stream-cursor 1.1s steps(1, end) infinite;
+}
+@keyframes stream-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stream-grow > div > :last-child::after {
+    animation: none;
+  }
+}
+
+/* THE WORKING ROW OF A DURABLE THREAD (components/session-stream.tsx `WorkingRow`): three dots in the muted ink, each
+   rising and falling a third of a cycle after the one before. Opacity only, so nothing moves and the row keeps its box.
+   Under reduced motion the dots stand still at a middling weight. */
+.working-dots > span {
+  animation: working-dot 1.2s ease-in-out infinite;
+}
+.working-dots > span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.working-dots > span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes working-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-dots > span {
+    animation: none;
+    opacity: 0.6;
   }
 }
 

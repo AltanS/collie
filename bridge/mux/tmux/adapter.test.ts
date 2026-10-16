@@ -450,3 +450,48 @@ describe("a blank cwd never becomes a `-c` flag", () => {
   });
 });
 
+
+// tmux 3.7 REFUSES `send-keys` THAT LANDS ON A READ-ONLY CLIENT, and the client it picks is the most
+// recently active one of the pane's session, which is Collie's own watcher (always `read-only`).
+// Lab, tmux 3.7c: `send-keys -t %0 -- a` with the watcher attached exits 1 with "client is
+// read-only" and sends nothing, while paste-buffer still works. Conformance cannot express it: the
+// world contract has no read-only client, and no other multiplexer has this rule.
+describe("send-keys with this adapter's own read-only watcher attached", () => {
+  const sendKeys = (fake: FakeTmux) => fake.invocations().filter((group) => group.at(0) === "send-keys");
+
+  test("a refusal naming a read-only client is retried once with no client named, and the keys land", async () => {
+    const fake = new FakeTmux();
+    fake.attachClient("collie", { control: true, readOnly: true, activity: 99 });
+
+    const ack = await new TmuxMux(fake).writeKeys("%3", ["a", "Enter"]);
+
+    expect(ack.ok).toBe(true);
+    expect(sendKeys(fake)).toEqual([
+      ["send-keys", "-t", "%3", "--", "a", "Enter"],
+      ["send-keys", "-c", "collie-no-client", "-t", "%3", "--", "a", "Enter"],
+    ]);
+    expect(fake.writes().filter((write) => write.kind === "keys")).toEqual([
+      { paneId: "%3", kind: "keys", payload: ["a", "Enter"] },
+    ]);
+  });
+
+  test("with no read-only client picked the first attempt stands, and no second call is made", async () => {
+    const fake = new FakeTmux();
+    fake.attachClient("collie", { control: true, readOnly: true, activity: 1 });
+    fake.attachClient("collie", { activity: 50 });
+
+    const ack = await new TmuxMux(fake).writeKeys("%3", ["a"]);
+
+    expect(ack.ok).toBe(true);
+    expect(sendKeys(fake)).toEqual([["send-keys", "-t", "%3", "--", "a"]]);
+  });
+
+  test("any other refusal is returned as it is, with no retry", async () => {
+    const fake = new FakeTmux();
+
+    const ack = await new TmuxMux(fake).writeKeys("%999", ["a"]);
+
+    expect(ack.ok).toBe(false);
+    expect(sendKeys(fake)).toHaveLength(1);
+  });
+});

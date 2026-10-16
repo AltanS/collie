@@ -4,10 +4,12 @@
 // `TranscriptSource` seam, the same row reducer, the same byte-cursor live read as the harnesses that
 // write a JSONL file. There is no second reader path.
 //
-// SHAPE OF THE SOURCE: `<stateDir>/durable/<base64url(paneId)>.jsonl`, one JSON row per line
-// (`k` is `gen`, `item`, `ask`, `ask-closed`, `state` or `settled`; see the log's header). The ref is the
-// pane's conversation id (`{ kind: "id" }`), which the durable mux adapter puts on every pane, so the
-// ordinary session lookup in `paneChat` and `paneHistory` finds it. The id is never a path: it is
+// SHAPE OF THE SOURCE: `<stateDir>/durable/<source>/<base64url(paneId)>.jsonl`, one JSON row per line
+// (`k` is `gen`, `item`, `ask`, `ask-closed`, `state` or `settled`; see the log's header). Since M55 one
+// Collie may run several programs, and two of them may use the same conversation id, so the durable
+// mux adapter puts the log FILE on every pane (`{ kind: "path" }`), and the ordinary session lookup in
+// `paneChat` and `paneHistory` resolves it like any harness's path: only inside a root, by realpath.
+// An id ref (`{ kind: "id" }`, what a log kept directly under a root answers) still resolves: the id is
 // checked against the wire's id rule, and the file name is derived from it by the log's own function.
 //
 // WHAT IS DRAWN, from the item kinds of WIRE.md section 4:
@@ -15,10 +17,18 @@
 //   reply      an assistant turn
 //   thinking   an assistant turn with a thinking part
 //   notice     a note (machine text that still belongs on screen)
+//   markdown   an assistant turn whose text part Chat renders as markdown, as it does for any harness
+//   code       an assistant turn whose text part is one fenced code block, with its language after the fence
+//   link       an assistant turn whose text part is one markdown link line (WIRE.md 7.13). There is no
+//              block kind for a link, and none is needed: the markdown renderer opens it like any other
 //   tool       a tool part, with its status as the result: running has none, done has the output,
 //              failed is an error, denied is a refusal (not an error)
 //   settled    a short note, "stopped", for an input that ended `unanswered` with the reason
 //              `aborted` (WIRE.md 7.5). Any other settled event draws nothing.
+//   ask-closed a short note for a question nobody tapped: "Timed out before an answer." when its
+//              `expiresAt` passed, "Decided in the program." when the program decided it itself, with
+//              the ask's title when the row carries one (WIRE.md 7.3). A close by the phone already has
+//              its card, and a stop is the person's own act, so those two draw nothing.
 // An ITEM IS UPSERTED BY ID: a later row for a known id replaces the earlier one in place and is
 // reported as `changed`, so History shows one turn per item and the live window updates it where it
 // sits. Open asks are rows too, but this adapter does not draw them (a later spec draws ask cards),
@@ -28,9 +38,9 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { logFileName } from "../durable/log.ts";
-import { isWireId } from "../mux/durable/clean.ts";
+import { httpsHrefOf, isWireId, langOf } from "../mux/durable/clean.ts";
 import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
-import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, containedRealpathIn, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import {
   createUnknownCounter,
   type KnownTypes,
@@ -57,9 +67,25 @@ export const DURABLE_JOURNAL_AGENT = "durable";
 /** The line a stop draws (WIRE.md 7.5). */
 export const STOPPED_TEXT = "stopped";
 
+/** The line an ask the program decided itself draws (WIRE.md 7.3). The phone's ask card says the same words. */
+export const DECIDED_IN_PROGRAM_TEXT = "Decided in the durable agent.";
+
+/** The line an ask that passed its `expiresAt` draws (WIRE.md 7.3). */
+export const TIMED_OUT_TEXT = "Timed out before an answer.";
+
 /**
- * Every row kind this adapter has met. `ask`, `ask-closed` and `state` are known and drawn as nothing:
- * the drop is the decision (reduce.ts § "known means met and decided about").
+ * The note for an ask closed by the program or by its clock, or null for any other close. The title follows the
+ * words when the row has one: "Timed out before an answer: shell wants to run".
+ */
+function closedNoteText(by: JsonValue | undefined, title: string): string | null {
+  const words = by === "timeout" ? TIMED_OUT_TEXT : by === "program" ? DECIDED_IN_PROGRAM_TEXT : null;
+  if (words === null) return null;
+  return title === "" ? words : `${words.slice(0, -1)}: ${title}`;
+}
+
+/**
+ * Every row kind this adapter has met. `ask` and `state` are known and drawn as nothing, and so is an
+ * `ask-closed` by the phone or a stop: the drop is the decision (reduce.ts § "known means met and decided about").
  */
 const DURABLE_KNOWN: KnownTypes = {
   rows: ["gen", "item", "ask", "ask-closed", "state", "settled"],
@@ -90,6 +116,52 @@ function toolPartOf(id: string, tool: JsonObject, status: string): ToolPart {
   return part;
 }
 
+const ZERO_WIDTH_SPACE = "\u200b";
+
+/**
+ * The markdown of one code item: a fenced block, its language after the opening fence when it has one.
+ *
+ * Chat's markdown reader ends a fenced block at ANY line that starts with three backticks or three tildes, whatever
+ * the opening fence was, so a longer fence would not hold the text in. A line of the program's code that starts like a
+ * fence gets a zero-width space in front of it instead. It is not whitespace to the reader, so it no longer closes the
+ * block, and it draws nothing.
+ */
+function codeMarkdown(text: string, lang: string | null): string {
+  const info = lang === null ? undefined : langOf(lang);
+  const body = text.replace(/^([ \t]*)(```|~~~)/gm, `$1${ZERO_WIDTH_SPACE}$2`);
+  return `\`\`\`${info ?? ""}\n${body}\n\`\`\``;
+}
+
+/**
+ * A label as markdown link text. Chat's reader takes any text but a bracket or a line break, and has no backslash
+ * escape, so brackets become parentheses and the label is one line.
+ */
+function linkLabel(label: string): string {
+  return label.replace(/\[/g, "(").replace(/\]/g, ")").replace(/\s+/g, " ").trim();
+}
+
+/** A target as a link destination: the reader allows no space and only one level of parentheses, so both are encoded. */
+function linkDestination(href: string): string {
+  return href.replace(/[()]/g, (ch) => (ch === "(" ? "%28" : "%29"));
+}
+
+/** The markdown line of one link item, or null when the target is not an `https://` URL (the log is read again here, not trusted). */
+function linkMarkdown(item: JsonObject): string | null {
+  const href = httpsHrefOf(textOf(item.href) ?? "");
+  if (href === undefined) return null;
+  const label = linkLabel(textOf(item.label) ?? "");
+  return `[${label === "" ? linkLabel(href) : label}](${linkDestination(href)})`;
+}
+
+/**
+ * The turn marked `partial` when its item is a text still growing (WIRE.md 7.15). The log is read again here, so the flag
+ * must be exactly `true`.
+ */
+function growing(entry: TranscriptEntry, item: JsonObject): TranscriptEntry {
+  if (item.partial === true) entry.partial = true;
+  return entry;
+}
+
 /** One logged item as a turn, or null when it is not one this adapter can draw. */
 function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
   const id = textOf(item.id);
@@ -101,18 +173,33 @@ function entryOf(item: JsonObject, at: string): TranscriptEntry | null {
     if (!isRecord(item.tool) || status === null) return null;
     return { uuid: id, ts, role: "assistant", parts: [toolPartOf(id, item.tool, status)] };
   }
+  if (kind === "link") {
+    const line = linkMarkdown(item);
+    return line === null ? null : { uuid: id, ts, role: "assistant", parts: [{ kind: "text", text: line }] };
+  }
   const text = textOf(item.text);
   if (text === null) return null;
   const body = clamp(text, MAX_TEXT_CHARS);
   switch (kind) {
-    case "user":
-      return { uuid: id, ts, role: "user", parts: [{ kind: "text", ...body }] };
+    case "user": {
+      const entry: TranscriptEntry = { uuid: id, ts, role: "user", parts: [{ kind: "text", ...body }] };
+      const requestId = textOf(item.requestId);
+      if (requestId !== null && requestId !== "") entry.requestId = requestId;
+      return entry;
+    }
     case "reply":
-      return { uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] };
+      return growing({ uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] }, item);
     case "thinking":
-      return { uuid: id, ts, role: "assistant", parts: [{ kind: "thinking", ...body }] };
+      return growing({ uuid: id, ts, role: "assistant", parts: [{ kind: "thinking", ...body }] }, item);
     case "notice":
-      return { uuid: id, ts, role: "note", parts: [{ kind: "text", ...body }] };
+      return growing({ uuid: id, ts, role: "note", parts: [{ kind: "text", ...body }] }, item);
+    case "markdown":
+      return growing({ uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...body }] }, item);
+    case "code": {
+      // The cut text goes inside the fence, so a long block still closes; the part says it was cut.
+      const block = { ...body, text: codeMarkdown(body.text, textOf(item.lang)) };
+      return { uuid: id, ts, role: "assistant", parts: [{ kind: "text", ...block }] };
+    }
     default:
       return null;
   }
@@ -160,6 +247,11 @@ export function createDurableReducer(): RowReducer {
       // The item changed. An item that sent no `ts` of its own keeps the moment it first appeared.
       known.role = entry.role;
       known.parts = entry.parts;
+      // The flags follow the latest version: a reply that finished loses `partial`, and a user turn may gain its request id.
+      if (entry.partial === true) known.partial = true;
+      else delete known.partial;
+      if (entry.requestId !== undefined) known.requestId = entry.requestId;
+      else delete known.requestId;
       if (textOf(parsed.item.ts) !== null) known.ts = entry.ts;
       return reduction([], new Set([entry.uuid]));
     }
@@ -170,6 +262,17 @@ export function createDurableReducer(): RowReducer {
       const uuid = `settled:${inputId}`;
       if (held.has(uuid)) return NO_CHANGE;
       const entry: TranscriptEntry = { uuid, ts: at, role: "note", parts: [{ kind: "text", text: STOPPED_TEXT }] };
+      rememberPending(held, uuid, entry);
+      return reduction([entry], new Set());
+    }
+
+    if (parsed.k === "ask-closed") {
+      const askId = textOf(parsed.askId);
+      const text = closedNoteText(parsed.by, oneLine(textOf(parsed.title) ?? ""));
+      if (askId === null || askId === "" || text === null) return NO_CHANGE;
+      const uuid = `ask-closed:${askId}`;
+      if (held.has(uuid)) return NO_CHANGE;
+      const entry: TranscriptEntry = { uuid, ts: at, role: "note", parts: [{ kind: "text", text }] };
       rememberPending(held, uuid, entry);
       return reduction([entry], new Set());
     }
@@ -203,7 +306,9 @@ export class DurableTranscriptSource implements TranscriptSource {
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
-    if (ref.kind !== "id" || !isWireId(ref.value)) return null;
+    // A path names one program's log of one conversation: a `.jsonl` file, really inside a root.
+    if (ref.kind === "path") return ref.value.endsWith(".jsonl") ? containedRealpathIn(ref.value, this.roots) : null;
+    if (!isWireId(ref.value)) return null;
     for (const root of this.roots) {
       const candidate = join(root, logFileName(ref.value));
       if (!(await exists(candidate))) continue;

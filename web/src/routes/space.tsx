@@ -128,6 +128,10 @@ export function SpaceRoute() {
               onNewSpace={() => nav.down(newPath({ machine: data.scope.host, session: data.scope.session }))}
               creatingSpace={creatingSpace}
               onBack={toDashboard}
+              scope={data.scope}
+              readOnly={isReadOnly(data.device) || notPaired}
+              savedCopy={data.stale === true}
+              onRenamed={() => revalidator.revalidate()}
             />
             <TabStrip
               workspaceId={selectedWs.workspaceId}
@@ -137,6 +141,7 @@ export function SpaceRoute() {
               selected={tab}
               onSelect={switchTab}
               onNewTab={newTab}
+              onNewStarters={() => nav.down(newPath({ machine: data.scope.host, session: data.scope.session }))}
               creatingTab={creatingTab.has(tabCreateKey(selectedWs.workspaceId, data.scope))}
               scope={data.scope}
               readOnly={isReadOnly(data.device) || notPaired}

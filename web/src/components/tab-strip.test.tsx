@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
+import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { TabStrip } from "./tab-strip";
-import type { AgentStatus, AgentView, TabView } from "@/lib/types";
+import type { AgentStatus, AgentView, MuxCapability, TabView } from "@/lib/types";
 
 // What the eye reads on a cell: its text without the `aria-hidden` semibold copy each label keeps
 // to reserve its width (`StableLabel` in tab-strip.tsx).
@@ -671,5 +672,58 @@ describe("TabStrip new-tab busy state", () => {
     );
 
     expect(scrollTo).not.toHaveBeenCalled();
+  });
+});
+
+// A machine that makes no tab by hand but offers its program's starters (a durable program, M51 spec
+// 08): the "+" is drawn only when `starters` is DECLARED, and it opens the New page, not a create.
+describe("TabStrip new-tab on a program that offers starters", () => {
+  function serve(capabilities: Partial<Record<MuxCapability, boolean>>): void {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "durable", capabilities, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+  }
+
+  beforeEach(() => __resetOperatorCommands());
+
+  it("draws the '+' and sends it to the starters, never to a create", async () => {
+    serve({ createTab: false, starters: true });
+    const user = userEvent.setup();
+    const onNewTab = vi.fn();
+    const onNewStarters = vi.fn();
+    render(
+      <TabStrip workspaceId="w1" tabs={tabs} agents={[]} selected={null} onSelect={vi.fn()} onNewTab={onNewTab} onNewStarters={onNewStarters} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "New tab" }));
+    expect(onNewStarters).toHaveBeenCalledTimes(1);
+    expect(onNewTab).not.toHaveBeenCalled();
+  });
+
+  it("hides the '+' when the program declared no starters", async () => {
+    serve({ createTab: false, starters: false });
+    render(
+      <TabStrip workspaceId="w1" tabs={tabs} agents={[]} selected={null} onSelect={vi.fn()} onNewTab={vi.fn()} onNewStarters={vi.fn()} />,
+    );
+    await screen.findByRole("navigation");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "New tab" })).toBeNull());
+  });
+
+  it("keeps creating a tab where the machine can", async () => {
+    serve({ createTab: true, starters: true });
+    const user = userEvent.setup();
+    const onNewTab = vi.fn();
+    const onNewStarters = vi.fn();
+    render(
+      <TabStrip workspaceId="w1" tabs={tabs} agents={[]} selected={null} onSelect={vi.fn()} onNewTab={onNewTab} onNewStarters={onNewStarters} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "New tab" }));
+    expect(onNewTab).toHaveBeenCalledWith("w1");
+    expect(onNewStarters).not.toHaveBeenCalled();
   });
 });

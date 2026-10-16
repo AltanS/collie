@@ -125,6 +125,22 @@ describe("answer: one shape for every outcome", () => {
     expect(gone.receipts.get(ID)?.state).toBe("too-late");
   });
 
+  test("too-late with who decided first: the response says it, the receipt keeps it, and a replay says it again", async () => {
+    const decided = { by: "program" as const, at: "2026-10-15T09:30:00.000Z" };
+    const dir = stateDir();
+    const store = new AnswerReceiptStore(dir);
+    await store.load();
+    const r = rig(new ScriptedAdapter([muxOk({ kind: "too-late", replayed: false, decided })]), store);
+    expect(await r.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "too-late", decided } });
+    expect(r.receipts.get(ID)).toMatchObject({ state: "too-late", decided });
+    // The receipt on disk keeps it across a restart, and the same request id is answered from it.
+    const reborn = new AnswerReceiptStore(dir);
+    await reborn.load();
+    expect(reborn.get(ID)?.decided).toEqual(decided);
+    const again = rig(new ScriptedAdapter([]), reborn);
+    expect(await again.call("conv-02")).toEqual({ status: 200, body: { ok: false, outcome: "too-late", decided, replayed: true } });
+  });
+
   test("stale: 409 with the ask in its current form, and nothing ran", async () => {
     const r = rig(new ScriptedAdapter([muxOk({ kind: "stale", ask: STALE_ASK })]));
     expect(await r.call("conv-02")).toEqual({ status: 409, body: { ok: false, outcome: "stale", ask: STALE_ASK } });
@@ -145,10 +161,10 @@ describe("answer: one shape for every outcome", () => {
   });
 
   test("refused: 409 with the refusal's word, kept on the receipt", async () => {
-    const r = rig(new ScriptedAdapter([muxRefused("program answered 400 bad-option")]));
+    const r = rig(new ScriptedAdapter([muxRefused("the durable agent answered 400 bad-option")]));
     expect(await r.call("conv-02")).toEqual({
       status: 409,
-      body: { ok: false, outcome: "refused", reason: "refused", detail: "program answered 400 bad-option" },
+      body: { ok: false, outcome: "refused", reason: "refused", detail: "the durable agent answered 400 bad-option" },
     });
     expect(r.receipts.get(ID)).toMatchObject({ state: "refused", reason: "refused" });
   });
@@ -368,7 +384,7 @@ describe("answer: the receipt store keeps a week, the newest thousand, and every
       askId: "a",
       revision: 1,
       optionId: "o",
-      digest: answerDigest("p", { askId: "a", revision: 1, optionId: "o" }),
+      digest: answerDigest("p", { requestId: uuid(0), askId: "a", revision: 1, optionId: "o" }),
       state,
     });
     await store.record(receipt(0, now - 8 * DAY, "taken"));
@@ -453,7 +469,7 @@ describe("answer: through the durable adapter (WIRE.md section 7.3)", () => {
   test("a bad option is the program's refusal, and nothing ran", async () => {
     const { program, r } = await durable();
     const reply = await r.call("conv-02", body({ askId: ASK_02, optionId: "nope" }));
-    expect(reply.body).toMatchObject({ ok: false, outcome: "refused", reason: "refused", detail: "program answered 400 bad-option" });
+    expect(reply.body).toMatchObject({ ok: false, outcome: "refused", reason: "refused", detail: "the durable agent answered 400 bad-option" });
     expect(program.answers).toEqual([]);
   });
 

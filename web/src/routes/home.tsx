@@ -7,7 +7,9 @@ import { SessionSwitcher } from "@/components/session-switcher";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
+import { DurableHome } from "@/components/durable-home";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
+import { ProgramSection } from "@/components/program-section";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
 import { StatusArea } from "@/components/status-area";
@@ -40,12 +42,14 @@ import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { newPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { homePath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
+import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
+import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
@@ -96,7 +100,8 @@ function ChangesTabBody({
 // order (lib/pane-groups.ts, ADR 0063); urgency is a mark on a row and a heading and one summary
 // line on top, never a position. The operator may ask for Activity or Cache order instead, with the
 // order select under that line (ADR 0071): one ranked list, read once and held. The Spaces navigator sits
-// last, under the thing it navigates to.
+// under the thing it navigates to, and the Programs section (M55 spec 13) sits after it, or above Launch
+// while a program has a question that waits on you.
 // Launchers sit directly above Spaces: they are one-tap act-on-able actions like the herd above
 // them, but they CREATE rather than triage, so they sit under the herd and above the navigator
 // their new Space will appear in. Tapping an agent opens its pane; tapping a space drills into
@@ -127,7 +132,15 @@ export function HomeRoute() {
   // that stored "crew" and then lost its crew sees the Dashboard, and the stored choice is left alone,
   // so the tab is back where it was when the crew returns (ADR 0085).
   const { multi } = useCrew();
-  const view: DashView = prefs.dashView === "crew" && !multi ? "dashboard" : prefs.dashView;
+  // THE DURABLE HOME (M53 spec 12). A machine with no screen (its multiplexer declared `paneGrid` false, the
+  // test the New page's `startersOnly` makes) runs a durable program, and the Dashboard tab draws that
+  // program's conversations instead of the card grid. Asked of the machine on screen. Every multiplexer with
+  // a screen, and every bridge that has not answered, keeps the list below exactly as it was.
+  const screenless = !useMuxCapability("paneGrid", data.scope).capable;
+  // A program has no folder on this machine to show, so a machine with no screen has no Files tab
+  // (durable-simple, 2026-10-13), and a device that stored that tab sees the Dashboard there.
+  const view: DashView =
+    (prefs.dashView === "crew" && !multi) || (prefs.dashView === "changes" && screenless) ? "dashboard" : prefs.dashView;
   // The needs-you switch filters the Dashboard list only: Crew and Changes draw their own bodies.
   const needsYouOnly = view === "dashboard" && prefs.needsYouOnly;
   // The Dashboard tab's corner mark (ADR 0066, carried by the Focus tab until ADR 0085 moved it): a red count of the panes
@@ -174,6 +187,17 @@ export function HomeRoute() {
     () => ambientPanes(data.agents, data.shellPanes, data.scope, data.servers, data.sessions),
     [data.agents, data.shellPanes, data.scope, data.servers, data.sessions],
   );
+  // THE PROGRAMS SECTION (M55 spec 13): every program session in the snapshot, this machine's and each
+  // crew member's, in a section of its own, and a tap opens its home, the conversation list, on the
+  // machine that runs it. None on a snapshot with no program session, and the section then draws
+  // nothing. It sits above the spaces while any program has a conversation that waits on you, below
+  // them otherwise, and moves on the snapshot that changes that count.
+  const programs = useMemo(() => programSessions(data.sessions ?? []), [data.sessions]);
+  const programsFirst = programsAbove(programs);
+  // With the needs-you filter on, the section keeps only the programs that wait on you, in the slot it
+  // takes above Launch when a question waits, and draws nothing when none does.
+  const programsWaiting = useMemo(() => waitingPrograms(programs), [programs]);
+  const openProgram = (session: SessionSummary) => nav.down(homePath(programScope(session, data.servers)));
 
   // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
   // top / Unpin first, then the writes. The sheet writes with the PANE's scope, for the reason a tap
@@ -192,8 +216,10 @@ export function HomeRoute() {
   // may not write gets none of it. A saved copy keeps the button drawn and refuses on the tap
   // (`workspace-new-tab.tsx` does the same): a control that comes and goes moves what is around it.
   const { launchers } = useLaunchers(data.scope);
-  const canCreateSpace = useMuxCapability("createSpace").capable;
-  const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0);
+  const canCreateSpace = useMuxCapability("createSpace", data.scope).capable;
+  const durableHome = view === "dashboard" && screenless;
+  // The New button stays on the durable home: the New page lists the program's starters there.
+  const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0 || screenless);
   const openNew = () => {
     if (data.stale === true) return setStatus(t("space.readOnly.savedCopy"), "error");
     // THE ONE NEW PAGE (M48 spec 01): the floating button, the Spaces header's folder button and the
@@ -219,6 +245,10 @@ export function HomeRoute() {
   const scrollRef = useScrollMemory<HTMLDivElement>(`home:${scopeKey(data.scope)}`);
   // "+ New" shrinks to the round "+" once the list has scrolled, and grows back at the top (card 3.2).
   const scrolled = useScrolledPast(scrollRef, 24);
+  // The footer's tabs: Crew while a crew is configured, the Dashboard, and Files on a machine with a screen.
+  // A bar with one tab switches to nothing, so a solo machine with no screen draws none, and the New
+  // button, the toasts and the list's last row sit on the safe area instead (durable-simple, 2026-10-13).
+  const tabsShown = multi || !screenless;
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -263,6 +293,14 @@ export function HomeRoute() {
             <div className="px-4 py-4">
               <CrewTab />
             </div>
+          ) : durableHome ? (
+            <DurableHome
+              scope={data.scope}
+              panes={navPanes.agents}
+              workspaces={data.workspaces}
+              paneOpen={paneOpen}
+              stale={data.stale === true}
+            />
           ) : (
             <AgentList
               agents={data.agents}
@@ -291,6 +329,7 @@ export function HomeRoute() {
               onToggleHidden={toggleHiddenSpace}
               hiddenMachines={hiddenMachines}
               addressedHost={data.scope.host}
+              scope={data.scope}
               onShowMachine={(host) => setMachineHidden(host, false, data.servers)}
               pins={pins}
               // The same per-device preference the pane switcher and Settings write (ADR 0071).
@@ -320,8 +359,13 @@ export function HomeRoute() {
           {/* Launch and the Spaces navigator belong to the whole herd, so they sit under the Dashboard
               with the needs-you switch off. The filtered list and the other tabs are narrower, and
               a launcher under them would read as part of that list. */}
-          {view === "dashboard" && !needsYouOnly && (
+          {view === "dashboard" && needsYouOnly && !screenless && (
+            <ProgramSection programs={programsWaiting} servers={data.servers} onOpen={openProgram} />
+          )}
+          {view === "dashboard" && !needsYouOnly && !screenless && (
             <>
+              {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}
+              {programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
               <SpaceOverview
                 workspaces={isolateSpaces(data.workspaces, prefs.isolatedSpace)}
@@ -333,7 +377,9 @@ export function HomeRoute() {
                 creatingSpace={creatingSpace}
                 open={spacesOpen}
                 onOpenChange={setSpacesOpen}
+                scope={data.scope}
               />
+              {!programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
             </>
           )}
         </main>
@@ -347,7 +393,12 @@ export function HomeRoute() {
         {/* With the New button drawn, the stamp's air grows so the last row scrolls clear of it:
             16px gap + 56px button + 8px, from the footer's top edge. Set by capability, not by the
             button's transient hides, so a sheet or the keyboard never moves the list. */}
-        <BuildStamp className={fabOffered ? "px-4 pt-3 pb-20" : "px-4 pt-3 pb-2"} />
+        <BuildStamp
+          className={cn(
+            "px-4 pt-3",
+            fabOffered ? (tabsShown ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : tabsShown ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
+          )}
+        />
       </div>
 
       {/* The dashboard's footer (ADR 0066, ADR 0085): lists, each named for what it holds. Crew
@@ -355,6 +406,7 @@ export function HomeRoute() {
           thumb, then Files. It sits OUTSIDE the scroller, so the content scrolls above it and a
           switch moves neither it nor the strip and summary line at the top of the list. At every width: the dashboard has no sidebar on a wide screen (it is one
           centred column), so nothing else offers these views. */}
+      {tabsShown && (
       <TabBar<DashView>
         label={t("home.tabs.aria")}
         active={view}
@@ -375,9 +427,10 @@ export function HomeRoute() {
           },
           // The Files tab (2026-10-06, ADR 0085): the stored value stays `changes`. ListTree is the
           // one Files icon: the pane belt's pill and the Files screen's Tree toggle wear it.
-          { value: "changes", label: t("files.title"), icon: <ListTree className="size-5" /> },
+          ...(screenless ? [] : [{ value: "changes" as const, label: t("files.title"), icon: <ListTree className="size-5" /> }]),
         ]}
       />
+      )}
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
           floating so it never shifts the list. Stays outside the scroller so it never scrolls away.
@@ -390,7 +443,17 @@ export function HomeRoute() {
       {/* With the New button drawn, the lift also clears it: the footer's 56px and 1px rule, the
           button's 16px gap and 48px face (the `bottom-` of the Fab below), so a toast floats above
           the button's top edge, never over it. Capability, not the button's transient hides. */}
-      <ToastViewport className={fabOffered ? "bottom-[calc(3.5rem+1px+1rem+3rem)]" : "bottom-[calc(3.5rem+1px)]"}>
+      <ToastViewport
+        className={
+          tabsShown
+            ? fabOffered
+              ? "bottom-[calc(3.5rem+1px+1rem+3rem)]"
+              : "bottom-[calc(3.5rem+1px)]"
+            : fabOffered
+              ? "bottom-[calc(env(safe-area-inset-bottom)_+_1rem_+_3rem)]"
+              : "bottom-[env(safe-area-inset-bottom)]"
+        }
+      >
         <StatusArea />
       </ToastViewport>
 
@@ -416,7 +479,11 @@ export function HomeRoute() {
         <Fab
           label={t("home.new.label")}
           // The footer's 56px row and 1px rule and the safe area under it, then 16px of air.
-          bottom="bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]"
+          bottom={
+            tabsShown
+              ? "bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]"
+              : "bottom-[calc(env(safe-area-inset-bottom)_+_1rem)]"
+          }
           busy={creatingSpace || launching.size > 0}
           collapsed={scrolled}
           onClick={openNew}

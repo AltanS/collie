@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../../json.ts";
-import { logFileName } from "../../durable/log.ts";
+import { cursorFileName, DurableLogs, logFileName } from "../../durable/log.ts";
+import { parseDurableLog } from "../../journal/durable.ts";
 import { DURABLE_LOG_DIR_OPTION, DURABLE_SOCKET_OPTION, DurableMux, durableMuxFactory, MIN_SNAPSHOT_GAP_MS } from "./adapter.ts";
-import { CAPS } from "./clean.ts";
+import { CAPS, ITEM_RICH_BYTES } from "./clean.ts";
 import type { DurableEventSink } from "./events.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP, type FakeEvent } from "./fixture.ts";
-import { parseEvents, type DurableEvent } from "./protocol.ts";
+import { parseEvents, parseLogRow, type DurableEvent } from "./protocol.ts";
 
 // THE EVENTS READER against a fake program that serves `GET /pane/:id/events` as WIRE.md 7.2 says.
 
@@ -58,6 +59,8 @@ afterEach(async () => {
 });
 
 const PANE = "conv-01";
+/** Two bytes a character, so this is over the 32 KiB cap of a rich item. */
+const CAPS_RICH = ITEM_RICH_BYTES;
 
 function item(id: string, text: string, kind = "reply"): FakeEvent {
   return { type: "item", item: { id, kind, text } };
@@ -104,6 +107,26 @@ describe("a plain events read", () => {
     program.appendEvent(PANE, item("i1", "one"));
     await readLayout();
     expect(eventRequests(PANE)).toHaveLength(0);
+  });
+});
+
+describe("dropped items (WIRE.md 7.13)", () => {
+  test("a pane that sends items the reader drops gets one log line per epoch, not one per item or per read", async () => {
+    const { program, sync } = await rig();
+    const said: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => void said.push(args.map(String).join(" "));
+    try {
+      program.appendEvent(PANE, { type: "item", item: { id: "l1", kind: "link", href: "http://example.com/" } });
+      program.appendEvent(PANE, { type: "item", item: { id: "l2", kind: "image", src: "x" } });
+      program.appendEvent(PANE, item("i1", "kept"));
+      await sync();
+      program.appendEvent(PANE, { type: "item", item: { id: "l3", kind: "link", href: "javascript:x" } });
+      await sync();
+    } finally {
+      console.warn = warn;
+    }
+    expect(said.filter((line) => line.includes(PANE) && line.includes("dropped"))).toHaveLength(1);
   });
 });
 
@@ -166,7 +189,7 @@ describe("reset", () => {
     await sync();
     const texts = sink.calls
       .flatMap((call) => call.events)
-      .flatMap((event) => (event.type === "item" && event.item.kind !== "tool" ? [event.item.text] : []));
+      .flatMap((event) => (event.type === "item" && "text" in event.item ? [event.item.text] : []));
     expect(texts).toEqual(["first, edited", "second"]);
   });
 
@@ -346,12 +369,104 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(parsed.ok && parsed.value.events).toEqual([{ type: "item", item: { id: "ok", ts: undefined, kind: "reply", text: "kept" } }]);
   });
 
+  test("markdown, code and link items are read, cleaned and capped (WIRE.md 7.13)", () => {
+    const parsed = parseEvents(
+      body([
+        { type: "item", item: { id: "m1", kind: "markdown", text: `# Title\n\n- one\n- two${String.fromCodePoint(0x202e)}` } },
+        { type: "item", item: { id: "c1", kind: "code", lang: " typescript ", text: "const a = 1;\n" } },
+        { type: "item", item: { id: "l1", kind: "link", href: "https://colliepwa.dev/docs/", label: " The docs " } },
+        { type: "item", item: { id: "l2", kind: "link", href: "https://colliepwa.dev/" } },
+        { type: "item", item: { id: "m2", kind: "markdown", text: "é".repeat(CAPS_RICH) } },
+      ]),
+    );
+    const items = parsed.ok ? parsed.value.events.flatMap((event) => (event.type === "item" ? [event.item] : [])) : [];
+    expect(items.slice(0, 4)).toEqual([
+      { id: "m1", ts: undefined, kind: "markdown", text: "# Title\n\n- one\n- two" },
+      { id: "c1", ts: undefined, kind: "code", lang: "typescript", text: "const a = 1;\n" },
+      { id: "l1", ts: undefined, kind: "link", href: "https://colliepwa.dev/docs/", label: "The docs" },
+      { id: "l2", ts: undefined, kind: "link", href: "https://colliepwa.dev/" },
+    ]);
+    const long = items[4];
+    expect(long?.kind === "markdown" && Buffer.byteLength(long.text)).toBeLessThanOrEqual(ITEM_RICH_BYTES);
+    expect(long?.kind === "markdown" && long.text.endsWith("…")).toBe(true);
+  });
+
+  test("partial rides on reply, thinking, notice and markdown only, requestId on user only (WIRE.md 7.15)", () => {
+    const parsed = parseEvents(
+      body([
+        { type: "item", item: { id: "r", kind: "reply", text: "Hel", partial: true } },
+        { type: "item", item: { id: "t", kind: "thinking", text: "hm", partial: true } },
+        { type: "item", item: { id: "n", kind: "notice", text: "wait", partial: true } },
+        { type: "item", item: { id: "m", kind: "markdown", text: "# A", partial: true } },
+        { type: "item", item: { id: "f", kind: "reply", text: "done", partial: false } },
+        { type: "item", item: { id: "s", kind: "reply", text: "odd", partial: "true" } },
+        { type: "item", item: { id: "u", kind: "user", text: "hi", requestId: "req-1", partial: true } },
+        { type: "item", item: { id: "u2", kind: "user", text: "hi", requestId: "has space" } },
+        { type: "item", item: { id: "r2", kind: "reply", text: "x", requestId: "req-1" } },
+        { type: "item", item: { id: "c", kind: "code", text: "x", partial: true } },
+      ]),
+    );
+    const items = parsed.ok ? parsed.value.events.flatMap((event) => (event.type === "item" ? [event.item] : [])) : [];
+    expect(items).toEqual([
+      { id: "r", ts: undefined, kind: "reply", text: "Hel", partial: true },
+      { id: "t", ts: undefined, kind: "thinking", text: "hm", partial: true },
+      { id: "n", ts: undefined, kind: "notice", text: "wait", partial: true },
+      { id: "m", ts: undefined, kind: "markdown", text: "# A", partial: true },
+      { id: "f", ts: undefined, kind: "reply", text: "done" },
+      { id: "s", ts: undefined, kind: "reply", text: "odd" },
+      { id: "u", ts: undefined, kind: "user", text: "hi", requestId: "req-1" },
+      { id: "u2", ts: undefined, kind: "user", text: "hi" },
+      { id: "r2", ts: undefined, kind: "reply", text: "x" },
+      { id: "c", ts: undefined, kind: "code", text: "x" },
+    ]);
+  });
+
+  test("a code language that is not a plain name reads as none and the block stays, a label is cut to 120 characters", () => {
+    const langs = ["", "a".repeat(25), "ts\n```", "c++ x", 7, null];
+    const parsed = parseEvents(
+      body([
+        ...langs.map((lang, index) => ({ type: "item", item: { id: `c${String(index)}`, kind: "code", lang, text: "x" } })),
+        { type: "item", item: { id: "l1", kind: "link", href: "https://example.com/", label: "é".repeat(300) } },
+      ]),
+    );
+    const items = parsed.ok ? parsed.value.events.flatMap((event) => (event.type === "item" ? [event.item] : [])) : [];
+    expect(items.slice(0, langs.length).map((entry) => entry.kind === "code" && entry.lang)).toEqual(langs.map(() => undefined));
+    const link = items.at(-1);
+    expect(link?.kind === "link" && [...(link.label ?? "")].length).toBe(120);
+  });
+
+  test("a link whose target is not https, or breaks the rule, drops the item alone, and the drop is counted", () => {
+    const hrefs = [
+      "http://example.com/",
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "file:///etc/passwd",
+      "//example.com/",
+      "/docs",
+      "https://",
+      "https://user:pw@example.com/",
+      "https://example.com/a b",
+      `https://example.com/${"a".repeat(2100)}`,
+      "https://exa\u200bmple.com/",
+      42,
+      null,
+    ];
+    const parsed = parseEvents(
+      body([
+        ...hrefs.map((href, index) => ({ type: "item", item: { id: `l${String(index)}`, kind: "link", href } })),
+        { type: "item", item: { id: "ok", kind: "reply", text: "kept" } },
+      ]),
+    );
+    expect(parsed.ok && parsed.value.events.map((event) => (event.type === "item" ? event.item.id : event.type))).toEqual(["ok"]);
+    expect(parsed.ok && parsed.value.droppedItems).toBe(hrefs.length);
+  });
+
   test("item text is cleaned of controls and direction marks and cut at its byte cap", () => {
     const parsed = parseEvents(body([{ type: "item", item: { id: "i1", kind: "reply", text: hostileText("evil", CAPS.itemText + 10) } }]));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const event = parsed.value.events[0];
-    if (event?.type !== "item" || event.item.kind === "tool") throw new Error("expected a text item");
+    if (event?.type !== "item" || !("text" in event.item)) throw new Error("expected a text item");
     expect(hasHostileChars(event.item.text)).toBe(false);
     expect(Buffer.byteLength(event.item.text)).toBeLessThanOrEqual(CAPS.itemText);
     expect(event.item.text.endsWith("…")).toBe(true);
@@ -367,7 +482,7 @@ describe("parseEvents (WIRE.md sections 4, 6 and 7.2)", () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const [first, second] = parsed.value.events;
-    expect(first?.type === "item" && first.item.kind !== "tool" && first.item.text).toBe("a\nb");
+    expect(first?.type === "item" && "text" in first.item && first.item.text).toBe("a\nb");
     expect(first?.type === "item" && first.item.ts).toBeUndefined();
     expect(second?.type === "item" && second.item.ts).toBeUndefined();
   });
@@ -429,11 +544,208 @@ describe("where the events go", () => {
       await adapter.poll();
       expect(await adapter.syncEvents()).toEqual([PANE]);
       const names = await readdir(join(dir, "durable"));
-      expect(names.toSorted()).toEqual(
+      expect(names.filter((name) => name.endsWith(".jsonl")).toSorted()).toEqual(
         ["conv-01", "conv-02", "conv-03", "conv-04", "conv-05"].map((id) => logFileName(id)).toSorted(),
       );
+      // The cursor is saved beside the log of the pane it moved on; a pane with nothing read keeps none.
+      expect(names.filter((name) => name.endsWith(".cursor.json"))).toEqual([cursorFileName(PANE)]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a reply that grows, through the reader into the pane log (WIRE.md 7.15)", () => {
+  const grown = (id: string, text: string, partial: boolean): FakeEvent => ({ type: "item", item: partial ? { id, kind: "reply", text, partial: true } : { id, kind: "reply", text } });
+
+  test("an item with a known id replaces the earlier one: the log and the chat hold ONE turn, never a row per version", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-grow-"));
+    try {
+      const clock = new FakeDurableClock();
+      const logs = new DurableLogs(join(dir, "durable"));
+      const adapter = new DurableMux(program.wire(), clock, logs);
+      const sync = async () => {
+        clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+        await adapter.poll();
+        await adapter.syncEvents();
+      };
+      const turns = async () => parseDurableLog(await readFile(join(dir, "durable", logFileName(PANE)), "utf8")).filter((entry) => entry.uuid === "r1");
+
+      program.appendEvent(PANE, { type: "item", item: { id: "u1", kind: "user", text: "go", requestId: "req-1" } });
+      program.appendEvent(PANE, grown("r1", "Hel", true));
+      await sync();
+      expect((await turns()).map((entry) => entry.partial)).toEqual([true]);
+
+      // Three writes by the program between two reads: only the newest is news.
+      program.appendEvent(PANE, grown("r1", "Hello", true));
+      program.appendEvent(PANE, grown("r1", "Hello, wor", true));
+      program.appendEvent(PANE, grown("r1", "Hello, world", true));
+      await sync();
+      program.appendEvent(PANE, grown("r1", "Hello, world", false));
+      await sync();
+
+      const file = await readFile(join(dir, "durable", logFileName(PANE)), "utf8");
+      const all = parseDurableLog(file);
+      expect(all.map((entry) => entry.uuid)).toEqual(["u1", "r1"]); // one turn for the user line, one for the reply
+      expect(all[0]?.requestId).toBe("req-1");
+      expect(all[1]).not.toHaveProperty("partial");
+      expect(all[1]?.parts[0]).toEqual({ kind: "text", text: "Hello, world" });
+      // Rows for r1: the first poll's version, the second poll's newest, the final. Not six.
+      expect(file.split("\n").filter((line) => line.includes('"id":"r1"'))).toHaveLength(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the saved cursor (M53 spec 11, WIRE.md 7.16)", () => {
+  /** A bridge: an adapter with the pane logs of `folder`. A second one on the same folder is a bridge restart. */
+  function bridge(program: FakeDurableProgram, folder: string) {
+    const clock = new FakeDurableClock();
+    const logs = new DurableLogs(folder);
+    const adapter = new DurableMux(program.wire(), clock, logs);
+    const sync = async (): Promise<readonly string[]> => {
+      clock.advance(MIN_SNAPSHOT_GAP_MS + 50);
+      await adapter.poll();
+      return adapter.syncEvents();
+    };
+    return { adapter, logs, sync };
+  }
+  const eventReads = (program: FakeDurableProgram, from: number): string[] =>
+    program.requests
+      .slice(from)
+      .filter((request) => request.path.endsWith(`/pane/${PANE}/events`))
+      .map((request) => request.search);
+  /** The item ids the log holds, one per row, in order: a repeat would show twice. */
+  const loggedIds = async (folder: string): Promise<string[]> =>
+    (await readFile(join(folder, logFileName(PANE)), "utf8"))
+      .split("\n")
+      .flatMap((line) => {
+        const row = parseLogRow(line);
+        return row?.k === "item" ? [row.item.id] : [];
+      });
+
+  test("cursor: a bridge restart goes on from the saved cursor: no read from 0, no duplicate row, no gap notice", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    // The program keeps a short tail and a short view, so a read from 0 would be a trimmed reset with a gap.
+    program.tailLimit = 3;
+    program.viewItemCap = 2;
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const first = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      program.appendEvent(PANE, item("i2", "two"));
+      expect(await first.sync()).toContain(PANE);
+      expect(await first.logs.loadCursor(PANE)).toEqual({ epoch: program.epoch, after: 2 });
+
+      // The bridge restarts. The program goes on, and its tail still holds the cursor.
+      program.appendEvent(PANE, item("i3", "three"));
+      program.appendEvent(PANE, item("i4", "four"));
+      const mark = program.requests.length;
+      const second = bridge(program, folder);
+      expect(await second.sync()).toContain(PANE);
+      expect(eventReads(program, mark)).toEqual([`?after=2&epoch=${program.epoch}`]);
+      expect(await loggedIds(folder)).toEqual(["i1", "i2", "i3", "i4"]);
+      expect(await second.logs.loadCursor(PANE)).toEqual({ epoch: program.epoch, after: 4 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cursor: a saved cursor from an old epoch is read with that epoch, and the reset reply writes nothing twice", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const first = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      await first.sync();
+      const old = program.epoch;
+      // The program restarts while the bridge is down: a new epoch, and its cursors start over.
+      program.restart();
+      program.appendEvent(PANE, item("i2", "two"));
+      const mark = program.requests.length;
+      const second = bridge(program, folder);
+      await second.sync();
+      expect(eventReads(program, mark)[0]).toBe(`?after=1&epoch=${old}`);
+      expect(await loggedIds(folder)).toEqual(["i1", "i2"]);
+      expect(await second.logs.loadCursor(PANE)).toEqual({ epoch: program.epoch, after: program.eventCount(PANE) });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cursor: a pane that leaves the layout forgets its saved cursor, so a reopen under the same id reads from 0", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const one = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      await one.sync();
+      expect(await one.logs.loadCursor(PANE)).not.toBeNull();
+      program.removePane(PANE);
+      await one.sync();
+      expect(await one.logs.loadCursor(PANE)).toBeNull();
+      // The log stays: it is the cache Chat reads.
+      expect(await loggedIds(folder)).toEqual(["i1"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cursor: a pane's events go to the log of its sessionId, the key the journal reads", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    program.snapshot.panes = program.snapshot.panes.map((pane) => (pane.id === PANE ? { ...pane, sessionId: "session-1" } : pane));
+    const dir = await mkdtemp(join(tmpdir(), "collie-durable-cursor-"));
+    try {
+      const folder = join(dir, "durable");
+      const one = bridge(program, folder);
+      program.appendEvent(PANE, item("i1", "one"));
+      await one.sync();
+      const names = await readdir(folder);
+      expect(names).toContain(logFileName("session-1"));
+      expect(names).toContain(cursorFileName("session-1"));
+      expect(names).not.toContain(logFileName(PANE));
+      expect(one.adapter.program()?.snapshot.panes.find((pane) => pane.id === PANE)?.sessionId).toBe("session-1");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a user item that names a request id (M56 spec 14)", () => {
+  test("the pane it belongs to is told, after the sink took the events; an item with no id tells nobody", async () => {
+    const { program, adapter, sink, sync } = await rig();
+    const heard: [string, string][] = [];
+    const stop = adapter.onUserItem((paneId, requestId) => void heard.push([paneId, requestId]));
+    program.appendEvent(PANE, { type: "item", item: { id: "u1", kind: "user", text: "hello", requestId: "req-0001" } });
+    program.appendEvent(PANE, { type: "item", item: { id: "u2", kind: "user", text: "typed at the desk" } });
+    program.appendEvent(PANE, item("r1", "a reply"));
+    await sync();
+    expect(sink.types(PANE)).toEqual(["item", "item", "item"]);
+    expect(heard).toEqual([[PANE, "req-0001"]]);
+    stop();
+    program.appendEvent(PANE, { type: "item", item: { id: "u3", kind: "user", text: "again", requestId: "req-0002" } });
+    await sync();
+    expect(heard).toEqual([[PANE, "req-0001"]]);
+  });
+
+  test("a listener that throws never stops the log", async () => {
+    const { program, adapter, sink, sync } = await rig();
+    adapter.onUserItem(() => {
+      throw new Error("boom");
+    });
+    program.appendEvent(PANE, { type: "item", item: { id: "u1", kind: "user", text: "hello", requestId: "req-0003" } });
+    program.appendEvent(PANE, item("r1", "a reply"));
+    await sync();
+    expect(sink.types(PANE)).toEqual(["item", "item"]);
   });
 });

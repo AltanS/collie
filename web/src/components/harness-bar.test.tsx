@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
-import { accentFor, HarnessBar } from "./harness-bar";
+import { accentFor, DurableBar, HarnessBar } from "./harness-bar";
+import { DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
+import type { PaneAction } from "@/lib/types";
 
 /** jsdom normalises a hex colour to `rgb(...)`; compare through the same normaliser on both sides. */
 function normalizedColor(value: string): string {
@@ -173,5 +175,115 @@ describe("HarnessBar", () => {
     render(<HarnessBar agent="claude" mine={mine} onRun={took()} />);
     expect(screen.getByRole("button", { name: "Status" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+  });
+});
+
+describe("DurableBar", () => {
+  const state = (over: { steer?: Partial<Parameters<typeof DurableBar>[0]["state"]["steer"]>; stop?: Partial<Parameters<typeof DurableBar>[0]["state"]["stop"]> } = {}) => ({
+    steer: { pressed: false, offered: true, onPressedChange: vi.fn(), ...over.steer },
+    stop: { offered: true, busy: false, onStop: vi.fn(), ...over.stop },
+  });
+
+  it("draws Steer then Stop in the program's section, with its mark", () => {
+    render(<DurableBar items={DURABLE_BAR} state={state()} />);
+    const section = screen.getByRole("group", { name: "Harness shortcuts" });
+    expect(section).toHaveAttribute("data-slot", "durable-bar");
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Steer", "Stop"]);
+  });
+
+  it("renders nothing for a program that declared neither", () => {
+    const { container } = render(<DurableBar items={[]} state={state()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("dims a control that cannot act and keeps it drawn", async () => {
+    const s = state({ steer: { offered: false, pressed: true }, stop: { offered: false } });
+    render(<DurableBar items={DURABLE_BAR} state={s} />);
+    const steer = screen.getByRole("button", { name: /Steer the running turn/ });
+    const stop = screen.getByRole("button", { name: "Stop the running turn" });
+    expect(steer).toBeDisabled();
+    expect(steer).toHaveAttribute("aria-pressed", "false");
+    expect(stop).toBeDisabled();
+    await userEvent.setup().click(stop);
+    expect(s.stop.onStop).not.toHaveBeenCalled();
+  });
+
+  it("taps through to the composer's handlers", async () => {
+    const s = state();
+    const user = userEvent.setup();
+    render(<DurableBar items={DURABLE_BAR} state={s} />);
+    await user.click(screen.getByRole("button", { name: /Steer the running turn/ }));
+    expect(s.steer.onPressedChange).toHaveBeenCalledWith(true);
+    await user.click(screen.getByRole("button", { name: "Stop the running turn" }));
+    expect(s.stop.onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("greys both when the composer is locked", () => {
+    render(<DurableBar items={DURABLE_BAR} state={state()} disabled />);
+    for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
+  });
+
+  it("shows a spinner while a stop is in flight", () => {
+    render(<DurableBar items={DURABLE_BAR} state={state({ stop: { busy: true } })} />);
+    expect(screen.getByRole("button", { name: "Stop the running turn" }).querySelector(".animate-spin")).not.toBeNull();
+  });
+});
+
+describe("DurableBar, the program's own actions", () => {
+  const listed: PaneAction[] = [
+    { id: "escalate", label: "Escalate", icon: "flag" },
+    { id: "pause", label: "Pause", icon: "pause", disabled: true },
+    { id: "run", label: "Run", icon: "play", busy: true },
+    { id: "plain", label: "Plain" },
+  ];
+  const items = durableBarFor(() => true, listed);
+  const state = (running: string | null = null) => ({
+    steer: { pressed: false, offered: true, onPressedChange: vi.fn() },
+    stop: { offered: true, busy: false, onStop: vi.fn() },
+    action: { running, onRun: vi.fn() },
+  });
+
+  it("draws them after Steer and Stop, in the program's order, each with its label", () => {
+    render(<DurableBar items={items} state={state()} />);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Steer", "Stop", "Escalate", "Pause", "Run", "Plain"]);
+  });
+
+  it("draws an icon for a known name and none for an unknown one, and a spinner for a busy action", () => {
+    render(<DurableBar items={items} state={state()} />);
+    expect(screen.getByRole("button", { name: "Escalate" }).querySelector("svg")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plain" }).querySelector("svg")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run" }).querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Escalate" }).querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("dims a disabled or busy action and refuses its tap, and taps an available one through once", async () => {
+    const s = state();
+    const user = userEvent.setup();
+    render(<DurableBar items={items} state={s} />);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    expect(s.action.onRun).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Escalate" }));
+    expect(s.action.onRun).toHaveBeenCalledTimes(1);
+    expect(s.action.onRun).toHaveBeenCalledWith(listed[0]);
+  });
+
+  it("shows the button whose tap is in flight as a spinner and refuses a second tap on it", async () => {
+    const s = state("escalate");
+    render(<DurableBar items={items} state={s} />);
+    const button = screen.getByRole("button", { name: "Escalate" });
+    expect(button).toBeDisabled();
+    expect(button.querySelector(".animate-spin")).not.toBeNull();
+    await userEvent.setup().click(button);
+    expect(s.action.onRun).not.toHaveBeenCalled();
+  });
+
+  it("greys them when the composer is locked, and draws a section for a program that declared only actions", () => {
+    const { rerender } = render(<DurableBar items={items} state={state()} disabled />);
+    for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
+    rerender(<DurableBar items={durableBarFor((cap) => cap === "programActions", listed)} state={state()} />);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Escalate", "Pause", "Run", "Plain"]);
   });
 });

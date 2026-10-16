@@ -39,6 +39,7 @@ import {
   Check,
   ChevronRight,
   CircleQuestionMark,
+  Clock,
   FilePlusCorner,
   FileText,
   Globe,
@@ -65,6 +66,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
 import { findFilePaths } from "@/lib/file-paths";
+import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
 import type { Hunk, ToolQuestion } from "@/lib/types";
@@ -321,11 +323,15 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
       return <UserTurn text={item.text} ts={item.ts} />;
     case "reply":
       // Agent prose: MarkdownText wears `font-content`, never the app face (DESIGN.md §5).
-      return <MarkdownText text={item.text} />;
+      return <Growing partial={item.partial === true}><MarkdownText text={item.text} /></Growing>;
     case "thinking":
       return (
         <Disclosure label={t("chat.card.thinking")} icon={ChevronRight}>
-          {() => <MarkdownText text={item.text} className="px-5 pb-1 italic text-muted-foreground" />}
+          {() => (
+            <Growing partial={item.partial === true}>
+              <MarkdownText text={item.text} className="px-5 pb-1 italic text-muted-foreground" />
+            </Growing>
+          )}
         </Disclosure>
       );
     case "notice":
@@ -337,6 +343,21 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
   }
 });
 
+/**
+ * A text the program is still writing (WIRE.md 7.15): `data-partial` makes the stylesheet put a cursor at the end of its
+ * last block (`.stream-grow` in index.css), and `aria-busy` tells a reader the text is not final. The cursor is a
+ * pseudo-element after the last block's own text, so it adds no row, and its going when the last version arrives moves
+ * nothing (DESIGN.md §2). A finished text is drawn exactly as it always was: no wrapper attribute changes its box.
+ */
+function Growing({ partial, children }: { partial: boolean; children: ReactNode }) {
+  if (!partial) return <>{children}</>;
+  return (
+    <div data-partial="true" aria-busy="true" className="stream-grow">
+      {children}
+    </div>
+  );
+}
+
 /** A machine note longer than this, or on more than one line, folds. Shorter ones are a status line. */
 const NOTICE_FOLD_CHARS = 160;
 
@@ -347,7 +368,13 @@ const NOTICE_FOLD_CHARS = 160;
  */
 function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
   const folds = item.note === true && (item.text.length > NOTICE_FOLD_CHARS || item.text.includes("\n"));
-  if (!folds) return <p className="py-1 text-center text-xs text-muted-foreground">{item.text}</p>;
+  if (!folds) {
+    return (
+      <p data-partial={item.partial === true ? "true" : undefined} className="py-1 text-center text-xs text-muted-foreground">
+        {item.text}
+      </p>
+    );
+  }
   return (
     <Disclosure label={t("transcript.systemLabel")} icon={ChevronRight}>
       {() => <MarkdownText text={item.text} className="px-5 pb-1 text-sm text-muted-foreground" />}
@@ -392,19 +419,44 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
  * on a ground of its own hue and had only its edge left to separate it. Two colours, two jobs: the
  * blue is "this is literal", the orange is "this is yours".
  */
-function UserTurn({ text, ts }: { text: string; ts?: string }) {
-  const time = ts ? clockTimeOf(ts) : "";
+function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: PendingState }) {
+  const time = ts && pending === undefined ? clockTimeOf(ts) : "";
   return (
-    <div className="rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2">
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-status-working">
+    <div
+      data-slot={pending === undefined ? undefined : "pending-turn"}
+      data-pending={pending}
+      className={cn(
+        "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
+        // A line the program has not written back yet: the same well at a lower weight, so it reads as "mine, on its way".
+        pending !== undefined && "opacity-70",
+      )}
+    >
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-status-working">
         <User className="size-3.5" />
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
         {time && <span className="font-normal tabular-nums opacity-80">{time}</span>}
+        {/* The clock takes the slot the time takes once the program's line is here, so the swap moves nothing. */}
+        {pending !== undefined && (
+          <span className="flex items-center gap-1 font-normal normal-case tracking-normal opacity-80">
+            <Clock className="size-3" aria-hidden="true" />
+            {pending === "sending" || pending === "sent" ? (
+              <span className="sr-only">{t("durable.pending.sending")}</span>
+            ) : (
+              <span>{t(pending === "unconfirmed" ? "durable.pending.unconfirmed" : "durable.pending.notSent")}</span>
+            )}
+          </span>
+        )}
       </div>
       <p className="font-content whitespace-pre-wrap break-words text-sm">{text}</p>
     </div>
   );
+}
+
+/** The person's own line, put in the thread when they sent it and not yet written back by the program (lib/durable-pending.ts). */
+export function PendingTurn({ text, state }: { text: string; state: PendingState }) {
+  useLocale();
+  return <UserTurn text={text} pending={state} />;
 }
 
 function clockTimeOf(iso: string): string {
@@ -838,7 +890,7 @@ function QuestionBlock({
         {question.multiple && <p className="text-xs text-muted-foreground">{t("chat.question.multiple")}</p>}
       </div>
       {(question.options.length > 0 || typed.length > 0) && (
-        <ul className="divide-y divide-border border-t border-border">
+        <ul data-slot="list-group" className="border-t border-border">
           {question.options.map((o, i) => {
             const picked = chosen?.includes(o.label) === true;
             return (

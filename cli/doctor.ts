@@ -60,7 +60,8 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
-import { durableFindings } from "./durable-findings.ts";
+import { surfaceFindings } from "./surface-findings.ts";
+import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
@@ -96,6 +97,8 @@ import type { ServeMode } from "./context.ts";
 import type { Exec, Files } from "./sys.ts";
 import { whistleModelFindings, type WhistleSeams } from "./stt-whistle.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
+import { settingsHold } from "./hold-entry.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import {
   HTTPS_DISABLED_HINT,
   tailnetCertDomains,
@@ -245,6 +248,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // seventh whether the lead is new enough to show its panes: only when `durable` is the
     // multiplexer this install drives.
     ...(chosen.name === DURABLE_MUX ? await durableFindings({ ctx: deps.ctx, crew: { mode, marker: runtimeMarker } }) : []),
+    // The programs in `sources.json` (M55): one row for the file, then one block per program, each row
+    // named `<row>:<program>`. Nothing when there is no file. The `durable-lead` row comes once: with
+    // the env form's rows above on a durable-only install, after these blocks otherwise.
+    ...(await sourcesFindings({ ctx: deps.ctx, crew: chosen.name === DURABLE_MUX ? undefined : { mode, marker: runtimeMarker } })),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
     // on POSIX the mode bits are checked where the files are read, as before.
@@ -268,6 +275,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
     // reason `historyFindings` is one — a section, not a check.
     ...cacheFindings({ ctx: deps.ctx, files: deps.files, env: deps.ctx.env, now: () => Date.now() }),
+    // What the input readers saw, per harness and version, over the last seven days (M56 spec 09): a
+    // summary line and one line per row, read from the bridge's own day files. A read, like the rest.
+    ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
     restartPending(deps, install, runtimeMarker, await ownRead()),
     // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
     // always has. `clock` measures this machine against a member's `Date` header and its own remedy
@@ -323,6 +333,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
             secretGeneration(data, members),
             reach(data, members, reaches),
             memberVersions(deps, members, probes),
+            ...memberSurface(members, probes),
           ].map(aboutCrew),
         ]
       : [];
@@ -1799,8 +1810,8 @@ function mux(deps: DoctorDeps): Finding {
   }
   if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
   if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
-  // A durable program is asked by the four `durable-*` rows, so this line defers to them as the
-  // Herdr line defers to `herdr-socket`.
+  // A durable program is asked by the six `durable-*` rows (and `durable-lead` in a crew), so this
+  // line defers to them as the Herdr line defers to `herdr-socket`.
   if (settings.name === DURABLE_MUX) return ok("mux", `${DURABLE_MUX}, see the durable-* lines${originSuffix(settings.origin)}`);
   // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
   // `acl` gives: a check that could not run must never render as one that did.
@@ -1929,9 +1940,9 @@ function zellijMux(deps: DoctorDeps, settings: MuxSettings): Finding {
 // than assuming. `agentDetection` is a declared mux capability (`bridge/mux/capabilities.ts`), and it
 // is the whole question:
 //
-//  • Declared (Herdr) — the multiplexer names the agent and its status from its own wire, so nobody
-//    will ever install the emitter and a red line here would exit this verb non-zero on a perfectly
-//    healthy machine. An operator who learns to ignore one red line ignores the next. `ok`.
+//  • Declared (Herdr), the multiplexer names the agent and its status from its own wire. The emitter
+//    is optional there (it adds the hook edges of M56 spec 11), and a red line here would exit this
+//    verb non-zero on a perfectly healthy machine. An operator who learns to ignore one red line ignores the next. `ok`.
 //  • Absent (tmux, zellij) — the emitter is the ONLY thing that can give that adapter sight
 //    (`beaconMatcher`, M11/03). Without it every pane reads as a shell: no agent list, no "needs
 //    you", no notification. That is not a degraded Collie, it is the feature missing. `error`.
@@ -2039,14 +2050,18 @@ function beaconHooks(
       "`collie hooks install claude` to complete it",
     );
   }
-  // Installed under a multiplexer that names its own agents is still `ok` — it is not a mistake, and
-  // Collie prefers the adapter's answer to a beacon anyway (`beaconMatcher`'s "absent is the Herdr
-  // case") — but it is worth saying so, because it is the one install nothing here depends on.
-  const spare = muxReportsAgents ? `, which ${name} does not need — it reports agents itself` : "";
+  // Installed under a multiplexer that names its own agents is still `ok`. That multiplexer does not
+  // need the hooks to name an agent, so the line says what they still give: the hook edges of the
+  // input surface (M56 spec 11).
+  const spare = muxReportsAgents ? `; ${name} names agents itself and does not need them for that, so they give hook edges only` : "";
+  // The permission hold (M56 spec 12): which files hold permissions for the phone, if any.
+  const holdEvent = loadProfiles().get("claude")?.hold?.event;
+  const holding = holdEvent === undefined ? 0 : [...perFile.keys()].filter((path) => settingsHold(deps.files.read(path), holdEvent)).length;
+  const holds = holding > 0 ? `; holds permissions in ${String(holding)}` : "";
   return ok(
     check,
     `v${String(HOOK_MARKER_VERSION)} in ${String(perFile.size)} settings file${perFile.size === 1 ? "" : "s"},` +
-      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}`,
+      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}${holds}`,
   );
 }
 
@@ -2266,6 +2281,27 @@ function memberVersions(
       ` working${note}`,
     `\`collie crew update ${behind.map((e) => e.id).join(" ")}\` here, or \`collie update\` on each`,
   );
+}
+
+/**
+ * The Surface reader version each answering member sent on its `hello` (M56 spec 09), one quiet row.
+ * A member that sent none is an older build: the lead refuses a text reply to it, because that build
+ * types blind, and this row names it so the refusal has a reason on screen. No row when nobody answered.
+ * Never a warning: an older member is a fact about its build, and the keys still work.
+ */
+function memberSurface(
+  members: readonly TrustedMember[],
+  probes: Map<string, PeerOutcome<HelloResult>>,
+): Finding[] {
+  const parts: string[] = [];
+  for (const member of members) {
+    const outcome = probes.get(member.memberId);
+    if (outcome?.ok !== true) continue;
+    const version = outcome.value.surfaceVersion;
+    parts.push(`${member.memberId} ${version === undefined ? "none (older build)" : `reader ${String(version)}`}`);
+  }
+  if (parts.length === 0) return [];
+  return [ok("member-surface", `Surface reader version: ${parts.join(", ")}`)];
 }
 
 // ── Production wiring ────────────────────────────────────────────────────────

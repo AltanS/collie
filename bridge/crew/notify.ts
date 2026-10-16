@@ -6,6 +6,7 @@ import {
   type PushSender,
 } from "../notifications.ts";
 import { askFloodMessage, AskPush } from "../durable/ask-push.ts";
+import { DEFAULT_GUARD_SESSION } from "../durable/guard.ts";
 import type { AgentStatus, AgentView, CrewMode, PaneWire } from "../types.ts";
 import type { PeerSnapshotBody } from "./merge.ts";
 import { crewHerdTagFor } from "./tags.ts";
@@ -143,15 +144,29 @@ export class PeerNotifier<H = unknown> {
     // panes (§5); the peer's own herd path is muted and runs no guard. A guarded push goes through
     // the coordinator with the cause `ask`, so it reads "Permission needed in <pane>" and nothing of
     // the ask itself. When the host's hourly breaker trips, one summary push, then silence.
-    asks?.observe(
-      host,
-      body.agents,
-      // SAFETY: as above, `PaneWire` IS `AgentView` minus the two server-only session fields.
-      (pane) => entry.coordinator.onTransition(pane as AgentView, pane.status, "blocked", "ask"),
-      () => {
-        if (!this.deps.mute.isMuted() && this.deps.isNotifiable("blocked")) this.deps.push.send(askFloodMessage(host, host));
-      },
-    );
+    // One observation per session the member's panes are in (M55): each program on that machine is its
+    // own scope, so one program's asks never close another's. A pane with no session tag is `default`.
+    if (asks === undefined) return;
+    // Every session the member listed is observed, an empty one too, so a program whose last pane went
+    // away closes what it had open, as one observation of the whole host used to.
+    const bySession = new Map<string, PaneWire[]>([[DEFAULT_GUARD_SESSION, []], ...body.sessions.map((s): [string, PaneWire[]] => [s.name, []])]);
+    for (const pane of body.agents) {
+      const session = pane.session ?? DEFAULT_GUARD_SESSION;
+      bySession.set(session, [...(bySession.get(session) ?? []), pane]);
+    }
+    for (const [session, panes] of bySession) {
+      asks.observe(
+        host,
+        panes,
+        // SAFETY: as above, `PaneWire` IS `AgentView` minus the two server-only session fields.
+        (pane, text) => entry.coordinator.onTransition(pane as AgentView, pane.status, "blocked", "ask", text),
+        () => {
+          const named = session === DEFAULT_GUARD_SESSION ? host : `${host} (${session})`;
+          if (!this.deps.mute.isMuted() && this.deps.isNotifiable("blocked")) this.deps.push.send(askFloodMessage(host, named, session));
+        },
+        session,
+      );
+    }
   }
 
   /**

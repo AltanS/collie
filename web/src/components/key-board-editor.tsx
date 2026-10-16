@@ -420,7 +420,7 @@ export function KeyBoardEditor({
 
           <section aria-label={t("keys.editor.presetsTitle")} className="space-y-1">
             <SectionLabel placement="above">{t("keys.editor.presetsTitle")}</SectionLabel>
-            <ul className="divide-y divide-rule rounded-sm border border-border">
+            <ul data-slot="list-group" className="divide-rule rounded-sm border-[length:var(--row-rule)] border-border p-0">
               {PRESETS.map((preset) => (
                 <li key={preset.id}>
                   <PresetRow

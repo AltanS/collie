@@ -10,114 +10,32 @@
 // matched by POSITION (below the box's bottom border), never by its content strings.
 
 import type { StyledLine } from "../../blocks";
+import { findInputFrame, type Frame } from "../../surface/frame";
 import { namesAMenuKey, SEGMENT_SPLIT } from "../menu-hints";
-import { findAutocompleteRun, MAX_AUTOCOMPLETE_LINES } from "./autocomplete";
+import { findAutocompleteRun } from "./autocomplete";
 import {
+  CLAUDE_IDLE,
   classifyFooter,
   isBareBoxBorder,
   isBlank,
   isHorizontalRule,
   isInputBoxTopBorder,
   isMultiStepHeader,
-  isPromptRow,
   lineText,
   namesPlanDialog,
-  walkFrame,
 } from "./markers";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPreviewSelectRegion } from "./preview-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectWizardRegion } from "./wizard";
 
-// Rows the view strips DIRECTLY under the input box's bottom border as a statusline: the statusline
-// plus its hint row(s) ("← for agents", "⏵⏵ bypass permissions on …"). A statusline is an arbitrary
-// user command's output, so this run is as tall as the user made it. The ceiling bounds only what is
-// stripped and re-surfaced as a statusline, and mirrors MAX_FOOTER_LINES (ADR 0004). It no longer
-// decides whether the box exists: a taller run is an `unknown` tail that stays on the mirror, and the
-// send path still sees the box (ADR 0048).
-const MAX_STATUS_LINES = 8;
-
-// A newer Claude Code UI paints a "background agents" footer BELOW the statusline/hint, separated from
-// them by a blank line: a bold "● main" header and one row per background agent
-// ("◯ <agent>  <task…>   <elapsed> · ↓ <tokens>"). We peel it off the tail as chrome too, bounded to
-// this many rows (header + a handful of agents, plus a possible "… +N more" line) so a borderless
-// buffer still can't strip unboundedly — an over-long block just falls back to the raw mirror.
-// Peeled is not dropped: extractAgentsFooter hands the same rows to their own chrome element (issue
-// #242). Until then they left the mirror with no home, which ADR 0048's tail model does not allow.
-const MAX_FOOTER_LINES = 8;
-
-// Text Claude draws on the "❯" prompt line that is NOT a real user draft — it's a hint the TUI paints
-// when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as a set so
-// more variants can be added without touching the extraction logic.
-const INPUT_PLACEHOLDERS = new Set(["Press up to edit queued messages"]);
-
-/**
- * GHOST TEXT — the generated "suggested next prompt" a newer Claude Code paints inside an otherwise
- * empty input box (a whole plausible message: "fix it", "run the tests", …). It is NOT a draft: it is
- * a suggestion the operator has not written and, until they act on it, the box is empty.
- *
- * Content cannot tell the two apart — the suggestion is arbitrary generated prose and changes every
- * turn, so INPUT_PLACEHOLDERS (which knows one fixed literal) can never grow to cover it. STYLE can.
- * Measured on a live Claude Code v2.1.235 pane through the bridge (2026-08-19): the prompt line comes
- * over the wire as
- *
- *     ❯ \x1b[0m\x1b[2mfix it\x1b[0m
- *
- * — the suggestion is a run of SGR 2 (faint) with no colour of its own, while the "❯" marker and every
- * real draft on the same line carry no SGR at all (`dim: false`). Typing replaces the suggestion
- * outright, so a box never holds both at once; that is what makes "EVERY visible run is faint" sound
- * as the whole-box test rather than a per-run one.
- *
- * Three consequences follow from misreading one as a draft, and all three are fixed by classifying it
- * here, at the single place a draft is derived (lib/reply-action.ts and composer.tsx both take their
- * draft from `extractInputDraft`, so neither needs its own ghost test):
- *
- *  1. the app offered to "recover" a stranded draft the operator never wrote;
- *  2. the composer's pre-clear sweep fired `ctrl+k` + a burst of Backspaces at it — and the ghost is
- *     not editable text, so it clears NOTHING (verified live: after a full sweep the same faint run is
- *     still on the line). Destructive keys, no effect, every send;
- *  3. worst, it could VOUCH FOR A SEND THAT NEVER LANDED. `draftCarriesSend` accepts a draft whose
- *     visible characters appear contiguously in the sent text, so a suggestion that happens to be an
- *     8-character substring of the message ("fix the parser…" vs a ghost "fix the ") would satisfy the
- *     guard against a box our text never reached — Collie then fires the submit key and reports
- *     `sent`, and the message is lost. Returning null here keeps a ghost out of that comparison
- *     entirely, which is the defense in depth: the guard never sees a ghost to be fooled by.
- *
- * A false POSITIVE is survivable in the one direction that matters: if a genuine draft were ever
- * painted faint we would neither preview nor sweep it, `pane.send_text` would append to it, and the
- * appended line would then fail `draftCarriesSend` — the send stalls with nothing submitted, which is
- * this module's designed failure mode. A false NEGATIVE (treating a ghost as a draft) is the bug above.
- *
- * `hasInputBox`/`composerReady` deliberately do NOT consult this: a box holding ghost text is a real,
- * typeable box, and refusing to type into it would break every send after the first turn.
- */
-function inputBoxHoldsGhostText(lines: StyledLine[], box: InputBox): boolean {
-  let sawContent = false;
-  for (let j = box.prompt; j < box.bottomBorder; j++) {
-    // The "❯" marker is unstyled and may share a segment with the text that follows it (a real draft
-    // arrives as one segment, "❯ hello"), so it is stripped from the text rather than skipped as a
-    // segment — otherwise the marker's own non-faint run would answer "not a ghost" every time. Shell
-    // mode's "!" is stripped the same way; there the marker is its own PAINTED segment, so it would
-    // answer "not a ghost" for a reason this code did not state.
-    let beforeMarker = j === box.prompt;
-    for (const seg of lines[j]!.segments) {
-      let text = seg.text;
-      if (beforeMarker) {
-        const head = text.trimStart();
-        if (!isPromptRow(head)) {
-          if (head.length === 0) continue; // indent ahead of the marker
-        } else {
-          text = head.slice(1);
-          beforeMarker = false;
-        }
-      }
-      if (text.trim().length === 0) continue;
-      if (seg.dim !== true) return false;
-      sawContent = true;
-    }
-  }
-  return sawContent;
-}
+// The input frame itself (the edges, the draft hole, the placeholder and the statusline run under
+// the box) is found by the one frame module, `lib/surface/frame.ts`, from the Claude profile's
+// `idle` block (M56 spec 03). The bounds that used to live here as constants are profile data now:
+// the statusline run is `idle.volatile.below.maxRows` rows (ADR 0004), the background-agents footer
+// under it `idle.volatile.below.footerMaxRows`, and the placeholder texts and the faint attribute
+// of ghost text are `idle.placeholders`. This module keeps what the frame does not judge: the tail's
+// label and every modal check (ADR 0048).
 
 /**
  * Return `lines` with any confidently-matched trailing chrome removed. When nothing matches the
@@ -195,9 +113,9 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
  * extractStatusLines stops above it, so without this probe the agent list was on no surface at all
  * (issue #242). It gets its own chrome element rather than more rows in the statusline strip: the
  * strip's height cap guards against an operator's script, and this block is Claude's own and already
- * bounded by MAX_FOOTER_LINES.
+ * bounded by the profile's `idle.volatile.below.footerMaxRows`.
  *
- * POSITIONAL, like the strip: the rows from where walkStatusline says the footer starts to the last
+ * POSITIONAL, like the strip: the rows from where the frame's walk says the footer starts to the last
  * non-blank line, STYLED, top to bottom. `[]` when there is no box, the tail is not a statusline run,
  * or no footer was peeled. One content check: the block must open with Claude's "●" header. The walk
  * peels by position, so a custom statusline with a blank row in it also loses its lower rows there;
@@ -221,18 +139,37 @@ export function extractAgentsFooter(lines: StyledLine[]): StyledLine[] {
 }
 
 /**
+ * GHOST TEXT is the generated "suggested next prompt" a newer Claude Code paints inside an otherwise
+ * empty input box (a whole plausible message: "fix it", "run the tests", …). It is NOT a draft. Measured
+ * on a live Claude Code v2.1.235 pane through the bridge (2026-08-19), the prompt line comes over the
+ * wire as
+ *
+ *     ❯ \x1b[0m\x1b[2mfix it\x1b[0m
+ *
+ * The suggestion is a run of SGR 2 (faint), while the "❯" marker and every real draft carry no SGR at
+ * all. Typing replaces the suggestion outright, so a box never holds both at once, which is what makes
+ * "EVERY visible run is faint" sound as the whole-box test. The profile names that attribute
+ * (`idle.placeholders.sgr`) and the frame module applies it.
+ *
+ * Misreading ghost text as a draft did three things: the app offered to "recover" a draft the
+ * operator never wrote; the composer's pre-clear sweep fired destructive keys at text that is not
+ * editable; and, worst, `draftCarriesSend` could vouch for a send that never landed when the
+ * suggestion was a substring of the message. Returning null keeps a ghost out of that comparison.
+ * A false POSITIVE (a real draft painted faint) only stalls a send, this module's designed failure.
+ * `hasInputBox`/`composerReady` deliberately do NOT consult it: a box holding ghost text is a real,
+ * typeable box.
+ *
  * The user's draft text stranded on the input box's "❯" prompt line. When a message is queued while
  * the agent is busy and then recalled (Up/Esc), the text lands here and persists across turns — but
  * stripChrome peels the whole box off the mirror, so it becomes invisible, and the composer (local
  * state only) never learns of it. This re-surfaces it so the app can offer to recover it.
  *
- * Reads the prompt line found by locateInputBox: drop the leading "❯" marker and its separator space
- * (Claude renders a U+00A0 there, which JS trim() strips), then trim. A draft too long for one line
- * WRAPS onto continuation lines inside the box; those are folded back in (each trimmed of its
- * alignment indent, joined with a single space — Claude soft-wraps at word boundaries, so the dropped
- * break was a space). Returns `null` when there's no input box at the tail, the box is empty (bare
- * "❯"), the box holds GHOST TEXT (a generated suggestion — see inputBoxHoldsGhostText), or the line is
- * a known TUI placeholder (INPUT_PLACEHOLDERS) rather than a real draft.
+ * Reads the frame's interior: the hole after the "❯" marker and its separator space (Claude renders a
+ * U+00A0 there, which JS trim() strips). A draft too long for one line WRAPS onto continuation lines
+ * inside the box; those are folded back in (each trimmed of its alignment indent, joined with a single
+ * space, since Claude soft-wraps at word boundaries). Returns `null` when there's no input box at the
+ * tail, the box is empty (bare "❯"), or the interior is a placeholder: GHOST TEXT (above) or a known
+ * placeholder text from the profile.
  */
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const texts = lines.map(lineText);
@@ -242,24 +179,15 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
 
   const box = locateInputBox(lines, texts, end);
   if (box === null) return null;
-  // Style first, content second: a generated suggestion is arbitrary prose, so only how it is PAINTED
-  // separates it from a draft (see inputBoxHoldsGhostText).
-  if (inputBoxHoldsGhostText(lines, box)) return null;
-
-  let head = texts[box.prompt]!.trimStart();
-  // The marker is chrome and never reaches the draft, so shell mode's draft is the command alone.
-  // Memory mode keeps its "#": there the marker is still "❯" and the "#" is typed content.
-  if (isPromptRow(head)) head = head.slice(1);
-  const parts = [head.trim()];
-  // Continuation lines of a wrapped draft: everything between the prompt and the bottom border,
-  // de-indented. Blank lines are dropped (interior/trailing padding), so they never inject a space.
-  for (let j = box.prompt + 1; j < box.bottomBorder; j++) {
-    const t = texts[j]!.trim();
-    if (t.length > 0) parts.push(t);
-  }
-  const draft = parts.join(" ").trim();
-  if (draft.length === 0 || INPUT_PLACEHOLDERS.has(draft)) return null;
-  return draft;
+  // Style first, content second: ghost text (a generated suggestion) is arbitrary prose, so only how
+  // it is PAINTED separates it from a draft. The frame module marks it, and a known placeholder text,
+  // as `placeholder`.
+  if (box.frame.placeholder) return null;
+  // The frame's text is the hole after the marker plus every wrapped row, de-indented and joined with
+  // one space. The marker is chrome and never reaches the draft, so shell mode's draft is the command
+  // alone. Memory mode keeps its "#": there the marker is still "❯" and the "#" is typed content.
+  const draft = box.frame.interior.text;
+  return draft.length === 0 ? null : draft;
 }
 
 /**
@@ -294,13 +222,15 @@ export function inputBoxTail(lines: StyledLine[]): InputBoxTail | null {
 /**
  * The rows under the bottom border, labelled:
  *  - `statusline`: the bounded statusline + hint run, with the optional background-agents footer
- *    (MAX_STATUS_LINES / MAX_FOOTER_LINES, ADR 0004), or no rows at all;
+ *    (the profile's `idle.volatile.below` bounds, ADR 0004), or no rows at all;
  *  - `autocomplete`: Claude's completion popup (./autocomplete.ts) under a slash-command draft;
  *  - `unknown`: anything else that passed locateInputBox's modal checks.
  */
 export type InputBoxTail = "statusline" | "autocomplete" | "unknown";
 
 interface InputBox {
+  /** The frame the frame module found (lib/surface/frame.ts): edges, interior, placeholder, volatile rows. */
+  frame: Frame;
   /** Index of the TOP border — the exclusive bound of everything ABOVE the box (stripChrome uses it). */
   top: number;
   /** Index of the "❯" prompt line, between the two borders — carries the draft (extractInputDraft). */
@@ -320,44 +250,33 @@ interface InputBox {
   agentsStart: number;
 }
 
-// How many rows may sit between the bottom border and the last non-blank line — the search bound
-// for the box (constraint: the box sits in the screen's final region). It is the popup's own cap,
-// MAX_AUTOCOMPLETE_LINES (60), because the popup is the tallest thing Claude paints under a live box:
-// the old statusline walk reached at most MAX_STATUS_LINES + a blank + MAX_FOOTER_LINES (17 rows), and
-// the popup peel reached 60 more rows on top of the same border. So 60 covers every tail the old
-// locator could accept, and a box further up than that is not the live one. The number buys no
-// safety on its own; the modal checks below do (ADR 0048).
-const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
-
 /**
  * Find the input box by ITS OWN FRAME, then account for everything below it. Returns null unless all
  * of this holds, checked in order:
  *
- *     <top border>         (isInputBoxTopBorder: bare, or carrying a session label; column 0)
+ *     <top border>         (bare, or carrying a session label; column 0)
  *     ❯ <draft>            (the prompt line; "!" in shell mode; column 0)
- *       <continuation…>    (0..MAX_DRAFT_LINES wrapped-draft lines, INDENTED: any content, even a
- *                           rule or a "❯" line the user pasted, is draft text — see atColumnZero)
+ *       <continuation…>    (0..idle.frame.maxDraftRows wrapped-draft lines, INDENTED: any content,
+ *                           even a rule or a "❯" line the user pasted, is draft text)
  *     <bottom border>      (bare U+2500 rule)
- *     <tail…>              (0..MAX_TAIL_LINES rows, classified by classifyTail)
+ *     <tail…>              (0..idle.frame.maxTailRows rows, classified by classifyTail)
  *
- *  1. THE LOWEST FRAME MARK IS THE BOTTOM BORDER. Walking up from the last non-blank line, the first
- *     row that is a box border, a top-border-shaped rule or a "❯"-led line must be a bare border, and
- *     it must come within MAX_TAIL_LINES rows. So the box is the lowest box-shaped triple on screen,
- *     and its tail holds no border, no rule shaped like a top border and no "❯" prompt line — a
- *     select dialog's "❯ 1. Yes" row, or a second box, stops the walk before any border is reached.
- *     One exception, for a statusline that draws such a row itself (a starship-style "❯ ~/src on
- *     main", a "─ main ───" separator): an un-numbered "❯"-led row or a labelled rule is stepped over
- *     (isStatuslineFrameMark), but the box is then kept only when every such row sits inside a
- *     `statusline` tail's run, at most MAX_STATUS_LINES rows under the border, and no labelled rule
- *     sits directly on a "❯" row (a second box's top border and prompt). The same step-over serves
- *     the completion popup's pointed entry ("  ❯ /model …", Claude Code 2.1.291): that row is kept
- *     only when the tail is `autocomplete` and it is the one pointer the popup grammar read.
- *  2. THE FRAME CLOSES: a prompt line above the bottom border and a top border above that, inside
- *     the shared MAX_DRAFT_LINES budget. The prompt line carries "❯", or "!" in shell mode
- *     (isPromptRow). Only this step learned the bang; step 1's marks stay chevron-only. Both sit at
- *     column 0, and only a column-0 row stops the walk up from the bottom border: an indented row
- *     is a wrapped-draft continuation, so a draft holding a pasted rule or shell prompt keeps its box
- *     (ADR 0048 addendum 2026-09-26).
+ *  1. THE FRAME (lib/surface/frame.ts, from the profile's `idle` anchors): the bottom border is the
+ *     lowest bare column-0 rule at most `idle.frame.maxTailRows` rows (60, the completion popup's own
+ *     cap) above the last non-blank line, and the frame closes above it: a prompt line carrying "❯",
+ *     or "!" in shell mode, then a top border, inside the shared `idle.frame.maxDraftRows` budget.
+ *     Only a column-0 row stops the walk up from the bottom border: an indented row is a
+ *     wrapped-draft continuation, so a draft holding a pasted rule or shell prompt keeps its box
+ *     (ADR 0048 addendum 2026-09-26). The bound buys no safety on its own; the checks below do.
+ *  2. NO FRAME MARK UNDER THE BOX: the tail holds no border, no rule shaped like a top border and no
+ *     "❯"-led line (isFrameMark, chevron-only and indent-blind), a select dialog's "❯ 1. Yes" row,
+ *     or a second box, refuses. One exception, for a statusline that draws such a row itself (a
+ *     starship-style "❯ ~/src on main", a "─ main ───" separator): an un-numbered "❯"-led row or a
+ *     labelled rule is stepped over (isStatuslineFrameMark), but the box is then kept only when every
+ *     such row sits inside a `statusline` tail's run and no labelled rule sits directly on a "❯" row
+ *     (a second box's top border and prompt). The same step-over serves the completion popup's
+ *     pointed entry ("  ❯ /model …", Claude Code 2.1.291): that row is kept only when the tail is
+ *     `autocomplete` and it is the one pointer the popup grammar read.
  *  3. THE TAIL IS ACCOUNTED FOR (classifyTail): a statusline run, a completion popup, or `unknown`.
  *  4. NO MODAL IS ON SCREEN: every specific dialog grammar runs over the WHOLE screen, and none may
  *     claim it; no tail row may carry a dialog footer; no `statusline` or `unknown` tail row may carry
@@ -367,7 +286,7 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  *     claims it. A dialog with none of them under a stale box is not refused (ADR 0048).
  *
  * Why the frame and not the old bottom-up walk: that walk had to CROSS the tail to reach the border,
- * with a row budget (MAX_STATUS_LINES), so anything below the box it could not name (a completion
+ * with a row budget (the statusline bound), so anything below the box it could not name (a completion
  * popup whose command names Claude clipped with "…", say) hid a live box and stalled every send.
  * The budget still bounds what the VIEW strips as a statusline; it no longer decides whether the box
  * exists (ADR 0048, amending ADR 0004).
@@ -380,32 +299,22 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  * A popup tail is not checked, but a popup is only named under a slash-command draft.
  */
 function locateInputBox(lines: StyledLine[], texts: string[], end: number): InputBox | null {
-  // 1. The lowest frame mark, within the tail bound. A mark a statusline may draw is stepped over and
-  //    remembered; it is judged once the tail is labelled (below).
-  let b = end - 1;
-  const stepped: number[] = [];
-  while (b >= 0) {
-    const text = texts[b]!;
-    if (isFrameMark(text)) {
-      if (isBareBoxBorder(text)) break;
-      if (!isStatuslineFrameMark(text)) return null;
-      stepped.push(b);
-    }
-    if (end - 1 - b >= MAX_TAIL_LINES) return null;
-    b--;
-  }
-  if (b < 0) return null;
-
-  // 2. The frame closes above it.
-  const frame = walkFrame(texts, b);
+  // 1. The frame.
+  const frame = findInputFrame(lines, CLAUDE_IDLE);
   if (frame === null) return null;
+  const b = frame.bottom;
+
+  // 2. No frame mark under it, except one a statusline or the popup may draw: those are remembered
+  //    and judged once the tail is labelled (below).
+  const stepped: number[] = [];
+  for (let j = end - 1; j > b; j--) {
+    if (!isFrameMark(texts[j]!)) continue;
+    if (!isStatuslineFrameMark(texts[j]!)) return null;
+    stepped.push(j);
+  }
 
   // 3. The tail is accounted for.
-  const { tail, statusEnd, agentsStart, popupPointer } = classifyTail(
-    texts,
-    { prompt: frame.prompt, bottomBorder: b },
-    end,
-  );
+  const { tail, statusEnd, agentsStart, popupPointer } = classifyTail(texts, frame, end);
   if (!steppedMarksAreOwned(texts, stepped, tail, b, statusEnd, agentsStart, popupPointer)) return null;
 
   // 4. No modal on screen.
@@ -416,7 +325,7 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
   }
   if (dialogOnScreen(lines)) return null;
 
-  return { top: frame.top, prompt: frame.prompt, bottomBorder: b, tail, statusEnd, agentsStart };
+  return { frame, top: frame.top, prompt: frame.interior.prompt, bottomBorder: b, tail, statusEnd, agentsStart };
 }
 
 /** A row that belongs to a box or a dialog's frame, unless a statusline drew it (isStatuslineFrameMark):
@@ -438,14 +347,14 @@ function isStatuslineFrameMark(text: string): boolean {
 }
 
 /**
- * Whether the marks step 1 stepped over (`stepped`, bottom-up) all belong to a run that draws them.
+ * Whether the marks step 2 stepped over (`stepped`, bottom-up) all belong to a run that draws them.
  * Under an `autocomplete` tail that is the popup's own pointed entry row (Claude Code 2.1.291 marks
  * the selected completion with "❯", autocomplete.ts), and nothing else: the popup grammar named every
  * row and allows exactly one pointer, so any other stepped mark refuses. Otherwise it is the statusline
  * run: the tail is `statusline` and each mark sits inside one of the two runs that tail draws — the
- * statusline run itself (`bottomBorder + 1` to `statusEnd`, at most MAX_STATUS_LINES rows under the
- * border) or the background-agents footer walkStatusline peeled below it (`agentsStart` to the last
- * non-blank row, at most MAX_FOOTER_LINES rows). Claude Code 2.1.293 paints "❯" on the ACTIVE agent's
+ * statusline run itself (`bottomBorder + 1` to `statusEnd`) or the background-agents footer peeled
+ * below it (`agentsStart` to the last non-blank row). The frame module walked both inside the
+ * profile's bounds, so a row inside either is in bounds. Claude Code 2.1.293 paints "❯" on the ACTIVE agent's
  * footer row (`claude--footer-pointed-agent.txt`); that pointer is the composer's own chrome, not a
  * dialog's, and refusing it used to take the whole box down with it. And no labelled rule sits
  * directly on a "❯" row, the shape of a second box's top border and prompt. True when nothing was
@@ -465,11 +374,8 @@ function steppedMarksAreOwned(
   if (tail !== "statusline") return false;
   for (const j of stepped) {
     // `agentsStart` is `end` when no footer was peeled, so a row falls into exactly one of the two.
-    if (j >= agentsStart) {
-      if (j - agentsStart >= MAX_FOOTER_LINES) return false;
-    } else if (j >= statusEnd || j - bottomBorder > MAX_STATUS_LINES) {
-      return false;
-    }
+    // A row at or past `statusEnd` and above `agentsStart` is in neither run.
+    if (j <= bottomBorder || (j >= statusEnd && j < agentsStart)) return false;
     const below = texts[j + 1];
     if (!texts[j]!.trimStart().startsWith("❯") && below !== undefined && below.trimStart().startsWith("❯")) {
       return false;
@@ -488,11 +394,16 @@ function tailNamesAMenu(text: string, texts: string[]): boolean {
 
 // Claude's own status hints. They read like a modal's "<key> to <verb>" footer but belong to the
 // live composer: the default footer paints "esc to interrupt" while a turn runs and "↓ to manage"
-// while background tasks or monitors exist. A modal's footer says "Esc to cancel" / "to close" /
+// while background tasks or monitors exist. Claude Code 2.1.301 paints "↓ to view" on the mode row
+// while background tasks run (the 2026-10-16 incident on lane 8788, the agents panel under the box). A modal's footer says "Esc to cancel" / "to close" /
 // "to select", never these. The footer is clipped with "…" on a narrow pane, so "esc to inter…" is
 // the same hint cut short.
 const ESC_TO_INTERRUPT = /^esc to (?:interrupt|i(?:n(?:t(?:e(?:r(?:r(?:u(?:p)?)?)?)?)?)?)?…|…)$/i;
 const DOWN_TO_MANAGE = /^↓ to (?:manage|m(?:a(?:n(?:a(?:g)?)?)?)?…|…)$/i;
+const DOWN_TO_VIEW = /^↓ to (?:view|v(?:i(?:e)?)?…)$/i;
+// Claude Code 2.1.301 with the tasks pill focused (one ↓ from the box, lab 2026-10-16): the mode
+// row's last segment reads "Enter to view tasks", or that hint cut short.
+const ENTER_TO_VIEW_TASKS = /^enter to (?:view tasks|view t(?:a(?:s(?:k)?)?)?…|v(?:i(?:e(?:w)?)?)?…)$/i;
 
 // Claude Code 2.1.291 prints "ctrl+g to edit in <editor>" while the draft holds more than one line:
 // right-aligned on the statusline's row, or on a row of its own at 40 columns
@@ -503,7 +414,7 @@ const DRAFT_EDIT_HINT = /^ctrl\+g to edit\b[^·]*$/i;
 
 function isStatusHint(segment: string, draftEditHint: boolean): boolean {
   const t = segment.trim();
-  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t) || (draftEditHint && DRAFT_EDIT_HINT.test(t));
+  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t) || DOWN_TO_VIEW.test(t) || ENTER_TO_VIEW_TASKS.test(t) || (draftEditHint && DRAFT_EDIT_HINT.test(t));
 }
 
 /**
@@ -546,12 +457,6 @@ function dialogOnScreen(lines: StyledLine[]): boolean {
   );
 }
 
-/** The part of a box classifyTail reads: where the draft is, and where the tail starts. */
-interface TailOwner {
-  prompt: number;
-  bottomBorder: number;
-}
-
 /** classifyTail's answer: the tail's label, the statusline run's exclusive end (InputBox.statusEnd),
  *  and the popup's "❯"-pointed row when the tail is a 2.1.291 popup (-1 otherwise). */
 interface TailReading {
@@ -566,20 +471,37 @@ interface TailReading {
  * line). Pure, and it never refuses: refusing is locateInputBox's job. The popup is tried first
  * because a short popup also fits the statusline walk, and its rows must not be surfaced as a
  * statusline.
+ *
+ * The statusline walk is the frame's own (`frame.volatile`): an optional background-agents footer
+ * divided off by a blank run, then the statusline and hint rows, which must reach the bottom border.
+ * Both runs are bounded by the profile (`idle.volatile.below`), positional, never by content. When the
+ * rows under the box do not walk that way, both spans are null and the tail is `unknown`.
+ *
+ *     <bottom border>
+ *     <statusline>         (statusline + hint rows together, 0..below.maxRows, by position)
+ *     <hint line>
+ *     <blank>              (optional, separates the background-agents footer, if present)
+ *     <● main>             (0..below.footerMaxRows footer lines, matched by position not content)
+ *     <◯ agent …>
  */
-function classifyTail(texts: string[], box: TailOwner, end: number): TailReading {
-  const first = box.bottomBorder + 1;
+function classifyTail(texts: string[], frame: Frame, end: number): TailReading {
+  const first = frame.bottom + 1;
   if (first >= end) return { tail: "statusline", statusEnd: first, agentsStart: end, popupPointer: -1 };
 
   // The popup is confirmed, not assumed: Claude paints it only while the draft STARTS WITH "/".
   const popup = findAutocompleteRun(texts, end);
-  if (popup !== null && popup.start === first && promptIsSlashCommand(texts, box.prompt)) {
+  if (popup !== null && popup.start === first && promptIsSlashCommand(texts, frame.interior.prompt)) {
     return { tail: "autocomplete", statusEnd: first, agentsStart: end, popupPointer: popup.pointer };
   }
 
-  const run = walkStatusline(texts, box.bottomBorder, end);
-  if (run !== null) return { tail: "statusline", ...run, popupPointer: -1 };
-  return { tail: "unknown", statusEnd: first, agentsStart: end, popupPointer: -1 };
+  const { status, footer } = frame.volatile;
+  if (status === null && footer === null) return { tail: "unknown", statusEnd: first, agentsStart: end, popupPointer: -1 };
+  return {
+    tail: "statusline",
+    statusEnd: status === null ? first : status.last + 1,
+    agentsStart: footer === null ? end : footer.first,
+    popupPointer: -1,
+  };
 }
 
 /** Whether the "❯" line holds a slash command — the draft state that puts the completion popup on
@@ -587,55 +509,4 @@ function classifyTail(texts: string[], box: TailOwner, end: number): TailReading
 function promptIsSlashCommand(texts: string[], prompt: number): boolean {
   const head = texts[prompt]!.trimStart();
   return (head.startsWith("❯") ? head.slice(1) : head).trim().startsWith("/");
-}
-
-/**
- * The statusline walk, bottom-up from `end` (exclusive): an optional background-agents footer and its
- * blank separator, then up to MAX_STATUS_LINES status/hint rows. Returns the run's exclusive end and
- * the footer's first row (`end` when there is no footer) when the walk lands exactly on
- * `bottomBorder`, else null.
- *
- *     <bottom border>
- *     <statusline>         (statusline + hint rows together are 0..MAX_STATUS_LINES, by position)
- *     <hint line>
- *     <blank>              (optional — separates the background-agents footer, if present)
- *     <● main>             (0..MAX_FOOTER_LINES footer lines, matched by position not content)
- *     <◯ agent …>
- */
-function walkStatusline(
-  texts: string[],
-  bottomBorder: number,
-  end: number,
-): { statusEnd: number; agentsStart: number } | null {
-  let i = end - 1;
-  let agentsStart = end;
-
-  // (a) Optional background-agents footer at the very tail (a newer Claude Code UI): a non-blank run
-  //     ("● main" header + "◯ …" agent rows) divided from the statusline/hint by a blank line. Matched
-  //     by POSITION, never content, and peeled only when that blank separator is found within the
-  //     bound — otherwise the run we just walked IS the statusline+hint, so leave it for step (b).
-  {
-    let j = i;
-    let footer = 0;
-    while (j > bottomBorder && !isBlank(texts[j]!) && footer < MAX_FOOTER_LINES) {
-      footer++;
-      j--;
-    }
-    if (footer > 0 && j > bottomBorder && isBlank(texts[j]!)) {
-      agentsStart = j + 1;
-      while (j > bottomBorder && isBlank(texts[j]!)) j--; // consume the blank separator run
-      i = j;
-    }
-  }
-
-  // (b) Up to MAX_STATUS_LINES status/hint lines directly above the bottom border: non-blank text.
-  //     `i` is now the last row of that run (the footer, if any, has been peeled off above), so it
-  //     fixes the run's exclusive end.
-  const statusEnd = i + 1;
-  let status = 0;
-  while (i > bottomBorder && !isBlank(texts[i]!) && status < MAX_STATUS_LINES) {
-    status++;
-    i--;
-  }
-  return i === bottomBorder ? { statusEnd, agentsStart } : null;
 }

@@ -1,6 +1,9 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
+import type { HeldRow } from "../web/src/lib/surface/send.ts";
+import type { Surface } from "../web/src/lib/surface/surface.ts";
+import type { HoldNote } from "../web/src/lib/surface/hold.ts";
 import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
@@ -21,6 +24,14 @@ export type { Confidence } from "./cache/claims.ts";
 export type { GitHead } from "./git-head.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
+
+/** A small mark next to a pane's title: a count, or a short word. Exactly one key (WIRE.md section 3). */
+export type PaneBadge = { count: number } | { text: string };
+
+/** How far a working pane is: a list of steps, or a percent with an optional label (WIRE.md section 7.12). */
+export type PaneProgress =
+  | { readonly kind: "steps"; readonly steps: readonly { readonly label: string; readonly state: "done" | "running" | "todo" }[] }
+  | { readonly kind: "percent"; readonly value: number; readonly label?: string };
 
 /**
  * A single pane the user might want to monitor or drive. Usually an agent-bearing pane (the
@@ -115,6 +126,25 @@ export interface AgentView {
    * bridge, which reads exactly as it did before — as "not known to be stale".
    */
   terminalTitleStale?: boolean;
+  /**
+   * One line the program shows under this pane's title (WIRE.md section 3, `Pane.subtitle`). Text only,
+   * trimmed and capped at 120 characters by the adapter that read it.
+   *
+   * ONE PRODUCER, like {@link PaneWire.asks}: only a pane from an adapter whose panes have no screen
+   * carries it (the `durable` adapter). Absent on every other pane and from every older bridge or crew
+   * member, which all read as "no subtitle", so a solo body stays byte-identical.
+   */
+  subtitle?: string;
+  /**
+   * A small mark next to the title: a count (an integer, 0 to 9999) or a short word (at most 12
+   * characters). Same producer and same absence rule as {@link subtitle}.
+   */
+  badge?: PaneBadge;
+  /**
+   * How far a working conversation is (WIRE.md section 7.12). Same producer and same absence rule as
+   * {@link subtitle}. The phone draws it only while the pane works or waits.
+   */
+  progress?: PaneProgress;
   /**
    * A finished English sentence about this pane, composed in the bridge and rendered as text the
    * client does not interpret. Absent on almost every pane.
@@ -228,14 +258,86 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * not see. Absent on every other pane and from every older bridge.
    */
   turnId?: string;
+  /**
+   * The belt buttons this pane's program lists, in its order (WIRE.md section 4, `PaneAction`).
+   *
+   * ONE PRODUCER, like {@link asks}: only a pane from an adapter that takes program actions carries
+   * the key (the `durable` adapter, `MuxAdapter.paneActions`, when the program declared `caps.actions`).
+   * At most 4, each cleaned by the adapter. Absent on every other pane and from every older bridge,
+   * which the phone reads as "no program buttons here".
+   */
+  actions?: PaneAction[];
+  /**
+   * The pane's input surface as the bridge reads it from the screen (M56 spec 04): turn, modal,
+   * composer and the reason a claim is unknown, with the revision of the read.
+   *
+   * Present only while Surface shadow mode is on (`COLLIE_SURFACE_SHADOW=1`) and the shadow has read
+   * the pane; absent on every other pane and from every older bridge. Nothing on the phone decides a
+   * send by it yet (spec 06 turns it into the composer's input).
+   */
+  surface?: Surface;
+  /**
+   * Whether the pane's hook source is live (M56 spec 11): `live` while the harness's own hooks send
+   * edges from the pane's process, `holds` when those hooks also hold permissions (M56 spec 12),
+   * `none` otherwise (hooks not installed, or the pane started before the install). Present only with `surface`, on a session whose adapter can place edges. Absent from
+   * an older bridge.
+   */
+  hooks?: "live" | "holds" | "none";
+  /**
+   * The pane's hook-held permission (M56 spec 12): the tool, the input shown and the state (held,
+   * sent, answered at the desk, voided). Present only while a hold waits or a short while after it
+   * ended. The input is masked like the mirror under redaction. Absent from an older bridge.
+   */
+  hold?: HoldNote;
+  /**
+   * Present (and `true`) when this bridge runs the Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec
+   * 05) and the pane carries a Surface: the phone's composer then sends through `POST /api/send`.
+   * Absent otherwise, so a bridge without the flag sends the same bytes as before.
+   */
+  sendProtocol?: true;
+  /**
+   * The pane's held sends (M56 spec 15), oldest first: what the harness could not take during its turn
+   * and Collie sends once the pane reads free, plus ended ones whose text waits for a Resend. Present
+   * only when there is at least one; the text takes the mirror's mask like a title does.
+   */
+  held?: HeldRow[];
 };
+
+/** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
+export const PANE_ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export type PaneActionIcon = (typeof PANE_ACTION_ICONS)[number];
+
+/** One button of a durable program's section of the belt. `label` is at most 16 characters. */
+export interface PaneAction {
+  id: string;
+  label: string;
+  icon?: PaneActionIcon;
+  /** Running now: the phone shows a spinner and sends no second tap. */
+  busy?: true;
+  /** Not available now: the phone dims it and sends no tap. */
+  disabled?: true;
+}
 
 /** What a person may choose on an ask (WIRE.md section 4). */
 export interface AskOption {
-  /** Unique inside its ask. Sent back unchanged as `optionId`. */
+  /** Unique inside its ask. Sent back unchanged as `optionId` (or in `optionIds`, or as a form value). */
   id: string;
   label: string;
-  effect: "allow" | "allow-always" | "deny" | "cancel";
+  /** On a `permission` option only. A `choice` option, and an option of a form field, has none. */
+  effect?: "allow" | "allow-always" | "deny" | "cancel";
+}
+
+/** One field of a `form` ask (WIRE.md section 7.14). */
+export interface AskField {
+  /** Unique inside its ask. The key of the field's value in the answer. */
+  id: string;
+  label: string;
+  kind: "text" | "choice" | "toggle";
+  required?: true;
+  /** A `choice` field: 1 to 8 options. A pick answers with the option's id. */
+  options?: AskOption[];
+  /** A `text` field: 1 to 2000 characters. */
+  maxLength?: number;
 }
 
 /** The tool call an ask is about, when the program wants it drawn. */
@@ -253,7 +355,10 @@ export interface AskTool {
 export interface Ask {
   /** New after every restart of the program, even for the same tool call. */
   id: string;
-  /** `permission` is the only kind in this version. A card for another kind is not answerable. */
+  /**
+   * `permission`, `choice`, `text` or `form` (WIRE.md section 7.14). A card for any other kind (a program
+   * newer than this build) is not answerable.
+   */
   kind: string;
   /** The program's id for the tool call. The same across a restart; the push guard keys on it. */
   toolCallId: string;
@@ -263,8 +368,19 @@ export interface Ask {
   title: string;
   /** The item the card sits under, usually the tool item. */
   itemId: string;
-  /** At least one, at most six. An ask with none is shown as not answerable. */
+  /**
+   * A `permission` ask: one to six, each with an effect. A `choice` ask: one to eight, none with an effect.
+   * A `text` and a `form` ask: none. An ask that needs options and has none is shown as not answerable.
+   */
   options: AskOption[];
+  /** A `choice` ask only: more than one option may be picked. */
+  multiple?: true;
+  /** A `text` ask only: the hint in the empty field. */
+  placeholder?: string;
+  /** A `text` ask only: 1 to 2000 characters (500 when the program named none). */
+  maxLength?: number;
+  /** A `form` ask only: one to six fields. A form with none is shown as not answerable. */
+  fields?: AskField[];
   reason?: string;
   tool?: AskTool;
   /**
@@ -272,26 +388,66 @@ export interface Ask {
    * The card says the text was shortened and offers no `allow-always` on such an ask.
    */
   cleaned?: true;
+  /**
+   * The words the program chose for a notification about this ask (WIRE.md section 6). The bridge MAY use
+   * them for a push and falls back to its own text. Cleaned by the adapter; a lead cleans them again.
+   */
+  push?: AskPushText;
+  /**
+   * When the ask stops waiting, ISO 8601 (WIRE.md 7.3), as the program sent it. Absent: it waits for a person.
+   * The phone shows the time left; past it the program decides the ask by `timeout`.
+   */
+  expiresAt?: string;
+}
+
+/**
+ * Who decided an ask first, and when (WIRE.md 7.3, the 409 `decided` body). `phone`: an answer from a phone,
+ * `program`: the program itself, `timeout`: the ask's `expiresAt` passed. `at` is ISO 8601.
+ */
+export interface AskDecided {
+  by: "phone" | "program" | "timeout";
+  at: string;
+}
+
+/** A push title (60 characters at most) and line (120 at most) a program chose for an ask. */
+export interface AskPushText {
+  title?: string;
+  line?: string;
 }
 
 /**
  * `POST /api/pane/:id/answer`'s body, as the bridge reads it (ADR 0100). `requestId` is a UUID the
  * phone mints per tap; a retry of the same tap sends the same one.
  */
-export interface AnswerRequest {
+export type AnswerRequest = AnswerBase & AnswerPayload;
+
+interface AnswerBase {
   requestId: string;
   askId: string;
   /** The revision the phone saw. */
   revision: number;
-  optionId: string;
-  note?: string;
 }
+
+/** What a form answers: a field's id to its value, a string for a text or choice field and a boolean for a toggle. */
+export type AnswerValues = Record<string, string | string[] | boolean>;
+
+/**
+ * What the person chose, by the kind of the ask (WIRE.md section 7.14). Exactly one key names the shape:
+ * `optionId` for a `permission`, `optionIds` for a `choice` (one when it is not `multiple`), `text` for a
+ * `text` ask and `values` for a `form`.
+ */
+export type AnswerPayload =
+  | { optionId: string; note?: string }
+  | { optionIds: string[] }
+  | { text: string }
+  | { values: AnswerValues };
 
 /**
  * What `POST /api/pane/:id/answer` answers, one shape for every outcome (ADR 0100).
  *
  *  • `taken` (200): the program took the answer and closed the ask.
  *  • `too-late` (200): the ask is not open any more (answered, stopped, or from before a restart).
+ *    `decided` says who decided it first and when, when the program said so (a 409 `decided`).
  *  • `stale` (409): the ask changed since the phone read it. `ask` is its current form when the
  *    program sent one. Nothing ran.
  *  • `unknown` (504): the answer may or may not have reached the program. The receipt stays, so
@@ -307,7 +463,7 @@ export interface AnswerRequest {
  */
 export type AnswerResponse =
   | { ok: true; outcome: "taken"; replayed?: true }
-  | { ok: false; outcome: "too-late"; replayed?: true }
+  | { ok: false; outcome: "too-late"; decided?: AskDecided; replayed?: true }
   | { ok: false; outcome: "stale"; ask?: Ask; replayed?: true }
   | { ok: false; outcome: "unknown"; detail: string }
   | { ok: false; outcome: "maybe-applied"; replayed?: true }
@@ -334,13 +490,24 @@ export interface AbortRequest {
   askId?: string;
 }
 
+/**
+ * `POST /api/pane/:id/action`'s body (M53 spec 07). `turnId` is optional: a button belongs to the pane,
+ * and a phone that names the turn it saw gets `stale` when the turn has moved.
+ */
+export interface ActionRequest {
+  requestId: string;
+  actionId: string;
+  turnId?: string;
+}
+
 /** What a control names: the turn the phone saw, or an open ask. Never both, never neither. */
 export type ControlTarget = { readonly kind: "turn"; readonly id: string } | { readonly kind: "ask"; readonly id: string };
 
-/** A send or an abort, as the bridge reads it off the phone's body and hands it to the adapter. */
+/** A send, an abort or a belt action, as the bridge reads it off the phone's body and hands it to the adapter. */
 export type ControlRequest =
   | { readonly act: "send"; readonly requestId: string; readonly target: ControlTarget; readonly text: string; readonly steer: boolean }
-  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget };
+  | { readonly act: "abort"; readonly requestId: string; readonly target: ControlTarget }
+  | { readonly act: "action"; readonly requestId: string; readonly actionId: string; readonly turnId?: string };
 
 /**
  * What `POST /api/pane/:id/send` and `/abort` answer, one shape for both (ADR 0101).
@@ -511,6 +678,35 @@ export interface SessionSummary {
   host?: string;
 }
 
+/** Whether a session answers (M55): a program says `starting` until it is ready. */
+export type SessionState = "ready" | "starting" | "unreachable";
+
+/**
+ * One session's card (M55, the shared contract). Carried on every entry of the snapshot's `sessions`
+ * on an instance that runs a durable program (`sources.json`), and on the crew `hello` as
+ * `sessions`. An instance with no program carries none, so its bytes are what they were.
+ */
+export interface SessionCard {
+  name: string;
+  kind: "terminal" | "program";
+  /** herdr, tmux, zellij, tuios, tern, or the program's hello `host.name` cleaned, else "durable". */
+  mux: string;
+  /** The capability set of this session, the same shape `/api/config` answers today. */
+  caps: Record<string, boolean>;
+  where: "local" | "remote";
+  state: SessionState;
+  experimental: boolean;
+  /**
+   * A program only, and only while it is refused for its wire version (WIRE.md section 2): the one sentence
+   * that says why, for example "The durable agent speaks wire v2, this Collie speaks v1. Update Collie, or the agent's SDK." Absent
+   * everywhere else.
+   */
+  notice?: string;
+}
+
+/** One entry of the snapshot's `sessions`: the summary, with the card when the instance runs a program. */
+export type SessionEntry = SessionSummary | (SessionSummary & SessionCard);
+
 /**
  * Per-device authorisation state for the requesting client (see `deviceAuth()` in server.ts).
  * Reported in the snapshot so the UI can show a read-only state. Optional on the wire so an older
@@ -548,7 +744,7 @@ export interface SnapshotResponse {
    * Every herdr session this bridge fronts (primary first, then alphabetical). Always present; a
    * single-session deployment lists just the primary, so the switcher UI can stay hidden.
    */
-  sessions: SessionSummary[];
+  sessions: SessionEntry[];
   /**
    * Every member of the crew, the lead's own entry included (CREW_PROTOCOL.md §9.2).
    *
@@ -1002,6 +1198,46 @@ export type PaneHistoryResponse =
       /** The log exceeded the read cap, so only its tail was parsed. */
       fileTruncated: boolean;
     };
+
+/**
+ * One conversation of a durable program's own list (M53 spec 11, WIRE.md 7.16). `paneId` is set on an open
+ * conversation that is in the live layout: the pane that shows it.
+ */
+export interface DurableConversationRow {
+  id: string;
+  title: string;
+  subtitle?: string;
+  workspaceId?: string;
+  tabId?: string;
+  startedAt: string;
+  endedAt?: string;
+  state: "open" | "closed";
+  items: number;
+  paneId?: string;
+}
+
+/**
+ * GET /api/durable/conversations?after=&limit=: the program's conversations, newest first, open and closed, at
+ * most 100 a page; `next` absent is the last page. `available: false` is an ordinary answer: a multiplexer with
+ * no program history (`unsupported`), or a program that cannot be asked now (`unreachable`).
+ */
+export type DurableConversationsResponse =
+  | { available: true; items: DurableConversationRow[]; next?: string }
+  | { available: false; reason: "unsupported" | "unreachable"; detail?: string };
+
+/**
+ * GET /api/durable/conversation/:id/items?after=&limit=: one conversation, oldest first, at most 1000 items a
+ * page, read from the program and never from the bridge's log. `more: true` means ask again with `after=next`.
+ * `gone` is a conversation the program does not know.
+ */
+export type DurableConversationItemsResponse =
+  | { available: true; id: string; entries: TranscriptEntry[]; next?: string; more: boolean }
+  | { available: false; reason: "unsupported" | "unreachable" | "gone"; detail?: string };
+
+/** POST /api/durable/conversation/:id/reopen: the pane that shows the conversation again, when the next listing has it. */
+export type ReopenConversationResponse =
+  | { ok: true; paneId?: string }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
  * GET /api/pane/:id/chat — the same conversation as `history`, asked the other way round.

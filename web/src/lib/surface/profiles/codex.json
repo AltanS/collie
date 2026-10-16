@@ -1,0 +1,125 @@
+{
+  "id": "codex",
+  "identity": {
+    "binary": "codex",
+    "versionCommand": [
+      "codex",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "0.150.0 - 0.163.0",
+      "status": "verified",
+      "verifiedThrough": "0.163.0",
+      "verifiedOn": "2026-10-16"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "top": {
+        "pattern": "^$",
+        "column": 0,
+        "blank": true
+      },
+      "prompt": {
+        "pattern": "^›(?: (?!\\d{1,2}\\. )(?<draft>.*))?$",
+        "column": 0
+      },
+      "bottom": {
+        "pattern": "^ {2}(?:(?![←?] )\\S(?:.*\\S)? · \\S.*|[Tt]ab to queue message\\s{2,}\\d+% context left)$",
+        "column": 2
+      },
+      "continuationIndent": 2,
+      "maxDraftRows": 100,
+      "maxTailRows": 4
+    },
+    "placeholders": {
+      "texts": [],
+      "sgr": 2
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 6,
+        "losesText": true
+      },
+      "below": {
+        "maxRows": 2,
+        "footerMaxRows": 2,
+        "hints": [
+          "^\\s*← for agents · \\? for shortcuts$",
+          "^\\s*\\? for shortcuts$",
+          "^\\s*[Tt]ab to queue message$"
+        ]
+      }
+    },
+    "runningRows": [
+      "\\s·\\s[⠀-⣿]$",
+      "^\\s*[Tt]ab to queue message\\b",
+      "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message$"
+    ]
+  },
+  "keys": {
+    "submit": [
+      "Tab"
+    ],
+    "commandSubmit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    },
+    "enterWhileRunning": "steers",
+    "commandWhileRunning": "queues",
+    "commandWhileRunningNote": "Lab 2026-10-16: measured on Codex 0.163.0 with /status only (queued under Queued follow-up inputs, ran after the turn).",
+    "neverHeld": ["/quit", "/exit", "/new", "/resume", "/logout", "!"],
+    "queueKey": "Tab",
+    "queuedRow": {
+      "pattern": "^\\s*↳ (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message\\s*$",
+      "hintGap": 0
+    }
+  },
+  "collapse": {
+    "pattern": "\\[Pasted Content (?<chars>\\d+) chars\\]"
+  },
+  "reservedLeads": [
+    "/",
+    "!"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "verified",
+    "note": "M56 spec 01 lab, 2026-10-15, Codex 0.162.1: inert after the type and after Backspace in the permission and picker dialogs on Herdr, tmux and zellij; the box shows it as `› ⌁`; fallback ¤; the live sends of M56 spec 13 passed on 0.150.0, 0.159.2 and 0.163.0 (2026-10-16), so the range is verified through 0.163.0, past the ledger canary row 0.159.2"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "ask": {
+    "lifetimeMs": 5000
+  },
+  "hooks": {
+    "agent-turn-complete": "edge"
+  },
+  "edges": {
+    "rereadMs": 700,
+    "settleMs": 1500,
+    "events": {
+      "agent-turn-complete": "stop"
+    }
+  }
+}

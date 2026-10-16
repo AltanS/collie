@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { api, type Dial } from "./client.ts";
-import type { SessionEvent } from "../sdk/core/types.ts";
+import type { Item, SessionEvent } from "../../../packages/durable-sdk/src/core/types.ts";
 
 const made: string[] = [];
 /** Remove every temp dir this file made. Each test file calls it in afterAll. */
@@ -34,6 +34,15 @@ export async function allEvents(d: Dial, id: string): Promise<SessionEvent[]> {
     if (!r.more) return out;
     after = r.next;
   }
+}
+/**
+ * The items of a pane as a reader holds them: each id once, in its latest version, in order of first appearance. A reply that
+ * grew is written again and again under one id (WIRE.md 7.15), so the raw events hold several versions of it.
+ */
+export function latestItems(events: readonly SessionEvent[]): Item[] {
+  const byId = new Map<string, Item>();
+  for (const e of events) if (e.type === "item") byId.set(e.item.id, e.item);
+  return [...byId.values()];
 }
 export const firstAsk = async (d: Dial, id: string) => (await pane(d, id))?.openAsks[0];
 export const openAsks = async (d: Dial, id: string) => (await pane(d, id))?.openAsks ?? [];

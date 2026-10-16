@@ -146,6 +146,40 @@ export function homePath(scope?: Scope, opts?: { all?: boolean }): string {
   return `/${scopeSearch(scope, opts)}`;
 }
 
+/** The query key that names the pane a conversations list was opened from, so its row leads. */
+export const CONVERSATIONS_PANE_PARAM = "pane";
+/** The query key a conversation's address carries for the state its list row showed. */
+export const CONVERSATION_STATE_PARAM = "state";
+
+function withQuery(base: string, extra: Record<string, string | undefined>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(extra)) {
+    if (value !== undefined) parts.push(`${key}=${encodeURIComponent(value)}`);
+  }
+  if (parts.length === 0) return base;
+  return `${base}${base.includes("?") ? "&" : "?"}${parts.join("&")}`;
+}
+
+/**
+ * One conversation of that list, read-only. `state` is what the list row said, which is how the view
+ * knows whether to offer Reopen; absent draws no Reopen.
+ */
+export function conversationPath(id: string, scope?: Scope, opts: { state?: "open" | "closed" } = {}): string {
+  return withQuery(`/conversations/${encodeURIComponent(id)}${scopeSearch(scope)}`, { [CONVERSATION_STATE_PARAM]: opts.state });
+}
+
+/** The pane a conversations list was opened for (`?pane=`), or undefined. */
+export function readConversationsPane(search: string): string | undefined {
+  const pane = new URLSearchParams(search).get(CONVERSATIONS_PANE_PARAM);
+  return pane === null || pane === "" ? undefined : pane;
+}
+
+/** The state a conversation's address carries (`?state=`); anything but the two words reads as absent. */
+export function readConversationState(search: string): "open" | "closed" | undefined {
+  const state = new URLSearchParams(search).get(CONVERSATION_STATE_PARAM);
+  return state === "open" || state === "closed" ? state : undefined;
+}
+
 /** The settings route, carrying the current scope like the other path helpers. */
 export function settingsPath(scope?: Scope): string {
   return `/settings${scopeSearch(scope)}`;
@@ -410,6 +444,10 @@ export function ancestorsOf(pathname: string): string[] {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "settings" && seg.length === 1) return ["/"];
+  // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
+  // from a pane's menu; one conversation sits below the list.
+  if (head === "conversations" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
+  if (head === "conversations" && seg.length === 2) return ["/conversations", "/", ANY_SPACE, ANY_PANE];
   // The New page is opened from the dashboard, from a space, and from a pane's ⋯ menu.
   if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
   // "Add your own" is a level below the New page.
@@ -635,6 +673,13 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
+  // The conversations list: behind it the pane it was opened for, else the dashboard. One conversation
+  // sits under the dashboard, which is a durable machine's conversation list (M53 spec 12).
+  if (head === "conversations" && seg.length === 1) {
+    const pane = readConversationsPane(search);
+    return pane === undefined ? [home] : [home, panePath(pane, scope)];
+  }
+  if (head === "conversations" && seg.length === 2) return [home];
   // The New page: behind it the screen it names (the pane whose worktree it is, else the view's machine).
   if (head === "new" && seg.length === 1) {
     const at = readNewAt(search);

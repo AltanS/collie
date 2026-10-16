@@ -239,7 +239,7 @@ describe("CollieHome — the lost badge", () => {
   it("is decorative: hidden from assistive tech, the button's label names the state", () => {
     const { container, getByRole } = render(<CollieHome trouble lost online={false} />);
     expect(badge(container)?.getAttribute("aria-hidden")).toBe("true");
-    expect(getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Collie home, not connected" })).toBeInTheDocument();
   });
 
   // What remains of the strip's "Showing what was saved at <time>" once it is dismissed: the badge
@@ -255,14 +255,14 @@ describe("CollieHome — the lost badge", () => {
 
   it("keeps the reconnecting name while merely troubled, stamp or not", () => {
     const { getByRole } = render(<CollieHome trouble lastSeenAt={1_000} />);
-    expect(getByRole("button", { name: "Collie home — reconnecting" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Collie home, reconnecting" })).toBeInTheDocument();
   });
 
-  it("sits on the page colour with the ring cut, in the danger token", () => {
+  it("sits on the header's band colour (the page colour in Collie) with the ring cut, in the danger token", () => {
     const { container } = render(<CollieHome trouble lost />);
     const cls = badge(container)?.getAttribute("class") ?? "";
-    expect(cls).toMatch(/bg-background/);
-    expect(cls).toMatch(/ring-background/);
+    expect(cls).toMatch(/bg-band-ground/);
+    expect(cls).toMatch(/ring-band-ground/);
     expect(cls).toMatch(/text-status-blocked/);
   });
 });

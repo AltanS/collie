@@ -24,12 +24,32 @@ import { cn } from "@/lib/utils";
  * as five lines with a ghost around them. This refines the card/chip/input split rather than
  * breaking it: those are control boxes, not region boundaries.
  *
+ * ROWS AS CARDS (M57 spec 17). Under a theme's `rows: cards` the frame and the lines go, and each
+ * row becomes its own bordered, rounded card with air above it (index.css). The markup is the same.
+ *
  * NOT for a gap list. Where the rows are already bordered objects with air between them — the
  * pane-switcher's `Card` rows — the row IS the container, and wrapping them would be a box inside
  * a box. A gap list gets no group border, ever. The dashboard's "Needs you" and "Ready · unseen"
  * sections used to be a gap list of `Card`s too; that changed 2026-09-14 (agent-list.tsx) — their
  * rows are flat now, so they use this wrapper the same as every workspace group.
  */
+/**
+ * The corners a painted row takes from its place in the group. A row is square (see the herd rows),
+ * but under a soft or round theme a square, painted first or last row (a tint, a hover fill, an
+ * opaque sticky row) covers the group's rounded corner and the frame looks cut. So the group's first
+ * child sets `--row-top` and its last child `--row-bottom` to the group's inner corner, and the
+ * painted part of a row reads them through {@link LIST_ROW_CORNERS}. Two pixels inside the group's
+ * own radius, floored at 0: at Collie's 2px both are 0, so the default look does not change, and a
+ * middle row never rounds. The two classes on the group spell the value out, because Tailwind reads
+ * class names from the source text and cannot see one built from a variable.
+ */
+/** The classes a painted part of a ListGroup row wears so its outer corners follow the group's. */
+export const LIST_ROW_CORNERS = "rounded-t-[var(--row-top,0px)] rounded-b-[var(--row-bottom,0px)]";
+/** The same for a painted part that fills only the START of a row (two buttons side by side): its left corners. */
+export const LIST_ROW_CORNERS_START = "rounded-tl-[var(--row-top,0px)] rounded-bl-[var(--row-bottom,0px)]";
+/** The same for a painted part that fills only the END of a row: its right corners. */
+export const LIST_ROW_CORNERS_END = "rounded-tr-[var(--row-top,0px)] rounded-br-[var(--row-bottom,0px)]";
+
 function ListGroup({
   className,
   as: Comp = "div",
@@ -37,9 +57,18 @@ function ListGroup({
 }: React.HTMLAttributes<HTMLElement> & { as?: "div" | "dl" | "ul" }) {
   return (
     <Comp
-      data-slot="list-group"
-      className={cn("flex flex-col divide-y divide-border rounded-sm border border-rule", className)}
       {...props}
+      // After the props, so no caller can rename it: index.css finds the rows by this slot.
+      data-slot="list-group"
+      className={cn(
+        // The line between two rows, each row's own edge and the air between them are index.css's
+        // `[data-slot="list-group"]` rule, which a theme's `rows` word drives (M57 spec 17). The frame
+        // is `--row-rule` wide: the border width under `rules`, none under `cards`. `p-0`: the frame is
+        // this group's own, so it takes none of the inset a list flush in a card gets under `cards`.
+        "flex flex-col rounded-sm border-[length:var(--row-rule)] border-rule p-0",
+        "[&>:first-child]:[--row-top:max(0px,calc(var(--radius-sm)_-_2px))] [&>:last-child]:[--row-bottom:max(0px,calc(var(--radius-sm)_-_2px))]",
+        className,
+      )}
     />
   );
 }

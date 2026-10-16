@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { blockRule, byteLength, CAPS, changedByCleaning, cleanText, isWireId, lineRule } from "./clean.ts";
+import {
+  blockRule,
+  byteLength,
+  CAPS,
+  changedByCleaning,
+  cleanText,
+  isWireId,
+  lineRule,
+  shortLine,
+} from "./clean.ts";
 
 describe("clean: controls, direction marks and caps (WIRE.md section 6)", () => {
   test("clean removes C0 controls, DEL and C1 controls from a one-line field, newline and tab included", () => {
@@ -81,5 +90,22 @@ describe("clean: the id rule", () => {
   test("an id is measured in bytes, so 43 three-byte characters are too long", () => {
     expect(isWireId("あ".repeat(42))).toBe(true);
     expect(isWireId("あ".repeat(43))).toBe(false);
+  });
+});
+
+describe("clean: short lines for a subtitle and a badge (WIRE.md section 7.11)", () => {
+  test("a short line is cleaned and trimmed, and a line with nothing left is absent", () => {
+    expect(shortLine("  a customer cannot log in\u200b\n ", 120)).toBe("a customer cannot log in");
+    expect(shortLine("\u0007 \u200e  ", 120)).toBeUndefined();
+    expect(shortLine("", 12)).toBeUndefined();
+  });
+
+  test("a short line over its cap is cut at a whole character, with the ellipsis as the last one", () => {
+    const cut = shortLine("é".repeat(300), 120);
+    expect([...(cut ?? "")]).toHaveLength(120);
+    expect(cut?.endsWith("…")).toBe(true);
+    expect([...(shortLine("\u{1f600}".repeat(200), 120) ?? "")]).toHaveLength(120);
+    expect(shortLine("x".repeat(120), 120)).toBe("x".repeat(120));
+    expect(shortLine("x".repeat(40), 12)).toBe(`${"x".repeat(11)}…`);
   });
 });

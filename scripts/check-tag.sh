@@ -31,10 +31,38 @@
 #
 # Betas 33 to 41 stay unreachable ON PURPOSE. Do not back-fill them. Their commits are superseded by
 # the betas that followed, and a tag cut today would claim a release nobody ever tested.
+#
+# THE SOFT RELEASE GATE (M44 spec 08, carried by M56 spec 10). When a release is about to be tagged,
+# this script also asks `scripts/harness-drift.ts --strict` whether an installed agent is NEWER than its
+# verified version (the rows of web/src/lib/harness/verified-versions.json). A drift stops it, names the agent, and prints no tag command. To tag anyway, name
+# the drift on purpose: `check-tag.sh --accept-drift claude=2.1.301` (or ACCEPT_DRIFT=claude=2.1.301 for
+# the pre-push hook). The version must be the installed one. The tag command it then prints carries a
+# `Not verified: claude 2.1.301` line in the tag message, and release.yml puts that line in the release
+# notes. The gate adds no network call and starts no agent. It is a reminder, not proof: it sees only
+# the agents installed on this machine, so "nothing newer here" never means "the readers are right".
+# A machine with no bun, or a checkout with no harness-drift.ts, skips the gate.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# `--accept-drift agent=version[,agent=version]` is ours; every other argument is the caller's rev-list.
+accept="${ACCEPT_DRIFT:-}"
+rest=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --accept-drift)
+      accept="${2:-}"
+      shift
+      [ "$#" -eq 0 ] || shift
+      ;;
+    *)
+      rest+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- ${rest[@]+"${rest[@]}"}
 
 # The canonical version, as of one commit. No argument reads the working tree.
 read_toml_version() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
@@ -83,12 +111,37 @@ if [ -z "$missing" ]; then
   exit 0
 fi
 
+# The soft release gate. Only a release that is about to be tagged reaches it.
+drift_script="${HARNESS_DRIFT_SCRIPT:-$ROOT/scripts/harness-drift.ts}"
+accepted_note=""
+if [ -f "$drift_script" ] && command -v bun >/dev/null 2>&1; then
+  gate_flags=(--strict)
+  [ -z "$accept" ] || gate_flags+=(--accept-drift "$accept")
+  if ! gate_out="$(bun "$drift_script" "${gate_flags[@]}" 2>&1 >/dev/null)"; then
+    {
+      echo "✗ not tagging: an installed agent is newer than the version Collie's readers were verified on:"
+      echo
+      printf '%s\n' "$gate_out" | sed 's/^harness-drift: /    /'
+      echo
+      echo "  Run the lab (bun scripts/harness-canary/lab/main.ts) and merge its branch,"
+      echo "  or tag with the drift named on purpose (the version must be the installed one):"
+      echo "    scripts/check-tag.sh --accept-drift <agent>=<version>"
+    } >&2
+    exit 1
+  fi
+  accepted_note="$(printf '%s\n' "$gate_out" | sed -n 's/^harness-drift: accepted: \(.*\) is newer than its verified version: not verified$/\1/p' | paste -sd, - | sed 's/,/, /g')"
+fi
+
 {
   echo "✗ a release was cut but never tagged, so nothing can publish it:"
   echo
   while IFS=$'\t' read -r version sha; do
     [ -n "$version" ] || continue
-    echo "    git tag -a v${version} ${sha} -m \"Collie ${version}\""
+    if [ -n "$accepted_note" ]; then
+      echo "    git tag -a v${version} ${sha} -m \"Collie ${version}\" -m \"Not verified: ${accepted_note}\""
+    else
+      echo "    git tag -a v${version} ${sha} -m \"Collie ${version}\""
+    fi
   done <<<"$missing"
   echo
   echo "  Then push the tag with the release: git push --follow-tags"

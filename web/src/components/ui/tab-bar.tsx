@@ -30,10 +30,10 @@ export interface TabBarProps<V extends string> {
 }
 
 /**
- * A bottom tab bar: equal tabs in one row, each an icon over a one-line word, on the page colour
- * with one rule above (DESIGN.md §4, chrome is never a fill). It owns the band, the safe area under
- * it and the tabs' look; it owns no words and no state. The dashboard's footer is its first caller
- * (ADR 0066).
+ * A bottom tab bar: equal tabs in one row, each an icon over a one-line word, on the band ground
+ * (the page colour by default, a theme's `chrome: band` fill otherwise) with one rule above
+ * (DESIGN.md §4). It owns the band, the safe area under it and the tabs' look; it owns no words and
+ * no state. The dashboard's footer is its first caller (ADR 0066).
  *
  * NOTHING MOVES ON A SWITCH (DESIGN.md §2). The active mark is a 2px top edge that every tab
  * reserves, transparent, so a switch recolours an edge and re-lays-out nothing. The word never
@@ -49,7 +49,7 @@ export function TabBar<V extends string>({ items, active, onSelect, label, class
     <nav
       aria-label={label}
       data-slot="tab-bar"
-      className={cn("shrink-0 border-t border-rule bg-background pb-[env(safe-area-inset-bottom)]", className)}
+      className={cn("shrink-0 border-t border-band-rule bg-band-ground pb-[env(safe-area-inset-bottom)]", className)}
     >
       <div className="flex">
         {items.map((it) => {

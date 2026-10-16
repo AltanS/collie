@@ -347,7 +347,10 @@ export function PaneRouter({
               <AppHeaderHost bridge={data.bridge} error={false}>
                 <AgentChat
                   paneId={fixture.pane.paneId}
-                  agent={fixture.pane}
+                  // A playground pane reads as a bridge that runs the Send Protocol (M56 spec 06),
+                  // so the composer draws its Send slot from the fixture's surface. Without the mark
+                  // the composer would say sending is off.
+                  agent={{ ...fixture.pane, sendProtocol: true, surface: fixture.surface ?? fixture.pane.surface }}
                   agents={data.agents}
                   shellPanes={data.shellPanes}
                   tabs={data.tabs}

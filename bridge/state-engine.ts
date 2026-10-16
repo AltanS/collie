@@ -8,6 +8,11 @@ import {
   type TabView,
   type WorkspaceView,
 } from "./types.ts";
+// The one input-frame module (M56 spec 03) and the Claude profile it reads its anchors from. Both are
+// pure and sit under web/src/lib/surface; the bridge imports them by relative path, as
+// prompt-binding.ts does for web/src/lib/styled-region.ts.
+import { findInputFrame, plainRows } from "../web/src/lib/surface/frame.ts";
+import { requireProfile } from "../web/src/lib/surface/profile.ts";
 
 // Polls the multiplexer on an interval, builds the snapshot (agents + shell panes + spaces/tabs),
 // and emits transition events. Polling (vs the per-pane event subscription) keeps this resync-free:
@@ -45,15 +50,11 @@ const SESSION_NAME_READ_LINES = 40;
 export const HOT_POLLS = 8;
 
 // Claude renders its input box as a horizontal rule, the ❯ prompt line, then a closing rule. After
-// `/rename <name>` the TOP rule carries the session name inside it: "────────── my-name ──". This
-// matches that named rule. `\S` also matches box-drawing chars, but a *plain* rule has no embedded
-// space-delimited text, so it can't match — and the ❯-prompt anchor (below) rules out any decorative
-// rule elsewhere in the output. Rule chars: ─ (U+2500, light) and ━ (U+2501, heavy).
-const NAMED_RULE = /^[─━]{2,}[ \t]+(\S.*?\S|\S)[ \t]+[─━]+[ \t]*$/;
-const PLAIN_RULE = /^[─━]{2,}[ \t]*$/;
-// Claude's input prompt marker, anchored at column 0. Its menu/selection cursors render as " ❯"
-// (leading space), so the column-0 anchor discriminates the real input prompt from a selected row.
-const PROMPT_LINE = /^❯/;
+// `/rename <name>` the TOP rule carries the session name inside it: "────────── my-name ──". The box
+// is found by the frame module from the Claude profile's anchors, and the words on the top edge are
+// the anchor's `label` group: a column-0 prompt row between two column-0 rules, so a menu's " ❯"
+// cursor (leading space) or a decorative rule elsewhere in the output never reads as the box.
+const CLAUDE_IDLE = requireProfile("claude").idle;
 const ESC = String.fromCharCode(27);
 // One SGR sequence, colon sub-parameters included so they are stripped like the rest. Built from the
 // escape byte so no raw control character sits in the source.
@@ -177,30 +178,23 @@ function ruleLabel(lines: readonly string[], row: number): "name" | "badge" | "u
  * Returns the name; `null` when the input box is in view and carries no name (a plain rule, or a mode
  * badge, which Claude only shows on an unnamed session); `undefined` when the pane isn't showing its
  * input box (a dialog, a working spinner) or the rule's colours cannot be read, so nothing can be
- * said either way. Claude draws the name INTO the horizontal rule directly above the ❯ prompt, e.g.
- * `────────── my-name ──`; we accept that rule ONLY when the very next line is the ❯ prompt, so a
- * decorative rule anywhere else in the output can never be mistaken for it (no false positives).
- * Derived from Claude's UI grammar — claude-only; other harnesses never call this. Pure + exported so
- * it's unit-tested against the pane fixtures without standing up the socket client.
+ * said either way. Claude draws the name INTO the top edge of its input box, e.g.
+ * `────────── my-name ──`. The box is the input frame the frame module finds (findInputFrame, M56
+ * spec 03): the lowest whole box at the tail, top edge, ❯ prompt row and bottom edge, so a decorative
+ * rule anywhere else in the output can never be mistaken for it (no false positives), and a
+ * named-rule/❯ pair in scrollback cannot name a session whose live box is unnamed. The same module
+ * finds the box for the phone's chrome reader. Claude-only; other harnesses never call this. Pure +
+ * exported so it's unit-tested against the pane fixtures without standing up the socket client.
  */
 export function extractClaudeSessionName(text: string): string | null | undefined {
   if (!text) return undefined;
   const lines = text.split(/\r?\n/);
-  // Only the BOTTOMMOST ❯ counts — that's the live input prompt; anything above it is scrollback.
-  // The rule directly above it decides, and a plain rule means "unnamed", full stop. Scanning past it
-  // for older named-rule-above-❯ pairs (as this once did) let a scrollback line that merely starts
-  // with ❯ — an echoed shell prompt, pasted text — sit under a decorative rule and pin a bogus name
-  // on an unnamed session.
-  for (let i = lines.length - 1; i >= 1; i--) {
-    if (!PROMPT_LINE.test(plainText(lines[i]!))) continue;
-    const plain = plainText(lines[i - 1]!);
-    const m = NAMED_RULE.exec(plain);
-    if (!m) return PLAIN_RULE.test(plain) ? null : undefined;
-    const label = ruleLabel(lines, i - 1);
-    if (label === "unknown") return undefined;
-    return label === "name" ? m[1]!.trim() : null;
-  }
-  return undefined;
+  const frame = findInputFrame(plainRows(lines.map(plainText)), CLAUDE_IDLE);
+  if (frame === null) return undefined;
+  if (frame.label === null) return null;
+  const label = ruleLabel(lines, frame.top);
+  if (label === "unknown") return undefined;
+  return label === "name" ? frame.label : null;
 }
 
 /**
@@ -282,6 +276,11 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // Denormalised alongside workspaceLabel so no client has to join tabs[].
   if (pane.tabLabel) view.tabLabel = pane.tabLabel;
   if (pane.terminalTitle) view.terminalTitle = pane.terminalTitle;
+  // The program's own line under the title and its small mark, from an adapter with no screen. Absent
+  // stays absent, so every other pane is byte-identical.
+  if (pane.subtitle) view.subtitle = pane.subtitle;
+  if (pane.badge) view.badge = pane.badge;
+  if (pane.progress) view.progress = pane.progress;
   // The title is still on the wire; this only says the phone should read it quietly. Set only when
   // true, so every pane that was byte-identical before this field existed still is.
   if (terminalTitleIsStale(pane)) view.terminalTitleStale = true;

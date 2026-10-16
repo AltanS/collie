@@ -249,7 +249,7 @@ export function StatusWord({
         // because tailwind-merge deletes an earlier `leading-*` when a later `text-<size>` lands in
         // the same cn(), and a caller passing `className="text-xs"` would silently take the line
         // height with it.
-        "shrink-0 text-[10px]/3 font-medium uppercase tracking-wide transition-opacity",
+        "shrink-0 text-[10px]/3 font-medium label-caps transition-opacity",
         WORD[status],
         stale === true && "opacity-40",
         className,
@@ -266,7 +266,7 @@ export function ShellBadge({ stale, className }: { stale?: boolean; className?: 
   return (
     <span
       className={cn(
-        "shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-opacity",
+        "shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium label-caps text-muted-foreground transition-opacity",
         stale && "opacity-40",
         className,
       )}

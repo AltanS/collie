@@ -248,7 +248,7 @@ describe("the memory on disk", () => {
     const saved: { entries: GuardEntry[]; breakers: unknown[] } = JSON.parse(readFileSync(file, "utf8"));
     expect(saved.breakers).toEqual([]);
     expect(saved.entries).toHaveLength(1);
-    expect(Object.keys(saved.entries[0] ?? {}).toSorted()).toEqual(["askId", "firstSeenAt", "host", "paneId", "pushedAt", "toolCallId"]);
+    expect(Object.keys(saved.entries[0] ?? {}).toSorted()).toEqual(["askId", "firstSeenAt", "host", "paneId", "pushedAt", "session", "toolCallId"]);
   });
 
   test("a broken file is an empty memory, and is not trusted", () => {
@@ -313,6 +313,30 @@ describe("the push path", () => {
     expect(raised).toEqual(["p"]);
   });
 
+  test("a choice, a text ask and a form are keyed and pushed like a permission: one ask, one push, none twice", () => {
+    let now = START;
+    const push = new AskPush(new AskGuardStore(null), () => now);
+    const raised: string[] = [];
+    const raise = (pane: AskPushPane) => raised.push(pane.paneId);
+    const kinds: Ask[] = [
+      { ...wireAsk("a1", "c1"), kind: "choice", options: [{ id: "x", label: "X" }], multiple: true },
+      { ...wireAsk("a2", "c2"), kind: "text", options: [], maxLength: 500 },
+      { ...wireAsk("a3", "c3"), kind: "form", options: [], fields: [{ id: "f", label: "F", kind: "toggle" }] },
+    ];
+    push.observe(H, kinds.map((entry, index) => ({ paneId: `p${String(index)}`, asks: [entry] })), raise);
+    expect(raised).toEqual(["p0", "p1", "p2"]);
+    now += 1_000;
+    // The program restarts and raises each again under a new ask id: a re-ask is shown, not pushed.
+    push.observe(H, kinds.map((entry, index) => ({ paneId: `p${String(index)}`, asks: [{ ...entry, id: `${entry.id}-again` }] })), raise);
+    expect(raised).toEqual(["p0", "p1", "p2"]);
+  });
+
+  test("a pane with asks of every kind at once is raised once, and the cap counts asks, not kinds", () => {
+    const g = guard();
+    const asks = [ask({ id: "perm" }), ask({ id: "pick" }), ask({ id: "line" }), ask({ id: "form" }), ask({ id: "extra" })];
+    expect(g.decide("p", asks)).toEqual(["push", "push", "push", "show-quiet", "show-quiet"]);
+  });
+
   test("the breaker calls flood once, and the summary names the host and nothing a program wrote", () => {
     let now = START;
     const push = new AskPush(new AskGuardStore(null, { ...DEFAULT_GUARD_LIMITS, pushPerHostHour: 2 }), () => now);
@@ -325,7 +349,7 @@ describe("the push path", () => {
     expect(raised).toEqual(["p0", "p1"]);
     expect(floods).toBe(1);
     const msg = askFloodMessage("desk", "desk");
-    expect(msg).toMatchObject({ title: "A program on desk is raising many asks", titleCode: "ask.flood", host: "desk", tag: askFloodTag("desk") });
+    expect(msg).toMatchObject({ title: "A durable agent on desk is raising many asks", titleCode: "ask.flood", host: "desk", tag: askFloodTag("desk") });
     expect(askFloodMessage(LOCAL_ASK_HOST, "bluefin")).not.toHaveProperty("host");
     expect(askFloodTag(LOCAL_ASK_HOST)).not.toBe(askFloodTag("desk"));
   });

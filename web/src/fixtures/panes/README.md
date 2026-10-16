@@ -80,6 +80,22 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--omo-v5130-panel-picker-tree.txt` | 40 rows, `/tree` with the panel beside its header | Escape card |
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |
+| `pi--trust-prompt.txt` | pi 1.2.0 started in an untrusted folder holding a project skill: `Trust project folder?`, the folder, the explanation, five unnumbered options with `→` on Trust (the parent folder wrapped under its option) and `↑↓ navigate  enter select  escape/ctrl+c cancel`, between two rules. Read with a throwaway `PI_CODING_AGENT_DIR`; both paths became one invented sandbox path of the same length, split where the real one wrapped | lifts (pi/trust.ts), a walked trust card plus Cancel (Escape) |
+| `pi--trust-prompt-moved.txt` | The same prompt after one Down: `→` on Trust parent folder. Its walk pair | lifts |
+
+### Derived, not captured: a dialog taller than the pane (2026-10-15)
+
+Three files are CUT from the captures above, not captured. On a short pane OmO's fullscreen mode
+draws a dialog from the top down, so its bottom rule and status rows fall off the screen (probed live
+2026-10-12 at 18 and 20 rows, not saved). Each file keeps the first rows of a whole capture, bytes
+unchanged, and drops the rest, the way a shorter pane shows the same screen. What proves the modal
+there is in `pi/ASK_NOTES.md`, "A dialog taller than the pane".
+
+| Fixture | Cut from | Rows kept | Reads as |
+| --- | --- | --- | --- |
+| `pi--omo-v5130-panel-question-cut.txt` | `pi--omo-v5130-panel-question.txt` | 15: through the footer and the blank row under it | lifts, a tap sends the digit, bound to columns 0 to 91 |
+| `pi--omo-v5130-panel-question-cut-footer.txt` | `pi--omo-v5130-panel-question.txt` | 12: through the free-text row, no trailer, no footer | Escape card |
+| `pi--omo-v5130-panel-picker-tree-cut.txt` | `pi--omo-v5130-panel-picker-tree.txt` | 18: the header, the inner rule and twelve list rows | Escape card |
 
 ## pi 1.1.0 corpus, PR 397 (captured 2026-10-10 by @raffaelenatale, pi 1.1.0 with a pi question extension, Linux sandbox panes)
 
@@ -200,6 +216,38 @@ editor's top rule, so the welcome banner above is gone. The footer is pi 1.2.0's
 The last two are real pi 1.2.0 captures too (Herdr 0.9.4, padding 2, the dialog named in the table), cut
 to the top rule like the rest. Before 1.21.3 both read as a ready composer; their search row looks like
 an editor. They are unread dialogs: nothing on the phone answers them.
+
+## pi and OmO with NO_COLOR=1 (captured 2026-10-15, Herdr 0.9.4, the tap rig)
+
+Stock pi 0.87.1 (with pi's `examples/extensions/question.ts`) and OmO 5.1.30, each started with
+`NO_COLOR=1` in its environment, in the isolated tap rig (`experiments/collie-rig/`: its own Herdr
+session and bridge), read through `GET /api/pane/:id?lines=60` the way the phone reads it, at 120
+columns. Models on OpenRouter: `google/gemini-3.5-flash-lite` for pi and `anthropic/claude-haiku-4.5`
+for OmO, each asked to call its question tool with fixed arguments. `/proc/<pid>/environ` showed
+`NO_COLOR=1` in both processes, and **both painted every row as before**: 24-bit colours on the
+rules, the status rows, the footer and the options. Neither honours the variable, so there is no
+monochrome pi screen to capture. Each file is cut to the final frame, from the frame's top rule;
+CRLF line ends as read. The only paths are the lab folders `/tmp/pi-nocolor-cwd` and
+`/tmp/omo-nocolor-cwd`; no key, user, host or home path is in any file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v0871-nocolor-draft.txt` | `collie stock pi draft probe` typed, not sent | composer, draft read back |
+| `pi--v0871-nocolor-question.txt` | `question`: Red, Green, Blue, `4. Type something.`, `>` on 1 | walk |
+| `pi--omo-v5130-nocolor-idle.txt` | Empty `❯` editor, status rows | composer |
+| `pi--omo-v5130-nocolor-question.txt` | OmO's ask, one question, Red and Green | digit |
+## gentle-pi `ask_user_choice` on pi 1.3.0 (issue 455, captured 2026-10-16, Herdr 0.9.5)
+
+gentle-pi 4.2.0's `ask_user_choice` on pi 1.3.0 under Gentle Shell, which replaces pi's footer, so
+nothing stands under the dialog's bottom rule. A 200-column Herdr pane, read with `herdr pane read
+--source visible --format ansi` and cut to the dialog's top rule. CRLF line ends and the trailing
+padding are as read. The question and options are a probe (`Pick a color for the Collie probe`); no
+user, host or path is in either file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-gentle-choice.txt` | Three unnumbered options with descriptions, ` → Red` pointed | walk |
+| `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
 
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
@@ -405,6 +453,8 @@ hostname or session id is on the kept rows.
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `codex--v0159-task-title.txt` | `Reply with only OK.` answered `OK`, the empty composer, and the status row `  gpt-5.6-sol low · /tmp/collie-canary-project · Generate task title`. `composerReady` must be TRUE | `idle` |
+| `codex--resume-picker.txt` | Codex 0.159.3 `/resume`: `Resume a previous session`, filter rows, `  › 2d ago      Reply with OK` highlighted, the two-row `enter resume … esc exit …` / `… ↑/↓ browse` footer. Lifts as a menu: Up/Down, Resume (Enter), Exit (Escape). Visible-screen read 2026-10-15 in a throwaway Herdr session; the sessions listed are earlier canary runs | `blocked` |
+| `codex--resume-picker-moved.txt` | Same picker after Down: the highlight on the second session, so the menu signature differs | `blocked` |
 
 ## Codex reporter capture (#294, 2026-09-27, macOS, Herdr 0.9.1, SCRUBBED)
 
@@ -420,6 +470,20 @@ the status row and the hint row are byte-faithful, with the reporter's theme col
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `codex--reporter-294-busy-agents-hint.txt` | An echo `› herdr pane read …` band, `• Working (6s • esc to interrupt)`, the empty composer, `  GPT-6-Luna medium · ~/Code/project · Read recent pane output`, and `  ← for agents · ? for shortcuts` as the last row. `composerReady` must be TRUE, the lowest `›` row is the composer, no card | `working` |
+
+## Codex reporter capture (#454, 2026-10-16, Fedora, Codex 0.163.0, Herdr 0.9.5, SCRUBBED)
+
+A sanitized capture from the issue reporter's real Codex 0.163.0 pane under Herdr 0.9.5, an idle
+composer with the status row last (no key-hint row under it). The session title is replaced by
+`Example session`; no chat and no screenshot are in it. The status row carries the daemon hint on the
+row itself, after the title field: `  GPT-6.1-Sol high · ~ · Example session · ← for agents`, the `←`
+key bold and `for agents` in the separator's muted colour, then a right-aligned `⚠ 3 warnings · f2 to
+view`. Collie 1.21.3 refused that row, so the pane had no composer and every send was refused as
+"Type anyway?".
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0163-agents-hint-warnings.txt` | Codex 0.163.0, the reporter's pasted frame from issue 454 (not a `herdr pane read` of ours; session title replaced by `Example session`; the `idle` state is inferred from the empty composer). The empty composer band on a fill, then the status row as the last row. `composerReady` must be TRUE, the `›` row is the composer, no draft, no card | `idle` |
 
 ## Codex reporter capture (#317, 2026-09-28, macOS, Codex 0.158.0, Herdr 0.9.1, SCRUBBED)
 
@@ -519,6 +583,11 @@ Grok's composer is a rounded box at the tail: `╭─…─╮` / `│ ❯ … �
 | `grok--output-scrollbar.txt` | Grok Build 1.0.46 on macOS, 2026-10-08: tail of the live browser-send capture, from the code reply through the composer, byte-faithful except one status line, whose text was replaced with neutral text of the same width; its ANSI styling is unchanged. The code keeps its rgb(28,28,28) surface; the right-edge track is a separate `█` segment with foreground and background rgb(25,25,25), preceded by uncoloured rgb(20,20,20) canvas padding. A dark block following coloured message text must remain. Its empty viewport rows and full terminal-width padding must not inflate the wrapped phone mirror. Original screen rows remain intact for grammar and guard probes | `done` |
 | `grok--working.txt` | Mid-turn; empty box; working hint row under the box | `working` |
 | `grok--startup.txt` | Fresh-session welcome screen: banner box (logo, menu) above an idle composer whose under-box row is the bare `[stable]` channel chip, not the hint bar. composerReady must be TRUE. Byte-faithful `format:ansi` 2026-08-22 | `idle` |
+| `grok--welcome-card.txt` | Grok Build 1.0.52, signed in with an API key: the changelog welcome card sits right on top of the composer with no `Tip:` row between, and the under-box row reads `Logged in with API key  │  [stable]`. composerReady must be TRUE. Visible-screen `format:ansi` read 2026-10-15 in a throwaway Herdr session; the cwd row became `/tmp/collie-grok-sandbox` and the model label `mini` | `idle` |
+| `grok--slash-popup-exact.txt` | Grok Build 1.0.52, `/statusline` typed: the slash-command popup between two rules right on top of the composer, `❯ /statusline` highlighted. The box stays live and the draft reads `/statusline`. Visible-screen read 2026-10-15; a local hook notice above was blanked and the cwd row became `/tmp/collie-grok-sandbox` | `idle` |
+| `grok--model-arg-hint.txt` | Grok Build 1.0.52 after the harness bar's Model button: the model list between two rules over the composer, and the box holding `❯ /model <model> [window] [effort]`, the hint in grey `rgb(108,108,108)`. The draft reads `/model`; the list is not a slash popup, so composerReady is FALSE. Visible-screen read 2026-10-15 by the harness canary's bar scenario; a local hook notice above was blanked, the cwd row became `/tmp/collie-grok-sandbox` at the same width, and the model label `mini` | `idle` |
+| `grok--slash-popup-partial.txt` | Hand-built from the capture above: the box holds `/stat` while `❯ /statusline` stays highlighted, the shape a partial command takes (live, `/stat` highlighted another command). Enter would run the highlighted row, so the draft must not read `/stat` | `idle` |
+| `grok--trust-prompt.txt` | Grok Build 1.0.52 started in an untrusted folder that holds a project skill (`.agents/skills`): under the logo, `Do you trust the contents of this directory?`, the directory, a two-row warning, then `Yes, proceed  y` and `No, quit  n`, the version chip alone below. Lifts as a trust card, `y` and `n` each sent alone: live 2026-10-15, `n` quit to the shell and `y` went on to the composer and wrote the folder into the throwaway `trusted_folders.toml`. A folder with nothing for Grok to load showed no prompt. Recent-buffer read in a throwaway Herdr session with a moved GROK_HOME; the truncated scratch path became `/tmp/collie-grok-sandbox` at the same width | `blocked` |
 | `grok--done.txt` | Square user-message bubble ABOVE an idle composer — the bubble must survive the strip | `idle` |
 | `grok--user-bubble.txt` | Torn frame: square bubble, no composer. `locateComposer` must return null | — |
 | `grok--permission-rm.txt` | Bash `rm` permission card at the tail; `●` on option 1 (always-approve). Composer replaced. Byte-faithful `format:ansi` 2026-08-21 | `blocked` |
@@ -838,6 +907,8 @@ username, hostname, home path or real project path appears in any file: the sess
 | `claude-lab--menu-effort-slider-v2291--w82.txt` | 82 × 49 | /effort slider on 2.1.291 (82 columns): the label row now ends with 'Tab to toggle', a heading 'Faster ... Smarter' sits above the scale and the scale reads low, medium, high, xhigh, max. The Effort grammar lifts it with the same keys, but its scale read now carries the three words of the 'Tab to toggle' hint as labels (effort.test.ts fails on this capture: 8 labels, the five real ones plus the three words of the hint, where the test pins the 2.1.278 scale of six ending in `ultracode`). Note for the grammar: that is a finding, not a corpus gap. |
 | `claude-lab--menu-model-picker--w82.txt` | 82 × 49 | /model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-model-picker-v2291--w82.txt`.] |
 | `claude-lab--menu-model-picker-v2291--w82.txt` | 82 × 49 | /model picker on 2.1.291 (82 columns): heading 'Select model' with a two-line blurb, ten visible models (Default Opus 5.5, Fable 5.1, Sonnet 5.5 ✔, Haiku 4.5, …, '… +2 models'), a '↓' scroll marker, the effort row '◐ Medium effort (default) ←/→ to adjust' and the same footer. |
+| `claude-lab--menu-model-picker-v2300--w119.txt` | 119 × 49 | /model picker on 2.1.300 at 119 columns, captured 2026-10-15 from a throwaway Herdr session (`--session`, deleted after) with an isolated `CLAUDE_CONFIG_DIR` holding the credentials, a settings file and the cached model list, `stty cols 119 rows 49`, in `/tmp/m51lab/project`. The field case of tracker M51 spec 10: heading `Select model` with a two-line blurb, ten numbered models (Default Sonnet 5.5 ✔ … Opus 4.8) with a `↓` marker on row 10, the `… +3 models` tail, the effort row `● High effort ←/→ to adjust` (one `→` off the default Medium) and the footer `Enter to set as default · s to use this session only · Esc to cancel`. Lifts one `menu` block: Enter, `s`, Esc (Cancel) and the Up/Down and Left/Right arrows. Plain `herdr pane read --source recent --lines 300 --format ansi`, byte for byte; the only path on it is `/tmp/m51lab/project` |
+| `claude-lab--menu-model-picker-v2301--w119.txt` | 119 × 49 | /model picker on 2.1.301 at 119 columns, captured 2026-10-16 from a throwaway Herdr session (`--session`, deleted after) with an isolated `CLAUDE_CONFIG_DIR` (credentials, an empty settings file, the account's cached model list, deleted after), `stty cols 119 rows 49`, plain `herdr pane read --source recent --lines 300 --format ansi`. The footer is byte for byte the 2.1.300 footer, `Enter to set as default · s to use this session only · Esc to cancel`; the 2.1.301 build did not change it. The only difference to the 2.1.300 file is the effort row on its default, `◐ Medium effort (default) ←/→ to adjust`. Lifts one `menu` block: Enter, `s`, Esc (Cancel) and the Up/Down and Left/Right arrows. The shell path in the banner was replaced by `/tmp/m56lab/project` and blanks, same length. A narrower pane is not lifted: from the same session, below 70 columns the footer wraps (`… · Esc to` over `cancel` at 70, `… · s to use` over `this session only · …` at 40), `detectMenuRegion` reads only the last row, and the screen falls to the unread-dialog card. At 40 columns the picker is also taller than the 49-row pane, so its top rule scrolls off. Not captured as fixtures; `readKeyHintFooter` already joins wrapped footers, and the grammar's pinned wrapped-footer declines (`/tasks` and `/effort` at 40 columns) must be decided first |
 | `claude-lab--menu-resume-picker--w83.txt` | 83 × 49 | /resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-resume-picker-v2291--w83.txt`.] |
 | `claude-lab--menu-resume-picker-v2291--w83.txt` | 83 × 49 | /resume picker on 2.1.291 (83 columns): the ▔ top edge is now a ─ rule, rows are indented two spaces (were three), the list is long and scrolls (a ↓ marker in the pointer column of the last visible row), and the same two-row key-hint footer. The sessions are the lab's own earlier runs. |
 | `claude-lab--menu-rewind--w82.txt` | 82 × 49 | esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-rewind-v2291--w82.txt`.] |
@@ -1756,13 +1827,46 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `agy--fresh-idle.txt` | Fresh session: Antigravity header logo and session info, idle input box between horizontal rules, statusline below (`? for shortcuts`) | `idle` |
-| `agy--working.txt` | Mid-turn: tool calls, `⣾ Loading...` spinner with tip line, input box with `esc to cancel` status line | `working` |
+| `agy--working.txt` | Mid-turn (the capture of 2026-08-20, restored 2026-10-16): tool calls, a `⣟  Generating...` spinner row with a tip line, the box, and `esc to cancel` under it | `working` |
+| `agy--after-plan-idle.txt` | The 60-row capture of 2026-08-26 that stood as `agy--working.txt`: a `/plan` turn is over and the box is free, with `? for shortcuts` under it. Relabelled idle on 2026-10-16 (M56 spec 14), when the mid-turn capture below came back | `idle` |
 | `agy--done.txt` | Completed turn: tool output, assistant summary, idle input box | `idle` |
 | `agy--select-menu.txt` | AskUserQuestion single-select dialog: question, numbered options 1..3 with description sub-lines, free-text row "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip" footer | `blocked` |
 | `agy--permission-bash.txt` | Bash execution permission dialog: command, "Requesting permission for: ls -la /tmp", options 1..4 (Yes / allow in conversation / persist / No), "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command" footer | `blocked` |
 | `agy--permission-edit.txt` | File edit / multi-line write permission dialog: multi-line heredoc preview, options 1..4, "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review" footer | `blocked` |
 | `agy--trust-prompt.txt` | Workspace folder trust prompt: "Do you trust the contents of this project?", options "Yes, I trust this folder" / "No, exit", "↑/↓ Navigate · enter Confirm" footer | `blocked` |
 | `agy--plan-approval.txt` | Plan approval dialog: plan question, options 1..3 (Execute plan / Request changes / Cancel) + "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip · ctrl+r Review" footer | `blocked` |
+| `agy--slash-exact.txt` | agy 1.3.5, `/model` typed: the slash-command completion popup under the box's bottom rule, `> /model` highlighted, footer "↑/↓ Navigate · enter Select · tab Complete". Not a dialog; the draft reads `/model` | `done` |
+| `agy--slash-partial.txt` | `/mo` typed: five suggestions with `> /model` highlighted and `↓ 1 more`. Enter would run `/model`, so the draft must not read `/mo` | `done` |
+| `agy--slash-typed-arg.txt` | `/model x` typed: the popup says `No matches`; the draft reads `/model x` | `done` |
+| `agy--resume-picker.txt` | agy 1.3.5 `/resume`: the `CLI  Other` tab row, the `Conversations` title, `Type to search conversations...`, ten conversations with `> ` at column 0 on the first, the `[1-10 of 305 items]` pager and the two-row `Keyboard: ↑/↓ Navigate … enter Select … f4 Delete …` / `esc Go back / Clear search` footer. Lifts as a menu: Up/Down, Select (Enter), Go back (Escape) | `blocked` |
+| `agy--resume-picker-search.txt` | Same picker with `Reply with` typed: `Search: Reply with` and five matches, the first highlighted | `blocked` |
+| `agy--resume-picker-search-moved.txt` | Same search after Down: the highlight on the second match, so the menu signature differs | `blocked` |
+| `agy--resume-picker-nomatch.txt` | Same picker with `/resume` typed into its search: `No matching conversations.` and no highlighted row. Stays raw; the unread-dialog card offers Escape | `blocked` |
+| `agy--ask-two-q1.txt` | agy 1.3.5, a two-question call: `Question 1/2: Which animal do you like?`, numbered options, `4. Write-in...`, footer `↑/↓ Navigate · → Next · enter Select · esc Skip`. Lifts with each option as its digit ALONE | `blocked` |
+| `agy--ask-two-q2.txt` | The same call after `2`: `Question 2/2: Which drink do you want?`, footer `↑/↓ Navigate · ← Back · enter Submit All · esc Skip`. Lifts the same way | `blocked` |
+| `agy--ask-multi.txt` | A checkbox question: `Question 1/1`, rows `1. [ ] apple` …, footer `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`. Stays raw (no recipe here ticks with Space); the unread-dialog card offers Escape | `blocked` |
+
+The three `agy--slash-*` captures of 2026-10-15 are visible-screen reads of agy 1.3.5 in a throwaway
+Herdr session (`herdr pane read --source visible --format ansi`). The account email became
+`developer.user@corp.test` and the temporary project path `/tmp/collie-agy-sandbox`, as in the
+captures above; the popup lists agy's own commands only. Nothing was submitted while capturing.
+
+The four `agy--resume-picker*` captures of 2026-10-15 are reads of agy 1.3.5 in a throwaway Herdr session
+(`herdr pane read --source recent --format ansi`), with the same email and path swaps. In
+`agy--resume-picker.txt` the conversations below the three canary ones, and in the two search captures
+the two September rows below them, came from other local work:
+each title and folder name was replaced by an invented string of the same width, so every column
+keeps its place. In `agy--resume-picker-nomatch.txt` one sentence of the resumed canary turn's
+thought, which quoted a local instruction file, was deleted. Measured at the time: Down moved the highlight,
+a first Escape cleared a typed search and a second closed the picker, and Enter resumed the
+highlighted conversation (a canary run).
+
+The three `agy--ask-*` captures of 2026-10-15 are reads of agy 1.3.5 in a throwaway Herdr session, with the
+same email and path swaps; the earlier canary turns above the last question were cut, so each keeps the
+header and its own turn. Measured at the time: a digit alone answers. On a one-question call it
+submitted; on `1/2` it answered and moved to `2/2`; on `2/2` it submitted the set. The digit-then-Enter
+recipe the reader used before answered `2/2` with its highlighted row, so `1/2` lifts with the digit
+alone now. The plan-approval dialog was not re-measured on 1.3.5; the code sends the digit alone for every family, so a build where a digit only moves the pointer would not submit it (measured on 1.3.5 only).
 
 
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is
@@ -1828,7 +1932,8 @@ signature.
 | `muse--draft-blank-row.txt` | Two-paragraph draft: a blank row between the `❯` head and the continuation. The tail walk steps over it, so the prompt binds, the draft folds, and no card draws (#274) | `idle` |
 | `muse--draft-image-chip.txt` | An attached image path converted in place to `[Image #1]` (N in attach order). The read stays verbatim; the attach grammar maps it back for verify (#278) | `idle` |
 | `muse--draft-quoted-path.txt` | A non-image path double-quoted in place (`"/tmp/…"`). Same split: verbatim read, attach grammar verifies (#278) | `idle` |
-| `muse--working.txt` | Mid-turn: `◇ Double checking (2m 40s · esc to interrupt)` above the live composer | `working` |
+| `muse--working.txt` | A finished turn: the transcript ends `◆ Worked for 2m 57s · 4:24 PM` and the composer is free. The name is the first capture's; relabelled idle on 2026-10-16 (M56 spec 14), since no mid-turn screen was ever captured under it | `idle` |
+| `muse--turn-running.txt` | Derived 2026-10-16 from `muse--working.txt`: its last transcript row is replaced by the running row `◇ Double checking (2m 40s · esc to interrupt)`, in the form of the `Calling tools (1m 01s · esc to interrupt)` row of `muse--approval-ls-147.txt`. Not a live capture; a live one is pending | `working` |
 | `muse--done.txt` | Completed turn: `◆ Ran command …`, `◆` summary, `◆ Worked for 1m 06s`, idle composer holding the `Start a message with ! to run a shell command yourself` placeholder (grey, not a draft) | `idle` |
 | `muse--tip-loop.txt` | The same idle composer holding the rotated `/loop 10m <prompt> schedules a recurring prompt` placeholder tip — the tip rotates, and an unlisted one reads as a ghost draft (#274) | `idle` |
 | `muse--tip-paste.txt` | The same idle composer holding the `Paste an image with Ctrl+V — file paths and URLs work too` placeholder tip — the tip rotates per context (#278) | `idle` |
@@ -1858,6 +1963,13 @@ signature.
 | `muse--approval-ls-147.txt` | Muse Code 1.4.7 `ls` approval, `⟩` on option 1 (#424) | `blocked` |
 | `muse--approval-date-147.txt` | Muse Code 1.4.7 `date` approval, `⟩` on option 2 (#424) | `blocked` |
 | `muse--trust-prompt-147.txt` | Muse Code 1.4.7 workspace trust prompt (#424) | `blocked` |
+| `muse--resume-picker.txt` | Muse Code 1.4.8 `/resume`: the same picker as Codex's, the highlighted session led by `⟩` at column 0 (the search field's `  ⟩ Search` is indented), footer ending `↑/↓ browse  pgup/pgdn page`. Lifts as a menu: Up/Down, Resume, Exit. Visible-screen read 2026-10-15; the sessions are earlier canary runs | `blocked` |
+| `muse--resume-picker-moved.txt` | Same picker after Down: the highlight on the second session | `blocked` |
+| `muse--palette-hint.txt` | Muse Code 1.4.8, `/model` typed: the box reads `❯ /model [<model-id>]`, the hint in the bottom rule's colour, over one `/model` suggestion. The read is `/model` | `idle` |
+| `muse--palette-hint-skills.txt` | `/resume` typed: its hint, and three suggestions, the bold `/resume` first and two built-in `resume-*` skills under it. The read is `/resume`, since Enter runs the bold row | `idle` |
+| `muse--palette-hint-moved.txt` | Same, after Down: the bold has moved to `/resume-claude`, so the read must not verify `/resume` | `idle` |
+| `muse--palette-typed-arg.txt` | `/model x` typed: the hint is gone and `x` wears the typed-text colour. The read is `/model x` | `idle` |
+| `muse--palette-skill.txt` | `/plan` typed: its one suggestion is a built-in skill row, `  /plan · built-in · default skill  On an explicit…`, tags between the command and the gap. The read is `/plan`. Visible-screen read 2026-10-15, cwd swapped for the sandbox path and model label renamed `mini` | `idle` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
@@ -1865,6 +1977,11 @@ dir; every question was answered with the sandbox's own test data. The dialogs
 left open at the end were dismissed with `Escape`. A second session
 (2026-09-26, tasks popup, same throwaway sandbox) approved `sleep 120/100/110/150`
 (backgrounded, no output) and `ls -la /tmp` (listing verified).
+
+The four `muse--palette-*` rows of 2026-10-15 are visible-screen captures of Muse Code 1.4.8 in a
+throwaway Herdr session (`herdr pane read --source visible --format ansi`). The statusline's
+shortened cwd was swapped for `/private/tmp/collie-muse-sandbox`, the same 32 characters, and its
+model label renamed `mini`. Nothing was submitted while capturing.
 
 
 ## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)
@@ -1899,6 +2016,7 @@ wrap, Tab does nothing, Enter confirms, Escape declines, no digit).
 | `oc--slash-palette.txt` | `/` typed: the command list painted inside the box, above the input row. The composer still holds the keyboard | `idle` |
 | `oc--command-palette.txt` | The ctrl+p palette, `Commands … esc` over `Search`, over the middle of the screen; on 1.18.32 it also cuts through the rule | `idle` |
 | `oc--agents-picker.txt` | The `/agents` picker, `Select agent … esc` over `Search`, floating over the splash while the composer's tail stays intact underneath. The picker-shape check refuses it | `idle` |
+| `oc--update-available.txt` | opencode 1.18.34 at launch with a newer release out: the `Update Available … esc` confirm dialog, two body rows, and `Skip  Confirm` with Confirm highlighted, over the splash. No `Search` row, so it is not a picker; `confirmDialogUp` refuses the composer and the card offers Escape, which dismissed it live (2026-10-15). Recent-buffer read in a throwaway Herdr session; the wrapped cwd row became `/tmp/collie-oc-sandbox:master` at the same width and its second row blank, and the model and provider labels became `mini demo host`. Enter (Confirm) was never pressed | `blocked` |
 | `oc--command-palette-query.txt` | The ctrl+p palette with the filter `mod` typed, which stands where `Search` was. A known gap, pinned as `it.fails`: `composerReady` answers true here | `done` |
 | `oc--permission-bash.txt` | The bash permission dialog: `△ Permission required`, the heading `# Shell command`, the command `$ echo fixture-corpus-probe`, chips `Allow once` / `Allow always` / `Reject` with the pointer on `Allow once` | `blocked` |
 | `oc--permission-bash--moved.txt` | After one `Right`: pointer on `Allow always`. The body does not change | `blocked` |
@@ -2031,3 +2149,108 @@ the only path on them is the lab folder, and nothing was altered.
 **Not captured.** The permission, plan and pick-many dialogs with the list under them; `✔` rows on a
 dialog screen (they appear in the unit tests, retyped from a real screen); and the idle screen, where
 the list is not drawn under the input box at all.
+
+## M56 lab checks (captured 2026-10-15, Codex 0.162.1 and Claude Code 2.1.301, herdr 0.9.4, private Herdr session)
+
+Read through `herdr pane read --source visible --format ansi --raw` from a throwaway session in a folder
+on disk. Panes were 82 columns wide (Claude) and 82 (Codex). Nothing was altered except the lab folder
+name in the path row (`~/sandbox/collie-lab/m56slice0/work`, the same length as the real one). No user
+name, account or e-mail address is on them. The Codex picker screens carry the model names the lab
+account offered.
+
+| Fixture | State / what's in it |
+|---|---|
+| `codex--v0162-idle.txt` | Codex 0.162.1 start screen and an empty input box (`›`), footer `GPT-6-Luna low · <cwd>` and the `← for agents · ? for shortcuts` hint row |
+| `codex--v0162-picker-model.txt` | `/model` picker, title `Select Model and Effort`, eight numbered rows, `› ` on the current one, footer `enter select · esc back`. The corpus had no 0.16x picker |
+| `codex--v0162-picker-permissions.txt` | `/permissions` picker, title `Update Model Permissions`, four numbered rows (`Ask for approval`, `Approve for me`, `Full Access`, `Read Only`), `› ` on the first |
+| `codex--v0162-resume-search.txt` | `/resume` list with the `Type to search` field, the filter row and the two-row key hint |
+| `claude--v2301-idle.txt` | Claude Code 2.1.301 fresh idle box: placeholder `Try "..."`, one footer row with the mode text and `◐ medium · /effort` on its right |
+| `claude--v2301-hold-subagent.txt` | A background subagent has a permission request pending (a PermissionRequest hook is holding it) and the main screen shows NO dialog: a free-looking box with a suggestion, `Waiting for 1 background agent to finish`, and the agents panel |
+
+The last one is the reason a hook ask cannot be derived from the screen: the screen says free while
+the request waits.
+
+## A send during a running turn (captured 2026-10-16, Claude Code 2.1.301, Codex 0.163.0, herdr 0.9.4)
+
+Read through `herdr pane read --source visible --format ansi --raw`, byte for byte except one glyph,
+from a throwaway Herdr workspace (closed after) in `~/.cache/collie-lab/m56-queue-lab/project`. The pane was 120 columns
+by 40 rows; Claude Code was started under `stty cols 100 rows 40`, Codex used the full 120. Claude Code
+ran with the operator's own statusline (two rows: usage gauges, then model, folder and branch). The
+captures answer two questions: does the running sign fire on a finished turn's row, and does each
+harness take a message typed and entered while its turn runs. The one change: in the two
+`working-draft` and `working-queued-message` files the tip row's dash (`branch - 3 free reviews left`)
+is a hyphen, where Claude Code drew a long dash; the cell width is the same.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2301-working-quiet--w100.txt` | A turn waiting on a shell command. The live row is `* Wibbling… (4s · ↓ 304 tokens)`: a spinner glyph, a verb with `…`, and a timer in brackets. 2.1.301 prints no `esc to interrupt` anywhere while it runs. Reads `running` |
+| `claude--v2301-spinner-no-timer--w100.txt` | The first second of the same turn: `✶ Wibbling…` with no bracket and no timer yet. Reads `idle`: the running sign needs the timer. A send here goes ahead as a free send and the harness queues it all the same |
+| `claude--v2301-done-shell-running--w100.txt` | The turn ended while a background shell still runs: `✻ Worked for 6s · done 12:36 PM · 1 shell still running`, and `· 1 shell` in the footer. A finished row, no `…`, no bracket. Reads `idle` |
+| `claude--v2301-idle-after-turn--w100.txt` | The turn is over: `✻ Churned for 1s · done 12:37 PM`. Reads `idle` |
+| `claude--v2301-working-draft--w100.txt` | A running turn (`✽ Germinating… (4s · thinking with high effort)`) with `then give it a title` typed into the box and not entered. The footer drops its `· ← 11 agents` tail while the box holds text. Reads `running`, composer `draft` |
+| `claude--v2301-working-queued-message--w100.txt` | The same turn after Enter: the message stands above the spinner as `❯ then give it a title` with `ctrl+enter to send now` under it, and the box shows the faint placeholder `Press up to edit queued messages`. Claude Code queued it. Reads `running`, composer `empty` |
+| `claude--v2301-queued-taken--w100.txt` | After the turn: the queued message became the next turn and was answered, `✻ Cogitated for 1s · done 12:38 PM`. Reads `idle` |
+| `codex--v0163-working-draft--w120.txt` | Codex 0.163.0 mid-turn, `• Working (6s • esc to interrupt) · 1 background terminal running · …`, with `also say hello` typed into the box; the hint row reads `tab to queue message` |
+| `codex--v0163-working-steered--w120.txt` | The same turn after Enter: `› also say hello` stands in the transcript above `• Working (8s • esc to interrupt)` and the box is empty again. Enter took the message into the running turn (Tab would have queued it for after); the turn answered it before it ended |
+
+The running sign (`isRunningRow` in `lib/surface/cues.ts`) fires only on the live rows above. The
+finished rows (`✻ Worked for 6s · done …`, `✻ Churned for 1s · done …`, and the older `✻ Crunched for
+2s · done 7:10 PM` of `claude-lab--idle-after-turn--w82.txt`) never fire: they carry no `…` before a
+bracketed timer and no interrupt hint.
+
+pi 0.87.1 and opencode were measured in the same lab and gave no answer: pi's providers answered 401,
+and opencode updated itself on start and covered the turn with its update dialog. Neither has a
+profile, so neither ever reads `running`.
+
+## The agents panel under the box (2026-10-16 incident on lane 8788, Claude Code 2.1.301)
+
+On the operator's phone, 37 sends in three minutes were refused `unconfirmed` with `modal: unreadable`, and
+no key went out. The main turn was idle while a `/subtask` fork ran. Claude Code drew its agents
+panel under the box: `● main`, one `◯` row per agent, and the hints `↓ to view` and `↓ to manage`.
+Those rows did not walk as statusline and footer rows, so the cues read the `◯` rows as a checkbox
+list and `↓ to view` as a key hint. The fix names the panel rows and hints in the Claude profile
+(`idle.volatile.below.footerRows`). The frame walk steps over them, and no cue reads them. All three
+files are labelled `idle` and read free.
+
+| Fixture | Source | What's in it |
+|---|---|---|
+| `claude--v2301-fork-running-main-idle.txt` | Captured in the read-only investigation's sandbox pane | The main turn idle after a fork, the statusline, and a panel of `● main` and one `◯` agent row. Two private strings were replaced, same length: the account name in the reply became `demo-u`, and the sandbox path became `~/.cache/sample-lab/incident-0000/sandbox` |
+| `claude--v2301-synth-agents-panel.txt` | Hand-built from the incident screen | The incident shape: three statusline rows, a blank row, then `● main` and two `◯` agent rows |
+| `claude--v2301-synth-agents-panel-walk-fails.txt` | Hand-built from the incident screen | The same panel with `· ↓ to view` on the mode row and `↓ to manage` under the panel. Before the fix the walk failed here and the screen read `unreadable` |
+| `claude--v2301-lab-agents-panel-empty.txt` | Captured in the scratch-bridge lab, `tmux capture-pane -e` | A background agent runs. The box is empty, with a grey suggestion. The mode row ends `← for agents · ↓ to manage`, then a blank row, `● main` and one `◯` row. A plain send went in on this screen |
+| `claude--v2301-lab-agents-panel-draft.txt` | Same lab, one paste later | The same panel under a typed draft. The mode row drops its two hints, and the panel stays. Labelled `draft`, it reads `composer: draft` |
+| `claude--v2301-lab-agents-panel-more.txt` | Same lab, eleven agents | The panel shows `● main`, five `◯` rows and `↓ 6 more`. The profile names that row `agents-panel-more` |
+| `claude--v2301-lab-agents-panel-tasks-pill.txt` | Same lab, one ↓ from the box | The tasks pill is focused: the mode row ends `Enter to view tasks` |
+| `claude--v2301-lab-agents-panel-focused.txt` | Same lab, two ↓ from the box | The panel is focused: the mode row reads `↑/↓ to select`, and `❯ ● main` points at main. A typed key goes back to the box, so the label is `idle` |
+
+The two hand-built files carry a real reply from the transcript above the box. The folder in their
+statusline became `~/projects/sample-workspace`, the same length.
+The lab could not draw `↓ to manage` on a row of its own under the panel. In each lab screen it stood on
+the mode row. The hand-built walk-fails file keeps that shape.
+
+In the lab files the project folder became `~/.cache/sample-lab/lab-0000-00/work`, padded to the
+same length, and the session name on the box became `lab-sample`.
+
+## Surface corpus: labels and quoted-dialog transcripts (M56 spec 04, built 2026-10-15)
+
+`web/src/fixtures/surface-labels.json` gives every fixture in this folder one hand-checked row:
+the harness id it was captured under, the harness version (`unversioned` when the capture does not
+say), and a state: `idle`, `draft`, `running`, `popup`, `dialog`, `screen` (a full-screen view such
+as a picker, search box or shell prompt) or `other`. `web/src/lib/surface/fold.test.ts` fails when a
+fixture has no row or a row names a fixture that is gone. `dialog` and `screen` are the negative set:
+none may ever read `free`. The file also maps the eight incident commits of the reader-stability
+research to fixtures that show them. Where no capture shows an incident, the row rebuilds it from a
+captured screen with named row edits (`synthetic`), so the test reads a real screen with one change.
+
+`bun scripts/surface-corpus.ts` prints the table per harness and version from these labels.
+
+`web/src/fixtures/surface/` holds three transcripts that quote a dialog. Each is a real idle Claude Code
+2.1.291 screen at 82 columns with plain rows spliced into the transcript. The ANSI of every other row
+is unchanged. The cues must read them `free`, because a quote sits above the input box and not in the
+bottom cluster.
+
+| Fixture | Base | What the transcript quotes |
+|---|---|---|
+| `claude-transcript-quoted-permission--w82.txt` | `claude-lab--idle-after-turn--w82.txt` | A reply quoting the Bash permission dialog: `Do you want to proceed?`, a pointer on `1. Yes`, two more numbered options and `Esc to cancel · Tab to amend`. It replaces the one reply row |
+| `claude-transcript-quoted-picker--w82.txt` | `claude-lab--idle-after-turn--w82.txt` | A reply quoting the `/model` picker: a pointer on `Default (recommended)`, two more rows, `Enter to confirm · Esc to exit` and a closing sentence. It replaces the one reply row |
+| `claude-transcript-quoted-trust--w82.txt` | `claude-lab--interrupted--w82.txt` | The folder trust prompt (`❯ 1. Yes, proceed`, `2. No, exit`, `Enter to confirm · Esc to exit`) added mid-reply, five rows over the interrupted line |

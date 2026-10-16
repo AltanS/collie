@@ -13,10 +13,12 @@
 //
 // DEV-ONLY, unreachable from the app entry.
 
-import { useEffect } from "react";
+import { Settings2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { HarnessBarControl } from "@/components/harness-bar-control";
+import { DURABLE_BAR } from "@/lib/harness-bar";
 import { __resetHarnessBar } from "@/lib/harness-bar-pref";
 
 import { Card, Group, Section, type SectionDef } from "../layout";
@@ -32,6 +34,41 @@ export const DEF: SectionDef = {
 function Roomy({ agent }: { agent: string | null }) {
   const general = useRoomyActions();
   return <ActionsRow general={general} agent={agent} onRun={took} />;
+}
+
+/**
+ * A durable pane's belt: the real `ActionsRow` with the program's section, in a fixed state. The caps
+ * are not read here (they come from the bridge's `/api/config`); the rows are the table's own, which is
+ * what a program that declares `caps.steer` and `caps.abort` draws.
+ */
+function Durable({ working }: { working: boolean }) {
+  // A durable belt keeps what is not about a screen: the Display button, and nothing that types.
+  const [display, setDisplay] = useState(false);
+  const [steer, setSteer] = useState(false);
+  return (
+    <ActionsRow
+      general={[
+        {
+          id: "display",
+          icon: Settings2,
+          label: "Display settings",
+          word: "Display",
+          on: display,
+          expanded: display,
+          onSelect: () => setDisplay((was) => !was),
+        },
+      ]}
+      agent={undefined}
+      onRun={took}
+      durable={{
+        items: DURABLE_BAR,
+        state: {
+          steer: { pressed: steer, offered: working, onPressedChange: setSteer },
+          stop: { offered: working, busy: false, onStop: () => undefined },
+        },
+      }}
+    />
+  );
 }
 
 export function ActionsRowSection() {
@@ -92,6 +129,28 @@ export function ActionsRowSection() {
           span={2}
         >
           <Roomy agent={null} />
+        </Card>
+      </Group>
+
+      <Group title="A pane with no screen">
+        <Card
+          state="durable-idle"
+          label="durable, idle: Steer and Stop are in the belt, dimmed"
+          reach="open a conversation of a durable agent that declares caps.steer and caps.abort, with no turn running."
+          note="The durable agent's own section opens with its mark and holds Steer, then Stop, under the thumb edge. Nothing is running, so both are dimmed in place and refuse the tap. They do not leave: the composer under the belt is the same height in every state."
+          span={2}
+        >
+          <Durable working={false} />
+        </Card>
+
+        <Card
+          state="durable-working"
+          label="durable, working: the same two buttons, live"
+          reach="the same conversation while a turn runs."
+          note="Steer is a switch that is off after every send, and Stop posts the abort. Only their state changed from the card above: same buttons, same places, same height."
+          span={2}
+        >
+          <Durable working />
         </Card>
       </Group>
 

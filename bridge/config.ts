@@ -6,9 +6,11 @@ import {
   configFilePaths,
   hostFilePerms,
   readConfigFiles,
+  tightenPrivateFile,
   type ConfigFileLayer,
   type Environment,
   type FilePerms,
+  type PrivateFileVerdict,
 } from "./config-source.ts";
 import { HOST, type Host } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
@@ -377,6 +379,20 @@ export interface Config {
    */
   multiSession: boolean;
   /**
+   * Surface shadow mode (`COLLIE_SURFACE_SHADOW=1`, M56 spec 04): the bridge computes each agent pane's
+   * Surface from the screen on every poll beside the old readers, logs every disagreement and serves
+   * the Surface on the snapshot and on `GET /api/surface`. Off by default; nothing decides a send by it.
+   */
+  surfaceShadow: boolean;
+  /**
+   * The Send Protocol (`COLLIE_SEND_PROTOCOL`, M56 spec 05): `POST /api/send` runs a send as one
+   * bridge-side request with a lock, a probe, a predicted-state check, the key gate and a receipt, and
+   * the phone's composer uses it on panes the snapshot marks. Turns on the Surface computation too.
+   * On by default since M56 spec 06: it is the only way text reaches a pane from the phone, and a reply
+   * that submits text runs it too. `COLLIE_SEND_PROTOCOL=0` turns sending text off (the keys still work).
+   */
+  sendProtocol: boolean;
+  /**
    * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
    * identically either way — this flag only informs the startup warnings: without `tailscale serve`
@@ -617,6 +633,15 @@ const diskFilePerms: FilePerms = hostFilePerms(HOST, {
   },
 }, (path, repair) => secretFileVerdict(path, { repair }));
 
+/**
+ * Hold another private file the bridge reads at owner-only, by the rule `.env` and `config.toml` follow:
+ * tighten in place and say so, never refuse. `sources.json` (M55) is the one caller, because a `url`
+ * entry there carries a bearer token.
+ */
+export function holdPrivateFile(path: string, repairAcl = false): PrivateFileVerdict {
+  return tightenPrivateFile(path, diskFilePerms, repairAcl);
+}
+
 export function loadConfig(env: Environment = process.env): Config {
   const stateDir = resolveStateDir(env);
 
@@ -689,6 +714,8 @@ export function loadConfig(env: Environment = process.env): Config {
     vapidSubject: env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
+    surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
+    sendProtocol: envBool("COLLIE_SEND_PROTOCOL", true, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };

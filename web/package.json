@@ -1,6 +1,6 @@
 {
   "name": "collie-web",
-  "version": "1.21.3",
+  "version": "1.22.0",
   "private": true,
   "license": "MIT",
   "type": "module",

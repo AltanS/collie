@@ -10,9 +10,10 @@
 // was read from (`bindColumns`); the editor beside the panel binds nothing.
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
-import { detectPiQuestion, piModalOnScreen, type PiQuestion } from "./ask";
+import { detectPiQuestion, piModalOnScreen, piQuestionBanner, type PiQuestion } from "./ask";
 import { composerDraft, composerPrompt, composerStatusLines, locateComposer } from "./composer";
 import { piView, type PiView } from "./panel";
+import { detectPiTrust } from "./trust";
 
 export function piBuildBlocks(lines: StyledLine[]): Block[] {
   const view = piView(lines);
@@ -27,6 +28,14 @@ export function piBuildBlocks(lines: StyledLine[]): Block[] {
         ? { kind: "prompt-select", prompt: question.model, lines: region }
         : { kind: "wizard", wizard: question.model, lines: region },
     );
+    return blocks;
+  }
+  // The trust prompt fills the screen before any editor or side panel exists, so it is read whole.
+  const trust = view.column === null ? detectPiTrust(lines) : null;
+  if (trust !== null) {
+    const before = trimTrailingBlank(lines.slice(0, trust.startLine));
+    const blocks: Block[] = before.length > 0 ? [{ kind: "raw", lines: before }] : [];
+    blocks.push({ kind: "prompt-select", prompt: trust.model, lines: lines.slice(trust.startLine) });
     return blocks;
   }
   // The editor comes off the mirror only when it is the editor: a modal can fill the same rules with
@@ -84,5 +93,8 @@ export const piAdapter: HarnessAdapter = {
   // (pi--v110-core-selector.txt). Offered by name: on an answer editor it steps back, it does not end
   // the question.
   cancelKey: "Escape",
-  modalOnScreen: (lines) => piModalOnScreen(piView(lines).lines),
+  // OmO's `? Question pending` banner over a ready editor: a cue in Chat, never a card (ask.ts).
+  questionPending: (lines) => piQuestionBanner(piView(lines).lines),
+  // The trust prompt ends at its bottom rule with no status rows under it, so it is not a pi frame.
+  modalOnScreen: (lines) => piModalOnScreen(piView(lines).lines) || detectPiTrust(lines) !== null,
 };

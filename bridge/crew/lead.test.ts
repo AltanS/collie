@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SnapshotView } from "../sessions.ts";
-import type { MuxConfig, SnapshotResponse } from "../types.ts";
+import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import type { PeerPreflight } from "../update-action.ts";
 import { member, muxCaps, neverProxy } from "./fixtures.ts";
 import { NARROW_PLAN, snapshotPlan, SWEEP_VIEW, type PeerSnapshotWire } from "./merge.ts";
@@ -1534,6 +1534,70 @@ describe("a member's capability block rides `hello` and is answered per host (M2
     await h.lead.sweep();
     await Bun.sleep(5);
     expect(asked).toBe(1);
+  });
+
+  test("a member's session cards answer `&session=` from the card it named (M55)", async () => {
+    const cards: SessionCard[] = [
+      { name: "default", kind: "terminal", mux: "reference", caps: { createSpace: true }, where: "local", state: "ready", experimental: false },
+      { name: "desk", kind: "program", mux: "Support desk", caps: { steerTurn: true, createSpace: false }, where: "local", state: "ready", experimental: true },
+    ];
+    const carded: PeerOutcome<{ version: string | null; mux: MuxConfig | null; sessions: SessionCard[] }> = {
+      ok: true,
+      value: { version: "1.22.0", mux: block({ unsupportedKeys: ["PageUp"] }), sessions: cards },
+      status: 200,
+      member: "laptop",
+      receivedAt: NOW,
+      date: null,
+    };
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(carded) });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    const desk = h.lead.sessionMuxFor("laptop", "desk");
+    expect(desk?.name).toBe("Support desk");
+    expect({ ...desk?.capabilities }).toEqual({ steerTurn: true, createSpace: false });
+    expect([desk?.unsupportedKeys, desk?.notes]).toEqual([[], {}]);
+    // The card whose multiplexer is the block's own keeps the block's key spellings and notes.
+    expect(h.lead.sessionMuxFor("laptop", "default")?.unsupportedKeys).toEqual(["PageUp"]);
+    // No such card: null, and the route answers with the member's block.
+    expect(h.lead.sessionMuxFor("laptop", "nope")).toBeNull();
+    expect(h.lead.sessionMuxFor("nobody", "desk")).toBeNull();
+  });
+
+  test("a member's Surface reader version is kept from its hello, and a member that sends none has none (M56 spec 09)", async () => {
+    const answer = (surfaceVersion: number | undefined): PeerOutcome<{ version: string | null; mux: MuxConfig | null; surfaceVersion?: number }> => ({
+      ok: true,
+      value: surfaceVersion === undefined ? { version: "1.22.0", mux: null } : { version: "1.22.0", mux: null, surfaceVersion },
+      status: 200,
+      member: "laptop",
+      receivedAt: NOW,
+      date: null,
+    });
+    const named = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(answer(2)) });
+    expect(named.lead.surfaceVersionFor("laptop")).toBeNull();
+    await named.lead.sweep();
+    await Bun.sleep(5);
+    expect(named.lead.surfaceVersionFor("laptop")).toBe(2);
+    expect(named.lead.surfaceVersionFor("nobody")).toBeNull();
+    const silent = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(answer(undefined)) });
+    await silent.lead.sweep();
+    await Bun.sleep(5);
+    expect(silent.lead.surfaceVersionFor("laptop")).toBeNull();
+  });
+
+  test("the lead's forward hands a member's stored reader version to the refusal of a text reply (M56 compat)", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), {
+      hello: () => Promise.resolve({ ok: true, value: { version: "1.21.3", mux: null }, status: 200, member: "laptop", receivedAt: NOW, date: null }),
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.lead.surfaceVersionFor("laptop")).toBeNull();
+    const url = new URL("https://lead.example/api/pane/w1:p1/reply?host=laptop");
+    const resolved = h.lead.resolve({ kind: "member", id: "laptop" });
+    const req = new Request(url, { method: "POST", body: JSON.stringify({ text: "hi", submit: true }) });
+    // SAFETY: "laptop" is the sole enrolled member and is not `self`, so `resolve` returns the `peer`
+    // variant, the one carrying the link + state pair. The test's proxy would throw on a dial.
+    const res = await h.lead.forward(req, url, resolved as ResolvedPeer);
+    expect(await res.json()).toMatchObject({ ok: false, textDelivered: false, code: "reply.send_failed" });
   });
 
   test("a member that has said nothing answers `null`, which the route reads as the lead's", async () => {

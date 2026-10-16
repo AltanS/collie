@@ -493,7 +493,7 @@ function FormationNodeMark({
           <text
             x={node.x - badge / 2 + 20}
             y={node.y - NODE_R - 15.5}
-            className="fill-muted-foreground text-[9px] font-medium tracking-wide uppercase"
+            className="fill-muted-foreground text-[9px] font-medium label-caps"
           >
             {roleWord}
           </text>

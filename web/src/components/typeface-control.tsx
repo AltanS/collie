@@ -1,7 +1,7 @@
 import { ChevronDown, CaseSensitive } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
-import { DEFAULT_FONT, SHIPPED_FONTS, isDesignFont, setDesignFont, useDesignPrefs } from "@/lib/design";
+import { DEFAULT_FONT, SHIPPED_FONTS, isDesignFont, isShippedFont, setDesignFont, useDesignPrefs } from "@/lib/design";
 import { findOperatorFont, operatorFontValue, type OperatorFontFace } from "@/lib/operator-fonts";
 import { useOperatorFonts } from "@/lib/operator-config";
 import { useLocale } from "@/hooks/use-locale";
@@ -32,13 +32,19 @@ import { t } from "@/lib/i18n";
 const FAMILY_LABELS = {
   grotesk: "Space Grotesk",
   aldrich: "Aldrich",
+  plex: "IBM Plex Sans",
+  geist: "Geist",
+  atkinson: "Atkinson Hyperlegible Next",
 } satisfies Record<Exclude<(typeof SHIPPED_FONTS)[number], "system">, string>;
 
 const NOTE_KEYS = {
   system: "settings.typeface.note.system",
   grotesk: "settings.typeface.note.grotesk",
   aldrich: "settings.typeface.note.aldrich",
-} as const;
+  plex: "settings.typeface.note.plex",
+  geist: "settings.typeface.note.geist",
+  atkinson: "settings.typeface.note.atkinson",
+} as const satisfies Record<(typeof SHIPPED_FONTS)[number], `settings.typeface.note.${string}`>;
 
 /** Settings card: the app's own typeface. Device-local, like theme and language. */
 export function TypefaceControl() {
@@ -66,7 +72,7 @@ export function TypefaceControl() {
         </div>
       </div>
 
-      <div className="divide-y divide-border border-t border-border">
+      <div data-slot="list-group" className="border-t border-border">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <label htmlFor="pref-typeface" className="text-sm font-medium">
             {t("settings.typeface.family")}
@@ -130,6 +136,6 @@ function resolveShown(font: string, faces: readonly OperatorFontFace[]): string 
 }
 
 function noteKey(font: string): (typeof NOTE_KEYS)[keyof typeof NOTE_KEYS] | "settings.typeface.note.operator" {
-  if (font === "system" || font === "aldrich" || font === "grotesk") return NOTE_KEYS[font];
+  if (isShippedFont(font)) return NOTE_KEYS[font];
   return "settings.typeface.note.operator";
 }

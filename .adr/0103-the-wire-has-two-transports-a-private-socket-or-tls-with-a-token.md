@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Shipped in:** pending (1.21.0)
+- **Shipped in:** 1.22.0
 - **Amends in scope:** [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md) points 3 and 4
 - **Trail:** people who run their Pi Durable programs on Cloudflare Durable Objects and want them in
   the crew, asked for on 2026-10-13 · [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md)
@@ -13,7 +13,7 @@
   `bridge/mux/durable/client.ts` · `bridge/mux/durable/http-client.ts` ·
   `bridge/mux/durable/transport.ts` · `bridge/mux/durable/adapter.ts` (`DURABLE_BUDGETS`) ·
   `cli/durable-findings.ts` · `bridge/config-schema.ts` ·
-  `examples/durable-member-cloudflare/` (the deployed example)
+  `experiments/durable-member-cloudflare/` (the deployed example)
 
 ## Context
 
@@ -86,7 +86,7 @@ a program the person deployed themselves.
 ## Consequences
 
 - A person can put a program that runs on Cloudflare, or on any host with a certificate, into the
-  crew with two lines in the peer's `.env`. `examples/durable-member-cloudflare/` shows one.
+  crew with two lines in the peer's `.env`. `experiments/durable-member-cloudflare/` shows one.
 - Anyone who holds the token acts as the phone: they can read every conversation, answer every
   question, send, stop and start. The token does not expire by itself. A program MAY take a second
   token while a rotation runs, so the person rotates without a lockout: the Cloudflare example takes
@@ -112,5 +112,14 @@ a program the person deployed themselves.
   the watch and a person's look (`refresh()`) start a read (amended 2026-10-13; the first text said
   every 5 to 6 seconds, because the safety-net poll dialled too). The docs recommend a paid plan for a
   program polled all day, and say why.
+- The Cloudflare example hosts Pi Durable with Cloudflare's PiHarness (package `agents`, beta,
+  pinned exact), and nothing on the wire changes for it (amended 2026-10-13, M53 spec 09).
+  PiHarness owns `Harness.open`, storage and recovery; the program keeps the token check in the
+  Worker, the asks, the receipts and the `collie_` tables. PiHarness wakes the object by alarm
+  while a session has work, so a run cut off by an eviction continues without a read, and an
+  answer that is the first request after a wake is taken. The cost moves too: an open ask keeps
+  the object in memory, billed, until it is answered, even when no peer polls. A real model comes
+  from a Workers AI binding, so the Worker holds no model key. The SDK core is the same as in the
+  local example, which runs Pi Durable plain.
 - Revisit this decision if a host needs a second header (an access proxy's service token) or a
   push channel. Both are additive to 1B, not changes to the wire.

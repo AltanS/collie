@@ -10,7 +10,8 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
 unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **an agent is greyed
-out on the New page** · **Start says there is no folder, or says it could not confirm**.
+out on the New page** · **Start says there is no folder, or says it could not confirm** ·
+**a durable agent does not show up, or says Unreachable**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -243,7 +244,7 @@ On Collie up to 1.8.x, an update tapped on the phone could stop the launchd agen
 again, so the phone lost the service and `launchctl print gui/$(id -u)/herdr.collie` found nothing.
 The runner shared the agent's process group, and restarting the agent killed it half way.
 `collie restart` writes the agent's plist again and loads it. From 1.9.0 on, the bridge
-starts the runner in a session of its own. If a phone update still unloads the agent after that, run
+starts the runner in a process session of its own. If a phone update still unloads the agent after that, run
 the same command and add a note to [#213](https://github.com/AltanS/collie/issues/213).
 
 **On macOS, `collie start` finishes but `collie status` says "loaded, not running".** The launchd job is
@@ -274,6 +275,11 @@ means the folder is not on the machine that runs the start, so nothing started. 
 Recent. The second means the phone lost the reply. Look at the dashboard first, because the pane may
 exist. **Try again** sends the same request and never opens a second pane
 ([Start an agent or a shell from the phone](claude-code-on-your-phone.md#start-an-agent-or-a-shell-from-the-phone)).
+
+## Durable agents
+
+A durable agent you attached has its own checks, reasons and cases. Start with `collie durable list` and
+`collie doctor`, then read [Troubleshooting a durable agent](durable-agents-troubleshooting.md).
 
 ---
 

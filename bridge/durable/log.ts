@@ -6,9 +6,24 @@
 // the `durable` journal adapter (bridge/journal/durable.ts) reads that file through the journal path
 // every other harness uses. There is no second reader.
 //
-// ONE FILE PER PANE: `<stateDir>/durable/<base64url(paneId)>.jsonl`. The pane id is the program's
-// conversation id, so it is the same across a restart of the program. Base64url is a name that no
-// id can turn into a path: the file name holds no `/`, no `..` and no case folding.
+// ONE FOLDER PER PROGRAM (M55): `<stateDir>/durable/<source>/`, where `<source>` is the program's name in
+// `sources.json` (bridge/sources.ts), or `default` on a durable-only instance. Two programs may use the
+// same conversation id, so their logs never share a folder. Logs written before M55 sat directly in
+// `durable/`; {@link moveFlatLogs} moves them into `durable/default/` once, at boot.
+//
+// ONE FILE PER PANE: `<stateDir>/durable/<source>/<base64url(key)>.jsonl`. The key is the pane's session id, the
+// program's conversation id (WIRE.md 7.16), or the pane id when the program sends none, so it is the same
+// across a restart of the program. Base64url is a name that no id can turn into a path: the file name
+// holds no `/`, no `..` and no case folding.
+//
+// A CACHE OF THE PROGRAM'S RECORD. A program that declares `history` keeps every conversation itself and
+// serves it (WIRE.md 7.16). This log is then the fast, offline copy Chat reads for a live pane. The read-only
+// view of a closed conversation reads the program, never this log.
+//
+// THE CURSOR BESIDE IT. `<base64url(key)>.cursor.json` holds `{ epoch, after }`, where the events reader
+// stopped (bridge/mux/durable/events.ts). It is written after each batch the log took, to a temporary file
+// renamed over the old one, and read on the first read of a pane after a bridge restart, so the reader goes
+// on where it stopped instead of reading the program's tail again. Older builds ignore it.
 //
 // ROWS, NOT A SNAPSHOT. Every row is one JSON line, written once, never edited. The first line is
 // a header, `{"k":"gen","at":ISO,"id":RANDOM}`, new with the file and new again after a rewrite. It is
@@ -16,10 +31,15 @@
 // generation and starts over, instead of reading the new file from a position that means nothing in it.
 //   {"k":"item","at":ISO,"item":{...}}              an item in a version (a later row replaces it by id)
 //   {"k":"ask","at":ISO,"ask":{...}}                an open ask, or a higher revision of one
-//   {"k":"ask-closed","at":ISO,"askId":...,"by":...} an ask no longer open
+//   {"k":"ask-closed","at":ISO,"askId":...,"by":...} an ask no longer open, with its `title` since M55
 //   {"k":"state","at":ISO,"state":"working"}        the pane's state changed
 //   {"k":"settled","at":ISO,"inputId":...,...}      an input reached its end
 // `at` is when the bridge wrote the row. An item keeps its own `ts` when the program sent one.
+//
+// A REPLY THAT GROWS (WIRE.md 7.15) is one item rewritten under one id, `partial: true` until the last
+// version. Each version is a row, and the reader upserts by id, so Chat and History hold one turn.
+// Versions that arrive in one batch write one row (the last), so the file grows with the polls, not with
+// the program's writes.
 //
 // IDEMPOTENT ON THE ITEM. The adapter re-reads after a bridge restart, a reset, or an epoch change,
 // and a reset replays the whole view. The log therefore remembers the latest version of every item
@@ -48,13 +68,16 @@
 // id is derived from the first item's, so the same reset twice writes one marker.
 //
 // ONE CAP FOR THE MACHINE. All the logs together stay under {@link HOST_MAX_BYTES} (256 MiB): past
-// it, the conversation logs written longest ago are deleted first, never the one just written.
+// it, the conversation logs written longest ago are deleted first, never the one just written, each with
+// its cursor and one line in the bridge's log that names it.
 
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, chmod, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
-import { parseLogRow, type DurableEvent, type LogRow } from "../mux/durable/protocol.ts";
+import { type DurableEvent, type DurableItem, type LogRow, parseLogRow, parseSavedCursor, type SavedCursor } from "../mux/durable/protocol.ts";
+
+export type { SavedCursor } from "../mux/durable/protocol.ts";
 
 /** The row kind of the header line. It carries no content. */
 export const GENERATION_ROW = "gen";
@@ -79,9 +102,54 @@ export function gapItemId(firstItemId: string): string {
   return `gap-${createHash("sha256").update(firstItemId, "utf8").digest("hex").slice(0, 32)}`;
 }
 
-/** The folder the logs live in, for a state dir. */
+/** The folder every program's log folder lives in, for a state dir. The journal reads under it. */
 export function durableLogDir(stateDir: string): string {
   return join(stateDir, LOG_DIR_NAME);
+}
+
+/**
+ * The folder one program's logs live in: `<stateDir>/durable/<source>/`. `source` is a source name,
+ * which bridge/sources.ts holds to `^[a-z0-9][a-z0-9-]{0,31}$`, so it is one plain folder name.
+ */
+export function sourceLogDir(stateDir: string, source: string): string {
+  return join(durableLogDir(stateDir), source);
+}
+
+/** Whether a name in `durable/` is a pane log or its cursor, the two files a pre-M55 build wrote there. */
+function isFlatLogFile(name: string): boolean {
+  return name.endsWith(".jsonl") || name.endsWith(".cursor.json");
+}
+
+/**
+ * The one-time move to one folder per program (M55): pane logs and cursors that sit directly in
+ * `<stateDir>/durable/` go into `durable/<into>/`, when that folder is not there yet. A durable-only
+ * instance wrote them, so they are its program's, and its program is named `default`. Resolves with
+ * how many files moved; says one line when any did. Never throws: a log that cannot move stays where
+ * it was, and Chat then starts that conversation's history over from the program.
+ */
+export async function moveFlatLogs(stateDir: string, into: string, say: (line: string) => void = (line) => console.log(line)): Promise<number> {
+  const root = durableLogDir(stateDir);
+  const names = await readdir(root).catch((): string[] => []);
+  const flat = names.filter(isFlatLogFile);
+  if (flat.length === 0) return 0;
+  const target = join(root, into);
+  if (names.includes(into)) return 0;
+  try {
+    await mkdir(target, { mode: 0o700 });
+  } catch {
+    return 0;
+  }
+  let moved = 0;
+  for (const name of flat) {
+    try {
+      await rename(join(root, name), join(target, name));
+      moved += 1;
+    } catch {
+      // Left where it was: nothing reads it there any more, and the program still holds its record.
+    }
+  }
+  if (moved > 0) say(`[durable] moved ${String(moved)} pane log file(s) from ${root} into ${target}: each program keeps its own folder now`);
+  return moved;
 }
 
 /** The file name of one pane's log. Injective, and a plain name whatever the id holds. */
@@ -89,13 +157,27 @@ export function logFileName(paneId: string): string {
   return `${Buffer.from(paneId, "utf8").toString("base64url")}.jsonl`;
 }
 
+/** The file name of one log's cursor, beside the log. */
+export function cursorFileName(key: string): string {
+  return `${Buffer.from(key, "utf8").toString("base64url")}.cursor.json`;
+}
+
 /** What the adapter's events reader hands the log. */
 export interface PaneEventSink {
+  /**
+   * The file one pane's log is kept in, for the pane's session ref (M55). Two programs may share a
+   * conversation id, so the ref names the file and not the id. Absent: the ref stays the id.
+   */
+  pathOf?(key: string): string;
   /**
    * Record these events of one pane. Resolves with how many rows were written. `trimmed` is the
    * reset reply's count of older items it left out, 0 for a plain reply.
    */
   apply(paneId: string, events: readonly DurableEvent[], trimmed?: number): Promise<number>;
+  /** The cursor saved beside a log, or null. */
+  loadCursor?(key: string): Promise<SavedCursor | null>;
+  /** Save the cursor beside a log, or delete it with null. */
+  saveCursor?(key: string, cursor: SavedCursor | null): Promise<void>;
 }
 
 interface Limits {
@@ -108,6 +190,8 @@ const DEFAULT_LIMITS: Limits = { maxBytes: LOG_MAX_BYTES, keepItems: LOG_KEEP_IT
 interface AskNote {
   revision: number;
   open: boolean;
+  /** The title of its latest revision, written onto its `ask-closed` row so Chat can name it. */
+  title: string;
 }
 
 /** What the log remembers of its own file, so a repeat can be skipped without reading it. */
@@ -120,6 +204,13 @@ interface Index {
   bytes: number;
   /** The file does not end on a newline (a torn last write), so the next append starts one. */
   torn: boolean;
+}
+
+/** The item held as `json` without its `partial` mark, or null when it is not partial (or is no item). */
+function finishedItem(json: string): DurableItem | null {
+  const row = parseLogRow(`{"k":"item","at":"x","item":${json}}`);
+  if (row === null || row.k !== "item" || !("partial" in row.item) || row.item.partial !== true) return null;
+  return { ...row.item, partial: undefined };
 }
 
 /** The header line of a log with a new generation. */
@@ -153,7 +244,7 @@ function indexOf(text: string): Index {
         break;
       }
       case "ask":
-        index.asks.set(row.ask.id, { revision: row.ask.revision, open: true });
+        index.asks.set(row.ask.id, { revision: row.ask.revision, open: true, title: row.ask.title });
         break;
       case "ask-closed": {
         const known = index.asks.get(row.askId);
@@ -249,10 +340,19 @@ export class PaneLog {
     // The first item of a trimmed reset view decides whether the log has a gap in front of it.
     let gapCheck = false;
     const listed = new Set<string>();
+    // Items a reset view lists, so a partial one it does not list can be finished at `synced` (below).
+    const listedItems = new Set<string>();
+    // A reply that grows is rewritten under one id again and again (WIRE.md 7.15). When one batch holds
+    // several versions of an item, only the last is news: an earlier one that was still partial is skipped.
+    const lastVersion = new Map<string, number>();
+    events.forEach((event, place) => {
+      if (event.type === "item") lastVersion.set(event.item.id, place);
+    });
 
-    for (const event of events) {
+    for (const [position, event] of events.entries()) {
       switch (event.type) {
         case "item": {
+          if ("partial" in event.item && event.item.partial === true && lastVersion.get(event.item.id) !== position) break;
           if (gapCheck) {
             gapCheck = false;
             const gapId = gapItemId(event.item.id);
@@ -262,6 +362,7 @@ export class PaneLog {
               index.items.set(gapId, { json: JSON.stringify(notice), at });
             }
           }
+          if (resetting) listedItems.add(event.item.id);
           const json = JSON.stringify(event.item);
           const known = index.items.get(event.item.id);
           if (known?.json === json) break;
@@ -275,13 +376,13 @@ export class PaneLog {
           // A lower or equal revision is ignored (WIRE.md 7.2), and so is any word about a closed ask.
           if (known !== undefined && (!known.open || event.ask.revision <= known.revision)) break;
           put({ k: "ask", at, ask: event.ask });
-          index.asks.set(event.ask.id, { revision: event.ask.revision, open: true });
+          index.asks.set(event.ask.id, { revision: event.ask.revision, open: true, title: event.ask.title });
           break;
         }
         case "ask-closed": {
           const known = index.asks.get(event.askId);
           if (known === undefined || !known.open) break;
-          put({ k: "ask-closed", at, askId: event.askId, by: event.by, waitedMs: event.waitedMs });
+          put({ k: "ask-closed", at, askId: event.askId, by: event.by, waitedMs: event.waitedMs, title: known.title === "" ? undefined : known.title });
           known.open = false;
           break;
         }
@@ -306,9 +407,19 @@ export class PaneLog {
           resetting = true;
           gapCheck = trimmed > 0;
           listed.clear();
+          listedItems.clear();
           break;
         case "synced":
           if (resetting) {
+            // A reply the program was still writing when it restarted will never finish. The new view does not list
+            // it, so it is written once more as it stood, without `partial`: no cursor is left on it for good.
+            for (const [id, known] of index.items) {
+              if (listedItems.has(id) || !known.json.includes('"partial":true')) continue;
+              const finished = finishedItem(known.json);
+              if (finished === null) continue;
+              put({ k: "item", at, item: finished });
+              index.items.set(id, { json: JSON.stringify(finished), at: known.at });
+            }
             // The reset view is whole now. An ask it did not list can no longer be answered.
             for (const [askId, known] of index.asks) {
               if (!known.open || listed.has(askId)) continue;
@@ -418,6 +529,11 @@ export class DurableLogs implements PaneEventSink {
     private readonly hostMaxBytes: number = HOST_MAX_BYTES,
   ) {}
 
+  /** The file one pane's log is kept in. A plain name inside {@link dir}, whatever the key holds. */
+  pathOf(key: string): string {
+    return join(this.dir, logFileName(key));
+  }
+
   /** The log of one pane. The same instance every time, so its writes stay in order. */
   forPane(paneId: string): PaneLog {
     let log = this.logs.get(paneId);
@@ -436,6 +552,31 @@ export class DurableLogs implements PaneEventSink {
     return wrote;
   }
 
+  /** The cursor saved beside a log, or null when there is none or it cannot be read. */
+  async loadCursor(key: string): Promise<SavedCursor | null> {
+    try {
+      return parseSavedCursor(await readFile(join(this.dir, cursorFileName(key)), "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save the cursor beside a log: a fresh temporary file, renamed over the old one, so a crash leaves one whole
+   * cursor or the one before it. Null deletes it. The machine's cap deletes a cursor with its log.
+   */
+  async saveCursor(key: string, cursor: SavedCursor | null): Promise<void> {
+    const path = join(this.dir, cursorFileName(key));
+    if (cursor === null) {
+      await unlink(path).catch(() => undefined);
+      return;
+    }
+    await mkdir(this.dir, { recursive: true, mode: 0o700 });
+    const temp = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temp, JSON.stringify({ epoch: cursor.epoch, after: cursor.after }), { mode: 0o600, flag: "wx" });
+    await rename(temp, path);
+  }
+
   /** Keep the folder under the machine's cap, oldest conversation first, never `writing`. */
   private async hold(writing: PaneLog, grew: number): Promise<void> {
     this.total = this.total === null ? await this.count() : this.total + grew;
@@ -446,7 +587,12 @@ export class DurableLogs implements PaneEventSink {
       if (this.total <= this.hostMaxBytes) break;
       if (file.path === writing.path) continue;
       await unlink(file.path).catch(() => undefined);
+      // Its cursor goes with it: the next read of that conversation starts over and writes a whole log again.
+      await unlink(file.path.replace(/\.jsonl$/, ".cursor.json")).catch(() => undefined);
       this.total -= file.bytes;
+      console.warn(
+        `[durable] deleted the oldest pane log ${basename(file.path)} (${String(file.bytes)} bytes): all logs together passed ${String(this.hostMaxBytes)} bytes`,
+      );
       for (const [paneId, log] of this.logs) {
         if (log.path !== file.path) continue;
         log.forget();

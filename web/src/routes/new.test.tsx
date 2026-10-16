@@ -1641,13 +1641,16 @@ describe("the New page: a durable program's starters", () => {
     expect(bodies[0]).toMatchObject({ requestId: expect.stringMatching(/^[0-9a-f-]{36}$/u) });
   });
 
-  it("a durable peer lists only the starters, not the built-in agents or the Shell", async () => {
+  it("a durable peer lists only the starters, as rows in sight, not the built-in agents or the Shell", async () => {
     serveStarterItems([BUILT_IN, SHELL, STARTER]);
     mount();
-    const select = await agentSelect();
-    await waitFor(() => expect(within(select).getAllByRole("option").map((o) => o.textContent)).toContain("Code review"));
-    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Code review"]);
-    // No Agent or Command switch to move to the half that cannot start here.
+    const rows = await screen.findByRole("radiogroup", { name: "Starters" });
+    await waitFor(() => expect(within(rows).getAllByRole("radio").map((o) => o.textContent)).toEqual(["Code review"]));
+    // The first starter is chosen, so one tap on Start starts it.
+    expect(within(rows).getByRole("radio", { name: "Code review" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("heading", { name: "New conversation" })).toBeInTheDocument();
+    // No select, and no Agent or Command switch to move to the half that cannot start here.
+    expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
     expect(screen.queryByRole("radio", { name: "Shell" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Command" })).toBeNull();
   });
@@ -1656,10 +1659,10 @@ describe("the New page: a durable program's starters", () => {
     declares({ paneGrid: false });
     serveStarterItems([BUILT_IN, SHELL]);
     mount();
-    const select = await agentSelect();
-    expect(await screen.findByText("This machine's program offers no starters yet.")).toBeInTheDocument();
-    // Only the blank placeholder: neither Claude Code nor the Shell is offered.
-    expect(within(select).queryAllByRole("option").map((o) => o.textContent)).toEqual([""]);
+    expect(await screen.findByText("This machine's durable agent offers no starters yet.")).toBeInTheDocument();
+    // Neither Claude Code nor the Shell is offered.
+    expect(screen.queryByRole("radiogroup", { name: "Starters" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Claude Code" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 

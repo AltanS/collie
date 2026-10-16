@@ -43,6 +43,10 @@ exists to inject headers.
 
 Pairing gates every `/api` route, reads included. Only two routes stay open: `/api/health`, which
 a monitor or a load balancer asks, and `/api/pair`, which a device needs before it holds a token.
+`/api/health` answers the build, the crew mode and three counts of the last seven days (how often the
+input box read as free, how often it could not be read, and how often a person sent by hand past a
+screen Collie could not read). The counts name no pane, no text and no person.
+
 The device header gates writes and one read, the [Files view](changes.md#files), which can show
 every file under a workspace's folder
 ([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).
@@ -170,6 +174,13 @@ Key security boundaries and risks:
   so another local user who holds no token reads nothing but `/api/health`. The token is the
   boundary: a local user who can read your browser profile can read the token too
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+- **A held permission waits for a person's tap.** With `collie hooks install claude
+  --hold-permissions`, Claude's permission hook asks the bridge through a socket file. Only your
+  user can open it (mode 0600 in a 0700 folder). The hook checks the socket owner, the folder and
+  the state dir above it before it connects. The bridge answers only for a process it places on a
+  pane. It never answers alone. A tap must carry the hash of what the card showed. A screen card
+  never answers a request whose dialog is not on the screen
+  ([Permissions held for the phone](multiplexers.md#permissions-held-for-the-phone)).
 - **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write
@@ -199,16 +210,18 @@ Key security boundaries and risks:
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
   [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
-- **A single instance exposes all sessions.** By default, one Collie process fronts every
-  multiplexer session discovered under Herdr's configuration root, including sandbox sessions
+- **A single instance exposes all Herdr sessions.** By default, one Collie process fronts every
+  Herdr session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
 - **Writes are recorded to `<state-dir>/audit.log`**, which is `~/.local/state/collie/audit.log`
   unless `COLLIE_STATE_DIR` moves it. The server logs all incoming keystrokes,
   replies, file uploads, and pane/tab lifecycle events. Note that an audit log provides visibility
   after the fact rather than access control. Characters sent in Type mode are never written to the
   log: `COLLIE_AUDIT_CONTENT=none` redacts each one, and the default preview records only a count of
-  `•` marks. Named keys such as Enter and Ctrl+C stay readable.
-  ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+  `•` marks. Named keys such as Enter and Ctrl+C stay readable
+  ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)). A durable agent's answers, sends, stops,
+  button taps, starts, reopens and renames are recorded too
+  ([What is logged](durable-agents-security.md#what-is-logged)).
 - **Response headers.** Every response carries `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer` and `Permissions-Policy: camera=(), geolocation=(),
   microphone=(self), payment=(), usb=()`. The microphone stays allowed for the hands-free speech
@@ -244,6 +257,13 @@ Key security boundaries and risks:
 
 Restrict access further with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without
 warranty.
+
+## Durable agents
+
+A durable agent you attach is code you run or deploy, and Collie treats its text as untrusted. A private socket
+keeps other users out but not a process of your own user, and a token is the only gate over https.
+The trust rules per transport, what Collie does to a durable agent's text and what the audit log keeps are in
+[Security of a durable agent](durable-agents-security.md).
 
 ## The speech engine (Whistle)
 
@@ -405,6 +425,10 @@ to host** or runs `collie stt whistle`, and it sends no data about you ([The spe
 
 If you set `COLLIE_ACCESS_TEAM`, Collie also fetches that Cloudflare Access team's public keys, at
 start and once an hour. That call is yours to turn on, and it sends nothing about you either.
+
+If you attach a durable agent by URL, Collie calls that URL on every poll with the durable agent's bearer token in
+the `Authorization` header. That call is yours to turn on too, and nothing is sent until you attach
+one ([Security of a durable agent](durable-agents-security.md#the-token-transport)).
 
 If collection is ever added, explicit opt-in is the ceiling — off by default, asked as a visible
 question, never carried by a flag or a default. Removing that promise would be a breaking change

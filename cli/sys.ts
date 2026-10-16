@@ -275,6 +275,12 @@ export interface Files {
    */
   ownerUid(p: string): number | null;
   /**
+   * The permission bits of `p` (`mode & 0o777`, symlinks not followed), or null when it cannot be
+   * read or the platform has no POSIX modes. The hook emitter checks a spool folder with it before it
+   * writes into one (M56 spec 11).
+   */
+  mode(p: string): number | null;
+  /**
    * May this process write into `p` — an `access(p, W_OK)` probe, or null when it cannot be answered.
    *
    * Null is not "no". A path that cannot be stat'ed at all says nothing about who may write it, and
@@ -829,6 +835,14 @@ export const realFiles: Files = {
   digest(p) {
     try {
       return new Bun.CryptoHasher("sha256").update(readFileSync(p)).digest("hex");
+    } catch {
+      return null;
+    }
+  },
+  mode(p) {
+    // Windows reports synthetic bits here; the emitter that asks runs on Linux only (it needs /proc).
+    try {
+      return lstatSync(p).mode & 0o777;
     } catch {
       return null;
     }

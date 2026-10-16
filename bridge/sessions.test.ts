@@ -1,16 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
+import { declareCapabilities, type MuxCapability } from "./mux/capabilities.ts";
 import { muxOk, muxUnsupported, type MuxSession } from "./mux/types.ts";
 import {
+  cardOf,
   herdTagFor,
   SessionRegistry,
   sessionNameFor,
+  type SessionEndpoint,
   type SessionFactory,
   type SessionParts,
   widenedPanes,
 } from "./sessions.ts";
+import type { VersionRefusal } from "./mux/durable/protocol.ts";
+import type { DurableSource } from "./sources.ts";
 import type { EngineSnapshot } from "./state-engine.ts";
-import type { AgentStatus, AgentView } from "./types.ts";
+import type { AgentStatus, AgentView, SessionState } from "./types.ts";
 
 // sessions.ts is the multi-session core: the naming rule + a registry that spins one runtime per
 // session the MULTIPLEXER reports. The naming rule gets table coverage; the registry is driven with
@@ -381,5 +386,214 @@ describe("SessionRegistry — refresh() lifecycle", () => {
     expect(primaryFake.disposed).toEqual({ engine: 1, poker: 1, notifications: 1 });
     expect(demoFake.disposed).toEqual({ engine: 1, poker: 1, notifications: 1 });
     expect(h.registry.get()).toBeUndefined();
+  });
+});
+
+// ── Programs as sessions (M55 spec 01) ────────────────────────────────────────
+// A durable program listed in `sources.json` is one more session beside the terminal primary: built by
+// the same factory with its source entry, kept for the life of the process, carded on the snapshot.
+
+/** A fake runtime whose adapter has a name and a declaration, and, for a program, a probe. */
+function cardedParts(opts: {
+  mux: string;
+  supports: readonly MuxCapability[];
+  agents?: AgentView[];
+  bridge?: "connected" | "disconnected";
+  program?: { phase: SessionState; hostName: string; refusal?: VersionRefusal };
+  sessions?: () => ReturnType<SessionParts["herdr"]["listSessions"]>;
+}): SessionParts {
+  const snap: EngineSnapshot = { agents: opts.agents ?? [], shellPanes: [], workspaces: [], tabs: [], bridge: opts.bridge ?? "connected" };
+  const parts: SessionParts = {
+    herdr: stubPart<SessionParts["herdr"]>({
+      mux: opts.mux,
+      capabilities: declareCapabilities({ supports: opts.supports, topologyLatency: { kind: "push" } }),
+      listSessions: opts.sessions ?? (() => Promise.resolve(muxOk([]))),
+    }),
+    engine: stubPart<SessionParts["engine"]>({ current: () => snap, stop: () => {} }),
+    poker: stubPart<SessionParts["poker"]>({ stop: () => {} }),
+    notifications: stubPart<SessionParts["notifications"]>({ clearAll: () => {} }),
+  };
+  const program = opts.program;
+  if (program === undefined) return parts;
+  return { ...parts, program: { phase: () => program.phase, hostName: () => program.hostName, versionRefusal: () => program.refusal ?? null } };
+}
+
+const DESK: DurableSource = { name: "desk", kind: "durable", socket: "/run/user/1000/desk/desk.sock" };
+const CLOUD: DurableSource = { name: "cloud", kind: "durable", url: "https://desk.example.workers.dev", token: "placeholder-token-placeholder-token-0000" };
+
+/** Herdr primary plus DESK and CLOUD, each program with one conversation, both called `conv-01`. */
+function mixedRegistry(discovered: () => readonly MuxSession[] = () => []) {
+  const endpoints: [string, SessionEndpoint, boolean][] = [];
+  const factory: SessionFactory = (name, endpoint, isPrimary) => {
+    endpoints.push([name, endpoint, isPrimary]);
+    if (endpoint.kind === "terminal") {
+      return cardedParts({
+        mux: "herdr",
+        supports: ["paneGrid", "typeText", "sendKeys", "listSessions"],
+        agents: [agent("w1:p1", "working")],
+        sessions: () => Promise.resolve(muxOk(discovered())),
+      });
+    }
+    return cardedParts({
+      mux: "durable",
+      supports: ["agentDetection", "agentSessionRef"],
+      agents: [agent("conv-01", "blocked")],
+      program: name === "desk" ? { phase: "ready", hostName: "Support desk" } : { phase: "starting", hostName: "" },
+    });
+  };
+  const registry = new SessionRegistry({
+    configRoot: "/cfg/herdr",
+    primarySocketPath: "/cfg/herdr/herdr.sock",
+    factory,
+    multiSession: true,
+    sources: [DESK, CLOUD],
+  });
+  return { registry, endpoints };
+}
+
+describe("SessionRegistry: programs beside the terminal mux (M55)", () => {
+  test("every configured program is a session from the start, built with its source entry, never primary", () => {
+    const { registry, endpoints } = mixedRegistry();
+    expect(endpoints).toEqual([
+      ["default", { kind: "terminal", socketPath: "/cfg/herdr/herdr.sock" }, true],
+      ["desk", { kind: "program", source: DESK }, false],
+      ["cloud", { kind: "program", source: CLOUD }, false],
+    ]);
+    expect(registry.primary).toBe("default");
+    expect(registry.get("desk")?.source).toEqual(DESK);
+    expect(registry.get("desk")?.isPrimary).toBe(false);
+    expect(registry.get()?.source).toBeUndefined();
+  });
+
+  test("the same conversation id in two programs is two addresses: (session, pane) never collides", () => {
+    const { registry } = mixedRegistry();
+    const panes = widenedPanes<{ paneId: string; session?: string }>(
+      registry.ordered().map((rt) => ({ name: rt.name, panes: rt.engine.current().agents.map((a) => ({ paneId: a.paneId })) })),
+    );
+    const addresses = panes.map((p) => `${p.session ?? ""}/${p.paneId}`);
+    expect(addresses).toEqual(["default/w1:p1", "cloud/conv-01", "desk/conv-01"]);
+    expect(new Set(addresses).size).toBe(addresses.length);
+  });
+
+  test("every snapshot entry carries the session card, in the contract's shape", () => {
+    const { registry } = mixedRegistry();
+    const list = registry.list();
+    expect(list.map((s) => s.name)).toEqual(["default", "cloud", "desk"]);
+    expect(list[0]).toEqual({
+      name: "default",
+      isPrimary: true,
+      reachable: true,
+      agents: 1,
+      working: 1,
+      blocked: 0,
+      kind: "terminal",
+      mux: "herdr",
+      caps: registry.get()?.herdr.capabilities.supports ?? {},
+      where: "local",
+      state: "ready",
+      experimental: false,
+    });
+    expect(list[1]).toMatchObject({ name: "cloud", kind: "program", mux: "durable", where: "remote", state: "starting", experimental: true });
+    expect(list[2]).toMatchObject({ name: "desk", kind: "program", mux: "Support desk", where: "local", state: "ready", experimental: true });
+    // The caps are the session's own declaration, the shape `/api/config` answers.
+    expect(list[2]).toMatchObject({ caps: { agentDetection: true, agentSessionRef: true, typeText: false } });
+    expect(registry.cards()?.map((c) => [c.name, c.kind])).toEqual([
+      ["default", "terminal"],
+      ["cloud", "program"],
+      ["desk", "program"],
+    ]);
+  });
+
+  test("an unreachable terminal session reads unreachable on its card", () => {
+    const registry = new SessionRegistry({
+      configRoot: "/cfg/herdr",
+      primarySocketPath: "/cfg/herdr/herdr.sock",
+      factory: (_name, endpoint) =>
+        endpoint.kind === "terminal"
+          ? cardedParts({ mux: "tmux", supports: [], bridge: "disconnected" })
+          : cardedParts({ mux: "durable", supports: [], program: { phase: "unreachable", hostName: "" } }),
+      multiSession: true,
+      sources: [DESK],
+    });
+    expect(registry.list().map((s) => ("state" in s ? [s.name, s.mux, s.state] : null))).toEqual([
+      ["default", "tmux", "unreachable"],
+      ["desk", "durable", "unreachable"],
+    ]);
+  });
+
+  test("refresh keeps every program, and a discovered terminal session cannot take a program's name", async () => {
+    let discovered: MuxSession[] = [{ name: "desk", endpoint: "/cfg/herdr/sessions/desk/herdr.sock" }, { name: "work", endpoint: "/cfg/herdr/sessions/work/herdr.sock" }];
+    const { registry, endpoints } = mixedRegistry(() => discovered);
+    await registry.refresh();
+    expect(registry.list().map((s) => s.name)).toEqual(["default", "cloud", "desk", "work"]);
+    // The program kept its name and its runtime; no terminal runtime was built for the clash.
+    expect(registry.get("desk")?.source).toEqual(DESK);
+    expect(endpoints.filter(([name]) => name === "desk")).toHaveLength(1);
+    // The terminal session went away: it is disposed, and the programs stay.
+    discovered = [];
+    await registry.refresh();
+    expect(registry.list().map((s) => s.name)).toEqual(["default", "cloud", "desk"]);
+  });
+
+  test("an instance with no program carries no card, so its snapshot bytes are what they were", () => {
+    const h = makeRegistry();
+    const [entry] = h.registry.list();
+    expect(Object.keys(entry ?? {}).toSorted()).toEqual(["agents", "blocked", "isPrimary", "name", "reachable", "working"]);
+    expect(h.registry.cards()).toBeNull();
+  });
+
+  test("durable-only: the program is the primary, named for its source, and carded", () => {
+    const source: DurableSource = { name: "default", kind: "durable", socket: "/run/d.sock" };
+    const registry = new SessionRegistry({
+      configRoot: "/cfg/herdr",
+      primarySocketPath: "/cfg/herdr/herdr.sock",
+      factory: () => cardedParts({ mux: "durable", supports: [], program: { phase: "ready", hostName: "" } }),
+      multiSession: true,
+      primarySource: source,
+    });
+    expect(registry.primary).toBe("default");
+    expect(registry.get()?.source).toEqual(source);
+    expect(registry.list()).toEqual([expect.objectContaining({ name: "default", isPrimary: true, kind: "program", mux: "durable" })]);
+  });
+
+  test("two programs under one name are refused at construction", () => {
+    expect(
+      () =>
+        new SessionRegistry({
+          configRoot: "/cfg/herdr",
+          primarySocketPath: "/cfg/herdr/herdr.sock",
+          factory: () => cardedParts({ mux: "herdr", supports: [] }),
+          multiSession: true,
+          sources: [DESK, { ...CLOUD, name: "desk" }],
+        }),
+    ).toThrow('session "desk" is configured twice');
+  });
+
+  test("cardOf is pure over the runtime", () => {
+    const { registry } = mixedRegistry();
+    const desk = registry.get("desk");
+    expect(desk === undefined ? null : cardOf(desk, true).mux).toBe("Support desk");
+  });
+
+  test("a program refused for its wire version carries the one sentence as notice, and no other card has the key", () => {
+    const refusal: VersionRefusal = { code: "version", collie: [1, 1], program: [2, 3] };
+    const registry = new SessionRegistry({
+      configRoot: "/cfg/herdr",
+      primarySocketPath: "/cfg/herdr/herdr.sock",
+      factory: (name, endpoint) =>
+        endpoint.kind === "terminal"
+          ? cardedParts({ mux: "herdr", supports: [] })
+          : cardedParts({ mux: "durable", supports: [], program: name === "desk" ? { phase: "unreachable", hostName: "", refusal } : { phase: "unreachable", hostName: "" } }),
+      multiSession: true,
+      sources: [DESK, CLOUD],
+    });
+    const desk = registry.get("desk");
+    const cloud = registry.get("cloud");
+    const primary = registry.get();
+    expect(desk === undefined ? null : cardOf(desk, false).notice).toBe("The durable agent speaks wire v3, this Collie speaks v1. Update Collie, or the agent's SDK.");
+    // Unreachable for another reason: no notice, the word alone.
+    expect(cloud === undefined ? null : "notice" in cardOf(cloud, false)).toBe(false);
+    expect(primary === undefined ? null : "notice" in cardOf(primary, true)).toBe(false);
+    expect(registry.list().find((s) => s.name === "desk")).toMatchObject({ state: "unreachable", notice: "The durable agent speaks wire v3, this Collie speaks v1. Update Collie, or the agent's SDK." });
   });
 });

@@ -1,7 +1,7 @@
 import { panePlace, soleTabName, type NameableP } from "./pane-name.ts";
 import { pushTitle, type PushTitleCode, type PushTitleDetail } from "./push-titles.ts";
 import type { PushMessage } from "./push.ts";
-import type { AgentStatus, AgentView } from "./types.ts";
+import type { AgentStatus, AgentView, AskPushText } from "./types.ts";
 
 // A notification shouldn't be fire-and-forget. This coordinator gives every blocked/done alert a
 // lifecycle and collapses the herd into a single, always-accurate notification:
@@ -30,8 +30,11 @@ export interface NotifyClock<H> {
 export interface HerdSummary {
   /** Headline: "claude needs you" for one, or "3 agents need you" for several. */
   title: string;
-  /** The catalogue code `title` was rendered from, so the phone can say it in its own language. */
-  titleCode: PushTitleCode;
+  /**
+   * The catalogue code `title` was rendered from, so the phone can say it in its own language. Absent
+   * when the title carries a program's own words (an ask's push title), which are not Collie's to translate.
+   */
+  titleCode?: PushTitleCode;
   /** The values `title` was filled with — the agent's name, or the digest's count. */
   titleDetail?: PushTitleDetail;
   /** Sub-line: the pane's PLACE ("collie › UI work") for one outstanding alert, or the panes' names
@@ -98,12 +101,12 @@ export function makeNotifySink(
       const body = host === undefined ? s.body : `${host} · ${s.body}`;
       const msg: PushMessage = {
         title: s.title,
-        titleCode: s.titleCode,
         body,
         tag: herdTag,
         paneId: s.paneId,
         renotify: s.renotify,
       };
+      if (s.titleCode !== undefined) msg.titleCode = s.titleCode;
       if (s.titleDetail !== undefined) msg.titleDetail = s.titleDetail;
       if (sessionName !== undefined) msg.session = sessionName;
       if (host !== undefined) msg.host = host;
@@ -143,6 +146,8 @@ interface Alert {
   agent: string;
   /** Raised by the ask guard for an ask that travels as data: the title says "Permission needed". */
   ask?: true;
+  /** The program's own words for the ask's push (`durable/ask-push.ts`), cleaned. Only with `ask`. */
+  askText?: AskPushText;
   /** What a push calls this pane — {@link pushName}, the operator's label and never the title. */
   label: string;
   /** Where it sits — `space › tab`, or the space alone. The one place rule, same module. */
@@ -182,7 +187,7 @@ export class NotificationCoordinator<H = unknown> {
    * Wire to `StateEngine.onTransition`. `cause` is `"ask"` when the ask guard raised the push
    * (`durable/ask-push.ts`): the title then says a permission is needed, in generic words.
    */
-  onTransition(agent: AgentView, from: AgentStatus, rawTo: AgentStatus, cause?: "ask"): void {
+  onTransition(agent: AgentView, from: AgentStatus, rawTo: AgentStatus, cause?: "ask", askText?: AskPushText): void {
     const id = agent.paneId;
     // Herdr 0.9 can report a finished turn as `idle` instead of `done`, and tmux and zellij never
     // report `done` (issue #345), so a `working → idle` flip IS the completion and is read as `done` from here on: the Finished pref,
@@ -208,7 +213,10 @@ export class NotificationCoordinator<H = unknown> {
       // every other member of `AgentStatus`, so this branch cannot be entered with one.
       status: to as NotifiableStatus,
     };
-    if (cause === "ask" && to === "blocked") alert.ask = true;
+    if (cause === "ask" && to === "blocked") {
+      alert.ask = true;
+      if (askText !== undefined) alert.askText = askText;
+    }
     const handle = this.clock.schedule(() => {
       this.pending.delete(id);
       this.outstanding.set(id, alert);
@@ -277,7 +285,16 @@ export class NotificationCoordinator<H = unknown> {
       // One outstanding agent → deep-link straight to its pane on tap.
       // An ask's push is GENERIC by rule: the pane's push name and nothing of the ask, because the
       // ask's title and its tool line are the program's words and can carry a path or a command.
-      const title = a.ask === true ? pushTitle("ask.permission", { pane: a.label }) : pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent });
+      //
+      // The program MAY choose the words (`askText`, already cleaned and cut). Its title goes after the pane's
+      // push name, so the push still says where it comes from, and carries no code: those words are not
+      // Collie's to translate. Its line replaces the place as the body. Either part alone is used alone.
+      const title: Pick<HerdSummary, "title" | "titleCode" | "titleDetail"> =
+        a.ask !== true
+          ? pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent })
+          : a.askText?.title !== undefined
+            ? { title: `${a.label}: ${a.askText.title}` }
+            : pushTitle("ask.permission", { pane: a.label });
       return {
         ...title,
         // The PLACE, and nothing else. A push says the same two things the screens say — what it is
@@ -285,7 +302,7 @@ export class NotificationCoordinator<H = unknown> {
         // deep-links to read alike. The cwd is deliberately gone: a full absolute path on a lock
         // screen is the least readable fact Collie has, and the space and tab are what locate the
         // work.
-        body: a.place,
+        body: a.ask === true && a.askText?.line !== undefined ? a.askText.line : a.place,
         paneId,
         renotify,
       };

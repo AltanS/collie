@@ -14,16 +14,22 @@ import {
 } from "./connection-health";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonString, parseJsonObject, type JsonObject } from "./json";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
+import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
+import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
+import type { AnswerBody } from "./surface/ask";
+import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { textRouteFor } from "./send-path";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
+import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
-import { parseAsk, type AnswerResult } from "./ask";
+import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
   ActionResponse,
@@ -50,6 +56,9 @@ import type {
   FileReadResponse,
   FilesListResponse,
   PaneHistoryResponse,
+  DurableConversationItemsResponse,
+  DurableConversationsResponse,
+  ReopenConversationResponse,
   CrewStatusResponse,
   MachineAlerts,
   MachineHistoryResponse,
@@ -390,7 +399,11 @@ function normaliseProxyRedirect(res: Response): Response {
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   // Every caller spells a root-absolute `/api/…`; the mount is applied here, once (ADR 0052).
   try {
-    return normaliseProxyRedirect(await fetch(mounted(path), { ...init, redirect: "manual" }));
+    const sentAt = Date.now();
+    const res = await fetch(mounted(path), { ...init, redirect: "manual" });
+    // The bridge's clock, off the `Date` header every response carries (lib/server-clock.ts).
+    noteServerDate(res.headers.get("date"), sentAt, Date.now());
+    return normaliseProxyRedirect(res);
   } catch (error) {
     throw deadlineError(error, init?.signal);
   }
@@ -726,6 +739,58 @@ export function fetchHistory(
     signal,
     headers: { "x-collie-seen": "1" },
   });
+}
+
+/** Rows per page of the program's conversation list. The bridge caps a page at 100. */
+export const DURABLE_CONVERSATIONS_PAGE = 100;
+/** Items per page of one conversation. The bridge caps a page at 1000. */
+export const DURABLE_ITEMS_PAGE = 1000;
+
+/**
+ * GET /api/durable/conversations: the conversations a durable program lists, newest first (M53 spec 11).
+ * `after` is the previous page's `next`. `available: false` is an ordinary answer, not a failure.
+ * Like fetchHistory it is a one-shot read on navigation and on a "Load more" tap, never on the poll loop.
+ */
+export function fetchDurableConversations(
+  opts: { after?: string; limit?: number } = {},
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<DurableConversationsResponse> {
+  const q = new URLSearchParams();
+  if (opts.after) q.set("after", opts.after);
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  return req<DurableConversationsResponse>(withScope(`/api/durable/conversations${qs ? `?${qs}` : ""}`, scope), { signal });
+}
+
+/**
+ * GET /api/durable/conversation/:id/items: one conversation's items, oldest first. `more: true` in the
+ * answer means ask again with `after` set to its `next` for the newer items that follow.
+ */
+export function fetchDurableConversationItems(
+  id: string,
+  opts: { after?: string; limit?: number } = {},
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<DurableConversationItemsResponse> {
+  const q = new URLSearchParams();
+  if (opts.after) q.set("after", opts.after);
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  const path = `/api/durable/conversation/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ""}`;
+  return req<DurableConversationItemsResponse>(withScope(path, scope), { signal });
+}
+
+/**
+ * POST /api/durable/conversation/:id/reopen: ask the program to take a closed conversation back (M53 spec
+ * 11). No body. A write, so it goes through the same transport as every other mutation: a refusal that
+ * arrives as a non-2xx status throws an ApiError, and one that arrives as `{ ok: false }` is a value.
+ */
+export function reopenDurableConversation(id: string, scope?: Scope): Promise<ReopenConversationResponse> {
+  return req<ReopenConversationResponse>(
+    withScope(`/api/durable/conversation/${encodeURIComponent(id)}/reopen`, scope),
+    { method: "POST" },
+  );
 }
 
 /**
@@ -1211,8 +1276,13 @@ function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
   switch (body.outcome) {
     case "taken":
       return body.replayed === true ? { outcome: "taken", replayed: true } : { outcome: "taken" };
-    case "too-late":
-      return body.replayed === true ? { outcome: "too-late", replayed: true } : { outcome: "too-late" };
+    case "too-late": {
+      const result: AnswerResult = { outcome: "too-late" };
+      const decided = decidedOf(body.decided);
+      if (decided !== undefined) result.decided = decided;
+      if (body.replayed === true) result.replayed = true;
+      return result;
+    }
     case "stale": {
       const ask = parseAsk(body.ask);
       return ask === undefined ? { outcome: "stale" } : { outcome: "stale", ask };
@@ -1231,11 +1301,12 @@ function answerResultOf(body: JsonObject | undefined): AnswerResult | null {
 /**
  * POST /api/pane/:id/answer: a person's tap answers one ask. `requestId` is minted per tap and reused
  * only by "Try again" after an `unknown`; `revision` is the one the card showed. Never called by
- * anything but a tap (ADR 0100 point 4).
+ * anything but a tap (ADR 0100 point 4). The body carries exactly one of `optionId` (a permission),
+ * `optionIds` (a choice), `text` or `values` (a form), by the kind of the ask.
  */
 export async function answerAsk(
   paneId: string,
-  answer: { requestId: string; askId: string; revision: number; optionId: string },
+  answer: { requestId: string; askId: string; revision: number } & AskAnswer,
   scope?: Scope,
 ): Promise<AnswerResult> {
   const body = await req<JsonObject>(
@@ -1281,7 +1352,7 @@ function controlResultOf(body: JsonObject | undefined): ControlResult | null {
   }
 }
 
-async function postControl(paneId: string, route: "send" | "abort", body: JsonObject, scope: Scope | undefined): Promise<ControlResult> {
+async function postControl(paneId: string, route: "send" | "abort" | "action", body: JsonObject, scope: Scope | undefined): Promise<ControlResult> {
   // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
   stampSend(paneId);
   const got = await req<JsonObject>(
@@ -1293,6 +1364,94 @@ async function postControl(paneId: string, route: "send" | "abort", body: JsonOb
   if (result === null) throw new ApiError(`The ${route} route sent a body this phone cannot read.`, 502);
   if (result.outcome === "ok") stampSend(paneId);
   return result;
+}
+
+/**
+ * POST /api/send: one Send Protocol request (M56 spec 05), on a bridge that marks the pane with
+ * `sendProtocol`. Every outcome is a 200 with the answer; a refusal is an answer, not an error. The
+ * phone keeps the id for a retry of the same intent, so a lost answer never sends twice.
+ */
+export async function postSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
+  stampSend(body.pane);
+  // A pane on a crew member goes through the pane's reply route, which the lead forwards to the
+  // member like any other write; the member runs the same Send Protocol on its own screen and puts
+  // the answer under `send` (M56 spec 06). `/api/send` serves this machine's own panes only.
+  const route = textRouteFor({ program: false, crew: !isLead(scope), sendProtocol: true });
+  const got = route === "pane-reply"
+    ? asJsonObject(
+        (
+          await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope), {
+            method: "POST",
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck }),
+          })
+        ).send,
+      )
+    : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+  const reply = readSendReply(got);
+  if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  return reply;
+}
+
+/**
+ * POST /api/send for a program on this machine (M56 spec 14): the bridge's structured driver runs the
+ * request, with the same answer as for a terminal pane. A program on a crew member never comes here; it
+ * keeps the program's own send route (lib/send-path.ts), so this refuses one before any request.
+ */
+export async function postProgramSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
+  if (textRouteFor({ program: true, crew: !isLead(scope), sendProtocol: true }) !== "api-send") {
+    throw new ApiError("A durable agent on a crew member takes its own send route.", 400);
+  }
+  stampSend(body.pane);
+  const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+  const reply = readSendReply(got);
+  if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  return reply;
+}
+
+/**
+ * GET /api/send/receipts: the last ten sends the bridge ran for a pane, newest first (M56 spec 09):
+ * outcome, reason, time, keys by name and gaps. Never text and never a row of the screen. This
+ * machine's own panes only: a pane on a crew member answers nothing here, and the list is empty.
+ */
+export async function getSendReceipts(paneId: string, scope?: Scope): Promise<SendReceiptRow[]> {
+  if (normalizeScope(scope).host) return [];
+  const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope));
+  return readSendReceipts(got).receipts.slice();
+}
+
+/**
+ * DELETE /api/send/<id>: take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an
+ * answer, not an error: the request is going out now, and a 409 carries it. This machine's own panes
+ * only; the route does not cross a crew link, so a pane on a member never comes here.
+ */
+export async function cancelHeldSend(requestId: string, paneId: string, scope?: Scope): Promise<HeldCancelAnswer> {
+  if (!isLead(scope)) throw new ApiError("A held send on a crew member is cancelled on that machine.", 400);
+  stampSend(paneId);
+  const got = await req<JsonObject>(
+    withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
+    { method: "DELETE" },
+    // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
+    (status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null),
+  );
+  const answer = readHeldCancelAnswer(got);
+  if (answer === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  return answer;
+}
+
+/**
+ * POST /api/ask/<id>: a tap on a dialog card as one Answer to the single-use ask the bridge minted
+ * (M56 spec 08). This machine's own panes only; a crew member's pane keeps the guarded key route.
+ * Every outcome is a 200 with the reply; a refusal is a reply, not an error.
+ */
+export async function postAskAnswer(askId: string, body: AnswerBody, scope?: Scope): Promise<AskTapReply> {
+  stampSend(body.pane);
+  const got = await req<JsonObject>(withScope(`/api/ask/${encodeURIComponent(askId)}`, scope), { method: "POST", body: JSON.stringify(body) });
+  const reply = readAskTapReply(got);
+  if (reply === null) throw new ApiError("The ask route sent a body this phone cannot read.", 502);
+  if (reply.outcome === "sent") stampSend(body.pane);
+  return reply;
 }
 
 /**
@@ -1309,6 +1468,21 @@ export function sendToPane(
   if (send.steer) body.steer = true;
   if (send.target !== null) Object.assign(body, send.target);
   return postControl(paneId, "send", body, scope);
+}
+
+/**
+ * POST /api/pane/:id/action: a tap on one of the buttons a durable program lists for the pane (M53 spec 07).
+ * It names the action and carries a request id, and the turn the phone saw when it has one: a turn that
+ * moved is refused with 409 before anything reaches the program. Same answers as a send or an abort.
+ */
+export function runPaneAction(
+  paneId: string,
+  run: { requestId: string; actionId: string; turnId?: string | undefined },
+  scope?: Scope,
+): Promise<ControlResult> {
+  const body: JsonObject = { requestId: run.requestId, actionId: run.actionId };
+  if (run.turnId !== undefined && run.turnId !== "") body.turnId = run.turnId;
+  return postControl(paneId, "action", body, scope);
 }
 
 /** POST /api/pane/:id/abort: stop the turn the phone saw. Same names and the same stale rule as a send. */
@@ -1390,6 +1564,21 @@ export function renameTab(
   scope?: Scope,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(withScope(`/api/tab/${encodeURIComponent(tabId)}/rename`, scope), {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+/**
+ * Set a space's name, on a machine whose multiplexer declares `renameSpace` (a durable program that takes
+ * renames). Non-empty required, like a tab: the bridge 400s a blank label.
+ */
+export function renameSpace(
+  spaceId: string,
+  label: string,
+  scope?: Scope,
+): Promise<ActionResponse> {
+  return req<ActionResponse>(withScope(`/api/space/${encodeURIComponent(spaceId)}/rename`, scope), {
     method: "POST",
     body: JSON.stringify({ label }),
   });

@@ -24,9 +24,36 @@ describe("answerAsk", () => {
     expect(body).toEqual(ASK);
   });
 
+  it("posts an answer of each other kind with its own member and no optionId", async () => {
+    const bodies: JsonValue[] = [];
+    server.use(
+      http.post<never, JsonValue>(/\/api\/pane\/c1\/answer$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, outcome: "taken" });
+      }),
+    );
+    const head = { requestId: ID, askId: "a1", revision: 2 };
+    await answerAsk("c1", { ...head, optionIds: ["a", "b"] });
+    await answerAsk("c1", { ...head, text: "On it." });
+    await answerAsk("c1", { ...head, values: { summary: "x", urgent: true } });
+    expect(bodies).toEqual([
+      { ...head, optionIds: ["a", "b"] },
+      { ...head, text: "On it." },
+      { ...head, values: { summary: "x", urgent: true } },
+    ]);
+  });
+
   it("reads a replayed answer", async () => {
     server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ ok: true, outcome: "taken", replayed: true })));
     await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "taken", replayed: true });
+  });
+
+  it("reads who decided a too-late answer first, and a replayed one, and none from an older bridge", async () => {
+    const decided = { by: "program", at: "2026-10-15T09:30:00.000Z" };
+    server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ ok: false, outcome: "too-late", decided, replayed: true })));
+    await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "too-late", decided, replayed: true });
+    server.use(http.post(/\/api\/pane\/c1\/answer$/, () => HttpResponse.json({ ok: false, outcome: "too-late" })));
+    await expect(answerAsk("c1", ASK)).resolves.toEqual({ outcome: "too-late" });
   });
 
   it("reads a 404 as stale on an older machine", async () => {

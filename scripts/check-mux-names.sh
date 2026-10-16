@@ -116,7 +116,12 @@ bridge_hits=$(echo "$bridge_files" | xargs grep -HnE "$comparison" || true)
 # the per-adapter endpoint. Both field names appear on the line in all three sites.
 endpoint_default='=== DEFAULT_MUX \?'
 permitted=$(echo "$bridge_hits" | grep -E "$endpoint_default" | grep 'socketPath' | grep 'muxEndpoint' || true)
-gates=$(echo "$bridge_hits" | grep -vxF "$permitted" 2>/dev/null || true)
+# The `kind` field of sources.json: bridge/sources.ts checks that an entry's `kind` is the value
+# "durable", the one kind the file contract has. That string is the value of a config field, not a
+# multiplexer the bridge chose, so the one line in that file is not a feature gate.
+sources_kind=$(echo "$bridge_hits" | grep -E '(^|/)bridge/sources\.ts:[0-9]+:' | grep -E 'kind !== "durable"' || true)
+allowed=$(printf '%s\n%s\n' "$permitted" "$sources_kind" | grep . || true)
+gates=$(echo "$bridge_hits" | grep -vxF "$allowed" 2>/dev/null || true)
 if [ -n "$bridge_hits" ] && [ -z "$permitted" ]; then gates="$bridge_hits"; fi
 
 if [ -n "$gates" ]; then

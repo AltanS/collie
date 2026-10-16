@@ -76,6 +76,8 @@ export const ERROR_CODES = {
   "tab.create_failed": "{reason}",
   "tab.rename_failed": "{reason}",
   "tab.close_failed": "{reason}",
+  /** The space would not take the name (gone, refused by the program, or the adapter cannot name a space). */
+  "space.rename_failed": "{reason}",
   /** The create body named no space to create the tab in. */
   "tab.workspace_required": "workspaceId required",
   "workspace.create_failed": "{reason}",
@@ -316,6 +318,10 @@ export const ERROR_CODES = {
   "update.packaged": "updates come from this machine's package manager — Collie does not replace its files",
   /** The handoff itself failed — nothing was staged and nothing restarted. */
   "update.start_failed": "the update could not be started: {reason}",
+
+  // ── A durable program's history: POST /api/durable/conversation/:id/reopen (M53 spec 11) ───
+  /** The program would not show the conversation again (unknown, refused, or it takes no reopen). */
+  "durable.reopen_failed": "{reason}",
 } as const;
 
 /** Every code the bridge can send. The client mirror restates this union verbatim. */

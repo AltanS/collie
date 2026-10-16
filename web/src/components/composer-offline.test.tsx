@@ -32,7 +32,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     isShell: false,
     gone: false,
     readOnly: false,
-    dialogPresent: false,
+    surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,

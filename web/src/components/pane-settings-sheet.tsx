@@ -3,10 +3,11 @@ import { Pencil } from "lucide-react";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { Switch } from "@/components/ui/switch";
 import { BottomSheet } from "@/components/ui/sheet";
+import { SendReceipts } from "@/components/send-receipts";
 import { useCacheWatch } from "@/hooks/use-cache-watch";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { CacheWatchState } from "@/lib/types";
 
@@ -35,12 +36,16 @@ interface PaneSettingsSheetProps {
   /** Open the rename flow. Absent hides the row: the pane cannot be renamed here (read-only device,
    *  an unreachable machine, a multiplexer with no rename), and the ⋮ sheet hides its own the same way. */
   onRename?: () => void;
+  /** The pane's hook source (M56 spec 11), from the snapshot. Absent hides the row: an older bridge. */
+  hooks?: "live" | "holds" | "none";
+  /** A program's conversation (M56 spec 14): no cache switch, because a program has no prompt cache. The receipts stay. */
+  program?: boolean;
 }
 
-export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename }: PaneSettingsSheetProps) {
+export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks, program = false }: PaneSettingsSheetProps) {
   useLocale();
   const { state: push } = usePushControl();
-  const { state, busy, toggle } = useCacheWatch(paneId, open, scope);
+  const { state, busy, toggle } = useCacheWatch(paneId, open && !program, scope);
 
   // Push first, because it is the only one of the three that is about this DEVICE rather than this pane,
   // and the remedy is on another screen.
@@ -50,14 +55,19 @@ export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename }: Pa
 
   return (
     <BottomSheet open={open} onClose={onClose} title={t("paneSettings.title")}>
-      <PaneSettingsView
-        state={state}
-        busy={busy}
-        pushOff={pushOff}
-        pushKnown={push !== null}
-        onToggle={(next) => void toggle(next)}
-        onRename={onRename}
-      />
+      {!program && (
+        <PaneSettingsView
+          state={state}
+          busy={busy}
+          pushOff={pushOff}
+          pushKnown={push !== null}
+          onToggle={(next) => void toggle(next)}
+          onRename={onRename}
+          hooks={hooks}
+        />
+      )}
+      {/* The last ten sends for this pane, from the bridge's receipts (M56 spec 09). Read when the sheet opens. */}
+      {open && <SendReceipts paneId={paneId} {...(scope === undefined ? {} : { scope })} />}
     </BottomSheet>
   );
 }
@@ -76,6 +86,7 @@ export function PaneSettingsView({
   pushKnown = true,
   onToggle,
   onRename,
+  hooks,
 }: {
   /** Null until the bridge answers. The switch is disabled and the hint is the ordinary one. */
   state: CacheWatchState | null;
@@ -87,6 +98,8 @@ export function PaneSettingsView({
   onToggle: (next: boolean) => void;
   /** The Rename row, above the switch. Absent hides it. */
   onRename?: () => void;
+  /** The pane's hook source (M56 spec 11), or `holds` when it holds permissions (M56 spec 12). Absent hides the row. */
+  hooks?: "live" | "holds" | "none" | undefined;
 }) {
   useLocale();
   const globalOn = state?.global === true;
@@ -119,9 +132,30 @@ export function PaneSettingsView({
           aria-label={t("paneSettings.cacheWatch.label")}
         />
       </div>
+      {/* The hook edges (M56 spec 11): live when the agent's own hooks report from this pane, none
+          when they do not. Holds (M56 spec 12) when those hooks also hold permissions for a tap here,
+          so a permission on a pane without it stays a dialog on the screen. A fact, not a switch. */}
+      {hooks !== undefined && (
+        <div className="px-4">
+          <div className="text-sm font-medium">{t(HOOKS_LABEL[hooks])}</div>
+          <p className="text-xs leading-snug text-muted-foreground">{t(HOOKS_HINT[hooks])}</p>
+        </div>
+      )}
     </div>
   );
 }
+
+const HOOKS_LABEL = {
+  live: "paneSettings.hooks.live",
+  holds: "paneSettings.hooks.holds",
+  none: "paneSettings.hooks.none",
+} as const satisfies Record<"live" | "holds" | "none", MessageKey>;
+
+const HOOKS_HINT = {
+  live: "paneSettings.hooks.liveHint",
+  holds: "paneSettings.hooks.holdsHint",
+  none: "paneSettings.hooks.noneHint",
+} as const satisfies Record<"live" | "holds" | "none", MessageKey>;
 
 /**
  * Which sentence sits under the label. The three refusals first, in the order the operator can act on

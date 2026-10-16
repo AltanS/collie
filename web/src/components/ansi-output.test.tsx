@@ -134,10 +134,12 @@ describe("terminal mirror colour space", () => {
   // inherited light-dark() token resolves against THIS element's colour-scheme (dark), not the
   // root's — but the mirror deliberately keeps a single spelling so nobody has to know that to read
   // it. Mixing the two is the regression this catches; a computed-style test would not.
-  it("uses literal dark-space colours, never theme tokens", () => {
+  // Since M57 spec 17 a theme's `ansi` block may set the mirror's own ground and ink; the literals
+  // stay as the fallbacks, so without one the pixels are the dark-space values they always were.
+  it("uses the mirror's own dark-space colours, the literals as fallbacks, never page tokens", () => {
     const pre = mirror("hello");
-    expect(pre.className).toContain("bg-[#0a0a0a]");
-    expect(pre.className).toContain("text-[#fafafa]");
+    expect(pre.className).toContain("bg-[color:var(--mirror-ground,#0a0a0a)]");
+    expect(pre.className).toContain("text-[color:var(--mirror-ink,#fafafa)]");
     expect(pre.className).not.toMatch(/\bbg-background\b/);
     expect(pre.className).not.toMatch(/\btext-foreground\b/);
   });
@@ -212,8 +214,8 @@ describe("native mirror (muse)", () => {
     expect(pre.className).toContain("terminal-muse");
     expect(pre.className).toContain("bg-[#fffbf8]");
     expect(pre.className).toContain("text-[#0a0a0a]");
-    expect(pre.className).toContain("dark:bg-[#0a0a0a]");
-    expect(pre.className).toContain("dark:text-[#fafafa]");
+    expect(pre.className).toContain("dark:bg-[color:var(--mirror-ground,#0a0a0a)]");
+    expect(pre.className).toContain("dark:text-[color:var(--mirror-ink,#fafafa)]");
     expect(pre.className).not.toContain("invert(1)");
   });
 

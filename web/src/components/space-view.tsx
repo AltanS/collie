@@ -55,7 +55,7 @@ export function SpaceView({
       {groups.map((g) => (
         <section key={g.tabId} className="flex flex-col gap-2">
           {selectedTab === null && (
-            <h3 className="flex items-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="flex items-center text-xs font-semibold label-caps text-muted-foreground">
               {/* A positional label is not a name (lib/pane-name.ts § tabTitle): a tab the
                   multiplexer only numbered heads its group with `tab 2`, the same words and the
                   same lighter ink every other surface gives it, instead of with the multiplexer's

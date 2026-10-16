@@ -17,6 +17,8 @@ import {
 	changelogAnchor,
 	checkUnreleased,
 	creditedHandles,
+	driftLines,
+	notVerifiedOf,
 	parseSection,
 	parseUrgent,
 	renderBody,
@@ -534,5 +536,37 @@ describe("the repository's CHANGELOG.md", () => {
 
 	test("every bullet under Unreleased is grouped and has a bold lead", () => {
 		expect(() => checkUnreleased(changelog)).not.toThrow();
+	});
+});
+
+// The soft release gate (M44 spec 08): a release tagged over a named drift says so on its page.
+describe("accept-drift: the release page", () => {
+	test("a drift line names the agent and the version under its own small heading", () => {
+		expect(driftLines(["claude 2.1.301", "codex 0.163.0"])).toEqual([
+			"**Not verified**",
+			"",
+			"Collie's readers were not verified on claude 2.1.301, codex 0.163.0: each is newer than its verified version.",
+		]);
+		expect(driftLines([])).toEqual([]);
+	});
+
+	test("the drift line sits before the changelog link, is not a bullet, and a page with none is unchanged", () => {
+		const plain = renderBody(FULL, "2.1.0", REPO, "v2.1.0", "v2.0.0");
+		const flagged = renderBody(FULL, "2.1.0", REPO, "v2.1.0", "v2.0.0", ["claude 2.1.301"]);
+		expect(plain).not.toContain("Not verified");
+		const sentence = "Collie's readers were not verified on claude 2.1.301: each is newer than its verified version.";
+		expect(flagged).toContain(`**Not verified**\n\n${sentence}\n\n`);
+		expect(flagged).not.toContain(`- ${sentence}`);
+		expect(flagged.indexOf("Not verified")).toBeLessThan(flagged.indexOf("Full detail with commits"));
+		expect(flagged.replace(`**Not verified**\n\n${sentence}\n\n`, "")).toBe(plain);
+	});
+
+	test("the tag message line is read back into entries", () => {
+		expect(notVerifiedOf("Collie 2.1.0\n\nNot verified: claude 2.1.301, codex 0.163.0\n")).toEqual([
+			"claude 2.1.301",
+			"codex 0.163.0",
+		]);
+		expect(notVerifiedOf("Collie 2.1.0\n")).toEqual([]);
+		expect(notVerifiedOf("Not verified: ")).toEqual([]);
 	});
 });

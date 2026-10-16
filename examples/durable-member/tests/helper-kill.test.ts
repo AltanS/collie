@@ -3,8 +3,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { LOOKUP_ANSWER, SIGN_IN_DONE } from "../script.ts";
 import { api, type Dial } from "./client.ts";
-import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, pane, tmp, waitFor } from "./util.ts";
+import { allEvents, bootApp, type Child, cleanup, firstAsk, killApp, latestItems, pane, tmp, waitFor } from "./util.ts";
 
 const HELPER_MS = 3000;
 const dir = tmp();
@@ -16,7 +17,8 @@ afterAll(async () => {
 });
 
 const helperPanes = async () => (await api.snapshot(d)).body.panes.filter((p) => p.tabId === "triage:helpers");
-const count = (events: Awaited<ReturnType<typeof allEvents>>, kind: string) => events.filter((e) => e.type === "item" && e.item.kind === kind).length;
+// Items, each id once: a reply that grew is several events under one id, and a user line may be written again with its request id.
+const count = (events: Awaited<ReturnType<typeof allEvents>>, kind: string) => latestItems(events).filter((item) => item.kind === kind).length;
 
 describe("kill while the helper answers", () => {
   let main = "";
@@ -46,18 +48,19 @@ describe("kill while the helper answers", () => {
     expect(Date.now() - t0).toBeGreaterThanOrEqual(HELPER_MS - 500);
   });
 
-  test("the result: one helper answer, one final reply, one note, one helper pane", async () => {
-    const helperEvents = await allEvents(d, helper);
-    expect(count(helperEvents, "user")).toBe(1);
-    expect(count(helperEvents, "reply")).toBe(1);
-    expect((await pane(d, helper))!.state).toBe("idle");
-    expect((await helperPanes()).length).toBe(1);
+  test("the result: one helper answer, one final reply, one note, and the look-up closed once it answered", async () => {
+    // The look-up answered, so the program closed its pane; the history keeps what it said.
+    expect(await pane(d, helper)).toBeUndefined();
+    expect((await helperPanes()).length).toBe(0);
+    const helperItems = (await api.items(d, helper)).body.items;
+    expect(helperItems.filter((item) => item.kind === "user")).toHaveLength(1);
+    expect(helperItems.filter((item) => item.kind === "reply")).toHaveLength(1);
 
     const mainEvents = await allEvents(d, main);
     const spawns = mainEvents.flatMap((e) => (e.type === "item" && e.item.kind === "tool" && e.item.tool.name === "spawn_helper" ? [e.item.status] : []));
     expect(spawns).toEqual(["running", "done"]); // one call, running then done: the parent got the answer once
-    const replies = mainEvents.flatMap((e) => (e.type === "item" && e.item.kind === "reply" ? [e.item.text] : []));
-    expect(replies).toEqual(["Triage done. The helper says: Probably an expired session cookie after the password reset."]);
+    const replies = latestItems(mainEvents).flatMap((item) => (item.kind === "reply" ? [item.text] : []));
+    expect(replies).toEqual([`${SIGN_IN_DONE} ${LOOKUP_ANSWER} Signing out on every device clears it.`]);
     expect(mainEvents.filter((e) => e.type === "state").at(-1)).toMatchObject({ state: "idle" });
     expect(mainEvents.at(-1)).toMatchObject({ type: "settled", status: "answered" }); // the input settles after the run ends
     expect(readFileSync(join(dir, "notes.txt"), "utf8").trim().split("\n")).toHaveLength(1); // write_note ran once

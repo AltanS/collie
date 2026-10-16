@@ -15,7 +15,8 @@
 ColliePWA is an open-source (MIT) mobile client for [Herdr](https://herdr.dev), with experimental
 support for [tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev). It is a
 self-hosted web app (PWA) for driving terminal AI agents such as Claude Code, Codex and OpenCode
-from your phone. Each instance connects to one multiplexer. It is served over Tailscale by default.
+from your phone. Each instance connects to one terminal multiplexer, and can show your own agent
+durable agents beside it. It is served over Tailscale by default.
 Open the URL on an iPhone or Android phone to see which agent needs input and respond directly from
 your mobile keyboard.
 
@@ -39,6 +40,7 @@ until explicitly configured.
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
+- **Durable agents**: a long-running durable agent is a session on the phone, with approvals and history (experimental)
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
@@ -73,7 +75,7 @@ data without installation.
 ## Motivation
 
 I wanted to check on my agents from my phone. The usual route is [Termux](https://termux.dev) to SSH
-in and attach to the terminal multiplexer session. Driving a TUI through on-screen controls is
+in and attach to the tmux or zellij session. Driving a TUI through on-screen controls is
 clumsy: special keys are fiddly, `Ctrl`/`Esc`/arrows require awkward chords, and simple text input
 fights the soft keyboard. I wanted a mobile interface instead of a terminal shoehorned onto a
 touchscreen. Collie lets you tap the agent that needs input, type normally, and send `Esc` or
@@ -137,6 +139,24 @@ and that is the only way to install it on a phone.
 | [**Install in five minutes**](./docs/five-minute-install.md) | The recommended setup, step by step: Tailscale, Herdr and Collie on your computer, then a paired phone with Collie on its home screen |
 | [**Claude Code in tmux or Herdr, on your phone**](./docs/claude-code-on-your-phone.md) | Keep Claude Code running in tmux or Herdr when SSH drops. Manage sessions, start new agents and worktrees, approve prompts, and send Esc or Ctrl from your phone with push alerts. |
 
+### Sessions
+
+| | |
+| --- | --- |
+| [**Sessions**](./docs/sessions.md) | What a session is, where sessions come from, a terminal or a durable agent, and what the phone shows for each |
+| [**Terminals**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios or Tern, what each can answer, and agent beacons. Experimental for tmux, zellij, tuios and Tern; bug reports wanted |
+
+### Durable agents
+
+| | |
+| --- | --- |
+| [**Durable agents (experimental)**](./docs/durable-agents.md) | Show your own durable agent on your phone: the quickstart, `collie durable attach` and `sources.json`, the three verbs, tokens, the files Collie keeps, and the versions |
+| [**Durable agents on the phone**](./docs/durable-agents-on-the-phone.md) | What a durable agent's section, conversations, questions and receipts look like |
+| [**Troubleshooting a durable agent**](./docs/durable-agents-troubleshooting.md) | A durable agent that does not show up or says Unreachable: the first checks, every reason and what fixes it, the doctor rows, and the cases that come up |
+| [**Security of a durable agent**](./docs/durable-agents-security.md) | What a durable agent can and cannot do, the trust rules of the socket and of the token, what Collie does to a durable agent's text, and what the audit log keeps |
+| [**The durable SDK (experimental)**](./docs/durable-sdk.md) | The npm package `@colliepwa/durable-sdk`, part by part: its entries and runtimes, `openCollie`, the pane methods, the four kinds of question and `requireApproval`, hooks, history, caps, the helpers, the Pi glue and the versions |
+| [**The durable wire (experimental)**](./docs/durable-wire.md) | What travels between Collie and a durable agent, for a builder: the routes, hello and the epoch, the life of an ask and the request ids, the socket and token transports, the limits and the version rule, with a link to `WIRE.md` for the exact rules |
+
 ### Reference
 
 | | |
@@ -145,14 +165,15 @@ and that is the only way to install it on a phone.
 | [**Windows**](./docs/windows.md) | Windows 11 with Herdr: what is supported, installing with `install.ps1`, the unsigned binary, updating, long paths, and what is not tested |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device, the credential for every request |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies, launchers and typefaces; appearance, Zen mode, language |
+| [**Themes**](./docs/themes.md) | The four looks Collie ships, picking one in Settings, importing a theme file after a preview, exporting one to edit, and writing your own: the 43 colour tokens, the shape and look words, the terminal palette, and what a theme cannot change |
 | [**Changes**](./docs/changes.md) | The Files screen: a workspace's folder with its changes marked, the changed files and their diffs, and the last commit, from the pane or the dashboard's Files tab. Read-only git, nested repos, and the two settings that decide how far it looks |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
-| [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij, tuios, Tern or a durable agent program, what each backend can answer, and agent beacons. Experimental for tmux, zellij, tuios, Tern and durable; bug reports wanted |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
+| [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, durable agent, harness, crew, lead, and more |
 | **For an AI coding agent in your terminal** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·

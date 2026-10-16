@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowLeft, History, Server } from "lucide-react";
+import { ArrowLeft, Check, History, Server } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
@@ -12,6 +12,7 @@ import { StatusArea } from "@/components/status-area";
 import { Button } from "@/components/ui/button";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Collapse } from "@/components/ui/collapse";
+import { ListGroup } from "@/components/ui/list-group";
 import { Notice } from "@/components/ui/notice";
 import { OneOf } from "@/components/ui/one-of";
 import { Segmented } from "@/components/ui/segmented";
@@ -70,6 +71,7 @@ import {
   type CommandPick,
   type Kind,
   type Offer,
+  type OfferItem,
   type SummaryParts,
   type Unavailable,
 } from "@/lib/new-page";
@@ -140,8 +142,9 @@ function NewPage({ search }: { search: string }) {
   // ── What this machine offers ──────────────────────────────────────────────────────────────────
   const launchers = useLaunchers(target);
   const loaded = launchers.loadedFor === launchersKey(target);
-  // Worktrees are the lead's alone, so the lead's multiplexer is the one asked.
-  const canWorktree = useMuxCapability("createWorktree").capable;
+  // Worktrees are the lead's alone, so the lead's multiplexer is the one asked, in the session the page
+  // opens into (M55).
+  const canWorktree = useMuxCapability("createWorktree", { session: target.session }).capable;
   // Whether the CHOSEN machine has a screen (ADR 0102): one with none starts only its program's starters.
   const chosenGrid = useMuxCapability("paneGrid", target);
   const offer: Offer = offerFor({
@@ -501,7 +504,9 @@ function NewPage({ search }: { search: string }) {
             >
               <ArrowLeft className="size-5" />
             </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("home.new.label")}</h1>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
+              {offer.startersOnly ? t("newPage.starters.title") : t("home.new.label")}
+            </h1>
           </>
         }
       />
@@ -559,7 +564,17 @@ function NewPage({ search }: { search: string }) {
               ]}
             />
           )}
-          {kind === "agent" ? (
+          {offer.startersOnly ? (
+            // A program's starters are the whole choice on a machine with no screen, so each is a row in
+            // sight, not an option behind a select (durable-simple, 2026-10-13). One tap picks it; Start
+            // below starts it.
+            <StarterRows
+              items={offer.agents}
+              chosen={agentItem?.key ?? null}
+              onChoose={setAgentPick}
+              disabled={busy}
+            />
+          ) : kind === "agent" ? (
             <Select
               aria-label={t("newPage.kind.agent")}
               value={agentItem?.key ?? ""}
@@ -972,6 +987,51 @@ function BranchBlock(p: BranchBlockProps) {
           </div>
         ) : null}
       </Collapse>
+    </div>
+  );
+}
+
+/**
+ * The starters of a program, one row each, exactly one chosen: a radio group in one `ui/list-group.tsx`.
+ * The chosen row carries a check in a reserved slot, so choosing moves nothing (DESIGN.md §2). A starter the
+ * program cannot run now is drawn dimmed with its reason, and cannot be chosen.
+ */
+function StarterRows({
+  items,
+  chosen,
+  onChoose,
+  disabled,
+}: {
+  items: readonly OfferItem[];
+  chosen: string | null;
+  onChoose: (key: string) => void;
+  disabled: boolean;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div role="radiogroup" aria-label={t("newPage.starters.label")} data-slot="new-starters">
+      <ListGroup>
+        {items.map((item) => {
+          const on = item.key === chosen;
+          const off = disabled || item.unavailable !== null;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={off}
+              onClick={() => onChoose(item.key)}
+              className="flex h-11 w-full items-center gap-3 px-3.5 text-left text-sm transition-colors hover:bg-muted/50 active:bg-muted disabled:opacity-50"
+            >
+              <span className="min-w-0 flex-1 truncate">{optionText(item, t("newPage.shell"))}</span>
+              <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+                {on && <Check className="size-4" />}
+              </span>
+            </button>
+          );
+        })}
+      </ListGroup>
     </div>
   );
 }

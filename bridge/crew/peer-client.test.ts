@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { JsonValue } from "../json.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
+import type { SessionCard } from "../types.ts";
 import { NARROW_VIEW } from "../sessions.ts";
 
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
@@ -23,6 +24,8 @@ import {
   crewTimeoutClampWarning,
   crewUrl,
   parseMuxReport,
+  parseSessionCards,
+  parseSurfaceVersion,
   parsePeerVersion,
   sweepPeers,
   takeDataBudget,
@@ -661,6 +664,24 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     }
   });
 
+  test("`hello` reads a member's Surface reader version, and an absent or unusable one is absent, never a failure (M56 spec 09)", async () => {
+    const read = async (extra: JsonObject) => {
+      const { fetch } = replying({ protocol: 2, member: "laptop", ...extra });
+      return client(fetch).hello(laptop);
+    };
+    const named = await read({ surfaceVersion: 3 });
+    expect(named.ok && named.value.surfaceVersion).toBe(3);
+    for (const bad of [0, -1, 1.5, "3", null, true, [3], { v: 3 }]) {
+      const outcome = await read({ surfaceVersion: bad });
+      expect(outcome.ok).toBe(true);
+      expect(outcome.ok && Object.hasOwn(outcome.value, "surfaceVersion")).toBe(false);
+    }
+    const none = await read({});
+    expect(none.ok && Object.hasOwn(none.value, "surfaceVersion")).toBe(false);
+    expect(parseSurfaceVersion({ surfaceVersion: 2 })).toBe(2);
+    expect(parseSurfaceVersion({})).toBeNull();
+  });
+
   test("an old parser ignores a new sibling — this amendment's compatibility claim (§7.1)", async () => {
     // The claim §7.1 makes for every addition inside protocol 1: it is additive-optional, so a NEWER
     // member's reply is read by an OLDER one without incident. `hello` reads `protocol` and `member`
@@ -703,6 +724,30 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     expect({ ...decorated.value, mux: null }).toEqual({ ...plain.value, mux: null });
     expect(decorated.value.mux?.name).toBe("tmux");
     expect(plain.value.mux).toBeNull();
+  });
+
+  test("the session cards (M55) are read when sent, and an older reading of the same hello is unchanged", async () => {
+    const bare = { protocol: 2, member: "laptop", version: "9.9.9" };
+    const card: SessionCard = { name: "desk", kind: "program", mux: "Support desk", caps: { steerTurn: true, typeText: false }, where: "remote", state: "ready", experimental: true };
+    const withCards = { ...bare, sessions: [card, { name: "broken", kind: "program" }, "not a card"] };
+    const [plain, decorated] = await Promise.all([client(replying(bare).fetch).hello(laptop), client(replying(withCards).fetch).hello(laptop)]);
+    if (!plain.ok || !decorated.ok) throw new Error("both hellos answer 200; the assertions below need their values");
+    // This build reads the cards and drops the ones that are not whole.
+    expect(decorated.value.sessions).toEqual([card]);
+    // A member that sends none leaves no key, so every older reading of `hello` is the same object.
+    expect(Object.hasOwn(plain.value, "sessions")).toBe(false);
+    const { sessions: _cards, ...older } = decorated.value;
+    expect(older).toEqual(plain.value);
+  });
+
+  test("an old lead ignores the session cards: its reader sees only the fields it knows (M55)", () => {
+    // The old-lead fixture: a 1.21 lead reads `protocol`, `member`, `version` and `mux` by name and
+    // nothing else. The cards ride beside them and change none of those readings.
+    const hello: JsonObject = { protocol: 2, member: "desk", version: "1.22.0", sessions: [{ name: "desk", kind: "program" }] };
+    const oldLeadReads = (body: JsonObject) => ({ protocol: body.protocol, member: body.member, version: body.version, mux: parseMuxReport(body) });
+    const { sessions: _ignored, ...without } = hello;
+    expect(oldLeadReads(hello)).toEqual(oldLeadReads(without));
+    expect(parseSessionCards(without)).toBeNull();
   });
 
   test("an unusable stored address fails as unreachable without dialling anything", async () => {

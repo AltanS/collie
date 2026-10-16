@@ -226,7 +226,7 @@ function Turn({
   if (entry.role === "summary" || entry.role === "note") {
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2">
-        <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-muted-foreground">
           <Info className="size-3" />
           {entry.role === "summary" ? t("transcript.summaryLabel") : t("transcript.systemLabel")}
           {time && ` · ${time}`}
@@ -252,7 +252,7 @@ function Turn({
           ) : (
             <AgentIcon agent={agent ?? "claude"} className="size-4" />
           )}
-          <span className={`text-[11px] font-semibold tracking-wide uppercase ${isUser ? "text-status-working" : "text-muted-foreground"}`}>
+          <span className={`text-[11px] font-semibold label-caps ${isUser ? "text-status-working" : "text-muted-foreground"}`}>
             {isUser ? t("transcript.youLabel") : (agent ?? t("transcript.agentFallback"))}
           </span>
           {time && <span className="text-[11px] text-muted-foreground">{time}</span>}

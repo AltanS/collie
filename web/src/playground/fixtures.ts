@@ -30,6 +30,7 @@
 
 import type { HostHealth } from "@/lib/host-health";
 import type { DevicesData, HomeData } from "@/lib/loaders";
+import type { Surface } from "@/lib/surface/surface";
 import type {
   AgentView,
   DeviceAuth,
@@ -52,6 +53,7 @@ import type {
 // escape sequences and all, rather than a re-typed approximation of one.
 import claudePermissionBash from "@/fixtures/panes/claude--permission-bash.txt?raw";
 import claudeWorking from "@/fixtures/panes/claude--working.txt?raw";
+import claudeModelPicker from "@/fixtures/panes/claude-lab--menu-model-picker-v2300--w119.txt?raw";
 
 // ── The one clock ────────────────────────────────────────────────────────────────────────────────
 
@@ -979,6 +981,11 @@ export interface PaneFixture {
   readonly pane: AgentView;
   readonly text: string;
   readonly revision: number;
+  /**
+   * The input surface the bridge would read off `text` (M56 spec 06), which is what the composer
+   * draws its Send slot from. Absent reads as a box not read yet: Send stays open on two taps.
+   */
+  readonly surface?: Surface;
 }
 
 /** Blocked on Claude's y/n permission prompt — the screen the prompt grammar lifts a dialog out of. */
@@ -986,6 +993,26 @@ export const paneBlocked: PaneFixture = {
   pane: needsYou[0]!,
   text: claudePermissionBash,
   revision: 812,
+  // The permission dialog is an ask: the composer names it in the placeholder and its Send slot
+  // goes to the card.
+  surface: {
+    revision: 812,
+    turn: "idle",
+    modal: {
+      ask: {
+        id: "playground-ask",
+        kind: "permission",
+        options: [
+          { id: "1", label: "Yes" },
+          { id: "2", label: "Yes, and don't ask again" },
+          { id: "3", label: "No" },
+        ],
+        channel: "keys",
+        hash: "0000000000",
+      },
+    },
+    composer: "unknown",
+  },
 };
 
 /** Mid-tool-run, with the ANSI the mirror actually has to colour. */
@@ -1017,6 +1044,35 @@ export const paneUploadDraft: PaneFixture = {
   pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-upload` },
   text: claudeWorking,
   revision: 4_517,
+};
+
+/**
+ * Claude Code 2.1.300's `/model` picker at 119 columns: a READ dialog (a `menu` block) that owns the
+ * agent's keyboard, so the composer's Send slot says "Answer the dialog" (M51 spec 10).
+ *
+ * ITS OWN `paneId` for the same reason {@link paneUploadDraft} has one: the card seeds the REAL draft
+ * store, and this card's draft must not appear in another card's box.
+ */
+export const paneModelPicker: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(needsYou[0]!), paneId: `${needsYou[0]!.paneId}-model-picker` },
+  text: claudeModelPicker,
+  revision: 6_203,
+  // The picker is a `modal ask` of kind menu (M56 spec 06): the placeholder says "Menu is waiting".
+  surface: {
+    revision: 6_203,
+    turn: "idle",
+    modal: {
+      ask: {
+        id: "playground-model-picker",
+        kind: "menu",
+        options: ["Default (recommended)", "Opus 5.5", "Fable 5.1", "Sonnet 5.5", "Haiku 5.5", "Haiku 4.5", "Sonnet 5", "Opus 5"].map((label, i) => ({ id: String(i + 1), label })),
+        channel: "keys",
+        hash: "0000000001",
+      },
+    },
+    composer: "unknown",
+  },
 };
 
 /** A bare shell — no agent, no grammar, a ShellBadge in place of the status chip. */

@@ -329,11 +329,12 @@ interface HelloBody {
   protocol: number;
   member: string;
   version?: string;
+  surfaceVersion?: number;
 }
 
 /** A `hello` answer: §6's two headers, the optional §5 `version`, and an HTTP `Date` the clock reads. */
 function hello(
-  over: { version?: string | null; date?: number | null; memberId?: string } = {},
+  over: { version?: string | null; date?: number | null; memberId?: string; surfaceVersion?: number } = {},
 ): Response {
   const headers = new Headers({
     "content-type": "application/json",
@@ -344,6 +345,7 @@ function hello(
   const version = over.version === undefined ? "1.0.0-alpha.12" : over.version;
   const body: HelloBody = { protocol: CREW_PROTOCOL_VERSION, member: over.memberId ?? "laptop" };
   if (version !== null) body.version = version;
+  if (over.surfaceVersion !== undefined) body.surfaceVersion = over.surfaceVersion;
   return new Response(JSON.stringify(body), { status: 200, headers });
 }
 
@@ -1392,6 +1394,22 @@ describe("collie doctor — the crew checks", () => {
     expect(code).toBe(EXIT.OK);
   });
 
+  test("member-surface: names each member's reader version, or none for an older build", async () => {
+    const withReader = await findings(
+      harness(LEAD, [hello({ surfaceVersion: 2 })], { files: { ...healthyFiles(), ...markerFile(LEAD) } }),
+    );
+    const named = withReader.byCheck.get("member-surface");
+    expect(named?.status).toBe("ok");
+    expect(named?.scope).toBe("crew");
+    expect(named?.detail).toContain("laptop reader 2");
+    const silent = await findings(
+      harness(LEAD, [hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } }),
+    );
+    expect(silent.byCheck.get("member-surface")?.status).toBe("ok");
+    expect(silent.byCheck.get("member-surface")?.detail).toContain("laptop none (older build)");
+    expect(silent.code).toBe(EXIT.OK);
+  });
+
   test("member-versions: same version everywhere is one quiet ✓", async () => {
     const { byCheck } = await findings(
       harness(LEAD, [hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } }),
@@ -1796,8 +1814,9 @@ describe("beacon-hooks-claude", () => {
     expect(finding.status).toBe("ok");
     expect(finding.remedy).toBeNull();
     expect(finding.detail).toContain(OWN_BINARY);
-    // Installed anyway under Herdr is still ✓, and says out loud that nothing here needs it.
+    // Installed under Herdr is still ✓, and says that Herdr needs it for hook edges only.
     expect(finding.detail).toContain("does not need");
+    expect(finding.detail).toContain("hook edges only");
   });
 
   test("a stale marker version is a warn whose remedy is the self-heal", async () => {
@@ -2601,7 +2620,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const row = run.byCheck.get("durable-socket")!;
     expect(row.status).toBe("error");
     expect(row.detail).toContain("nothing is at");
-    expect(row.remedy).toContain("start the program");
+    expect(row.remedy).toContain("start the durable agent");
     expect(run.byCheck.get("durable-hello")!.status).toBe("skipped");
   });
 
@@ -2655,7 +2674,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("not a durable program");
+    expect(row.detail).toContain("not a durable agent");
     expect(row.remedy).toContain("COLLIE_DURABLE_SOCKET");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });
@@ -2668,7 +2687,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("program speaks 2..3, this Collie speaks 1..1");
+    expect(row.detail).toContain("the durable agent speaks 2..3, this Collie speaks 1..1");
     expect(run.byCheck.get("durable-socket")!.status).toBe("ok");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });
@@ -2699,5 +2718,111 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     ]);
     expect(run.byCheck.get("durable-ready")!.remedy).toContain("collie doctor");
     expect(run.code).toBe(EXIT.OK);
+  });
+});
+
+// ── the surface table (M56 spec 09) ──────────────────────────────────────────
+// A summary line and one line per harness and version, read from the bridge's day files over the last
+// seven days. A read: doctor writes nothing. With no counters there is no line at all, so a fresh
+// install reads exactly as it did.
+
+describe("doctor: the surface table (M56 spec 09)", () => {
+  const dayFile = (daysAgo: number): string => `${STATE}/surface/counters-${new Date(T0 - daysAgo * 86_400_000).toISOString().slice(0, 10)}.json`;
+  const day = (daysAgo: number, rows: Row[]): [string, string] => [
+    dayFile(daysAgo),
+    JSON.stringify({ date: new Date(T0 - daysAgo * 86_400_000).toISOString().slice(0, 10), rows: Object.fromEntries(rows.map((r, i) => [`k${String(i)}`, r])), unknownFrames: {}, manualAt: {} }),
+  ];
+  interface Row {
+    harness: string;
+    version: string;
+    profileId: string;
+    status: string;
+    free: number;
+    unknown: Record<string, number>;
+    modal: Record<string, number>;
+    refused: Record<string, number>;
+    probed: number;
+    manual: number;
+    sent: number;
+    effective: number;
+    unknown_outcome: number;
+    discarded: number;
+    held?: number;
+    held_sent?: number;
+    held_expired?: number;
+    held_cancelled?: number;
+  }
+  const row = (over: Partial<Row> = {}): Row => ({
+    harness: "agent",
+    version: "2.1.301",
+    profileId: "agent",
+    status: "provisional",
+    free: 100,
+    unknown: { "no-match": 6, "weak-cue": 2 },
+    modal: { permission: 3 },
+    refused: { not_free: 4 },
+    probed: 5,
+    manual: 1,
+    sent: 9,
+    effective: 0,
+    unknown_outcome: 1,
+    discarded: 1,
+    ...over,
+  });
+  const run = async (entries: [string, string][]) => findings(harness(null, [], { files: { ...healthyFiles(), ...Object.fromEntries(entries) } }));
+
+  test("surface: a host with no counters has no surface line at all", async () => {
+    const { raw } = await findings(harness(null));
+    expect(raw.filter((f) => f.check.startsWith("surface"))).toEqual([]);
+  });
+
+  test("surface: prints a summary and one line per harness and version, adding the last seven days", async () => {
+    const { byCheck, code } = await run([day(0, [row()]), day(3, [row({ free: 50, manual: 2 })]), day(10, [row({ free: 9999 })])]);
+    expect(code).toBe(0);
+    const summary = byCheck.get("surface")!;
+    expect(summary.status).toBe("ok");
+    expect(summary.detail).toContain("free 150 · unknown 16 · manual 3");
+    expect(summary.detail).toContain(join(STATE, "surface", "examples"));
+    expect(summary.detail).toContain(join(STATE, "surface", "inbox.jsonl"));
+    expect(summary.detail).toContain("3 day files");
+    const line = byCheck.get("surface-agent-2.1.301")!;
+    expect(line.status).toBe("ok");
+    expect(line.detail).toBe(
+      "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2 · typed-not-submitted 0 · discarded 2",
+    );
+  });
+
+  test("surface: a row that held sends (M56 spec 15) names the four held counts after discarded; one that held none reads as before", async () => {
+    const { byCheck } = await run([day(0, [row({ held: 3, held_sent: 1, held_expired: 1, held_cancelled: 1 }), row({ version: "2.1.302" })])]);
+    expect(byCheck.get("surface-agent-2.1.301")!.detail).toEndWith("discarded 1 · held 3 · held-sent 1 · held-expired 1 · held-cancelled 1");
+    expect(byCheck.get("surface-agent-2.1.302")!.detail).toEndWith("discarded 1");
+  });
+
+  test("surface: another version of the same harness is its own line", async () => {
+    const { raw } = await run([day(0, [row(), row({ version: "2.1.302" })])]);
+    expect(raw.filter((f) => f.check.startsWith("surface-")).map((f) => f.check)).toEqual(["surface-agent-2.1.301", "surface-agent-2.1.302"]);
+  });
+
+  test("surface: a person typing past an unreadable screen as often as the cap is a warning that names the inbox, and never an error", async () => {
+    const { byCheck, code } = await run([day(0, [row({ manual: 5 })])]);
+    const line = byCheck.get("surface-agent-2.1.301")!;
+    expect(line.status).toBe("warn");
+    expect(line.remedy).toContain(join(STATE, "surface", "inbox.jsonl"));
+    expect(code).toBe(0);
+  });
+
+  test("surface: the plain output carries the table and a torn file is skipped", async () => {
+    const h = harness(null, [], { files: { ...healthyFiles(), ...Object.fromEntries([day(0, [row()])]), [dayFile(1)]: "{ torn" } });
+    await cmdDoctor(h.deps, []);
+    const out = h.io.stdout.join("\n");
+    expect(out).toMatch(/✓\s+surface\s+last 7 days: free 100 · unknown 8 · manual 1/u);
+    expect(out).toMatch(/surface-agent-2\.1\.301\s+2\.1\.301 provisional · free 100/u);
+  });
+
+  test("surface: doctor writes nothing while it reads the counters", async () => {
+    const h = harness(null, [], { files: { ...healthyFiles(), ...Object.fromEntries([day(0, [row()])]) } });
+    const before = JSON.stringify([...h.files.entries.entries()]);
+    await cmdDoctor(h.deps, ["--json"]);
+    expect(JSON.stringify([...h.files.entries.entries()])).toBe(before);
   });
 });

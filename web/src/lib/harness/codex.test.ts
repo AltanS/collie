@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
-import { draftCarriesSend } from "../reply-action";
+import { draftCarriesSend } from "../draft-match";
 import { codexAdapter } from "./codex";
 import { composerPrompt, extractInputDraft, locateComposer, stripChrome } from "./codex/chrome";
 import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
@@ -44,6 +44,8 @@ const PINNED = [
   "codex--fresh-idle.txt",
   "codex--queue-context-inline.txt",
   "codex--reporter-294-busy-agents-hint.txt",
+  "codex--resume-picker-moved.txt",
+  "codex--resume-picker.txt",
   "codex--submitted-fill-labelled-rule.txt",
   "codex--trust-prompt.txt",
   "codex--v0150-custom-status.txt",
@@ -73,6 +75,13 @@ const PINNED = [
   "codex--v0157-idle.txt",
   "codex--v0158-goal-notice.txt",
   "codex--v0159-task-title.txt",
+  "codex--v0162-idle.txt",
+  "codex--v0162-picker-model.txt",
+  "codex--v0162-picker-permissions.txt",
+  "codex--v0162-resume-search.txt",
+  "codex--v0163-agents-hint-warnings.txt",
+  "codex--v0163-working-draft--w120.txt",
+  "codex--v0163-working-steered--w120.txt",
   "codex--working.txt",
 ];
 
@@ -84,7 +93,11 @@ const DIALOG = [
   "codex--ask-fruit.txt",
   "codex--ask-wizard-q1.txt",
   "codex--ask-wizard-q2.txt",
+  "codex--resume-picker-moved.txt",
+  "codex--resume-picker.txt",
   "codex--trust-prompt.txt",
+  // 0.162.1, M56 lab: the same picker with the search field open and a filter row.
+  "codex--v0162-resume-search.txt",
   "codex--v0156-approval-exec-2opt.txt",
   "codex--v0156-approval-exec-wrapped-50.txt",
   "codex--v0156-approval-exec-wrapped.txt",
@@ -1221,6 +1234,110 @@ describe("Codex 0.157.1 fullscreen: one key-hint row under the status row", () =
   });
 });
 
+// #454, Codex 0.163.0: the status row itself carries the daemon hint, ` · ← for agents`, after the
+// title field, and the warnings notice sits at the right edge. The hint's `←` key is bold and its
+// glue text is painted in the separator's own colour, so neither segment was a field or a separator
+// and the whole row was refused: no composer, and every send refused as "Type anyway?".
+describe("#454: ` · ← for agents` ends the status row", () => {
+  const FIELD = "\u001b[38;2;108;210;244m";
+  const FIELD2 = "\u001b[38;2;244;142;244m";
+  const MUTED = "\u001b[38;2;152;144;120m";
+  const KEY = "\u001b[1m\u001b[38;2;235;219;178m";
+  const OFF = "\u001b[0m";
+  const BG = "\u001b[48;2;56;58;59m";
+  const sep = `${MUTED} · ${OFF}`;
+  const hint = `${sep}${KEY}\u2190${OFF}${MUTED} for agents${OFF}`;
+  const lead = `  ${FIELD}model${OFF}${sep}${FIELD2}~${OFF}`;
+  const notice = `${MUTED}\u26a0 ${OFF}${FIELD}3 warnings${OFF}${sep}${KEY}f2${OFF}${MUTED} to view${OFF}`;
+
+  function accepts(raw: string): boolean {
+    const line = splitLines(parseAnsi(raw))[0]!;
+    return isStatusRow(lineText(line), line);
+  }
+
+  const ready = (...tail: string[]) =>
+    codexAdapter.composerReady!(splitLines(parseAnsi([`\u203a ${PLACEHOLDER}`, "", ...tail].join("\n"))));
+
+  it("the reporter's capture: the composer is found, with no card and no draft", () => {
+    const lines = fixtureLines("codex--v0163-agents-hint-warnings.txt");
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const box = locateComposer(lines)!;
+    expect(box.statusRow).toBe(lines.length - 1);
+    expect(lineText(lines[box.statusRow]!).trimEnd()).toMatch(
+      /^ {2}GPT-6\.1-Sol high \u00b7 ~ \u00b7 Example session \u00b7 \u2190 for agents {2,}\u26a0 3 warnings \u00b7 f2 to view$/u,
+    );
+    expect(codexAdapter.extractInputDraft(lines)).toBeNull();
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+    const kept = stripChrome(lines).map(lineText).join("\n");
+    expect(kept).not.toContain("for agents");
+    expect(kept).not.toContain("3 warnings");
+  });
+
+  it("accepts the hint as the row's last segments, with or without the notice", () => {
+    expect(accepts(`${lead}${hint}`)).toBe(true);
+    expect(accepts(`${lead}${hint}        ${notice}`)).toBe(true);
+    expect(accepts(`${lead}${sep}${FIELD}title${OFF}${hint}        ${notice}`)).toBe(true);
+  });
+
+  it("is not a field: the two fields before it are still required", () => {
+    expect(accepts(`  ${FIELD}model${OFF}${hint}`)).toBe(false);
+    expect(accepts(`  ${FIELD}model${OFF}${hint}        ${notice}`)).toBe(false);
+  });
+
+  it("refuses the hint anywhere but the end of the row", () => {
+    expect(accepts(`${lead}${hint}${sep}${FIELD}title${OFF}`)).toBe(false);
+    expect(accepts(`${lead}${hint}${hint}`)).toBe(false);
+    expect(accepts(`${lead}${hint}${sep}${KEY}?${OFF}${MUTED} for shortcuts${OFF}`)).toBe(false);
+  });
+
+  it("does not ask for the key's bold, but wants the glue text in the separator's paint", () => {
+    expect(accepts(`${lead}${sep}${FIELD}\u2190${OFF}${MUTED} for agents${OFF}`)).toBe(true);
+    expect(accepts(`${lead}${sep}${KEY}\u2190${OFF} for agents`)).toBe(false);
+    expect(accepts(`${lead}${sep}${KEY}\u2190${OFF}${FIELD2} for agents${OFF}`)).toBe(false);
+    expect(accepts(`${lead}${sep}${KEY}\u2190${OFF}\u001b[2m for agents${OFF}`)).toBe(false);
+  });
+
+  it("refuses a hint on a fill, a different word, or a differently painted separator", () => {
+    expect(accepts(`${lead}${sep}${BG}${KEY}\u2190${OFF}${MUTED} for agents${OFF}`)).toBe(false);
+    expect(accepts(`${lead}${sep}${KEY}\u2190${OFF}${MUTED} for anything${OFF}`)).toBe(false);
+    expect(accepts(`${lead}\u001b[2m \u00b7 ${OFF}${KEY}\u2190${OFF}${MUTED} for agents${OFF}`)).toBe(false);
+  });
+
+  it("refuses plain text after the hint where the notice would be", () => {
+    expect(accepts(`${lead}${hint}        an unpainted sentence`)).toBe(false);
+  });
+
+  it("an unpainted row that merely contains ` \u00b7 \u2190 for agents` is not a status row", () => {
+    expect(accepts("  model \u00b7 ~ \u00b7 \u2190 for agents")).toBe(false);
+    expect(accepts("  model \u00b7 ~ \u00b7 title \u00b7 \u2190 for agents")).toBe(false);
+  });
+
+  it("a transcript row or a draft that mentions it never becomes the status row", () => {
+    // Column 0: no indent, so the row is transcript whatever its paint.
+    const echo = `\u2022 ${FIELD}model${OFF}${sep}${FIELD2}~${OFF}${hint}`;
+    expect(accepts(echo)).toBe(false);
+    expect(ready(echo)).toBe(false);
+    // A draft row: the `\u203a ` prompt prefix is column 0, and a draft is never the status row.
+    const draft = `\u203a ${FIELD}model${OFF}${sep}${FIELD2}~${OFF}${hint}`;
+    expect(accepts(draft)).toBe(false);
+    const lines = splitLines(parseAnsi([`\u203a ${PLACEHOLDER}`, "", draft].join("\n")));
+    expect(codexAdapter.composerReady!(lines)).toBe(false);
+    // A typed draft that names it, above a real status row, stays a draft.
+    const typed = splitLines(
+      parseAnsi([`\u203a notes on \u2190 for agents`, "", `${lead}${hint}        ${notice}`].join("\n")),
+    );
+    expect(codexAdapter.composerReady!(typed)).toBe(true);
+    expect(codexAdapter.extractInputDraft(typed)).toBe("notes on \u2190 for agents");
+  });
+
+  it("a status row with the hint still takes the key-hint row under it, and only one", () => {
+    const status = `${lead}${hint}        ${notice}`;
+    expect(ready(status)).toBe(true);
+    expect(ready(status, "  ? for shortcuts")).toBe(true);
+    expect(ready(status, "  ? for shortcuts", "  ? for shortcuts")).toBe(false);
+  });
+});
+
 describe("the quiet-foreground separator paint (0.156.1)", () => {
   const OFF = "\u001b[0m";
   const FIELD = "\u001b[38;2;246;226;183m";
@@ -1361,5 +1478,33 @@ describe("Codex mobile display cleanup", () => {
     expect(marked.map(lineText).join("\n")).toContain("Ask Codex to do anything");
     // Presentation only: the mirror text is byte-identical to what the bridge returned.
     expect(decorated.map(lineText)).toEqual(lines.map(lineText));
+  });
+});
+
+describe("codex: the /resume session picker lifts as a menu (0.159)", () => {
+  const menuOf = (name: string) => {
+    const block = codexAdapter.buildBlocks(fixtureLines(name)).find((b) => b.kind === "menu");
+    return block?.kind === "menu" ? block.menu : null;
+  };
+
+  it("offers Up/Down, Resume and Exit, and nothing that archives or quits", () => {
+    const menu = menuOf("codex--resume-picker.txt");
+    expect(menu?.title).toBe("Resume a previous session");
+    expect(menu?.actions.map((a) => [a.label, a.keys.join("+")])).toEqual([
+      ["Resume", "Enter"],
+      ["Exit", "Escape"],
+    ]);
+    expect(menu?.nav.upDown).toBe(true);
+    expect(codexAdapter.composerReady!(fixtureLines("codex--resume-picker.txt"))).toBe(false);
+  });
+
+  it("lifts the same picker on 0.162.1 with the search field open", () => {
+    const menu = menuOf("codex--v0162-resume-search.txt");
+    expect(menu?.title).toBe("Resume a previous session");
+    expect(menu?.actions.map((a) => a.label)).toEqual(["Resume", "Exit"]);
+  });
+
+  it("changes its signature when the highlight moves, so a stale tap is refused", () => {
+    expect(menuOf("codex--resume-picker-moved.txt")?.signature).not.toBe(menuOf("codex--resume-picker.txt")?.signature);
   });
 });

@@ -124,7 +124,7 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const session = adapter.program()?.session;
     expect(session?.version).toBe(1);
     expect(session?.hostName).toBe("durable-member");
-    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true });
+    expect(session?.caps).toEqual({ asks: true, starters: true, send: true, steer: true, abort: true, rename: true, close: true, actions: true, history: true, reopen: true });
   });
 
   test("example: the snapshot holds the ticket a first start opens, and it waits on one ask", async () => {
@@ -132,7 +132,8 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect(mux.panes.length).toBeGreaterThanOrEqual(1);
     const first = mux.panes[0];
     expect(first?.agent).toBe("durable");
-    expect(first?.tabLabel).toBe("Inbox");
+    expect(first?.tabLabel).toBe("Tickets");
+    expect(first?.terminalTitle).toBe("Maria Lopez");
     ticket = first?.paneId ?? "";
     const asks = await until("an open ask", async () => {
       await adapter.refresh();
@@ -143,10 +144,23 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect((await pane(ticket))?.state).toBe("waiting");
   });
 
-  test("example: the events reader reads the history, then only what came after its cursor", async () => {
+  test("example: the ticket's subtitle and badge reach the mux pane", async () => {
+    const marked = await pane(ticket);
+    expect(marked?.subtitle).toBe("Can't sign in after a password reset");
+    expect(marked?.badge).toEqual({ count: 1 }); // the one ask that waits for the phone
+    const mux = await adapter.snapshot();
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.subtitle).toBe("Can't sign in after a password reset");
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.badge).toEqual({ count: 1 });
+    expect(mux.panes.find((candidate) => candidate.paneId === ticket)?.progress).toEqual({
+      kind: "steps",
+      steps: [{ label: "Read the ticket", state: "done" }, { label: "Save a note", state: "running" }, { label: "Reply", state: "todo" }],
+    });
+  });
+
+  test("example: the events reader reads the pane's events, then only the newer ones", async () => {
     await adapter.syncEvents();
     const first = recorder.all(ticket);
-    expect(first.some((event) => event.type === "item" && event.item.kind === "user" && event.item.text.includes("Triage ticket"))).toBe(true);
+    expect(first.some((event) => event.type === "item" && event.item.kind === "user" && event.item.text.startsWith("Maria Lopez writes:"))).toBe(true);
     expect(first.some((event) => event.type === "ask")).toBe(true);
     expect(first.some((event) => event.type === "reset")).toBe(false); // the current epoch from 0 is a plain read
     const before = recorder.batches.get(ticket)?.length ?? 0;
@@ -160,13 +174,34 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     const answer = { requestId: crypto.randomUUID(), askId: ask.id, revision: ask.revision, optionId: "allow" };
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: false } });
     expect(await adapter.answerAsk(ticket, answer)).toEqual({ ok: true, value: { kind: "taken", replayed: true } });
+    // The default timings leave the helper a while to answer, so the running step is seen moving to the reply.
+    await until("the reply is the running step", async () => {
+      const progress = (await pane(ticket))?.progress;
+      return progress?.kind === "steps" && progress.steps.map((step) => step.state).join() === "done,done,running" ? true : undefined;
+    });
     await until("the ticket idle", async () => ((await pane(ticket))?.state === "idle" ? true : undefined));
     expect(notes()).toHaveLength(1);
-    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(true);
+    // The look-up answered and closed itself: no pane is left in Look-ups, and the history lists it under its customer.
+    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.tabId === "triage:helpers")).toBe(false);
+    const listed = await adapter.listConversations({});
+    if (!listed.ok) throw new Error(listed.detail);
+    expect(listed.value.items.find((item) => item.tabId === "triage:helpers")).toMatchObject({
+      title: "Look-up for Maria Lopez",
+      subtitle: "Why does sign-in fail right after a password reset?",
+      state: "closed",
+    });
+    expect((await pane(ticket))?.badge).toBeUndefined(); // the ask is answered: the count is gone
+    expect((await pane(ticket))?.progress).toBeUndefined(); // the run is over: the program cleared it
     await adapter.syncEvents();
     const after = recorder.all(ticket);
     expect(after.some((event) => event.type === "ask-closed" && event.by === "phone")).toBe(true);
-    expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.includes("The helper says"))).toBe(true);
+    expect(after.some((event) => event.type === "item" && event.item.kind === "reply" && event.item.text.startsWith("Found it."))).toBe(true);
+    // The finished ticket adds a markdown note, a code block and a link, and the real adapter reads all three (WIRE.md 7.13).
+    const rich = after.flatMap((event) => (event.type === "item" ? [event.item] : [])).filter((item) => item.kind === "markdown" || item.kind === "code" || item.kind === "link");
+    expect(rich.map((item) => item.kind)).toEqual(["markdown", "code", "link"]);
+    expect(rich[0]?.kind === "markdown" && rich[0].text).toContain("- Sign the customer out on every device.");
+    expect(rich[1]?.kind === "code" && rich[1].lang).toBe("sh");
+    expect(rich[2]?.kind === "link" && rich[2].href).toBe("https://example.com/runbooks/sign-in-after-reset");
   });
 
   test("example: a send starts a new turn, and a stop ends it with a settled event and no item", async () => {
@@ -187,19 +222,25 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     expect(events).toContainEqual({ type: "settled", inputId: expect.any(String), requestId: sendId, status: "unanswered", reason: "aborted" });
     const sent = events.findIndex((event) => event.type === "item" && event.item.kind === "user" && event.item.text === "one more thing");
     expect(sent).toBeGreaterThan(-1);
-    expect(events.slice(sent + 1).some((event) => event.type === "item" && (event.item.kind === "reply" || event.item.kind === "notice"))).toBe(false);
+    // The stop adds no item of its own: no notice, and no reply except the one that was growing, which ends where it was cut
+    // (the same id again, its last version without partial: WIRE.md 7.5 and 7.15).
+    const after = events.slice(sent + 1).flatMap((event) => (event.type === "item" ? [event.item] : []));
+    expect(after.some((item) => item.kind === "notice")).toBe(false);
+    const replies = after.filter((item) => item.kind === "reply");
+    expect(new Set(replies.map((item) => item.id)).size).toBeLessThanOrEqual(1);
+    expect(replies.length === 0 || !("partial" in (replies.at(-1) ?? {}))).toBe(true);
   });
 
   test("example: a starter opens a new pane, and a repeat with the same request id opens nothing", async () => {
     const listed = await adapter.listStarters();
-    expect(listed.starters.map((starter) => starter.id)).toContain("new-triage");
+    expect(listed.starters.map((starter) => starter.id)).toContain("sign-in");
     const requestId = crypto.randomUUID();
-    const started = await adapter.startStarter("new-triage", requestId);
+    const started = await adapter.startStarter("sign-in", requestId);
     if (started.kind !== "started") throw new Error(`the starter did not start: ${JSON.stringify(started)}`);
     expect(started.replayed).toBe(false);
     expect(started.paneId).not.toBe(ticket);
     expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.id === started.paneId)).toBe(true);
-    expect(await adapter.startStarter("new-triage", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
+    expect(await adapter.startStarter("sign-in", requestId)).toEqual({ kind: "started", paneId: started.paneId, replayed: true });
     expect(adapter.program()?.snapshot.panes.filter((candidate) => candidate.tabId === "triage:inbox")).toHaveLength(2);
   });
 
@@ -226,4 +267,37 @@ describe.skipIf(!RUNS)("the example program against the real adapter", () => {
     await until("the ticket idle", async () => ((await pane(started.id))?.state === "idle" ? true : undefined), 10_000);
     expect(notes()).toHaveLength(written + 1);
   }, 30_000);
+  test("example: history lists the ticket and its items from the program, and a close then a reopen bring it back", async () => {
+    // Run alone (a `-t` filter), the earlier tests did not name the ticket: find the first one under Tickets.
+    if (ticket === "") {
+      ticket = await until("the first ticket", async () => {
+        await adapter.refresh();
+        return adapter.program()?.snapshot.panes.find((candidate) => candidate.tabId === "triage:inbox")?.id;
+      });
+    }
+    await adapter.refresh();
+    expect(adapter.capabilities.supports.programHistory).toBe(true);
+    expect(adapter.capabilities.supports.reopenConversation).toBe(true);
+    const list = await adapter.listConversations({});
+    if (!list.ok) throw new Error(list.detail);
+    const row = list.value.items.find((item) => item.id === ticket);
+    expect(row).toMatchObject({ state: "open", paneId: ticket, workspaceId: "triage", tabId: "triage:inbox" });
+    const items = await adapter.conversationItems(ticket, {});
+    if (!items.ok) throw new Error(items.detail);
+    expect(items.value.items.length).toBe(row?.items ?? -1);
+    expect(items.value.items.some((item) => item.kind === "user")).toBe(true);
+    expect(await adapter.conversationItems("conv-99999", {})).toMatchObject({ ok: false, reason: "gone" });
+
+    expect(await adapter.closePane(ticket)).toEqual({ ok: true, value: undefined });
+    const closed = await adapter.listConversations({});
+    if (!closed.ok) throw new Error(closed.detail);
+    expect(closed.value.items.find((item) => item.id === ticket)).toMatchObject({ state: "closed" });
+    expect(closed.value.items.find((item) => item.id === ticket)?.paneId).toBeUndefined();
+    // The closed conversation is still served whole, by the program.
+    const kept = await adapter.conversationItems(ticket, {});
+    expect(kept.ok && kept.value.items.map((item) => item.id)).toEqual(items.value.items.map((item) => item.id));
+
+    expect(await adapter.reopenConversation(ticket)).toEqual({ ok: true, value: { paneId: ticket } });
+    expect(adapter.program()?.snapshot.panes.some((candidate) => candidate.id === ticket)).toBe(true);
+  }, 20_000);
 });

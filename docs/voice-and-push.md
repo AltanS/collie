@@ -517,6 +517,31 @@ bin/collie push list
 bin/collie push forget <substring>   # or: push forget --all
 ```
 
+### Pushes from a durable agent
+
+A durable agent's question card can push to your phone, and Collie caps how many pushes one durable agent makes.
+
+The push says "Permission needed in" and the name you gave the pane. It never carries the durable agent's
+own title for the question. A durable agent may choose its words: its title (60 characters at most)
+follows your pane name after a colon, and its line (120 at most) is the body. The words change what
+the push says, and never how often it is sent.
+
+| Cap | Limit | Past it |
+| --- | --- | --- |
+| One pane | 3 pushes a minute | The question shows on the phone and sends no push |
+| One durable agent on one machine | 10 pushes a minute | The same |
+| One durable agent on one machine | 30 pushes an hour | One summary push, then no push from that durable agent for an hour |
+
+The summary reads "A durable agent on {host} is raising many asks", with the machine's name for host. In a
+crew it names the member. The Needs input switch and the snooze hold the summary
+back too. A cap never hides a question: every open question stays on the phone.
+
+Collie pushes a question once. It remembers each one by machine, durable agent and tool call, so a durable agent
+that restarts and asks the same question again shows it on the phone and sends no second push. A
+question is forgotten an hour after it closes. The memory is `durable-asks.json` in the state
+folder. In a crew the lead runs these rules and keeps that file, and the member sends no push for
+its own questions ([ADR 0100](../.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)).
+
 
 ---
 

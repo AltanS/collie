@@ -126,7 +126,7 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
 
   // The filter opens over the list without moving it, its labelled Ignored toggle is pressed and says
   // so in words, and a name narrows.
-  const rows = page.locator('[data-slot="file-rows"]');
+  const rows = page.locator('[data-list="file-rows"]');
   const top = (await rows.boundingBox())!.y;
   await page.getByRole("button", { name: en["changes.filter.button"] }).click();
   const labelled = page.locator('[data-slot="files-filter"]').getByRole("button", { name: en["files.ignored.toggleAria"] });

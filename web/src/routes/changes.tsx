@@ -1295,7 +1295,7 @@ function ListBody({
       {/* Beside other repos' changes, the clean ones still offer their last commit, named. */}
       {data.repos.length > 0 && clean.length > 0 && (
         <section aria-label={t("changes.commit.cleanHeading")} className="flex flex-col">
-          <SectionLabel className="mb-1.5 normal-case">{t("changes.commit.cleanHeading")}</SectionLabel>
+          <SectionLabel caps={false} className="mb-1.5">{t("changes.commit.cleanHeading")}</SectionLabel>
           <CleanRepos repos={clean} onShow={onShowCommit} rows />
         </section>
       )}
@@ -1407,7 +1407,7 @@ export function FileScreen({
   return (
     <>
       {/* Sticky, so the reader always knows which file this is, however far down the diff. */}
-      <div className="sticky top-0 z-10 flex min-h-11 items-center gap-3 border-b border-rule bg-background px-4 py-2">
+      <div className="sticky top-0 z-10 flex min-h-11 items-center gap-3 border-b border-rule bg-(--band-ground,var(--background)) px-4 py-2">
         {status && <StatusLetter status={status} />}
         <div className="min-w-0 flex-1">
           <ChangePath path={path} />

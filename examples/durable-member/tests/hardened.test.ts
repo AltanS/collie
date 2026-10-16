@@ -4,9 +4,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, lstatSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { api } from "./client.ts";
-import { Receipts } from "../sdk/core/receipts.ts";
-import { type AskInput, cut, openCollie, type PaneHandle } from "../sdk/index.ts";
-import { withNarrowUmask } from "../sdk/socket.ts";
+import { Receipts } from "../../../packages/durable-sdk/src/core/receipts.ts";
+import { type AskInput, cut, openCollie, type PaneHandle, type PermissionAskInput } from "../../../packages/durable-sdk/src/index.ts";
+import { withNarrowUmask } from "../../../packages/durable-sdk/src/socket.ts";
 import { cleanup, tmp, waitFor } from "./util.ts";
 
 afterAll(cleanup);
@@ -242,7 +242,7 @@ describe("cleaned asks and invisible characters", () => {
     c.ready();
     return { c, p, d: { socket: c.address, version: 1 } };
   };
-  const input = (id: string, over: Partial<AskInput> = {}): AskInput => ({ id, kind: "permission", toolCallId: id, itemId: id, title: "plain", options, ...over });
+  const input = (id: string, over: Partial<PermissionAskInput> = {}): AskInput => ({ id, kind: "permission", toolCallId: id, itemId: id, title: "plain", options, ...over });
 
   test("cleaning removes zero-width, joiner, byte order mark and tag characters", () => {
     expect(cut("a​‌‍⁠﻿b\u{e0041}\u{e007f}c‮d", 100)).toBe("abcd");
@@ -258,7 +258,7 @@ describe("cleaned asks and invisible characters", () => {
       ["long-reason", { reason: "y".repeat(5000) }],
       ["bidi", { title: "ok ‮ txt.exe" }],
       ["control", { title: "a\u0007b" }],
-    ] as [string, Partial<AskInput>][]) {
+    ] as [string, Partial<PermissionAskInput>][]) {
       p.ask(input(id, over)).catch(() => {});
     }
     p.ask(input("clean", { reason: "line one\nline two\ttab" })).catch(() => {});
@@ -266,6 +266,25 @@ describe("cleaned asks and invisible characters", () => {
     for (const a of asks) expect([a.id, a.cleaned]).toEqual([a.id, a.id === "clean" ? undefined : true]);
     expect(Object.hasOwn(asks.find((a) => a.id === "clean")!, "cleaned")).toBe(false);
     expect(asks.find((a) => a.id === "zw-title")!.title).toBe("write /etc/passwd");
+    await c.close();
+  });
+
+  test("push words are cleaned and cut to 60 and 120 characters, a part that is empty is left out, and no words leave no key", async () => {
+    const { c, p, d } = await mk();
+    p.ask(input("words", { push: { title: `Needs​ a yes${"x".repeat(100)}`, line: `  ${"l".repeat(300)}` } })).catch(() => {});
+    p.ask(input("title-only", { push: { title: "Needs a yes", line: "\u0007" } })).catch(() => {});
+    p.ask(input("empty", { push: { title: "", line: "​" } })).catch(() => {});
+    p.ask(input("none")).catch(() => {});
+    const asks = (await api.snapshot(d)).body.panes[0]!.openAsks;
+    const by = (id: string) => asks.find((a) => a.id === id)!;
+    expect([...(by("words").push?.title ?? "")]).toHaveLength(60);
+    expect(by("words").push?.title?.startsWith("Needs a yes")).toBe(true);
+    expect(by("words").push?.line).toBe("l".repeat(120));
+    expect(by("title-only").push).toEqual({ title: "Needs a yes" });
+    expect(Object.hasOwn(by("empty"), "push")).toBe(false);
+    expect(Object.hasOwn(by("none"), "push")).toBe(false);
+    // The words are not the card's text: the card was not cut, so it carries no `cleaned`.
+    expect(by("words").cleaned).toBeUndefined();
     await c.close();
   });
 
@@ -287,7 +306,7 @@ describe("cleaned asks and invisible characters", () => {
     expect(r.status).toBe(200);
     const items = r.body.events.filter((e) => e.type === "item");
     expect(items).toHaveLength(100);
-    expect(items.every((e, i) => e.type === "item" && e.item.kind !== "tool" && e.item.text.startsWith(`${i}:z`) && e.item.text.length === 60_000 + `${i}:`.length)).toBe(true);
+    expect(items.every((e, i) => e.type === "item" && "text" in e.item && e.item.text.startsWith(`${i}:z`) && e.item.text.length === 60_000 + `${i}:`.length)).toBe(true);
     await c.close();
   });
 });

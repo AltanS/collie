@@ -153,7 +153,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                         // measurements. The fill was 1.17:1 light / 1.31:1 dark on the sheet's
                         // bg-background while grounding the status pills at blocked 4.13 in dark.
                         active
-                          ? "shadow-[inset_2px_0_0_0_var(--primary)]"
+                          ? "shadow-[var(--edge-accent)_var(--primary),var(--edge-shadow)]"
                           : "hover:bg-accent active:bg-accent",
                         // Dimmed, not disabled: what you will find there is last-known and read-only,
                         // and the row says both — but it still goes there (see the note above).
@@ -173,7 +173,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                             {s.name || s.id}
                           </span>
                           {s.isLead && (
-                            <span className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            <span className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium label-caps text-muted-foreground">
                               <Crown className="size-2.5" aria-hidden />
                               {t("connection.host.lead")}
                             </span>

@@ -53,7 +53,7 @@ function Group({
 }) {
   return (
     <div>
-      <p className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="mb-1.5 text-[10px] label-caps text-muted-foreground">{title}</p>
       <div className={`grid gap-2 ${cols}`}>
         {items.map((t) => {
           const phase = phaseOf(t);

@@ -1,4 +1,5 @@
-import { Check, Cpu, Gauge, History, ListTree, Shrink, Slash } from "lucide-react";
+import type { ReactNode } from "react";
+import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, Loader2, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -10,10 +11,12 @@ import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
-import { barFor, type HarnessBarItem } from "@/lib/harness-bar";
+import { barFor, PROGRAM_MARK, durableBarFor, type DurableBarItem, type HarnessBarItem } from "@/lib/harness-bar";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
+import { useMuxDeclared } from "@/lib/mux-capability";
 import { canonicalAgent } from "@/lib/operator-scope";
-import type { OperatorCommand } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
+import { PANE_ACTION_ICONS, type OperatorCommand, type PaneAction, type PaneActionIcon } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // The harness section of the actions belt: the running agent's own slash commands, sitting inside
@@ -52,6 +55,12 @@ import { cn } from "@/lib/utils";
 // a WORKING pane is not refused at all, because the Agent palette does not refuse one either. One
 // gate, one place. The checkmark is the honest signal — it appears only when `send()` resolved true,
 // so a tap that was refused shows nothing and the label stays put.
+//
+// A DURABLE PANE HAS ITS OWN SECTION OF THE SAME BELT (`DurableBar`, below; M51 spec 08). Its
+// program has no screen and no slash commands, but it has two actions that type into somebody else's
+// program: Steer and Stop. They used to share a row above the composer that opened and closed with
+// the pane's state, and the composer jumped with it. Now they are the program's section, drawn from
+// the caps the program declares, and they never leave: a button that cannot act is dimmed in place.
 //
 // It does not collapse or animate. A section that appeared and disappeared would move the input
 // under the thumb, and DESIGN.md §2 says reserve, never reflow — so its presence is decided by the
@@ -145,54 +154,7 @@ export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: Har
   }
 
   return (
-    <div
-      data-slot="harness-bar"
-      role="group"
-      aria-label={translate("harnessBar.label")}
-      // A tinted section of the belt. The geometry is BELT_SECTION's and nothing here changes it;
-      // this adds the paint alone. The `border-l-border` rides with `bg-muted` and only with it —
-      // see the measurement above — and it colours the width BELT_SECTION already reserved, so the
-      // tinted and the muted section are the same box to the pixel (DESIGN.md §2).
-      //
-      // `h-10 -my-1` is the ONE override past BELT_SECTION's own box, and it exists only because the
-      // scroller around this section stands at `py-1` now (actions-row.tsx), not the `py-0` BELT_SECTION's
-      // own comment was written against. BELT_SECTION's `h-8` is a FIXED border-box height — padding
-      // added beside it (`py-*`) cannot grow it, that is the whole point of the fixed-box recipe — so
-      // this overrides the height itself, to `h-10` (40px, the scroller's new total), rather than
-      // reach for padding that would do nothing. `-my-1` then pulls the box's FLOW contribution back
-      // down by 4px on each side (40px border box, 32px margin box) so it still centres and gaps like
-      // every other 32px pill on the belt; the border box itself does not shrink, so the visible paint
-      // stays 40px tall and lands exactly on the scroller's own `py-1` padding box, top rule to bottom
-      // rule, with no untinted band. This is the pre-"Option 6" recipe BELT_SECTION's own comment
-      // describes (`-my-1.5` paired with a padding-grown box, landing on the scroller's old `py-1.5`)
-      // brought back at the belt's new numbers, and it is safe for the same reason that one was: the
-      // scroller has real padding to land on again, so nothing overflows `clientHeight`.
-      // SCALED since 2026-09-23: the 40px and the 4px are the belt's `--belt-band` and `--belt-pad`
-      // now (index.css, from the one `--belt-scale`), 45px and 4px at the default scale, so the
-      // section still spans the band top rule to bottom rule at every size the Settings row offers.
-      className={cn(
-        BELT_SECTION,
-        "h-(--belt-band) -my-(--belt-pad)",
-        accent === undefined && (left ? "border-r-border bg-muted" : "border-l-border bg-muted"),
-        left && "[direction:rtl]",
-      )}
-      style={
-        accent === undefined
-          ? undefined
-          : // 14% of the brand on whatever ground is behind it, so the one value reads in both
-            // themes instead of one tint fighting the dark one.
-            { backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)` }
-      }
-    >
-      {/* The mark, not a button: `aria-hidden` on the wrapper drops AgentIcon's own `role="img"`
-          and its label out of the tree, so a reader hears the group's name once and not a logo
-          before every command. It carries no tap area either — it is the section's tag.
-          No `pl-0.5` any more: the capsule's own padding was 4px and the mark needed the extra 2px
-          to clear the rounded end. BELT_SECTION is square and pads 6px, so the mark already sits on
-          the belt's own pill gap and a nudge would only push it off it. */}
-      <span aria-hidden="true" className="flex shrink-0 items-center">
-        <AgentIcon agent={agent} className={BELT_ICON} />
-      </span>
+    <HarnessSection agent={agent} accent={accent} left={left} slot="harness-bar">
       {items.map((item) => {
         const phase = echo.phaseOf(item.id);
         const armed = pending === item.id;
@@ -244,6 +206,74 @@ export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: Har
           </Button>
         );
       })}
+    </HarnessSection>
+  );
+}
+
+interface HarnessSectionProps {
+  agent: string | undefined | null;
+  accent: string | undefined;
+  left: boolean;
+  /** The section's `data-slot`. */
+  slot: string;
+  children: ReactNode;
+}
+
+/**
+ * The tinted section of the belt and its mark: the one box the harness bar and the durable bar share,
+ * so the two cannot drift apart in geometry, tint or the muted section's hairline.
+ */
+function HarnessSection({ agent, accent, left, slot, children }: HarnessSectionProps) {
+  return (
+    <div
+      data-slot={slot}
+      role="group"
+      aria-label={translate("harnessBar.label")}
+      // A tinted section of the belt. The geometry is BELT_SECTION's and nothing here changes it;
+      // this adds the paint alone. The `border-l-border` rides with `bg-muted` and only with it —
+      // see the measurement above — and it colours the width BELT_SECTION already reserved, so the
+      // tinted and the muted section are the same box to the pixel (DESIGN.md §2).
+      //
+      // `h-10 -my-1` is the ONE override past BELT_SECTION's own box, and it exists only because the
+      // scroller around this section stands at `py-1` now (actions-row.tsx), not the `py-0` BELT_SECTION's
+      // own comment was written against. BELT_SECTION's `h-8` is a FIXED border-box height — padding
+      // added beside it (`py-*`) cannot grow it, that is the whole point of the fixed-box recipe — so
+      // this overrides the height itself, to `h-10` (40px, the scroller's new total), rather than
+      // reach for padding that would do nothing. `-my-1` then pulls the box's FLOW contribution back
+      // down by 4px on each side (40px border box, 32px margin box) so it still centres and gaps like
+      // every other 32px pill on the belt; the border box itself does not shrink, so the visible paint
+      // stays 40px tall and lands exactly on the scroller's own `py-1` padding box, top rule to bottom
+      // rule, with no untinted band. This is the pre-"Option 6" recipe BELT_SECTION's own comment
+      // describes (`-my-1.5` paired with a padding-grown box, landing on the scroller's old `py-1.5`)
+      // brought back at the belt's new numbers, and it is safe for the same reason that one was: the
+      // scroller has real padding to land on again, so nothing overflows `clientHeight`.
+      // SCALED since 2026-09-23: the 40px and the 4px are the belt's `--belt-band` and `--belt-pad`
+      // now (index.css, from the one `--belt-scale`), 45px and 4px at the default scale, so the
+      // section still spans the band top rule to bottom rule at every size the Settings row offers.
+      className={cn(
+        BELT_SECTION,
+        "h-(--belt-band) -my-(--belt-pad)",
+        accent === undefined && (left ? "border-r-border bg-muted" : "border-l-border bg-muted"),
+        left && "[direction:rtl]",
+      )}
+      style={
+        accent === undefined
+          ? undefined
+          : // 14% of the brand on whatever ground is behind it, so the one value reads in both
+            // themes instead of one tint fighting the dark one.
+            { backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)` }
+      }
+    >
+      {/* The mark, not a button: `aria-hidden` on the wrapper drops AgentIcon's own `role="img"`
+          and its label out of the tree, so a reader hears the group's name once and not a logo
+          before every command. It carries no tap area either — it is the section's tag.
+          No `pl-0.5` any more: the capsule's own padding was 4px and the mark needed the extra 2px
+          to clear the rounded end. BELT_SECTION is square and pads 6px, so the mark already sits on
+          the belt's own pill gap and a nudge would only push it off it. */}
+      <span aria-hidden="true" className="flex shrink-0 items-center">
+        <AgentIcon agent={agent} className={BELT_ICON} />
+      </span>
+      {children}
     </div>
   );
 }
@@ -252,4 +282,144 @@ export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: Har
 export function accentFor(agent: string | undefined | null): string | undefined {
   if (!agent) return undefined;
   return AGENT_BRANDS.get(canonicalAgent(agent.toLowerCase().trim()))?.accent;
+}
+
+/** What the durable section needs from the composer: the state of its two buttons, and what a tap does. */
+export interface DurableBarState {
+  /** Steer is a switch. `offered` is false while no turn runs, and then it reads as off and is dimmed. */
+  steer: { pressed: boolean; offered: boolean; onPressedChange: (pressed: boolean) => void };
+  /** Stop. `offered` is false when there is nothing to stop; `busy` swaps the glyph for a spinner. */
+  stop: { offered: boolean; busy: boolean; onStop: () => void };
+  /**
+   * The program's own buttons (M53 spec 07). `running` is the id of the one whose tap is in flight, so a
+   * second tap on it waits; `onRun` posts it. Absent: the section draws no program button.
+   */
+  action?: { running: string | null; onRun: (action: PaneAction) => void };
+}
+
+/** The glyph a program's icon name draws. A name outside the fixed set draws none (the label stands alone). */
+const ACTION_GLYPHS = {
+  play: Play,
+  pause: Pause,
+  check: Check,
+  x: X,
+  refresh: RefreshCw,
+  archive: Archive,
+  flag: Flag,
+  star: Star,
+  send: Send,
+  note: StickyNote,
+  search: Search,
+  more: Ellipsis,
+} satisfies Record<PaneActionIcon, LucideIcon>;
+
+/** The glyph for a name the program sent, or undefined. A Map-free lookup that cannot answer for `constructor`. */
+function glyphFor(icon: string | undefined): LucideIcon | undefined {
+  if (icon === undefined) return undefined;
+  for (const name of PANE_ACTION_ICONS) if (name === icon) return ACTION_GLYPHS[name];
+  return undefined;
+}
+
+/** The pressed look of a belt switch: the row's own "on" fill (components/actions-row.tsx `ON`). */
+const BELT_PRESSED = "bg-control-on text-control-on-foreground hover:bg-control-on";
+
+/**
+ * The durable section's items, or none: the caps the program declared, asked as one question.
+ *
+ * Exported for the reason {@link useHarnessBarItems} is: the actions row asks it, it does not re-read
+ * the caps. A capability nobody answered reads ABSENT (`useMuxDeclared`), so a program that declared
+ * neither Steer nor Stop, and a bridge too old to say, draw no section at all.
+ */
+export function useDurableBarItems(scope?: Scope, actions: readonly PaneAction[] = []): readonly DurableBarItem[] {
+  const steer = useMuxDeclared("steerTurn", scope);
+  const abort = useMuxDeclared("abortTurn", scope);
+  const program = useMuxDeclared("programActions", scope);
+  return durableBarFor((cap) => (cap === "steerTurn" ? steer : cap === "abortTurn" ? abort : cap === "programActions" ? program : false), actions);
+}
+
+export interface DurableBarProps {
+  items: readonly DurableBarItem[];
+  state: DurableBarState;
+  /** Bound to the composer's `locked` or `offline`. Greys every button in place. */
+  disabled?: boolean;
+  hand?: Hand;
+}
+
+/**
+ * THE DURABLE PROGRAM'S SECTION OF THE BELT (M51 spec 08): Steer, then Stop, then the program's own buttons
+ * (M53 spec 07), after the program's mark.
+ *
+ * Both buttons stay drawn for as long as the program declares their cap. A button that cannot act
+ * now (Stop with nothing running, Steer with no turn to steer) is dimmed in place and refuses the
+ * tap, so the belt and the composer under it are the same height in every state (DESIGN.md §2:
+ * reserve, never reflow). Nothing here decides what Steer or Stop DO: the composer owns the requests.
+ */
+export function DurableBar({ items, state, disabled, hand = "right" }: DurableBarProps) {
+  useLocale();
+  if (items.length === 0) return null;
+  const left = hand === "left";
+  const base = `${STRIP_ROW_PILL} gap-1.5`;
+  return (
+    <HarnessSection agent={PROGRAM_MARK} accent={accentFor(PROGRAM_MARK)} left={left} slot="durable-bar">
+      {items.map((item) => {
+        if (item.id === "steer") {
+          const pressed = state.steer.pressed && state.steer.offered;
+          return (
+            <Button
+              key={item.id}
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={pressed}
+              disabled={disabled === true || !state.steer.offered}
+              aria-label={translate("durable.composer.steerAria")}
+              onClick={() => state.steer.onPressedChange(!pressed)}
+              className={cn(base, pressed ? BELT_PRESSED : "text-foreground", left && "[direction:ltr]")}
+            >
+              <Wind className={BELT_ICON} />
+              {translate("durable.composer.steer")}
+            </Button>
+          );
+        }
+        if (item.id === "action") {
+          // One of the program's own buttons. The label is the program's (cleaned and cut to 16 characters by the
+          // bridge), the glyph one of twelve names or none. Dimmed in place when the program says it is
+          // unavailable or busy, or while this tap is in flight; a busy one swaps its glyph for a spinner.
+          const { action } = item;
+          const Glyph = glyphFor(action.icon);
+          const waiting = action.busy === true || state.action?.running === action.id;
+          return (
+            <Button
+              key={`action:${action.id}`}
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-busy={waiting}
+              disabled={disabled === true || action.disabled === true || waiting || state.action === undefined}
+              onClick={() => state.action?.onRun(action)}
+              className={cn(base, "text-foreground", left && "[direction:ltr]")}
+            >
+              {waiting ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : Glyph === undefined ? null : <Glyph className={BELT_ICON} />}
+              {action.label}
+            </Button>
+          );
+        }
+        return (
+          <Button
+            key={item.id}
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled === true || state.stop.busy || !state.stop.offered}
+            aria-label={translate("durable.composer.stopAria")}
+            onClick={state.stop.onStop}
+            className={cn(base, "text-foreground", left && "[direction:ltr]")}
+          >
+            {state.stop.busy ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
+            {translate("durable.composer.stop")}
+          </Button>
+        );
+      })}
+    </HarnessSection>
+  );
 }

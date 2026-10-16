@@ -38,7 +38,7 @@ import { join } from "node:path";
 import type { AuditEntry } from "../audit.ts";
 import type { JsonValue } from "../json.ts";
 import type { MuxAdapter, MuxAnswerResult, MuxOutcome } from "../mux/types.ts";
-import type { AnswerRequest, AnswerResponse, Ask } from "../types.ts";
+import type { AnswerRequest, AnswerResponse, AnswerValues, Ask, AskDecided } from "../types.ts";
 import {
   DURABLE_RECEIPT_LIMITS,
   digestDiffers,
@@ -81,11 +81,32 @@ export interface AnswerReceipt {
   /** For `refused`: the line the refusal carried, and its word. */
   detail?: string;
   reason?: "unsupported" | "refused";
+  /** For `too-late`: who decided the ask first, and when, when the program said so. A replay says it again. */
+  decided?: AskDecided;
 }
 
-/** What one answer asks for, as a digest: the pane, the ask, the revision the phone saw, the option. */
-export function answerDigest(paneId: string, request: Pick<AnswerRequest, "askId" | "revision" | "optionId">): string {
-  return payloadDigest(["answer", paneId, request.askId, request.revision, request.optionId]);
+/** The receipt's `optionId` for an answer: the option for a permission, the options joined for a choice, and nothing for a text or a form (their words stay out of the receipt). */
+export function receiptOptionId(request: AnswerRequest): string {
+  if ("optionId" in request) return request.optionId;
+  return "optionIds" in request ? request.optionIds.join(",") : "";
+}
+
+/** The values of a form as a stable list of `[field id, value]`, so the same form digests the same whatever order the keys came in. */
+function sortedValues(values: AnswerValues): string {
+  return JSON.stringify(Object.keys(values).toSorted().map((key) => [key, values[key]]));
+}
+
+/**
+ * What one answer asks for, as a digest: the pane, the ask, the revision the phone saw, and what was chosen. The
+ * permission digest is the one it always was. A text or a form is hashed, so the digest tells another payload under the
+ * same id apart without the receipt keeping the person's words.
+ */
+export function answerDigest(paneId: string, request: AnswerRequest): string {
+  const head = ["answer", paneId, request.askId, request.revision] as const;
+  if ("optionId" in request) return payloadDigest([...head, request.optionId]);
+  if ("optionIds" in request) return payloadDigest([...head, "optionIds", JSON.stringify(request.optionIds)]);
+  if ("text" in request) return payloadDigest([...head, "text", request.text]);
+  return payloadDigest([...head, "values", sortedValues(request.values)]);
 }
 
 /** A week, the newest thousand, and a pending receipt kept for at least a day (ADR 0100). */
@@ -164,7 +185,7 @@ function replayOf(receipt: AnswerReceipt): AnswerReply | null {
     case "taken":
       return { status: 200, body: { ok: true, outcome: "taken", replayed: true } };
     case "too-late":
-      return { status: 200, body: { ok: false, outcome: "too-late", replayed: true } };
+      return { status: 200, body: receipt.decided === undefined ? { ok: false, outcome: "too-late", replayed: true } : { ok: false, outcome: "too-late", decided: receipt.decided, replayed: true } };
     case "stale":
       // The ask it carried then may have moved again since. The phone reads the pane for the current one.
       return { status: 409, body: { ok: false, outcome: "stale", replayed: true } };
@@ -186,6 +207,8 @@ interface Settled {
   readonly state: AnswerState;
   readonly reason?: "unsupported" | "refused";
   readonly detail?: string;
+  /** For `too-late`: the first decision, as the program told it. */
+  readonly decided?: AskDecided;
 }
 
 /** The reply for a retry that may have been the one to land: the phone says "check the chat". */
@@ -224,8 +247,12 @@ function settleOnce(outcome: MuxOutcome<MuxAnswerResult>): Settled {
   switch (result.kind) {
     case "taken":
       return { reply: { status: 200, body: result.replayed ? { ok: true, outcome: "taken", replayed: true } : { ok: true, outcome: "taken" } }, state: "taken" };
-    case "too-late":
-      return { reply: { status: 200, body: result.replayed ? { ok: false, outcome: "too-late", replayed: true } : { ok: false, outcome: "too-late" } }, state: "too-late" };
+    case "too-late": {
+      const body: AnswerResponse = { ok: false, outcome: "too-late" };
+      if (result.decided !== undefined) body.decided = { by: result.decided.by, at: result.decided.at };
+      if (result.replayed) body.replayed = true;
+      return result.decided === undefined ? { reply: { status: 200, body }, state: "too-late" } : { reply: { status: 200, body }, state: "too-late", decided: body.decided };
+    }
     case "stale": {
       const body: AnswerResponse = result.ask === null ? { ok: false, outcome: "stale" } : { ok: false, outcome: "stale", ask: result.ask satisfies Ask };
       return { reply: { status: 409, body }, state: "stale" };
@@ -264,6 +291,13 @@ export function answerPane(paneId: string, body: JsonValue | undefined, deps: An
   return work;
 }
 
+/** What the audit line says was chosen: the option ids, never a person's typed words. */
+function auditChoice(request: AnswerRequest) {
+  if ("optionId" in request) return { optionId: request.optionId };
+  if ("optionIds" in request) return { answer: "optionIds", optionIds: request.optionIds };
+  return { answer: "text" in request ? "text" : "values" };
+}
+
 async function send(
   paneId: string,
   request: AnswerRequest,
@@ -282,7 +316,7 @@ async function send(
       paneId,
       askId: request.askId,
       revision: request.revision,
-      optionId: request.optionId,
+      optionId: receiptOptionId(request),
       digest: answerDigest(paneId, request),
     }),
     state: "pending",
@@ -296,6 +330,7 @@ async function send(
   const receipt: AnswerReceipt = { ...base, state: settled.state };
   if (settled.detail !== undefined) receipt.detail = settled.detail;
   if (settled.reason !== undefined) receipt.reason = settled.reason;
+  if (settled.decided !== undefined) receipt.decided = settled.decided;
   await receipts.record(receipt);
   deps.audit.record({
     action: "answer",
@@ -306,7 +341,7 @@ async function send(
       requestId: request.requestId,
       askId: request.askId,
       revision: request.revision,
-      optionId: request.optionId,
+      ...auditChoice(request),
       outcome: settled.reply.body.outcome,
     },
   });

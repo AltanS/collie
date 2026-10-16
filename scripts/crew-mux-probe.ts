@@ -328,7 +328,7 @@ class CrewFacade implements MuxAdapter {
   typeText(): Promise<MuxAck> {
     return Promise.resolve(this.writeVerb("typeText"));
   }
-  sendKeys(): Promise<MuxAck> {
+  writeKeys(): Promise<MuxAck> {
     return Promise.resolve(this.writeVerb("sendKeys"));
   }
   renamePane(): Promise<MuxAck> {

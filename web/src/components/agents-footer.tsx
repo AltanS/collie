@@ -5,7 +5,7 @@
 //
 // ITS OWN ELEMENT, not more rows in the statusline strip. The strip's 18dvh cap guards the mirror
 // against an operator's script of any height; this block is Claude's own and bounded upstream
-// (MAX_FOOTER_LINES in harness/claude/chrome.ts), so it does not share that budget.
+// (`idle.volatile.below.footerMaxRows` in lib/surface/profiles/claude.json), so it does not share that budget.
 //
 // ONE ROW until tapped: the first agent's row, verbatim, with a `+N` for the rest. Tapping expands to
 // every row as the pane painted it. Nothing here reads the content beyond one check: a first row led

@@ -9,10 +9,14 @@
 // Every open ask reaches the pane wire (the program's own cap of 50 per pane is the only limit, in
 // the adapter). The guard decides one thing per ask: push, or show quietly. It never hides an ask.
 //
-// ── ONE KEY: (host, toolCallId) ──────────────────────────────────────────────
+// ── ONE KEY: (host, session, toolCallId) ─────────────────────────────────────
 // A program mints a new ask id after every restart, but the tool call id stays (WIRE.md section 8.4).
 // So the guard remembers the tool call, not the ask: a re-asked question is the same key, and it is
-// shown, never pushed again. The memory is a small file in the state dir, written before the push
+// shown, never pushed again. Since M55 one Collie may run several programs, each its own session, and
+// two of them may use the same tool call id, so the session is part of the key. Each program is
+// its own scope: its rates, its breaker, and what it no longer shows open are counted on their own.
+// An entry written before M55 carries no session and reads as {@link DEFAULT_GUARD_SESSION}, the name a
+// durable-only instance's one program has. The memory is a small file in the state dir, written before the push
 // it allows, so a bridge restart pushes nothing twice.
 //
 // ── EACH KEY IS DECIDED ONCE ─────────────────────────────────────────────────
@@ -71,6 +75,9 @@ export const DEFAULT_GUARD_LIMITS: GuardLimits = {
 /** How long a tripped breaker keeps a host silent. */
 export const BREAKER_MS = HOUR_MS;
 
+/** The session an entry without one belongs to: a durable-only instance's program (bridge/sources.ts). */
+export const DEFAULT_GUARD_SESSION = "default";
+
 /** The file the guard keeps in the state dir. */
 export const GUARD_FILE = "durable-asks.json";
 
@@ -86,9 +93,11 @@ export interface GuardPane<A extends GuardAsk = GuardAsk> {
   readonly asks: readonly A[];
 }
 
-/** One remembered tool call, keyed on `(host, toolCallId)`. */
+/** One remembered tool call, keyed on `(host, session, toolCallId)`. */
 export interface GuardEntry {
   readonly host: string;
+  /** The session the pane is in. Absent on an entry from before M55: {@link DEFAULT_GUARD_SESSION}. */
+  readonly session?: string;
   readonly toolCallId: string;
   /** The pane it was last seen on. */
   readonly paneId: string;
@@ -122,8 +131,18 @@ export interface GuardResult<A extends GuardAsk = GuardAsk> {
   readonly flood: boolean;
 }
 
-function keyOf(host: string, toolCallId: string): string {
-  return `${host}\n${toolCallId}`;
+function keyOf(host: string, session: string, toolCallId: string): string {
+  return `${host}\n${session}\n${toolCallId}`;
+}
+
+/** The session an entry belongs to. */
+export function sessionOf(entry: Pick<GuardEntry, "session">): string {
+  return entry.session ?? DEFAULT_GUARD_SESSION;
+}
+
+/** The breaker's key: one per (host, session). */
+export function scopeKey(host: string, session: string): string {
+  return `${host}\n${session}`;
 }
 
 /** One tool call per pane: a second ask with the same tool call id is the same question. */
@@ -137,12 +156,13 @@ function uniqueByToolCall<A extends GuardAsk>(asks: readonly A[]): A[] {
 }
 
 /**
- * Decide every ask of one host's panes, given what the guard remembers (pure, no clock, no disk).
+ * Decide every ask of one session's panes on one host, given what the guard remembers (pure, no clock,
+ * no disk). "Host" in the rates and the breaker below means this (host, session) scope: one program.
  *
- * `panes` is every pane of `host` that carries asks as data, as seen now. A remembered key of this
- * host that is not open on any of them is marked closed, so it is forgotten an hour later; a key that
- * comes back (a restart re-ask) is opened again and keeps its push time, so it is shown, not pushed.
- * `trippedAt` is when this host's breaker last tripped, if it did.
+ * `panes` is every pane of `host` and `session` that carries asks as data, as seen now. A remembered key
+ * of this scope that is not open on any of them is marked closed, so it is forgotten an hour later; a key
+ * that comes back (a restart re-ask) is opened again and keeps its push time, so it is shown, not pushed.
+ * `trippedAt` is when this scope's breaker last tripped, if it did.
  */
 export function decideAsks<A extends GuardAsk>(
   remembered: readonly GuardEntry[],
@@ -151,8 +171,10 @@ export function decideAsks<A extends GuardAsk>(
   now: number,
   limits: GuardLimits = DEFAULT_GUARD_LIMITS,
   trippedAt?: number,
+  session: string = DEFAULT_GUARD_SESSION,
 ): GuardResult<A> {
-  const memory = new Map<string, GuardEntry>(remembered.map((entry) => [keyOf(entry.host, entry.toolCallId), entry]));
+  const memory = new Map<string, GuardEntry>(remembered.map((entry) => [keyOf(entry.host, sessionOf(entry), entry.toolCallId), entry]));
+  const inScope = (entry: GuardEntry): boolean => entry.host === host && sessionOf(entry) === session;
   const open = new Set<string>();
   const verdicts = new Map<string, GuardVerdict<A>[]>();
   let changed = false;
@@ -165,7 +187,7 @@ export function decideAsks<A extends GuardAsk>(
   const recentPushes = (paneId: string | null, windowMs: number): number => {
     let count = 0;
     for (const entry of memory.values()) {
-      if (entry.host !== host || entry.pushedAt === undefined || now - entry.pushedAt >= windowMs) continue;
+      if (!inScope(entry) || entry.pushedAt === undefined || now - entry.pushedAt >= windowMs) continue;
       if (paneId === null || entry.paneId === paneId) count += 1;
     }
     return count;
@@ -174,7 +196,7 @@ export function decideAsks<A extends GuardAsk>(
   for (const pane of panes) {
     const list: GuardVerdict<A>[] = [];
     for (const ask of uniqueByToolCall(pane.asks)) {
-      const key = keyOf(host, ask.toolCallId);
+      const key = keyOf(host, session, ask.toolCallId);
       open.add(key);
       const known = memory.get(key);
       let verdict: GuardVerdict<A>;
@@ -198,9 +220,16 @@ export function decideAsks<A extends GuardAsk>(
         pushedAt = now;
       }
       list.push(verdict);
-      let next: GuardEntry = { host, toolCallId: ask.toolCallId, paneId: pane.paneId, askId: ask.id, firstSeenAt: known?.firstSeenAt ?? now };
+      let next: GuardEntry = { host, session, toolCallId: ask.toolCallId, paneId: pane.paneId, askId: ask.id, firstSeenAt: known?.firstSeenAt ?? now };
       if (pushedAt !== undefined) next = { ...next, pushedAt };
-      if (known === undefined || known.paneId !== next.paneId || known.askId !== next.askId || known.closedAt !== undefined || known.pushedAt !== next.pushedAt) {
+      if (
+        known === undefined ||
+        known.session !== next.session ||
+        known.paneId !== next.paneId ||
+        known.askId !== next.askId ||
+        known.closedAt !== undefined ||
+        known.pushedAt !== next.pushedAt
+      ) {
         memory.set(key, next);
         changed = true;
       }
@@ -208,9 +237,9 @@ export function decideAsks<A extends GuardAsk>(
     verdicts.set(pane.paneId, list);
   }
 
-  // Close what this host no longer shows open, then forget what closed long ago.
+  // Close what this scope no longer shows open, then forget what closed long ago.
   for (const [key, entry] of memory) {
-    if (entry.host === host && entry.closedAt === undefined && !open.has(key)) {
+    if (inScope(entry) && entry.closedAt === undefined && !open.has(key)) {
       memory.set(key, { ...entry, closedAt: now });
       changed = true;
     }
@@ -267,7 +296,7 @@ export interface GuardObservation<A extends GuardAsk> {
 
 export class AskGuardStore {
   private entries: GuardEntry[] = [];
-  /** Per host, when its breaker tripped. A host whose hour is over is dropped on its next observation. */
+  /** Per (host, session) scope ({@link scopeKey}), when its breaker tripped. Dropped on its next observation once its hour is over. */
   private breakers = new Map<string, number>();
   private readonly file: string | null;
 
@@ -286,7 +315,7 @@ export class AskGuardStore {
       const parsed: JsonValue = JSON.parse(readFileSync(this.file, "utf8"));
       const file = readGuardFile(parsed);
       this.entries = file.entries.slice(-this.limits.maxEntries);
-      this.breakers = new Map(file.breakers);
+      this.breakers = new Map(file.breakers.map(([host, session, at]) => [scopeKey(host, session), at]));
     } catch {
       this.entries = [];
       this.breakers = new Map();
@@ -298,20 +327,21 @@ export class AskGuardStore {
     return this.entries;
   }
 
-  /** When this host's breaker tripped, while the store still holds it. */
-  trippedAt(host: string): number | undefined {
-    return this.breakers.get(host);
+  /** When this scope's breaker tripped, while the store still holds it. */
+  trippedAt(host: string, session: string = DEFAULT_GUARD_SESSION): number | undefined {
+    return this.breakers.get(scopeKey(host, session));
   }
 
   /**
    * Decide one observation of one host's panes, and record it before anyone pushes. `flood` is true
    * for the one observation that tripped the host's breaker: the caller sends the summary push.
    */
-  observe<A extends GuardAsk>(host: string, panes: readonly GuardPane<A>[], now: number): GuardObservation<A> {
-    const result = decideAsks(this.entries, host, panes, now, this.limits, this.breakers.get(host));
+  observe<A extends GuardAsk>(host: string, panes: readonly GuardPane<A>[], now: number, session: string = DEFAULT_GUARD_SESSION): GuardObservation<A> {
+    const scope = scopeKey(host, session);
+    const result = decideAsks(this.entries, host, panes, now, this.limits, this.breakers.get(scope), session);
     this.entries = [...result.entries];
-    if (result.trippedAt === undefined) this.breakers.delete(host);
-    else this.breakers.set(host, result.trippedAt);
+    if (result.trippedAt === undefined) this.breakers.delete(scope);
+    else this.breakers.set(scope, result.trippedAt);
     if (result.changed) this.save();
     return { verdicts: result.verdicts, flood: result.flood };
   }
@@ -329,7 +359,10 @@ export class AskGuardStore {
     try {
       mkdirSync(this.stateDir, { recursive: true, mode: 0o700 });
       const tmp = `${this.file}.tmp`;
-      const breakers = [...this.breakers].map(([host, trippedAt]) => ({ host, trippedAt }));
+      const breakers = [...this.breakers].map(([scope, trippedAt]) => {
+        const split = scope.indexOf("\n");
+        return { host: scope.slice(0, split), session: scope.slice(split + 1), trippedAt };
+      });
       writeFileSync(tmp, JSON.stringify({ entries: this.entries, breakers }), { mode: 0o600 });
       renameSync(tmp, this.file);
     } catch (err) {

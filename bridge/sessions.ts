@@ -1,10 +1,18 @@
 import { basename, dirname } from "node:path";
 
+import type { SendProtocol } from "./surface/protocol.ts";
+import type { SurfaceShadow } from "./surface/shadow.ts";
+import type { AskAnswerer } from "./surface/ask.ts";
+import type { HoldNote } from "../web/src/lib/surface/hold.ts";
+import type { ProgramDriver } from "./surface/durable-driver.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
+import { DURABLE_MUX } from "./mux/durable/adapter.ts";
+import { versionNotice, type VersionRefusal } from "./mux/durable/protocol.ts";
+import { sourceWhere, type DurableSource } from "./sources.ts";
 import type { StateEngine } from "./state-engine.ts";
-import type { SessionSummary } from "./types.ts";
+import type { SessionCard, SessionEntry, SessionState, SessionSummary } from "./types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multi-session support. A multiplexer may run several instances on one machine, each
@@ -19,6 +27,12 @@ import type { SessionSummary } from "./types.ts";
 // layout, Herdr's socket shape lives in bridge/mux/herdr/sessions.ts (ADR 0022,
 // ADR 0036, M22/02). What stays here is the registry, the naming rules and the
 // browser-facing selection.
+//
+// PROGRAMS ARE SESSIONS TOO (M55). Each durable program the operator lists in `sources.json`
+// (bridge/sources.ts) is one more runtime here, built by the same factory with the durable adapter,
+// and kept for the life of the process: it is configured, not discovered, so `refresh()` never
+// disposes it. Only discovered terminal sessions are reconciled. A program is never the primary
+// unless the instance is durable-only.
 //
 // SECURITY: a client-supplied session name is ONLY ever a Map key lookup here — it is
 // NEVER used to build a path, and no path is built here at all. The name a browser sends
@@ -55,6 +69,25 @@ export function sessionNameFor(socketPath: string, configRoot: string): string {
   return basename(dir);
 }
 
+/**
+ * What the session card reads off a program's adapter (M55): its phase and its name. The factory hands
+ * it over beside the parts, from the raw durable adapter before any decorator wraps it, so the port
+ * itself gains nothing.
+ */
+export interface ProgramProbe {
+  /** `starting` until a read, or while the program says it is not ready; `unreachable` after a failed read. */
+  phase(): SessionState;
+  /** The program's hello `host.name`, cleaned, or `""` before one was read. */
+  hostName(): string;
+  /** The version refusal of the program's last `hello` (WIRE.md section 2), or null while the two ranges meet. */
+  versionRefusal(): VersionRefusal | null;
+}
+
+/** What a session runs against: a terminal mux's endpoint, or a program the operator listed. */
+export type SessionEndpoint =
+  | { readonly kind: "terminal"; readonly socketPath: string }
+  | { readonly kind: "program"; readonly source: DurableSource };
+
 /** The live per-session pieces a factory builds. push/snooze/notify-prefs/audit stay process-global. */
 export interface SessionParts {
   /** The multiplexer this session drives, behind the port. Named for the field the wire has always
@@ -63,21 +96,46 @@ export interface SessionParts {
   engine: StateEngine;
   poker: EventPoker;
   notifications: NotificationCoordinator;
+  /** Set for a program session only: what its card reads. Absent on every terminal session. */
+  program?: ProgramProbe;
+  /** Set when Surface shadow mode is on (`COLLIE_SURFACE_SHADOW=1`), on terminal sessions only. */
+  surface?: SurfaceShadow;
+  /** Set when the Send Protocol is on (`COLLIE_SEND_PROTOCOL=1`), on terminal sessions only. */
+  send?: SendProtocol;
+  /** Set with `send`: the session's Ask answerer (M56 spec 08), `POST /api/ask/<id>`. */
+  asks?: AskAnswerer;
+  /**
+   * Set on a program session with the Send Protocol on (M56 spec 14): the structured driver. It
+   * answers the pane's Surface, `POST /api/send` and `POST /api/ask/<id>` from the program's state.
+   */
+  driver?: ProgramDriver;
+  /**
+   * Set with `surface` on a terminal session whose adapter has a beacon matcher (M56 spec 11): whether
+   * a pane's hook source is live. The pane info on the phone says "hooks: live" or "hooks: none",
+   * or "holds permissions" when the harness's hook also holds permissions (M56 spec 12).
+   */
+  hooks?: (paneId: string) => "live" | "holds" | "none";
+  /** Set with `asks` when the bridge takes holds (M56 spec 12): the pane's hold note for the phone. */
+  hold?: (paneId: string) => HoldNote | null;
 }
 
 /** A fully-built, running session runtime: its parts plus its identity in the registry. */
 export interface SessionRuntime extends SessionParts {
   name: string;
   isPrimary: boolean;
+  /** The terminal mux endpoint. `""` for a program session, which has its {@link source} instead. */
   socketPath: string;
+  /** The program this session runs, when it is one. */
+  source?: DurableSource;
 }
 
 /**
  * Builds (and starts + wires) the runtime for one session. Injected into the registry so the bridge
  * supplies the real mux/StateEngine/EventPoker/NotificationCoordinator wiring while tests can
  * pass fakes. `isPrimary` is threaded so the factory can pick the primary's bare notification tag.
+ * `endpoint` says what the session runs against: a terminal mux's socket, or a program's source entry.
  */
-export type SessionFactory = (name: string, socketPath: string, isPrimary: boolean) => SessionParts;
+export type SessionFactory = (name: string, endpoint: SessionEndpoint, isPrimary: boolean) => SessionParts;
 
 interface SessionRegistryOpts {
   /** The root the primary's endpoint is named against (see {@link sessionNameFor}). */
@@ -95,6 +153,13 @@ interface SessionRegistryOpts {
    * this says whether the operator wants it. Either one alone pins the registry to the primary.
    */
   multiSession: boolean;
+  /**
+   * The program that IS the primary, on a durable-only instance (`COLLIE_MUX=durable`, the old env
+   * form, bridge/sources.ts). Absent everywhere else: a program is then never the primary.
+   */
+  primarySource?: DurableSource;
+  /** The programs run beside the primary, one session each, for the life of the process. */
+  sources?: readonly DurableSource[];
 }
 
 /**
@@ -177,13 +242,29 @@ export class SessionRegistry {
   private readonly factory: SessionFactory;
   private readonly multiSession: boolean;
   private readonly primaryName: string;
+  /** The names of the configured programs. Never disposed, never taken by a discovered session. */
+  private readonly programNames = new Set<string>();
+  /** Discovered names already refused for clashing with a program, so the line is said once. */
+  private readonly clashSaid = new Set<string>();
 
   constructor(opts: SessionRegistryOpts) {
     this.factory = opts.factory;
     this.multiSession = opts.multiSession;
-    this.primaryName = sessionNameFor(opts.primarySocketPath, opts.configRoot);
+    const primarySource = opts.primarySource;
+    this.primaryName = primarySource?.name ?? sessionNameFor(opts.primarySocketPath, opts.configRoot);
     // The primary comes up eagerly — it's the fallback for every session-less request.
-    this.runtimes.set(this.primaryName, this.spawn(this.primaryName, opts.primarySocketPath, true));
+    const primaryEndpoint: SessionEndpoint =
+      primarySource === undefined ? { kind: "terminal", socketPath: opts.primarySocketPath } : { kind: "program", source: primarySource };
+    this.runtimes.set(this.primaryName, this.spawn(this.primaryName, primaryEndpoint, true));
+    if (primarySource !== undefined) this.programNames.add(primarySource.name);
+    // Every configured program comes up eagerly too: it is the operator's list, not a discovery.
+    for (const source of opts.sources ?? []) {
+      // bridge/sources.ts `planPrograms` refuses this before the bridge gets here; this is the
+      // registry's own line, because two runtimes under one name would make one unreachable.
+      if (this.runtimes.has(source.name)) throw new Error(`session "${source.name}" is configured twice`);
+      this.programNames.add(source.name);
+      this.runtimes.set(source.name, this.spawn(source.name, { kind: "program", source }, false));
+    }
   }
 
   /** The primary session's registry name (`"default"` unless HERDR_SOCKET_PATH names a session). */
@@ -228,12 +309,16 @@ export class SessionRegistry {
    * Summaries for the snapshot's `sessions` field: primary first, then alphabetical. Counts come
    * from each engine's current snapshot; an unreachable session (last poll failed) reports 0 counts.
    */
-  list(): SessionSummary[] {
-    return this.ordered().map((rt): SessionSummary => {
+  list(): SessionEntry[] {
+    // The card rides only on an instance that runs a program. One with none sends the summary alone,
+    // byte for byte as before programs existed (solo-baseline.test.ts), and the phone reads an
+    // absent card as a terminal session with the instance's own capabilities.
+    const carded = this.programNames.size > 0;
+    return this.ordered().map((rt): SessionEntry => {
       const snap = rt.engine.current();
       const reachable = snap.bridge === "connected";
       const agents = reachable ? snap.agents : [];
-      return {
+      const summary: SessionSummary = {
         name: rt.name,
         isPrimary: rt.isPrimary,
         reachable,
@@ -241,7 +326,17 @@ export class SessionRegistry {
         working: agents.filter((a) => a.status === "working").length,
         blocked: agents.filter((a) => a.status === "blocked").length,
       };
+      return carded ? Object.assign(summary, cardOf(rt, reachable)) : summary;
     });
+  }
+
+  /**
+   * Every session's card, primary first, or `null` on an instance that runs no program. What the crew
+   * `hello` carries (M55): absent there, as in the snapshot, unless a program is configured.
+   */
+  cards(): SessionCard[] | null {
+    if (this.programNames.size === 0) return null;
+    return this.ordered().map((rt) => cardOf(rt, rt.engine.current().bridge === "connected"));
   }
 
   /**
@@ -264,11 +359,21 @@ export class SessionRegistry {
     if (primary === undefined) return;
     const answer = await primary.herdr.listSessions();
     if (!answer.ok) return;
-    const seen = new Set<string>([this.primaryName]);
+    // The primary and every configured program are always in `seen`: they are never disposed.
+    const seen = new Set<string>([this.primaryName, ...this.programNames]);
     for (const { name, endpoint } of answer.value) {
+      if (this.programNames.has(name)) {
+        // A terminal session under a program's name: the program keeps it, because the phone
+        // addresses a session by name alone. Said once per name, not on every refresh.
+        if (!this.clashSaid.has(name)) {
+          this.clashSaid.add(name);
+          console.warn(`[sessions] a terminal session is named "${name}", like a program in sources.json; the program keeps the name and the terminal session is not shown`);
+        }
+        continue;
+      }
       seen.add(name);
       if (this.runtimes.has(name)) continue;
-      this.runtimes.set(name, this.spawn(name, endpoint, false));
+      this.runtimes.set(name, this.spawn(name, { kind: "terminal", socketPath: endpoint }, false));
     }
     for (const [name, rt] of this.runtimes) {
       if (seen.has(name)) continue; // primaryName is always in `seen` → never disposed
@@ -283,9 +388,10 @@ export class SessionRegistry {
     this.runtimes.clear();
   }
 
-  private spawn(name: string, socketPath: string, isPrimary: boolean): SessionRuntime {
-    const parts = this.factory(name, socketPath, isPrimary);
-    return { name, isPrimary, socketPath, ...parts };
+  private spawn(name: string, endpoint: SessionEndpoint, isPrimary: boolean): SessionRuntime {
+    const parts = this.factory(name, endpoint, isPrimary);
+    if (endpoint.kind === "terminal") return { name, isPrimary, socketPath: endpoint.socketPath, ...parts };
+    return { name, isPrimary, socketPath: "", source: endpoint.source, ...parts };
   }
 
   private dispose(rt: SessionRuntime): void {
@@ -294,4 +400,33 @@ export class SessionRegistry {
     // Retract anything this session had on the lock screen — its slot must not linger.
     rt.notifications.clearAll();
   }
+}
+
+/**
+ * One session's card (M55, the README contract): what kind it is, what drives it, what it can do,
+ * where it runs and whether it answers. Pure over the runtime, so a test can build one by hand.
+ *
+ * A terminal session is `ready` while its last poll succeeded and `unreachable` otherwise; it has no
+ * hello to wait for, so it is never `starting`. A program follows its adapter's own phase. `mux` for a
+ * program is the name its hello gave, else `durable`. A program refused for its wire version carries
+ * `notice`, the one sentence that says why; no other card has the key, so their bytes stay as they were.
+ */
+export function cardOf(rt: SessionRuntime, reachable: boolean): SessionCard {
+  const caps = { ...rt.herdr.capabilities.supports };
+  if (rt.source === undefined) {
+    return { name: rt.name, kind: "terminal", mux: rt.herdr.mux, caps, where: "local", state: reachable ? "ready" : "unreachable", experimental: false };
+  }
+  const named = rt.program?.hostName().trim() ?? "";
+  const card: SessionCard = {
+    name: rt.name,
+    kind: "program",
+    mux: named === "" ? DURABLE_MUX : named,
+    caps,
+    where: sourceWhere(rt.source),
+    state: rt.program?.phase() ?? (reachable ? "ready" : "unreachable"),
+    experimental: true,
+  };
+  const refusal = rt.program?.versionRefusal() ?? null;
+  if (refusal !== null) card.notice = versionNotice(refusal);
+  return card;
 }

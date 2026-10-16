@@ -1,8 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+
+import { __resetOperatorCommands } from "@/lib/operator-config";
+import { server } from "@/test/setup";
 
 import { SpaceStrip } from "./space-strip";
-import type { AgentView, WorkspaceView } from "@/lib/types";
+import type { AgentView, MuxCapability, WorkspaceView } from "@/lib/types";
 
 const ws: WorkspaceView = {
   workspaceId: "w1",
@@ -140,5 +144,81 @@ describe("SpaceStrip — chip status is host-qualified", () => {
       />,
     );
     expect(screen.getByText(/needs you/i)).toBeInTheDocument();
+  });
+});
+
+describe("SpaceStrip on a program that offers starters", () => {
+  function serve(capabilities: Partial<Record<MuxCapability, boolean>>): void {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "durable", capabilities, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+  }
+
+  beforeEach(() => __resetOperatorCommands());
+
+  it("draws the '+' for declared starters though no space can be made by hand", async () => {
+    serve({ createSpace: false, starters: true });
+    const onNewSpace = vi.fn();
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected={null} onSelect={vi.fn()} onNewSpace={onNewSpace} />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "New space" }));
+    expect(onNewSpace).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides it when the program declared neither", async () => {
+    serve({ createSpace: false, starters: false });
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected={null} onSelect={vi.fn()} onNewSpace={vi.fn()} />);
+    await screen.findByRole("button", { name: "All" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "New space" })).toBeNull());
+  });
+});
+
+describe("SpaceStrip on a program that takes renames", () => {
+  function serve(capabilities: Partial<Record<MuxCapability, boolean>>): void {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "durable", capabilities, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+  }
+
+  beforeEach(() => __resetOperatorCommands());
+
+  it("a tap on the active space chip opens the space sheet with a Rename row", async () => {
+    serve({ renameSpace: true });
+    const onRenamed = vi.fn();
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} onRenamed={onRenamed} />);
+    // The declaration arrives with /api/config; until then the chip is a plain switch.
+    await waitFor(async () => {
+      await userEvent.setup().click(screen.getByRole("button", { name: /anchorgenius/ }));
+      expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    });
+  });
+
+  it("with no renameSpace declared, or no onRenamed, a tap on the active chip opens nothing", async () => {
+    serve({ renameSpace: false });
+    const { unmount } = render(
+      <SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} onRenamed={vi.fn()} />,
+    );
+    await screen.findByRole("button", { name: /anchorgenius/ });
+    await userEvent.setup().click(screen.getByRole("button", { name: /anchorgenius/ }));
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    unmount();
+
+    __resetOperatorCommands();
+    serve({ renameSpace: true });
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} />);
+    await screen.findByRole("button", { name: /anchorgenius/ });
+    await userEvent.setup().click(screen.getByRole("button", { name: /anchorgenius/ }));
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 });

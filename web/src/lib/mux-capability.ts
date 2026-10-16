@@ -3,13 +3,16 @@ import { useEffect, useSyncExternalStore } from "react";
 import {
   getHostMuxConfig,
   getMuxConfig,
+  getSessionMuxConfig,
   loadHostMuxConfig,
   loadOperatorCommands,
+  loadSessionMuxConfig,
   subscribeOperatorConfig,
 } from "@/lib/operator-config";
 import { useAuthedUrl } from "@/lib/authed-url";
-import { normalizeHost, type Scope } from "@/lib/scope";
-import type { MuxCapability, MuxConfig, MuxTopologyLatency } from "@/lib/types";
+import { normalizeHost, normalizeSession, type Scope } from "@/lib/scope";
+import { getSessionCard, useSessionCard } from "@/lib/session-cards";
+import type { MuxCapability, MuxConfig, MuxTopologyLatency, SessionSummary } from "@/lib/types";
 
 // THE ONE QUESTION THE UI MAY ASK ABOUT THE MULTIPLEXER: "can you do this?" — never "which one are
 // you?" (M10/06). Every control whose backing verb an adapter may lack comes through here, and the
@@ -89,6 +92,20 @@ export function muxCapability(cfg: MuxConfig | null, capability: MuxCapability):
 }
 
 /**
+ * Whether a bridge SAID a capability is present. The opposite default to {@link muxCapability}'s, and
+ * only for the program's own controls (`steerTurn`, `abortTurn`, `starters`).
+ *
+ * The fail-open rule above protects controls that already work from a stale cache. These three are
+ * the other way round: they are drawn for a durable program's pane alone, a bridge older than the
+ * field has no such button to protect, and a Steer or Stop that a program never declared would send
+ * a request the program refuses. So an unanswered capability is ABSENT here, and the control is
+ * drawn only when a bridge said `true`.
+ */
+export function muxDeclared(cfg: MuxConfig | null, capability: MuxCapability): boolean {
+  return cfg?.capabilities?.[capability] === true;
+}
+
+/**
  * Whether a chord may be sent, given the multiplexer's refused-key list.
  *
  * A key is NOT a capability: `sendKeys` is one door, and behind it each multiplexer has its own
@@ -116,7 +133,25 @@ export function keysSendable(keys: readonly string[], unsupported: readonly stri
 export function paneGridOf(scope?: Scope): boolean {
   const host = normalizeHost(scope?.host);
   const member = host === undefined ? null : getHostMuxConfig(host);
-  return muxCapability(scopedMuxConfig(getMuxConfig(), member), "paneGrid").capable;
+  const at = { host, session: normalizeSession(scope?.session) };
+  const card = at.session === undefined ? null : getSessionCard(at);
+  const fetched = sessionFetchNeeded(at.session, card) ? getSessionMuxConfig(at) : null;
+  return muxCapability(sessionMuxConfig(scopedMuxConfig(getMuxConfig(), member), card, fetched), "paneGrid").capable;
+}
+
+/**
+ * Make sure {@link paneGridOf} can answer for a named session before a loader asks it.
+ *
+ * The root loader files the session cards, but React Router runs a route's loaders side by side, so
+ * on a cold open of a pane in a named session the pane loader can ask before any card is filed. Then,
+ * and only then, the session's own block is read and awaited. A scope with no session and a session
+ * any snapshot has already described return at once with nothing on the wire, so a poll never waits
+ * on this.
+ */
+export async function settleSessionCapabilities(scope?: Scope): Promise<void> {
+  const at = { host: normalizeHost(scope?.host), session: normalizeSession(scope?.session) };
+  if (at.session === undefined || getSessionCard(at) !== null) return;
+  await loadSessionMuxConfig(at);
 }
 
 /** Subscribe to the one-shot `/api/config` read, kicking it on mount like the operator-row hooks. */
@@ -144,6 +179,7 @@ function useMuxConfig(): MuxConfig | null {
  */
 function useScopedMuxConfig(scope?: Scope): MuxConfig | null {
   const host = normalizeHost(scope?.host);
+  const session = normalizeSession(scope?.session);
   const lead = useMuxConfig();
   useEffect(() => {
     if (host !== undefined) void loadHostMuxConfig(host);
@@ -155,7 +191,65 @@ function useScopedMuxConfig(scope?: Scope): MuxConfig | null {
     () => (host === undefined ? null : getHostMuxConfig(host)),
     () => (host === undefined ? null : getHostMuxConfig(host)),
   );
-  return scopedMuxConfig(lead, member);
+  // THE SESSION (M55). No session named is the primary, and the primary keeps the answer above, so a
+  // scope with no `?s=` reaches nothing below: not a card, not a request. A named session answers off
+  // its card when the card carries a capability set, and off its own `/api/config?session=` read
+  // only when it does not.
+  const card = useSessionCard(session === undefined ? undefined : { host, session });
+  const fetchNeeded = sessionFetchNeeded(session, session === undefined ? null : card);
+  useEffect(() => {
+    if (fetchNeeded && session !== undefined) void loadSessionMuxConfig({ host, session });
+  }, [fetchNeeded, host, session]);
+  const fetched = useSyncExternalStore(
+    subscribeOperatorConfig,
+    () => (fetchNeeded && session !== undefined ? getSessionMuxConfig({ host, session }) : null),
+    () => (fetchNeeded && session !== undefined ? getSessionMuxConfig({ host, session }) : null),
+  );
+  return sessionMuxConfig(scopedMuxConfig(lead, member), session === undefined ? null : card, fetched);
+}
+
+/**
+ * Whether a named session's capabilities have to be fetched: it is named, it is not the primary, and
+ * its card carries no capability set (a bridge older than M55, or a card still on its way).
+ */
+function sessionFetchNeeded(session: string | undefined, card: SessionSummary | null): boolean {
+  if (session === undefined) return false;
+  if (card?.isPrimary === true) return false;
+  return card?.caps === undefined;
+}
+
+/**
+ * Which declaration governs ONE SESSION's panes (M55): the session card's own capability set when it
+ * carries one, else the session's own fetched block, else the machine's block, which is the answer
+ * every session got before a collie could carry more than one runtime.
+ *
+ * Pure, and exported for {@link scopedMuxConfig}'s reason.
+ *
+ * - **The primary session is the machine's block, untouched.** Its card adds nothing the one-shot
+ *   read did not already say, and taking the card's capabilities in its place would drop the
+ *   adapter's notes, which an explanation renders.
+ * - **A card's capability set wins over a fetch.** It is the same set the bridge would answer, and it
+ *   came with the snapshot already in hand.
+ * - **The adapter's notes stay with the adapter.** A card names its runtime (`mux`); when that is the
+ *   runtime the machine's block describes, the block's notes still explain a missing capability. A
+ *   different runtime has no notes to borrow, and a borrowed one would explain the wrong program.
+ */
+export function sessionMuxConfig(
+  base: MuxConfig | null,
+  card: Pick<SessionSummary, "isPrimary" | "caps" | "mux"> | null,
+  fetched: MuxConfig | null,
+): MuxConfig | null {
+  if (card?.isPrimary === true) return base;
+  if (card?.caps !== undefined) {
+    const sameRuntime = base !== null && card.mux !== undefined && base.name === card.mux;
+    return {
+      name: card.mux ?? "",
+      capabilities: card.caps,
+      unsupportedKeys: sameRuntime ? base.unsupportedKeys : [],
+      notes: sameRuntime ? base.notes : {},
+    };
+  }
+  return fetched ?? base;
 }
 
 /**
@@ -177,9 +271,10 @@ export function scopedMuxConfig(lead: MuxConfig | null, member: MuxConfig | null
 /**
  * Ask one capability, of the machine the scope names. The hook every gated control uses.
  *
- * `scope` is how a control on a crew member's pane asks THAT member (M22/03). Absent means the lead,
- * which is every solo install and every dashboard surface that has no host in hand, and that answer
- * is byte for byte the one this hook has always given.
+ * `scope` is how a control on a crew member's pane asks THAT member (M22/03), and since M55 how a
+ * control in a program session asks THAT session. Absent means the lead's primary session, which is
+ * every solo install with one session, and that answer is byte for byte the one this hook has always
+ * given.
  *
  * Composes WITH the app's existing locks — it never replaces one. A capability says whether a thing
  * is possible at all; the idle pause (ADR 0007), the read-only device, the send-mode arming
@@ -188,6 +283,11 @@ export function scopedMuxConfig(lead: MuxConfig | null, member: MuxConfig | null
  */
 export function useMuxCapability(capability: MuxCapability, scope?: Scope): MuxCapabilityState {
   return muxCapability(useScopedMuxConfig(scope), capability);
+}
+
+/** {@link muxDeclared}, asked of the machine the scope names. A program's controls come through here. */
+export function useMuxDeclared(capability: MuxCapability, scope?: Scope): boolean {
+  return muxDeclared(useScopedMuxConfig(scope), capability);
 }
 
 /**

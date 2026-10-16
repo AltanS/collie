@@ -13,6 +13,7 @@ import { __resetAuthedUrls } from "@/lib/authed-url";
 import { __resetStore } from "@/lib/store";
 import { __resetChatTail } from "@/lib/chat-tail";
 import { resetFoldersCacheForTests } from "@/lib/folders";
+import { __resetSessionCards } from "@/lib/session-cards";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`. It LIVES in
 // `./msw.ts`, which touches no document, so the pure-logic project can load it without this file
@@ -73,6 +74,9 @@ Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: tr
 beforeEach(() => __resetAuthedUrls());
 // The New page's folder cache is module-scoped: one test's list must not open the next test's page.
 beforeEach(() => resetFoldersCacheForTests());
+// The session cards are module-scoped (lib/session-cards.ts): one case's program session would
+// otherwise answer the next case's capability reads.
+beforeEach(() => __resetSessionCards());
 
 // jsdom gaps that the terminal mirror / sheets touch.
 if (!Element.prototype.scrollIntoView) {

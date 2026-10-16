@@ -1,0 +1,23 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mread README.md and reply with one short sentence[0m[48;2;55;55;55m                                [0m
+
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file (ctrl+o to expand)[0m
+
+[0m● The /model picker shows:
+  ❯ Default (recommended)
+    Opus
+    Haiku
+  Enter to confirm · Esc to exit
+  Pick one there; I left the setting as it was.
+
+[0m[38;2;153;153;153m✻ Crunched for 2s · done 7:10 PM[0m
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2mNothing obvious follows from a one-off README read, so I'm suggesting nothing.[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153msonnet · lab-project · main · ctx 12%[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← for agents[0m

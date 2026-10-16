@@ -41,13 +41,14 @@ import { isMuxAgentName } from "./agents.ts";
 import { MUX_CAPABILITIES, type MuxCapability } from "./capabilities.ts";
 import { checkIdentitySet, idsLostBetween, isValidMuxId } from "./identity.ts";
 import { canonicalMuxKey, MUX_NAMED_KEYS } from "./keys.ts";
-import type {
-  MuxAdapter,
-  MuxOutcome,
-  MuxPane,
-  MuxRefusalOutcome,
-  MuxSnapshot,
-  MuxSubscription,
+import {
+  type MuxAdapter,
+  type MuxOutcome,
+  type MuxPane,
+  type MuxRefusalOutcome,
+  type MuxSnapshot,
+  type MuxSubscription,
+  muxUnsupported,
 } from "./types.ts";
 
 // ── What a fixture contributes ────────────────────────────────────────────────
@@ -280,7 +281,7 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
     {
       capability: "sendKeys",
       writes: true,
-      run: async () => refusalOf(await adapter.sendKeys(targets.paneId, ["a"])),
+      run: async () => refusalOf(await adapter.writeKeys(targets.paneId, ["a"])),
     },
     {
       capability: "renamePane",
@@ -291,6 +292,18 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       capability: "renameTab",
       writes: true,
       run: async () => refusalOf(await adapter.renameTab(targets.tabId, "conformance")),
+    },
+    {
+      capability: "renameSpace",
+      writes: true,
+      // The method is optional: an adapter that cannot name a space has none, and is never asked. A
+      // declaration without the method is what this entry catches.
+      run: async () =>
+        refusalOf(
+          adapter.renameSpace === undefined
+            ? muxUnsupported("renameSpace", "This adapter has no way to name a space.")
+            : await adapter.renameSpace(targets.spaceId, "conformance"),
+        ),
     },
     {
       capability: "createTab",
@@ -964,7 +977,7 @@ const sendsKeepTheirOrder: MuxWorldCheck = {
       if (!declares(adapter, "sendKeys")) return problems;
       const key = sendableNamedKey(adapter);
       if (key === null) return [...problems, "sendKeys is declared but every key in the alphabet is unsupported"];
-      const sent = await adapter.sendKeys(pane.paneId, [key, key]);
+      const sent = await adapter.writeKeys(pane.paneId, [key, key]);
       if (!sent.ok) return [...problems, `sendKeys is declared but answered ${describeRefusal(sent)}`];
       const keyWrites = world.writes().filter((write) => write.kind === "keys");
       const last = keyWrites.at(-1);
@@ -988,7 +1001,7 @@ const unsupportedKeysAreRefused: MuxWorldCheck = {
       const problems: string[] = [];
       for (const key of adapter.capabilities.unsupportedKeys) {
         const before = world.writes().length;
-        const sent = await adapter.sendKeys(pane.paneId, [key]);
+        const sent = await adapter.writeKeys(pane.paneId, [key]);
         if (sent.ok) problems.push(`"${key}" is declared unsupported but sendKeys answered ok`);
         else if (sent.reason !== "refused") {
           // `refused` is the documented answer for a key behind a door that IS open: the whole door
@@ -999,7 +1012,7 @@ const unsupportedKeysAreRefused: MuxWorldCheck = {
       }
       const key = sendableNamedKey(adapter);
       if (key === null) return [...problems, "every key in the alphabet is declared unsupported"];
-      const sent = await adapter.sendKeys(pane.paneId, [key]);
+      const sent = await adapter.writeKeys(pane.paneId, [key]);
       if (!sent.ok) problems.push(`"${key}" is not declared unsupported but answered ${describeRefusal(sent)}`);
       return problems;
     });
