@@ -240,10 +240,10 @@ const CARD_FIXTURES = {
     // README: notes composer focused inside the ask card — a real dialog
     modals: [
       "codex--ask-notes-focused.txt",
-      // Codex 0.162.1 pickers: no grammar reads them yet, so the unread card covers them.
+      // Codex 0.162.1 pickers: no grammar reads them yet, so the unread card covers them. The
+      // /resume list is read (session-picker.ts) and lifts as a menu, so it is not here.
       "codex--v0162-picker-model.txt",
       "codex--v0162-picker-permissions.txt",
-      "codex--v0162-resume-search.txt",
     ],
     notModals: [],
   },
@@ -274,13 +274,15 @@ const CARD_FIXTURES = {
   // tab: question.ts and question-tabs.ts, issue 329) lift their buttons and get no card. What stays
   // raw is a real modal with `esc dismiss` in its footer, so it gets the card (ADR 0053): a
   // multi-select whose free-text input is open (a digit would be typed as text) and a list too long
-  // for a digit (fourteen options).
+  // for a digit (fourteen options). The Update Available confirm dialog is a modal too: Confirm is the
+  // highlighted button, so the composer is refused, and Escape dismisses it.
   opencode: {
     modals: [
       "oc--agents-picker.txt",
       "oc--command-palette.txt",
       "oc--question--multi--free-text.txt",
       "oc--question--tall14.txt",
+      "oc--update-available.txt",
     ],
     notModals: [],
   },
