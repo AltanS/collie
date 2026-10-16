@@ -37,6 +37,7 @@ import { tailLinesFor } from "../../tail-lines";
 import { locateInput, type InputFrame } from "./chrome";
 import {
   CLARIFY_HINT,
+  FREETEXT_HINT,
   isBlank,
   isPanelRow,
   PANEL_BOTTOM,
@@ -44,6 +45,7 @@ import {
   panelInterior,
   panelSubject,
   rowTexts,
+  SPINNER_END,
 } from "./markers";
 
 export interface HermesDialogRegion {
@@ -82,18 +84,23 @@ export function panelAboveInput(
   const hintRow = (frame.statusRow ?? frame.topRule) - 1;
   if (hintRow < 0 || !hint.test(texts[hintRow]!)) return null;
 
-  let bottom = -1;
-  let spinner = 0;
-  for (let i = hintRow - 1; i >= 0; i--) {
-    const t = texts[i]!;
-    if (PANEL_BOTTOM.test(t)) {
-      bottom = i;
-      break;
-    }
-    if (isBlank(t)) continue;
-    if (++spinner > MAX_SPINNER_ROWS) return null;
+  // Between the hint and the panel: the spinner, directly on the hint (wide panes only), then blank
+  // rows. The spinner is one line that wraps onto at most a few rows; it opens two spaces in and,
+  // while the panel's tool runs, ends in its timer group. Any other row there is a layout this
+  // grammar has not seen, and the declared tail would vouch for it, so the panel is refused.
+  let row = hintRow - 1;
+  let spinnerTop = hintRow;
+  while (row >= 0 && !isBlank(texts[row]!) && !PANEL_BOTTOM.test(texts[row]!)) {
+    if (hintRow - row > MAX_SPINNER_ROWS) return null;
+    spinnerTop = row--;
   }
-  if (bottom < 0) return null;
+  if (spinnerTop < hintRow) {
+    if (!/^ {2}\S/.test(texts[spinnerTop]!)) return null;
+    if (!SPINNER_END.test(texts.slice(spinnerTop, hintRow).join(""))) return null;
+  }
+  while (row >= 0 && isBlank(texts[row]!)) row--;
+  if (row < 0 || !PANEL_BOTTOM.test(texts[row]!)) return null;
+  const bottom = row;
 
   let top = -1;
   for (let i = bottom - 1; i >= Math.max(0, bottom - MAX_PANEL_ROWS); i--) {
@@ -127,6 +134,9 @@ const CHOICE_MORE = /^ {6}\S/;
 // typed-answer screen, which is not lifted.
 const OTHER = /^Other (?:\(type your answer\)|: [\s\S]+)$/;
 const OTHER_TYPING = "Other (type below)";
+// What a question with no choices prints under itself while its typed answer is awaited
+// (`clarify_guidance`, two spaces in).
+const GUIDANCE = "  Type your answer in the prompt below, then press Enter.";
 
 interface ParsedChoice {
   digit: string;
@@ -160,6 +170,10 @@ function parseBody(texts: string[], top: number, bottom: number): ParsedQuestion
     }
     const q = questions.at(-1);
     if (q === undefined) return null;
+    if (q.marker === "▸" && row === GUIDANCE) {
+      mode = null;
+      continue;
+    }
     if (q.marker === "▸") {
       const choice = CHOICE.exec(row);
       if (choice !== null) {
@@ -190,6 +204,21 @@ function parseBody(texts: string[], top: number, bottom: number): ParsedQuestion
     return null;
   }
   return questions;
+}
+
+/**
+ * The question a clarify's typed answer (`✎ ❯`) is for: the active question's text, read off the
+ * panel above the input. Null when the input is not that, or the panel cannot be read (clipped,
+ * an unknown row). The adapter's `inputPurpose` is built from it.
+ */
+export function freetextQuestion(lines: StyledLine[]): string | null {
+  const frame = locateInput(lines);
+  if (frame === null || frame.state !== "freetext") return null;
+  const span = panelAboveInput(lines, frame, FREETEXT_HINT);
+  if (span === null || TITLE.exec(rowTexts(lines)[span.top]!) === null) return null;
+  const questions = parseBody(rowTexts(lines), span.top, span.bottom);
+  const active = questions?.filter((q) => q.marker === "▸") ?? [];
+  return active.length === 1 ? active[0]!.text : null;
 }
 
 /** The clarify panel at the tail, waiting for a choice, as a `prompt-select`; or null. */

@@ -98,6 +98,14 @@ export function panelSubject(lines: StyledLine[]): StyledLine[] {
   return out;
 }
 
+/** The status bar: Hermes's `☤` marker, after a battery field when one is shown, then the model
+ *  (`_get_status_bar_fragments` in hermes_cli/cli_status_bar_mixin.py). The marker is not a skin's. */
+export const STATUS_BAR = /^ ?(?:[^│☤]{1,20} │ )?☤ \S/;
+
+/** The last row of the spinner Hermes paints above a panel's hint while the panel's tool runs:
+ *  `  {text}  ({elapsed} · {tokens})`, elapsed ` 52.6s` or `01m07s` (`_render_spinner_text`). */
+export const SPINNER_END = /\((?: *\d+\.\d+s|\d+m\d+s)(?: · [^()]+)?\)$/;
+
 /** The key-hint row Hermes prints under a panel, its countdown `(Ns)` optional (absent when the
  *  timeout is unlimited). `hint_clarify_batch`, `hint_approval` and `hint_clarify_freetext` in
  *  locales/en.yaml; the countdown is `_poll_modal_queue`'s, repainted about once a second. */
