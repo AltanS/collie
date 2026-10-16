@@ -113,6 +113,104 @@ describe("every profile file", () => {
   });
 });
 
+function rawCodex(): JsonObject {
+  const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "codex.json"), "utf8"));
+  if (raw === undefined) throw new Error("codex.json is not a JSON object");
+  return raw;
+}
+
+describe("the codex profile (M56 spec 13)", () => {
+  it("codex: carries every field the spec names", () => {
+    const codex = parseProfile(rawCodex());
+    expect(codex.identity.versionCommand).toEqual(["codex", "--version"]);
+    expect(versionFromOutput(codex, "codex-cli 0.163.0")).toBe("0.163.0");
+    expect(codex.idle.frame.top).toMatchObject({ blank: true, column: 0 });
+    expect(codex.idle.frame.prompt.pattern).toContain("(?<draft>");
+    expect(codex.idle.frame.bottom.column).toBe(2);
+    expect(codex.idle.placeholders.sgr).toBe(2);
+    expect(codex.idle.runningRows?.length).toBeGreaterThan(0);
+    expect(codex.keys.submit).toEqual(["Enter"]);
+    expect(codex.keys.enterWhileRunning).toBe("steers");
+    expect(codex.keys.queueKey).toBe("Tab");
+    expect(codex.reservedLeads).toEqual(["/", "!", "@"]);
+    expect(codex.probe).toMatchObject({ char: "⌁", status: "verified" });
+    expect(codex.hooks["agent-turn-complete"]).toBe("edge");
+    expect(codex.edges?.events["agent-turn-complete"]).toBe("stop");
+  });
+
+  it("codex: the prompt anchor takes the box and its draft, and never a numbered dialog row", () => {
+    const prompt = new RegExp(parseProfile(rawCodex()).idle.frame.prompt.pattern, "u");
+    expect(prompt.exec("› hello there")?.groups?.draft).toBe("hello there");
+    expect(prompt.exec("›")?.groups?.draft).toBeUndefined();
+    expect(prompt.exec("› 1. Yes, proceed (y)")).toBeNull();
+    expect(prompt.exec("› 12. Other")).toBeNull();
+  });
+
+  it("codex: the bottom anchor takes the status row and never a hint row", () => {
+    const bottom = new RegExp(parseProfile(rawCodex()).idle.frame.bottom.pattern, "u");
+    expect(bottom.test("  GPT-6-Luna low · ~/project")).toBe(true);
+    expect(bottom.test("  tab to queue message                     88% context left")).toBe(true);
+    expect(bottom.test("  ← for agents · ? for shortcuts")).toBe(false);
+    expect(bottom.test("  ? for shortcuts")).toBe(false);
+    expect(bottom.test("  tab to queue message")).toBe(false);
+  });
+
+  it("codex: the running rows take a spinner on the status row and the queue hint", () => {
+    const signs = parseProfile(rawCodex()).idle.runningRows!.map((source) => new RegExp(source, "u"));
+    const any = (row: string): boolean => signs.some((sign) => sign.test(row));
+    expect(any("  gpt-5.5 medium · ~/project · ⠋")).toBe(true);
+    expect(any("  tab to queue message")).toBe(true);
+    expect(any("  GPT-6-Luna low · ~/project")).toBe(false);
+  });
+
+  it("codex: matches the queued rows Codex 0.163.0 draws after Tab (lab, 2026-10-16)", () => {
+    const queuedRow = parseProfile(rawCodex()).keys.queuedRow!;
+    expect(new RegExp(queuedRow.pattern, "u").exec("  ↳ then add a short summary")?.groups?.text).toBe("then add a short summary");
+    expect(new RegExp(queuedRow.hint, "u").test("    shift+← edit last queued message")).toBe(true);
+    expect(queuedRow.hintGap).toBe(0);
+  });
+
+  it("codex: matches the long-paste form", () => {
+    const form = new RegExp(parseProfile(rawCodex()).collapse.pattern, "u");
+    expect(form.exec("[Pasted Content 1500 chars]")?.groups?.chars).toBe("1500");
+  });
+
+  const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
+    ["codex: Escape as the queue key", ["keys", "queueKey"], "Escape", "keys.queueKey"],
+    ["codex: a submit key as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
+    ["codex: a queue key on a harness whose Enter queues", ["keys", "enterWhileRunning"], "queues", "keys.queueKey"],
+    ["codex: an unknown Enter mode", ["keys", "enterWhileRunning"], "sometimes", "keys.enterWhileRunning"],
+    ["codex: a blank prompt anchor", ["idle", "frame", "prompt", "blank"], true, "idle.frame.prompt.blank"],
+    ["codex: a blank anchor that matches text", ["idle", "frame", "top", "pattern"], "^x$", "idle.frame.top.pattern"],
+    ["codex: a blank anchor off column 0", ["idle", "frame", "top", "column"], 2, "idle.frame.top.column"],
+    ["codex: a running row that is no expression", ["idle", "runningRows", 0], "[unclosed", "idle.runningRows[0]"],
+  ];
+  for (const [name, path, value, field] of cases) {
+    it(name, () => {
+      expect(failure(change(rawCodex(), path, value)).path).toBe(field);
+    });
+  }
+});
+
+describe("the Codex ranges and the ledger", () => {
+  const row = ledgerJson.agents.codex;
+
+  it("codex: verified through the ledger's Codex row", () => {
+    const codex = loadProfiles().get("codex")!;
+    const verified = codex.versions.filter((range) => range.status === "verified");
+    expect(verified).toHaveLength(1);
+    expect(verified[0]!.verifiedThrough).toBe(row.version);
+    expect(verified[0]!.verifiedOn).toBe(row.verified);
+    expect(verified[0]!.range.endsWith(` - ${row.version}`)).toBe(true);
+    expect(profileFor("codex", row.version, { log: () => {} })?.status).toBe("verified");
+  });
+
+  it("codex: provisional above the ledger's Codex row, 0.163.0 of the lab included", () => {
+    resetProfileLog();
+    expect(profileFor("codex", "0.163.0", { log: () => {} })?.status).toBe("provisional");
+  });
+});
+
 describe("parseProfile names the failing field", () => {
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["a missing section", ["keys"], undefined, "keys"],

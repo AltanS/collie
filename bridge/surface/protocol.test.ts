@@ -19,9 +19,11 @@ import { SurfaceLedger } from "./counters.ts";
 const RULE = "─".repeat(40);
 const WIDTH = 38;
 const PROBE = "⌁";
+/** A harness with no profile. Codex screens below stand in for one: Codex has a profile since M56 spec 13. */
+const NO_PROFILE = "nothing-known";
 const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
 
-type Mode = "claude" | "generic";
+type Mode = "claude" | "generic" | "codex";
 
 /** A pane that reacts to text and keys like a harness's input box, with knobs for every failure. */
 class FakePane {
@@ -67,13 +69,37 @@ class FakePane {
   /** Runs when a text write or a key press arrives, before it acts; a promise held for ever is a hung multiplexer. */
   beforeWrite: ((pane: FakePane, what: string) => Promise<void> | void) | null = null;
 
+  /**
+   * Codex mode only: the rows Codex 0.163.0 draws for messages queued with Tab during a turn, the
+   * header, one `↳` row per text and the edit hint (lab, M56 spec 13, 2026-10-16).
+   */
+  queued: string[] = [];
+  /** Codex mode only: the status row under the box. One with no ` · ` in it leaves the box unframed. */
+  codexStatus = "  GPT-6-Luna low · ~/project";
+  /** Codex mode only: a hint row that stays put, where null draws the hint Codex shows for the box. */
+  codexHint: string | null = null;
+
   constructor(readonly mode: Mode = "claude") {}
+
+  /** Codex mode: a turn runs while a running row stands over the box. */
+  private running(): boolean {
+    return this.over.some((row) => row.includes("esc to interrupt"));
+  }
 
   private bump(): void {
     this.revision++;
   }
 
   private boxRows(): string[] {
+    if (this.mode === "codex") {
+      if (this.box === "") return ["\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m"];
+      const rows: string[] = [];
+      this.box.split("\n").forEach((line, li) => {
+        const chunks = line.length === 0 ? [""] : (line.match(new RegExp(`.{1,${String(WIDTH)}}`, "gu")) ?? [""]);
+        chunks.forEach((chunk, ci) => rows.push(li === 0 && ci === 0 ? `› ${chunk}` : `  ${chunk}`));
+      });
+      return rows;
+    }
     if (this.mode === "generic") {
       const lines = this.box.split("\n");
       return lines.map((line, i) => (i === lines.length - 1 ? `${line}\u001b[7m \u001b[0m` : line));
@@ -95,6 +121,13 @@ class FakePane {
     if (this.dialog !== null) {
       rows.push(...this.dialog);
       return rows.join("\n");
+    }
+    if (this.mode === "codex") {
+      // Codex draws no edge glyphs: a blank row, the prompt and draft rows, a blank row, the status row, the hint row.
+      const queued = this.queued.length === 0 ? [] : ["", "• Queued follow-up inputs", ...this.queued.map((text) => `  ↳ ${text}`), "    shift+← edit last queued message"];
+      const hint = this.codexHint ?? (this.running() && this.box !== "" ? "  tab to queue message" : "  ← for agents · ? for shortcuts");
+      rows.push(...this.over, ...queued, "", "", ...this.boxRows(), "", this.codexStatus, hint);
+      return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
     if (this.mode === "generic") rows.push(this.footer);
@@ -162,6 +195,16 @@ class FakePane {
         }
       } else if (key === "ctrl+j") {
         this.box += "\n";
+      } else if (key === "Tab" && this.mode === "codex") {
+        // Codex 0.163.0 (lab, 2026-10-16): Tab queues a draft during a turn, sends it when idle, and does nothing on an empty box.
+        if (this.box.length > 0 && this.running()) this.queued.push(this.box.replace(/\n/gu, " "));
+        else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
+        this.box = "";
+      } else if (key === "Enter" && this.mode === "codex" && this.enterSubmits) {
+        // Enter during a Codex turn steers: the text joins the running turn, above the running row.
+        if (this.box.length > 0 && this.running()) this.over = [`› ${this.box.replace(/\n/gu, " ")}`, "", ...this.over];
+        else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
+        this.box = "";
       } else if (key === "Enter" && this.enterSubmits) {
         if (this.drawsQueuedRow && this.box.length > 0) this.over = [`❯ ${this.box.replace(/\n/gu, " ")}`, "  ctrl+enter to send now", ...this.over];
         else if (this.box.length > 0) this.transcript.push(`> ${this.box.replace(/\n/gu, " ")}`);
@@ -498,7 +541,7 @@ class HerdrCodexPane extends FakePane {
 describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
   test("Codex hides its hint row once the box holds a character: the manual Send passes the probe and is sent", async () => {
     const pane = new CodexPane();
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const first = await send("reply with one word: ok");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", profileId: null, keys: [] });
     // The same words as the phone's catalog line printed above it.
@@ -520,7 +563,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     pane.afterInput = (_p, what) => {
       if (what.endsWith("Enter")) pane.logo = [];
     };
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const first = await send("reply with one word: hi");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     const answer = await send("reply with one word: hi", { rowsHash: first.rowsHash! });
@@ -534,7 +577,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     pane.afterInput = (p, what) => {
       if (what.endsWith("Enter") && p instanceof HerdrCodexPane) p.sent.push(p.transcript.at(-1)!.slice(2));
     };
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     for (const text of ["reply with one word: ok", "say ok"]) {
       const look = await send(text);
       expect(look.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
@@ -550,7 +593,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     const pane = new HerdrCodexPane();
     const render = pane.render.bind(pane);
     pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const look = await send("hello");
     const answer = await send("hello", { rowsHash: look.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch", keys: ["probe", "Backspace"] });
@@ -558,7 +601,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
 
   test("on the manual path a row above the box that gains text still fails the probe, with no frame and with one", async () => {
     const bare = new CodexPane();
-    const noFrame = rig({ pane: bare, harness: "codex" });
+    const noFrame = rig({ pane: bare, harness: NO_PROFILE });
     const first = await noFrame.send("hello");
     bare.afterInput = (p, what) => {
       if (what === `type:${GENERIC_PROBE}`) p.transcript[5] = "• ready, and more text";
@@ -591,7 +634,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
 
   test("with no frame, a row under the box that shows other text still fails the probe", async () => {
     const pane = new CodexPane();
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const first = await send("hello");
     // A row under the box that turns into a list entry is not a hint that hid.
     const render = pane.render.bind(pane);
@@ -653,7 +696,7 @@ describe("after a failed probe", () => {
     // A row above the box that shows new text while the probe goes in is text the rows gained:
     // the probe fails, and its character stands in the box.
     const pane = new CodexPane();
-    const { send, deps } = rig({ pane, harness: "codex" });
+    const { send, deps } = rig({ pane, harness: NO_PROFILE });
     const first = await send("hello");
     pane.afterInput = (p, what) => {
       if (what === `type:${GENERIC_PROBE}`) p.transcript[7] = "  Worked for 2s • 5:53 AM";
@@ -856,6 +899,123 @@ describe("a command (M56 spec 06)", () => {
 
 /** The live running row of Claude Code 2.1.301 (claude--v2301-working-quiet--w100.txt): no interrupt hint. */
 const LIVE_ROW = "* Wibbling… (4s · ↓ 304 tokens)";
+
+describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
+  const CODEX_RUNNING = "• Working (4s • esc to interrupt)";
+  const codex = (options: Parameters<typeof rig>[0] = {}): Rig => rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2", ...options });
+
+  test("a free Codex box: probed or not, one write, Enter, sent, no queued field", async () => {
+    const { pane, send } = codex();
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "codex", profileStatus: "verified", keys: ["Enter"] });
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
+  });
+
+  test("a running turn: probed, then Tab instead of Enter, sent, the receipt says queued", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+    expect(pane.box).toBe("");
+    neverEscape(pane);
+  });
+
+  test("Enter never goes into a running Codex turn: ten queued sends press Tab ten times and Enter never", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    for (let i = 0; i < 10; i++) expect((await send(`follow-up number ${String(i)}`)).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toEqual([]);
+    expect(pane.keysSeen.filter((key) => key === "Tab")).toHaveLength(10);
+    expect(pane.queued).toHaveLength(10);
+  });
+
+  test("a Codex profile with no queue key refuses a send into a turn: turn_running, nothing typed", async () => {
+    const { pane, send } = codex({
+      edit: (profile) => {
+        const { queueKey, ...keys } = profile.keys;
+        void queueKey;
+        return { ...profile, keys };
+      },
+    });
+    pane.over = [CODEX_RUNNING];
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe("The agent is working, and this harness does not take a message during a turn.");
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a Codex version the binary did not report never queues", async () => {
+    const { pane, send } = codex({ version: "no version here" });
+    pane.over = [CODEX_RUNNING];
+    expect((await send("then add a short summary")).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a draft in a running Codex box keeps the draft offers, and Add to it goes in queued with Tab", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.box = "half a thought";
+    expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    const added = await send(" and the rest", { mode: "append" });
+    expect(added.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(added.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.queued).toEqual(["half a thought and the rest"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a command waits for the Codex turn: refused turn_running, nothing typed", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a Codex screen with no box and a running row: the two-tap send presses Tab, never Enter, and says queued", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.codexStatus = "  something the profile does not know";
+    pane.codexHint = "  ? for shortcuts";
+    const first = await send("then add a short summary");
+    expect(first.receipt?.keys).toEqual([]);
+    expect(first.rowsHash).toEqual(expect.any(String));
+    const manual = await send("then add a short summary", { rowsHash: first.rowsHash! });
+    expect(manual.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(manual.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+  });
+
+  test("a Codex screen with no box and a running row, and no queue key: the two-tap send is refused turn_running, nothing typed", async () => {
+    const { pane, send } = codex({
+      edit: (profile) => {
+        const { queueKey, ...keys } = profile.keys;
+        void queueKey;
+        return { ...profile, keys };
+      },
+    });
+    pane.over = [CODEX_RUNNING];
+    pane.codexStatus = "  something the profile does not know";
+    const first = await send("then add a short summary");
+    const manual = await send("then add a short summary", { rowsHash: first.rowsHash! });
+    expect(manual.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("an answer that streams above an idle Codex box is not taken as a queued send: Enter submits, no queued label", async () => {
+    const { pane, send } = codex();
+    pane.beforeRead = (p, n) => {
+      p.transcript.push(`streamed row ${String(n)}`);
+    };
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("Tab");
+  });
+});
 
 describe("a send into a running turn", () => {
   test("an empty box on a harness that queues: typed, Enter through the gate, sent, the receipt says queued", async () => {
@@ -1702,7 +1862,7 @@ describe("the offers as new requests", () => {
     const pane = new HerdrCodexPane();
     const render = pane.render.bind(pane);
     pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
-    return { r: rig({ pane, harness: "codex" }), pane };
+    return { r: rig({ pane, harness: NO_PROFILE }), pane };
   };
   const typedNotSubmitted = async (r: Rig, text: string): Promise<SendAnswer> => {
     const look = await r.send(text);
@@ -2211,13 +2371,13 @@ describe("counters, the cap and the examples", () => {
     expect(rowOf(ledger, "nothing-known")?.manual).toBe(3);
   });
 
-  test("a harness with no version is named alone in the cap's detail, not as `codex -`", async () => {
+  test("a harness with no version is named alone in the cap's detail, not as `<harness> -`", async () => {
     const ledger = ledgerFor({ cap: 0 });
-    const noVersion = rig({ mode: "generic", ledger, harness: "codex" });
+    const noVersion = rig({ mode: "generic", ledger, harness: NO_PROFILE });
     const first = await noVersion.send("hello from the phone");
     const capped = await noVersion.send("hello from the phone", { rowsHash: first.rowsHash! });
-    expect(capped.detail).toContain("0 times on codex in the last day");
-    expect(capped.detail).not.toContain("codex -");
+    expect(capped.detail).toContain(`0 times on ${NO_PROFILE} in the last day`);
+    expect(capped.detail).not.toContain(`${NO_PROFILE} -`);
   });
 
   test("a discard is counted as discarded, never as sent", async () => {

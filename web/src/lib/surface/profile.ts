@@ -17,7 +17,12 @@ import { PROFILE_FILES } from "./profiles/index";
 
 export type ProfileStatus = "verified" | "provisional" | "revoked";
 export type HookKind = "edge" | "ask";
-export type EnterWhileRunning = "queues" | "submits" | "ignored";
+/**
+ * What Enter does while a turn runs: `queues` (the text waits for the turn's end), `steers` (the text
+ * goes into the running turn), `submits` or `ignored`. The Send Protocol presses Enter into a turn
+ * only on `queues`; on any other mode it presses `keys.queueKey` when the profile names one.
+ */
+export type EnterWhileRunning = "queues" | "steers" | "submits" | "ignored";
 
 /** A queued message as the harness draws it (see `keys.queuedRow`). */
 export interface QueuedRow {
@@ -43,14 +48,21 @@ export interface VersionRange {
   readonly verifiedOn: string | null;
 }
 
-/** A frame anchor: a row pattern, the display cells it must span, and the column it starts in. */
+/**
+ * A frame anchor: a row pattern, the display cells it must span, and the column it starts in. A
+ * `blank` anchor is a row with no text at all (a box drawn with a fill colour and no edge glyphs);
+ * its pattern must match the empty string.
+ */
 export interface FrameAnchor {
-  /** A regular expression source, matched against the row text with its trailing space cut. The top
-   *  anchor may hold a named group `label` (the words on the edge); the prompt anchor must hold
-   *  `draft` (the hole). */
+  /** A regular expression source, matched against the row text with its trailing space cut and its
+   *  leading `column` spaces kept. The top anchor may hold a named group `label` (the words on the
+   *  edge); the prompt anchor must hold `draft` (the hole). */
   readonly pattern: string;
   readonly minCells?: number;
-  readonly column: 0;
+  /** The row's text starts in exactly this column: that many spaces, then a character that is no space. */
+  readonly column: number;
+  /** The edge is a blank row. Only the top and bottom anchors may be blank. */
+  readonly blank?: true;
 }
 
 export interface Profile {
@@ -84,6 +96,12 @@ export interface Profile {
       readonly above: { readonly maxRows: number };
       readonly below: { readonly maxRows: number; readonly footerMaxRows: number };
     };
+    /**
+     * Rows that mean a turn runs, as regular expression sources, read on the frame's bottom edge and
+     * the rows under it (cues.ts `runningSign`). Optional: the generic running signs above the box
+     * always count. For a harness that marks a turn on its own status rows.
+     */
+    readonly runningRows?: readonly string[];
   };
   readonly keys: {
     readonly submit: readonly string[];
@@ -98,6 +116,12 @@ export interface Profile {
       readonly cancel: string;
     };
     readonly enterWhileRunning: EnterWhileRunning;
+    /**
+     * The key that queues a message for after the running turn, on a harness whose Enter does not
+     * queue (`enterWhileRunning` is not `queues`). Optional: without it, a send into a turn is refused.
+     * Never Escape and never a submit key.
+     */
+    readonly queueKey?: string;
     /**
      * How the harness draws a message it queued during a turn, when that is known: a row whose
      * `pattern` holds the text in the named group `text` (later rows of a wrapped text are indented),
@@ -147,7 +171,7 @@ export class ProfileError extends Error {
 const STATUSES = ["verified", "provisional", "revoked"] as const;
 const PROBE_STATUSES = ["verified", "provisional"] as const;
 const HOOK_KINDS = ["edge", "ask"] as const;
-const ENTER_MODES = ["queues", "submits", "ignored"] as const;
+const ENTER_MODES = ["queues", "steers", "submits", "ignored"] as const;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RANGE = /^(\d+\.\d+\.\d+) - (\d+\.\d+\.\d+|\*)$/;
@@ -213,15 +237,21 @@ function pattern(value: JsonValue | undefined, path: string): RegExp {
   }
 }
 
-function anchor(value: JsonValue | undefined, path: string, needsGroup: string | null): FrameAnchor {
+function anchor(value: JsonValue | undefined, path: string, needsGroup: string | null, mayBeBlank: boolean): FrameAnchor {
   const node = object(value, path);
   const compiled = pattern(field(node, "pattern", path), `${path}.pattern`);
   if (needsGroup !== null && !compiled.source.includes(`(?<${needsGroup}>`)) {
     fail(`${path}.pattern`, `must hold the named group ${needsGroup}`);
   }
-  if (whole(field(node, "column", path), `${path}.column`, 0) !== 0) fail(`${path}.column`, "must be 0");
-  const base = { pattern: compiled.source, column: 0 } as const;
-  return node.minCells === undefined ? base : { ...base, minCells: whole(node.minCells, `${path}.minCells`, 1) };
+  const column = whole(field(node, "column", path), `${path}.column`, 0);
+  const base: FrameAnchor = { pattern: compiled.source, column };
+  const withCells = node.minCells === undefined ? base : { ...base, minCells: whole(node.minCells, `${path}.minCells`, 1) };
+  if (node.blank === undefined) return withCells;
+  if (node.blank !== true) fail(`${path}.blank`, "must be true when present");
+  if (!mayBeBlank) fail(`${path}.blank`, "only the top and bottom anchors may be blank");
+  if (!compiled.test("")) fail(`${path}.pattern`, "of a blank anchor must match the empty string");
+  if (column !== 0) fail(`${path}.column`, "of a blank anchor must be 0");
+  return { ...withCells, blank: true };
 }
 
 function parseVersions(value: JsonValue | undefined, path: string): [VersionRange, ...VersionRange[]] {
@@ -272,11 +302,11 @@ export function parseProfile(raw: JsonValue): Profile {
   const volatileNode = object(field(idleNode, "volatile", "idle"), "idle.volatile");
   const aboveNode = object(field(volatileNode, "above", "idle.volatile"), "idle.volatile.above");
   const belowNode = object(field(volatileNode, "below", "idle.volatile"), "idle.volatile.below");
-  const idle = {
+  const idle: Profile["idle"] = {
     frame: {
-      top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null),
-      prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft"),
-      bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null),
+      top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null, true),
+      prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft", false),
+      bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true),
       continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
       maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
       maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
@@ -293,6 +323,12 @@ export function parseProfile(raw: JsonValue): Profile {
       },
     },
   };
+
+  const runningRows =
+    idleNode.runningRows === undefined
+      ? undefined
+      : list(idleNode.runningRows, "idle.runningRows").map((item, i) => pattern(item, `idle.runningRows[${String(i)}]`).source);
+  const idleBlock: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
@@ -323,7 +359,14 @@ export function parseProfile(raw: JsonValue): Profile {
       hint: pattern(field(queuedNode, "hint", "keys.queuedRow"), "keys.queuedRow.hint").source,
       hintGap: whole(field(queuedNode, "hintGap", "keys.queuedRow"), "keys.queuedRow.hintGap", 0),
     };
-    keys = { ...baseKeys, queuedRow };
+    keys = { ...keys, queuedRow };
+  }
+  if (keysNode.queueKey !== undefined) {
+    const queueKey = text(keysNode.queueKey, "keys.queueKey");
+    if (/^(?:escape|esc)$/i.test(queueKey)) fail("keys.queueKey", "must not be Escape");
+    if (keys.submit.includes(queueKey)) fail("keys.queueKey", "must not be a submit key");
+    if (keys.enterWhileRunning === "queues") fail("keys.queueKey", "is for a harness whose Enter does not queue");
+    keys = { ...keys, queueKey };
   }
   // Escape is never cleanup (ARCHITECTURE.md, Send Protocol): a profile cannot name it as the clear key.
   if (/^(?:escape|esc)$/i.test(keys.clear.key)) fail("keys.clear.key", "must not be Escape");
@@ -367,7 +410,7 @@ export function parseProfile(raw: JsonValue): Profile {
 
   const edges = root.edges === undefined ? undefined : parseEdges(root.edges, hooks);
 
-  const parsedProfile: Profile = { id, identity, versions, idle, keys, collapse, reservedLeads, probe, hooks };
+  const parsedProfile: Profile = { id, identity, versions, idle: idleBlock, keys, collapse, reservedLeads, probe, hooks };
   const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
   const withAsk = ask === undefined ? withPaste : { ...withPaste, ask };
   return edges === undefined ? withAsk : { ...withAsk, edges };
@@ -394,7 +437,7 @@ function parseEdges(value: JsonValue, hooks: Readonly<Record<string, HookKind>>)
   const events = Object.fromEntries(
     Object.keys(eventsNode).map((key) => {
       const at = `edges.events.${key}`;
-      if (!/^[A-Za-z]+(?::[a-z_]+)?$/.test(key)) fail(at, "must read Event or Event:detail");
+      if (!/^[A-Za-z][A-Za-z-]*(?::[a-z_-]+)?$/.test(key)) fail(at, "must read Event or Event:detail");
       const event = key.split(":")[0] ?? key;
       if (hooks[event] !== "edge") fail(at, `names ${event}, which hooks does not list as an edge`);
       return [key, oneOf(eventsNode[key], at, EDGE_KINDS)];

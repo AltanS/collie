@@ -29,6 +29,12 @@
 // profile does not queue, a command, and a box that would go out as a command are refused
 // `turn_running`; something open at the box is refused `not_free`.
 //
+// A harness whose Enter steers the running turn (`keys.enterWhileRunning: "steers"`) takes the same
+// queued path only when its profile names a queue key (`keys.queueKey`). The commit then presses that
+// key instead of the submit keys, and the receipt says `queued`. Enter never goes into such a turn.
+// Without a queue key the send is refused `turn_running`. The paths below that start from a read
+// that showed no turn (the rows above moved, the late witness) need a harness whose Enter queues.
+//
 // A turn the screen does not mark: Claude Code 2.1.301 draws no spinner while the answer streams, so
 // S0 reads idle. On a harness that queues, a send that is not a command may see the rows above the
 // box move while Collie types, if the frame stays, the rows under the box keep their count, the cue
@@ -523,15 +529,40 @@ function belowMasked(snap: Snap | null): string | null {
   return snap.plain.slice(snap.frame.bottom + 1).map((row) => row.replace(/\d+/gu, "0")).join("\n");
 }
 
+/** Whether the profile may be trusted with a running turn: a version the binary reported, on a range that is not revoked. */
+function turnTrusted(match: ProfileMatch | null): match is ProfileMatch {
+  return match !== null && match.version !== null && match.status !== "revoked" && match.range?.status !== "revoked";
+}
+
 /**
- * Whether the harness takes a message typed and entered while its turn runs: its profile says Enter
- * queues, for a version the binary reported, on a range that is not revoked. A provisional version
+ * Whether the harness's Enter itself queues while a turn runs (`keys.enterWhileRunning: "queues"`).
+ * Only then may a send that S0 read as idle take the queued path when the rows above move, and only
+ * then is the harness's queued row a witness after an Enter.
+ */
+function enterQueues(match: ProfileMatch | null): boolean {
+  return turnTrusted(match) && match.profile.keys.enterWhileRunning === "queues";
+}
+
+/**
+ * Whether the harness takes a message while its turn runs: its Enter queues, or its profile names a
+ * queue key (`keys.queueKey`) for a harness whose Enter does something else in a turn (steers it).
+ * Both need a version the binary reported, on a range that is not revoked. A provisional version
  * counts, unless the nearest older range it borrows is revoked. Every send into a turn is probed,
  * whatever the status: a dialog can open at any moment of a turn.
  */
 function queuesInTurn(match: ProfileMatch | null): boolean {
-  if (match === null || match.version === null || match.status === "revoked" || match.range?.status === "revoked") return false;
-  return match.profile.keys.enterWhileRunning === "queues";
+  return enterQueues(match) || (turnTrusted(match) && match.profile.keys.queueKey !== undefined);
+}
+
+/**
+ * The keys that commit a send: the profile's submit keys, or its queue key for a send that goes into
+ * a running turn on a harness whose Enter does not queue. Enter never goes into such a turn.
+ */
+function commitKeys(state: RunState): readonly string[] {
+  const keys = state.match?.profile.keys;
+  if (keys === undefined) return GENERIC_SUBMIT;
+  if (state.queued && keys.enterWhileRunning !== "queues" && keys.queueKey !== undefined) return [keys.queueKey];
+  return keys.submit;
 }
 
 /**
@@ -1324,6 +1355,7 @@ export class SendProtocol {
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
     state.manual = takesManualSend(s0.surface);
+    if (state.manual) this.gateSteeringTurn(state, s0);
     this.checkGeneration(state, "refused");
 
     switch (request.mode) {
@@ -1502,6 +1534,25 @@ export class SendProtocol {
     return frame;
   }
 
+  /**
+   * The manual path on a harness whose Enter steers a running turn: S0 found no box to read the turn
+   * from, so any running sign on the screen counts. Then the send takes the queue key, or is refused
+   * when the profile names none (or the turn holds a command). Enter never steers a turn by accident.
+   */
+  private gateSteeringTurn(state: RunState, s0: Snap): void {
+    const profile = state.match?.profile;
+    if (profile?.keys.enterWhileRunning !== "steers" || state.request.mode === "discard") return;
+    const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+    const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
+    if (!runs) return;
+    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
+    const leads = profile.reservedLeads;
+    if (state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null) {
+      throw new Ended("refused", "turn_running", { surface: s0.surface, detail: COMMAND_IN_TURN });
+    }
+    state.queued = true;
+  }
+
   /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
     const refusal = turnRefusal(state, s0, frame);
@@ -1531,7 +1582,7 @@ export class SendProtocol {
    */
   private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
     // (The rows above may only scroll and grow from read to read: bandScrolled.)
-    if (state.queued || state.manual || state.command) return false;
+    if (state.queued || state.manual || state.command || !enterQueues(state.match)) return false;
     const { mode } = state.request;
     if (mode !== "send" && mode !== "append" && mode !== "replace") return false;
     if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
@@ -1910,7 +1961,7 @@ export class SendProtocol {
   /** Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. */
   private async commit(state: RunState, s1: Snap): Promise<void> {
     this.guard(state);
-    const keys = state.match?.profile.keys.submit ?? GENERIC_SUBMIT;
+    const keys = commitKeys(state);
     const { gate, store } = this.deps;
     const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     store.markSubmitSent(state.record.id);
@@ -1940,7 +1991,7 @@ export class SendProtocol {
     const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
     let witnessed = false;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
-      if (!state.queued && !command && !witnessed) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
+      if (!state.queued && !command && !witnessed && enterQueues(state.match)) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
       if (s0.frame !== null) {
         // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
         // The Surface claiming a modal, or two reads in a row with no box, end the request on their
@@ -1955,7 +2006,7 @@ export class SendProtocol {
         // evidence that the harness took it.
         if (queued) return boxText(snap.frame).length === 0 ? "pass" : "wait";
         if (command && !wsFree(boxText(snap.frame)).includes(wsFree(withoutLead(lines).join("")))) return "pass";
-        return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame) ? "pass" : "wait";
+        return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame, state.match?.profile.idle.runningRows) ? "pass" : "wait";
       }
       if (landing === null) return "wait";
       if (command) return flat(snap.plain).includes(flat([landing.probed.slice(0, landing.index) + lines.join("") + afterProbe(landing)])) ? "wait" : "pass";
@@ -1992,7 +2043,7 @@ export class SendProtocol {
    */
   private async lateWitness(state: RunState, lines: readonly string[]): Promise<void> {
     const queuedRow = state.match?.profile.keys.queuedRow;
-    if (queuedRow === undefined || !queuesInTurn(state.match) || state.queued || state.command) return;
+    if (queuedRow === undefined || !enterQueues(state.match) || state.queued || state.command) return;
     if ((state.marks.s2?.frame ?? null) === null) return;
     // Only where a turn may run: the rows above moved while Collie typed, a spinner showed before
     // Enter, or the rows under the box changed between S0 and S1. A truly idle send skips the read.

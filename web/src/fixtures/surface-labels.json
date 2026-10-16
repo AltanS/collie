@@ -1749,7 +1749,7 @@
   "codex--v0158-goal-notice.txt": {
    "harness": "codex",
    "version": "0.158",
-   "state": "idle"
+   "state": "running"
   },
   "codex--v0159-task-title.txt": {
    "harness": "codex",
