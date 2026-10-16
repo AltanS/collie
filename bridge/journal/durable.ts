@@ -68,7 +68,7 @@ export const DURABLE_JOURNAL_AGENT = "durable";
 export const STOPPED_TEXT = "stopped";
 
 /** The line an ask the program decided itself draws (WIRE.md 7.3). The phone's ask card says the same words. */
-export const DECIDED_IN_PROGRAM_TEXT = "Decided in the program.";
+export const DECIDED_IN_PROGRAM_TEXT = "Decided in the durable agent.";
 
 /** The line an ask that passed its `expiresAt` draws (WIRE.md 7.3). */
 export const TIMED_OUT_TEXT = "Timed out before an answer.";

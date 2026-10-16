@@ -166,7 +166,7 @@ export class Receipts {
       // Dropped past the cap: the reply is gone, so it cannot be replayed, and running it again could run it
       // twice. A 5xx leaves the outcome unknown (WIRE.md 7.6): the phone offers the same id again, and it is
       // refused again, never run.
-      if (isDropped(kept)) throw new HttpError(500, "receipt-dropped", { message: "this request id is older than the receipts this program keeps; it does not run again" });
+      if (isDropped(kept)) throw new HttpError(500, "receipt-dropped", { message: "this request id is older than the receipts this durable agent keeps; it does not run again" });
       return { reply: kept.reply, replayed: true };
     }
     const reply = await act();

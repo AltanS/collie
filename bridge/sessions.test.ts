@@ -590,10 +590,10 @@ describe("SessionRegistry: programs beside the terminal mux (M55)", () => {
     const desk = registry.get("desk");
     const cloud = registry.get("cloud");
     const primary = registry.get();
-    expect(desk === undefined ? null : cardOf(desk, false).notice).toBe("Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK.");
+    expect(desk === undefined ? null : cardOf(desk, false).notice).toBe("The durable agent speaks wire v3, this Collie speaks v1. Update Collie, or the agent's SDK.");
     // Unreachable for another reason: no notice, the word alone.
     expect(cloud === undefined ? null : "notice" in cardOf(cloud, false)).toBe(false);
     expect(primary === undefined ? null : "notice" in cardOf(primary, true)).toBe(false);
-    expect(registry.list().find((s) => s.name === "desk")).toMatchObject({ state: "unreachable", notice: "Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK." });
+    expect(registry.list().find((s) => s.name === "desk")).toMatchObject({ state: "unreachable", notice: "The durable agent speaks wire v3, this Collie speaks v1. Update Collie, or the agent's SDK." });
   });
 });

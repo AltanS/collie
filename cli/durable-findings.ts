@@ -157,7 +157,7 @@ async function socketFindings(configured: string | undefined, w: Setting, probe:
         resolved.detail,
         platform === "win32"
           ? `set ${w.url} and ${w.token} in ${w.file}, then \`collie restart\`; Windows has no socket transport`
-          : `set ${w.socket} to the absolute path of your program's socket in ${w.file}, or ${w.url} and ${w.token} for a program behind TLS, then \`collie restart\``,
+          : `set ${w.socket} to the absolute path of your durable agent's socket in ${w.file}, or ${w.url} and ${w.token} for a durable agent behind TLS, then \`collie restart\``,
       ),
       skipped(w.rows.socket, "no socket path to check", FIRST),
       ...noUrl,
@@ -175,8 +175,8 @@ async function socketFindings(configured: string | undefined, w: Setting, probe:
   const socket = ok(w.rows.socket, `${path} is a socket, owned by you, mode 0600, in a folder of yours with mode 0700, no link on the way`);
   const asked = await askHello(new DurableSocketClient(path), DURABLE_BUDGETS.socket.readTimeoutMs, w, {
     where: "on this socket",
-    pointAt: `point ${w.socket} at your durable program's socket`,
-    notAnswering: "check that the program is running and that it is the one listening on this socket",
+    pointAt: `point ${w.socket} at your durable agent's socket`,
+    notAnswering: "check that the durable agent is running and that it is the one listening on this socket",
   });
   return [env, socket, ...noUrl, ...helloRows(asked, w)];
 }
@@ -188,18 +188,18 @@ async function httpsFindings(rawUrl: string, rawToken: string, w: Setting): Prom
   const url = resolveDurableUrl(rawUrl);
   const urlRow = url.ok
     ? ok(w.rows.url, `${url.base} · ${url.loopback ? "loopback http, for wrangler dev on this machine" : "https"} · ${String(url.bytes)} bytes`)
-    : bad(w.rows.url, url.detail, `set ${w.url} to your program's https:// address in ${w.file}, then \`collie restart\``);
+    : bad(w.rows.url, url.detail, `set ${w.url} to your durable agent's https:// address in ${w.file}, then \`collie restart\``);
   const token = resolveDurableToken(rawToken);
   const tokenRow = token.ok
     ? ok(w.rows.token, `set, ${String(token.bytes)} bytes`)
-    : bad(w.rows.token, token.detail, `set ${w.token} in ${w.file} to the same random token the program holds, at least ${String(TOKEN_MIN_BYTES)} bytes, then \`collie restart\``);
+    : bad(w.rows.token, token.detail, `set ${w.token} in ${w.file} to the same random token the durable agent holds, at least ${String(TOKEN_MIN_BYTES)} bytes, then \`collie restart\``);
   if (!url.ok || !token.ok) {
-    return [env, noSocket, urlRow, tokenRow, skipped(w.rows.hello, "the program was not dialled", FIRST), skipped(w.rows.ready, "no answer to read", FIRST)];
+    return [env, noSocket, urlRow, tokenRow, skipped(w.rows.hello, "the durable agent was not dialled", FIRST), skipped(w.rows.ready, "no answer to read", FIRST)];
   }
   const asked = await askHello(new DurableHttpClient(url.base, token.reveal()), DURABLE_BUDGETS.https.readTimeoutMs, w, {
     where: "at this URL",
-    pointAt: `point ${w.url} at your durable program`,
-    notAnswering: "check that the program is deployed and that the URL is its address",
+    pointAt: `point ${w.url} at your durable agent`,
+    notAnswering: "check that the durable agent is deployed and that the URL is its address",
   });
   return [env, noSocket, urlRow, tokenRow, ...helloRows(asked, w)];
 }
@@ -213,20 +213,20 @@ function helloRows(asked: Asked, w: Setting): Finding[] {
     return [
       bad(
         w.rows.hello,
-        `the program answered, and ${incompatibleDetail(hello.protocol)}`,
-        "run a program and a Collie whose protocol ranges overlap: update whichever is older",
+        `the durable agent answered, and ${incompatibleDetail(hello.protocol)}`,
+        "run a durable agent and a Collie whose protocol ranges overlap: update whichever is older",
       ),
       skipped(w.rows.ready, "no agreed version", FIRST),
     ];
   }
   const answered = ok(
     w.rows.hello,
-    `the program answered hello · speaks ${String(hello.protocol.min)}..${String(hello.protocol.max)}, this Collie speaks ${String(SPEAKS.min)}..${String(SPEAKS.max)} · version ${String(version)}`,
+    `the durable agent answered hello · speaks ${String(hello.protocol.min)}..${String(hello.protocol.max)}, this Collie speaks ${String(SPEAKS.min)}..${String(SPEAKS.max)} · version ${String(version)}`,
   );
   if (!hello.ready) {
     return [
       answered,
-      warn(w.rows.ready, "the program says it is not ready yet, so the bridge shows it as starting", "wait a moment and run `collie doctor` again; if it stays, read the program's own log"),
+      warn(w.rows.ready, "the durable agent says it is not ready yet, so the bridge shows it as starting", "wait a moment and run `collie doctor` again; if it stays, read the durable agent's own log"),
     ];
   }
   return [answered, ok(w.rows.ready, `ready${hello.hostName === "" ? "" : ` · host ${hello.hostName}`} · epoch ${hello.epoch}`)];
@@ -238,8 +238,8 @@ function socketRow(path: string, fault: SocketFault, w: Setting): Finding {
     case "missing":
       return bad(
         w.rows.socket,
-        `nothing is at ${path}: the program is not running, or it listens somewhere else`,
-        `start the program, or point ${w.socket} at the path it listens on`,
+        `nothing is at ${path}: the durable agent is not running, or it listens somewhere else`,
+        `start the durable agent, or point ${w.socket} at the path it listens on`,
       );
     case "unreadable":
       return bad(w.rows.socket, `cannot check ${path}: ${fault.message}`, `make ${path} readable to your user`);
@@ -258,7 +258,7 @@ function socketRow(path: string, fault: SocketFault, w: Setting): Finding {
       return bad(
         w.rows.socket,
         describeFault(fault),
-        `make the program create its socket in a folder of your own with mode 0700 (for example under $XDG_RUNTIME_DIR), or run \`chmod 700 ${fault.path}\``,
+        `make the durable agent create its socket in a folder of your own with mode 0700 (for example under $XDG_RUNTIME_DIR), or run \`chmod 700 ${fault.path}\``,
       );
     case "ancestor-open-mode":
       return bad(
@@ -272,13 +272,13 @@ function socketRow(path: string, fault: SocketFault, w: Setting): Finding {
       return bad(
         w.rows.socket,
         `${path} is owned by user ${String(fault.owner)}, not by you (${String(fault.uid)}); other users are not supported`,
-        "run the program as the same user as Collie",
+        "run the durable agent as the same user as Collie",
       );
     case "open-mode":
       return bad(
         w.rows.socket,
         `${path} has mode ${octal(fault.mode)}, so group or others can reach it; it must be 0600`,
-        `make the program create the socket with mode 0600 (or run \`chmod 600 ${path}\`)`,
+        `make the durable agent create the socket with mode 0600 (or run \`chmod 600 ${path}\`)`,
       );
   }
 }
@@ -305,28 +305,28 @@ async function askHello(client: DurableTransport, timeoutMs: number, w: Setting,
     if (!(err instanceof DurableUnreachable)) throw err;
     if (err.detail.startsWith(TOKEN_REFUSED)) {
       return refuse(
-        `the program refused the token: ${err.detail}`,
-        `set ${w.token} to the token the program was deployed with; to rotate it, change both sides, then \`collie restart\``,
+        `the durable agent refused the token: ${err.detail}`,
+        `set ${w.token} to the token the durable agent was deployed with; to rotate it, change both sides, then \`collie restart\``,
       );
     }
-    return refuse(`the program did not answer hello: ${err.detail}`, words.notAnswering);
+    return refuse(`the durable agent did not answer hello: ${err.detail}`, words.notAnswering);
   }
   if (reply.status === 401) {
     // Only the socket reaches here with a 401: the HTTPS client turns one into `token-refused` above.
     return refuse(
-      "the program asks for a token, which the socket does not carry",
-      `this Collie and the program speak different protocols: update whichever is older, or reach a program behind TLS with ${w.url} and ${w.token}`,
+      "the durable agent asks for a token, which the socket does not carry",
+      `this Collie and the durable agent speak different protocols: update whichever is older, or reach a durable agent behind TLS with ${w.url} and ${w.token}`,
     );
   }
   if (reply.status !== 200) {
-    return refuse(`the program answered hello with status ${String(reply.status)}`, "read the program's own log");
+    return refuse(`the durable agent answered hello with status ${String(reply.status)}`, "read the durable agent's own log");
   }
   const parsed = parseHello(reply.text);
   if (!parsed.ok && parsed.detail === NOT_A_DURABLE_PROGRAM) {
     return refuse(`something answered ${words.where}, and it is ${NOT_A_DURABLE_PROGRAM}: its hello has no service "${DURABLE_SERVICE}"`, words.pointAt);
   }
   if (!parsed.ok) {
-    return refuse(`the program's hello is unreadable: ${parsed.detail}`, "see bridge/mux/durable/WIRE.md section 4 for the hello document");
+    return refuse(`the durable agent's hello is unreadable: ${parsed.detail}`, "see bridge/mux/durable/WIRE.md section 4 for the hello document");
   }
   return { ok: true, hello: parsed.value };
 }
@@ -389,7 +389,7 @@ function sourceSetting(file: string, name: string): Setting {
     token: field("token"),
     socketKey: "socket",
     pair: "url and token",
-    onSocket: `this program uses a socket, and ${field("url")} is not set`,
+    onSocket: `this durable agent uses a socket, and ${field("url")} is not set`,
   };
 }
 
@@ -439,7 +439,7 @@ export async function sourcesFindings(deps: SourcesDeps): Promise<Finding[]> {
   }
   if (sources.length === 0) return [];
   const platform = deps.platform ?? HOST.platform;
-  const counted = `${String(sources.length)} program${sources.length === 1 ? "" : "s"} in ${path}`;
+  const counted = `${String(sources.length)} durable agent${sources.length === 1 ? "" : "s"} in ${path}`;
   const mode = platform === "win32" ? null : (deps.mode ?? diskMode)(path);
   const fileRow =
     mode !== null && (mode & 0o077) !== 0

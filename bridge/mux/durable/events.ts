@@ -238,7 +238,7 @@ export class DurableEventReader {
         await this.forgetSaved(key);
         return { wrote, complete: false };
       }
-      if (reply.status !== 200) throw new DurableUnreachable(`program answered ${String(reply.status)}`);
+      if (reply.status !== 200) throw new DurableUnreachable(`the durable agent answered ${String(reply.status)}`);
 
       const parsed = parseEvents(reply.text);
       if (!parsed.ok) throw new DurableUnreachable(`unreadable events: ${parsed.detail}`);

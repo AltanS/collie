@@ -164,7 +164,7 @@ export const PROGRAMS_ENV = "COLLIE_PROGRAMS";
 export const PROGRAMS_OFF_LOG = `[bridge] programs are off (${PROGRAMS_ENV}=off); ${SOURCES_FILE} ignored`;
 
 /** What `collie doctor` and `collie durable list` say when the switch is set. */
-export const PROGRAMS_OFF_NOTE = `programs are off (${PROGRAMS_ENV}=off)`;
+export const PROGRAMS_OFF_NOTE = `durable agents are off (${PROGRAMS_ENV}=off)`;
 
 /** Whether the kill switch is set. Only `off` turns programs off; any other value, or none, leaves them on. */
 export function programsOff(env: Readonly<Record<string, string | undefined>>): boolean {

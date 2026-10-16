@@ -409,7 +409,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "enum",
     values: ["off"],
     default: "",
-    doc: "Set to off and the bridge ignores sources.json: no program sessions, no Programs section on the phone.",
+    doc: "Set to off and the bridge ignores sources.json: no durable agent sessions, no Durable agents section on the phone.",
   },
   {
     key: "durable_socket",
@@ -417,7 +417,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: "",
-    doc: "The Unix socket a durable agent program listens on, when COLLIE_MUX is durable. Absolute, and private to your user (mode 0600).",
+    doc: "The Unix socket a durable agent listens on, when COLLIE_MUX is durable. Absolute, and private to your user (mode 0600).",
   },
   {
     key: "durable_url",
@@ -425,7 +425,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: "",
-    doc: "The https address of a durable agent program behind TLS, used instead of durable_socket and always with durable_token. Plain http only to 127.0.0.1 or localhost with a port.",
+    doc: "The https address of a durable agent behind TLS, used instead of durable_socket and always with durable_token. Plain http only to 127.0.0.1 or localhost with a port.",
   },
   {
     key: "durable_token",

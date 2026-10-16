@@ -71,7 +71,7 @@ export const SPEAKS: ProtocolRange = speaksRange(WIRE_VERSION, PREVIOUS_ACCEPTED
 export const DURABLE_SERVICE = "collie-durable";
 
 /** The refusal detail for a `hello` that does not name {@link DURABLE_SERVICE}. */
-export const NOT_A_DURABLE_PROGRAM = "not a durable program";
+export const NOT_A_DURABLE_PROGRAM = "not a durable agent";
 
 /** The highest version inside both ranges, or null when they do not meet (WIRE.md section 2). */
 export function negotiateVersion(program: ProtocolRange, speaks: ProtocolRange = SPEAKS): number | null {
@@ -98,13 +98,13 @@ export function versionRefusal(program: ProtocolRange, speaks: ProtocolRange = S
 
 /** The one line a refusal is shown as: in Collie's log, and as the notice row of the program's pane list. */
 export function versionNotice(refusal: VersionRefusal): string {
-  return `Program speaks wire v${String(refusal.program[1])}, this Collie speaks v${String(refusal.collie[1])}. Update Collie, or the program's SDK.`;
+  return `The durable agent speaks wire v${String(refusal.program[1])}, this Collie speaks v${String(refusal.collie[1])}. Update Collie, or the agent's SDK.`;
 }
 
 /** The refusal detail for two ranges that do not meet. It starts with `incompatible`. */
 export function incompatibleDetail(program: ProtocolRange | null): string {
   if (program === null) return "incompatible";
-  return `incompatible: program speaks ${String(program.min)}..${String(program.max)}, this Collie speaks ${String(SPEAKS.min)}..${String(SPEAKS.max)}`;
+  return `incompatible: the durable agent speaks ${String(program.min)}..${String(program.max)}, this Collie speaks ${String(SPEAKS.min)}..${String(SPEAKS.max)}`;
 }
 
 // ── The clean types ───────────────────────────────────────────────────────────

@@ -293,6 +293,14 @@ describe("dispatch", () => {
     expect(io.stdout.join("\n")).toContain(findCommand("update")!.summary);
   });
 
+  test("`hooks install --help` names the Claude-only `--hold-permissions` flag", async () => {
+    const { table, ran } = spied();
+    const io = capture();
+    expect(await run(["hooks", "install", "--help"], io, table)).toBe(EXIT.OK);
+    expect(ran).toEqual([]);
+    expect(io.stdout.join("\n")).toContain("--hold-permissions");
+  });
+
   test("only an argument before `--` is a help request", async () => {
     const { command, seen } = spy("rename");
     const io = capture();
