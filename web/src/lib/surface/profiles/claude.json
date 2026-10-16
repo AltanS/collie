@@ -70,7 +70,8 @@
     "Stop": "edge",
     "SessionEnd": "edge",
     "Notification": "edge",
-    "PermissionRequest": "ask"
+    "PermissionRequest": "ask",
+    "PostToolUse": "edge"
   },
   "edges": {
     "rereadMs": 700,
@@ -82,7 +83,26 @@
       "SessionEnd": "end",
       "Notification:permission_prompt": "dialog",
       "Notification:elicitation_dialog": "dialog",
-      "Notification:idle_prompt": "reread"
+      "Notification:idle_prompt": "reread",
+      "PostToolUse": "tool"
     }
+  },
+  "hold": {
+    "event": "PermissionRequest",
+    "toolEvent": "PostToolUse",
+    "limitMs": 290000,
+    "hookTimeoutS": 300,
+    "inputShown": ["command", "file_path", "notebook_path", "url", "pattern", "path", "query"],
+    "screenOnly": ["AskUserQuestion", "ExitPlanMode"],
+    "options": [
+      { "label": "Yes", "decision": "allow" },
+      { "label": "No", "decision": "deny" }
+    ],
+    "decisions": [
+      { "match": "^Yes$", "decision": "allow" },
+      { "match": "^No(?:\\b|$)", "decision": "deny" }
+    ],
+    "decidedLine": "(?:Allowed|Denied) by PermissionRequest hook",
+    "denyMessage": "The person denied this from Collie."
   }
 }

@@ -22,8 +22,10 @@ import { shortHash } from "./surface";
  *  - `start`: a session started in the pane. A closing edge.
  *  - `end`: the session ended, or its hook source is gone. A closing edge.
  *  - `reread`: nothing but "read the screen again".
+ *  - `tool`: a tool finished (M56 spec 12). For the fold it is a `reread`; a hook-held permission
+ *    reads it as the effect of an answer.
  */
-export const EDGE_KINDS = ["prompt", "stop", "dialog", "start", "end", "reread"] as const;
+export const EDGE_KINDS = ["prompt", "stop", "dialog", "start", "end", "reread", "tool"] as const;
 export type EdgeKind = (typeof EDGE_KINDS)[number];
 
 /** The delay from an edge to the fresh read it asks for. The screen paints after the hook fires. */
@@ -78,6 +80,8 @@ export function invertEdge(kind: EdgeKind): EdgeKind {
       return "dialog";
     case "reread":
       return "reread";
+    case "tool":
+      return "tool";
   }
 }
 
