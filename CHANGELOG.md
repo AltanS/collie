@@ -59,6 +59,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Add to it starts the added text after one space.** On a draft the person typed, the composer's Add to it no longer runs the two texts together.
 - **One rule decides the way out in each of thirteen composer states.** `web/src/lib/way-out.ts` names the state of a pane's input surface and of the phone's three facts (gone, read-only, offline), says whether the Keys dock opens and can send keys, and writes the placeholder that names the state, with the age of a stale read.
 - **In every state of a pane the composer names itself, and the Screen and the Keys dock are one tap away.** A Screen pill on the belt shows the terminal's raw rows without cards and a second tap brings them back, for this view only. The placeholder says what owns the box (a draft, a menu, a screen Collie cannot read, a running turn, a read that is stale, torn or contested), a stale read names its age, and the Keys dock opens and sends in all of them but a gone pane and a read-only device, even when the box is out of reach.
+- **The states playground has a Composer states page, one numbered card per state of the way out.** Thirteen cards mount the real composer on the Surface and facts of each state (free, a draft, a modal ask, an unreadable overlay, a running turn, no match, contested, stale, torn, a box out of reach, a gone pane, a read-only device, offline), so a worker can be briefed by card number.
 
 ### Changed
 
