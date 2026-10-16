@@ -424,6 +424,12 @@ const SPEC14: readonly ProfileCase[] = [
     quote: ["Here is the dialog you asked about:", "  Permission required", "  ❯ 1. Allow once", "    2. Reject", "  Press enter to confirm or esc to cancel", "", "That is all it shows."],
   },
   {
+    id: "agy",
+    idleMin: 2,
+    states: ["idle", "running", "dialog"],
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
+  {
     id: "grok",
     idleMin: 4,
     quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],

@@ -480,6 +480,7 @@ types into it with stricter generic rules.
 | pi | Steers the turn; Alt+Enter queues | `[paste #2 +12 lines]` | 1.1.0 |
 | OMP | Steers the turn; Ctrl+Q queues | `📄 #3` chip | 18.4.10 |
 | Grok | Not measured | `[Pasted 3003 chars]` | 1.0.41 |
+| Antigravity (`agy`) | Not measured | `[Pasted ...]` text | 1.1.17 |
 
 - **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line. Collie finds the
   box by those rows. A message sent into a running turn waits in the transcript with a `QUEUED`
@@ -502,6 +503,8 @@ types into it with stricter generic rules.
 - **Grok** draws a rounded box with a `❯` prompt row, and a footer of key hints under it. The right edge
   of the box carries a scroll bar once a draft grows tall, and Collie reads past it. A model list that
   opens above the box counts as part of the box, and the pane never reads free while it stands.
+
+- **Antigravity** (`agy`) draws its box as a rule, a `>` row and a rule, with a `? for shortcuts` footer.
 
 Grok, Antigravity and Muse are not installed on the build host. Their profiles rest on saved screens
 of each agent, so Collie has not yet sent a live message to them with a profile. What an Enter does

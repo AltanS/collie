@@ -301,6 +301,26 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: undefined,
   },
   {
+    id: "agy",
+    binary: "agy",
+    versionOutput: "1.1.17\n",
+    version: "1.1.17",
+    above: "1.3.5",
+    noRunningRow: true,
+    takes: [
+      { anchor: "top", row: "────────────────────" },
+      { anchor: "prompt", row: ">" },
+      { anchor: "prompt", row: "> hello there", draft: "hello there" },
+      { anchor: "bottom", row: "────────────────────" },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  > hello there" },
+      { anchor: "top", row: "──── hello" },
+    ],
+    collapse: { text: "[Pasted 12 lines]", group: "", value: "" },
+    enterWhileRunning: undefined,
+  },
+  {
     id: "omp",
     binary: "omp",
     versionOutput: "omp/18.6.1\n",

@@ -1,0 +1,91 @@
+{
+  "id": "agy",
+  "identity": {
+    "binary": "agy",
+    "versionCommand": [
+      "agy",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "1.1.0 - 1.1.17",
+      "status": "verified",
+      "verifiedThrough": "1.1.17",
+      "verifiedOn": "2026-08-26"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "top": {
+        "pattern": "^─+$",
+        "minCells": 8,
+        "column": 0
+      },
+      "prompt": {
+        "pattern": "^>(?: (?<draft>.*))?$",
+        "column": 0
+      },
+      "bottom": {
+        "pattern": "^─+$",
+        "minCells": 8,
+        "column": 0
+      },
+      "continuationIndent": 2,
+      "maxDraftRows": 60,
+      "maxTailRows": 3
+    },
+    "placeholders": {
+      "texts": [],
+      "sgr": 2
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 6
+      },
+      "below": {
+        "maxRows": 2,
+        "footerMaxRows": 2
+      }
+    }
+  },
+  "keys": {
+    "submit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    }
+  },
+  "collapse": {
+    "pattern": "\\[Pasted [^\\]]*\\]"
+  },
+  "reservedLeads": [
+    "/",
+    "!",
+    "@"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "verified",
+    "note": "M56 spec 01 lab, 2026-10-15, agy: inert in every dialog without a text field; the box shows it as `> ⌁`; no agy install on bluefin, so the profile rests on the spec 01 notes and the fixtures; fallback ¤"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {}
+}
