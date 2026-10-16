@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 108 in all, each one named, with its reason:
+#              Today, 111 in all, each one named, with its reason:
 #              bridge 71. 5 are the POSIX-only and engine cases below, 30 are the durable example apps, and
 #                36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
@@ -49,19 +49,22 @@
 #                handed a socket path), asks.test.ts (a socket with nothing listening) and
 #                http-client.test.ts (the socket client sends no Authorization header), one each; and
 #                bridge/durable/log.test.ts (a mode 0755 folder put back to 0700).
-#              cli 14. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 17. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
-#                platform. The other 2:
+#                platform. The other 5:
 #                "a per-call override wins over the Exec's own environment (#283) > a child
-#                killed by a signal says which one" (Windows has no POSIX signals), and
+#                killed by a signal says which one" (Windows has no POSIX signals),
 #                "collie _whistle-transcribe - the real engine, end to end > a child of this checkout's CLI turns 10.4 s of speech into text"
-#                (the same missing model as the bridge case).
+#                (the same missing model as the bridge case), and the 3 tests of
+#                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
+#                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
+#                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
 #              scripts 23: every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 71,
-  [int]$MaxSkipsCli = 14,
+  [int]$MaxSkipsCli = 17,
   [int]$MaxSkipsScripts = 23
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

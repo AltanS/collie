@@ -128,6 +128,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A crew member takes a push from a shallow lead.** A lead on a Herdr-managed install has a shallow checkout, so its bundle held the commit without its parent, and the member's fetch refused it with "did not send all necessary objects"; `crew update` and `crew add` then reported a build failure although nothing had been built. The member now unbundles the same objects, checks out the lead's commit and records it in `.git/shallow` when the parent is missing; a member that has the parent still fetches as before and keeps its full history. Thanks @OowhitecatoO (#444)
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The states playground names its program section for the person, not for a multiplexer.** The section is `#programs`, "Programs home", in `sections/programs.tsx`, and its fixture panes carry the agent `program`, so the mux-name guard passes again with the durable adapter registered. `scripts/docs-screens.sh` opens `#programs`.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.

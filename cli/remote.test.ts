@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1854,6 +1854,115 @@ describe("crewAddDeps().gitBundle, against a real repo", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(nonRepoCwd, { recursive: true, force: true });
+    }
+  });
+});
+
+// The bundle route from a SHALLOW lead, which every Herdr-managed install is (ADR 0006): the lead's
+// commit reaches the member without its parent, and a bundle carries no shallow marker. The leg runs
+// for real here, with real git and a stand-in `bun` that writes the binary the build would.
+describe.skipIf(process.platform === "win32")("installScript from a shallow lead, run for real", () => {
+  const BUILT_VERSION = "9.9.9";
+
+  async function shallowLeadFixture() {
+    const dir = mkdtempSync(join(tmpdir(), "collie-shallow-lead-"));
+    const fakeBin = join(dir, "fakebin");
+    mkdirSync(fakeBin);
+    writeFileSync(
+      join(fakeBin, "bun"),
+      `#!/bin/sh\n[ "$*" = "run cli/main.ts build" ] || exit 9\nmkdir -p bin\nprintf '#!/bin/sh\\necho ${BUILT_VERSION}+test\\n' > bin/collie\nchmod +x bin/collie\n`,
+    );
+    chmodSync(join(fakeBin, "bun"), 0o755);
+    const home = join(dir, "home");
+    mkdirSync(home);
+    const env = { ...gitEnv(), PATH: `${fakeBin}:${process.env.PATH ?? ""}`, HOME: home };
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-C", cwd, ...args], { env, encoding: "utf8" }).trim();
+    const src = join(dir, "src");
+    mkdirSync(src);
+    git(src, "init", "-q");
+    git(src, "config", "user.email", "test@example.com");
+    git(src, "config", "user.name", "Test");
+    const commit = (n: number) => {
+      writeFileSync(join(src, "file.txt"), `${n}\n`);
+      git(src, "add", "file.txt");
+      git(src, "commit", "-q", "-m", `commit ${n}`);
+      return git(src, "rev-parse", "HEAD");
+    };
+    commit(1);
+    // A member that took release 1 and has not fetched since: it never saw commit 2.
+    execFileSync("git", ["clone", "-q", src, join(home, "behind")], { env });
+    const parent = commit(2);
+    // A member that already holds the parent of the lead's commit.
+    execFileSync("git", ["clone", "-q", src, join(home, "current")], { env });
+    const tip = commit(3);
+    // The lead, shallow the way `herdr plugin install` leaves it: commit 3 and nothing behind it.
+    const leadRoot = join(dir, "lead");
+    execFileSync("git", ["clone", "-q", "--depth", "1", `file://${src}`, leadRoot], { env });
+    const deps = minimalCrewDeps(leadRoot);
+    const bundle = await crewAddDeps(deps).gitBundle(tip, deps.io);
+    if (bundle === null) throw new Error(`gitBundle returned null; stderr: ${deps.io.stderr.join("\n")}`);
+
+    /** Run the leg against `root`, and check it ends on the lead's commit with the built binary. */
+    const install = (root: string) => {
+      const out = execFileSync("/bin/sh", ["-s"], {
+        input: composeStdin(installScript({ root, commit: tip, version: BUILT_VERSION }), bundle),
+        env,
+        cwd: home,
+        encoding: "utf8",
+      });
+      expect(out).toContain(`collie-install:version=${BUILT_VERSION}+test`);
+      expect(git(root, "rev-parse", "HEAD")).toBe(tip);
+    };
+    const connected = (root: string) => {
+      try {
+        git(root, "fsck", "--connectivity-only");
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const shallowFile = (root: string) => {
+      const path = join(root, ".git", "shallow");
+      return existsSync(path) ? readFileSync(path, "utf8") : null;
+    };
+    const cleanup = () => rmSync(dir, { recursive: true, force: true });
+    return { home, git, parent, tip, install, connected, shallowFile, cleanup };
+  }
+
+  test("a member that lacks the parent takes the commit, and records it as a shallow boundary", async () => {
+    const lead = await shallowLeadFixture();
+    try {
+      const root = join(lead.home, "behind");
+      lead.install(root);
+      expect(lead.connected(root)).toBe(true);
+      expect(lead.shallowFile(root)).toBe(`${lead.tip}\n`);
+    } finally {
+      lead.cleanup();
+    }
+  });
+
+  test("a member that has the parent fetches as before, and its history is not cut", async () => {
+    const lead = await shallowLeadFixture();
+    try {
+      const root = join(lead.home, "current");
+      lead.install(root);
+      expect(lead.git(root, "rev-parse", "HEAD^")).toBe(lead.parent);
+      expect(lead.shallowFile(root)).toBeNull();
+    } finally {
+      lead.cleanup();
+    }
+  });
+
+  test("a fresh install from the bundle is a connected checkout", async () => {
+    const lead = await shallowLeadFixture();
+    try {
+      const root = join(lead.home, ".collie");
+      lead.install(root);
+      expect(lead.connected(root)).toBe(true);
+      expect(lead.shallowFile(root)).toBe(`${lead.tip}\n`);
+    } finally {
+      lead.cleanup();
     }
   });
 });
