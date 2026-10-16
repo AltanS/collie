@@ -22,7 +22,7 @@ import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
-import { beaconReader, fileEdgeSpool, hooksInstalledProbe, procBeaconLiveness } from "./beacon-io.ts";
+import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
@@ -1289,6 +1289,7 @@ const edgeRouter =
     ? null
     : new EdgeRouter({
         spool: fileEdgeSpool(cfg.stateDir),
+        store: fileSourceStore(cfg.stateDir),
         liveness: procBeaconLiveness(),
         targets: () => {
           const live = new Set(registry.ordered().map((runtime) => runtime.name));
@@ -1498,7 +1499,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         // A pane the shadow has not read yet (an agent that just started) takes no edge into a fold;
         // the edge still counts, under its harness with no version, like a dropped one.
         if (!surface.edge(paneId, edge.kind, edge.at)) surfaceLedger?.edge({ harness: edge.record.harness, version: "-", profileId: "-", status: "-" }, edge.kind);
-        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.at);
+        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.record.at);
         holdBook?.edge(paneId, edge.kind, { tool: edge.record.tool ?? null, agent: edge.record.agent ?? null });
       },
     };
@@ -1576,11 +1577,14 @@ if (primary && !(await primary.herdr.reachable())) {
 // started/stopped after boot is picked up (or disposed) within SESSION_REFRESH_MS. A no-op when
 // multi-session is off. unref() so the timer never keeps the process alive; cleared on shutdown.
 await registry.refresh();
-// Take hook edges from here on: every session the registry knows has added its target.
+// Take hook edges from here on: every session the registry knows has added its target. The hook
+// target file tells every emitter on this host to write its edges into this state dir too.
 edgeRouter?.start();
-// And hook holds (M56 spec 12). A bridge that cannot own the socket (another bridge holds it, or the
-// path is not safe) runs with no holds: every permission stays a screen ask.
+// And hook holds (M56 spec 12), before the target file names this state dir: a hook that reads the
+// registry finds the socket listening. A bridge that cannot own the socket (another bridge holds it,
+// or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
+const unregisterHookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -2483,6 +2487,7 @@ const shutdown = async () => {
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
   edgeRouter?.stop();
+  unregisterHookTarget?.();
   holdServer?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).

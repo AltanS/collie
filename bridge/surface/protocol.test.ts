@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -30,6 +31,8 @@ class FakePane {
   box = "";
   placeholder = 'Try "fix the failing tests"';
   status = ["  sonnet · project · main"];
+  /** The rows under the box while it holds text, when they differ (Claude Code's footer follows the box). */
+  statusWithText: string[] | null = null;
   /** The row under a generic box: a path, or a status line that counts. */
   footer = "~/project";
   over: string[] = [];
@@ -98,7 +101,7 @@ class FakePane {
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
     if (this.mode === "generic") rows.push(this.footer);
-    else rows.push(...(this.popup ?? this.status));
+    else rows.push(...(this.popup ?? (this.box.length > 0 && this.statusWithText !== null ? this.statusWithText : this.status)));
     return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
   }
 
@@ -880,12 +883,13 @@ describe("a send into a running turn", () => {
     expect(pane.transcript).toContain("> then give it a title");
   });
 
-  test("S2 needs the box empty: the running sign alone is no evidence the text was taken", async () => {
+  test("S2 needs the box empty: the running sign alone is no evidence, and the text still in the box points at a dialog", async () => {
     const { pane, send } = rig();
     pane.over = [LIVE_ROW];
     pane.enterSubmits = false;
     const answer = await send("then give it a title");
-    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+    expect(answer.detail).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
     expect(answer.receipt?.queued).toBeUndefined();
   });
 
@@ -1201,15 +1205,33 @@ describe("a send into a running turn", () => {
   };
 
   test("the late witness: the queued row shows only on the read after S2, and the receipt says queued", async () => {
-    for (const streaming of [false, true]) {
+    // The answer streaming, and the first second of a turn (a spinner with no timer, which reads idle).
+    for (const turn of ["streaming", "spinner"] as const) {
       const { pane, send } = rig({ version: "2.1.301" });
-      if (streaming) streamAnswer(pane, typing);
-      else pane.height = 16;
+      if (turn === "streaming") streamAnswer(pane, typing);
+      else {
+        pane.height = 16;
+        pane.over = ["✶ Wibbling…"];
+      }
       const late = queuedRowLate(pane, 2, "then give it a title");
       const answer = await send("then give it a title");
-      expect(answer.receipt, String(streaming)).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
-      expect(late.readsAfterEnter(), String(streaming)).toBe(2);
+      expect(answer.receipt, turn).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+      expect(late.readsAfterEnter(), turn).toBe(2);
     }
+  });
+
+  test("no late read on a screen that shows no turn: sent, no label", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.height = 16;
+    // As on Claude Code (claude-lab--idle-fresh--w82 against claude-lab--draft-adversarial--w82): the
+    // footer follows the box, so S0 and S1 differ under the box on every idle send.
+    pane.status = ["  sonnet · lab-project · main · ctx 12%                      ◐ medium · /effort", "  ⏸ manual mode on · ← for agents"];
+    pane.statusWithText = ["  sonnet · lab-project · main · ctx 12%                  ctrl+g to edit in nano", "  ⏸ manual mode on"];
+    const late = queuedRowLate(pane, 2, "then give it a title");
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(late.readsAfterEnter()).toBe(1);
   });
 
   test("the late witness that never shows: sent, and the receipt does not say queued", async () => {
@@ -1225,6 +1247,7 @@ describe("a send into a running turn", () => {
   test("a dialog on the late read changes nothing: sent, not queued", async () => {
     const { pane, send } = rig({ version: "2.1.301" });
     pane.height = 16;
+    pane.over = ["✶ Wibbling…"];
     let after = 0;
     pane.beforeRead = (p) => {
       if (!p.keysSeen.includes("Enter")) return;
@@ -1256,6 +1279,117 @@ describe("a send into a running turn", () => {
     const b = queuedRowLate(seen.pane, 1, "then give it a title");
     expect((await seen.send("then give it a title")).receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(b.readsAfterEnter()).toBe(1);
+  });
+
+  test("a screen that replaces the conversation as the text goes in (claude-lab--agents-screen--w82): no Enter", async () => {
+    const agents = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/claude-lab--agents-screen--w82.txt"), "utf8");
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.height = 16;
+      pane.transcript = [...ANSWER];
+      // The agents screen has a prompt-shaped box of its own: the typed text lands there.
+      pane.beforeWrite = (p, what) => {
+        if (what.startsWith("paste:") || what === "type:then give it a title") {
+          const text = what.slice(what.indexOf(":") + 1);
+          p.fixed = agents.replace("❯ describe a task for a new session", `❯ ${text}`);
+        }
+      };
+      const answer = await send("then give it a title");
+      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
+      expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+    }
+  });
+
+  // Claude Code 2.1.301's header (claude--v2301-idle) and its footer.
+  const plainRows = (name: string): string[] =>
+    readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8")
+      .split(/\r?\n/u)
+      .map((row) =>
+        parseAnsi(row)
+          .map((segment) => segment.text)
+          .join("")
+          .trimEnd(),
+      );
+  const HEADER = plainRows("claude--v2301-idle.txt").slice(0, 3);
+
+  test("the agents screen under the same header as the conversation, as the text goes in: no Enter", async () => {
+    const agents = plainRows("claude-lab--agents-screen--w82.txt");
+    // Both header rows of the agents screen made equal to the conversation's: only the bottom anchor tells them apart.
+    const firstHeader = agents.findIndex((row) => row.includes("Claude Code v"));
+    agents[firstHeader] = HEADER[0]!;
+    agents[firstHeader + 1] = HEADER[1]!;
+    // Its key-hint footer made equal to the conversation's too, so no cue under the box tells them apart.
+    const footer = agents.findIndex((row) => row.includes("enter to return"));
+    agents[footer] = "  ⏸ manual mode on · ? for shortcuts · ← for agents";
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.transcript = [...HEADER];
+      pane.status = ["  ⏸ manual mode on · ? for shortcuts · ← for agents"];
+      pane.beforeWrite = (p, what) => {
+        if (what.startsWith("paste:") || what === "type:then give it a title") {
+          const text = what.slice(what.indexOf(":") + 1);
+          p.fixed = agents.join("\n").replace("❯ describe a task for a new session", `❯ ${text}`);
+        }
+      };
+      const answer = await send("then give it a title");
+      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
+      expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+    }
+  });
+
+  test("a streaming answer under the header goes in", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.drawsQueuedRow = true;
+      streamAnswer(pane, typing);
+      pane.transcript = [...HEADER, "", "❯ Write a 300 word story about a working dog, plain text, no tools.", ""];
+      expect((await send("then give it a title")).receipt, version).toMatchObject({ outcome: "sent", queued: true });
+    }
+  });
+
+  test("a short answer that fits in two rows, under the header, goes in", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.drawsQueuedRow = true;
+      pane.transcript = [...HEADER, "", "❯ Say hello in two lines."];
+      let pushed = false;
+      pane.beforeRead = (p) => {
+        if (pushed || p.calls.length === 0) return;
+        pushed = true;
+        p.transcript.push("● Hello there. This is the first row of a short answer,", "  and this is the second row.");
+      };
+      expect((await send("then give it a title")).receipt, version).toMatchObject({ outcome: "sent", queued: true });
+    }
+  });
+
+  test("a dialog that draws just before Enter takes it and closes: unknown(dialog_after_enter), pointing at the transcript", async () => {
+    for (const turn of ["streaming", "running"] as const) {
+      const { pane, send } = rig({ version: "2.1.301" });
+      if (turn === "streaming") streamAnswer(pane, typing);
+      else pane.over = [LIVE_ROW];
+      // The dialog draws in the gap before Enter; Enter answers it, and it closes with the text still in the box.
+      pane.beforeWrite = (p, what) => {
+        if (what === "keys:Enter") {
+          p.enterSubmits = false;
+          p.dialog = null;
+        }
+      };
+      const answer = await send("then give it a title");
+      expect(answer.receipt, turn).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+      expect(answer.detail, turn).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
+    }
+  });
+
+  test("the answer streaming above the box and a pointer list that takes the place of two status rows: no Enter", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.status = ["  sonnet · project · main", "  ⏸ manual mode on"];
+    streamAnswer(pane, typing);
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("type:then") || what.startsWith("paste:")) p.status = ["  ❯ 1. Yes", "    2. No"];
+    };
+    const answer = await send("then give it a title");
+    expect(pane.keysSeen.includes("Enter")).toBe(false);
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
   });
 
   test("steadyRow masks a running row's spinner glyph and its bracketed digits, and nothing else", () => {
@@ -2268,6 +2402,14 @@ describe("a prompt edge closes a receipt as effective", () => {
     expect(answer.receipt?.outcome).toBe("effective");
     expect(answer.receipt?.reason).toBeUndefined();
     expect(answer.offers).toEqual([]);
+  });
+
+  test("a desk-typed prompt with the same text 31 s after a free-box send closes nothing", async () => {
+    const { send, protocol, deps, clock } = rig();
+    const answer = await send("ok then");
+    expect(protocol.promptEdge("%1", hashOf(deps, "ok then"), clock.now + 31_000)).toBeNull();
+    expect(protocol.promptEdge("%1", hashOf(deps, "ok then"), clock.now - 60_000)).toBeNull();
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("sent");
   });
 
   test("closes nothing for another text, another pane, or past the window", async () => {

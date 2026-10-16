@@ -653,7 +653,7 @@ export const fr: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
   "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
   "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
   "paneActions.title.fallback": "Volet",

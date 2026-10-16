@@ -179,6 +179,8 @@ export class SurfaceShadow {
   private readonly counters = new Map<string, ShadowCounters>();
   private readonly versions = new Map<string, { version: string | null; at: number; pending: boolean }>();
   private observing = false;
+  /** The read in flight per pane: a poll and a fresh read an edge asked for never read one pane at once. */
+  private readonly reading = new Map<string, Promise<void>>();
   private readonly log: (line: string) => void;
   private readonly now: () => number;
   private readonly readVersion: VersionReader;
@@ -242,7 +244,7 @@ export class SurfaceShadow {
       }
       for (const agent of agents) {
         try {
-          await this.observePane(agent, at);
+          await this.readPane(agent, "poll");
         } catch (err) {
           console.warn(`[surface] shadow read of ${agent.paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -276,7 +278,24 @@ export class SurfaceShadow {
     return { profile, version: known.version ?? "unread" };
   }
 
-  private async observePane(agent: AgentView, at: number): Promise<void> {
+  /**
+   * One read of one pane, through the pane's guard. A poll that finds a read in flight skips the pane:
+   * that read is at least as fresh. A fresh read an edge asked for waits for the read in flight, then
+   * reads again, because the read in flight may have started before the edge.
+   */
+  private async readPane(agent: AgentView, why: "poll" | "edge"): Promise<void> {
+    const busy = this.reading.get(agent.paneId);
+    if (busy !== undefined) {
+      if (why === "poll") return;
+      await busy.catch(() => undefined);
+      return this.readPane(agent, why);
+    }
+    const run = this.observePane(agent).finally(() => this.reading.delete(agent.paneId));
+    this.reading.set(agent.paneId, run);
+    return run;
+  }
+
+  private async observePane(agent: AgentView): Promise<void> {
     const harness = agent.agent;
     const { profile, version } = await this.profileOf(harness);
     // The status is looked up once the binary was read, so its once-per-version note in the journal
@@ -321,6 +340,9 @@ export class SurfaceShadow {
     // answers a `visible` read with revision 0 on every pane (HERDR_API.md, "revision is a stub"), and
     // a read counted by revision alone would be counted once per pane, ever.
     let readKey: string;
+    // The time of the read is taken right before it, never before the profile lookup: the fold orders
+    // reads by this time, and a version read can take a while.
+    const at = this.now();
     const grid = await this.options.mux.readGrid(agent.paneId, { scope: "viewport", lines: SHADOW_READ_LINES, styling: "preserve" });
     if (!grid.ok) {
       readKey = `unreachable:${String(state.lastRevision)}`;
@@ -380,7 +402,7 @@ export class SurfaceShadow {
         state.reread = null;
         // The pane may have left: only a pane still in the map is read again.
         if (this.panes.get(paneId) !== state) return;
-        this.observePane(state.agent, this.now()).catch((err) => {
+        this.readPane(state.agent, "edge").catch((err) => {
           console.warn(`[surface] fresh read of ${paneId} failed: ${String(err)}`);
         });
       }, state.rereadMs);

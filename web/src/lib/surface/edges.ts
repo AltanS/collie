@@ -101,20 +101,33 @@ export interface OpenReceipt {
   readonly promptHash: string;
   /** When the submit key went out, in ms. */
   readonly at: number;
+  /** The send went in during a running turn: the harness takes it when the turn ends. */
+  readonly queued?: boolean;
 }
 
-/** How long a receipt stays open for a prompt edge. A queued send goes in after the turn ends. */
+/** How long a queued receipt stays open for a prompt edge: the harness takes it after the turn ends. */
 export const RECEIPT_EDGE_WINDOW_MS = 10 * 60_000;
+/**
+ * How long any other receipt stays open. The harness takes a free-box send at once, so a later prompt
+ * edge with the same text is more likely a person typing it again at the desk.
+ */
+export const RECEIPT_EDGE_SHORT_MS = 30_000;
+
+/** The window of one receipt. */
+export function receiptWindowMs(receipt: OpenReceipt): number {
+  return receipt.queued === true ? RECEIPT_EDGE_WINDOW_MS : RECEIPT_EDGE_SHORT_MS;
+}
 
 /**
- * The receipt a prompt edge closes as `effective`, or null. The newest open receipt on the pane whose
- * prompt hash matches, inside the window. One edge closes one receipt at most.
+ * The receipt a prompt edge closes as `effective`, or null. `writtenAt` is when the hook wrote the
+ * edge. The newest open receipt on the pane whose prompt hash matches, whose submit key went out no
+ * later than the edge, inside its window. One edge closes one receipt at most.
  */
-export function closingReceipt(open: readonly OpenReceipt[], paneId: string, promptHash: string, at: number): OpenReceipt | null {
+export function closingReceipt(open: readonly OpenReceipt[], paneId: string, promptHash: string, writtenAt: number): OpenReceipt | null {
   let best: OpenReceipt | null = null;
   for (const receipt of open) {
     if (receipt.paneId !== paneId || receipt.promptHash !== promptHash) continue;
-    if (at - receipt.at > RECEIPT_EDGE_WINDOW_MS || receipt.at - at > RECEIPT_EDGE_WINDOW_MS) continue;
+    if (writtenAt < receipt.at || writtenAt - receipt.at > receiptWindowMs(receipt)) continue;
     if (best === null || receipt.at > best.at) best = receipt;
   }
   return best;

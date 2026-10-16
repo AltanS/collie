@@ -14,7 +14,10 @@
 //
 // The hook source of a pane is live while the pid of its last edge runs and no `end` edge came. When
 // that pid is gone, the router hands the pane one `end` edge (the hook connection closed) and the
-// pane info says "hooks: none" again.
+// pane info says "hooks: none" again. The live sources are kept in `<stateDir>/surface/hook-sources.json`,
+// so a restarted bridge reads a hooked pane as live at once, before its agent's next event: each saved
+// source is placed again like an edge (its markers, its pid and start time), and one whose pid is gone
+// is dropped.
 //
 // No harness name lives here (no-harness-names.test.ts scans this folder). The edge names its own
 // harness, and that harness's profile maps the event to a kind.
@@ -32,7 +35,8 @@ import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 /** How often the router takes the spool. */
 export const EDGE_TAKE_MS = 200;
 /** An edge older than this when taken is dropped: the bridge was down, and its turn is history. */
-export const EDGE_MAX_AGE_MS = 30_000;
+export { EDGE_MAX_AGE_MS } from "../beacon/paths.ts";
+import { EDGE_MAX_AGE_MS } from "../beacon/paths.ts";
 /** How often the live hook sources are checked for a gone pid. */
 export const HOOK_LIVENESS_MS = 2000;
 /** How often one drop reason for one pid makes a journal line. Every drop is counted. */
@@ -109,8 +113,26 @@ interface HookSource {
   readonly record: EdgeRecord;
 }
 
+/** A live source as saved across a restart: the session, the pane and the last edge it sent. */
+export interface SavedSource {
+  readonly session: string;
+  readonly paneId: string;
+  readonly record: EdgeRecord;
+}
+
+/** Where the live sources are kept across a restart. Both calls never throw to the router. */
+export interface SourceStore {
+  load(): readonly SavedSource[];
+  save(sources: readonly SavedSource[]): void;
+}
+
+/** How long after the start a saved source waits for its pane to show in a snapshot. */
+export const SEED_WINDOW_MS = 60_000;
+
 export interface EdgeRouterDeps {
   readonly spool: EdgeSpool;
+  /** The live sources across a restart. Absent: every pane starts at "hooks: none". */
+  readonly store?: SourceStore;
   readonly liveness: BeaconLiveness;
   /** Every terminal session that can take edges, read on each take. */
   targets(): readonly EdgeTarget[];
@@ -133,10 +155,15 @@ export class EdgeRouter {
   private lastLiveness = Number.NEGATIVE_INFINITY;
   private readonly log: (line: string) => void;
   private readonly now: () => number;
+  /** Saved sources not placed yet, and until when they may still be. */
+  private seeds: readonly SavedSource[];
+  private readonly seedUntil: number;
 
   constructor(private readonly deps: EdgeRouterDeps) {
     this.log = deps.log ?? ((line) => console.log(line));
     this.now = deps.now ?? (() => Date.now());
+    this.seeds = deps.store?.load() ?? [];
+    this.seedUntil = this.now() + SEED_WINDOW_MS;
   }
 
   /** Take the spool every {@link EDGE_TAKE_MS}. The timer never keeps the process alive. */
@@ -167,6 +194,7 @@ export class EdgeRouter {
     this.taking = true;
     try {
       const texts = await this.deps.spool.take().catch(() => []);
+      if (this.seeds.length > 0) await this.seed();
       const targets = texts.length === 0 ? [] : this.deps.targets();
       for (const text of texts) await this.route(text, targets);
       await this.checkLiveness();
@@ -186,8 +214,8 @@ export class EdgeRouter {
     if (placement.kind === "dropped") return this.drop(record, placement.reason);
     const kind = kindOfEdge(record);
     const key = keyOf(placement.target.session, placement.paneId);
-    if (kind === "end") this.sources.delete(key);
-    else this.sources.set(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record });
+    if (kind === "end") this.forget(key);
+    else this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record });
     this.log(
       [
         `[surface] ${EDGE_TAG}`,
@@ -200,6 +228,50 @@ export class EdgeRouter {
       ].join(" "),
     );
     this.deliver(placement.target, placement.paneId, { kind, record, at: now });
+  }
+
+  /**
+   * Places the saved sources of the last run. A source whose pid is gone or reused is dropped; one
+   * whose pane is not in a snapshot yet waits, up to {@link SEED_WINDOW_MS} after the start. Nothing is
+   * delivered: a seed only says the pane's hooks are live.
+   */
+  private async seed(): Promise<void> {
+    const targets = this.deps.targets();
+    const waiting: SavedSource[] = [];
+    for (const saved of this.seeds) {
+      const placement = await placeEdge(saved.record, targets.filter((target) => target.session === saved.session), this.deps.liveness);
+      if (placement.kind === "placed") {
+        const key = keyOf(placement.target.session, placement.paneId);
+        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record });
+      } else if (placement.reason === "no-pane" && this.now() < this.seedUntil) {
+        waiting.push(saved);
+      }
+    }
+    this.seeds = waiting;
+    if (waiting.length === 0) this.persist();
+  }
+
+  /** A pane's source is live, or its pid changed: saved when that is news. */
+  private remember(key: string, source: HookSource): void {
+    const known = this.sources.get(key);
+    this.sources.set(key, source);
+    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime) this.persist();
+  }
+
+  private forget(key: string): void {
+    if (this.sources.delete(key)) this.persist();
+  }
+
+  /** The live sources to the store. Seeds still waiting are kept in it too. */
+  private persist(): void {
+    const store = this.deps.store;
+    if (store === undefined) return;
+    const live: SavedSource[] = [...this.sources.values()].map((source) => ({ session: source.target.session, paneId: source.paneId, record: source.record }));
+    try {
+      store.save([...live, ...this.seeds]);
+    } catch (err) {
+      console.warn(`[surface] could not save the hook sources: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private deliver(target: EdgeTarget, paneId: string, edge: PlacedEdge): void {
@@ -239,7 +311,7 @@ export class EdgeRouter {
       const start = await this.deps.liveness.startTimeOf(source.pid).catch(() => null);
       const paneThere = source.target.paneIds().includes(source.paneId);
       if (start === source.pidStartTime && paneThere) continue;
-      this.sources.delete(key);
+      this.forget(key);
       this.log(`[surface] ${EDGE_TAG} event=closed kind=end pid=${String(source.pid)} session=${source.target.session} pane=${source.paneId}`);
       if (paneThere) this.deliver(source.target, source.paneId, { kind: "end", record: source.record, at: now });
     }

@@ -806,7 +806,7 @@ export const en = {
   "paneSettings.hooks.live": "Hooks: live",
   "paneSettings.hooks.none": "Hooks: none",
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.",
-  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.",
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.",
   "paneSettings.hooks.holds": "Hooks: live, holds permissions",
   "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.",
 

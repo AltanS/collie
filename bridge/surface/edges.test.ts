@@ -13,8 +13,8 @@ import type { EdgeSpool } from "../beacon-io.ts";
 import type { ForegroundProcess } from "../journal/types.ts";
 import { muxOk, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import type { AgentView } from "../types.ts";
-import { isFree } from "../../web/src/lib/surface/surface.ts";
-import { EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeTarget, type PlacedEdge } from "./edges.ts";
+import { isFree, modalWord } from "../../web/src/lib/surface/surface.ts";
+import { EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
 import { SurfaceShadow } from "./shadow.ts";
 
 const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -173,13 +173,18 @@ describe("the edge router", () => {
 
 class FakeMux {
   screens = new Map<string, { text: string; revision: number }>();
+  /** While set, a read takes the screen as it is when the read starts and answers once this resolves. */
+  hold: Promise<void> | null = null;
+  reads = 0;
   set(paneId: string, name: string, revision: number): void {
     this.screens.set(paneId, { text: screen(name), revision });
   }
-  readGrid = (paneId: string, _request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
+  readGrid = async (paneId: string, _request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
+    this.reads++;
     const s = this.screens.get(paneId);
-    if (s === undefined) return Promise.resolve({ ok: false, reason: "gone", detail: "no such pane" });
-    return Promise.resolve({ ok: true, value: { paneId, text: s.text, truncated: false, revision: s.revision } });
+    if (this.hold !== null) await this.hold;
+    if (s === undefined) return { ok: false, reason: "gone", detail: "no such pane" };
+    return { ok: true, value: { paneId, text: s.text, truncated: false, revision: s.revision } };
   };
 }
 
@@ -216,6 +221,42 @@ function shadowRig() {
   };
   return { mux, shadow, pending, counted, reread, advance: (ms: number) => (clock += ms) };
 }
+
+describe("the live sources across a restart", () => {
+  class MemoryStore implements SourceStore {
+    saved: readonly SavedSource[] = [];
+    load(): readonly SavedSource[] {
+      return this.saved;
+    }
+    save(sources: readonly SavedSource[]): void {
+      this.saved = sources;
+    }
+  }
+
+  test("a restarted bridge reads a hooked pane as live before its next event, and drops a dead pid", async () => {
+    const store = new MemoryStore();
+    // The first run takes one edge, and saves the pane's source.
+    const firstSpool = new FakeSpool();
+    const running = new EdgeRouter({ spool: firstSpool, store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 1_000_000 });
+    firstSpool.files.push(JSON.stringify(record({ event: "SessionStart" })));
+    await running.tick();
+    expect(store.saved.map((s) => [s.session, s.paneId])).toEqual([["main", "w1:p1"]]);
+    // A restart: the panes are not in a snapshot yet, then they are.
+    let panes: string[] = [];
+    const restarted = new EdgeRouter({ spool: new FakeSpool(), store, liveness: alive, targets: () => [target({ panes })], log: () => undefined, now: () => 1_000_500 });
+    await restarted.tick();
+    expect(restarted.hooksOf("main", "w1:p1")).toBe("none");
+    panes = ["w1:p1", "w1:p2"];
+    await restarted.tick();
+    expect(restarted.hooksOf("main", "w1:p1")).toBe("live");
+    // The same restart with the agent gone: nothing is seeded, and the store forgets it.
+    const dead: BeaconLiveness = { startTimeOf: () => Promise.resolve(null) };
+    const gone = new EdgeRouter({ spool: new FakeSpool(), store, liveness: dead, targets: () => [target()], log: () => undefined, now: () => 1_001_000 });
+    await gone.tick();
+    expect(gone.hooksOf("main", "w1:p1")).toBe("none");
+    expect(store.saved).toEqual([]);
+  });
+});
 
 describe("edges in the shadow", () => {
   test("never free: a Stop edge while the screen still shows the spinner keeps the turn running", async () => {
@@ -274,5 +315,33 @@ describe("edges in the shadow", () => {
     }
     expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
     expect(s.counted).toEqual(["prompt", "lost-stop"]);
+  });
+
+  test("a poll read that started before a Stop edge never replaces the fresh read: the dialog stays", async () => {
+    const s = shadowRig();
+    s.mux.set("w1:p1", RUNNING, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    // A poll starts reading while the screen is still idle, and its answer is slow.
+    s.mux.set("w1:p1", IDLE, 2);
+    let release = (): void => undefined;
+    s.mux.hold = new Promise((resolve) => (release = resolve));
+    const poll = s.shadow.observe([agent("w1:p1")]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The Stop edge comes, and by its fresh read a permission dialog is up.
+    s.shadow.edge("w1:p1", "stop", s.advance(100));
+    s.mux.set("w1:p1", PERMISSION, 3);
+    const next = s.pending.shift()!;
+    s.advance(next.ms);
+    next.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The fresh read waits for the poll read in flight, then reads the dialog.
+    expect(s.mux.reads).toBe(2);
+    s.mux.hold = null;
+    release();
+    await poll;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(s.mux.reads).toBe(3);
+    expect(modalWord(s.shadow.surfaceOf("w1:p1")!.modal)).toBe("ask");
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import { BEACON_HOOKS, type HookRegistration } from "./beacon.ts";
+import { hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext } from "./context.ts";
 import { publishedBinary } from "./install-kind.ts";
@@ -632,6 +633,8 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   deps.io.out(`  ${BEACON_HOOKS.map((r) => r.event).join(", ")} → \`${binary} beacon emit\``);
   deps.io.out(`  ${PINNED_NOTE[source]}`);
   deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only.");
+  deps.io.out(`  Hook edges go to each running bridge listed in ${hookTargetsDir(deps.ctx.env, deps.ctx.home)}.`);
+  deps.io.out("  With no bridge listed there, they go to the default state dir.");
   deps.io.out("  A running agent reloads its hooks on its own. If no edges come, restart it.");
   if (hold !== null) {
     deps.io.out(`  ${hold.event} → \`${binary} beacon hold\`: a permission waits for a tap on the phone.`);
