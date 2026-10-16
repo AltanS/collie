@@ -576,6 +576,26 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
   });
 
+  // The review of 2026-10-16: a refusal with no offers has no strip, so a hidden notice would leave
+  // the tap with no visible answer. The same refusal on the same still screen shows the notice again.
+  it("a hidden notice comes back when a tap meets the same refusal with no offers", async () => {
+    const user = userEvent.setup();
+    const unreadable = { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } as const;
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { surface: unreadable })));
+    const { container } = renderWithContainer({ surface: unreadable });
+    await user.type(screen.getByRole("textbox"), "carry on please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
+
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
+    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
+  });
+
   it("the offers' ✕ hides the notice with the strip", async () => {
     const user = userEvent.setup();
     const unreadable = { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } as const;

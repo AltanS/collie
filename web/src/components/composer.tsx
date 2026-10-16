@@ -599,13 +599,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [sendRefusal, setSendRefusalState] = useState<SendRefusal | null>(null);
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
   // the one the person hid with its ✕ or the offers' ✕. A hidden notice stays hidden until a refusal
-  // reads another Surface (its hash or its revision) or says other words.
+  // reads another Surface (its hash or its revision) or says other words, or a tap meets the same
+  // refusal with no offers (see setSendRefusal).
   const [shownRefusalKey, setShownRefusalKey] = useState<string | null>(null);
   const [hiddenRefusalKey, setHiddenRefusalKey] = useState<string | null>(null);
-  /** Raise or clear the notice. `on` is the Surface the bridge's answer carried, else the one on screen. */
-  function setSendRefusal(next: SendRefusal | null, on: Surface | null = shownSurface) {
+  /**
+   * Raise or clear the notice. `on` is the Surface the bridge's answer carried, else the one on screen.
+   * A refusal with no offers that repeats the hidden notice shows it again: with no offers strip,
+   * the notice is the tap's only visible answer (review of 2026-10-16). With offers, the strip answers.
+   */
+  function setSendRefusal(next: SendRefusal | null, on: Surface | null = shownSurface, offers = false) {
     setSendRefusalState(next);
-    setShownRefusalKey(next === null ? null : refusalKey(next, on));
+    const key = next === null ? null : refusalKey(next, on);
+    setShownRefusalKey(key);
+    if (key !== null && !offers) setHiddenRefusalKey((hidden) => (hidden === key ? null : hidden));
   }
   const hideRefusal = () => setHiddenRefusalKey(shownRefusalKey);
   // The reason a destructive line is held for a second tap, said at the Send slot (it was a header line,
@@ -1144,7 +1151,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return true;
       }
       setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
-      setSendRefusal(readingRefusal(reading), reply.surface ?? shownSurface);
+      setSendRefusal(readingRefusal(reading), reply.surface ?? shownSurface, reading.offers.length > 0);
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.

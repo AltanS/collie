@@ -361,18 +361,24 @@ export function readSend(reply: SendReply): SendReading {
   const toCard =
     surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable" || (reply.outcome === "unknown" && reply.reason === "dialog_after_enter");
   const cap = base.note === "capConfirm" ? reply.cap : null;
-  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply, base.note) ? null : reply.detail, toCard, cap };
+  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply) ? null : reply.detail, toCard, cap };
 }
 
 /**
- * Whether the phone's own sentence already says what the bridge's English detail says. A note with
- * its own sentence for a reason the phone knows does: the detail under it repeated the headline (the
- * 2026-10-16 field case, "Collie cannot read this screen" twice). The detail stays for the plain
- * refusal (`refused`, which names no reason) and for a reason the phone does not know (none on the
- * wire, or one it could not read). The cap's sentence says it all too, with its numbers.
+ * Whether the phone's own sentence already says what the bridge's English detail says (the
+ * 2026-10-16 field case, "Collie cannot read this screen" twice). Only for a refusal, and only for
+ * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `busy`,
+ * `pane_gone`, `draft_present`, and `not_free` when the line is the plain one. Every other reason,
+ * and every outcome that is no refusal, keeps the line: it says what the phone's sentence does not
+ * (a `not_free` that names what is open, a dialog that Enter may have answered).
  */
-function ownSentence(reply: SendReply, note: SendNote): boolean {
-  return note !== "refused" && reply.reason !== null;
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present"]);
+const PLAIN_NOT_FREE = "The input box is not free.";
+
+function ownSentence(reply: SendReply): boolean {
+  if (reply.outcome !== "refused" || reply.reason === null) return false;
+  if (REPEATS_THE_NOTE.has(reply.reason)) return true;
+  return reply.reason === "not_free" && reply.detail === PLAIN_NOT_FREE;
 }
 
 /** The mode a tap on an offer sends, or null for one that sends nothing (`cancel`, `keys`). A commit keeps a command a command. */

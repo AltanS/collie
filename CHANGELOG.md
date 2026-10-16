@@ -26,7 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Refused examples keep their own small cap.** At most 10 refused examples stay, one per screen and reason a day. The 50 sent examples no longer make room for them.
-- **A refusal over a screen Collie cannot read keeps a masked example.** When a refused send read the modal as unreadable or unknown, the bridge files its bottom rows. It also files each cue kind with its row. Rows are masked like a sent example's, under the same 50-file cap.
+- **A refusal over a screen Collie cannot read keeps a masked example.** When a refused send read the modal as unreadable or unknown, the bridge files its bottom rows. It also files each cue kind with its row. Rows are masked like a sent example's.
 - **A harness lab runs each new agent version once.** `bun run harness:lab` reads the Claude Code and Codex npm dist-tags and the pi and opencode GitHub releases. It installs a new version into an isolated folder. It starts the agent in a throwaway tmux server with an empty MCP config. It walks the safe slash commands and reads every screen with the Surface. A dialog that reads free ends the walk, and the run fails. Otherwise it makes one probed send and one ask answer. A pass needs a settled ask and no declined file. A pass leaves a commit on a branch in the lab's own clone. A fail writes an issue as files, and a person posts it. A pair in `~/.local/state/collie-harness-lab/ledger.json` never runs again. A run that dies deletes its folder and writes a `failed` row. `scripts/harness-canary/watch.ts` runs the same lab for an installed agent that is newer than the ledger. Carries M44 specs 05 and 06 (M56 spec 10).
 - **Golden traces mark their set by label, and CI runs the corpus rule.** A dialog or screen fixture is a negative one-read trace, and so is each of the eight incident screens. A negative trace must never read free. An idle fixture of a harness with a profile is positive. A positive trace must read free. A named CI step runs the rule and `bun scripts/surface-corpus.ts`.
 - **An `@` text is a message on pi and OMP.** It takes the send or queue key and never Enter. `/` and `!` stay commands. Codex is verified through 0.163.0.
@@ -173,8 +173,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **The send notice says its sentence once.** The phone drops the bridge's English line when the phone has its own sentence for the reason. A plain refusal, or a reason the phone does not know, still shows it.
+- **The send notice says its sentence once.** The phone drops the bridge's English line only where it repeats the phone's sentence. That is `unconfirmed`, `stale_surface`, `busy`, `pane_gone`, `draft_present`, and the plain `not_free` line. Every other line stays, such as the warning that Enter may have answered a dialog.
 - **The send notice puts its buttons under the text on a phone.** On a narrow screen the buttons move under the sentence and wrap there. Before, they squeezed the sentence into a narrow column.
+- **A hidden send notice comes back when a tap gets no other answer.** A refusal with no offers that repeats on the same screen shows the notice again. With offers, the offers strip answers the tap.
 - **The send notice has a Hide control.** Its ✕ hides the notice until a refusal reads another screen or says other words. The ✕ on the offers strip hides the notice too.
 - **Answer the dialog shows only when a dialog card is there.** A screen Collie cannot read, with no card under it, offered a button that led nowhere.
 - **A dialog over Claude Code's agents panel still stops a send.** The panel counts only when it starts with `● main`, keeps its order and fits the footer bound. A dialog between the statusline and the panel reads unreadable, and a list of agent rows with no `● main` reads as a list.
