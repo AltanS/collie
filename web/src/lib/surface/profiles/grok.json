@@ -1,0 +1,102 @@
+{
+  "id": "grok",
+  "identity": {
+    "binary": "grok",
+    "versionCommand": [
+      "grok",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "1.0.0 - 1.0.41",
+      "status": "verified",
+      "verifiedThrough": "1.0.41",
+      "verifiedOn": "2026-09-27"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "walk": "interior",
+      "top": {
+        "pattern": "^ *╭─+╮?$",
+        "column": 2,
+        "maxColumn": 3
+      },
+      "prompt": {
+        "pattern": "^ *│ ❯(?: (?<draft>.*?))?\\s*(?:[█▌▐]\\s*)?│?$",
+        "column": 2,
+        "maxColumn": 3
+      },
+      "bottom": {
+        "pattern": "^ *╰─.*$",
+        "column": 2,
+        "maxColumn": 3
+      },
+      "rows": "^ *(?:╭─.*|│.*)$",
+      "continuation": "^ *│ {1,3}(?<text>.*?)\\s*(?:[█▌▐]\\s*)?│?$",
+      "continuationIndent": 0,
+      "maxDraftRows": 60,
+      "maxTailRows": 4
+    },
+    "placeholders": {
+      "texts": [],
+      "sgr": 2
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 6
+      },
+      "below": {
+        "maxRows": 3,
+        "footerMaxRows": 2
+      }
+    },
+    "runningRows": [
+      "\\bEsc:cancel\\b"
+    ],
+    "dialogsInBox": true,
+    "overlayRows": [
+      "\\s•\\s\\d+ tokens\\s*$"
+    ]
+  },
+  "keys": {
+    "submit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    }
+  },
+  "collapse": {
+    "pattern": "\\[Pasted [^\\]]*\\]"
+  },
+  "reservedLeads": [
+    "/",
+    "!",
+    "@"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "provisional",
+    "note": "No live send has passed on this harness: it is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. The box layout comes from the saved screens in web/src/fixtures/panes (grok--*.txt, Grok Build 1.0.46 to 1.0.52). Provisional until a live probed send passes; fallback ¤"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {}
+}

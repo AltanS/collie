@@ -191,6 +191,11 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "agy--after-plan-idle.txt": {
+   "harness": "agy",
+   "version": "unversioned",
+   "state": "idle"
+  },
   "agy--working.txt": {
    "harness": "agy",
    "version": "unversioned",
@@ -2239,6 +2244,11 @@
   "muse--working.txt": {
    "harness": "muse",
    "version": "unversioned",
+   "state": "idle"
+  },
+  "muse--turn-running.txt": {
+   "harness": "muse",
+   "version": "unversioned",
    "state": "running"
   },
   "oc--agents-picker.txt": {
@@ -2839,7 +2849,7 @@
   "omp--v18-4-claude-titled.txt": {
    "harness": "omp",
    "version": "18.4",
-   "state": "draft"
+   "state": "idle"
   },
   "omp--v18-4-claude-wrapped.txt": {
    "harness": "omp",

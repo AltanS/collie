@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
+import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { KeyGate } from "./key-gate.ts";
@@ -969,22 +969,22 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab, 0.163.0)", async () => {
-    const { pane, send } = codex({ version: "0.163.0" });
+  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, on 0.164.0)", async () => {
+    const { pane, send } = codex({ version: "0.164.0" });
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
   });
 
   test("a fresh Codex hides its welcome picture at the first character: the rows above only lost text, so the probe passes (lab, 0.163.0)", async () => {
-    const { pane, send } = codex({ version: "0.163.0" });
+    const { pane, send } = codex({ version: "0.164.0" });
     pane.codexWelcome = CODEX_WELCOME;
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a row above the Codex box that gains text still fails the probe", async () => {
-    const { pane, send } = codex({ version: "0.163.0" });
+    const { pane, send } = codex({ version: "0.164.0" });
     // Rows high above the box, past the profile's volatile band over the top edge.
     pane.transcript = ["• first", "• second", "• third", "• fourth", "• fifth", "• sixth", "• seventh", "• eighth"];
     pane.afterInput = (p, what) => {
@@ -997,7 +997,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
   });
 
   test("a row under the Codex box that is no hint still fails the probe", async () => {
-    const { pane, send } = codex({ version: "0.163.0" });
+    const { pane, send } = codex({ version: "0.164.0" });
     pane.afterInput = (p, what) => {
       if (what.startsWith("type:")) p.codexHint = "  a row that is no hint";
     };
@@ -1844,6 +1844,16 @@ describe("a send into a running turn", () => {
     expect(steadyRow("an answer row (12s)")).toBe("an answer row (12s)");
   });
 
+  test("steadyRow masks the braille spinner of a row the profile names as a running row (M56 spec 14)", () => {
+    const signs = [/^─+\s+[⠀-⣿]\s+Working\b/u, /^\s?[⠀-⣿]\s+\d+s\s.*▶/u];
+    expect(steadyRow(" ⠇ 4s > Haiku 4.5 ▶──5%──", signs)).toBe(steadyRow(" ⠹ 5s > Haiku 4.5 ▶──5%──", signs));
+    expect(steadyRow("── ⠴ Working ─────", signs)).toBe(steadyRow("── ⠧ Working ─────", signs));
+    expect(steadyRow("── ⠴ Working ─────")).not.toBe(steadyRow("── ⠧ Working ─────"));
+    // Another row keeps its glyphs, and a changed word still changes the row.
+    expect(steadyRow("⠴ other row", signs)).toBe("⠴ other row");
+    expect(steadyRow("── ⠴ Working ─────", signs)).not.toBe(steadyRow("── ⠧ Idle ─────", signs));
+  });
+
   test("steadyRow reads the spinner row before and after its timer shows as one row (Claude Code 2.1.301)", () => {
     expect(steadyRow("✶ Wibbling…")).toBe(steadyRow("* Wibbling… (4s · ↓ 304 tokens)"));
     expect(steadyRow("✻ Julienning… (running UserPromptSubmit hooks… 1/2 · 2s · thinking with high effort)")).toBe(steadyRow("· Julienning…"));
@@ -2665,6 +2675,14 @@ describe("counters, the cap and the examples", () => {
   }
   const rowOf = (ledger: SurfaceLedger, harness: string) => ledger.rows().find((row) => row.harness === harness);
 
+  test("a send from a pane the multiplexer calls by another name of the harness is counted under the profile id (M56 spec 14 review)", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ ledger, mode: "generic", harness: "antigravity", version: "1.1.17" });
+    await send("hello there");
+    expect(ledger.rows().map((row) => row.harness)).toEqual(["agy"]);
+    expect(rowOf(ledger, "agy")).toMatchObject({ version: "1.1.17", profileId: "agy", status: "provisional" });
+  });
+
   test("a send that goes through is counted sent under its harness, version, profile and status", async () => {
     const ledger = ledgerFor();
     const { send } = rig({ ledger });
@@ -3140,5 +3158,266 @@ describe("the held send (M56 spec 15)", () => {
     const r = rig({ version: "no version here" });
     r.pane.over = [LIVE_ROW];
     expect((await r.send("then give it a title")).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+  });
+});
+
+// ── M56 spec 14 review: the omp keys, the probe rule, the frameless gate, the platform keys ──
+
+/**
+ * OMP 18.6.1 as the lab read it (2026-10-16): an open box (`╰─` under a status row), Ctrl+Q sends on an
+ * idle box and queues in a turn, Enter steers a running turn. A turn shows a blinking `Working…` row and a
+ * spinner with the seconds in the status row, which does not blink.
+ */
+class OmpPane extends FakePane {
+  inTurn = false;
+  /** The blinking row is on. A turn with the row off shows its spinner in the status row alone. */
+  showWorking = true;
+  /** Texts Enter sent into the turn: steering, which the send must never do. */
+  steered: string[] = [];
+
+  constructor() {
+    super("generic");
+    this.transcript = Array.from({ length: 12 }, (_, i) => ` an earlier row of the agent answer ${String(i)}`);
+    const base = this.writeKeys;
+    this.writeKeys = (paneId, keys) => {
+      for (const key of keys) {
+        if (key === "ctrl+q" || (key === "Enter" && this.inTurn)) {
+          this.keysSeen.push(key);
+          const text = this.box.replace(/\n/gu, " ");
+          if (text.length > 0 && key === "Enter") this.steered.push(text);
+          else if (text.length > 0 && this.inTurn) this.queued.push(text);
+          else if (text.length > 0) this.transcript.push(` > ${text}`);
+          this.box = "";
+          this.revision++;
+        } else void base(paneId, [key]);
+      }
+      return Promise.resolve(muxAck());
+    };
+  }
+
+  override render(): string {
+    const rows = [...this.transcript, ""];
+    if (this.queued.length > 0) rows.push(`  After yield · ${String(this.queued.length)}`, ...this.queued.map((text, i) => `  ${String(i + 1)}. ${text}`), "  └ Alt+↑ to edit", "");
+    if (this.inTurn && this.showWorking) rows.push("  ⎋ Working…                                      Write essay");
+    rows.push(this.inTurn ? " ⠼ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────" : " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────");
+    this.box.split("\n").forEach((line, i) => rows.push(i === 0 ? `╰─ ${line}`.trimEnd() : `   ${line}`));
+    return rows.join("\n");
+  }
+}
+
+function omp(options: { version?: string; edit?: (profile: Profile) => Profile } = {}): Rig & { pane: OmpPane } {
+  const pane = new OmpPane();
+  const rigOptions: Parameters<typeof rig>[0] = { pane, harness: "omp", version: options.version ?? "18.6.1" };
+  if (options.edit !== undefined) rigOptions.edit = options.edit;
+  const made = rig(rigOptions);
+  return { ...made, pane };
+}
+
+describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
+  test("an idle box is sent with Ctrl+Q, never Enter", async () => {
+    const { pane, send } = omp();
+    const answer = await send("write the summary now");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.transcript.at(-1)).toBe(" > write the summary now");
+  });
+
+  test("a command takes Enter, which sends a command on an idle box", async () => {
+    const { pane, send } = omp();
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("a turn shown by the status row's spinner alone (the Working row is off): the send queues with Ctrl+Q, never Enter", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    pane.showWorking = false;
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a turn shown by the Working row alone (the status row at rest): the send queues with Ctrl+Q, never Enter", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    const render = pane.render.bind(pane);
+    pane.render = () => render().replace(" ⠼ 4s >", " π >");
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("the Working row blinks off between the first read and the commit: Enter never goes in", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    pane.beforeRead = (p, n) => {
+      if (p instanceof OmpPane) p.showWorking = n % 2 === 0;
+    };
+    const answer = await send("then add a short summary");
+    expect(["sent", "refused", "typed_not_submitted", "unknown"]).toContain(String(answer.receipt?.outcome));
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a profile with a platform entry presses that platform's submit key", async () => {
+    const win = omp({ edit: (profile) => forPlatform({ ...profile, keys: { ...profile.keys, submitByPlatform: { win32: ["Enter"] } } }, "win32") });
+    const answer = await win.send("write the summary now");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(win.pane.keysSeen).not.toContain("ctrl+q");
+  });
+});
+
+describe("a profile whose probe is provisional never skips the probe (M56 spec 14 review)", () => {
+  const LONG = "this text is long enough that a verified profile would send it with no probe at all";
+
+  test("a verified profile on a free screen sends a long text with no probe, a provisional one probes it", async () => {
+    const verified = rig();
+    expect((await verified.send(LONG)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    const provisional = rig({ edit: (profile) => ({ ...profile, probe: { ...profile.probe, status: "provisional" } }) });
+    expect((await provisional.send(LONG)).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("the profiles of every harness with no live send in its range are provisional", () => {
+    for (const id of ["grok", "agy", "muse", "opencode", "omp"]) expect(loadProfiles().get(id)?.probe.status, id).toBe("provisional");
+    expect(loadProfiles().get("pi")?.probe.status).toBe("verified");
+  });
+});
+
+describe("a frameless manual send in a turn is refused where Enter is not known to queue (M56 spec 14 review)", () => {
+  const cases = [
+    { harness: "grok", version: "1.0.46", rows: ["  Ctrl+e:expand thinking  │  Space:prompt  │  Esc:cancel  │  Ctrl+b:send to bg  │  Ctrl+.:shortcuts"] },
+    { harness: "agy", version: "1.1.17", rows: ["⣟  Generating...", "└ Tip: Use /btw to ask a question without breaking context.", "esc to cancel     accept-edits · Gemini 3.7 Flash · low"] },
+    { harness: "muse", version: "1.4.7", rows: ["◇ Double checking (2m 40s · esc to interrupt)"] },
+  ];
+  for (const c of cases) {
+    test(`${c.harness}: a running sign and no box, two taps: refused turn_running, nothing typed, no Enter`, async () => {
+      const pane = new FakePane("generic");
+      pane.fixed = ["a transcript row", "", ...c.rows].join("\n");
+      const { send, protocol } = rig({ pane, harness: c.harness, version: c.version });
+      // The rows hash a person confirmed: the manual path, which a screen with a running sign must not take.
+      const prepared = await protocol.handle({ id: `prepare-${c.harness}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: c.harness });
+      expect(prepared.rowsHash).toEqual(expect.any(String));
+      const manual = await send("then add a short summary", { rowsHash: prepared.rowsHash! });
+      expect(manual.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    });
+  }
+});
+
+describe("the compare of a Codex send reads a changing status row (M56 spec 14 review)", () => {
+  const RUNNING = "• Working (4s • esc to interrupt)";
+  const signs = (loadProfiles().get("codex")?.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+  const GLYPHS = ["⠋", "⠙", "⠹", "⠸"];
+
+  test("steadyRow hides the spinner glyph and the digits of a Codex status row that ends in a spinner, and of no other row", () => {
+    expect(steadyRow("  GPT-6-Luna low · ~/project2 · ⠋", signs)).toBe(steadyRow("  GPT-6-Luna low · ~/project7 · ⠙", signs));
+    expect(steadyRow("  GPT-6-Luna low · ~/project2", signs)).not.toBe(steadyRow("  GPT-6-Luna low · ~/project7", signs));
+    expect(steadyRow("  GPT-6-Luna low · ~/project · ⠋", signs)).not.toBe(steadyRow("  GPT-6-Sol low · ~/project · ⠋", signs));
+  });
+
+  test("a spinner that ticks in the status row between the reads of a send into a turn does not stop it: Tab, never Enter", async () => {
+    const { pane, send } = rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2" });
+    pane.over = [RUNNING];
+    pane.beforeRead = (p, n) => {
+      p.codexStatus = `  GPT-6-Luna low · ~/project · ${GLYPHS[n % GLYPHS.length]!}`;
+    };
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// ── an `@` text is a message on pi and OMP (M56 spec 14, verifier) ──
+
+/** pi 0.87.1: a box between two rules, a status row under it. Alt+Enter (Ctrl+Q on Windows) sends and queues, Enter steers a turn. */
+class PiPane extends FakePane {
+  inTurn = false;
+  steered: string[] = [];
+
+  constructor(private readonly sendKey: string) {
+    super("claude");
+    this.transcript = Array.from({ length: 12 }, (_, i) => `an earlier row of the agent answer ${String(i)}`);
+    this.status = ["~/project (main)", "0.0%/200k (auto)"];
+    const base = this.writeKeys;
+    this.writeKeys = (paneId, keys) => {
+      for (const key of keys) {
+        if (key === this.sendKey || (key === "Enter" && this.inTurn)) {
+          this.keysSeen.push(key);
+          const text = this.box.replace(/\n/gu, " ");
+          if (text.length > 0 && key === "Enter") this.steered.push(text);
+          else if (text.length > 0 && this.inTurn) this.queued.push(text);
+          else if (text.length > 0) this.transcript.push(` > ${text}`);
+          this.box = "";
+          this.revision++;
+        } else void base(paneId, [key]);
+      }
+      return Promise.resolve(muxAck());
+    };
+  }
+
+  override render(): string {
+    this.over = this.inTurn ? ["⠋ Working... (4s • esc to interrupt)"] : [];
+    const rows = [...this.transcript, ...this.queued.map((text) => `Follow-up: ${text}`), ...(this.queued.length > 0 ? ["↳ Alt+Up to edit all queued messages"] : [])];
+    return [...rows, "", ...this.over, RULE, ...(this.box === "" ? [""] : this.box.split("\n").map((line) => ` ${line}`)), RULE, ...this.status].join("\n");
+  }
+}
+
+describe("a text that starts with `@` is a message on pi and OMP", () => {
+  const AT = "@notes.md what changed in this file?";
+
+  test("pi leaves `@` out of its reserved leads and keeps `/` and `!`", () => {
+    expect(loadProfiles().get("pi")?.reservedLeads).toEqual(["/", "!"]);
+    expect(loadProfiles().get("omp")?.reservedLeads).toEqual(["/", "!"]);
+  });
+
+  for (const [platform, key] of [["linux", "alt+Enter"], ["win32", "ctrl+q"]] as const) {
+    test(`pi on ${platform}: an \`@\` text in a turn queues with ${key}, never Enter`, async () => {
+      const pane = new PiPane(key);
+      pane.inTurn = true;
+      const { send } = rig({ pane, harness: "pi", version: "0.87.1", edit: (profile) => forPlatform(profile, platform) });
+      const answer = await send(AT);
+      expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+      expect(answer.receipt?.keys.at(-1)).toBe(key);
+      expect(pane.queued).toEqual([AT]);
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.steered).toEqual([]);
+    });
+  }
+
+  test("pi: an `@` text on an idle box is sent with Alt+Enter, and `/model` still takes Enter", async () => {
+    const pane = new PiPane("alt+Enter");
+    const { send } = rig({ pane, harness: "pi", version: "0.87.1" });
+    const answer = await send(AT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("alt+Enter");
+    expect(pane.keysSeen).not.toContain("Enter");
+    const command = await send("/model", { mode: "command" });
+    expect(command.receipt?.keys.at(-1)).toBe("Enter");
+  });
+
+  test("omp: an `@` text in a turn queues with ctrl+q, never Enter", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    const answer = await send(AT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.queued).toEqual([AT]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a `/` text is still a command on pi and OMP: refused in a turn, nothing typed", async () => {
+    const pane = new PiPane("alt+Enter");
+    pane.inTurn = true;
+    const answer = await rig({ pane, harness: "pi", version: "0.87.1" }).send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
   });
 });

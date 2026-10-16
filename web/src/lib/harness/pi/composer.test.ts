@@ -417,7 +417,7 @@ describe("the status rule across the whole corpus", () => {
   it("finds a pi editor in no other harness's capture but agy's prompt rows", () => {
     expect(foreign.length).toBeGreaterThan(400);
     const found = foreign.filter((name) => locateComposer(fixture(name.slice(0, -4))) !== null);
-    expect(found).toEqual(["agy--done.txt", "agy--fresh-idle.txt", "agy--working.txt"]);
+    expect(found).toEqual(["agy--after-plan-idle.txt", "agy--done.txt", "agy--fresh-idle.txt"]);
   });
 
   it("keeps prose under a markdown rule out: a plain row straight under the rule is not a status row", () => {

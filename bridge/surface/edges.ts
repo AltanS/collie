@@ -30,7 +30,7 @@ import type { EdgeSpool } from "../beacon-io.ts";
 import type { ForegroundProcess } from "../journal/types.ts";
 import type { MuxOutcome } from "../mux/types.ts";
 import { edgeKindOf, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
-import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles } from "../../web/src/lib/surface/profile.ts";
 
 /** How often the router takes the spool. */
 export const EDGE_TAKE_MS = 200;
@@ -72,7 +72,7 @@ export type Placement =
 
 /** The edge's kind under its harness's profile. No profile, or no row: a `reread`. */
 export function kindOfEdge(record: EdgeRecord): EdgeKind {
-  const events = loadProfiles().get(record.harness)?.edges?.events ?? {};
+  const events = findProfile(loadProfiles(), record.harness)?.edges?.events ?? {};
   return edgeKindOf(events, record.event, record.detail);
 }
 

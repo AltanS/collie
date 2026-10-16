@@ -220,7 +220,7 @@ import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { VersionCache } from "./surface/binary-version.ts";
-import { loadProfiles, profileFor, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -1316,9 +1316,9 @@ const edgeRouter =
 const sendVersions = new VersionCache();
 /** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
 async function sendProfile(harness: string): Promise<ProfileMatch | null> {
-  const profile = loadProfiles().get(harness);
+  const profile = findProfile(loadProfiles(), harness);
   if (profile === undefined) return null;
-  return profileFor(profile.id, await sendVersions.versionOf(profile));
+  return profileForPlatform(profile.id, await sendVersions.versionOf(profile), HOST.platform);
 }
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {

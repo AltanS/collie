@@ -476,6 +476,77 @@ digit answers at once. On the last question it sends all the answers.
 > [ADR 0024](../.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
 
 
+## Harness profiles
+
+Collie sends a message from the phone only when it can read the input box of the agent.
+A profile file describes that box for one agent. It says where the box starts and ends.
+It says how a draft looks, which key sends, and which text the agent draws for a long paste.
+An agent with no profile still works. Collie types into it with stricter generic rules.
+
+| Agent | Enter during a turn | Send key | Probe | Checked against |
+| ----- | ------------------- | -------- | ----------------- | --------------- |
+| OpenCode | Queues the message | Enter | Yes | 1.18.33 |
+| pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows | Short texts and sends into a turn | 1.1.0 |
+| OMP | Steers the turn; Ctrl+Q queues | Ctrl+Q | Yes | 18.4.10 |
+| Grok | Not measured | Enter | Yes | 1.0.41 |
+| Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
+| Muse | Not measured | Enter | Yes | 1.4.7 |
+
+A command, such as `/model`, always goes with Enter. A probed send types one extra character first.
+Collie checks that the character lands in the box, then removes it.
+
+- **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line.
+  Collie finds the box by those rows.
+  A message sent into a running turn waits in the transcript with a `QUEUED` badge.
+  A newline goes in as Ctrl+J.
+  Collie refuses a message that is longer than the box can show, because it cannot read it back.
+
+- **pi** draws its box between two rules with no prompt mark.
+  Collie finds it by the rule pair and by the status line that pi draws under it.
+  A pi dialog opens between the same two rules.
+  So Collie reads the key hints and the list from the top rule down.
+  In pi, Enter steers a running turn, but Alt+Enter sends on an idle box and queues in a turn.
+  So Collie sends with Alt+Enter, and with Ctrl+Q on Windows.
+  pi shows a queued message as a `Follow-up:` row above the box.
+  A box taller than 30 rows does not read as a box. The screen reads as unknown, and a send needs your tap.
+
+- **OMP** lets you choose the border style of its box, so Collie knows five of them.
+  One is the open box with a status row on top. Others are a rule pair, a rule with no bottom rule,
+  a pair with an empty middle, and a borderless box.
+  Collie cuts the hint that OMP draws at the right end of the prompt row.
+  In OMP, Enter steers a running turn, but Ctrl+Q sends on an idle box and queues in a turn.
+  So Collie sends with Ctrl+Q.
+  OMP lists a queued message in an `After yield` block above the box.
+  OMP can show a dim completion after your text.
+  A send that meets one stops before the send key and leaves the text in the box.
+
+- **Grok** draws a rounded box with a `❯` prompt row and a row of key hints under it.
+  A tall draft shows a scroll bar at the right edge of the box.
+  Such a screen reads as unreadable, so a send needs your tap.
+  A model list opens above the box and counts as part of the box.
+  The pane never reads free while the list stands.
+
+- **Antigravity** (`agy`) draws its box as a rule, a `>` row and a rule, with a `? for shortcuts` footer.
+  The turn shows a spinner row with `...` above the box and `esc to cancel` under it.
+  Herdr names this agent `agy` or `antigravity`. Collie files both under `agy`.
+
+- **Muse** draws its box as a rule that may carry a label, a `❯` row and a rule.
+  An empty box shows a grey hint, and Collie reads that hint as no text.
+  A command palette that opens under the box shows as your draft.
+  The list of background tasks under the box reads as unknown, and a send needs your tap.
+  A running turn shows a row with a timer and `esc to interrupt`.
+
+Grok, Antigravity and Muse are not installed on the build host.
+Their profiles rest on saved screens of each agent.
+No live message has gone to them through a profile, so Collie probes every send there.
+Nobody measured what Enter does during a turn for them.
+So Collie refuses a send while the screen shows the turn running, and it types nothing.
+Where a harness draws no running sign, Collie cannot tell, and the agent decides what Enter does.
+OpenCode and OMP passed live sends on a version above the checked one.
+Collie probes every send on them until a send passes inside the checked range.
+
+A version above the checked one still works, and the receipt says `provisional`.
+
 ---
 
 [← back to the README](../README.md)

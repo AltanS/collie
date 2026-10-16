@@ -188,6 +188,20 @@ describe("no harness names in the surface code", () => {
     expect(hits).toEqual([]);
   });
 
+  it("the M56 spec 14 profiles join the ban by directory, and no surface file names them", () => {
+    const added = ["opencode", "pi", "omp", "grok", "agy", "muse"];
+    for (const id of added) {
+      expect(profileIds()).toContain(id);
+      expect(namesIn(`const key = ${id}Profile.keys;`, [id])).toHaveLength(1);
+      expect(namesIn(`// a ${id} screen\nconst x = 1;`, [id])).toEqual([]);
+    }
+    const hits: string[] = [];
+    for (const dir of SURFACE_DIRS) {
+      for (const file of sourceFiles(dir)) for (const hit of namesIn(readFileSync(file, "utf8"), added)) hits.push(`${file}: ${hit}`);
+    }
+    expect(hits).toEqual([]);
+  });
+
   it("holds in web/src/lib/surface/*.ts and bridge/surface/*.ts", () => {
     const ids = profileIds();
     const hits: string[] = [];

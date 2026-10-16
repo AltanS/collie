@@ -28,7 +28,7 @@ import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/e
 import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
 import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
-import { loadProfiles, profileFor, versionFromOutput, type Profile } from "../../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, profileFor, versionFromOutput, type Profile } from "../../web/src/lib/surface/profile.ts";
 import { askOf, isFree, modalWord, shortHash, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
 import { ASK_LIFETIME_MS, type AskBook } from "./ask.ts";
@@ -254,7 +254,7 @@ export class SurfaceShadow {
    * the background once it is older than VERSION_TTL_MS.
    */
   private async profileOf(harness: string): Promise<{ profile: Profile | null; version: string }> {
-    const profile = loadProfiles().get(harness) ?? null;
+    const profile = findProfile(loadProfiles(), harness) ?? null;
     if (profile === null) return { profile: null, version: "-" };
     const known = this.versions.get(profile.id);
     if (known === undefined) {
@@ -312,7 +312,8 @@ export class SurfaceShadow {
         countedRead: null,
         lastRevision: 0,
         read: null,
-        harness,
+        // Counted under the profile's id, so each name a multiplexer reports for a harness files under one row.
+        harness: profile?.id ?? harness,
         version,
         status,
         profileId: profile?.id ?? "-",
@@ -324,7 +325,7 @@ export class SurfaceShadow {
     state.agent = agent;
     state.settleMs = edges.settleMs;
     state.rereadMs = edges.rereadMs;
-    state.harness = harness;
+    state.harness = profile?.id ?? harness;
     state.version = version;
     state.status = status;
     state.profileId = profile?.id ?? "-";
