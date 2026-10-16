@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Notice } from "@/components/ui/notice";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
@@ -33,6 +33,12 @@ const NOTE_TONE = {
   mismatch: "caution",
 } as const;
 
+/** The ms a new request's card ignores taps, so a tap meant for the card before it lands nowhere. */
+export const HOLD_TAP_GUARD_MS = 400;
+
+/** The most lines the input box shows before it scrolls. More lines, and the card says so. */
+export const HOLD_CARD_LINES = 8;
+
 export interface HookHoldCardProps {
   readonly note: HoldNote;
   /** One tap on an option, by its index in the note's options. */
@@ -44,6 +50,11 @@ export interface HookHoldCardProps {
 export function HookHoldCard({ note, onAnswer, disabled }: HookHoldCardProps) {
   useLocale();
   const [busy, setBusy] = useState<number | null>(null);
+  // The time the card showed this request. A new ask id restarts the guard.
+  const shownAt = useRef(0);
+  useEffect(() => {
+    shownAt.current = Date.now();
+  }, [note.askId]);
   if (note.state !== "held") {
     return (
       <div className="px-3 pb-2">
@@ -56,12 +67,14 @@ export function HookHoldCard({ note, onAnswer, disabled }: HookHoldCardProps) {
   // The hold took the screen's own dialog: the docked card answers it, draw nothing more.
   if (note.adopted) return null;
   const title = t("chat.hold.title", { tool: note.tool });
+  const lines = note.input.split("\n").length;
   return (
     <div className="px-3 pb-2">
       <PromptPanel ariaLabel={title}>
         <OptionGroupCaption>{title}</OptionGroupCaption>
         {note.agent && <p className="font-content pl-0.5 text-xs text-muted-foreground">{t("chat.hold.subagent")}</p>}
         <pre className="max-h-40 overflow-auto rounded-sm border bg-muted/40 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap break-all">{note.input}</pre>
+        {lines > HOLD_CARD_LINES && <p className="font-content pl-0.5 text-xs text-muted-foreground">{t("chat.hold.moreLines", { count: lines })}</p>}
         {note.options.map((label, index) => (
           <OptionButton
             key={label}
@@ -70,6 +83,7 @@ export function HookHoldCard({ note, onAnswer, disabled }: HookHoldCardProps) {
             label={label}
             disabled={disabled === true || busy !== null}
             onClick={() => {
+              if (Date.now() - shownAt.current < HOLD_TAP_GUARD_MS) return;
               setBusy(index);
               void Promise.resolve(onAnswer(index)).finally(() => setBusy(null));
             }}

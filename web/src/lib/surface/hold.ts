@@ -151,13 +151,17 @@ export const HOLD_ASK_KIND = "permission";
 /** The mark at the end of a cut input shown. */
 export const HOLD_CUT_MARK = " [cut]";
 
-/** How many characters of a written body the card shows as its start. */
-export const HOLD_BODY_START = 80;
-
-// Characters that hide text or turn it around on the screen: zero-width marks (U+200B to U+200F),
-// bidirectional embeddings and overrides (U+202A to U+202E) and isolates (U+2066 to U+2069). A command
-// that holds one can show one thing and run another, so they go before display and before the hash.
-const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069]/gu;
+// Characters that hide text or turn it around on the screen. A command that holds one can show one
+// thing and run another, so they go before display and before the hash: the C1 controls (U+0080 to
+// U+009F), the soft hyphen (U+00AD), the combining grapheme joiner (U+034F), the Arabic letter mark
+// (U+061C), the Mongolian vowel separator and variation selectors (U+180B to U+180F), the zero-width
+// marks (U+200B to U+200F), the bidirectional embeddings and overrides (U+202A to U+202E), the word
+// joiner and invisible operators (U+2060 to U+2064), the isolates (U+2066 to U+2069), the variation
+// selectors (U+FE00 to U+FE0F, U+E0100 to U+E01EF), the byte order mark (U+FEFF), the interlinear
+// annotation marks (U+FFF9 to U+FFFB) and the tag characters (U+E0000 to U+E007F).
+const INVISIBLE =
+  // eslint-disable-next-line no-misleading-character-class -- each mark stands alone here, written as an escape
+  /[\u0080-\u009f\u00ad\u034f\u061c\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufe00-\ufe0f\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
 // eslint-disable-next-line no-control-regex -- control characters are exactly what this removes
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/gu;
 
@@ -174,9 +178,9 @@ export interface ShownInput {
 
 /**
  * The input shown for a tool input: the first key of `keys` that holds text, else the whole input as
- * compact JSON. Then the tool's details from the profile: each risky flag that is present, and the
- * size and start of each written body. Hiding characters are dropped, control characters become
- * spaces, and the whole is cut at {@link HOLD_INPUT_MAX} characters. A cut input is marked: the
+ * compact JSON. Then the tool's details from the profile: each risky flag that is present, and each
+ * written body in full, after a line with its size. Hiding characters are dropped, control characters
+ * become spaces, and the whole is cut at {@link HOLD_INPUT_MAX} characters. A cut input is marked: the
  * hook then holds nothing, because a person cannot judge what the card does not show.
  */
 export function shownInputOf(toolInput: JsonValue | undefined, keys: readonly string[], detail?: HoldInputDetail): ShownInput {
@@ -200,11 +204,11 @@ export function shownInputOf(toolInput: JsonValue | undefined, keys: readonly st
       const value = node[flag];
       if (value !== undefined && value !== null && value !== false) lines.push(`[${flag}: ${JSON.stringify(value)}]`);
     }
+    // The whole body counts against the limit: a longer one makes the input cut, so the screen answers it.
     for (const key of detail.body) {
       const body = asJsonString(node[key]);
       if (body === undefined) continue;
-      const start = cleanShown(body).replace(/\s+/gu, " ").trim().slice(0, HOLD_BODY_START);
-      lines.push(`[${key}: ${String(body.length)} characters. Start: ${start}]`);
+      lines.push(`[${key}: ${String(body.length)} characters, ${String(body.split("\n").length)} lines]`, body);
     }
   }
   const clean = cleanShown(lines.join("\n"));

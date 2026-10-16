@@ -445,6 +445,7 @@ export const it: Dictionary = {
   "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
   "chat.hold.title": "Permission: {tool}", // TODO wordsmith
   "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
+  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
   "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
   "chat.hold.desk": "The desk answered first.", // TODO wordsmith
   "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith

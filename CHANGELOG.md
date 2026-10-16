@@ -159,6 +159,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A held Write, Edit or NotebookEdit request shows the whole text it writes.** The whole text counts against the 1000-character limit. A longer request stays a dialog on the screen. The card says when the input has more lines than its box shows.
+- **The input shown drops more characters that hide text.** These are the C1 controls, the soft hyphen, joiners, variation selectors, the byte order mark and the tag characters.
+- **The hold card ignores a tap in the first 400 ms after a new request shows.** So a tap meant for the card before does not answer the new request.
 - **The permission hook also checks the state dir above the hold socket before it connects.** Another user who can write to the state dir could swap the hold folder.
 - **A phone No that lost to a Yes at the desk now reads as "The desk answered first".** The tool ran, so the card no longer says Sent. Only an allow counts the tool edge as proof of the phone's answer.
 - **A Yes on the main dialog's card no longer allows a subagent's request.** An older background hold took the main Bash dialog through a file name. Now a hold takes a dialog only when the header names its tool and agent, and the whole input line shows.
