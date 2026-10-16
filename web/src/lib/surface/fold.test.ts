@@ -682,7 +682,7 @@ describe("the agents panel under the box (incident 2026-10-16)", () => {
   } satisfies Record<string, readonly string[]>;
   for (const [what, dialog] of Object.entries(OVER_PANEL)) {
     it(`${what} over the panel never reads free`, () => {
-      const rows = plainRows(["● done", "", RULE40, "❯ ", RULE40, "  ⏵⏵ auto mode on · 1 shell", "", ...dialog, ...PANEL_ROWS]);
+      const rows = rowsOf(["● done", "", RULE40, "❯ ", RULE40, "  ⏵⏵ auto mode on · 1 shell", "", ...dialog, ...PANEL_ROWS].join("\n"));
       const read = readScreen(rows, "claude", CLAUDE);
       expect(modalWord(read.surface.modal)).not.toBe("none");
       expect(isFree(read.surface)).toBe(false);
@@ -691,7 +691,7 @@ describe("the agents panel under the box (incident 2026-10-16)", () => {
 
   it("twelve agent rows under main do not read free", () => {
     const agents = Array.from({ length: 12 }, (_, i) => `  ◯ agent-${String(i)}   working   ${String(i)}s · ↓ 1k tokens`);
-    const rows = plainRows(["● done", "", RULE40, "❯ ", RULE40, "  ⏵⏵ auto mode on · 1 shell", "", "  ● main", ...agents]);
+    const rows = rowsOf(["● done", "", RULE40, "❯ ", RULE40, "  ⏵⏵ auto mode on · 1 shell", "", "  ● main", ...agents].join("\n"));
     expect(isFree(readScreen(rows, "claude", CLAUDE).surface)).toBe(false);
   });
 
