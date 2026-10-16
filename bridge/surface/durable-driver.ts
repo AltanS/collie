@@ -45,6 +45,9 @@ export const PROGRAM_COUNTER_KEY: CounterKey = { harness: "program", version: "-
  */
 export const PROGRAM_LOCK_MS = 12_000;
 
+/** How often a Stop that waits for the lock tries again. */
+const STOP_RETRY_MS = 50;
+
 /** The pane generation a program record carries. A program pane holds one conversation for life. */
 const PROGRAM_GENERATION = "program";
 
@@ -103,6 +106,8 @@ export interface ProgramDriverDeps {
   readonly locks: SessionLocks;
   readonly ledger?: ProgramLedger | undefined;
   readonly now?: () => number;
+  /** How a Stop waits for the lock between tries. A test passes its own clock. */
+  readonly sleep?: (ms: number) => Promise<void>;
   /** Random per driver, so a restart never mints an ask id a stored receipt already holds. */
   readonly salt?: string;
 }
@@ -274,6 +279,7 @@ interface SendRun {
 
 export class ProgramDriver {
   private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
   private readonly book: ProgramAskBook;
   private readonly sending = new Map<string, Promise<SendAnswer>>();
   private readonly answering = new Map<string, Promise<AskReply>>();
@@ -282,6 +288,7 @@ export class ProgramDriver {
 
   constructor(private readonly deps: ProgramDriverDeps) {
     this.now = deps.now ?? (() => Date.now());
+    this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.book = new ProgramAskBook(deps.salt);
     deps.port.onUserItem?.((paneId, requestId) => {
       this.itemTook(paneId, requestId);
@@ -374,13 +381,16 @@ export class ProgramDriver {
    * The program's own pane routes (Steer, Stop, a belt action, an answer on the program's card) write
    * through this, so they take the same lock as a send or an answer of the driver: one write per
    * conversation at a time. A write that meets the lock held is refused as busy before it leaves.
+   * A Stop is the way out of a send that hangs, so it waits for the lock instead, up to the lock's own
+   * time limit: a hung write lets go of the lock at that limit at the latest.
    */
   lockedWrites(adapter: Pick<MuxAdapter, "controlTurn" | "answerAsk">): Pick<MuxAdapter, "controlTurn" | "answerAsk"> {
     const control = adapter.controlTurn?.bind(adapter);
     const answer = adapter.answerAsk?.bind(adapter);
     const out: { -readonly [K in "controlTurn" | "answerAsk"]?: MuxAdapter[K] } = {};
     if (control !== undefined) {
-      out.controlTurn = (paneId, request) => this.underLock(paneId, request.requestId, () => control(paneId, request), (): MuxControlOutcome => ({ kind: "refused", detail: BUSY }));
+      out.controlTurn = (paneId, request) =>
+        this.underLock(paneId, request.requestId, () => control(paneId, request), (): MuxControlOutcome => ({ kind: "refused", detail: BUSY }), request.act === "abort" ? PROGRAM_LOCK_MS : 0);
     }
     if (answer !== undefined) {
       out.answerAsk = (paneId, request) => this.underLock(paneId, request.requestId, () => answer(paneId, request), () => muxRefused(BUSY));
@@ -388,10 +398,15 @@ export class ProgramDriver {
     return out;
   }
 
-  private async underLock<T>(paneId: string, owner: string, work: () => Promise<T>, busy: () => T): Promise<T> {
+  private async underLock<T>(paneId: string, owner: string, work: () => Promise<T>, busy: () => T, waitMs = 0): Promise<T> {
     const lockKey = `${this.deps.session}\u0000${paneId}`;
     const { locks } = this.deps;
-    if (!locks.acquire(lockKey, owner, this.now() + PROGRAM_LOCK_MS, this.now())) return busy();
+    const giveUp = this.now() + waitMs;
+    while (!locks.acquire(lockKey, owner, this.now() + PROGRAM_LOCK_MS, this.now())) {
+      // A lock past its own limit is free to take, so a wait as long as that limit always ends with the lock.
+      if (this.now() > giveUp) return busy();
+      await this.sleep(STOP_RETRY_MS);
+    }
     try {
       return await work();
     } finally {

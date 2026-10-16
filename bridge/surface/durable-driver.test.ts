@@ -14,7 +14,7 @@ import type { AskOutcome, AskReason } from "../../web/src/lib/surface/ask.ts";
 import type { SendOutcome, SendReason } from "../../web/src/lib/surface/send.ts";
 import { askOf, isFree, type Ask } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
-import { contractAsk, PROGRAM_COUNTER_KEY, programRevision, ProgramDriver, type ProgramPort } from "./durable-driver.ts";
+import { contractAsk, PROGRAM_COUNTER_KEY, PROGRAM_LOCK_MS, programRevision, ProgramDriver, type ProgramPort } from "./durable-driver.ts";
 import { SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 
@@ -494,6 +494,27 @@ describe("Review round: session, lock, queued, replay", () => {
     // The lock is free again after the pane route's write.
     state.control = () => Promise.resolve({ kind: "ok", replayed: false });
     expect((await driver.handle({ id: "drv-lock-0002", text: "now", mode: "send" }, TARGET)).receipt?.outcome).toBe("sent");
+  });
+
+  test("Stop waits for the lock of a send that hangs and goes out at the lock's limit; Steer is refused busy", async () => {
+    const { state, port, controls } = fakeProgram();
+    state.status = "working";
+    let clock = Date.now();
+    state.control = () => new Promise(() => undefined); // the send never answers
+    const store = new RequestStore(join(dir, "hung"), () => clock);
+    const driver = new ProgramDriver({ session: TARGET.session, port, store, locks: new SessionLocks(), now: () => clock, sleep: (ms) => Promise.resolve(void (clock += ms)), salt: "s" });
+    void driver.handle({ id: "drv-hang-0001", text: "hangs", mode: "send" }, TARGET);
+    await Bun.sleep(5);
+    expect(controls).toHaveLength(1);
+    const writes = driver.lockedWrites({ ...port, controlTurn: (paneId, request) => (request.act === "abort" ? Promise.resolve({ kind: "ok", replayed: false }) : port.controlTurn(paneId, request)) });
+    const steer = await writes.controlTurn!(PANE, { act: "send", requestId: "steer-0002", target: { kind: "turn", id: "turn-1" }, text: "left", steer: true });
+    expect(steer).toEqual({ kind: "refused", detail: expect.stringContaining("still running") });
+    const started = clock;
+    const stop = await writes.controlTurn!(PANE, { act: "abort", requestId: "stop-0001", target: { kind: "turn", id: "turn-1" } });
+    expect(stop).toEqual({ kind: "ok", replayed: false });
+    // It waited, and no longer than the lock's own limit (plus one retry step).
+    expect(clock - started).toBeGreaterThan(0);
+    expect(clock - started).toBeLessThanOrEqual(PROGRAM_LOCK_MS + 50);
   });
 
   test("queued comes from the read after the write: a turn that ended during the write is not queued", async () => {

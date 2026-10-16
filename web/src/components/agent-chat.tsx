@@ -63,7 +63,7 @@ import { askOptionFor } from "@/lib/ask-reply";
 import { refreshNow } from "@/lib/api";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
-import { focusDialogCard } from "@/lib/dialog-focus";
+import { focusQuestionCard } from "@/lib/dialog-focus";
 import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
@@ -835,9 +835,11 @@ export function AgentChat({
   const programReceipts = gridless && textRouteFor(sendPlace) === "api-send";
   // The dock's box, for the "Answer the dialog" word to scroll to and focus.
   const cardDockRef = useRef<HTMLDivElement>(null);
+  // This chat's own root: the way to a program's question card looks inside it and nowhere else.
+  const chatRootRef = useRef<HTMLDivElement>(null);
   const answerDialog = useCallback(() => {
-    // A program's question card sits in the thread, not in the dock: the first open one takes the focus.
-    if (!focusDialogCard(cardDockRef.current)) focusDialogCard(document.querySelector<HTMLElement>('[data-slot="ask-card"]'));
+    // A program's question card sits in the thread, not in the dock: the first open one in THIS chat takes the focus.
+    focusQuestionCard(cardDockRef.current, chatRootRef.current);
   }, []);
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
@@ -1716,7 +1718,7 @@ export function AgentChat({
           reaches its own cap exactly, so it runs edge to edge, which is a wider mirror and still one
           right edge. app-header.tsx's `wide` claim carries the identical ladder, or the header and
           the mirror stop sharing that edge. */}
-      <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
+      <div ref={chatRootRef} className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
         {/* Header — this route's contribution to the ONE header shell, which is mounted above the
             outlet in RootLayout and is the same element on every screen (so the Collie mark is not
             only identical, it is literally the same drawing, still turning). The pane's own bits are

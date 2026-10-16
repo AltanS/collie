@@ -14,3 +14,14 @@ export function focusDialogCard(dock: HTMLElement | null): boolean {
   first.focus();
   return true;
 }
+
+/**
+ * The way to the open question from a send it refused: the card dock first, then the first question
+ * card of a program inside `chat`, this chat's own root. Never a search of the whole document, so a
+ * second chat on the page (a split view, a page in transition) never takes the focus. Returns whether
+ * a button took focus.
+ */
+export function focusQuestionCard(dock: HTMLElement | null, chat: HTMLElement | null): boolean {
+  if (focusDialogCard(dock)) return true;
+  return focusDialogCard(chat?.querySelector<HTMLElement>('[data-slot="ask-card"]') ?? null);
+}

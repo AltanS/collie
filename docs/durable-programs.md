@@ -375,8 +375,9 @@ words. When a question blocks the send, a button goes to its card. The pane's Re
 shows each receipt, and a queued send says so. Steer and Stop stay on the conversation's own routes,
 because a steer is not part of the Send Protocol. A program on a crew member keeps the
 conversation's own routes for all writes. Each route checks the turn before the text reaches the
-program. All writes to one conversation share one lock. While a send runs, Steer, Stop
-and a card answer are refused as busy.
+program. All writes to one conversation share one lock. While a send runs, Steer and a
+card answer are refused as busy. Stop waits for the lock, at most until its time limit, so a send
+that hangs never keeps Stop out.
 
 ## Versions
 

@@ -1543,6 +1543,46 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(screen.queryByRole("switch", { name: /cache goes cold/i })).toBeNull();
   });
 
+  it("Go to the question focuses the question card of THIS chat, with a second chat mounted (M56 spec 14)", async () => {
+    declaresMux({ paneGrid: false, closePane: true });
+    const question: NonNullable<AgentView["asks"]>[number] = {
+      id: "pa-1",
+      kind: "permission",
+      toolCallId: "tc-1",
+      revision: 1,
+      title: "Save this note?",
+      itemId: "item-1",
+      options: [
+        { id: "save", label: "Save", effect: "allow" },
+        { id: "skip", label: "Don't save", effect: "deny" },
+      ],
+    };
+    server.use(
+      http.post("/api/send", () =>
+        HttpResponse.json({
+          offers: [],
+          receipt: { outcome: "refused", reason: "not_free", keys: [] },
+          surface: { revision: 9, turn: "running", modal: { ask: { id: "ask-0123456789abcd", kind: "permission", options: [{ id: "1", label: "Save" }, { id: "2", label: "Don't save" }], channel: "program", hash: "abc" } }, composer: "empty" },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const first: AgentView = { ...fixtureAgents[0]!, status: "blocked", sendProtocol: true, asks: [question] };
+    const second: AgentView = { ...first, paneId: "w1:p9" };
+    const one = renderChat({ agent: first, agents: [first], paneId: first.paneId, text: "" });
+    const two = renderChat({ agent: second, agents: [second], paneId: second.paneId, text: "" });
+    await waitFor(() => expect(two.container.querySelector('[data-slot="ask-card"]')).not.toBeNull());
+    expect(one.container.querySelector('[data-slot="ask-card"]')).not.toBeNull();
+    const field = within(two.container).getByPlaceholderText("Message this conversation");
+    await user.type(field, "check the logs");
+    await user.click(within(two.container).getByRole("button", { name: "Send" }));
+    await user.click(await within(two.container).findByRole("button", { name: "Go to the question" }));
+    const focused = document.activeElement;
+    expect(focused?.closest('[data-slot="ask-card"]')).not.toBeNull();
+    expect(two.container.contains(focused)).toBe(true);
+    expect(one.container.contains(focused)).toBe(false);
+  });
+
   it("history row: a pane with a screen keeps it, on Herdr's declaration", async () => {
     declaresMux({ paneGrid: true, agentSessionRef: true });
     const user = userEvent.setup();
