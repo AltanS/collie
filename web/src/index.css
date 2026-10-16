@@ -472,18 +472,20 @@
   /* Stretchtext hues (components/markdown-text.tsx, lib/stretch.ts): a closed stretch's underline,
      and the ink of the words an open stretch added and of its «. They are the cc-stretch plugin's own
      palette (0.3.4, hooks/register.tsx), so a reply reads in the same colours in Collie as in the
-     terminal: Claude Code's theme hues warning, autoAccept, planMode and claude, mixed 45% toward the
-     text colour (white in dark, black in light) for `--stretch-N`, and that mixed 35% toward the
-     background (black in dark, white in light) for `--stretch-N-faded`, rounded per channel as the
-     plugin rounds them. The faded form is the open stretches other than the one opened last. */
-  --stretch-1: light-dark(#533b11, #ffdd77);
-  --stretch-1-faded: light-dark(#8f8064, #a6904d);
-  --stretch-2: light-dark(#4a008c, #d3bdff);
-  --stretch-2-faded: light-dark(#8959b4, #897ba6);
-  --stretch-3: light-dark(#003838, #9ac5c0);
-  --stretch-3-faded: light-dark(#597e7e, #64807d);
-  --stretch-4: light-dark(#764130, #e9b4a3);
-  --stretch-4-faded: light-dark(#a68478, #97756a);
+     terminal: Claude Code's theme hues warning, autoAccept, planMode and claude, mixed toward the
+     text colour for `--stretch-N`, and that mixed 35% toward the background for `--stretch-N-faded`,
+     rounded per channel as the plugin rounds them. The faded form is the open stretches other than
+     the one opened last. Dark mixes 45% toward white, as the plugin does. Light mixes only 15% toward
+     black: at the plugin's 45% the four hues sit so close to black body text that they barely read
+     as colour, and 15% keeps the clay hue near 4:1 on white where the raw hue is 3:1. */
+  --stretch-1: light-dark(#805c1a, #ffdd77);
+  --stretch-1-faded: light-dark(#ad956a, #a6904d);
+  --stretch-2: light-dark(#7300d9, #d3bdff);
+  --stretch-2-faded: light-dark(#a459e6, #897ba6);
+  --stretch-3: light-dark(#005757, #9ac5c0);
+  --stretch-3-faded: light-dark(#599292, #64807d);
+  --stretch-4: light-dark(#b7654a, #e9b4a3);
+  --stretch-4-faded: light-dark(#d09b89, #97756a);
 
   /* Syntax colour for the Changes view's diff (components/changes-view.tsx, lib/diff-highlight.ts,
      ADR 0065 rule 7). Six inks, all colour and nothing else: no weight, no italic, so a coloured
