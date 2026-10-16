@@ -299,12 +299,20 @@ describe("every default shape word is today's CSS", () => {
 
   it("radius: sharp is the four 2px steps, now in @theme and no longer in @theme inline", () => {
     for (const [property, value] of wordDeclarations("radius", SURFACE_DEFAULTS.radius)) {
+      if (property === "--edge-accent") continue;
       expect(theme.get(property), property).toBe(value);
       expect(value).toBe("2px");
       expect(inline.has(property), property).toBe(false);
     }
     // The base radius stays where it was, and bare `rounded` and `rounded-full` are not steps.
     expect(root.get("--radius")).toBe("2px");
+  });
+
+  it("radius: sharp's row mark is the left bar every accent used to spell, declared on :root", () => {
+    const edge = new Map(wordDeclarations("radius", SURFACE_DEFAULTS.radius)).get("--edge-accent");
+    expect(edge).toBe("inset 2px 0 0 0");
+    expect(root.get("--edge-accent")).toBe(edge);
+    expect(theme.has("--edge-accent") || inline.has("--edge-accent")).toBe(false);
   });
 
   it("shadow: default is Tailwind's own value for every step the app uses", () => {

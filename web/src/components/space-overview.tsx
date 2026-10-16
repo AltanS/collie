@@ -214,12 +214,14 @@ export function SpaceOverview({
                       // a four-sided border: the box is then identical whether the row is blocked or
                       // not, so the text can't step sideways and the row can't grow. A full border
                       // would also land its bottom edge 1px above the list's own divide-y hairline
-                      // and read as a 2px double line under one row.
+                      // and read as a 2px double line under one row. `--edge-accent` is the radius
+                      // word's: the left rail under square corners, a 2px ring on all four sides
+                      // under soft or round ones (lib/theme/surface.ts), still no layout either way.
                       // 14px, matching every other row in the app: inside a 1px-bordered group
                       // that lands the content on the same x as a card row's content.
-                      "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]",
+                      "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[var(--edge-accent)_transparent]",
                       blocked &&
-                        "bg-status-blocked/5 shadow-[inset_2px_0_0_0_var(--color-status-blocked)]",
+                        "bg-status-blocked/5 shadow-[var(--edge-accent)_var(--color-status-blocked)]",
                     )}
                   >
                     {status ? (

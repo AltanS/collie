@@ -16,7 +16,10 @@
 // others through var(); the five tokens are the ones that end in a property a utility reads at run time.
 //   * radius: `--radius-sm/md/lg/xl`. index.css declares them in `@theme` (not `@theme inline`), so
 //     `rounded-md` compiles to `border-radius: var(--radius-md)`. Bare `rounded` and `rounded-full`
-//     are not steps and never move.
+//     are not steps and never move. The radius word also sets `--edge-accent`, the offsets of the
+//     inset shadow that marks a selected or blocked row (`shadow-[var(--edge-accent)_<colour>]`).
+//     Sharp keeps the 2px bar on the left edge; soft and round draw a 2px ring on all four sides,
+//     because a left accent bar belongs only with square corners.
 //   * shadow: Tailwind copies a shadow's value into the utility, so index.css points each step the app
 //     uses at a property of its own (`--shadow-md: var(--surface-shadow-md)`), and the word sets those.
 //   * density: `--spacing`, the step every `p-*`, `gap-*`, `h-*` and `size-*` multiplies. Icons and
@@ -67,12 +70,18 @@ function shadows(bare: string, xs: string, sm: string, md: string, lg: string, x
   ];
 }
 
-function radii(sm: number, md: number, lg: number, xl: number): Declaration[] {
+/** The left bar a marked row wears under square corners: today's literal. */
+const EDGE_BAR = "inset 2px 0 0 0";
+/** The ring on all four sides a marked row wears under rounded corners, the same 2px. */
+const EDGE_RING = "inset 0 0 0 2px";
+
+function radii(sm: number, md: number, lg: number, xl: number, edge: string): Declaration[] {
   return [
     ["--radius-sm", `${sm}px`],
     ["--radius-md", `${md}px`],
     ["--radius-lg", `${lg}px`],
     ["--radius-xl", `${xl}px`],
+    ["--edge-accent", edge],
   ];
 }
 
@@ -83,9 +92,9 @@ function radii(sm: number, md: number, lg: number, xl: number): Declaration[] {
  */
 export const SURFACE = {
   radius: {
-    sharp: radii(2, 2, 2, 2),
-    soft: radii(4, 6, 8, 12),
-    round: radii(8, 12, 16, 24),
+    sharp: radii(2, 2, 2, 2, EDGE_BAR),
+    soft: radii(4, 6, 8, 12, EDGE_RING),
+    round: radii(8, 12, 16, 24, EDGE_RING),
   },
   shadow: {
     default: shadows(SHADOW.sm, SHADOW.xs, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"]),
