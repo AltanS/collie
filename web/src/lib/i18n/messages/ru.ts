@@ -446,6 +446,16 @@ export const ru: Dictionary = {
   "chat.status.askMismatch": "Выделение не дошло до вашего выбора, поэтому ничего не подтверждено",
   "chat.status.askGone": "Диалог закрылся, Collie снова считал экран",
   "chat.status.askUnknown": "Нет подтверждения отправки ответа, на экране показано текущее состояние",
+  "chat.status.askDesk": "Answered at the desk; your tap was not used", // TODO wordsmith
+  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. The screen shows no dialog for it.", // TODO wordsmith
+  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
+  "chat.hold.desk": "Answered at the desk.", // TODO wordsmith
+  "chat.hold.elsewhere": "Answered on another Collie.", // TODO wordsmith
+  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Nothing was sent.", // TODO wordsmith
   "chat.status.sendFailed": "Сбой отправки",
   "chat.status.wizardChanged": "Мастер изменился, обновление",
   "chat.status.noteSaved": "Заметка сохранена",
@@ -675,7 +685,9 @@ export const ru: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after \"collie hooks install\".", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
+  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
   "paneActions.title.fallback": "Панель",
   "paneActions.settings.label": "Настройки панели",
   "paneActions.readOnly": "Только для чтения: это устройство не авторизовано переименовывать или закрывать панели.",

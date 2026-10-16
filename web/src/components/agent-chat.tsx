@@ -49,6 +49,7 @@ import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
 import { CardDock } from "@/components/card-dock";
+import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
 import { cn } from "@/lib/utils";
@@ -1241,6 +1242,11 @@ export function AgentChat({
           setStatus(t("chat.status.askMismatch"), "warn");
           revalidator.revalidate();
           return false;
+        case "desk":
+          setAskReplaced({ pane: paneId, refused: refusedId, ask: null });
+          setStatus(result.detail ?? t("chat.status.askDesk"), "warn");
+          revalidator.revalidate();
+          return false;
         case "gone":
           setAskReplaced({ pane: paneId, refused: refusedId, ask: null });
           setStatus(t("chat.status.askGone"), "warn");
@@ -1261,6 +1267,23 @@ export function AgentChat({
       }
     },
     [showAfterSend, revalidator, scope, paneId],
+  );
+
+  // Tap an option on the hook card (M56 spec 12): one Answer to the hook-held ask, never a key.
+  const handleHoldAnswer = useCallback(
+    async (index: number) => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return;
+      }
+      if (paneAsk === null || paneAsk.channel !== "hook") return;
+      const option = paneAsk.options[index];
+      if (option === undefined) return;
+      const tap = { card: "prompt-select", index, label: option.label } as const;
+      await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+    },
+    [refuseWrite, paneAsk, paneId, scope, settleAskTap],
   );
 
   // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
@@ -1284,6 +1307,13 @@ export function AgentChat({
       if (action.kind === "option" && asksAnswered && paneAsk !== null && prompt.feedback?.focused !== true) {
         const tap = { card: "prompt-select", index: prompt.options.indexOf(action.option), label: action.option.label } as const;
         if (askOptionFor(paneAsk, tap) !== null) return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+        // A hook-held ask (M56 spec 12) never falls back to keys: a key would answer the held dialog
+        // behind the hook's back. The card and the ask disagree, so nothing is sent.
+        if (paneAsk.channel === "hook") {
+          setStatus(t("chat.hold.cardMismatch"), "warn");
+          revalidator.revalidate();
+          return false;
+        }
         console.info("collie: the card is not the pane's ask, the tap keeps the guarded route");
       }
       const base = {
@@ -1460,6 +1490,12 @@ export function AgentChat({
         const tap = { card: "menu", index, label: menu.actions[index]?.label ?? "" } as const;
         if (askOptionFor(paneAsk, tap) !== null) {
           await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+          return;
+        }
+        // A hook-held ask never falls back to keys (M56 spec 12), as for a prompt card above.
+        if (paneAsk.channel === "hook") {
+          setStatus(t("chat.hold.cardMismatch"), "warn");
+          revalidator.revalidate();
           return;
         }
         console.info("collie: the card is not the pane's ask, the tap keeps the guarded route");
@@ -2603,6 +2639,18 @@ export function AgentChat({
               the statusline strip and the agents footer both need a live input box at the tail, and
               every card means there is none (the completion popup's box has a popup under it, not
               a statusline run). */}
+          {/* A hook-held permission (M56 spec 12): the request a subagent holds with no dialog on the
+              screen, or the outcome note of a held request (Sent, answered at the desk, voided). It
+              sits where the docked card sits, and answers through the same ask route, no key sent. */}
+          {agent?.hold !== undefined && (
+            <HookHoldCard
+              note={agent.hold}
+              ask={paneAsk}
+              screenCard={dialogPresent}
+              disabled={readOnly || gone || !asksAnswered}
+              onAnswer={handleHoldAnswer}
+            />
+          )}
           {display && (
             <CardDock
               ref={cardDockRef}

@@ -497,6 +497,16 @@ export const zh: Dictionary = {
   "chat.status.askMismatch": "高亮未到达你的选择，因此未确认任何内容",
   "chat.status.askGone": "对话框已消失；Collie 重新读取了屏幕",
   "chat.status.askUnknown": "无法证明回答已发出；屏幕显示了实际情况",
+  "chat.status.askDesk": "Answered at the desk; your tap was not used", // TODO wordsmith
+  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. The screen shows no dialog for it.", // TODO wordsmith
+  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
+  "chat.hold.desk": "Answered at the desk.", // TODO wordsmith
+  "chat.hold.elsewhere": "Answered on another Collie.", // TODO wordsmith
+  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Nothing was sent.", // TODO wordsmith
   "chat.status.sendFailed": "发送失败",
   "chat.status.wizardChanged": "向导已变动，正在刷新",
   "chat.status.noteSaved": "笔记已保存",
@@ -705,7 +715,9 @@ export const zh: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after \"collie hooks install\".", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
+  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "窗格",

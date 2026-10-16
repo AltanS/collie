@@ -7,7 +7,7 @@ import { SendReceipts } from "@/components/send-receipts";
 import { useCacheWatch } from "@/hooks/use-cache-watch";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { CacheWatchState } from "@/lib/types";
 
@@ -37,7 +37,7 @@ interface PaneSettingsSheetProps {
    *  an unreachable machine, a multiplexer with no rename), and the ⋮ sheet hides its own the same way. */
   onRename?: () => void;
   /** The pane's hook source (M56 spec 11), from the snapshot. Absent hides the row: an older bridge. */
-  hooks?: "live" | "none";
+  hooks?: "live" | "holds" | "none";
 }
 
 export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks }: PaneSettingsSheetProps) {
@@ -94,8 +94,8 @@ export function PaneSettingsView({
   onToggle: (next: boolean) => void;
   /** The Rename row, above the switch. Absent hides it. */
   onRename?: () => void;
-  /** The pane's hook source (M56 spec 11). Absent hides the row. */
-  hooks?: "live" | "none" | undefined;
+  /** The pane's hook source (M56 spec 11), or `holds` when it holds permissions (M56 spec 12). Absent hides the row. */
+  hooks?: "live" | "holds" | "none" | undefined;
 }) {
   useLocale();
   const globalOn = state?.global === true;
@@ -129,18 +129,29 @@ export function PaneSettingsView({
         />
       </div>
       {/* The hook edges (M56 spec 11): live when the agent's own hooks report from this pane, none
-          when they are not installed or the pane started before the install. A fact, not a switch. */}
+          when they do not. Holds (M56 spec 12) when those hooks also hold permissions for a tap here,
+          so a permission on a pane without it stays a dialog on the screen. A fact, not a switch. */}
       {hooks !== undefined && (
         <div className="px-4">
-          <div className="text-sm font-medium">{t(hooks === "live" ? "paneSettings.hooks.live" : "paneSettings.hooks.none")}</div>
-          <p className="text-xs leading-snug text-muted-foreground">
-            {t(hooks === "live" ? "paneSettings.hooks.liveHint" : "paneSettings.hooks.noneHint")}
-          </p>
+          <div className="text-sm font-medium">{t(HOOKS_LABEL[hooks])}</div>
+          <p className="text-xs leading-snug text-muted-foreground">{t(HOOKS_HINT[hooks])}</p>
         </div>
       )}
     </div>
   );
 }
+
+const HOOKS_LABEL = {
+  live: "paneSettings.hooks.live",
+  holds: "paneSettings.hooks.holds",
+  none: "paneSettings.hooks.none",
+} as const satisfies Record<"live" | "holds" | "none", MessageKey>;
+
+const HOOKS_HINT = {
+  live: "paneSettings.hooks.liveHint",
+  holds: "paneSettings.hooks.holdsHint",
+  none: "paneSettings.hooks.noneHint",
+} as const satisfies Record<"live" | "holds" | "none", MessageKey>;
 
 /**
  * Which sentence sits under the label. The three refusals first, in the order the operator can act on
