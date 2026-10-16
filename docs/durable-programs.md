@@ -19,7 +19,7 @@ A ten-line program, one `collie durable attach`, and a question card on your pho
 You need Collie 1.22.0 or later running on this machine, with your phone paired
 ([Install](install.md)).
 
-A program runs on Linux or macOS, with Node 22.18 or later or Bun 1.4 or later. Install the SDK in
+A program runs on Linux or macOS, with Node 22.19 or later or Bun 1.4 or later. Install the SDK in
 your program's folder:
 
 ```bash
@@ -31,6 +31,9 @@ bun add @colliepwa/durable-sdk@experimental
 The package is published under the npm dist-tag `experimental`, never `latest`, and it follows the
 exit in [ADR 0104](../.adr/0104-a-program-is-a-session.md): if the durable wire goes, the package
 is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+
+The SDK's Pi Durable entry is tested with Pi Durable 1.1.0 and 1.2.0. Node 22.19 is the floor of
+Pi Durable 1.2.0.
 
 Save this program as `hello.mjs`. It is ten lines:
 
@@ -169,6 +172,13 @@ The URL must start with `https://`. The one exception is `http://127.0.0.1:<port
 Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
 too. With no phone open the idle poll runs every 10 s, so Collie asks 8,640 times a day. Check what
 your host's plan allows for that.
+
+A program behind a URL must serve the Collie wire and check the bearer token. A stock Pi Durable
+demo does neither, so Collie cannot attach it as it is.
+
+Collie polls a hosted program. It asks every 2 s while a phone watches, else every 10 s. Each poll
+wakes a hibernating Durable Object, so a hosted object stays awake while Collie watches. The wire
+has no WebSocket, so the hibernation and WebSocket features of Durable Objects do not help here.
 
 The Cloudflare example is parked and is not part of a release. It is in
 `experiments/durable-member-cloudflare/`.
@@ -332,11 +342,56 @@ on you comes first, then the other open conversations, then the closed ones unde
 An open one opens in Chat, and a closed one opens read-only. A program says in its hello what it can
 do (`asks`, `starters`, `send`, `steer`, `abort`, `rename`, `close`, `actions`, `history`,
 `reopen`), and the phone draws a control only for what it said. A program has no screen, so it has
-no Terminal view and no typed keys. [Sessions](sessions.md#what-the-phone-shows) has more.
+no Terminal view and no typed keys.
+
+On a send to a program, the label queued is Collie's own reading of the turn. Collie does not show
+what waits in Pi's inbox. A task that sleeps until a deadline shows as idle or working, never as
+waiting. [Sessions](sessions.md#what-the-phone-shows) has more.
 
 A question card names the program and shows the time left when the program set one. A question
 decided in the program, or timed out, leaves a line in the chat.
 [Programs on the phone](durable-programs-on-the-phone.md) shows each of these with a figure.
+
+## Send and Ask through the bridge
+
+A program has no screen, so Collie reads no screen for it. The bridge reads the program's own state
+instead. A program gets the same Send and Ask as a terminal pane.
+
+- **The state.** The turn comes from the program's pane state. A question comes from its oldest open
+  ask. The input box is always empty, because a program has no box. The phone gets this state with
+  each pane, in the same shape as for a terminal pane.
+- **A send.** `POST /api/send` takes a request id from the phone. The bridge writes the request to
+  disk and locks the conversation. Then it sends the text to the program once, for the turn it read.
+  The program's answer is the proof, and the receipt names the request id the program took. During a
+  turn the program keeps the text for after that turn, and the receipt says `queued`.
+- **The outcomes.** A send ends `sent`, `refused` with a reason, or `unknown`. `unknown` means the
+  program did not say it took the text. Read the chat before you send it again. A send becomes
+  `effective` when the program writes it into the conversation. The program's `user` item names the
+  request id of that send. A plain send is refused while any question is open, even one Collie
+  cannot read. Answer the question, or use Steer or Stop. A turn that started after you looked
+  refuses the send, and nothing reaches the program.
+- **A question.** `POST /api/ask/<id>` answers it. The ask id is for one use only. The answer carries
+  the hash of the question you saw. The bridge compares it with the question the program lists now. When the two differ, nothing reaches the program, and the reply shows the question as it is
+  now. The answer goes to the program by the program's own ask id. No key is ever sent. The receipt
+  says `channel: program` and keeps the hash.
+- **What stays on the card.** Some questions do not fit one tap, so the state shows them as a
+  question Collie cannot read (`modal: unreadable`). You answer them on the program's own card.
+  - A text question stays on the program's own card, because the answer is a line you type.
+  - A choice of several stays on the program's own card, because the answer is more than one pick.
+  - A form stays on the program's own card, because the answer is a set of fields.
+  - Always allow is never a contract option. Its grant lasts after this question. So the program's
+    card asks for a second tap first, and one tap through `/api/ask` must not skip that tap.
+- **The counters.** `collie doctor` counts these reads and outcomes in one row, `program`.
+
+On this machine the phone uses these routes. A plain send goes through `/api/send`, and a tap on the
+question card goes through `/api/ask`. The composer tells the outcome at the thumb in the program's
+words. When a question blocks the send, a button goes to its card. The pane's Recent sends list
+shows each receipt, and a queued send says so. Steer and Stop stay on the conversation's own routes,
+because a steer is not part of the Send Protocol. A program on a crew member keeps the
+conversation's own routes for all writes. Each route checks the turn before the text reaches the
+program. All writes to one conversation share one lock. While a send runs, Steer and a
+card answer are refused as busy. Stop waits for the lock, at most until its time limit, so a send
+that hangs never keeps Stop out.
 
 ## Versions
 

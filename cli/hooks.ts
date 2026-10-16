@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import { BEACON_HOOKS, type HookRegistration } from "./beacon.ts";
+import { cmdCodexHooksInstall, cmdCodexHooksUninstall, codexHooksStatusLine } from "./codex-hooks.ts";
 import { hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext } from "./context.ts";
@@ -56,8 +57,11 @@ import { binaryVersion } from "../bridge/surface/binary-version.ts";
 // an old one missing the field gets it back the next time bytes are compared — no marker bump, because
 // the command string is still exactly what it was.
 
-/** The harnesses that have an emitter. One today; the arg is required so the second needs no new verb. */
-export const HOOK_HARNESSES = ["claude"] as const;
+/**
+ * The harnesses that have an emitter. Claude takes the hooks in its settings files; Codex takes one
+ * notify command in its config.toml (cli/codex-hooks.ts, M56 spec 13).
+ */
+export const HOOK_HARNESSES = ["claude", "codex"] as const;
 
 /** The `hooks` sub-verbs, in the order the usage block prints them. */
 export const HOOKS_SUBCOMMANDS = ["install", "uninstall", "status"] as const;
@@ -596,6 +600,14 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   }
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   const wantsHold = args.includes(HOLD_FLAG);
+  if (harness === "codex") {
+    // Codex has no permission hook to hold: its install writes the notify hook only.
+    if (wantsHold) {
+      deps.io.err(`error: \`codex\` has no permission hold. Run \`collie hooks install codex\` without \`${HOLD_FLAG}\`.`);
+      return EXIT.USAGE;
+    }
+    return cmdCodexHooksInstall(deps, binary, PINNED_NOTE[source]);
+  }
   const hold = wantsHold ? holdInstallFor(harness, binary) : null;
   if (wantsHold && hold === null) {
     deps.io.err(`error: \`${harness}\` has no permission hold.`);
@@ -666,7 +678,9 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
 
 /** `collie hooks uninstall claude` — remove only what carries the marker. */
 export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): number {
-  if (readHarness(deps, args, "uninstall") === null) return EXIT.USAGE;
+  const harness = readHarness(deps, args, "uninstall");
+  if (harness === null) return EXIT.USAGE;
+  if (harness === "codex") return cmdCodexHooksUninstall(deps);
   let failed = false;
   let removed = 0;
 
@@ -770,6 +784,7 @@ export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): n
   for (const target of claudeSettingsTargets(deps.ctx)) {
     deps.io.out(`${target.path}: ${describeTarget(deps, target)}`);
   }
+  deps.io.out(codexHooksStatusLine(deps, binary));
   return EXIT.OK;
 }
 
@@ -828,8 +843,8 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
         deps.io.err(`error: unknown hooks subcommand \`${sub}\``);
       }
       deps.io.err(hooksUsage());
-      deps.io.err("  install     register the beacon hooks: `hooks install claude`, add `--hold-permissions` to hold permissions");
-      deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`");
+      deps.io.err("  install     register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions), or `hooks install codex`");
+      deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`");
       deps.io.err("  status      what each settings file carries right now (reads only)");
       return EXIT.USAGE;
   }

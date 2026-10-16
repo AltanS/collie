@@ -65,7 +65,7 @@ import { askOptionFor } from "@/lib/ask-reply";
 import { refreshNow } from "@/lib/api";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
-import { focusDialogCard } from "@/lib/dialog-focus";
+import { focusQuestionCard } from "@/lib/dialog-focus";
 import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
@@ -120,6 +120,7 @@ import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-ag
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
+import { answerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
@@ -826,11 +827,21 @@ export function AgentChat({
   const surfaceAsk = agent?.surface === undefined ? null : askOf(agent.surface.modal);
   const paneAsk =
     askReplaced !== null && askReplaced.pane === paneId && (surfaceAsk === null || surfaceAsk.id === askReplaced.refused) ? askReplaced.ask : surfaceAsk;
-  const asksAnswered = agent?.sendProtocol === true && isLead(scope);
+  // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
+  const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true };
+  const asksAnswered = answerRouteFor(sendPlace) === "api-ask";
+  // A program pane's taps answer the contract ask its Surface carries, when the card is the oldest open ask.
+  const oldestAsk = agent?.asks?.[0];
+  const programContract = gridless && asksAnswered && surfaceAsk !== null && oldestAsk !== undefined ? { ask: surfaceAsk, oldest: oldestAsk.id } : null;
+  // The session page's Recent sends: a program pane has receipts only where its texts take the Send Protocol.
+  const programReceipts = gridless && textRouteFor(sendPlace) === "api-send";
   // The dock's box, for the "Answer the dialog" word to scroll to and focus.
   const cardDockRef = useRef<HTMLDivElement>(null);
+  // This chat's own root: the way to a program's question card looks inside it and nowhere else.
+  const chatRootRef = useRef<HTMLDivElement>(null);
   const answerDialog = useCallback(() => {
-    focusDialogCard(cardDockRef.current);
+    // A program's question card sits in the thread, not in the dock: the first open one in THIS chat takes the focus.
+    focusQuestionCard(cardDockRef.current, chatRootRef.current);
   }, []);
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
@@ -1759,7 +1770,7 @@ export function AgentChat({
           reaches its own cap exactly, so it runs edge to edge, which is a wider mirror and still one
           right edge. app-header.tsx's `wide` claim carries the identical ladder, or the header and
           the mirror stop sharing that edge. */}
-      <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
+      <div ref={chatRootRef} className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
         {/* Header — this route's contribution to the ONE header shell, which is mounted above the
             outlet in RootLayout and is the same element on every screen (so the Collie mark is not
             only identical, it is literally the same drawing, still turning). The pane's own bits are
@@ -2451,6 +2462,7 @@ export function AgentChat({
                             disabled: readOnly || hostBlock !== undefined || gone,
                             offline: savedCopyWrites || connecting,
                             onSettled: () => revalidator.revalidate(),
+                            contract: programContract,
                           },
                         }
                   }
@@ -2855,6 +2867,8 @@ export function AgentChat({
                     asks={agent?.asks}
                     actions={agent?.actions}
                     status={agent?.status}
+                    sendProtocol={agent?.sendProtocol === true}
+                    revision={agent?.surface?.revision ?? 0}
                     locked={gone || readOnly || hostBlock !== undefined}
                     lockedWhy={
                       gone
@@ -2875,6 +2889,7 @@ export function AgentChat({
                     hand={handOf(prefs)}
                     onSent={onSent}
                     onReload={() => revalidator.revalidate()}
+                    onAnswerDialog={answerDialog}
                   />
                 ) : (
                 <Composer
@@ -3105,8 +3120,9 @@ export function AgentChat({
           // The settings row, opened from the ⋮ for the reason zen is: the header's Action slot is
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.
-          // Not on a pane with no screen: its one switch warns about a prompt cache a program does not have.
-          onSettings={gridless ? undefined : () => setDrawer("paneSettings")}
+          // On a pane with no screen only for its Recent sends: the cache switch is not drawn there, because a
+          // program has no prompt cache to warn about (M56 spec 14).
+          onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
@@ -3134,6 +3150,7 @@ export function AgentChat({
           paneId={paneId}
           scope={scope}
           hooks={agent?.hooks}
+          program={gridless}
           // The header's name tap lands here, so the row that edits the name is here too. It hands
           // over to the ⋮ sheet's rename view in one event. Hidden where that view cannot save: a
           // read-only device, an unreachable machine, a multiplexer with no rename.

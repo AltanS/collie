@@ -95,6 +95,8 @@ export interface SendRequestBody {
   readonly rowsHash?: string | undefined;
   /** The extra confirm of the cap (M56 spec 09): true on a commit the person made after an answer that carried `cap`. */
   readonly capAck?: boolean | undefined;
+  /** The Surface revision the phone showed. A program pane refuses `stale_surface` when its turn moved since (M56 spec 14). */
+  readonly revision?: number | undefined;
 }
 
 /**
@@ -163,6 +165,12 @@ export interface SendReceipt {
    * profile says Enter queues while running). Absent on every other receipt.
    */
   readonly queued?: true;
+  /**
+   * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
+   * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
+   * every send into a screen.
+   */
+  readonly acknowledged?: string;
 }
 
 /**

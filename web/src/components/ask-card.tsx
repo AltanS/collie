@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
-import { answerAsk, apiErrorStatus } from "@/lib/api";
+import { answerAsk, apiErrorStatus, postAskAnswer } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import {
@@ -33,6 +33,7 @@ import {
   type FormDraft,
 } from "@/lib/ask";
 import { timeLeft } from "@/lib/format";
+import { answerOfAskReply, contractOptionFor, type ProgramContractAsk } from "@/lib/program-ask";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import { onBridgeClock } from "@/lib/server-clock";
@@ -63,6 +64,12 @@ import { mintRequestId } from "@/lib/worktree-name";
 // cleaned and capped them; a card of a kind this version does not know is drawn with its words and
 // no buttons.
 //
+// THE SEND PROTOCOL ON THIS MACHINE (M56 spec 14). When the pane's Surface carries a contract ask for
+// this card (the program's oldest open ask, on a pane of this machine the bridge marks `sendProtocol`),
+// a one-tap answer goes to `POST /api/ask/<id>` with the contract's hash and numbered option, and the
+// bridge's structured driver answers the program by its own ask id. The card and its states stay the
+// same. A text, a form, a choice of several and "Always allow" keep the answer route (lib/program-ask.ts).
+//
 // THE RECEIPTS (M55 spec 14). The caption names the program that asks, by its session's name. An ask
 // with `expiresAt` shows the time left under its title, on the page's one shared clock
 // (lib/cache-clock.ts) moved onto the bridge's (lib/server-clock.ts): the bridge drops the ask at
@@ -88,9 +95,11 @@ export interface AskCardProps {
   offline?: boolean;
   /** An answer reached the bridge and changed what is current (taken, too late, stale): read the pane again. */
   onSettled?: () => void;
+  /** The contract ask the pane's Surface carries, on a pane whose taps go to `POST /api/ask` (lib/send-path.ts). */
+  contract?: ProgramContractAsk | null;
 }
 
-export function AskCard({ ask, paneId, scope, disabled = false, offline = false, onSettled }: AskCardProps) {
+export function AskCard({ ask, paneId, scope, disabled = false, offline = false, onSettled, contract = null }: AskCardProps) {
   useLocale();
   const session = useSessionCard(scope);
   // A program's ask names the program; a terminal pane's card keeps the plain caption.
@@ -117,9 +126,14 @@ export function AskCard({ ask, paneId, scope, disabled = false, offline = false,
     const requestId = again && card.requestId !== null ? card.requestId : mintRequestId();
     const tappedFrom = from;
     setCard(sent(tappedFrom, answer, requestId));
+    // A one-tap answer to the contract ask goes through the Send Protocol's Ask; anything else keeps the answer route.
+    const viaAsk = contract !== null && "optionId" in answer ? contractOptionFor(tappedFrom.ask, contract, answer.optionId) : null;
     let result: AnswerResult;
     try {
-      result = await answerAsk(paneId, { requestId, askId: tappedFrom.ask.id, revision: tappedFrom.ask.revision, ...answer }, scope);
+      result =
+        contract !== null && viaAsk !== null
+          ? answerOfAskReply(await postAskAnswer(contract.ask.id, { pane: paneId, hash: contract.ask.hash, optionId: viaAsk, origin: "person_tap" }, scope))
+          : await answerAsk(paneId, { requestId, askId: tappedFrom.ask.id, revision: tappedFrom.ask.revision, ...answer }, scope);
     } catch (error) {
       result = thrownAnswer(apiErrorStatus(error), describeThrownError(error));
     }
@@ -176,83 +190,86 @@ export function AskCardFace({ card, program, disabled = false, offline = false, 
   const note = noteFor(card, offline);
 
   return (
-    <PromptPanel ariaLabel={shown.title}>
-      <OptionGroupCaption>{program !== null ? t("ask.captionNamed", { name: program }) : t("ask.caption")}</OptionGroupCaption>
-      <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
-        {shown.title}
-      </p>
-      {shown.expiresAt !== undefined ? <AskExpiry expiresAt={shown.expiresAt} /> : null}
-      {shown.reason !== undefined ? (
-        <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
-          {shown.reason}
+    // The slot is how the composer's "Go to the question" finds the card (lib/dialog-focus.ts).
+    <div data-slot="ask-card">
+      <PromptPanel ariaLabel={shown.title}>
+        <OptionGroupCaption>{program !== null ? t("ask.captionNamed", { name: program }) : t("ask.caption")}</OptionGroupCaption>
+        <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
+          {shown.title}
         </p>
-      ) : null}
-      {shown.cleaned === true ? (
-        <p data-slot="ask-cleaned" className="pl-0.5 text-xs leading-snug text-muted-foreground">
-          {t("ask.cleaned")}
-        </p>
-      ) : null}
-      {shown.tool !== undefined ? (
-        <p
-          data-slot="ask-tool"
-          className="rounded-lg border border-border/60 bg-muted/30 px-2 py-1 font-mono text-xs leading-snug wrap-anywhere"
-        >
-          <span className="font-medium text-foreground">{shown.tool.name}</span>
-          {shown.tool.summary !== "" ? <span className="text-muted-foreground"> {shown.tool.summary}</span> : null}
-        </p>
-      ) : null}
-      {note !== null ? (
-        <p data-slot="ask-note" role="status" className="pl-0.5 text-xs leading-snug text-muted-foreground wrap-anywhere">
-          {note}
-        </p>
-      ) : null}
-      {canAnswer && shown.kind === "choice" ? (
-        <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => onSend(answer, false)} />
-      ) : canAnswer && shown.kind === "text" ? (
-        <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
-      ) : canAnswer && shown.kind === "form" ? (
-        <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
-      ) : canAnswer ? (
-        <div className="flex flex-col gap-1">
-          {options.map((option) => {
-            const inFlight = busy && card.optionId === option.id;
-            const effect = option.effect ?? "cancel"; // visibleOptions keeps only options with an effect
-            // Collie's words lead; the program's own label is the quiet second line (lib/ask.ts).
-            const main = card.armed === option.id ? t("ask.alwaysArmed", { tool: shown.tool?.name ?? "" }) : t(effectKey(effect));
-            return (
-              <OptionButton
-                key={option.id}
-                tone={inFlight ? "busy" : optionTone(option.effect)}
-                label={main}
-                description={secondaryLabel(option.label, t(effectKey(effect)))}
-                disabled={frozen}
-                onClick={() => onPress(option)}
-                trailing={
-                  inFlight ? (
-                    <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
-                  ) : null
-                }
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <p data-slot="ask-not-answerable" className="pl-0.5 text-xs leading-snug text-muted-foreground">
-          {t("ask.notAnswerable")}
-        </p>
-      )}
-      {retryAnswer !== null ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11"
-          disabled={disabled || offline}
-          onClick={() => onSend(retryAnswer, true)}
-        >
-          {t("ask.retry")}
-        </Button>
-      ) : null}
-    </PromptPanel>
+        {shown.expiresAt !== undefined ? <AskExpiry expiresAt={shown.expiresAt} /> : null}
+        {shown.reason !== undefined ? (
+          <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
+            {shown.reason}
+          </p>
+        ) : null}
+        {shown.cleaned === true ? (
+          <p data-slot="ask-cleaned" className="pl-0.5 text-xs leading-snug text-muted-foreground">
+            {t("ask.cleaned")}
+          </p>
+        ) : null}
+        {shown.tool !== undefined ? (
+          <p
+            data-slot="ask-tool"
+            className="rounded-lg border border-border/60 bg-muted/30 px-2 py-1 font-mono text-xs leading-snug wrap-anywhere"
+          >
+            <span className="font-medium text-foreground">{shown.tool.name}</span>
+            {shown.tool.summary !== "" ? <span className="text-muted-foreground"> {shown.tool.summary}</span> : null}
+          </p>
+        ) : null}
+        {note !== null ? (
+          <p data-slot="ask-note" role="status" className="pl-0.5 text-xs leading-snug text-muted-foreground wrap-anywhere">
+            {note}
+          </p>
+        ) : null}
+        {canAnswer && shown.kind === "choice" ? (
+          <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => onSend(answer, false)} />
+        ) : canAnswer && shown.kind === "text" ? (
+          <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
+        ) : canAnswer && shown.kind === "form" ? (
+          <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
+        ) : canAnswer ? (
+          <div className="flex flex-col gap-1">
+            {options.map((option) => {
+              const inFlight = busy && card.optionId === option.id;
+              const effect = option.effect ?? "cancel"; // visibleOptions keeps only options with an effect
+              // Collie's words lead; the program's own label is the quiet second line (lib/ask.ts).
+              const main = card.armed === option.id ? t("ask.alwaysArmed", { tool: shown.tool?.name ?? "" }) : t(effectKey(effect));
+              return (
+                <OptionButton
+                  key={option.id}
+                  tone={inFlight ? "busy" : optionTone(option.effect)}
+                  label={main}
+                  description={secondaryLabel(option.label, t(effectKey(effect)))}
+                  disabled={frozen}
+                  onClick={() => onPress(option)}
+                  trailing={
+                    inFlight ? (
+                      <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <p data-slot="ask-not-answerable" className="pl-0.5 text-xs leading-snug text-muted-foreground">
+            {t("ask.notAnswerable")}
+          </p>
+        )}
+        {retryAnswer !== null ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11"
+            disabled={disabled || offline}
+            onClick={() => onSend(retryAnswer, true)}
+          >
+            {t("ask.retry")}
+          </Button>
+        ) : null}
+      </PromptPanel>
+    </div>
   );
 }
 

@@ -214,13 +214,14 @@ import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
+import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
-import { loadProfiles, profileFor, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -1239,6 +1240,8 @@ interface BuiltAdapter {
   readonly adapter: MuxAdapter;
   readonly target: MuxTarget;
   readonly probe?: ProgramProbe;
+  /** A program's structured state and its two writes, for the structured driver (M56 spec 14). */
+  readonly structured?: ProgramPort;
 }
 
 /** The adapter for one terminal session, exactly as every session was built before programs. */
@@ -1261,7 +1264,7 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   const logDir = sourceLogDir(cfg.stateDir, source.name);
   const target: MuxTarget = { endpoint: "", timeoutMs: DEFAULT_TIMEOUT_MS, options: { [DURABLE_LOG_DIR_OPTION]: logDir } };
   const program = createDurableMux(sourceTransportEnv(source), target.options);
-  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() } };
+  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() }, structured: program };
 }
 
 // The Send Protocol's request store (M56 spec 05), one for the bridge, under the state directory.
@@ -1321,9 +1324,9 @@ const holdServer =
 const sendVersions = new VersionCache();
 /** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
 async function sendProfile(harness: string): Promise<ProfileMatch | null> {
-  const profile = loadProfiles().get(harness);
+  const profile = findProfile(loadProfiles(), harness);
   if (profile === undefined) return null;
-  return profileFor(profile.id, await sendVersions.versionOf(profile));
+  return profileForPlatform(profile.id, await sendVersions.versionOf(profile), HOST.platform);
 }
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
@@ -1474,6 +1477,15 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     sends && sendStore !== null && askBook !== undefined
       ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
       : undefined;
+  // The structured driver (M56 spec 14): a program session's Surface, Send and Ask from its structured
+  // state, with the Send Protocol on. It is the one driver of its session; no screen fold runs beside it.
+  const driver =
+    sendStore !== null && endpoint.kind === "program" && built.structured !== undefined
+      ? new ProgramDriver({ session: name, port: built.structured, store: sendStore, locks, ledger: surfaceLedger ?? undefined })
+      : undefined;
+  // One driver per session: a program session has no screen fold, and a terminal session no structured driver.
+  if (driver !== undefined && surface !== undefined) throw new Error(`session ${name}: a screen Surface and the structured driver must never both run`);
+  if (driver !== undefined) engine.onUpdate((s) => driver.observe(s.agents.map((agent) => agent.paneId)));
 
   // This session's hook-held permissions (M56 spec 12): one book beside the ask book. The ask book
   // asks it first on every read of a pane with a live hold, so no keys ask is minted for that dialog.
@@ -1550,7 +1562,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const withSurface = surface === undefined ? withHooks : { ...withHooks, surface };
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
   const withAsks = asks === undefined ? withSend : { ...withSend, asks };
-  return hold === undefined ? withAsks : { ...withAsks, hold };
+  const withHold = hold === undefined ? withAsks : { ...withAsks, hold };
+  return driver === undefined ? withHold : { ...withHold, driver };
 };
 
 const registry = new SessionRegistry({

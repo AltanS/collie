@@ -1,0 +1,50 @@
+{
+  "$comment": "M44 spec 05, used by the nightly lab (M56 spec 10). The commands the lab may send to an agent while it walks the agent's own slash menu. A command on `safe` only shows a screen: a dialog the lab closes with Escape, or one line of output. It starts no model turn, writes no setting of the person and installs nothing. `opens` says what the lab expects: `dialog` (a screen that must never read as a free box) or `inline` (a line of output, then a free box). A command the agent lists that is on neither list is reported as unclassified and is never sent. A command on `unsafe` is never sent. Add a command here only after you opened it by hand in a throwaway session and saw what it does. The lists cover Claude Code. Another harness has no entry, and the lab walks no slash command there.",
+  "claude": {
+    "safe": [
+      { "command": "/help", "opens": "dialog", "reason": "A read-only panel of shortcuts." },
+      { "command": "/status", "opens": "dialog", "reason": "A read-only panel of account, model and settings." },
+      { "command": "/model", "opens": "dialog", "reason": "The model picker. The lab closes it with Escape and never confirms a model." },
+      { "command": "/effort", "opens": "dialog", "reason": "The effort slider. The lab closes it with Escape and never confirms a level." },
+      { "command": "/context", "opens": "inline", "reason": "Prints the context use as output." },
+      { "command": "/permissions", "opens": "dialog", "reason": "The permission rules. The lab adds no rule." },
+      { "command": "/hooks", "opens": "dialog", "reason": "A read-only list of hooks." },
+      { "command": "/memory", "opens": "dialog", "reason": "The memory picker. The lab closes it with Escape and opens no file." },
+      { "command": "/mcp", "opens": "inline", "reason": "The lab starts Claude with an empty MCP config, so Claude prints that no server is set up. It opens no list." },
+      { "command": "/theme", "opens": "dialog", "reason": "The theme picker. The lab closes it with Escape and never confirms a theme." },
+      { "command": "/tasks", "opens": "dialog", "reason": "The background task list." },
+      { "command": "/plugin", "opens": "dialog", "reason": "The plugin browser. The lab installs nothing." },
+      { "command": "/skills", "opens": "dialog", "reason": "A read-only list of skills." },
+      { "command": "/resume", "opens": "dialog", "reason": "The session list. The lab resumes nothing." },
+      { "command": "/rewind", "opens": "dialog", "reason": "The checkpoint list. The lab closes it with Escape and restores nothing." },
+      { "command": "/usage", "opens": "dialog", "reason": "A read-only usage panel." },
+      { "command": "/release-notes", "opens": "dialog", "reason": "A read-only list of release notes." },
+      { "command": "/sandbox", "opens": "dialog", "reason": "The sandbox mode picker. The lab closes it with Escape and never confirms a mode." },
+      { "command": "/list-agents", "opens": "inline", "reason": "Prints the running agents as output." }
+    ],
+    "unsafe": [
+      { "command": "/privacy-settings", "reason": "An account setting kept on the server. The dialog can change it, so the walk never opens it." },
+      { "command": "/clear", "reason": "Erases the conversation." },
+      { "command": "/compact", "reason": "Rewrites the conversation and starts a model turn." },
+      { "command": "/logout", "reason": "Ends the login." },
+      { "command": "/login", "reason": "Starts a login flow." },
+      { "command": "/init", "reason": "Starts a model turn and writes a file." },
+      { "command": "/review", "reason": "Starts a model turn." },
+      { "command": "/config", "reason": "Opens the settings and writes them on a toggle." },
+      { "command": "/doctor", "reason": "A skill: it starts a model turn that runs shell commands." },
+      { "command": "/ide", "reason": "Installs an editor extension." },
+      { "command": "/color", "reason": "Writes a setting." },
+      { "command": "/exit", "reason": "Ends the agent." },
+      { "command": "/terminal-setup", "reason": "Edits the terminal's own config." },
+      { "command": "/export", "reason": "Writes a file." },
+      { "command": "/rename", "reason": "Writes a session name." },
+      { "command": "/import", "reason": "Reads and writes another agent's config." },
+      { "command": "/upgrade", "reason": "Opens an account page and changes a plan." },
+      { "command": "/install-github-app", "reason": "Changes a repository." },
+      { "command": "/install-slack-app", "reason": "Changes a workspace." },
+      { "command": "/web-setup", "reason": "Starts an account flow." },
+      { "command": "/remote-control", "reason": "Opens a network session." },
+      { "command": "/keybindings", "reason": "Writes a file and opens an editor." }
+    ]
+  }
+}

@@ -17,6 +17,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
+import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
 import { readSendCap, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -140,6 +141,9 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (cap === null) return undefined;
   // `queued` is true or absent; anything else is not a receipt this module wrote.
   if (node.queued !== undefined && node.queued !== true) return undefined;
+  // `acknowledged` is a request id or absent (a program session's send, M56 spec 14).
+  const acknowledged = node.acknowledged === undefined ? undefined : asJsonString(node.acknowledged);
+  if (node.acknowledged !== undefined && (acknowledged === undefined || !REQUEST_ID.test(acknowledged))) return undefined;
   const gapsMs: Partial<Record<SendStep, number>> = {};
   for (const step of STEPS) {
     const gap = asJsonNumber(gapsNode[step]);
@@ -168,6 +172,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (reason !== undefined) whole.reason = reason;
   if (cap !== undefined) whole.cap = cap;
   if (node.queued === true) whole.queued = true;
+  if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   return whole;
 }
 
@@ -222,6 +227,8 @@ function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
   if (kind === undefined || outcome === undefined || node.origin !== "person_tap") return undefined;
   if (check === undefined || readBack === undefined || after === undefined || keys === undefined || keys.some((key) => key === undefined)) return undefined;
   if (node.reason !== undefined && reason === undefined) return undefined;
+  const channel = node.channel === undefined ? undefined : pick(node.channel, ASK_CHANNELS);
+  if (node.channel !== undefined && channel === undefined) return undefined;
   const receipt: AskReceipt = {
     askId: fields.askId!,
     session: fields.session!,
@@ -238,12 +245,11 @@ function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
     keys: keys.filter((key): key is string => key !== undefined),
     outcome,
   };
-  // The two hook fields (M56 spec 12): a hook-held ask names its channel and the decision it sent.
+  const withReason = reason === undefined ? receipt : { ...receipt, reason };
+  const withChannel = channel === undefined ? withReason : { ...withReason, channel };
+  // A hook-held ask (M56 spec 12) also names the decision it sent.
   const decision = node.decision === "allow" || node.decision === "deny" ? node.decision : undefined;
-  let hooked: AskReceipt = receipt;
-  if (node.channel === "hook") hooked = { ...hooked, channel: "hook" };
-  if (node.channel === "hook" && decision !== undefined) hooked = { ...hooked, decision };
-  return reason === undefined ? hooked : { ...hooked, reason };
+  return channel === "hook" && decision !== undefined ? { ...withChannel, decision } : withChannel;
 }
 
 /** An ask record read back from its file, every field checked; null when it is not one this module wrote. */

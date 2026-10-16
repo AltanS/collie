@@ -150,8 +150,8 @@ export function parseBeacon(text: string): BeaconRecord | null {
   return { schemaVersion, harness, session, status, pid, pidStartTime, markers, heartbeatMs };
 }
 
-/** A hook event name: letters only, short. */
-const EDGE_EVENT = /^[A-Za-z]{1,64}$/u;
+/** A hook event name: letters, and inner dashes for a notify event (`agent-turn-complete`), short. */
+const EDGE_EVENT = /^[A-Za-z](?:[A-Za-z-]{0,62}[A-Za-z])?$/u;
 /** One detail of an event (a notification type): lower case and underscores, short. */
 const EDGE_DETAIL = /^[a-z_]{1,64}$/u;
 /** A harness name shaped like a registry key. */

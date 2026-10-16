@@ -12,7 +12,7 @@
 
 import { asJsonObject, asJsonString, type JsonValue } from "../json";
 import type { ReadMark } from "./send";
-import type { Ask, AskKind, Surface } from "./surface";
+import type { Ask, AskChannel, AskKind, Surface } from "./surface";
 
 /** What the phone posts to `POST /api/ask/<id>`: the contract's Answer, plus the pane it is for. */
 export interface Answer {
@@ -94,8 +94,11 @@ export interface AskReceipt {
   readonly keys: readonly string[];
   readonly outcome: AskOutcome;
   readonly reason?: AskReason;
-  /** `hook` for a hook-held permission (M56 spec 12): no key is ever sent, `keys` stays empty. */
-  readonly channel?: "hook";
+  /**
+   * How the answer went out, when it is not the screen's keys: `hook` for a hook-held permission (M56
+   * spec 12, no key is ever sent, `keys` stays empty), `program` for a program session (M56 spec 14).
+   */
+  readonly channel?: AskChannel;
   /** The decision that went to the hook, for a hook-held ask that reached it. */
   readonly decision?: "allow" | "deny";
 }

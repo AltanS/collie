@@ -27,7 +27,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { capSentence, offerMode, type SendNote, type SendReading } from "@/lib/send-protocol";
+import { offerMode } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, UNREAD_SURFACE, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
@@ -79,6 +79,7 @@ import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
 import { useSttRecorder } from "@/hooks/use-stt-recorder";
 import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
+import { phoneRefusal, readingRefusal, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -325,38 +326,6 @@ interface ClearedDraft {
   caret: number | null;
 }
 
-/** The sentence for an answer that did not send: the bridge's verdict, then what it saw on the screen. */
-function answerSentence(reading: SendReading): string {
-  // The cap's sentence names the count, the harness and its version (M56 spec 09).
-  const note =
-    reading.cap === null
-      ? translate(`composer.protocol.${reading.note}`)
-      : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirm", vars));
-  // A draft refusal already says what the screen held, and "The agent is working" already says the turn runs.
-  if (reading.surface === null || reading.note === "draft" || reading.note === "agentBusy") return note;
-  return `${note} ${translate(`composer.surface.${reading.surface}`)}`;
-}
-
-/** What the Send slot's notice says about the last send, and where it points. */
-interface SendRefusal {
-  readonly sentence: string;
-  /** The bridge's own words under the sentence, or null. */
-  readonly detail: string | null;
-  /** The screen holds an ask or an overlay Collie cannot read: a button goes to its card. */
-  readonly toCard: boolean;
-  /** The next move is reading the screen: a button shows the raw rows. */
-  readonly screen: boolean;
-  /** `neutral` for an outcome that is not a failure (a discard), `caution` for the rest. */
-  readonly tone: "caution" | "neutral";
-}
-
-/** The answers whose next move is to read the screen before anything else (the spec's "read the screen, then send again"). */
-const READ_THE_SCREEN: ReadonlySet<SendNote> = new Set<SendNote>(["unknown", "unconfirmed", "capConfirm", "moved", "probeFailed"]);
-
-/** A sentence the phone itself raised before the bridge was asked (a link that is down, a dialog that owns the keys). */
-function phoneRefusal(sentence: string, toCard = false): SendRefusal {
-  return { sentence, detail: null, toCard, screen: false, tone: "caution" };
-}
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
@@ -1161,14 +1130,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return true;
       }
       setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
-      const sentence = answerSentence(reading);
-      setSendRefusal({
-        sentence,
-        detail: reading.detail,
-        toCard: reading.toCard,
-        screen: READ_THE_SCREEN.has(reading.note),
-        tone: reading.note === "discarded" ? "neutral" : "caution",
-      });
+      setSendRefusal(readingRefusal(reading));
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.
@@ -1868,11 +1830,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             desk can free. */}
         <Collapse open={refusalShown}>
           {sendRefusal !== null && (
-            <Notice
-              tone={sendRefusal.tone}
-              variant="box"
-              className="mb-2"
-              icon={sendRefusal.tone === "caution" ? <TriangleAlert /> : <Check />}
+            <SendRefusalNotice
+              refusal={sendRefusal}
               action={
                 refusalCard || refusalScreen || refusalKeys ? (
                   <span className="flex flex-wrap justify-end gap-1">
@@ -1894,14 +1853,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   </span>
                 ) : undefined
               }
-            >
-              <span data-slot="composer-refusal">{sendRefusal.sentence}</span>
-              {sendRefusal.detail !== null && (
-                <span data-slot="composer-refusal-detail" className="block text-muted-foreground">
-                  {sendRefusal.detail}
-                </span>
-              )}
-            </Notice>
+            />
           )}
         </Collapse>
         {/* Why a destructive line waits for a second tap: said here, beside the "Really send?" word, and

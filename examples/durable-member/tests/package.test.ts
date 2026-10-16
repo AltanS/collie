@@ -10,11 +10,11 @@ const pkg = JSON.parse(readFileSync(`${PKG_DIR}package.json`, "utf8"));
 const ENTRIES = [".", "./node", "./bun", "./pi", "./core"];
 
 describe("the package", () => {
-  test("is @colliepwa/durable-sdk, an ES module with no side effects, for Node 22.18 or later", () => {
+  test("is @colliepwa/durable-sdk, an ES module with no side effects, for Node 22.19 or later", () => {
     expect(pkg.name).toBe("@colliepwa/durable-sdk");
     expect(pkg.type).toBe("module");
     expect(pkg.sideEffects).toBe(false);
-    expect(pkg.engines).toEqual({ node: ">=22.18" });
+    expect(pkg.engines).toEqual({ node: ">=22.19" });
     expect(pkg.license).toBe("MIT");
     expect(pkg.private).toBeUndefined();
   });

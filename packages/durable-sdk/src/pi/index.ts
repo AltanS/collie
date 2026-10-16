@@ -3,8 +3,9 @@
 // options. It uses the SDK's handles and nothing else: a conversation becomes a pane, `watchEvents` becomes events and
 // state, a `beforeTool` hook becomes an ask, send and stop become `submit` and `abort`.
 //
-// It is written against @earendil-works/pi-durable 1.1.0. Two calls need that line: `entries({ order })` and
-// `scanConversations`; on 1.0.x they do not type-check, so pin 1.1.0 or later. The three Pi packages it imports are
+// It is written for @earendil-works/pi-durable 1.1.0 and 1.2.0, and the tests run on both. Two calls need 1.1.0:
+// `entries({ order })` and `scanConversations`; on 1.0.x they do not type-check, so pin 1.1.0 or later. Where 1.2.0 broke
+// a shape (a tool result's `content` became `output`), the code writes both. A session that fails (1.2.0) is reported. The three Pi packages it imports are
 // optional peer dependencies of the package: a program that never imports `./pi` installs none of them.
 // Erasable TypeScript only (no parameter properties, no enums), so Node runs it as it is.
 
@@ -28,6 +29,7 @@ import {
   type MessageChange,
   type SnapshotEvent,
   type SubmissionRecord,
+  type ToolExecutionResult,
   ToolTask,
   watchEvents,
 } from "@earendil-works/pi-durable";
@@ -596,7 +598,23 @@ export async function showConversation(
   stream.start(async (events) => {
     mapper.applyAll(events);
   });
+  // Pi Durable 1.2.0 closes the Session on any storage error, and every watch then ends with "session_failed". The pane
+  // would stop moving with no word, so the end is reported: a notice on the pane, and the error on the host's log.
+  void stream.closed.then((end) => reportWatchEnd(pane, conversation.id, end));
   return pane;
+}
+
+/**
+ * A watch that ended by failure shows as a notice and goes to `console.error`. A stop or a close ends it with no word:
+ * the host asked for those. `listener_error` exists in 1.1.0 too; `session_failed` only from 1.2.0 on, so the reason
+ * is read as text, which both versions' types accept.
+ */
+export function reportWatchEnd(pane: PaneHandle, id: ConversationId, end: { reason: string; error?: unknown }): void {
+  if (end.reason !== "session_failed" && end.reason !== "listener_error") return;
+  const what = end.error instanceof Error ? end.error.message : String(end.error);
+  console.error(`pi-durable: the watch of conversation ${id} ended, ${end.reason}:`, end.error);
+  const text = end.reason === "session_failed" ? `the session failed: ${what}` : `the pane stopped updating: ${what}`;
+  pane.event({ type: "item", item: { id: safeId(`watch-end:${id}`), ts: new Date().toISOString(), kind: "notice", text } });
 }
 
 /** The text of a conversation's first message, or undefined before it has one. A start names a pane from it. */
@@ -835,8 +853,19 @@ const timeoutOf = (e: Error): undefined => {
   throw e;
 };
 
+/**
+ * A tool's answer to the model, in both shapes Pi Durable has used: 1.1.0 reads `content`, 1.2.0 renamed it `output`
+ * and ignores `content`. Each version ignores the other's field at run time. The result is returned from a variable, not
+ * a literal, so neither version's type check rejects the field it does not know.
+ */
+export function toolResult(text: string, extra: { isError?: true; details?: ToolExecutionResult["details"] } = {}) {
+  const content = [{ type: "text" as const, text }];
+  const result = { content, output: content, ...extra };
+  return result;
+}
+
 /** A tool's answer to the model: one text block. */
-const toolReply = (text: string) => ({ content: [{ type: "text" as const, text }] });
+const toolReply = (text: string) => toolResult(text);
 
 /**
  * `ask_queue` (a choice: which team takes the ticket) and `ask_customer` (a text ask: the line for the customer):
@@ -856,7 +885,7 @@ export function askTools(o: {
   const expires = (): { expiresAt?: Date } => (o.timeoutMs === undefined ? {} : { expiresAt: new Date(Date.now() + o.timeoutMs) });
   const timedOut = (tool: string, title: string) => {
     o.onTimeout?.(tool, title);
-    return { content: [{ type: "text" as const, text: "timed out" }], isError: true };
+    return toolResult("timed out", { isError: true });
   };
   const ask = async <A>(api: { conversationId: ConversationId; callId: string }, raise: (pane: PaneHandle, id: string) => Promise<A>): Promise<A> => {
     const pane = o.panes.get(api.conversationId);
@@ -948,7 +977,7 @@ export function spawnHelperTool(o: HelperOptions) {
       const entry = await api.commit((tx) => tx.entry(AssistantEntry, settled.answer), ctx);
       const text = textOf(entry?.model?.[0]?.content ?? "");
       await o.done?.(child, pane);
-      return { content: [{ type: "text", text }], details: { conversationId: child } };
+      return toolResult(text, { details: { conversationId: child } });
     },
   });
 }

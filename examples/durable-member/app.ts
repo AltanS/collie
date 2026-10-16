@@ -35,6 +35,7 @@ import {
   riskGuard,
   showConversation,
   spawnHelperTool,
+  toolResult,
 } from "./pi-durable/index.ts";
 import { CASE_IDS, CASES, type CaseId, customerFor, INSTRUCTIONS, lookOf, noteAsk, REAL_INSTRUCTIONS, ticketText, useScriptedModel } from "./script.ts";
 import { ClosedStore, CredentialFile, TitleStore } from "./state.ts";
@@ -169,7 +170,7 @@ export async function startApp(o: AppOptions): Promise<App> {
     parameters: Type.Object({ note: Type.String() }),
     execute: async (args) => {
       appendFileSync(notes, `${new Date().toISOString()} ${args.note}\n`);
-      return { content: [{ type: "text", text: "note saved" }] };
+      return toolResult("note saved");
     },
   });
   const triageTools: Extension = defineExtension({

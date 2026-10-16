@@ -579,6 +579,17 @@ export const pt: Dictionary = {
   "durable.composer.stopMoved": "A conversa avançou, então nada foi parado. Verifique-a e pare novamente se ainda quiser.",
   "durable.composer.stopUnknown": "Não há certeza de que a parada chegou. Toque em Parar novamente para tentar mais uma vez.",
   "durable.composer.maybe": "Pode já ter sido enviada. Verifique o chat antes de enviar novamente.",
+  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
+  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
+  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
+  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "A parada pode já ter sido aplicada. Verifique o chat.",
   "durable.composer.stopRefused": "A parada foi recusada.",
   "durable.composer.sending": "Enviando…",

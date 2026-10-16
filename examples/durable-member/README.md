@@ -345,7 +345,7 @@ and parses them with `node:http`, because only a `Bun.listen` socket gives the f
 itself passes `core.handle` straight to it. Closing the server lets the replies in flight go out first, for
 at most 2 s.
 
-`./node` (`src/node/index.ts`) is the same `openCollie` for Node 22.18 or later, and the root import picks it on Node. It
+`./node` (`src/node/index.ts`) is the same `openCollie` for Node 22.19 or later, and the root import picks it on Node. It
 listens with `node:http` on the same private socket. It cannot run the descendant check, because Node cannot
 read the caller of a socket, and it writes one line at start that says so (WIRE.md 1A). Run the agent's tools
 in a sandbox that cannot reach the socket.

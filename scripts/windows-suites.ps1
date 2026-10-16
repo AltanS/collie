@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 111 in all, each one named, with its reason:
+#              Today, 113 in all, each one named, with its reason:
 #              bridge 71. 5 are the POSIX-only and engine cases below, 30 are the durable example apps, and
 #                36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
@@ -59,13 +59,17 @@
 #                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
 #                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
 #                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
-#              scripts 23: every test of scripts/install.test.ts ("scripts/install.sh > ..."):
+#              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
+#                The other 2 are in the harness lab (scripts/harness-canary/lab/):
+#                - "POSIX only: the login copy has mode 600" in seed.test.ts (Windows has no file modes)
+#                - "a real throwaway server starts, shows its pane, stops, and leaves no socket" in tmux.test.ts
+#                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 71,
   [int]$MaxSkipsCli = 17,
-  [int]$MaxSkipsScripts = 23
+  [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
 $ErrorActionPreference = "Continue"

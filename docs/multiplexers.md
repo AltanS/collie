@@ -416,6 +416,56 @@ A bridge keeps the live panes across its own restart. The row stays "live" after
 An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
 status` shows it as partial. Run `collie hooks install claude` again to update it in place.
 
+#### Codex
+
+Codex has one outside hook, its `notify` command. Collie can use it for a hook edge when a Codex turn
+ends:
+
+```console
+$ collie hooks install codex
+$ collie hooks status
+/home/you/.codex/config.toml: installed
+```
+
+The install writes one line at the top of `$CODEX_HOME/config.toml` (`~/.codex/config.toml` when
+`CODEX_HOME` is not set). The line goes after the comments at the top of the file:
+
+```toml
+notify = ["/home/you/.local/bin/collie", "beacon", "emit", "codex"]
+```
+
+Codex runs one notify command only. If your config already names one, Collie leaves it in place and
+the install stops with a message. If Collie cannot read the file as TOML, the install stops and
+names the line. Collie keeps a copy of the file before its first change.
+`collie hooks uninstall codex` puts back the exact bytes from before the install. If the install
+created the file, uninstall removes it. A Codex that is already open may not see the new line until
+it starts again.
+
+Codex sends one event, `agent-turn-complete`, at the end of each turn. Collie writes it as a stop
+edge, and the screen read after it decides whether the pane is free. The limits:
+
+- Codex sends no event for an approval dialog or for a new prompt. The screen alone shows a dialog,
+  and a send from the phone never shows as Confirmed on a Codex pane.
+- Codex 0.163.0 runs the notify command from a background helper (`codex app-server`). Collie finds
+  the Codex window in `/proc` with the same `CODEX_HOME` and the folder of the event. This is Linux
+  only.
+- Two Codex windows in one folder on one `CODEX_HOME` get no edge. Collie cannot tell them apart.
+  Their panes still update from the screen, as without the hook.
+- Codex also runs a short hidden turn to name a new task. That turn sends one more stop edge, so
+  the pane gets one more screen read.
+
+Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
+message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
+running turn, so Collie never presses Enter for a message. A text that starts with `/` or `!` is a command.
+It takes Enter on an idle box, and waits during a turn. Tab would complete a `/` command, and
+Codex runs a `!` text as a shell command. The receipt says queued only when
+Codex shows the queued row with the text.
+
+Collie answers a Codex approval with one key: the option's digit, `y`, or Escape. Only the trust
+prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then
+presses Enter. A Codex question dialog also takes one key, the option's digit. In Codex 0.163.0 the
+digit answers at once. On the last question it sends all the answers.
+
 #### Permissions held for the phone
 
 ```console
@@ -482,6 +532,77 @@ says in how many settings files the hooks hold permissions.
 > The tap must carry the hash of the tool, the input shown and the labels the card showed. The
 > answer is only ever a person's tap: Collie never allows or denies on its own.
 
+
+## Harness profiles
+
+Collie sends a message from the phone only when it can read the input box of the agent.
+A profile file describes that box for one agent. It says where the box starts and ends.
+It says how a draft looks, which key sends, and which text the agent draws for a long paste.
+An agent with no profile still works. Collie types into it with stricter generic rules.
+
+| Agent | Enter during a turn | Send key | Probe | Checked against |
+| ----- | ------------------- | -------- | ----------------- | --------------- |
+| OpenCode | Queues the message | Enter | Yes | 1.18.33 |
+| pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows | Short texts and sends into a turn | 1.1.0 |
+| OMP | Steers the turn; Ctrl+Q queues | Ctrl+Q | Yes | 18.4.10 |
+| Grok | Not measured | Enter | Yes | 1.0.41 |
+| Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
+| Muse | Not measured | Enter | Yes | 1.4.7 |
+
+A command, such as `/model`, always goes with Enter. A probed send types one extra character first.
+Collie checks that the character lands in the box, then removes it.
+
+- **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line.
+  Collie finds the box by those rows.
+  A message sent into a running turn waits in the transcript with a `QUEUED` badge.
+  A newline goes in as Ctrl+J.
+  Collie refuses a message that is longer than the box can show, because it cannot read it back.
+
+- **pi** draws its box between two rules with no prompt mark.
+  Collie finds it by the rule pair and by the status line that pi draws under it.
+  A pi dialog opens between the same two rules.
+  So Collie reads the key hints and the list from the top rule down.
+  In pi, Enter steers a running turn, but Alt+Enter sends on an idle box and queues in a turn.
+  So Collie sends with Alt+Enter, and with Ctrl+Q on Windows.
+  pi shows a queued message as a `Follow-up:` row above the box.
+  A box taller than 30 rows does not read as a box. The screen reads as unknown, and a send needs your tap.
+
+- **OMP** lets you choose the border style of its box, so Collie knows five of them.
+  One is the open box with a status row on top. Others are a rule pair, a rule with no bottom rule,
+  a pair with an empty middle, and a borderless box.
+  Collie cuts the hint that OMP draws at the right end of the prompt row.
+  In OMP, Enter steers a running turn, but Ctrl+Q sends on an idle box and queues in a turn.
+  So Collie sends with Ctrl+Q.
+  OMP lists a queued message in an `After yield` block above the box.
+  OMP can show a dim completion after your text.
+  A send that meets one stops before the send key and leaves the text in the box.
+
+- **Grok** draws a rounded box with a `❯` prompt row and a row of key hints under it.
+  A tall draft shows a scroll bar at the right edge of the box.
+  Such a screen reads as unreadable, so a send needs your tap.
+  A model list opens above the box and counts as part of the box.
+  The pane never reads free while the list stands.
+
+- **Antigravity** (`agy`) draws its box as a rule, a `>` row and a rule, with a `? for shortcuts` footer.
+  The turn shows a spinner row with `...` above the box and `esc to cancel` under it.
+  Herdr names this agent `agy` or `antigravity`. Collie files both under `agy`.
+
+- **Muse** draws its box as a rule that may carry a label, a `❯` row and a rule.
+  An empty box shows a grey hint, and Collie reads that hint as no text.
+  A command palette that opens under the box shows as your draft.
+  The list of background tasks under the box reads as unknown, and a send needs your tap.
+  A running turn shows a row with a timer and `esc to interrupt`.
+
+Grok, Antigravity and Muse are not installed on the build host.
+Their profiles rest on saved screens of each agent.
+No live message has gone to them through a profile, so Collie probes every send there.
+Nobody measured what Enter does during a turn for them.
+So Collie refuses a send while the screen shows the turn running, and it types nothing.
+Where a harness draws no running sign, Collie cannot tell, and the agent decides what Enter does.
+OpenCode and OMP passed live sends on a version above the checked one.
+Collie probes every send on them until a send passes inside the checked range.
+
+A version above the checked one still works, and the receipt says `provisional`.
 
 ---
 

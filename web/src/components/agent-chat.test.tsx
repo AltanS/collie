@@ -1509,7 +1509,9 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
   it("a pane with no screen: no header taps, no Pin or settings, Close conversation, no Switch or Files pill", async () => {
     declaresMux({ paneGrid: false, closePane: true });
     const user = userEvent.setup();
-    const agent = { ...fixtureAgents[0]!, cwd: "/srv/support" };
+    // A bridge that does not mark the program for the Send Protocol: it has no receipts to list.
+    const { sendProtocol: _marked, ...unmarked } = fixtureAgents[0]!;
+    const agent: AgentView = { ...unmarked, cwd: "/srv/support" };
     const sibling: AgentView = { ...agent, paneId: "w1:p7" };
     const { container } = renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
@@ -1522,6 +1524,63 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(within(sheet).queryByRole("button", { name: /Pin to top/ })).toBeNull();
     expect(within(sheet).queryByRole("button", { name: /Pane settings/ })).toBeNull();
     expect(within(sheet).getByRole("button", { name: /Close conversation/ })).toBeInTheDocument();
+  });
+
+  it("a program on this machine with the Send Protocol: Pane settings opens its Recent sends, with no cache switch (M56 spec 14)", async () => {
+    declaresMux({ paneGrid: false, closePane: true });
+    server.use(
+      http.get("/api/send/receipts", () =>
+        HttpResponse.json({ receipts: [{ requestId: "req00003", at: Date.now(), mode: "send", outcome: "sent", queued: true, keys: [], gapsMs: {}, harness: "desk", version: null }] }),
+      ),
+    );
+    const user = userEvent.setup();
+    const agent: AgentView = { ...fixtureAgents[0]!, cwd: "/srv/support", sendProtocol: true };
+    renderChat({ agent, agents: [agent] });
+    await openPaneMenu(user);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Pane settings/ }));
+    expect(await screen.findByText("Recent sends")).toBeInTheDocument();
+    expect(await screen.findByText("Queued behind the agent's turn")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /cache goes cold/i })).toBeNull();
+  });
+
+  it("Go to the question focuses the question card of THIS chat, with a second chat mounted (M56 spec 14)", async () => {
+    declaresMux({ paneGrid: false, closePane: true });
+    const question: NonNullable<AgentView["asks"]>[number] = {
+      id: "pa-1",
+      kind: "permission",
+      toolCallId: "tc-1",
+      revision: 1,
+      title: "Save this note?",
+      itemId: "item-1",
+      options: [
+        { id: "save", label: "Save", effect: "allow" },
+        { id: "skip", label: "Don't save", effect: "deny" },
+      ],
+    };
+    server.use(
+      http.post("/api/send", () =>
+        HttpResponse.json({
+          offers: [],
+          receipt: { outcome: "refused", reason: "not_free", keys: [] },
+          surface: { revision: 9, turn: "running", modal: { ask: { id: "ask-0123456789abcd", kind: "permission", options: [{ id: "1", label: "Save" }, { id: "2", label: "Don't save" }], channel: "program", hash: "abc" } }, composer: "empty" },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const first: AgentView = { ...fixtureAgents[0]!, status: "blocked", sendProtocol: true, asks: [question] };
+    const second: AgentView = { ...first, paneId: "w1:p9" };
+    const one = renderChat({ agent: first, agents: [first], paneId: first.paneId, text: "" });
+    const two = renderChat({ agent: second, agents: [second], paneId: second.paneId, text: "" });
+    await waitFor(() => expect(two.container.querySelector('[data-slot="ask-card"]')).not.toBeNull());
+    expect(one.container.querySelector('[data-slot="ask-card"]')).not.toBeNull();
+    const field = within(two.container).getByPlaceholderText("Message this conversation");
+    await user.type(field, "check the logs");
+    await user.click(within(two.container).getByRole("button", { name: "Send" }));
+    await user.click(await within(two.container).findByRole("button", { name: "Go to the question" }));
+    const focused = document.activeElement;
+    expect(focused?.closest('[data-slot="ask-card"]')).not.toBeNull();
+    expect(two.container.contains(focused)).toBe(true);
+    expect(one.container.contains(focused)).toBe(false);
   });
 
   it("history row: a pane with a screen keeps it, on Herdr's declaration", async () => {

@@ -75,36 +75,72 @@ export interface Frame {
   readonly anchorsHit: readonly FrameAnchorHit[];
 }
 
+/** One anchor, compiled: its pattern, the cells it must span, its column, and whether it is a blank row. */
+interface CompiledAnchor {
+  readonly pattern: RegExp;
+  readonly cells: number;
+  readonly column: number;
+  readonly maxColumn: number;
+  readonly blank: boolean;
+  /** The bottom anchor of an open box: the last non-blank row of the screen. */
+  readonly open: boolean;
+}
+
+/** The interior walk's own patterns (`idle.frame.walk`), compiled. */
+interface CompiledInterior {
+  readonly rows: RegExp | null;
+  readonly trailerRow: RegExp | null;
+  readonly trailerPad: RegExp | null;
+  readonly maxPad: number;
+  readonly continuation: RegExp | null;
+  readonly under: RegExp | null;
+}
+
 interface Compiled {
-  readonly top: RegExp;
-  readonly topCells: number;
-  readonly prompt: RegExp;
-  readonly promptCells: number;
-  readonly bottom: RegExp;
-  readonly bottomCells: number;
+  readonly top: CompiledAnchor;
+  readonly prompt: CompiledAnchor;
+  readonly bottom: CompiledAnchor;
+  readonly interior: CompiledInterior;
 }
 
 const compiledByIdle = new WeakMap<IdleProfile, Compiled>();
 
-function cellFloor(anchor: FrameAnchor): number {
-  return anchor.minCells ?? 0;
+function compileAnchor(anchor: FrameAnchor, flags: string): CompiledAnchor {
+  return {
+    pattern: new RegExp(anchor.pattern, flags),
+    cells: anchor.minCells ?? 0,
+    column: anchor.column,
+    maxColumn: anchor.maxColumn ?? anchor.column,
+    blank: anchor.blank === true,
+    open: anchor.open === true,
+  };
 }
 
 function compile(idle: IdleProfile): Compiled {
   const known = compiledByIdle.get(idle);
   if (known !== undefined) return known;
-  const { top, prompt, bottom } = idle.frame;
+  const { top, prompt, bottom, rows, trailer, continuation, under } = idle.frame;
   const compiled: Compiled = {
-    top: new RegExp(top.pattern, "u"),
-    topCells: cellFloor(top),
+    top: compileAnchor(top, "u"),
     // `d` gives the draft hole's offset, so the placeholder test reads only the runs inside it.
-    prompt: new RegExp(prompt.pattern, "du"),
-    promptCells: cellFloor(prompt),
-    bottom: new RegExp(bottom.pattern, "u"),
-    bottomCells: cellFloor(bottom),
+    prompt: compileAnchor(prompt, "du"),
+    bottom: compileAnchor(bottom, "u"),
+    interior: {
+      rows: rows === undefined ? null : new RegExp(rows, "u"),
+      trailerRow: trailer === undefined ? null : new RegExp(trailer.row, "u"),
+      trailerPad: trailer?.pad === undefined ? null : new RegExp(trailer.pad, "u"),
+      maxPad: trailer?.maxPad ?? 0,
+      continuation: continuation === undefined ? null : new RegExp(continuation, "u"),
+      under: under === undefined ? null : new RegExp(under, "u"),
+    },
   };
   compiledByIdle.set(idle, compiled);
   return compiled;
+}
+
+/** Whether the profile draws its box with a blank top edge. Such a box gets the strict interior (see frameAt). */
+function blankTop(idle: IdleProfile): boolean {
+  return idle.frame.top.blank === true;
 }
 
 /** The plain text of a row. */
@@ -123,24 +159,42 @@ export function plainRows(texts: readonly string[]): FrameRow[] {
   return texts.map((text) => ({ segments: [{ text }] }));
 }
 
-/** Whether an anchor matches a row: the row starts in the anchor's column (0, so no leading space),
- *  the pattern matches the row with its trailing space cut, and the row spans at least `minCells`. */
-function anchored(text: string, pattern: RegExp, minCells: number): RegExpExecArray | null {
-  if (text.length === 0 || /^\s/u.test(text)) return null;
-  const trimmed = text.trimEnd();
-  if (minCells > 0 && displayWidth(trimmed) < minCells) return null;
-  return pattern.exec(trimmed);
+/** The column a row's text starts in: its count of leading spaces. A blank row has none. */
+function textColumn(text: string): number {
+  return text.length - text.trimStart().length;
 }
 
-/** The edge a row is, as the frame walk sees it: one of the three anchors, at column 0. A row that
- *  matches the bottom anchor also matches the top one on a bare edge; the walk only needs to know
- *  it is an edge. */
+/** Whether an anchor matches a row. A blank anchor matches a blank row. Any other anchor needs the
+ *  row's text to start in the anchor's column, the pattern to match the row with its trailing space
+ *  cut, and the row to span at least `minCells`. */
+function anchored(text: string, anchor: CompiledAnchor): RegExpExecArray | null {
+  if (isBlank(text)) return anchor.blank ? anchor.pattern.exec("") : null;
+  const column = textColumn(text);
+  if (anchor.blank || column < anchor.column || column > anchor.maxColumn) return null;
+  const trimmed = text.trimEnd();
+  if (anchor.cells > 0 && displayWidth(trimmed) < anchor.cells) return null;
+  return anchor.pattern.exec(trimmed);
+}
+
+/** The edge a row is, as the frame walk sees it: one of the three anchors. A row that matches the
+ *  bottom anchor also matches the top one on a bare edge; the walk only needs to know it is an edge.
+ *  A blank row is never an edge here, so a blank row inside a draft is crossed like any other. */
 export function frameEdge(text: string, idle: IdleProfile): "prompt" | "bottom" | "top" | null {
+  if (isBlank(text)) return null;
   const c = compile(idle);
-  if (anchored(text, c.prompt, c.promptCells) !== null) return "prompt";
-  if (anchored(text, c.bottom, c.bottomCells) !== null) return "bottom";
-  if (anchored(text, c.top, c.topCells) !== null) return "top";
+  if (anchored(text, c.prompt) !== null) return "prompt";
+  if (!c.bottom.open && anchored(text, c.bottom) !== null) return "bottom";
+  if (anchored(text, c.top) !== null) return "top";
   return null;
+}
+
+/**
+ * Whether a row may stand inside a box whose edges are blank rows: a blank row, or a row indented at
+ * least `continuationIndent` columns (a wrapped or later line of the draft). Text further left is the
+ * transcript or a dialog, so the walk must stop there.
+ */
+export function interiorRow(text: string, idle: IdleProfile): boolean {
+  return isBlank(text) || textColumn(text) >= idle.frame.continuationIndent;
 }
 
 /** The placeholder attribute as a run flag, or null when the profile names one this module cannot
@@ -183,6 +237,13 @@ function holeIsFaint(rows: readonly FrameRow[], prompt: number, holeStart: numbe
     }
   }
   return sawContent;
+}
+
+/** Whether a draft text is one of the profile's placeholder texts, or starts with one of its prefixes. */
+function isPlaceholderText(text: string, idle: IdleProfile): boolean {
+  if (text.length === 0) return false;
+  if (idle.placeholders.texts.includes(text)) return true;
+  return (idle.placeholders.prefixes ?? []).some((prefix) => text.startsWith(prefix));
 }
 
 /** The statusline run and the footer under the bottom edge (`Frame.volatile`). */
@@ -240,29 +301,46 @@ function walkBelow(
 export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdleProfile): Frame | null {
   const c = compile(idle);
   const texts = rows.map(rowText);
+  if (idle.frame.walk === "interior") return interiorFrameAt(rows, bottom, idle);
   const bottomText = texts[bottom];
-  if (bottomText === undefined || anchored(bottomText, c.bottom, c.bottomCells) === null) return null;
+  if (bottomText === undefined || anchored(bottomText, c.bottom) === null) return null;
 
+  const strict = blankTop(idle);
   const budget = idle.frame.maxDraftRows;
   let crossed = 0;
   let i = bottom - 1;
+  let blankRun = 0;
   while (i >= 0 && frameEdge(texts[i]!, idle) === null && crossed < budget) {
+    // A box with blank edges has no edge glyph to stop at: a row with text left of the indent ends
+    // it, and so do two blank rows in a row (a blank edge is one row, so a second one is outside).
+    if (strict && !interiorRow(texts[i]!, idle)) return null;
+    blankRun = isBlank(texts[i]!) ? blankRun + 1 : 0;
+    if (strict && blankRun > 1) return null;
     crossed++;
     i--;
   }
   if (i < 0) return null;
-  const promptMatch = anchored(texts[i]!, c.prompt, c.promptCells);
+  const promptMatch = anchored(texts[i]!, c.prompt);
   if (promptMatch === null) return null;
   const prompt = i;
   i--;
-  while (i >= 0 && isBlank(texts[i]!) && crossed < budget) {
-    crossed++;
-    i--;
+  let top: number;
+  let topMatch: RegExpExecArray | null;
+  if (c.top.blank) {
+    // A blank top edge is the row straight over the prompt row: there is no padding to pass.
+    if (i < 0) return null;
+    topMatch = anchored(texts[i]!, c.top);
+    top = i;
+  } else {
+    while (i >= 0 && isBlank(texts[i]!) && crossed < budget) {
+      crossed++;
+      i--;
+    }
+    if (i < 0) return null;
+    topMatch = anchored(texts[i]!, c.top);
+    top = i;
   }
-  if (i < 0) return null;
-  const topMatch = anchored(texts[i]!, c.top, c.topCells);
   if (topMatch === null) return null;
-  const top = i;
 
   const anchorsHit: FrameAnchorHit[] = ["top"];
   const label = topMatch.groups?.label?.trim() ?? "";
@@ -280,7 +358,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   const text = parts.join(" ").trim();
   anchorsHit.push("bottom");
 
-  const byText = text.length > 0 && idle.placeholders.texts.includes(text);
+  const byText = isPlaceholderText(text, idle);
   const bySgr = holeIsFaint(rows, prompt, holeStart, bottom - 1, idle.placeholders.sgr);
   if (byText) anchorsHit.push("placeholder-text");
   if (bySgr) anchorsHit.push("placeholder-sgr");
@@ -302,19 +380,175 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   };
 }
 
+/** The text a row adds to the draft on the interior walk: the profile's `text` group, or the trimmed row. */
+function interiorPiece(text: string, continuation: RegExp | null): string {
+  const hit = continuation?.exec(text.trimEnd())?.groups?.text;
+  return (hit ?? (continuation === null ? text : "")).trim();
+}
+
+/**
+ * The frame of the interior walk (`idle.frame.walk`): `bottom` is the bottom edge, or the last row of
+ * an open box. Up from there: the trailer rows the box always draws under the draft, then the draft,
+ * to the top edge. The prompt row is the first row under the top edge that matches the prompt anchor;
+ * a blank row may match, so a box with no prompt glyph has one. Null when any step fails.
+ */
+function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdleProfile): Frame | null {
+  const c = compile(idle);
+  const texts = rows.map(rowText);
+  const bottomText = texts[bottom];
+  if (bottomText === undefined) return null;
+  const open = c.bottom.open;
+  if (!open && anchored(bottomText, c.bottom) === null) return null;
+  if (c.interior.under !== null && !open) {
+    // The row the harness always draws under its box: the first row there that is not blank.
+    const under = texts.slice(bottom + 1).find((text) => !isBlank(text));
+    if (under !== undefined && !c.interior.under.test(under.trimEnd())) return null;
+  }
+  const budget = idle.frame.maxDraftRows;
+
+  // The last row of the box's interior: the bottom edge itself on an open box.
+  let last = open ? bottom : bottom - 1;
+  if (c.interior.trailerRow !== null) {
+    let pads = 0;
+    while (last >= 0 && c.interior.trailerPad !== null && pads < c.interior.maxPad && c.interior.trailerPad.test(texts[last]!.trimEnd())) {
+      pads++;
+      last--;
+    }
+    if (last < 0 || !c.interior.trailerRow.test(texts[last]!.trimEnd())) return null;
+    last--;
+  }
+
+  let top = last;
+  if (c.interior.rows !== null) {
+    let stop = -1;
+    while (top >= 0 && bottom - top <= budget && c.interior.rows.test(texts[top]!.trimEnd())) {
+      // A row that is the top edge and cannot be a prompt row ends the box: a draft's indented rows
+      // above it are the transcript's.
+      if (anchored(texts[top]!, c.top) !== null && (isBlank(texts[top]!) ? !c.prompt.pattern.test("") : anchored(texts[top]!, c.prompt) === null)) {
+        stop = top;
+        break;
+      }
+      top--;
+    }
+    if (stop >= 0) top = stop;
+    else top++;
+    if (top > last || bottom - top > budget) return null;
+  } else {
+    while (top >= 0 && bottom - top <= budget && anchored(texts[top]!, c.top) === null) top--;
+    if (top < 0 || bottom - top > budget) return null;
+  }
+  const topMatch = anchored(texts[top]!, c.top);
+  if (topMatch === null) return null;
+
+  let prompt = -1;
+  let promptMatch: RegExpExecArray | null = null;
+  for (let j = top + 1; j <= last; j++) {
+    const row = texts[j]!;
+    promptMatch = isBlank(row) ? c.prompt.pattern.exec("") : anchored(row, c.prompt);
+    if (promptMatch !== null) {
+      prompt = j;
+      break;
+    }
+  }
+  if (prompt < 0 || promptMatch === null) return null;
+
+  const hole = promptMatch.groups?.draft;
+  const holeStart = promptMatch.indices?.groups?.draft?.[0] ?? texts[prompt]!.length;
+  const parts: string[] = [];
+  for (let j = top + 1; j <= last; j++) {
+    const piece = j === prompt ? (hole ?? "").trim() : interiorPiece(texts[j]!, c.interior.continuation);
+    if (piece.length > 0) parts.push(piece);
+  }
+  const text = parts.join(" ").trim();
+
+  const label = topMatch.groups?.label?.trim() ?? "";
+  const anchorsHit: FrameAnchorHit[] = ["top"];
+  if (label.length > 0) anchorsHit.push("label");
+  anchorsHit.push("prompt");
+  if (hole !== undefined) anchorsHit.push("draft");
+  anchorsHit.push("bottom");
+  const byText = isPlaceholderText(text, idle);
+  const bySgr = prompt <= last && holeIsFaint(rows, prompt, holeStart, last, idle.placeholders.sgr);
+  if (byText) anchorsHit.push("placeholder-text");
+  if (bySgr) anchorsHit.push("placeholder-sgr");
+
+  let end = texts.length;
+  while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
+  const { status, footer } = open ? { status: null, footer: null } : walkBelow(texts, bottom, end, idle.volatile.below);
+  const aboveRows = Math.min(idle.volatile.above.maxRows, top);
+  const above = aboveRows > 0 ? { first: top - aboveRows, last: top - 1 } : null;
+
+  return {
+    top,
+    bottom,
+    label: label.length > 0 ? label : null,
+    interior: { first: top + 1, prompt, last: open ? bottom : bottom - 1, text },
+    placeholder: byText || bySgr,
+    volatile: { above, status, footer },
+    anchorsHit,
+  };
+}
+
+const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();
+
+/**
+ * Whether a dialog is drawn over the screen above the frame: a row above the top edge matches one of
+ * the profile's `overlayRows`. The box stays on screen under such a dialog, so the frame alone would
+ * read free. False for a profile with no such rows.
+ */
+export function coveredFrame(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): boolean {
+  const sources = idle.overlayRows;
+  if (sources === undefined || sources.length === 0) return false;
+  let patterns = compiledOverlays.get(idle);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    compiledOverlays.set(idle, patterns);
+  }
+  for (let i = 0; i < frame.top && i < rows.length; i++) {
+    const text = rowText(rows[i]!).trimEnd();
+    if (text.length > 0 && patterns.some((pattern) => pattern.test(text))) return true;
+  }
+  return false;
+}
+
 /**
  * The input frame on a screen read, or null.
  *
- * The bottom edge is the lowest row that matches the bottom anchor at column 0, at most
+ * The bottom edge is the lowest row that matches the bottom anchor at its column, at most
  * `maxTailRows` rows above the last non-blank row. Only that row is tried: when its frame does not
- * close, there is no frame. A box higher up is an echo in the transcript, not the live one.
+ * close, there is no frame. A box higher up is an echo in the transcript, not the live one. A box
+ * with blank edges (no edge glyphs) is read strictly: every interior row is blank or indented, the
+ * blank top edge sits straight over the prompt row, and two blank rows in a row end the box.
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
+  const found = findLayout(rows, idle);
+  if (found !== null || idle.frameAlternates === undefined) return found;
+  for (const alternate of alternatesOf(idle)) {
+    const hit = findLayout(rows, alternate);
+    if (hit !== null) return hit;
+  }
+  return null;
+}
+
+const compiledAlternates = new WeakMap<IdleProfile, readonly IdleProfile[]>();
+
+/** The profile's other frame shapes, each as an idle block of its own with the main shape swapped for it. */
+function alternatesOf(idle: IdleProfile): readonly IdleProfile[] {
+  const known = compiledAlternates.get(idle);
+  if (known !== undefined) return known;
+  const list = (idle.frameAlternates ?? []).map((frame): IdleProfile => Object.assign({}, idle, { frame, frameAlternates: undefined }));
+  compiledAlternates.set(idle, list);
+  return list;
+}
+
+function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const c = compile(idle);
   let end = rows.length;
   while (end > 0 && isBlank(rowText(rows[end - 1]!))) end--;
+  // An open box has no bottom edge: its last row is the last row of the screen.
+  if (c.bottom.open) return end === 0 ? null : interiorFrameAt(rows, end - 1, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
-    if (anchored(rowText(rows[b]!), c.bottom, c.bottomCells) !== null) return frameAt(rows, b, idle);
+    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);
   }
   return null;
 }

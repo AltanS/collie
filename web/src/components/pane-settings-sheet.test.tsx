@@ -155,6 +155,28 @@ describe("PaneSettingsSheet — the real hooks, end to end", () => {
     expect(await screen.findByText("Sent")).toBeInTheDocument();
   });
 
+  test("a program's sheet lists its sends with the queued detail and draws no cache switch (M56 spec 14)", async () => {
+    let watched = 0;
+    server.use(
+      http.get("/api/notifications/cache-watch", () => {
+        watched++;
+        return HttpResponse.json(state());
+      }),
+      http.get("/api/send/receipts", () =>
+        HttpResponse.json({
+          receipts: [
+            { requestId: "req00002", at: Date.now(), mode: "send", outcome: "effective", queued: true, keys: [], gapsMs: { s0: 0, write: 3 }, harness: "desk", version: null },
+          ],
+        }),
+      ),
+    );
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="conv-2" program />);
+    expect(await screen.findByText("Recent sends")).toBeInTheDocument();
+    expect(await screen.findByText("Queued behind the agent's turn")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(watched).toBe(0);
+  });
+
   test("a closed sheet reads no receipts", async () => {
     let asked = 0;
     server.use(

@@ -17,7 +17,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { askOf, type Ask } from "../../web/src/lib/surface/surface.ts";
 import type { AgentView } from "../types.ts";
-import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor } from "./ask.ts";
+import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor, planKeysFor } from "./ask.ts";
 import { KeyGate, type TokenOrigin, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -105,7 +105,7 @@ interface Rig {
   answer: (ask: Ask, optionId: string, over?: Partial<Answer>) => Promise<AskReply>;
 }
 
-function rig(screen: string): Rig {
+function rig(screen: string, harness: string = HARNESS, version = "2.1.200"): Rig {
   const pane = new ScriptPane(screen);
   const clock = { now: 2_000_000 };
   const now = (): number => clock.now;
@@ -120,7 +120,7 @@ function rig(screen: string): Rig {
     locks: new SessionLocks(),
     book,
     ring: new RowRing(),
-    profile: (harness) => Promise.resolve(profileFor(harness, "2.1.200", { log: () => undefined })),
+    profile: (name) => Promise.resolve(profileFor(name, version, { log: () => undefined })),
     generation: () => generation.value,
     now,
     sleep: (ms) => {
@@ -130,10 +130,10 @@ function rig(screen: string): Rig {
   });
   const poll = (): Ask | null => {
     const rows = splitLines(parseAnsi(pane.screen));
-    return book.publish(PANE, generation.value ?? "gone", liftDialog(readerBlocks(rows, HARNESS)));
+    return book.publish(PANE, generation.value ?? "gone", liftDialog(readerBlocks(rows, harness)));
   };
   const answer = (ask: Ask, optionId: string, over: Partial<Answer> = {}): Promise<AskReply> =>
-    answerer.handle({ askId: ask.id, hash: ask.hash, optionId, origin: "person_tap", ...over }, { session: "main", paneId: PANE, harness: HARNESS });
+    answerer.handle({ askId: ask.id, hash: ask.hash, optionId, origin: "person_tap", ...over }, { session: "main", paneId: PANE, harness });
   return { pane, gate, store, book, answerer, clock, generation, poll, answer };
 }
 
@@ -362,6 +362,101 @@ describe("answers that go through", () => {
     expect(ask.kind).toBe("menu");
     const reply = await answer(ask, idOf(ask, "Cancel"));
     expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Escape"] });
+  });
+});
+
+describe("codex asks (M56 spec 13)", () => {
+  const CODEX_APPROVAL = fx("codex--v0156-approval-exec-2opt.txt");
+  const CODEX_PATCH = fx("codex--v0156-approval-patch.txt");
+  const CODEX_TRUST = fx("codex--v0156-trust.txt");
+  // The same trust prompt with the pointer moved to its second row, as Down draws it.
+  const CODEX_TRUST_QUIT = CODEX_TRUST.replace("\u203a 1. Trust and continue", "  1. Trust and continue").replace("  2. Quit", "\u203a 2. Quit");
+  const CODEX_IDLE = fx("codex--v0162-idle.txt");
+  const codex = (screen: string): Rig => rig(screen, "codex", "0.159.2");
+
+  test("codex: an exec approval lifts as a permission, and Yes sends its digit through the gate, with the hash check and the read back in the receipt", async () => {
+    const { pane, poll, answer } = codex(CODEX_APPROVAL);
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "1") p.screen = CODEX_IDLE;
+    };
+    const ask = poll()!;
+    expect(ask.kind).toBe("permission");
+    expect(ask.options.map((o) => o.label)).toEqual(["Yes, proceed", "No, and tell Codex what to do differently"]);
+    const reply = await answer(ask, idOf(ask, "Yes, proceed"));
+    expect(reply.receipt).toMatchObject({ harness: "codex", hash: ask.hash, outcome: "sent", keys: ["1"] });
+    expect(reply.receipt!.check).toMatchObject({ revision: 0, hash: expect.any(String) });
+    expect(reply.receipt!.readBack).toEqual(reply.receipt!.check);
+    expect(reply.receipt!.after).not.toBeNull();
+    expect(pane.keysSeen).toEqual(["1"]);
+  });
+
+  test("codex: a question dialog answers with the bare digit, one question or each step of two (lab, 0.163.0, K12)", async () => {
+    // Lab, Codex 0.163.0, 2026-10-16: a bare digit commits the option at once. On a one-question
+    // dialog it answers it; on a two-question dialog it answers the first and opens the second, and
+    // on the last it submits all. It never only moves the highlight, so no Enter follows.
+    const fruit = fx("codex--ask-fruit.txt");
+    const q1 = fx("codex--ask-wizard-q1.txt");
+    const q2 = fx("codex--ask-wizard-q2.txt");
+    const one = codex(fruit);
+    one.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "2") p.screen = CODEX_IDLE;
+    };
+    const fruitAsk = one.poll()!;
+    expect(fruitAsk.kind).toBe("question");
+    expect((await one.answer(fruitAsk, idOf(fruitAsk, "Pear"))).receipt).toMatchObject({ outcome: "sent", keys: ["2"] });
+    neverEnter(one.pane);
+    const two = codex(q1);
+    two.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "2") p.screen = q2;
+      else if (keys.join(",") === "1") p.screen = CODEX_IDLE;
+    };
+    const first = two.poll()!;
+    expect((await two.answer(first, idOf(first, "Spaces"))).receipt).toMatchObject({ outcome: "sent", keys: ["2"] });
+    const second = two.poll()!;
+    expect(second.options.map((o) => o.label)).toContain("No");
+    expect((await two.answer(second, idOf(second, "Yes (Recommended)"))).receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+    neverEnter(two.pane);
+  });
+
+  test("codex: a patch approval's No sends the profile's cancel key", async () => {
+    const { pane, poll, answer } = codex(CODEX_PATCH);
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Escape") p.screen = CODEX_IDLE;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "No, and tell Codex what to do differently"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Escape"] });
+    neverEnter(pane);
+  });
+
+  test("codex: the trust prompt's second row walks Down, reads the pointer back on Quit, then commits", async () => {
+    const { pane, poll, answer } = codex(CODEX_TRUST);
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down" && p.screen === CODEX_TRUST) p.screen = CODEX_TRUST_QUIT;
+      else if (keys.join(",") === "Enter") p.screen = CODEX_IDLE;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Quit"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+    expect(reply.receipt!.readBack!.hash).not.toBe(reply.receipt!.check!.hash);
+  });
+
+  test("codex: a walk whose pointer never moves is refused ask_mismatch, with no Enter", async () => {
+    const { pane, poll, answer } = codex(CODEX_TRUST);
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Quit"));
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_mismatch" });
+    expect(pane.keysSeen).toEqual(["Down"]);
+    neverEnter(pane);
+  });
+
+  test("codex: the plan's generic keys become the profile's navigation keys, and other keys stay", () => {
+    const navigation = { up: "k", down: "j", confirm: "Return", cancel: "q" };
+    expect(planKeysFor({ walk: ["Down", "Down"], commit: ["Enter"], label: "Quit" }, navigation)).toEqual({ walk: ["j", "j"], commit: ["Return"], label: "Quit" });
+    expect(planKeysFor({ walk: [], commit: ["Escape"], label: "No" }, navigation).commit).toEqual(["q"]);
+    expect(planKeysFor({ walk: [], commit: ["1"], label: "Yes" }, navigation).commit).toEqual(["1"]);
+    expect(planKeysFor({ walk: ["Up"], commit: ["Enter"], label: "x" }, null)).toEqual({ walk: ["Up"], commit: ["Enter"], label: "x" });
+    expect(loadProfiles().get("codex")!.keys.navigation).toEqual({ up: "Up", down: "Down", confirm: "Enter", cancel: "Escape" });
   });
 });
 

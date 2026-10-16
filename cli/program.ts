@@ -5,6 +5,7 @@ import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
 import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
+import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
 import { cmdBuild } from "./build.ts";
 import {
   cmdConfig,
@@ -591,12 +592,12 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "install",
-        summary: "register the beacon hooks: `hooks install claude`",
+        summary: "register the beacon hooks: `hooks install claude`, or `hooks install codex`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
         name: "uninstall",
-        summary: "remove only the entries collie owns: `hooks uninstall claude`",
+        summary: "remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`",
         run: (args, s) => cmdHooksUninstall(hooksDeps(s.io), args),
       },
       {
@@ -615,7 +616,8 @@ export const COMMANDS: readonly Command[] = [
       {
         name: "emit",
         summary: "internal: write this pane's beacon from the hook payload on stdin",
-        run: () => runBeaconEmit(beaconDeps),
+        // `collie beacon emit codex <payload>` is the Codex notify command (cli/codex-notify.ts).
+        run: (args) => (args[0] === CODEX_NOTIFY_HARNESS ? runCodexNotify(beaconDeps, args.slice(1)) : runBeaconEmit(beaconDeps)),
       },
       {
         name: "hold",

@@ -24,7 +24,7 @@ import {
   type SendReceiptsAnswer,
   type SendStep,
 } from "./surface/send";
-import type { Ask, AskOption, Surface, SurfaceComposer, SurfaceModal, SurfaceReason, SurfaceTurn } from "./surface/surface";
+import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
 export interface SendReply {
@@ -49,7 +49,6 @@ const COMPOSERS: readonly SurfaceComposer[] = ["empty", "draft", "unreachable", 
 const REASONS: readonly SurfaceReason[] = ["no-match", "contested", "stale", "torn"];
 const MODAL_WORDS = ["none", "unreadable", "unknown"] as const;
 const ASK_KINDS = ["permission", "question", "menu"] as const;
-const ASK_CHANNELS = ["hook", "keys"] as const;
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | null {
   return allowed.find((word) => word === value) ?? null;

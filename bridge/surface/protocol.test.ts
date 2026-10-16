@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
+import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { KeyGate } from "./key-gate.ts";
@@ -20,9 +20,11 @@ import { SurfaceLedger } from "./counters.ts";
 const RULE = "─".repeat(40);
 const WIDTH = 38;
 const PROBE = "⌁";
+/** A harness with no profile. Codex screens below stand in for one: Codex has a profile since M56 spec 13. */
+const NO_PROFILE = "nothing-known";
 const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
 
-type Mode = "claude" | "generic";
+type Mode = "claude" | "generic" | "codex";
 
 /** A pane that reacts to text and keys like a harness's input box, with knobs for every failure. */
 class FakePane {
@@ -70,13 +72,52 @@ class FakePane {
   /** Runs when a text write or a key press arrives, before it acts; a promise held for ever is a hung multiplexer. */
   beforeWrite: ((pane: FakePane, what: string) => Promise<void> | void) | null = null;
 
+  /**
+   * Codex mode only: the rows Codex 0.163.0 draws for messages queued with Tab during a turn, the
+   * header, one `↳` row per text and the edit hint (lab, M56 spec 13, 2026-10-16).
+   */
+  queued: string[] = [];
+  /** Codex mode only: the status row under the box. One with no ` · ` in it leaves the box unframed. */
+  codexStatus = "  GPT-6-Luna low · ~/project";
+  /** Codex mode only: a welcome picture over the box that Codex hides once the box holds a character. */
+  codexWelcome: string[] = [];
+  /** Codex mode only: a hint row that stays put, where null draws the hint Codex shows for the box. */
+  codexHint: string | null = null;
+  /**
+   * Codex mode only: a turn runs with no working row on the screen, as while an answer streams in
+   * (lab, 0.163.0, 2026-10-16). Null reads the turn from the working row over the box.
+   */
+  turn: boolean | null = null;
+  /**
+   * Codex mode only: the 0.150 and 0.156 shape, where the queue hint takes the status row's place
+   * (`tab to queue message   99% context left`) once the box holds text in a turn. False draws the
+   * 0.159 and 0.163 shape: the status row stays and the hint takes the hint row's place under it.
+   */
+  queueHintOnStatus = false;
+  /** Codex mode only: the edit hint under the queued texts (0.159 and 0.163; 0.150 draws `alt + ↑`). */
+  queuedHint = "    shift+← edit last queued message";
+
   constructor(readonly mode: Mode = "claude") {}
+
+  /** Codex mode: a turn runs while a running row stands over the box, or while {@link turn} says so. */
+  private running(): boolean {
+    return this.turn ?? this.over.some((row) => row.includes("esc to interrupt"));
+  }
 
   private bump(): void {
     this.revision++;
   }
 
   private boxRows(): string[] {
+    if (this.mode === "codex") {
+      if (this.box === "") return ["\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m"];
+      const rows: string[] = [];
+      this.box.split("\n").forEach((line, li) => {
+        const chunks = line.length === 0 ? [""] : (line.match(new RegExp(`.{1,${String(WIDTH)}}`, "gu")) ?? [""]);
+        chunks.forEach((chunk, ci) => rows.push(li === 0 && ci === 0 ? `› ${chunk}` : `  ${chunk}`));
+      });
+      return rows;
+    }
     if (this.mode === "generic") {
       const lines = this.box.split("\n");
       return lines.map((line, i) => (i === lines.length - 1 ? `${line}\u001b[7m \u001b[0m` : line));
@@ -98,6 +139,20 @@ class FakePane {
     if (this.dialog !== null) {
       rows.push(...this.dialog);
       return rows.join("\n");
+    }
+    if (this.mode === "codex") {
+      // Codex draws no edge glyphs: a blank row, the prompt and draft rows, a blank row, the status row, the hint row.
+      const queued = this.queued.length === 0 ? [] : ["", "• Queued follow-up inputs", ...this.queued.map((text) => `  ↳ ${text}`), this.queuedHint];
+      // Codex (lab, 2026-10-16): the hint row goes once the box holds a character, and a turn shows its
+      // queue hint whenever the box holds text: under the status row (0.159, 0.163), or in its place (0.150, 0.156).
+      const queueHint = this.box !== "" && this.running();
+      const onStatus = queueHint && this.queueHintOnStatus;
+      const shown = this.box === "" ? "  ← for agents · ? for shortcuts" : queueHint && !onStatus ? "  tab to queue message" : null;
+      const hint = this.codexHint ?? shown;
+      const status = onStatus ? `  tab to queue message${" ".repeat(60)}99% context left` : this.codexStatus;
+      const welcome = this.box === "" ? this.codexWelcome : [];
+      rows.push(...welcome, ...this.over, ...queued, "", "", ...this.boxRows(), "", status, ...(hint === null ? [] : [hint]));
+      return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
     if (this.mode === "generic") rows.push(this.footer);
@@ -165,6 +220,16 @@ class FakePane {
         }
       } else if (key === "ctrl+j") {
         this.box += "\n";
+      } else if (key === "Tab" && this.mode === "codex") {
+        // Codex 0.150.0, 0.159.2 and 0.163.0 (lab, 2026-10-16): Tab queues a draft during a turn, sends it when idle, and does nothing on an empty box.
+        if (this.box.length > 0 && this.running()) this.queued.push(this.box.replace(/\n/gu, " "));
+        else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
+        this.box = "";
+      } else if (key === "Enter" && this.mode === "codex" && this.enterSubmits) {
+        // Enter during a Codex turn steers: the text joins the running turn, above the running row.
+        if (this.box.length > 0 && this.running()) this.over = [`› ${this.box.replace(/\n/gu, " ")}`, "", ...this.over];
+        else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
+        this.box = "";
       } else if (key === "Enter" && this.enterSubmits) {
         if (this.drawsQueuedRow && this.box.length > 0) this.over = [`❯ ${this.box.replace(/\n/gu, " ")}`, "  ctrl+enter to send now", ...this.over];
         else if (this.box.length > 0) this.transcript.push(`> ${this.box.replace(/\n/gu, " ")}`);
@@ -501,7 +566,7 @@ class HerdrCodexPane extends FakePane {
 describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
   test("Codex hides its hint row once the box holds a character: the manual Send passes the probe and is sent", async () => {
     const pane = new CodexPane();
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const first = await send("reply with one word: ok");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", profileId: null, keys: [] });
     // The same words as the phone's catalog line printed above it.
@@ -523,7 +588,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     pane.afterInput = (_p, what) => {
       if (what.endsWith("Enter")) pane.logo = [];
     };
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const first = await send("reply with one word: hi");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     const answer = await send("reply with one word: hi", { rowsHash: first.rowsHash! });
@@ -537,7 +602,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     pane.afterInput = (p, what) => {
       if (what.endsWith("Enter") && p instanceof HerdrCodexPane) p.sent.push(p.transcript.at(-1)!.slice(2));
     };
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     for (const text of ["reply with one word: ok", "say ok"]) {
       const look = await send(text);
       expect(look.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
@@ -553,7 +618,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     const pane = new HerdrCodexPane();
     const render = pane.render.bind(pane);
     pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const look = await send("hello");
     const answer = await send("hello", { rowsHash: look.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch", keys: ["probe", "Backspace"] });
@@ -561,7 +626,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
 
   test("on the manual path a row above the box that gains text still fails the probe, with no frame and with one", async () => {
     const bare = new CodexPane();
-    const noFrame = rig({ pane: bare, harness: "codex" });
+    const noFrame = rig({ pane: bare, harness: NO_PROFILE });
     const first = await noFrame.send("hello");
     bare.afterInput = (p, what) => {
       if (what === `type:${GENERIC_PROBE}`) p.transcript[5] = "• ready, and more text";
@@ -594,7 +659,7 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
 
   test("with no frame, a row under the box that shows other text still fails the probe", async () => {
     const pane = new CodexPane();
-    const { send } = rig({ pane, harness: "codex" });
+    const { send } = rig({ pane, harness: NO_PROFILE });
     const first = await send("hello");
     // A row under the box that turns into a list entry is not a hint that hid.
     const render = pane.render.bind(pane);
@@ -656,7 +721,7 @@ describe("after a failed probe", () => {
     // A row above the box that shows new text while the probe goes in is text the rows gained:
     // the probe fails, and its character stands in the box.
     const pane = new CodexPane();
-    const { send, deps } = rig({ pane, harness: "codex" });
+    const { send, deps } = rig({ pane, harness: NO_PROFILE });
     const first = await send("hello");
     pane.afterInput = (p, what) => {
       if (what === `type:${GENERIC_PROBE}`) p.transcript[7] = "  Worked for 2s • 5:53 AM";
@@ -860,6 +925,321 @@ describe("a command (M56 spec 06)", () => {
 /** The live running row of Claude Code 2.1.301 (claude--v2301-working-quiet--w100.txt): no interrupt hint. */
 const LIVE_ROW = "* Wibbling… (4s · ↓ 304 tokens)";
 
+describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)", () => {
+  const CODEX_RUNNING = "• Working (4s • esc to interrupt)";
+  const codex = (options: Parameters<typeof rig>[0] = {}): Rig => rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2", ...options });
+  /** The Codex profile as it was before Tab became the submit key: Enter submits, Tab queues. */
+  const enterSubmits = (profile: Profile): Profile => {
+    const { commandSubmit, ...keys } = profile.keys;
+    void commandSubmit;
+    return { ...profile, keys: { ...keys, submit: ["Enter"] } };
+  };
+  /** The Codex profile with no queue key. */
+  const noQueueKey = (profile: Profile): Profile => {
+    const { queueKey, ...keys } = profile.keys;
+    void queueKey;
+    return { ...profile, keys };
+  };
+  /** Rows of an answer that streams in above the box, one more on every read. */
+  const streams = (pane: FakePane): void => {
+    pane.turn = true;
+    pane.beforeRead = (p, n) => {
+      p.transcript.push(`streamed row ${String(n)}`);
+    };
+  };
+
+  test("a free Codex box: one write, Tab, sent, no queued field, never Enter", async () => {
+    const { pane, send } = codex();
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "codex", profileStatus: "verified", keys: ["Tab"] });
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, on 0.164.0)", async () => {
+    const { pane, send } = codex({ version: "0.164.0" });
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
+  });
+
+  test("a fresh Codex hides its welcome picture at the first character: the rows above only lost text, so the probe passes (lab, 0.163.0)", async () => {
+    const { pane, send } = codex({ version: "0.164.0" });
+    pane.codexWelcome = CODEX_WELCOME;
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+  });
+
+  test("a row above the Codex box that gains text still fails the probe", async () => {
+    const { pane, send } = codex({ version: "0.164.0" });
+    // Rows high above the box, past the profile's volatile band over the top edge.
+    pane.transcript = ["• first", "• second", "• third", "• fourth", "• fifth", "• sixth", "• seventh", "• eighth"];
+    pane.afterInput = (p, what) => {
+      // The fourth row: below the three rows at the very top that may come back from the scrollback.
+      if (what.startsWith("type:")) p.transcript = [...p.transcript.slice(0, 3), "• fourth, and a new line of output", ...p.transcript.slice(4)];
+    };
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+  });
+
+  test("a row under the Codex box that is no hint still fails the probe", async () => {
+    const { pane, send } = codex({ version: "0.164.0" });
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("type:")) p.codexHint = "  a row that is no hint";
+    };
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+  });
+
+  test("a running turn: probed, Tab, and the queued row with the text makes the receipt say queued", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+    expect(pane.box).toBe("");
+    neverEscape(pane);
+  });
+
+  test("S0 read a running turn, but the turn ends before Tab: Tab sends, and with no queued row the receipt says sent", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) p.over = [];
+    };
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+    expect(pane.queued).toEqual([]);
+    expect(pane.transcript.at(-1)).toBe("› then add a short summary");
+  });
+
+  test("S1 in a turn sees the queue hint under the status row (0.159 and 0.163 shape), and the send goes in queued", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    const hints: boolean[] = [];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) hints.push(p.render().split("\n").includes("  tab to queue message"));
+    };
+    const answer = await send("then add a short summary");
+    expect(hints).toEqual([true]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+  });
+
+  test("S1 in a turn sees the queue hint take the status row's place (0.150 and 0.156 shape), and the send goes in queued", async () => {
+    const { pane, send } = codex({ version: "0.156.1" });
+    pane.queueHintOnStatus = true;
+    pane.queuedHint = "    alt + ↑ edit last queued message";
+    pane.over = [CODEX_RUNNING];
+    const hints: boolean[] = [];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) hints.push(p.render().split("\n").some((row) => row.startsWith("  tab to queue message ") && row.endsWith("context left")));
+    };
+    const answer = await send("then add a short summary");
+    expect(hints).toEqual([true]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a Codex transcript that echoes the prompt behind its glyph, the answer indented under it, is no open list at the box (lab, 0.163.0)", async () => {
+    const { pane, send } = codex();
+    pane.transcript = ["› Write the numbers 1 to 3 in words.", "", "  one", "  two", "  three", "", "› Run the shell command sleep 30 in this folder.", ""];
+    pane.over = ["• Working (8s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close"];
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Enter never goes into a running Codex turn: ten queued sends press Tab ten times and Enter never", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    for (let i = 0; i < 10; i++) expect((await send(`follow-up number ${String(i)}`)).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toEqual([]);
+    expect(pane.keysSeen.filter((key) => key === "Tab")).toHaveLength(10);
+    expect(pane.queued).toHaveLength(10);
+  });
+
+  test("an answer that streams above a Codex box with no working row: the send presses Tab, never Enter, and the queued row says queued (lab, 0.163.0)", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["please list the files in this folder"]);
+  });
+
+  test("Submit of a draft while the answer streams with no working row presses Tab, never Enter (K1)", async () => {
+    const { pane, send } = codex();
+    pane.box = "half a thought";
+    streams(pane);
+    const answer = await send("half a thought", { mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys).toEqual(["Tab"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["half a thought"]);
+  });
+
+  test("a steering profile whose submit key is Enter: rows that move above the box route the send to the queue key, never Enter (K8)", async () => {
+    const { pane, send } = codex({ edit: enterSubmits });
+    // An answer that streams fast: a dozen rows a read, past the volatile band over the box.
+    pane.turn = true;
+    pane.beforeRead = (p, n) => {
+      for (let i = 0; i < 12; i++) p.transcript.push(`streamed row ${String(n)}.${String(i)}`);
+    };
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a steering profile whose submit key is Enter still presses Enter on a still, idle box", async () => {
+    const { pane, send } = codex({ edit: enterSubmits });
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
+  });
+
+  test("a command on an idle Codex box goes in with Enter, never Tab: Tab completes in the slash popup", async () => {
+    const { pane, send } = codex();
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen).not.toContain("Tab");
+  });
+
+  test("`!ls` is a shell command on Codex: Enter on an idle box, refused in a turn, never Tab (lab, 0.163.0)", async () => {
+    // Lab, 2026-10-16: on an idle box Tab does nothing with `!ls` (Shell mode) and Enter runs it; in a
+    // turn Tab queues it, and it runs as a shell command after the turn. So it is a command, never Tab.
+    const idle = codex();
+    const sent = await idle.send("!ls", { mode: "command" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("Enter");
+    expect(idle.pane.keysSeen).not.toContain("Tab");
+    expect((await idle.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+    const busy = codex();
+    busy.pane.over = [CODEX_RUNNING];
+    expect((await busy.send("!ls", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await busy.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
+    expect(busy.pane.keysSeen).toEqual([]);
+  });
+
+  test("an `@` text is a message on Codex: it goes in with Tab, never Enter (N2)", async () => {
+    const { pane, send } = codex();
+    const answer = await send("@README.md sum this file up");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Tab"] });
+    expect(pane.transcript.at(-1)).toBe("› @README.md sum this file up");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("`/model` is a command on Codex: Enter on an idle box, refused in a turn (N2)", async () => {
+    const idle = codex();
+    const sent = await idle.send("/model", { mode: "command" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("Enter");
+    expect(idle.pane.keysSeen).not.toContain("Tab");
+    const busy = codex();
+    busy.pane.over = [CODEX_RUNNING];
+    expect((await busy.send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(busy.pane.calls).toEqual([]);
+  });
+
+  test("a `/` text that names no Codex command still takes Enter as a command: Tab would complete it (N2)", async () => {
+    const { pane, send } = codex();
+    const answer = await send("/nosuchcommand", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen).not.toContain("Tab");
+    // As a plain send it is refused: a `/` text has its own route.
+    expect((await send("/nosuchcommand")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+  });
+
+  test("Submit of a command draft on an idle Codex box presses Enter", async () => {
+    const { pane, send } = codex();
+    pane.box = "/compact";
+    const answer = await send("/compact", { mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+  });
+
+  test("a Codex profile with no queue key refuses a send into a turn: turn_running, nothing typed", async () => {
+    const { pane, send } = codex({ edit: noQueueKey });
+    pane.over = [CODEX_RUNNING];
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe("The agent is working, and this harness does not take a message during a turn.");
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a Codex version the binary did not report never queues", async () => {
+    const { pane, send } = codex({ version: "no version here" });
+    pane.over = [CODEX_RUNNING];
+    expect((await send("then add a short summary")).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a draft in a running Codex box keeps the draft offers, and Add to it goes in queued with Tab", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.box = "half a thought";
+    expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    const added = await send(" and the rest", { mode: "append" });
+    expect(added.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(added.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.queued).toEqual(["half a thought and the rest"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Replace on a draft in a running Codex box goes in queued with Tab", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.box = "half a thought";
+    const replaced = await send("a new thought", { mode: "replace" });
+    expect(replaced.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(replaced.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.queued).toEqual(["a new thought"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a command waits for the Codex turn: refused turn_running, nothing typed", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a Codex screen with no box and a running row: the two-tap send presses Tab, never Enter; with no box there is no witness, so no queued label", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.codexStatus = "  something the profile does not know";
+    pane.codexHint = "  ? for shortcuts";
+    const first = await send("then add a short summary");
+    expect(first.receipt?.keys).toEqual([]);
+    expect(first.rowsHash).toEqual(expect.any(String));
+    const manual = await send("then add a short summary", { rowsHash: first.rowsHash! });
+    expect(manual.receipt).toMatchObject({ outcome: "sent" });
+    expect(manual.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+  });
+
+  test("a Codex screen with no box and a running row, and no queue key: the two-tap send is refused turn_running, nothing typed", async () => {
+    const { pane, send } = codex({ edit: noQueueKey });
+    pane.over = [CODEX_RUNNING];
+    pane.codexStatus = "  something the profile does not know";
+    const first = await send("then add a short summary");
+    const manual = await send("then add a short summary", { rowsHash: first.rowsHash! });
+    expect(manual.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
 describe("a send into a running turn", () => {
   test("an empty box on a harness that queues: typed, Enter through the gate, sent, the receipt says queued", async () => {
     const { pane, send } = rig();
@@ -889,7 +1269,7 @@ describe("a send into a running turn", () => {
     pane.enterSubmits = false;
     const answer = await send("then give it a title");
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
-    expect(answer.detail).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
+    expect(answer.detail).toBe("The submit key did not reach the box. A dialog may have taken it. Check the transcript.");
     expect(answer.receipt?.queued).toBeUndefined();
   });
 
@@ -1387,7 +1767,7 @@ describe("a send into a running turn", () => {
       };
       const answer = await send("then give it a title");
       expect(answer.receipt, turn).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
-      expect(answer.detail, turn).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
+      expect(answer.detail, turn).toBe("The submit key did not reach the box. A dialog may have taken it. Check the transcript.");
     }
   });
 
@@ -1396,7 +1776,7 @@ describe("a send into a running turn", () => {
     pane.status = ["  sonnet · project · main", "  ⏸ manual mode on"];
     streamAnswer(pane, typing);
     pane.afterInput = (p, what) => {
-      if (what.startsWith("type:then") || what.startsWith("paste:")) p.status = ["  ❯ 1. Yes", "    2. No"];
+      if (what.startsWith("paste:then") || what.startsWith("paste:")) p.status = ["  ❯ 1. Yes", "    2. No"];
     };
     const answer = await send("then give it a title");
     expect(pane.keysSeen.includes("Enter")).toBe(false);
@@ -1410,6 +1790,16 @@ describe("a send into a running turn", () => {
     expect(steadyRow("2. No, tell Claude... (3m)")).not.toBe(steadyRow("2. No, tell Claude to wait... (3m)"));
     expect(steadyRow("2. No, tell Claude... (3m)")).toBe("2. No, tell Claude... (0m)");
     expect(steadyRow("an answer row (12s)")).toBe("an answer row (12s)");
+  });
+
+  test("steadyRow masks the braille spinner of a row the profile names as a running row (M56 spec 14)", () => {
+    const signs = [/^─+\s+[⠀-⣿]\s+Working\b/u, /^\s?[⠀-⣿]\s+\d+s\s.*▶/u];
+    expect(steadyRow(" ⠇ 4s > Haiku 4.5 ▶──5%──", signs)).toBe(steadyRow(" ⠹ 5s > Haiku 4.5 ▶──5%──", signs));
+    expect(steadyRow("── ⠴ Working ─────", signs)).toBe(steadyRow("── ⠧ Working ─────", signs));
+    expect(steadyRow("── ⠴ Working ─────")).not.toBe(steadyRow("── ⠧ Working ─────"));
+    // Another row keeps its glyphs, and a changed word still changes the row.
+    expect(steadyRow("⠴ other row", signs)).toBe("⠴ other row");
+    expect(steadyRow("── ⠴ Working ─────", signs)).not.toBe(steadyRow("── ⠧ Idle ─────", signs));
   });
 
   test("steadyRow reads the spinner row before and after its timer shows as one row (Claude Code 2.1.301)", () => {
@@ -1782,7 +2172,7 @@ describe("the offers as new requests", () => {
     const pane = new HerdrCodexPane();
     const render = pane.render.bind(pane);
     pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
-    return { r: rig({ pane, harness: "codex" }), pane };
+    return { r: rig({ pane, harness: NO_PROFILE }), pane };
   };
   const typedNotSubmitted = async (r: Rig, text: string): Promise<SendAnswer> => {
     const look = await r.send(text);
@@ -2233,6 +2623,14 @@ describe("counters, the cap and the examples", () => {
   }
   const rowOf = (ledger: SurfaceLedger, harness: string) => ledger.rows().find((row) => row.harness === harness);
 
+  test("a send from a pane the multiplexer calls by another name of the harness is counted under the profile id (M56 spec 14 review)", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ ledger, mode: "generic", harness: "antigravity", version: "1.1.17" });
+    await send("hello there");
+    expect(ledger.rows().map((row) => row.harness)).toEqual(["agy"]);
+    expect(rowOf(ledger, "agy")).toMatchObject({ version: "1.1.17", profileId: "agy", status: "provisional" });
+  });
+
   test("a send that goes through is counted sent under its harness, version, profile and status", async () => {
     const ledger = ledgerFor();
     const { send } = rig({ ledger });
@@ -2291,13 +2689,13 @@ describe("counters, the cap and the examples", () => {
     expect(rowOf(ledger, "nothing-known")?.manual).toBe(3);
   });
 
-  test("a harness with no version is named alone in the cap's detail, not as `codex -`", async () => {
+  test("a harness with no version is named alone in the cap's detail, not as `<harness> -`", async () => {
     const ledger = ledgerFor({ cap: 0 });
-    const noVersion = rig({ mode: "generic", ledger, harness: "codex" });
+    const noVersion = rig({ mode: "generic", ledger, harness: NO_PROFILE });
     const first = await noVersion.send("hello from the phone");
     const capped = await noVersion.send("hello from the phone", { rowsHash: first.rowsHash! });
-    expect(capped.detail).toContain("0 times on codex in the last day");
-    expect(capped.detail).not.toContain("codex -");
+    expect(capped.detail).toContain(`0 times on ${NO_PROFILE} in the last day`);
+    expect(capped.detail).not.toContain(`${NO_PROFILE} -`);
   });
 
   test("a discard is counted as discarded, never as sent", async () => {
@@ -2439,5 +2837,266 @@ describe("a prompt edge closes a receipt as effective", () => {
     const answer = await send("hello there");
     expect(answer.receipt?.outcome).toBe("refused");
     expect(protocol.promptEdge("%1", hashOf(deps, "hello there"), clock.now)).toBeNull();
+  });
+});
+
+// ── M56 spec 14 review: the omp keys, the probe rule, the frameless gate, the platform keys ──
+
+/**
+ * OMP 18.6.1 as the lab read it (2026-10-16): an open box (`╰─` under a status row), Ctrl+Q sends on an
+ * idle box and queues in a turn, Enter steers a running turn. A turn shows a blinking `Working…` row and a
+ * spinner with the seconds in the status row, which does not blink.
+ */
+class OmpPane extends FakePane {
+  inTurn = false;
+  /** The blinking row is on. A turn with the row off shows its spinner in the status row alone. */
+  showWorking = true;
+  /** Texts Enter sent into the turn: steering, which the send must never do. */
+  steered: string[] = [];
+
+  constructor() {
+    super("generic");
+    this.transcript = Array.from({ length: 12 }, (_, i) => ` an earlier row of the agent answer ${String(i)}`);
+    const base = this.writeKeys;
+    this.writeKeys = (paneId, keys) => {
+      for (const key of keys) {
+        if (key === "ctrl+q" || (key === "Enter" && this.inTurn)) {
+          this.keysSeen.push(key);
+          const text = this.box.replace(/\n/gu, " ");
+          if (text.length > 0 && key === "Enter") this.steered.push(text);
+          else if (text.length > 0 && this.inTurn) this.queued.push(text);
+          else if (text.length > 0) this.transcript.push(` > ${text}`);
+          this.box = "";
+          this.revision++;
+        } else void base(paneId, [key]);
+      }
+      return Promise.resolve(muxAck());
+    };
+  }
+
+  override render(): string {
+    const rows = [...this.transcript, ""];
+    if (this.queued.length > 0) rows.push(`  After yield · ${String(this.queued.length)}`, ...this.queued.map((text, i) => `  ${String(i + 1)}. ${text}`), "  └ Alt+↑ to edit", "");
+    if (this.inTurn && this.showWorking) rows.push("  ⎋ Working…                                      Write essay");
+    rows.push(this.inTurn ? " ⠼ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────" : " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────");
+    this.box.split("\n").forEach((line, i) => rows.push(i === 0 ? `╰─ ${line}`.trimEnd() : `   ${line}`));
+    return rows.join("\n");
+  }
+}
+
+function omp(options: { version?: string; edit?: (profile: Profile) => Profile } = {}): Rig & { pane: OmpPane } {
+  const pane = new OmpPane();
+  const rigOptions: Parameters<typeof rig>[0] = { pane, harness: "omp", version: options.version ?? "18.6.1" };
+  if (options.edit !== undefined) rigOptions.edit = options.edit;
+  const made = rig(rigOptions);
+  return { ...made, pane };
+}
+
+describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
+  test("an idle box is sent with Ctrl+Q, never Enter", async () => {
+    const { pane, send } = omp();
+    const answer = await send("write the summary now");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.transcript.at(-1)).toBe(" > write the summary now");
+  });
+
+  test("a command takes Enter, which sends a command on an idle box", async () => {
+    const { pane, send } = omp();
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("a turn shown by the status row's spinner alone (the Working row is off): the send queues with Ctrl+Q, never Enter", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    pane.showWorking = false;
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a turn shown by the Working row alone (the status row at rest): the send queues with Ctrl+Q, never Enter", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    const render = pane.render.bind(pane);
+    pane.render = () => render().replace(" ⠼ 4s >", " π >");
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("the Working row blinks off between the first read and the commit: Enter never goes in", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    pane.beforeRead = (p, n) => {
+      if (p instanceof OmpPane) p.showWorking = n % 2 === 0;
+    };
+    const answer = await send("then add a short summary");
+    expect(["sent", "refused", "typed_not_submitted", "unknown"]).toContain(String(answer.receipt?.outcome));
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a profile with a platform entry presses that platform's submit key", async () => {
+    const win = omp({ edit: (profile) => forPlatform({ ...profile, keys: { ...profile.keys, submitByPlatform: { win32: ["Enter"] } } }, "win32") });
+    const answer = await win.send("write the summary now");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(win.pane.keysSeen).not.toContain("ctrl+q");
+  });
+});
+
+describe("a profile whose probe is provisional never skips the probe (M56 spec 14 review)", () => {
+  const LONG = "this text is long enough that a verified profile would send it with no probe at all";
+
+  test("a verified profile on a free screen sends a long text with no probe, a provisional one probes it", async () => {
+    const verified = rig();
+    expect((await verified.send(LONG)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    const provisional = rig({ edit: (profile) => ({ ...profile, probe: { ...profile.probe, status: "provisional" } }) });
+    expect((await provisional.send(LONG)).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("the profiles of every harness with no live send in its range are provisional", () => {
+    for (const id of ["grok", "agy", "muse", "opencode", "omp"]) expect(loadProfiles().get(id)?.probe.status, id).toBe("provisional");
+    expect(loadProfiles().get("pi")?.probe.status).toBe("verified");
+  });
+});
+
+describe("a frameless manual send in a turn is refused where Enter is not known to queue (M56 spec 14 review)", () => {
+  const cases = [
+    { harness: "grok", version: "1.0.46", rows: ["  Ctrl+e:expand thinking  │  Space:prompt  │  Esc:cancel  │  Ctrl+b:send to bg  │  Ctrl+.:shortcuts"] },
+    { harness: "agy", version: "1.1.17", rows: ["⣟  Generating...", "└ Tip: Use /btw to ask a question without breaking context.", "esc to cancel     accept-edits · Gemini 3.7 Flash · low"] },
+    { harness: "muse", version: "1.4.7", rows: ["◇ Double checking (2m 40s · esc to interrupt)"] },
+  ];
+  for (const c of cases) {
+    test(`${c.harness}: a running sign and no box, two taps: refused turn_running, nothing typed, no Enter`, async () => {
+      const pane = new FakePane("generic");
+      pane.fixed = ["a transcript row", "", ...c.rows].join("\n");
+      const { send, protocol } = rig({ pane, harness: c.harness, version: c.version });
+      // The rows hash a person confirmed: the manual path, which a screen with a running sign must not take.
+      const prepared = await protocol.handle({ id: `prepare-${c.harness}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: c.harness });
+      expect(prepared.rowsHash).toEqual(expect.any(String));
+      const manual = await send("then add a short summary", { rowsHash: prepared.rowsHash! });
+      expect(manual.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    });
+  }
+});
+
+describe("the compare of a Codex send reads a changing status row (M56 spec 14 review)", () => {
+  const RUNNING = "• Working (4s • esc to interrupt)";
+  const signs = (loadProfiles().get("codex")?.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+  const GLYPHS = ["⠋", "⠙", "⠹", "⠸"];
+
+  test("steadyRow hides the spinner glyph and the digits of a Codex status row that ends in a spinner, and of no other row", () => {
+    expect(steadyRow("  GPT-6-Luna low · ~/project2 · ⠋", signs)).toBe(steadyRow("  GPT-6-Luna low · ~/project7 · ⠙", signs));
+    expect(steadyRow("  GPT-6-Luna low · ~/project2", signs)).not.toBe(steadyRow("  GPT-6-Luna low · ~/project7", signs));
+    expect(steadyRow("  GPT-6-Luna low · ~/project · ⠋", signs)).not.toBe(steadyRow("  GPT-6-Sol low · ~/project · ⠋", signs));
+  });
+
+  test("a spinner that ticks in the status row between the reads of a send into a turn does not stop it: Tab, never Enter", async () => {
+    const { pane, send } = rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2" });
+    pane.over = [RUNNING];
+    pane.beforeRead = (p, n) => {
+      p.codexStatus = `  GPT-6-Luna low · ~/project · ${GLYPHS[n % GLYPHS.length]!}`;
+    };
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// ── an `@` text is a message on pi and OMP (M56 spec 14, verifier) ──
+
+/** pi 0.87.1: a box between two rules, a status row under it. Alt+Enter (Ctrl+Q on Windows) sends and queues, Enter steers a turn. */
+class PiPane extends FakePane {
+  inTurn = false;
+  steered: string[] = [];
+
+  constructor(private readonly sendKey: string) {
+    super("claude");
+    this.transcript = Array.from({ length: 12 }, (_, i) => `an earlier row of the agent answer ${String(i)}`);
+    this.status = ["~/project (main)", "0.0%/200k (auto)"];
+    const base = this.writeKeys;
+    this.writeKeys = (paneId, keys) => {
+      for (const key of keys) {
+        if (key === this.sendKey || (key === "Enter" && this.inTurn)) {
+          this.keysSeen.push(key);
+          const text = this.box.replace(/\n/gu, " ");
+          if (text.length > 0 && key === "Enter") this.steered.push(text);
+          else if (text.length > 0 && this.inTurn) this.queued.push(text);
+          else if (text.length > 0) this.transcript.push(` > ${text}`);
+          this.box = "";
+          this.revision++;
+        } else void base(paneId, [key]);
+      }
+      return Promise.resolve(muxAck());
+    };
+  }
+
+  override render(): string {
+    this.over = this.inTurn ? ["⠋ Working... (4s • esc to interrupt)"] : [];
+    const rows = [...this.transcript, ...this.queued.map((text) => `Follow-up: ${text}`), ...(this.queued.length > 0 ? ["↳ Alt+Up to edit all queued messages"] : [])];
+    return [...rows, "", ...this.over, RULE, ...(this.box === "" ? [""] : this.box.split("\n").map((line) => ` ${line}`)), RULE, ...this.status].join("\n");
+  }
+}
+
+describe("a text that starts with `@` is a message on pi and OMP", () => {
+  const AT = "@notes.md what changed in this file?";
+
+  test("pi leaves `@` out of its reserved leads and keeps `/` and `!`", () => {
+    expect(loadProfiles().get("pi")?.reservedLeads).toEqual(["/", "!"]);
+    expect(loadProfiles().get("omp")?.reservedLeads).toEqual(["/", "!"]);
+  });
+
+  for (const [platform, key] of [["linux", "alt+Enter"], ["win32", "ctrl+q"]] as const) {
+    test(`pi on ${platform}: an \`@\` text in a turn queues with ${key}, never Enter`, async () => {
+      const pane = new PiPane(key);
+      pane.inTurn = true;
+      const { send } = rig({ pane, harness: "pi", version: "0.87.1", edit: (profile) => forPlatform(profile, platform) });
+      const answer = await send(AT);
+      expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+      expect(answer.receipt?.keys.at(-1)).toBe(key);
+      expect(pane.queued).toEqual([AT]);
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.steered).toEqual([]);
+    });
+  }
+
+  test("pi: an `@` text on an idle box is sent with Alt+Enter, and `/model` still takes Enter", async () => {
+    const pane = new PiPane("alt+Enter");
+    const { send } = rig({ pane, harness: "pi", version: "0.87.1" });
+    const answer = await send(AT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("alt+Enter");
+    expect(pane.keysSeen).not.toContain("Enter");
+    const command = await send("/model", { mode: "command" });
+    expect(command.receipt?.keys.at(-1)).toBe("Enter");
+  });
+
+  test("omp: an `@` text in a turn queues with ctrl+q, never Enter", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    const answer = await send(AT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.queued).toEqual([AT]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a `/` text is still a command on pi and OMP: refused in a turn, nothing typed", async () => {
+    const pane = new PiPane("alt+Enter");
+    pane.inTurn = true;
+    const answer = await rig({ pane, harness: "pi", version: "0.87.1" }).send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
   });
 });
