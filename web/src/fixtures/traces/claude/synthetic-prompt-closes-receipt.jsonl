@@ -1,0 +1,6 @@
+{"kind": "trace", "harness": "claude", "version": "2.1.201", "set": "positive", "source": "synthetic, from fixtures/panes", "note": "a phone send opens a receipt; the prompt edge with the same text closes it as effective, another text does not"}
+{"at": 0, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": true}}
+{"at": 100, "send": {"id": "r1", "text": "please fix the failing test"}, "expect": {"receipts": {"r1": "open"}}}
+{"at": 300, "edge": {"event": "UserPromptSubmit", "prompt": "something else"}, "expect": {"receipts": {"r1": "open"}}}
+{"at": 400, "edge": {"event": "UserPromptSubmit", "prompt": "please fix the failing test\n"}, "expect": {"receipts": {"r1": "effective"}, "free": false}}
+{"at": 1100, "read": {"rows": 0, "cols": 0, "fixture": "claude--working-esc-to-interrupt.txt"}, "expect": {"turn": "running"}}

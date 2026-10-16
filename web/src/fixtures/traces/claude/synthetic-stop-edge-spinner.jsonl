@@ -1,0 +1,6 @@
+{"kind": "trace", "harness": "claude", "version": "2.1.201", "set": "positive", "source": "synthetic, from fixtures/panes", "note": "a Stop edge while the spinner still shows: the turn stays running until a read shows the idle box"}
+{"at": 0, "edge": {"event": "UserPromptSubmit"}}
+{"at": 700, "read": {"rows": 0, "cols": 0, "fixture": "claude--working-esc-to-interrupt.txt"}, "expect": {"free": false, "turn": "running"}}
+{"at": 4000, "edge": {"event": "Stop"}, "expect": {"free": false, "reason": "stale"}}
+{"at": 4700, "read": {"rows": 0, "cols": 0, "fixture": "claude--working-esc-to-interrupt.txt"}, "expect": {"free": false, "turn": "running"}}
+{"at": 5700, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": true, "turn": "idle", "modal": "none"}}

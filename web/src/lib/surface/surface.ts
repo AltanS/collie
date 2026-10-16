@@ -3,7 +3,7 @@
 // This file holds the contract's types, the free rule and the one short hash the surface code uses.
 // It is pure: no DOM, no Bun API, no harness name.
 
-/** Why a claim is `unknown`. `contested` is reserved for later sources (hooks, mux hints). */
+/** Why a claim is `unknown`. `contested` comes from a hook edge that disagrees with a young read (spec 11). */
 export type SurfaceReason = "no-match" | "contested" | "stale" | "torn";
 
 /**

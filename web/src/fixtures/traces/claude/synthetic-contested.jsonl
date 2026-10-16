@@ -1,0 +1,6 @@
+{"kind": "trace", "harness": "claude", "version": "2.1.201", "set": "positive", "source": "synthetic, from fixtures/panes", "note": "a prompt edge younger than the settle time and an idle screen: contested, not free"}
+{"at": 0, "edge": {"event": "UserPromptSubmit"}}
+{"at": 700, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": false, "turn": "unknown", "reason": "contested"}}
+{"at": 1600, "read": {"rows": 0, "cols": 0, "fixture": "claude--working-esc-to-interrupt.txt"}, "expect": {"turn": "running", "reason": null}}
+{"at": 3000, "edge": {"event": "Stop"}}
+{"at": 3700, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": true}}

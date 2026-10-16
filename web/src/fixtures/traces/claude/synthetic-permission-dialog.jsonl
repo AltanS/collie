@@ -1,0 +1,10 @@
+{"kind": "trace", "harness": "claude", "version": "2.1.201", "set": "negative", "source": "synthetic, from fixtures/panes", "note": "a permission dialog on screen with every edge kind around it: never free, with the hooks present, removed or lying"}
+{"at": 0, "edge": {"event": "UserPromptSubmit"}}
+{"at": 700, "read": {"rows": 0, "cols": 0, "fixture": "claude--working-esc-to-interrupt.txt"}}
+{"at": 3000, "edge": {"event": "Notification", "detail": "permission_prompt"}}
+{"at": 3700, "read": {"rows": 0, "cols": 0, "fixture": "claude--permission-bash.txt"}, "expect": {"free": false, "modal": "ask"}}
+{"at": 4000, "edge": {"event": "Stop"}}
+{"at": 4700, "read": {"rows": 0, "cols": 0, "fixture": "claude--permission-bash.txt"}, "expect": {"free": false, "modal": "ask"}}
+{"at": 9000, "edge": {"event": "SessionEnd"}}
+{"at": 15000, "read": {"rows": 0, "cols": 0, "fixture": "claude--permission-bash.txt"}, "expect": {"free": false}}
+{"at": 25000, "read": {"rows": 0, "cols": 0, "fixture": "claude--permission-bash.txt"}, "expect": {"free": false}}

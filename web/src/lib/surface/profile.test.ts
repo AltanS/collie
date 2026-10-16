@@ -121,6 +121,11 @@ describe("parseProfile names the failing field", () => {
     ["an ask lifetime that is not a whole number", ["ask", "lifetimeMs"], 1.5, "ask.lifetimeMs"],
     ["an ask lifetime below its floor", ["ask", "lifetimeMs"], 10, "ask.lifetimeMs"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
+    ["an unknown edge kind", ["edges", "events", "Stop"], "level", "edges.events.Stop"],
+    ["an edge on an event hooks does not list as an edge", ["edges", "events", "PermissionRequest"], "dialog", "edges.events.PermissionRequest"],
+    ["an edge key that is not Event or Event:detail", ["edges", "events", "Stop now"], "stop", "edges.events.Stop now"],
+    ["a settle time below its floor", ["edges", "settleMs"], 10, "edges.settleMs"],
+    ["a missing re-read delay", ["edges", "rereadMs"], undefined, "edges.rereadMs"],
     ["an empty submit key list", ["keys", "submit"], [], "keys.submit"],
     ["a bad id", ["id"], "Claude Code", "id"],
   ];

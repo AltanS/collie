@@ -66,5 +66,18 @@
     "SessionEnd": "edge",
     "Notification": "edge",
     "PermissionRequest": "ask"
+  },
+  "edges": {
+    "rereadMs": 700,
+    "settleMs": 1500,
+    "events": {
+      "SessionStart": "start",
+      "UserPromptSubmit": "prompt",
+      "Stop": "stop",
+      "SessionEnd": "end",
+      "Notification:permission_prompt": "dialog",
+      "Notification:elicitation_dialog": "dialog",
+      "Notification:idle_prompt": "reread"
+    }
   }
 }

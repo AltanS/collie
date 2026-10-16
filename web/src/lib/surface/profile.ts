@@ -12,6 +12,7 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import { compareSemver } from "../semver";
+import { EDGE_KINDS, type EdgeProfile } from "./edges";
 import { PROFILE_FILES } from "./profiles/index";
 
 export type ProfileStatus = "verified" | "provisional" | "revoked";
@@ -110,6 +111,11 @@ export interface Profile {
   };
   /** Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one. */
   readonly hooks: Readonly<Record<string, HookKind>>;
+  /**
+   * What each edge is for the fold, and its timing (M56 spec 11). Optional: a profile without it maps
+   * no event, so every edge only asks for a fresh read, with the default timing.
+   */
+  readonly edges?: EdgeProfile;
 }
 
 /** A profile that failed its check. `path` names the field, for example `keys.clear.slack`. */
@@ -331,9 +337,42 @@ export function parseProfile(raw: JsonValue): Profile {
   );
   if (Object.keys(hooks).length === 0) fail("hooks", "must name at least one event");
 
+  const edges = root.edges === undefined ? undefined : parseEdges(root.edges, hooks);
+
   const parsedProfile: Profile = { id, identity, versions, idle, keys, collapse, reservedLeads, probe, hooks };
   const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
-  return ask === undefined ? withPaste : { ...withPaste, ask };
+  const withAsk = ask === undefined ? withPaste : { ...withPaste, ask };
+  return edges === undefined ? withAsk : { ...withAsk, edges };
+}
+
+/** A whole number of ms inside a range. */
+function millis(value: JsonValue | undefined, path: string, min: number, max: number): number {
+  const ms = asJsonNumber(value);
+  return ms !== undefined && Number.isInteger(ms) && ms >= min && ms <= max
+    ? ms
+    : fail(path, `must be a whole number of ms from ${String(min)} to ${String(max)}`);
+}
+
+/**
+ * The `edges` block. Each key is a hook event, or `Event:detail` for one detail of it (a notification
+ * type). The event part must be a key of `hooks` with kind `edge`: an event the profile does not
+ * register as an edge cannot be one.
+ */
+function parseEdges(value: JsonValue, hooks: Readonly<Record<string, HookKind>>): EdgeProfile {
+  const node = object(value, "edges");
+  const rereadMs = millis(field(node, "rereadMs", "edges"), "edges.rereadMs", 100, 5000);
+  const settleMs = millis(field(node, "settleMs", "edges"), "edges.settleMs", 100, 10_000);
+  const eventsNode = object(field(node, "events", "edges"), "edges.events");
+  const events = Object.fromEntries(
+    Object.keys(eventsNode).map((key) => {
+      const at = `edges.events.${key}`;
+      if (!/^[A-Za-z]+(?::[a-z_]+)?$/.test(key)) fail(at, "must read Event or Event:detail");
+      const event = key.split(":")[0] ?? key;
+      if (hooks[event] !== "edge") fail(at, `names ${event}, which hooks does not list as an edge`);
+      return [key, oneOf(eventsNode[key], at, EDGE_KINDS)];
+    }),
+  );
+  return { rereadMs, settleMs, events };
 }
 
 /** The version a binary printed: the first match of the profile's own version expression, or null. */

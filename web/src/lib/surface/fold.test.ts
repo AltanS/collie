@@ -406,8 +406,8 @@ describe("foldSurface", () => {
     expect(surface.composer).toBe("unknown");
   });
 
-  it("names its sources in one list, screen reads and ticks in version 1", () => {
-    expect([...SURFACE_SOURCES]).toEqual(["screen", "tick"]);
+  it("names its sources in one list: screen reads, ticks and hook edges (spec 11)", () => {
+    expect([...SURFACE_SOURCES]).toEqual(["screen", "tick", "edge"]);
   });
 
   it("agrees with surfaceOfScreen on one read", () => {

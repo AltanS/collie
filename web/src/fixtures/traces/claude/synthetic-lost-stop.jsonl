@@ -1,0 +1,7 @@
+{"kind": "trace", "harness": "claude", "version": "2.1.201", "set": "positive", "source": "synthetic, from fixtures/panes", "note": "the Stop edge never comes: three free reads over ten seconds end the running block, one incident"}
+{"at": 0, "edge": {"event": "UserPromptSubmit"}}
+{"at": 700, "read": {"rows": 0, "cols": 0, "fixture": "claude--working-esc-to-interrupt.txt"}, "expect": {"turn": "running"}}
+{"at": 2000, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": false, "turn": "running"}}
+{"at": 7000, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": false, "turn": "running"}}
+{"at": 12000, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": true, "lostStops": 1}}
+{"at": 13000, "tick": true, "expect": {"free": true, "lostStops": 1}}
