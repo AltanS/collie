@@ -404,6 +404,9 @@ describe("a harness with no profile", () => {
   });
 });
 
+/** The welcome picture a fresh Codex 0.163.0 session draws above the box, as the M56 lab read it on 2026-10-16. */
+const CODEX_WELCOME: string[] = ["               ⣀⣤⣤⣤⣀⣀", "            ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀", "          ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄", "         ⣀⣾⣿⣿⠃ ⣀⣴⣾⣿⣿⡿⠟⠋ ⣀⡀ ⠈⠙⢿⣿⣿⣧", "      ⣀⣶⣿⣿⣿⣿⡇ ⢸⣿⣿⡿⠛⠉⢀⣠⣴⣿⣿⣿⣷⣦⣀⠈⢻⣿⣿⡇", "     ⣰⣿⣿⡿⢿⣿⣿⡇ ⢸⣿⣿⢀⣤⣶⣿⣿⣿⠟⠛⠻⣿⣿⣿⣿⣮⣿⣿⡷", "    ⢰⣿⣿⡟⠁⢸⣿⣿⡇ ⢸⣿⣿⣿⣿⠿⠿⣿⣿⣿⣦⣄⡀⠈⠛⠿⣿⣿⣿⣧⡀", "    ⣾⣿⣿⠃ ⢸⣿⣿⡇ ⢸⣿⣿⠋⠁  ⠈⠙⢻⣿⣿⣿⣶⣤⡀ ⠹⢿⣿⣷⡄", "    ⢸⣿⣿⣇ ⠸⣿⣿⣷⣦⣼⣿⣿      ⢸⣿⣿⠻⢿⣿⣿⡇ ⠘⣿⣿⣿", "    ⠈⢿⣿⣿⣦⡀⠈⠛⠿⣿⣿⣿⣿⣄⡀  ⢀⣠⣼⣿⣿  ⣿⣿⡇  ⣿⣿⣿⠇", "      ⢻⣿⣿⣿⣷⣦⣀⠈⠙⠻⣿⣿⣿⣶⣶⣿⣿⣿⣿⣿  ⣿⣿⡇ ⣠⣿⣿⣿", "      ⢸⣿⣿⡿⢿⣿⣿⣿⣦⣠⣴⣿⣿⣿⡿⠟⠋⢸⣿⣿  ⣿⣿⣷⣴⣿⣿⣿⠃", "      ⠘⣿⣿⣷ ⠈⠛⢿⣿⣿⣿⠿⠋⠉ ⣠⣴⣿⣿⣿  ⣿⣿⣿⣿⣿⠟⠁", "       ⠻⣿⣿⣿⣤⣀ ⠈⠉ ⢀⣤⣶⣿⣿⣿⠿⠟⠁ ⣰⣿⣿⡟⠋⠁", "        ⠈⠿⣿⣿⣿⣿⣶⣾⣿⣿⣿⣿⠟⠋⠁  ⣠⣼⣿⣿⡟", "           ⠙⠛⠛⠛⠻⠛⢿⣿⣿⣿⣿⣷⣾⣿⣿⣿⡿⠏", "                  ⠈⠙⠛⠿⠿⠿⠿⠛⠉"];
+
 /**
  * Codex 0.163.0 as the lab read it (2026-10-16, tmux 3.7c, 100 columns), home path cut: no frame, a
  * dim placeholder on the `›` row, the status row, and the hint row `← for agents · ? for shortcuts`,
@@ -444,6 +447,57 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     expect(pane.transcript.at(-1)).toBe("> reply with one word: ok");
     expect(pane.box).toBe("");
     neverEscape(pane);
+  });
+
+  test("a fresh Codex 0.163.0 hides its welcome picture once the box holds a character: the rows above only lost text, so the first message is sent", async () => {
+    const pane = new CodexPane();
+    pane.transcript = ["", "  >_ OpenAI Codex (v0.163.0)", "     ~/project", "", "", "", "", "", "", "", ""];
+    pane.logo = CODEX_WELCOME;
+    // The picture comes back when the box is empty again (seen live after the probe's Backspace),
+    // and is gone for good once a message went in.
+    pane.afterInput = (_p, what) => {
+      if (what.endsWith("Enter")) pane.logo = [];
+    };
+    const { send } = rig({ pane, harness: "codex" });
+    const first = await send("reply with one word: hi");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    const answer = await send("reply with one word: hi", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:reply with one word: hi"]);
+    expect(pane.transcript.at(-1)).toBe("> reply with one word: hi");
+  });
+
+  test("on the manual path a row above the box that gains text still fails the probe, with no frame and with one", async () => {
+    const bare = new CodexPane();
+    const noFrame = rig({ pane: bare, harness: "codex" });
+    const first = await noFrame.send("hello");
+    bare.afterInput = (p, what) => {
+      if (what === `type:${GENERIC_PROBE}`) p.transcript[5] = "• ready, and more text";
+    };
+    expect((await noFrame.send("hello", { rowsHash: first.rowsHash! })).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(bare.calls).toEqual([`type:${GENERIC_PROBE}`]);
+
+    const framed = rig();
+    framed.pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    framed.pane.over = ["● How is the agent doing this session? (optional)", "  1: Bad    2: Fine    3: Good    0: Dismiss"];
+    const look = await framed.send("carry on");
+    expect(look.surface?.modal).toBe("unreadable");
+    framed.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.transcript.splice(2, 0, "a new row of output");
+    };
+    expect((await framed.send("carry on", { rowsHash: look.rowsHash! })).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(framed.pane.calls).toEqual([`type:${PROBE}`]);
+  });
+
+  test("on the manual path a framed transcript that only lost a row above the box still goes through", async () => {
+    const { pane, send } = rig();
+    pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    pane.over = ["● How is the agent doing this session? (optional)", "  1: Bad    2: Fine    3: Good    0: Dismiss"];
+    const look = await send("carry on");
+    pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.transcript[2] = "";
+    };
+    expect((await send("carry on", { rowsHash: look.rowsHash! })).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("with no frame, a row under the box that shows other text still fails the probe", async () => {
@@ -505,12 +559,14 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
 
 describe("after a failed probe", () => {
   test("the probe character standing once in the box gets one Backspace through the gate, and the detail says the box is clean again", async () => {
-    // A fresh Codex 0.163.0 session hides its welcome art once the box holds a character: a change
-    // above the box, so the probe fails, and the character stands in the box.
+    // A row above the box that shows new text while the probe goes in is text the rows gained:
+    // the probe fails, and its character stands in the box.
     const pane = new CodexPane();
-    pane.logo = ["            ⣀⣤⣤⣤⣀⣀", "         ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤", "        ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿"];
     const { send, deps } = rig({ pane, harness: "codex" });
     const first = await send("hello");
+    pane.afterInput = (p, what) => {
+      if (what === `type:${GENERIC_PROBE}`) p.transcript[7] = "  Worked for 2s • 5:53 AM";
+    };
     const answer = await send("hello", { rowsHash: first.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
     expect(answer.detail).toBe("The probe character changed more than the box. One Backspace removed the probe character, so the box is clean again.");

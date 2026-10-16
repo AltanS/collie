@@ -25,7 +25,8 @@
 // A manual send (the screen takes the two-tap Send: no profile, an unreadable overlay, a weak cue)
 // compares less than a free one: the rows under the box (hints, footers, status rows) and the rest
 // of the box may change while the probe and the text go in, as a `command` lets them. The rows
-// above the box must still stand still, and a modal cue that shows still fails.
+// above the box may lose text (go blank, or move because rows vanished) but never gain any, and a
+// modal cue that shows still fails.
 //
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
@@ -318,9 +319,34 @@ function outsideUnchanged(before: Snap, after: Snap): boolean {
   return aboveUnchanged(before, after);
 }
 
-/** What a manual send asks of a framed pane: no modal cue grew, and the transcript above the box stood still. */
+/**
+ * Whether the rows of `after` only lost text against `before`: each non-blank row of `after` stands,
+ * in the same order, among the non-blank rows of `before`. A row that went blank, rows that vanished
+ * and moved the rest, rows scrolled off the top all pass; a row with new text (a dialog, a line of
+ * output, a timer that ticked) fails. A manual send allows this above the box.
+ */
+function lostTextOnly(before: readonly string[], after: readonly string[]): boolean {
+  const kept = before.map((row) => row.trimEnd()).filter((row) => row.length > 0);
+  let k = 0;
+  for (const row of after) {
+    const text = row.trimEnd();
+    if (text.length === 0) continue;
+    while (k < kept.length && kept[k] !== text) k++;
+    if (k === kept.length) return false;
+    k++;
+  }
+  return true;
+}
+
+/** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. */
+function aboveLostOnly(before: Snap, after: Snap): boolean {
+  if (before.frame === null || after.frame === null) return false;
+  return lostTextOnly(transcriptAbove(before, before.frame), transcriptAbove(after, after.frame));
+}
+
+/** What a manual send asks of a framed pane: no modal cue grew, and the transcript above the box only lost text. */
 function manualOutsideUnchanged(before: Snap, after: Snap): boolean {
-  return !cueAppeared(before, after) && aboveUnchanged(before, after);
+  return !cueAppeared(before, after) && aboveLostOnly(before, after);
 }
 
 /** {@link outsideUnchanged} for a `command`: the transcript above the box only; its popup may fill the rows under it. */
@@ -422,13 +448,14 @@ function afterProbe(landing: Landing): string {
 
 /**
  * Whether every row under `row` in `before` still reads the same in `after`, or went blank: a hint
- * that hides once the box holds a character. Rows are matched from the bottom of the read, where a
- * harness with no frame keeps its footer while the box grows upward. A row that shows other text
- * fails: a list under a search field that narrows to the typed text is not a hint.
+ * that hides once the box holds a character. By default rows are matched from the bottom of the
+ * read, where a harness with no frame keeps its footer while the box grows upward; `offset` moves
+ * the match when the box itself moved. A row that shows other text fails: a list under a search
+ * field that narrows to the typed text is not a hint.
  */
-function belowHeldOrBlank(before: readonly string[], after: readonly string[], row: number): boolean {
+function belowHeldOrBlank(before: readonly string[], after: readonly string[], row: number, offset = after.length - before.length): boolean {
   for (let i = row + 1; i < before.length; i++) {
-    const now = after[after.length - (before.length - i)] ?? "";
+    const now = after[i + offset] ?? "";
     if (now.trim().length > 0 && wsFree(now) !== wsFree(before[i] ?? "")) return false;
   }
   return true;
@@ -446,23 +473,17 @@ function countIn(rows: readonly string[], needle: string): number {
  * window, and the change is the probe character put in (blanks next to it may appear where a faint
  * placeholder stood). Null on anything else.
  *
- * With `freeBelow` (a manual send), the first changed row is the landing row, the rest of that row
- * after the probe may change, and a row under it may go blank (a hint row that hides once the box
- * holds a character, live on Codex 0.162.1 and 0.163.0). The rows above it are equal by
- * construction, and the probe must stand exactly once more in the read than at S0.
+ * With `freeBelow` (a manual send) see {@link looseLanding}.
  */
 export function probeLanding(before: readonly string[], after: readonly string[], probe: string, options: { readonly freeBelow?: boolean } = {}): Landing | null {
-  const freeBelow = options.freeBelow === true;
+  if (options.freeBelow === true) return looseLanding(before, after, probe);
   const endA = contentEnd(before);
   const endB = contentEnd(after);
   const end = Math.max(endA, endB);
   let changed = -1;
   for (let i = 0; i < end; i++) {
     if ((before[i] ?? "") === (after[i] ?? "")) continue;
-    if (changed >= 0) {
-      if (freeBelow) break;
-      return null;
-    }
+    if (changed >= 0) return null;
     changed = i;
   }
   if (changed < 0 || changed < end - CLUSTER_ROWS) return null;
@@ -470,19 +491,39 @@ export function probeLanding(before: readonly string[], after: readonly string[]
   const now = after[changed] ?? "";
   let head = 0;
   while (head < was.length && head < now.length && was[head] === now[head]) head++;
-  if (freeBelow) {
-    const rest = now.slice(head);
-    const blanks = rest.length - rest.trimStart().length;
-    if (!rest.trimStart().startsWith(probe) || countIn(after, probe) !== countIn(before, probe) + 1) return null;
-    if (!belowHeldOrBlank(before, after, changed)) return null;
-    return { row: changed, index: head + blanks, probed: now, width: probe.length };
-  }
   let tail = 0;
   while (tail < was.length - head && tail < now.length - head && was[was.length - 1 - tail] === now[now.length - 1 - tail]) tail++;
   if (was.length - head - tail !== 0) return null;
   const put = now.slice(head, now.length - tail);
   if (put.trim() !== probe) return null;
   return { row: changed, index: head + put.indexOf(probe), probed: now, width: probe.length };
+}
+
+/**
+ * The probe's landing on a pane with no frame, for a manual send. The probe stands exactly once more
+ * in the read than at S0, on the lowest row of the bottom window that holds one more than before:
+ * the landing row. Its text up to the probe (blanks cut) must start the row S0 had there, or a row
+ * of S0 lower down when rows above vanished and moved the box up; what followed on that row may
+ * change. The rows above may only lose text (a welcome picture that hides once the box holds a
+ * character, live on a fresh Codex 0.163.0), never gain it. A row under it may go blank (the hint
+ * row Codex 0.162.1 and 0.163.0 hide), never show other text. `row` is the landing row in S0's rows.
+ */
+function looseLanding(before: readonly string[], after: readonly string[], probe: string): Landing | null {
+  if (countIn(after, probe) !== countIn(before, probe) + 1) return null;
+  const win = bottomWindow(after);
+  let row = -1;
+  for (let i = win.end - 1; i >= win.first && row < 0; i--) if (countIn([after[i] ?? ""], probe) > countIn([before[i] ?? ""], probe)) row = i;
+  if (row < 0) return null;
+  const now = after[row]!;
+  const index = now.indexOf(probe);
+  const head = now.slice(0, index).trimEnd();
+  for (let from = row; from < contentEnd(before); from++) {
+    if (!(before[from] ?? "").startsWith(head)) continue;
+    if (!lostTextOnly(before.slice(0, from), after.slice(0, row))) continue;
+    if (!belowHeldOrBlank(before, after, from, row - from)) continue;
+    return { row: from, index, probed: now, width: probe.length };
+  }
+  return null;
 }
 
 /**
@@ -517,16 +558,19 @@ function predictedRows(base: readonly string[], landing: Landing, typed: string)
 }
 
 /**
- * S1 of a manual send on a pane with no frame: the rows above the landing row read as at S0 (they
- * may scroll up by whole rows), then the landing row up to the probe's spot, then the typed text.
- * What follows the text on that row may differ, and a row under it may go blank (a hint that hides).
+ * S1 of a manual send on a pane with no frame: the lowest row of the bottom window from which the
+ * read goes on with the landing row up to the probe's spot and then the typed text (wrapped or not)
+ * is the box. The rows above it may only lose text against S0's rows above the landing row (they
+ * may scroll up, a welcome picture may hide), never gain it. What follows the text on that row may
+ * differ, and a row under it may go blank (a hint that hides).
  */
 function typedOnLanding(s0: readonly string[], now: readonly string[], landing: Landing, typed: string): boolean {
   if (!belowHeldOrBlank(s0, now, landing.row)) return false;
-  const actual = flat(now);
-  const line = landing.probed.slice(0, landing.index) + typed;
-  for (let shift = 0; shift <= landing.row; shift++) {
-    if (actual.startsWith(flat([...s0.slice(shift, landing.row), line]))) return true;
+  const line = flat([landing.probed.slice(0, landing.index) + typed]);
+  const win = bottomWindow(now);
+  for (let row = win.end - 1; row >= win.first; row--) {
+    if (!flat(now.slice(row)).startsWith(line)) continue;
+    return lostTextOnly(s0.slice(0, landing.row), now.slice(0, row));
   }
   return false;
 }
@@ -1293,7 +1337,8 @@ export class SendProtocol {
    * S1: the box holds exactly the text, and nothing else moved. A `command` lets the rows under the box
    * move and lets a cue show there (its own popup), and takes the box with the lead cut or read as a
    * mode marker (a shell line's `!` as `! `); the transcript above must still stand still. A manual
-   * send lets the rows under the box and the rest of the box move; a cue that grows still fails it.
+   * send lets the rows under the box and the rest of the box move, and the transcript above lose
+   * text but not gain any; a cue that grows still fails it.
    */
   private async awaitTyped(state: RunState, s0: Snap, landing: Landing | null, prefix: string, lines: readonly string[]): Promise<Snap> {
     const collapse = collapseOf(state.match);
@@ -1310,7 +1355,7 @@ export class SendProtocol {
           why = "mismatch";
           return "wait";
         }
-        if (!(command || manual ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
+        if (!(manual ? aboveLostOnly(s0, snap) : command ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
           why = "changed";
           return "wait";
         }

@@ -144,6 +144,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A shell line to Claude goes through when the box shows its bang as a mode marker.** A `command` matches the box with the text as written, with its lead cut, or with the lead drawn as a marker in front of the rest (`! echo ok` for `!echo ok`), white space ignored. Submit and Discard of a text that starts with `/`, `!` or `@` read the box the same way, so Submit no longer refuses `not_free` on a shell line Claude redrew.
 - **Text left in the box no longer reads as someone else's draft.** After `typed_not_submitted` the notice says "Your text is in the box, but Enter was not pressed" without "The box held a draft"; only a `mismatch`, where other text stands in the box, keeps that sentence.
 - **Recent sends say each reason in words.** The session page's list shows the composer's sentence for a reason instead of the raw code (`changed`, `not free`), and keeps the code in the row's title.
+- **A fresh Codex session takes its first message.** Codex 0.163.0 hides its welcome picture above the box once the box holds a character. On a manual send the rows above the box may now lose text (go blank, or move because rows vanished) during the probe and S1, but never gain any; a dialog or a new line of output above the box still fails, and a profiled pane on a free screen keeps the strict compare.
 
 ### Packaging
 
