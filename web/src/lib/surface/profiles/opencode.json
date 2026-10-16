@@ -2,7 +2,10 @@
   "id": "opencode",
   "identity": {
     "binary": "opencode",
-    "versionCommand": ["opencode", "--version"],
+    "versionCommand": [
+      "opencode",
+      "--version"
+    ],
     "versionRegex": "\\d+\\.\\d+\\.\\d+"
   },
   "versions": [
@@ -16,9 +19,21 @@
   "idle": {
     "frame": {
       "walk": "interior",
-      "top": { "pattern": "^ *┃$", "column": 2, "maxColumn": 200 },
-      "prompt": { "pattern": "^ *┃(?: {2}(?<draft>.*))?$", "column": 2, "maxColumn": 200 },
-      "bottom": { "pattern": "^ *╹▀+$", "column": 2, "maxColumn": 200 },
+      "top": {
+        "pattern": "^ *┃$",
+        "column": 2,
+        "maxColumn": 200
+      },
+      "prompt": {
+        "pattern": "^ *┃(?: {2}(?<draft>.*))?$",
+        "column": 2,
+        "maxColumn": 200
+      },
+      "bottom": {
+        "pattern": "^ *╹▀+$",
+        "column": 2,
+        "maxColumn": 200
+      },
       "rows": "^ *┃(?: .*)?$",
       "trailer": {
         "row": "^ *┃ {2}\\S[^·]*·\\s?\\S.*$",
@@ -32,21 +47,41 @@
     },
     "placeholders": {
       "texts": [],
-      "prefixes": ["Ask anything…"],
+      "prefixes": [
+        "Ask anything…"
+      ],
       "sgr": 0
     },
     "volatile": {
-      "above": { "maxRows": 6 },
-      "below": { "maxRows": 3, "footerMaxRows": 2 }
+      "above": {
+        "maxRows": 6
+      },
+      "below": {
+        "maxRows": 3,
+        "footerMaxRows": 2
+      }
     },
-    "runningRows": ["\\besc interrupt\\b"],
-    "overlayRows": ["^[\\s┃]*\\S(?:.*\\S)?\\s{3,}esc\\s*$"]
+    "runningRows": [
+      "\\besc interrupt\\b"
+    ],
+    "overlayRows": [
+      "^[\\s┃]*\\S(?:.*\\S)?\\s{3,}esc\\s*$"
+    ]
   },
   "keys": {
-    "submit": ["Enter"],
-    "newline": ["ctrl+j"],
-    "interrupt": ["Escape"],
-    "clear": { "key": "Backspace", "slack": 16 },
+    "submit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
     "navigation": {
       "up": "Up",
       "down": "Down",
@@ -58,11 +93,15 @@
   "collapse": {
     "pattern": "\\[Pasted ~(?<lines>\\d+) lines\\]"
   },
-  "reservedLeads": ["/", "!", "@"],
+  "reservedLeads": [
+    "/",
+    "!",
+    "@"
+  ],
   "probe": {
     "char": "⌁",
-    "status": "verified",
-    "note": "M56 spec 01 lab, 2026-10-15, opencode 1.18.35: inert after the type and after Backspace in the permission and question dialogs on Herdr, tmux and zellij; the box shows it as `┃  ⌁`; fallback ¤"
+    "status": "provisional",
+    "note": "M56 spec 01 lab, 2026-10-15, opencode 1.18.35: inert after the type and after Backspace in the permission and question dialogs on Herdr, tmux and zellij; the box shows it as `┃  ⌁`; fallback ¤; live sends passed on opencode 1.19.2 only, above the ledger range 1.18.0 to 1.18.33, so the probe stays on until a send passes inside it"
   },
   "paste": {
     "bracketed": true

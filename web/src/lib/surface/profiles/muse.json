@@ -51,7 +51,10 @@
         "footerMaxRows": 2
       }
     },
-    "dialogsInBox": true
+    "dialogsInBox": true,
+    "runningRows": [
+      "^[◆◇◈⠀-⣿]\\s.*\\(\\d+[hms][^)]*·\\s+esc to interrupt\\)"
+    ]
   },
   "keys": {
     "submit": [
@@ -84,8 +87,8 @@
   ],
   "probe": {
     "char": "⌁",
-    "status": "verified",
-    "note": "M56 spec 01 lab, 2026-10-15, muse: inert in every dialog without a text field; the box shows it as `❯ ⌁`; no muse install on bluefin, so the profile rests on the spec 01 notes and the fixtures; fallback ¤"
+    "status": "provisional",
+    "note": "No live send has passed on this harness: it is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. The box layout comes from the saved screens in web/src/fixtures/panes (muse--*.txt, Muse Code 1.3.0 to 1.4.8; muse is also absent from the harness table of LAB.md). Provisional until a live probed send passes; fallback ¤"
   },
   "paste": {
     "bracketed": true

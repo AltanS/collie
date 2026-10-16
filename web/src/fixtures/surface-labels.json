@@ -191,6 +191,11 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "agy--after-plan-idle.txt": {
+   "harness": "agy",
+   "version": "unversioned",
+   "state": "idle"
+  },
   "agy--working.txt": {
    "harness": "agy",
    "version": "unversioned",
@@ -2239,6 +2244,11 @@
   "muse--working.txt": {
    "harness": "muse",
    "version": "unversioned",
+   "state": "idle"
+  },
+  "muse--turn-running.txt": {
+   "harness": "muse",
+   "version": "unversioned",
    "state": "running"
   },
   "oc--agents-picker.txt": {
@@ -3705,8 +3715,6 @@
  "knownMismatches": {
   "$comment": "Fixtures whose label is running but whose Surface reads free, with the reason. fold.test.ts fails on any other running label that reads free, and on an entry here that no longer reads free.",
   "claude--v2301-hold-subagent.txt": "The main turn is over and a background subagent waits on a hook-held permission: the screen shows a free box and a finished row, and only a hook can say the session is busy.",
-  "agy--working.txt": "The capture shows the box and its footer only, with no running row: the spinner scrolled out of the 60-row window. A send there is read at S0 and S1 like any other.",
-  "muse--working.txt": "The capture was taken after the turn: the transcript ends with `Worked for 2m 57s`, so the box is free and the label is the capture's name for it.",
   "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it."
  }
 }

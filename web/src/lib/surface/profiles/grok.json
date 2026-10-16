@@ -92,8 +92,8 @@
   ],
   "probe": {
     "char": "⌁",
-    "status": "verified",
-    "note": "M56 spec 01 lab, 2026-10-15, grok: inert in every dialog without a text field on Herdr; the box shows it as `│ ❯ ⌁`; no Grok install on bluefin, so the profile rests on the spec 01 notes and the fixtures; fallback ¤"
+    "status": "provisional",
+    "note": "No live send has passed on this harness: it is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. The box layout comes from the saved screens in web/src/fixtures/panes (grok--*.txt, Grok Build 1.0.46 to 1.0.52). Provisional until a live probed send passes; fallback ¤"
   },
   "paste": {
     "bracketed": true

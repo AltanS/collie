@@ -5,10 +5,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import ledgerJson from "../harness/verified-versions.json";
 import { asJsonObject, parseJsonObject, type JsonObject, type JsonValue } from "../json";
 import {
+  findProfile,
+  forPlatform,
   loadProfiles,
   parseProfile,
   ProfileError,
   profileFor,
+  profileForPlatform,
   resetProfileLog,
   versionFromOutput,
   type Profile,
@@ -254,8 +257,14 @@ interface Spec14Case {
   /** Rows an anchor must refuse. */
   readonly refuses: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string }[];
   readonly collapse: { readonly text: string; readonly group: string; readonly value: string };
-  /** True for a harness whose profile names no running row (no capture shows one). */
-  readonly noRunningRow?: boolean;
+  /** The keys that send a text on an idle box. */
+  readonly submit: readonly string[];
+  /** The keys that send a command, where they differ from `submit`. */
+  readonly commandSubmit?: readonly string[];
+  /** What the profile says of its probe: provisional means every send takes the probed path (a live send has not passed inside the range). */
+  readonly probeStatus: "verified" | "provisional";
+  /** The status of the ledger-version range, when it is not `verified`. */
+  readonly rangeStatus?: "provisional";
   readonly enterWhileRunning: "queues" | "steers" | undefined;
   /** The key that queues a message in a turn, where Enter does not queue. */
   readonly queueKey?: string;
@@ -280,6 +289,8 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "top", row: "  ┃  hello there" },
     ],
     collapse: { text: "[Pasted ~12 lines]", group: "lines", value: "12" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
     enterWhileRunning: "queues",
   },
   {
@@ -301,6 +312,8 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "bottom", row: "  ╭──────────────────────────────────╮" },
     ],
     collapse: { text: "[Pasted 3003 chars]", group: "", value: "" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
     enterWhileRunning: undefined,
   },
   {
@@ -309,7 +322,6 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     versionOutput: "1.1.17\n",
     version: "1.1.17",
     above: "1.3.5",
-    noRunningRow: true,
     takes: [
       { anchor: "top", row: "────────────────────" },
       { anchor: "prompt", row: ">" },
@@ -321,6 +333,9 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "top", row: "──── hello" },
     ],
     collapse: { text: "[Pasted 12 lines]", group: "", value: "" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
+    rangeStatus: "provisional",
     enterWhileRunning: undefined,
   },
   {
@@ -329,7 +344,6 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     versionOutput: "Muse Code 1.4.7\n",
     version: "1.4.7",
     above: "1.4.8",
-    noRunningRow: true,
     takes: [
       { anchor: "top", row: "── Voice input (⌥ + v to start) ────────────────" },
       { anchor: "top", row: "────────────────────────────────" },
@@ -342,6 +356,8 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "bottom", row: "── Voice input (⌥ + v to start) ────────────────" },
     ],
     collapse: { text: "[Image #1]", group: "", value: "" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
     enterWhileRunning: undefined,
   },
   {
@@ -363,6 +379,9 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "prompt", row: "   hello there" },
     ],
     collapse: { text: "📄 #3", group: "", value: "" },
+    submit: ["ctrl+q"],
+    commandSubmit: ["Enter"],
+    probeStatus: "provisional",
     enterWhileRunning: "steers",
     queueKey: "ctrl+q",
   },
@@ -387,6 +406,9 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "top", row: "hello there" },
     ],
     collapse: { text: "[paste #2 +12 lines]", group: "lines", value: "12" },
+    submit: ["alt+Enter"],
+    commandSubmit: ["Enter"],
+    probeStatus: "verified",
     enterWhileRunning: "steers",
     queueKey: "alt+Enter",
   },
@@ -401,9 +423,10 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.identity.versionCommand[0]).toBe(c.binary);
     expect(versionFromOutput(p, c.versionOutput)).toBe(c.version);
     expect(p.idle.frame.prompt.pattern).toContain("(?<draft>");
-    if (c.noRunningRow === true) expect(p.idle.runningRows).toBeUndefined();
-    else expect(p.idle.runningRows?.length).toBeGreaterThan(0);
-    expect(p.keys.submit).toEqual(["Enter"]);
+    expect(p.idle.runningRows?.length).toBeGreaterThan(0);
+    expect(p.keys.submit).toEqual(c.submit);
+    expect(p.keys.commandSubmit).toEqual(c.commandSubmit);
+    expect(p.probe.status).toBe(c.probeStatus);
     expect(p.keys.interrupt.length).toBeGreaterThan(0);
     expect(p.keys.enterWhileRunning).toBe(c.enterWhileRunning);
     expect(p.keys.queueKey).toBe(c.queueKey);
@@ -431,6 +454,11 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
   it(`${c.id}: verified through the ledger row, provisional above it`, () => {
     // SAFETY: the ledger is this repo's own committed JSON; every agent row has a version and a verified date, and the key is a harness id from this table.
     const row = (ledgerJson.agents as Record<string, { version: string; verified: string }>)[c.id]!;
+    if (c.rangeStatus === "provisional") {
+      expect(profile().versions.map((range) => range.status)).toEqual(["provisional"]);
+      expect(profileFor(c.id, row.version, { log: () => {} })?.status).toBe("provisional");
+      return;
+    }
     const verified = profile().versions.filter((range) => range.status === "verified");
     expect(verified).toHaveLength(1);
     expect(verified[0]!.verifiedThrough).toBe(row.version);
@@ -631,5 +659,76 @@ describe("the Claude ranges and the ledger", () => {
 
   it("holds provisional for Claude 2.1.300, the field version of 2026-10-15", () => {
     expect(profileFor("claude", "2.1.300", { log: () => {} })?.status).toBe("provisional");
+  });
+});
+
+describe("keys that differ by platform (M56 spec 14 review)", () => {
+  const raw = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!;
+
+  it("pi sends and queues with Alt+Enter, and with Ctrl+Q on Windows", () => {
+    const pi = loadProfiles().get("pi")!;
+    expect(pi.keys.submit).toEqual(["alt+Enter"]);
+    expect(pi.keys.queueKey).toBe("alt+Enter");
+    const win = forPlatform(pi, "win32");
+    expect(win.keys.submit).toEqual(["ctrl+q"]);
+    expect(win.keys.queueKey).toBe("ctrl+q");
+    expect(win.keys.commandSubmit).toEqual(["Enter"]);
+    expect(forPlatform(pi, "linux")).toBe(pi);
+    expect(forPlatform(pi, "darwin")).toBe(pi);
+  });
+
+  it("the bridge's match carries the platform's keys", () => {
+    const match = profileForPlatform("pi", "0.87.1", "win32", { log: () => {} });
+    expect(match?.profile.keys.submit).toEqual(["ctrl+q"]);
+    expect(match?.status).toBe("verified");
+    expect(profileForPlatform("pi", "0.87.1", "linux", { log: () => {} })?.profile.keys.submit).toEqual(["alt+Enter"]);
+    expect(profileForPlatform("nothing-known", "1.0.0", "win32")).toBeNull();
+  });
+
+  it("a profile with no platform entry is returned as it is", () => {
+    const claude = loadProfiles().get("claude")!;
+    expect(forPlatform(claude, "win32")).toBe(claude);
+  });
+
+  it("keys.submit may be a list or an object with a default; an unknown platform, a missing default and an empty list are named", () => {
+    expect(parseProfile(change(raw(), ["keys", "submit"], ["alt+Enter"])).keys.submitByPlatform).toBeUndefined();
+    expect(failure(change(raw(), ["keys", "submit"], { win32: ["ctrl+q"] })).path).toBe("keys.submit.default");
+    expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], plan9: ["ctrl+q"] })).path).toBe("keys.submit.plan9");
+    expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], win32: [] })).path).toBe("keys.submit.win32");
+  });
+
+  it("keys.queueKey names one key per platform, never Enter or Escape", () => {
+    expect(failure(change(raw(), ["keys", "queueKey"], { default: "alt+Enter", win32: "Enter" })).path).toBe("keys.queueKey");
+    expect(failure(change(raw(), ["keys", "queueKey"], { default: "Escape", win32: "ctrl+q" })).path).toBe("keys.queueKey");
+    expect(failure(change(raw(), ["keys", "queueKey"], { win32: "ctrl+q" })).path).toBe("keys.queueKey.default");
+    expect(parseProfile(change(raw(), ["keys", "queueKey"], "alt+Enter")).keys.queueKeyByPlatform).toBeUndefined();
+  });
+});
+
+describe("other names of a harness (M56 spec 14 review)", () => {
+  const raw = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "agy.json"), "utf8"))!;
+
+  it("agy answers to antigravity too, and the profile for either name is the agy profile", () => {
+    const profiles = loadProfiles();
+    expect(findProfile(profiles, "agy")?.id).toBe("agy");
+    expect(findProfile(profiles, "antigravity")?.id).toBe("agy");
+    expect(findProfile(profiles, "nothing-known")).toBeUndefined();
+    expect(profileFor("antigravity", "1.1.17", { log: () => {} })?.profile.id).toBe("agy");
+  });
+
+  it("a name that repeats the id, is not a word, or is empty is named", () => {
+    expect(failure(change(raw(), ["identity", "agentNames"], ["agy"])).path).toBe("identity.agentNames");
+    expect(failure(change(raw(), ["identity", "agentNames"], ["Not A Name"])).path).toBe("identity.agentNames");
+    expect(failure(change(raw(), ["identity", "agentNames"], [])).path).toBe("identity.agentNames");
+  });
+
+  it("no name of one profile is the id or the name of another", () => {
+    const claimed = new Map<string, string>();
+    for (const profile of loadProfiles().values()) {
+      for (const name of [profile.id, ...(profile.identity.agentNames ?? [])]) {
+        expect(claimed.has(name), `${name} of ${profile.id} is also ${claimed.get(name) ?? ""}`).toBe(false);
+        claimed.set(name, profile.id);
+      }
+    }
   });
 });

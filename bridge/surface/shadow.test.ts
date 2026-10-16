@@ -342,6 +342,21 @@ describe("surface shadow: the persisted counters (M56 spec 09)", () => {
     }
   });
 
+  test("both names a multiplexer reports for a harness file under its profile id (M56 spec 14 review)", async () => {
+    const state = mkdtempSync(join(tmpdir(), "collie-shadow-alias-"));
+    try {
+      const ledger = new SurfaceLedger(state, { now: () => 1_000_000, warn: () => undefined });
+      const mux = new FakeMux();
+      const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => undefined, now: () => 1_000_000, version: async () => "1.1.17", ledger });
+      mux.set("w1:p1", "agy--fresh-idle.txt", 1);
+      mux.set("w1:p2", "agy--fresh-idle.txt", 2);
+      await shadow.observe([agent("w1:p1", "agy"), agent("w1:p2", "antigravity")]);
+      expect(ledger.rows()).toMatchObject([{ harness: "agy", version: "1.1.17", profileId: "agy", free: 2 }]);
+    } finally {
+      rmSync(state, { recursive: true, force: true });
+    }
+  });
+
   test("a ledger that throws leaves the Surface as it was", async () => {
     const mux = new FakeMux();
     const broken = {

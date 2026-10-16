@@ -22,6 +22,8 @@ const allAgyFixtures = allFixtures.filter((f) => f.startsWith("agy--"));
 
 const NEUTRAL = new Set([
   "agy--fresh-idle.txt",
+  // The 60-row capture that stood as agy--working.txt: the turn is over and the box is free.
+  "agy--after-plan-idle.txt",
   "agy--working.txt",
   "agy--done.txt",
   // The slash-command completion popup under a live box: not a dialog, nothing to lift.
@@ -265,8 +267,10 @@ describe("agyAdapter unit & footer safety", () => {
     expect(statusText).toContain("? for shortcuts");
   });
 
-  it("extracts working statusline on agy--working.txt", () => {
-    const raw = readFileSync(join(PANES_DIR, "agy--working.txt"), "utf8");
+  // The mid-turn capture (agy--working.txt) carries its status after `esc to cancel` on one row, which
+  // extractStatusLines does not read (0 rows); this screen, once filed as `working`, is a finished turn.
+  it("extracts the statusline on agy--after-plan-idle.txt", () => {
+    const raw = readFileSync(join(PANES_DIR, "agy--after-plan-idle.txt"), "utf8");
     const lines = splitLines(parseAnsi(raw));
 
     expect(agyAdapter.extractInputDraft!(lines)).toBeNull();

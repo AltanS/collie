@@ -60,7 +60,15 @@
     "dialogsInBox": true
   },
   "keys": {
-    "submit": [
+    "submit": {
+      "default": [
+        "alt+Enter"
+      ],
+      "win32": [
+        "ctrl+q"
+      ]
+    },
+    "commandSubmit": [
       "Enter"
     ],
     "newline": [
@@ -80,7 +88,10 @@
       "cancel": "Escape"
     },
     "enterWhileRunning": "steers",
-    "queueKey": "alt+Enter",
+    "queueKey": {
+      "default": "alt+Enter",
+      "win32": "ctrl+q"
+    },
     "queuedRow": {
       "pattern": "^\\s*Follow-up: (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$",
@@ -98,7 +109,7 @@
   "probe": {
     "char": "⌁",
     "status": "verified",
-    "note": "M56 spec 01 lab, 2026-10-15, pi: inert in every dialog without a text field on Herdr, tmux and zellij; the box shows it as a plain character; fallback ¤"
+    "note": "M56 spec 01 lab, 2026-10-15, pi: inert in every dialog without a text field on Herdr, tmux and zellij; the box shows it as a plain character; fallback ¤; live sends passed on pi 0.87.1, inside the range, with Enter at first and Alt+Enter on an idle box (2026-10-16)"
   },
   "paste": {
     "bracketed": true

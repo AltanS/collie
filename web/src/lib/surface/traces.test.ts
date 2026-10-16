@@ -45,6 +45,40 @@ describe("golden traces on disk", () => {
     expect(names.toSorted()).toEqual(["omp/lab-model-dialog.jsonl", "omp/lab-queued-message.jsonl", "omp/lab-running-turn.jsonl"]);
   });
 
+  /** The omp running-turn reads with one running sign taken away at a time (the Working row blinks; the top row's spinner does not). */
+  describe("omp: each running sign on its own (M56 spec 14 review)", () => {
+    const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;:]*m`, "gu");
+    const WORKING = /^.*[⠀-⣿⎋]\s+Working….*$/mu;
+    const TOP_SPINNER = /^(\s?)[⠀-⣿]\s+\d+s(\s.*▶.*)$/mu;
+    const running = files.find((trace) => trace.name === "omp/lab-running-turn.jsonl")!;
+    const turn = running.steps.filter((step) => "read" in step && step.expect?.turn === "running");
+    const without = (change: (text: string) => string): Trace => ({
+      ...running,
+      steps: turn.map((step) => {
+        if (!("read" in step) || step.read.text === undefined) throw new Error("a running step reads its screen text");
+        const text = change(step.read.text);
+        // The change must take one running row away, or the test would pass on the screen as it was.
+        if (text === step.read.text) throw new Error("the running row to take away is not on this read");
+        return { at: step.at, read: { ...step.read, text } };
+      }),
+    });
+    const blank = (text: string): string => text.split("\n").map((row) => (WORKING.test(row.replace(SGR, "")) ? "" : row)).join("\n");
+    const idleTop = (text: string): string => text.split("\n").map((row) => { const plain = row.replace(SGR, ""); return TOP_SPINNER.test(plain) ? plain.replace(TOP_SPINNER, "$1π$2") : row; }).join("\n");
+
+    it("the top row's spinner and seconds alone show the turn: the Working row blank on every read, none reads free", () => {
+      expect(turn.length).toBeGreaterThan(2);
+      const results = replayTrace(without(blank), { mode: "present", fixture: fixtureText });
+      for (const result of results) expect(result.surface.turn, `step ${String(result.index)}`).toBe("running");
+      expect(freeSteps(results)).toEqual([]);
+    });
+
+    it("the Working row alone shows the turn: the top row reads as at rest, none reads free", () => {
+      const results = replayTrace(without(idleTop), { mode: "present", fixture: fixtureText });
+      for (const result of results) expect(result.surface.turn, `step ${String(result.index)}`).toBe("running");
+      expect(freeSteps(results)).toEqual([]);
+    });
+  });
+
   for (const trace of files) {
     it(`${trace.name}: the expectations hold with the hook source present`, () => {
       const mismatches = replayTrace(trace, { mode: "present", fixture: fixtureText }).flatMap((result) =>
