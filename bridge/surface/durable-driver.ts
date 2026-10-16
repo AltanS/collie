@@ -26,7 +26,7 @@
 // is picked by the session kind, never by an agent string.
 
 import { randomUUID } from "node:crypto";
-import type { MuxAnswerResult, MuxControlOutcome, MuxOutcome } from "../mux/types.ts";
+import { muxRefused, type MuxAdapter, type MuxAnswerResult, type MuxControlOutcome, type MuxOutcome } from "../mux/types.ts";
 import type { AgentStatus, AnswerRequest, Ask as ProgramAsk, ControlRequest } from "../types.ts";
 import type { Answer, AskReason, AskReceipt, AskReply, AskOutcome } from "../../web/src/lib/surface/ask.ts";
 import { offersFor, type ReadMark, type SendAnswer, type SendOutcome, type SendReason, type SendReceipt, type SendReceiptRow } from "../../web/src/lib/surface/send.ts";
@@ -60,9 +60,10 @@ const TURN_MOVED = "The program started another turn after you looked. Read the 
 const BUSY = "Another send or answer on this conversation is still running.";
 const QUEUED = "The program runs a turn. It takes the message when that turn ends.";
 const NOT_ACKED = "The program did not say it took the message. Read the chat before you send it again.";
-const CRASHED = "The bridge restarted during this send, so Collie cannot say whether the program took it. Read the chat.";
+const CRASHED = "Collie lost this send before it ended, so it cannot say whether the program took it. Read the chat.";
 const ASK_NOT_ACKED = "The program did not say it took the answer. Read the chat before you answer again.";
-const ASK_CRASHED = "The bridge restarted during this answer, so Collie cannot say whether the program took it. Read the chat.";
+const ASK_CRASHED = "Collie lost this answer before it ended, so it cannot say whether the program took it. Read the chat.";
+const ID_ELSEWHERE = "This request id belongs to a send on another conversation.";
 
 /** What the driver needs of the program's adapter. Every read answers from the adapter's last layout read. */
 export interface ProgramPort {
@@ -95,6 +96,8 @@ export interface ProgramLedger {
 }
 
 export interface ProgramDriverDeps {
+  /** The bridge session this driver serves. Two programs may name a pane alike; a record of another session is never this driver's. */
+  readonly session: string;
   readonly port: ProgramPort;
   readonly store: RequestStore;
   readonly locks: SessionLocks;
@@ -291,15 +294,14 @@ export class ProgramDriver {
    * settle. Returns true when it closed or will close one. Never throws; a write that fails is a warning.
    */
   itemTook(paneId: string, requestId: string): boolean {
+    const record = this.deps.store.get(requestId);
+    // Only a send this driver's session ran on this pane: another program may have a pane of the same
+    // name, and a terminal send never carries the program generation.
+    if (record === null || record.session !== this.deps.session || record.paneId !== paneId || record.paneGeneration !== PROGRAM_GENERATION) return false;
     if (this.sending.has(requestId)) {
-      const running = this.deps.store.get(requestId);
-      if (running === null || running.paneId !== paneId) return false;
       this.early.add(requestId);
       return true;
     }
-    const record = this.deps.store.get(requestId);
-    // Only a send this driver ran on this pane. A terminal send never carries the program generation.
-    if (record === null || record.paneId !== paneId || record.paneGeneration !== PROGRAM_GENERATION) return false;
     try {
       const from = this.deps.store.markEffective(requestId);
       if (from === null) return false;
@@ -368,6 +370,35 @@ export class ProgramDriver {
     return rows;
   }
 
+  /**
+   * The program's own pane routes (Steer, Stop, a belt action, an answer on the program's card) write
+   * through this, so they take the same lock as a send or an answer of the driver: one write per
+   * conversation at a time. A write that meets the lock held is refused as busy before it leaves.
+   */
+  lockedWrites(adapter: Pick<MuxAdapter, "controlTurn" | "answerAsk">): Pick<MuxAdapter, "controlTurn" | "answerAsk"> {
+    const control = adapter.controlTurn?.bind(adapter);
+    const answer = adapter.answerAsk?.bind(adapter);
+    const out: { -readonly [K in "controlTurn" | "answerAsk"]?: MuxAdapter[K] } = {};
+    if (control !== undefined) {
+      out.controlTurn = (paneId, request) => this.underLock(paneId, request.requestId, () => control(paneId, request), (): MuxControlOutcome => ({ kind: "refused", detail: BUSY }));
+    }
+    if (answer !== undefined) {
+      out.answerAsk = (paneId, request) => this.underLock(paneId, request.requestId, () => answer(paneId, request), () => muxRefused(BUSY));
+    }
+    return out;
+  }
+
+  private async underLock<T>(paneId: string, owner: string, work: () => Promise<T>, busy: () => T): Promise<T> {
+    const lockKey = `${this.deps.session}\u0000${paneId}`;
+    const { locks } = this.deps;
+    if (!locks.acquire(lockKey, owner, this.now() + PROGRAM_LOCK_MS, this.now())) return busy();
+    try {
+      return await work();
+    } finally {
+      locks.release(lockKey, owner);
+    }
+  }
+
   // ── Send ──
 
   /** One send request, start to receipt. Never throws for the program's state; every end is an answer. */
@@ -393,6 +424,11 @@ export class ProgramDriver {
     if (accepted.kind === "id_reused") {
       const receipt = this.sendReceipt(this.bareRun(request, accepted.record, target), { outcome: "refused", reason: "id_reused" });
       return { receipt, offers: [], detail: "This request id was already used for another text." };
+    }
+    if (accepted.kind === "replay" && (accepted.record.session !== target.session || accepted.record.paneId !== target.paneId)) {
+      // The same id and text on another session or pane is not this send: nothing of that one is shown here.
+      const receipt = this.sendReceipt(this.bareRun(request, accepted.record, target), { outcome: "refused", reason: "id_reused" });
+      return { receipt, offers: [], detail: ID_ELSEWHERE };
     }
     if (accepted.kind === "replay") {
       const stored = accepted.record.receipt;
@@ -457,12 +493,16 @@ export class ProgramDriver {
       outcome = { kind: "unknown", detail: err instanceof Error ? err.message : String(err) };
     }
     run.gaps.write = this.now() - wrote;
-    run.s2 = markOf(this.view(target.paneId));
+    const after = this.view(target.paneId);
+    run.s2 = markOf(after);
     switch (outcome.kind) {
       case "ok":
-        // WIRE.md 7.4: a send with no steer during a turn waits for the next turn. The program's ok
-        // to a send that named the running turn is its word that it took the text for later.
-        return turn === "running" ? { outcome: "sent", queued: true, acknowledged: true, detail: QUEUED } : { outcome: "sent", acknowledged: true };
+        // WIRE.md 7.4: a send with no steer during a turn waits for the next turn. The read after the
+        // write decides: the turn the send named still runs, so the program keeps the text for after it.
+        // A turn that ended during the write takes the text as a new turn, which is not queued.
+        return turn === "running" && turnOfStatus(after.status) === "running" && after.turnId === before.turnId
+          ? { outcome: "sent", queued: true, acknowledged: true, detail: QUEUED }
+          : { outcome: "sent", acknowledged: true };
       case "stale":
         return { outcome: "refused", reason: "stale_surface", detail: TURN_MOVED };
       case "gone":

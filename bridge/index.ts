@@ -1463,8 +1463,10 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // state, with the Send Protocol on. It is the one driver of its session; no screen fold runs beside it.
   const driver =
     sendStore !== null && endpoint.kind === "program" && built.structured !== undefined
-      ? new ProgramDriver({ port: built.structured, store: sendStore, locks, ledger: surfaceLedger ?? undefined })
+      ? new ProgramDriver({ session: name, port: built.structured, store: sendStore, locks, ledger: surfaceLedger ?? undefined })
       : undefined;
+  // One driver per session: a program session has no screen fold, and a terminal session no structured driver.
+  if (driver !== undefined && surface !== undefined) throw new Error(`session ${name}: a screen Surface and the structured driver must never both run`);
   if (driver !== undefined) engine.onUpdate((s) => driver.observe(s.agents.map((agent) => agent.paneId)));
 
   // This session's hook edges (M56 spec 11): a terminal session with a Surface and a beacon matcher.

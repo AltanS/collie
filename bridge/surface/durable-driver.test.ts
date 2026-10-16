@@ -113,7 +113,7 @@ afterEach(() => {
 
 function driverOf(port: ProgramPort, extra: { ledger?: ReturnType<typeof fakeLedger>["ledger"]; locks?: SessionLocks; store?: RequestStore; now?: () => number } = {}) {
   const store = extra.store ?? new RequestStore(join(dir, "sends"));
-  return { store, driver: new ProgramDriver({ port, store, locks: extra.locks ?? new SessionLocks(), ledger: extra.ledger, now: extra.now, salt: "test-salt" }) };
+  return { store, driver: new ProgramDriver({ session: TARGET.session, port, store, locks: extra.locks ?? new SessionLocks(), ledger: extra.ledger, now: extra.now, salt: "test-salt" }) };
 }
 
 describe("Surface from structured state", () => {
@@ -460,6 +460,76 @@ describe("Effective from the program's own item", () => {
   });
 });
 
+describe("Review round: session, lock, queued, replay", () => {
+  test("an item for a pane of the same name in another session closes nothing", async () => {
+    const { port, item } = fakeProgram();
+    const store = new RequestStore(join(dir, "shared"));
+    const { confirmed, ledger } = fakeLedger();
+    const other = new ProgramDriver({ session: "other-desk", port: fakeProgram().port, store, locks: new SessionLocks(), ledger, salt: "o" });
+    const mine = driverOf(port, { store });
+    await mine.driver.handle({ id: "drv-ses-0001", text: "hello", mode: "send" }, TARGET);
+    expect(other.itemTook(PANE, "drv-ses-0001")).toBe(false);
+    expect(store.get("drv-ses-0001")?.receipt?.outcome).toBe("sent");
+    expect(confirmed).toEqual([]);
+    item("drv-ses-0001");
+    expect(store.get("drv-ses-0001")?.receipt?.outcome).toBe("effective");
+  });
+
+  test("the program's own pane routes take the driver's lock: one write per conversation at a time", async () => {
+    const { state, port, controls } = fakeProgram();
+    const locks = new SessionLocks();
+    let release = (): void => undefined;
+    state.control = () => new Promise((resolve) => (release = () => resolve({ kind: "ok", replayed: false })));
+    const { driver } = driverOf(port, { locks });
+    const writes = driver.lockedWrites(port);
+    const steer = writes.controlTurn!(PANE, { act: "send", requestId: "steer-0001", target: { kind: "turn", id: "turn-1" }, text: "left", steer: true });
+    await Bun.sleep(1);
+    const send = await driver.handle({ id: "drv-lock-0001", text: "while steering", mode: "send" }, TARGET);
+    expect(send.receipt).toMatchObject({ outcome: "refused", reason: "busy" });
+    const answer = await writes.answerAsk!(PANE, { requestId: "ans-0001", askId: "pa-1", revision: 1, optionId: "allow" });
+    expect(answer).toEqual({ ok: false, reason: "refused", detail: expect.stringContaining("still running") });
+    release();
+    expect(await steer).toEqual({ kind: "ok", replayed: false });
+    expect(controls).toHaveLength(1);
+    // The lock is free again after the pane route's write.
+    state.control = () => Promise.resolve({ kind: "ok", replayed: false });
+    expect((await driver.handle({ id: "drv-lock-0002", text: "now", mode: "send" }, TARGET)).receipt?.outcome).toBe("sent");
+  });
+
+  test("queued comes from the read after the write: a turn that ended during the write is not queued", async () => {
+    const { state, port } = fakeProgram();
+    state.status = "working";
+    state.control = () => {
+      state.status = "idle";
+      return Promise.resolve({ kind: "ok", replayed: false });
+    };
+    const { driver } = driverOf(port);
+    const answer = await driver.handle({ id: "drv-q-0001", text: "after", mode: "send" }, TARGET);
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(answer.detail).toBeUndefined();
+    // Still the same turn after the write: queued.
+    state.status = "working";
+    state.control = () => Promise.resolve({ kind: "ok", replayed: false });
+    expect((await driver.handle({ id: "drv-q-0002", text: "later", mode: "send" }, TARGET)).receipt?.queued).toBe(true);
+  });
+
+  test("a replay from another session or pane is refused id_reused, and an unsettled one claims no restart", async () => {
+    const { port, controls } = fakeProgram();
+    const { driver, store } = driverOf(port);
+    store.accept({ id: "drv-rep-0001", session: "other-desk", paneId: PANE, paneGeneration: "program", surfaceRevision: 0, mode: "send", text: "same" });
+    const elsewhere = await driver.handle({ id: "drv-rep-0001", text: "same", mode: "send" }, TARGET);
+    expect(elsewhere.receipt).toMatchObject({ outcome: "refused", reason: "id_reused" });
+    store.accept({ id: "drv-rep-0002", session: TARGET.session, paneId: "conv-9", paneGeneration: "program", surfaceRevision: 0, mode: "send", text: "same" });
+    expect((await driver.handle({ id: "drv-rep-0002", text: "same", mode: "send" }, TARGET)).receipt?.reason).toBe("id_reused");
+    store.accept({ id: "drv-rep-0003", session: TARGET.session, paneId: PANE, paneGeneration: "program", surfaceRevision: 0, mode: "send", text: "same" });
+    const lost = await driver.handle({ id: "drv-rep-0003", text: "same", mode: "send" }, TARGET);
+    expect(lost.receipt).toMatchObject({ outcome: "unknown", reason: "crash" });
+    expect(lost.detail).not.toContain("restart");
+    expect(controls).toEqual([]);
+  });
+});
+
 describe("Ask through the program channel", () => {
   function askingPane() {
     const program = fakeProgram();
@@ -574,7 +644,7 @@ describe("Ask through the program channel", () => {
 
 describe("the routes on a program session", () => {
   function routeRuntime(port: ProgramPort, store: RequestStore) {
-    const driver = new ProgramDriver({ port, store, locks: new SessionLocks(), salt: "route" });
+    const driver = new ProgramDriver({ session: "desk", port, store, locks: new SessionLocks(), salt: "route" });
     let pokes = 0;
     const rt: AskRouteRuntime = {
       name: "desk",

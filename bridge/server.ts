@@ -1482,7 +1482,8 @@ export function startServer(opts: {
     // A program session's panes take their Surface from the structured driver (M56 spec 14), the
     // one driver of that session, and say `sendProtocol` the same way.
     const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
-      const surface = from.surface?.surfaceOf(wire.paneId) ?? from.driver?.surfaceOf(wire.paneId);
+      // Picked by the session kind: a program session has the driver and no screen fold (makeSession refuses both).
+      const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
       return from.send === undefined && from.driver === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
@@ -1935,7 +1936,8 @@ export function startServer(opts: {
           body = undefined;
         }
         const answered = await answerPane(paneId, body, {
-          adapter: herdr,
+          // A local program's writes take the structured driver's lock, so they never run beside a send.
+          adapter: rt.driver?.lockedWrites(herdr) ?? herdr,
           receipts: answerReceipts,
           audit: audit_,
           device,
@@ -1956,7 +1958,7 @@ export function startServer(opts: {
           body = undefined;
         }
         const controlled = await controlPane(action, paneId, body, {
-          adapter: herdr,
+          adapter: rt.driver?.lockedWrites(herdr) ?? herdr,
           receipts: controlReceipts,
           audit: audit_,
           device,

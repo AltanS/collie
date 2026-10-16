@@ -101,6 +101,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **On this machine the phone sends a program's plain text through `/api/send`.** A tap on its question card goes through `/api/ask`. The composer tells a refusal at the thumb, as for a terminal pane. A send during a turn says Queued. Steer and Stop keep the program's own routes. A program on a crew member keeps its own routes for all writes.
 - **A program's pane settings list its Recent sends.** The sheet shows each receipt, and a queued send says so. It draws no cache switch, because a program has no prompt cache.
 - **The program send has its own entry in the ack manifest.** A test checks that every phone write says how the phone shows it.
+- **All writes to a program conversation share one lock.** Steer, Stop and answers on the program's card are refused as busy while a send runs. An item from another program never closes a receipt. A send is queued only when its turn still runs after the write. A request id from another conversation is refused.
 
 ### Changed
 
