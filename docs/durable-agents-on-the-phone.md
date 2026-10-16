@@ -56,7 +56,7 @@ every poll.
 | Load more | The durable agent has more than 100 conversations. Each tap reads the next 100 |
 | "This durable agent does not keep a list of its conversations." | The durable agent answered that it keeps no list |
 | "The durable agent did not answer. Try again in a moment." | The durable agent did not answer the read |
-| "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK." | Collie refused the durable agent for its wire version ([Receipts](#receipts)) |
+| "The durable agent speaks wire v2, this Collie speaks v1. Update Collie, or the agent's SDK." | Collie refused the durable agent for its wire version ([Receipts](#receipts)) |
 | "Couldn't load the conversations. Try again." | The read failed on the way |
 
 A durable agent that keeps no history shows its open conversations alone, with no Closed group and no

@@ -49,7 +49,7 @@ refused at the start of the bridge as well ([A typo in sources.json](#a-typo-in-
 | `COLLIE_DURABLE_SOCKET is longer than 103 bytes` | Shorten the path. Keep it under `$XDG_RUNTIME_DIR` |
 | `the private socket transport is not available on Windows; set COLLIE_DURABLE_URL and COLLIE_DURABLE_TOKEN instead` | Windows has no socket transport. Use a URL and a token |
 | `COLLIE_DURABLE_SOCKET and COLLIE_DURABLE_URL are both set; set the socket, or the URL with its token, not both` | The durable-only form got both. Keep one transport |
-| `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the program refuses a caller with no token` | The durable-only form got a URL and no token. Set the token |
+| `COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the durable agent refuses a caller with no token` | The durable-only form got a URL and no token. Set the token |
 | `COLLIE_DURABLE_TOKEN is set without COLLIE_DURABLE_URL; a token is only sent to a URL` | The durable-only form got a token and no URL. Set the URL, or remove the token |
 | `COLLIE_DURABLE_URL is longer than 2048 bytes` | Shorten the URL to the durable agent's base address |
 | `COLLIE_DURABLE_URL is not a URL` | Write it as `https://host` |
@@ -58,7 +58,7 @@ refused at the start of the bridge as well ([A typo in sources.json](#a-typo-in-
 | `COLLIE_DURABLE_URL uses plain http on loopback without a port; name the port, for example http://127.0.0.1:8801` | Add the port |
 | `COLLIE_DURABLE_URL must not carry a user name or password; the token goes in COLLIE_DURABLE_TOKEN` | Take the user name and password out of the URL |
 | `COLLIE_DURABLE_URL must not carry a query or a fragment` | Take the `?` part and the `#` part out of the URL |
-| `COLLIE_DURABLE_URL names the program's base only; leave out /session/v1, the adapter adds it` | Cut the `/session/v1` from the path |
+| `COLLIE_DURABLE_URL names the durable agent's base only; leave out /session/v1, the adapter adds it` | Cut the `/session/v1` from the path |
 | `COLLIE_DURABLE_TOKEN is <n> bytes; it must be at least 32 bytes, for example 64 hex characters from openssl rand -hex 32` | Make a longer token, and give the durable agent the same one |
 | `COLLIE_DURABLE_TOKEN must be printable ASCII with no spaces` | Remove spaces and other characters from the token |
 | `COLLIE_DURABLE_TOKEN is longer than 4096 bytes` | A header that long is a mistake. Use a shorter token |
@@ -74,13 +74,13 @@ refused at the start of the bridge as well ([A typo in sources.json](#a-typo-in-
 | `no answer within <n>ms` | The durable agent hangs, or is cold. Collie waits 1000 ms on a socket and 5000 ms over https |
 | `tls refused: <message>` | The certificate of the URL is refused. Collie has no switch to skip the check |
 | `the host name does not resolve` | The host name in the URL is wrong, or your network cannot reach it |
-| `token-refused: the program answered 401` or `403` | The durable agent refused the token. [The durable agent refused the token](#the-durable-agent-refused-the-token) |
+| `token-refused: the durable agent answered 401` or `403` | The durable agent refused the token. [The durable agent refused the token](#the-durable-agent-refused-the-token) |
 | `too-large` | The durable agent answered with more than Collie reads: 16 KiB for `hello`, 4 MiB for a snapshot. Make its reply smaller |
-| `incompatible: program speaks 2..3, this Collie speaks 1..1` | The version ranges do not meet. Update the older side. `collie doctor` shows both ranges and the log gets one line per range |
-| `incompatible: not a durable program` | Something else answers at that path or URL. Point the entry at the durable agent |
-| `incompatible: program asks for a token` | A durable agent on a socket wants a token, which a socket never carries. Update the older side, or reach it by URL with a token |
+| `incompatible: the durable agent speaks 2..3, this Collie speaks 1..1` | The version ranges do not meet. Update the older side. `collie doctor` shows both ranges and the log gets one line per range |
+| `incompatible: not a durable agent` | Something else answers at that path or URL. Point the entry at the durable agent |
+| `incompatible: the durable agent asks for a token` | A durable agent on a socket wants a token, which a socket never carries. Update the older side, or reach it by URL with a token |
 | `unreadable hello: <detail>` or `unreadable snapshot: <detail>` | The durable agent sent a document the wire does not allow. Read the durable agent's own log |
-| `program answered <status>` or `program answered 409 <code>` | The durable agent answered with a status the wire does not use here. Read the durable agent's own log |
+| `the durable agent answered <status>` or `the durable agent answered 409 <code>` | The durable agent answered with a status the wire does not use here. Read the durable agent's own log |
 | `starting` | The durable agent is up and says it is not ready, or answers 503. Collie asks again on the next poll |
 
 ## Doctor rows for durable agents
@@ -95,7 +95,7 @@ them. A durable-only Collie prints the same six rows with no suffix, and its `mu
 
 | row | green | warning or red |
 | --- | --- | --- |
-| `sources` | `2 programs in <path>, mode 0600` | Red when the file does not parse. Its fix says the bridge does not start while it is wrong. Red when group or others can read the file, with `chmod 600` as the fix, because an entry may hold a token |
+| `sources` | `2 durable agents in <path>, mode 0600` | Red when the file does not parse. Its fix says the bridge does not start while it is wrong. Red when group or others can read the file, with `chmod 600` as the fix, because an entry may hold a token |
 | `durable-env` | `transport: private socket` with the path, or `transport: https with a bearer token` | Red when the setting breaks a rule from [the reasons table](#the-setting-breaks-a-rule) |
 | `durable-socket` | The path is a socket, yours, mode `0600`, in a folder of yours with mode `0700`, no link on the way | Red, and the row names the failed check: nothing there, unreadable, not a socket, a symlink, not a folder, a folder of another owner, a folder with the wrong mode, a folder above that others can write, a socket of another owner, or a socket with an open mode. Skipped on a durable agent behind https |
 | `durable-url` | The address, `https` or loopback http, and its length in bytes | Red when the URL breaks a rule. Skipped on a socket |

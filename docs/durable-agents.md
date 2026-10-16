@@ -198,7 +198,7 @@ collie durable list
 | --- | --- | --- | --- |
 | `attach <name>` | `--socket <path>`, or `--url <url>` with `--token-env <VAR>`. `--restart`. A flag takes its value as the next word or after `=` | `added <name> in <path>`, or `updated <name> in <path>` for a name already there. Then `restart to apply: collie restart` and the URL to open on your phone | `0` written. `2` a usage error, or a path, URL or token that breaks a rule. `1` the file cannot be read. With `--restart`, the code of the restart |
 | `detach <name>` | `--restart` | `removed <name> from <path>`, then `restart to apply: collie restart` | `0` removed. `2` a usage error. `3` no durable agent by that name. `1` the file cannot be read. With `--restart`, the code of the restart |
-| `list` | none | One line per durable agent: its name, `socket <path>` or `url <url> (token set)`, and its state. `no programs attached (<path>)` when the file is empty or missing | `0`. `1` the file cannot be read |
+| `list` | none | One line per durable agent: its name, `socket <path>` or `url <url> (token set)`, and its state. `no durable agents attached (<path>)` when the file is empty or missing | `0`. `1` the file cannot be read |
 
 `collie durable` with no verb, or with an unknown one, prints the usage and exits `2`. With
 `--restart`, `attach` and `detach` run the same restart as `collie restart`.
@@ -402,10 +402,10 @@ after it, and the minor after that drops it. Today there is no previous version 
 
 When the two ranges do not meet, Collie reads nothing more from the durable agent. Its log gets one line
 for each range it refuses, such as
-`[durable] Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK.` The home
+`[durable] The durable agent speaks wire v2, this Collie speaks v1. Update Collie, or the agent's SDK.` The home
 of the durable agent on the phone shows the same sentence in a caution box, and its row on the dashboard says Version
 mismatch in place of Unreachable. `collie doctor` shows both ranges on its `durable-hello` row:
-`incompatible: program speaks 2..3, this Collie speaks 1..1`. Once per start of the durable agent, Collie
+`incompatible: the durable agent speaks 2..3, this Collie speaks 1..1`. Once per start of the durable agent, Collie
 also sends it one `hello` with its own version, so the durable agent can log the mismatch on its side.
 Update the older side.
 
