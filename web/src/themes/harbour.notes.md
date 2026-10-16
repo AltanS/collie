@@ -17,7 +17,7 @@ the gate does not cover.
   hover, active), as in `collie`.
 - Dark `background` is oklch(0.21 0.018 250) (#121920). Nord's own night (#2e3440) is L 0.32; that
   is too light for status chips at 4.5 and too far from the mirror. 0.21 keeps the Nord hue and sat
-  near Collie's mirror ground `#0a0a0a`; since spec 18 the mirror stands on Harbour's own `#002b36`
+  near Collie's mirror ground `#0a0a0a`; since spec 18 the mirror stands on Harbour's own `#0a1216`
   (see The mirror). `card` and `chrome` are one raised surface at 0.255, as in `collie`.
 - Inks: light `foreground` oklch(0.26 0.025 250) (#1b2530) is Nord's night used as ink; dark
   `foreground` oklch(0.93 0.012 240) is Nord's snow used as ink.
@@ -120,10 +120,14 @@ status is sky against info at 0.043 light and cyan against info at 0.042 dark (`
 
 ## The mirror
 
-Since spec 18 Harbour carries its own terminal palette, so the mirror is a Solarized well. Dark: the
-ground `#002b36` (Solarized base03) on the page, 1.18, a blue-green well beside the blue-grey page.
-Light: the mirror inverts it to a pale cyan `#bae5f0`, 1.17 on the page. The composer's chrome
-still stands on the mirror as a control.
+Since spec 18 Harbour carries its own terminal palette. The ground is `#0a1216`, a near-black blue,
+and not Solarized's base03 `#002b36`. The reason: the mirror's ground ends where the transcript
+ends, and the page shows under it. In light the mirror is turned over (`invert(1) hue-rotate(180deg)`,
+ADR 0002), and base03 turned over is a pale cyan `#bae5f0`, 1.17 on the page: a cyan card cut off
+mid-screen. So the ground is computed back from the light page: `#0a1216` turned over is `#e8f0f4`,
+the light `background` itself (1.00), as Collie's `#0a0a0a` turns into its own near-white page. In
+dark the ground is 1.07 below the page `#121920`, a slightly deeper well that keeps the blue lean.
+The composer's chrome still stands on the mirror as a control.
 
 ## Face
 
@@ -149,20 +153,22 @@ tokens is named in the file.
 | icons     | thin                 | default | A 1.5 stroke matches the light editor feel.                            |
 | labels    | caps                 | caps    | Small capitals read like the section heads of an editor sidebar.       |
 | display   | grotesk              | none    | Titles in Space Grotesk, the sister of Space Mono, a coder's face.     |
-| ansi      | Solarized-like       | none    | The terminal palette editor people know, on Solarized base03.          |
+| ansi      | Solarized-like       | none    | The terminal palette editor people know, on a near-black blue.         |
 
-- The palette, dark space. Ground `#002b36` (base03), ink `#839496` (base0, 4.75). Slots: 0
+- The palette, dark space. Ground `#0a1216` (see The mirror), ink `#839496` (base0, 5.98). Slots: 0
   `#073642` (base02), 1 `#f0504a` red, 2 `#859900` green, 3 `#eed98a`, 4 `#268bd2` blue, 5
   `#e8559a` magenta, 6 `#2aa198` cyan, 7 `#eee8d5` (base2), 8 `#657b83` (base00), 9 `#e26a33`
   orange, 10 `#a4b832`, 11 `#f6e7b0`, 12 `#6aaee6`, 13 `#6c71c4` violet, 14 `#5fc4b9`, 15 `#fdf6e3`
   (base3). Solarized's own accents fill 2, 4, 6 and 13, and a lighter step of them fills 1, 5 and 9.
   Three places leave Solarized: its red, magenta and orange (`#dc322f`, `#d33682`, `#cb4b16`) read
-  1.74, 1.74 and 1.78 on the light half's inverted ground (ADR 0002), under Collie's own 2.06 and 2.15, so
-  they move a step lighter: 2.05, 2.17 and 2.45 in light, 4.25, 4.43 and 4.53 in dark; its yellow
+  1.74, 1.74 and 1.78 on the light half's inverted base03 (ADR 0002), under Collie's own 2.06 and
+  2.15, so they move a step lighter; on the final ground they read 2.40, 2.54 and 2.87 turned over
+  in light and 5.36, 5.58 and 5.71 in dark; its yellow
   `#b58900` has a relative luminance of 0.29 and slot 3 belongs to the bright set (above 0.6), so
   slot 3 is a light Solarized-tinted yellow; and Solarized puts greys in 10, 11, 12 and 14, where
   base01 measures under 3 on base03, so those slots are lighter accents. Lowest slot on the ground:
-  8 at 3.37, then 13 at 3.43 (floor 3). The bright set has a luminance of 0.70 to 0.92;
+  8 at 4.24, then 13 at 4.32 (floor 3); slot 0 (exempt) is 1.45. Turned over in light the lowest
+  coloured slot is 4 at 2.82 (Collie's red is 2.06). The bright set has a luminance of 0.70 to 0.92;
   the brightest of the rest is 14 at 0.45.
 - Space Grotesk is one extra woff2 (27 KB), loaded only under this theme, for the titles and the
   header line.
