@@ -134,7 +134,8 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(codex.keys.commandSubmit).toEqual(["Enter"]);
     expect(codex.keys.enterWhileRunning).toBe("steers");
     expect(codex.keys.queueKey).toBe("Tab");
-    expect(codex.reservedLeads).toEqual(["/", "!", "@"]);
+    // Only `/` opens a command on Codex: an `@` text is a message, and takes Tab.
+    expect(codex.reservedLeads).toEqual(["/"]);
     expect(codex.probe).toMatchObject({ char: "⌁", status: "verified" });
     expect(codex.hooks["agent-turn-complete"]).toBe("edge");
     expect(codex.edges?.events["agent-turn-complete"]).toBe("stop");

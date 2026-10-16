@@ -1112,6 +1112,36 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Tab");
   });
 
+  test("an `@` text is a message on Codex: it goes in with Tab, never Enter (N2)", async () => {
+    const { pane, send } = codex();
+    const answer = await send("@README.md sum this file up");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Tab"] });
+    expect(pane.transcript.at(-1)).toBe("› @README.md sum this file up");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("`/model` is a command on Codex: Enter on an idle box, refused in a turn (N2)", async () => {
+    const idle = codex();
+    const sent = await idle.send("/model", { mode: "command" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("Enter");
+    expect(idle.pane.keysSeen).not.toContain("Tab");
+    const busy = codex();
+    busy.pane.over = [CODEX_RUNNING];
+    expect((await busy.send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(busy.pane.calls).toEqual([]);
+  });
+
+  test("a `/` text that names no Codex command still takes Enter as a command: Tab would complete it (N2)", async () => {
+    const { pane, send } = codex();
+    const answer = await send("/nosuchcommand", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen).not.toContain("Tab");
+    // As a plain send it is refused: a `/` text has its own route.
+    expect((await send("/nosuchcommand")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+  });
+
   test("Submit of a command draft on an idle Codex box presses Enter", async () => {
     const { pane, send } = codex();
     pane.box = "/compact";

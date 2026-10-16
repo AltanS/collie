@@ -22,7 +22,9 @@ import type { HooksDeps } from "./hooks.ts";
 //    them is no table header. A file this scanner cannot read (an open string or bracket at the end,
 //    a `]` with no `[`) is refused, and nothing is written.
 //  - Only the top level counts: the statements before the first `[table]` header. A `notify` key
-//    inside a table is not the notify setting and is left alone.
+//    inside a table is not the notify setting and is left alone. A table whose path starts with
+//    `notify` (`[notify]`, `[notify.desktop]`) would clash with a top-level `notify` key, so the
+//    install is refused.
 //  - The notify line is OURS when it is one line whose array is `[<any path>, "beacon", "emit",
 //    "codex"]`. Ours is replaced in place (a moved binary heals); the same bytes write nothing.
 //  - A notify statement that is not ours, or one this reader cannot parse, is refused: Codex runs one
@@ -57,7 +59,8 @@ export type NotifyState =
   | { readonly kind: "ours"; readonly line: number; readonly binary: string }
   | { readonly kind: "theirs"; readonly line: number; readonly text: string }
   | { readonly kind: "unreadable"; readonly line: number; readonly text: string }
-  | { readonly kind: "unparsed"; readonly line: number; readonly problem: string };
+  | { readonly kind: "unparsed"; readonly line: number; readonly problem: string }
+  | { readonly kind: "table"; readonly line: number; readonly text: string };
 
 /** One top-level statement: its first and last line, and its key (null for a table header). */
 interface Statement {
@@ -66,30 +69,48 @@ interface Statement {
   readonly key: string | null;
 }
 
-/** The top-level statements up to the first table header, or the line where the scan failed. */
-type TopLevel = { readonly ok: true; readonly statements: readonly Statement[] } | { readonly ok: false; readonly line: number; readonly problem: string };
+/** A table header: its line and the first part of its path. */
+interface Header {
+  readonly line: number;
+  readonly head: string;
+}
+
+/** The top-level statements up to the first table header, every table header, or the line where the scan failed. */
+type TopLevel =
+  | { readonly ok: true; readonly statements: readonly Statement[]; readonly headers: readonly Header[] }
+  | { readonly ok: false; readonly line: number; readonly problem: string };
+
+const HEADER_HEAD = /^\s*\[\[?\s*([A-Za-z0-9_-]+|"[^"]*"|'[^']*')/u;
 
 const NOTIFY_ARRAY = /^\s*notify\s*=\s*(\[.*\])\s*(?:#.*)?$/u;
 const BARE_KEY = /^\s*([A-Za-z0-9_-]+|"[^"]*"|'[^']*')\s*(?:[.=])/u;
 
 /**
- * Scans the top level of a TOML file into statements, as far as the first table header. It knows
+ * Scans a TOML file: the top-level statements before the first table header, and every header. It knows
  * strings (basic, literal, and both multi-line forms), comments, arrays and inline tables, so a row
  * inside a value never reads as a header. It does not check the TOML beyond that.
  */
 export function scanTopLevel(lines: readonly string[]): TopLevel {
   const statements: Statement[] = [];
+  const headers: Header[] = [];
   let depth = 0;
   let multi: '"""' | "'''" | null = null;
   let first = -1;
   let key: string | null = null;
+  // The statements count until the first header; the scan goes on to find every header.
+  let top = true;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     let at = 0;
     if (multi === null && depth === 0) {
       const trimmed = line.trim();
       if (trimmed === "" || trimmed.startsWith("#")) continue;
-      if (trimmed.startsWith("[")) return { ok: true, statements };
+      if (trimmed.startsWith("[")) {
+        const head = HEADER_HEAD.exec(line)?.[1]?.replace(/^["']|["']$/gu, "") ?? "";
+        headers.push({ line: i, head });
+        top = false;
+        continue;
+      }
       first = i;
       const named = BARE_KEY.exec(line);
       key = named === null ? null : named[1]!.replace(/^["']|["']$/gu, "");
@@ -129,13 +150,13 @@ export function scanTopLevel(lines: readonly string[]): TopLevel {
       at++;
     }
     if (multi === null && depth === 0 && first !== -1) {
-      statements.push({ first, last: i, key });
+      if (top) statements.push({ first, last: i, key });
       first = -1;
     }
   }
   if (multi !== null) return { ok: false, line: lines.length - 1, problem: "a multi-line string with no end" };
   if (depth !== 0) return { ok: false, line: lines.length - 1, problem: "an array or inline table with no end" };
-  return { ok: true, statements };
+  return { ok: true, statements, headers };
 }
 
 /** The notify array as strings, or null when it is not a one-line array of double-quoted strings. */
@@ -157,6 +178,8 @@ function notifyArray(line: string): string[] | null {
 export function notifyState(lines: readonly string[]): NotifyState {
   const top = scanTopLevel(lines);
   if (!top.ok) return { kind: "unparsed", line: top.line, problem: top.problem };
+  const table = top.headers.find((header) => header.head === "notify");
+  if (table !== undefined) return { kind: "table", line: table.line, text: lines[table.line]!.trim() };
   const notify = top.statements.find((statement) => statement.key === "notify");
   if (notify === undefined) {
     // At the top, after the leading comments and blank lines: before the first statement or header.
@@ -199,6 +222,8 @@ export function installNotify(text: string, binary: string): { readonly text: st
       return { refuse: `its notify setting is in a shape Collie cannot read (${state.text})` };
     case "unparsed":
       return { refuse: `Collie cannot read its TOML at line ${String(state.line + 1)} (${state.problem}), so Collie writes nothing` };
+    case "table":
+      return { refuse: `it has a table named notify at line ${String(state.line + 1)} (${state.text}). A notify line would clash with it, so Collie writes nothing` };
     case "ours":
       return { text: textOf(lines.map((line, i) => (i === state.line ? ours : line)), finalBreak) };
     case "none":
@@ -308,6 +333,8 @@ export function codexHooksStatusLine(deps: HooksDeps, binary: string): string {
       return `${path}: not installed`;
     case "unparsed":
       return `${path}: not installed, Collie cannot read its TOML at line ${String(state.line + 1)}`;
+    case "table":
+      return `${path}: not installed, it has a table named notify at line ${String(state.line + 1)}`;
     case "theirs":
       return `${path}: not installed, the file runs its own notify command`;
     case "unreadable":
