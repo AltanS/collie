@@ -120,3 +120,10 @@ stands on the mirror at 1.18 light and 1.26 dark, so the grab handle still reads
 
 Atkinson Hyperlegible Next (key `atkinson`), the Braille Institute face for low vision. Letters
 that are easy to mix up in a path or a hash (I l 1, 0 O) are drawn apart. Real weights 400 to 700.
+
+## Shape (schema version 2)
+
+`radius: soft`, `shadow: default`, `density: default`, `weight: default`, `border: default`: calm,
+like an editor in the Nord family. Soft corners take the edge off the cool grey without turning a
+control into a pill, and everything else stays as Collie draws it, so the rows keep the density a
+terminal reader expects.

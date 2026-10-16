@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "id": "nightwatch",
   "name": "Nightwatch",
   "author": "Collie",
@@ -95,5 +95,12 @@
   },
   "fonts": {
     "ui": "plex"
+  },
+  "surface": {
+    "radius": "sharp",
+    "shadow": "flat",
+    "density": "default",
+    "weight": "bold",
+    "border": "strong"
   }
 }
