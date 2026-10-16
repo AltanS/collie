@@ -139,9 +139,8 @@ facts, it does not decide which readers an agent has.
 
 ## The nightly lab (M56 spec 10)
 
-`bun run harness:lab` runs each new agent version through a lab, once. The lab carries four older
-specs: the slash-command walk (M44 spec 05), the run on a version change (M44 spec 06), the corpus
-rule in CI (M44 spec 07) and the soft release gate (M44 spec 08).
+`bun run harness:lab` runs each new agent version through a lab, once. The lab carries four older specs of milestone M44. They are the slash-command walk (spec 05), the
+run on a version change (spec 06), the corpus rule in CI (spec 07) and the soft release gate (spec 08).
 
 ```sh
 bun run harness:lab --plan                       # read the feeds and the ledger, run nothing
@@ -207,8 +206,8 @@ A refresh inside the lab would rotate the person's real refresh token and could 
 has only the access token. The lab refuses to start when that token has less than 25 minutes left. A
 live Claude session refreshes it. The lab deletes the folder, with the copy, at the end of every run.
 
-The lab redacts every screen, log line and issue body before it writes it: the home folder, the
-user name, the host name, e-mail addresses and anything shaped like a key or a token.
+The lab redacts every screen, log line and issue body before it writes it. It removes the home folder,
+the user name, the host name and e-mail addresses. It also removes anything shaped like a key or a token.
 
 ### The ritual
 
