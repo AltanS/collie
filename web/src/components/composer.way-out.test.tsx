@@ -113,7 +113,7 @@ describe("the way out", () => {
     server.use(
       ...sendHandler((request) =>
         request.rowsHash === undefined
-          ? sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: wayOutCase("unreadable").surface, detail: "Check the rows, then tap again to type." })
+          ? sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: wayOutCase("unreadable").surface, detail: "Check the rows, then tap Type here." })
           : sendAnswer(request.id, "sent"),
       ),
     );
