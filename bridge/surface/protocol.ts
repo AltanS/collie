@@ -20,12 +20,14 @@
 //
 // A send into a running turn: when the screen shows the turn running, no modal and an empty box, and
 // the harness's profile says Enter queues while running (`keys.enterWhileRunning: "queues"`), the send
-// goes ahead and the harness takes it after the turn. The turn prints above the box while the text
-// goes in, so the probe and S1 let the transcript move; no modal cue may grow and the rows under the
-// box keep their count, and the Surface must claim no modal. S2 needs the box empty, because the
-// running sign shows from the start; a dialog there ends `unknown(dialog_after_enter)`. The receipt
-// says `queued`. A harness whose profile does not queue, a command, and a box that would go out as a
-// command are refused `turn_running`; something open at the box is refused `not_free`.
+// goes ahead and the harness takes it after the turn. Such a send is always probed. The turn prints
+// above the box while the text goes in, so the probe and S1 let the transcript move. The rows under
+// the box keep their count, the cue read inside the frame may not grow, and the Surface must claim no
+// modal. The frameless cue read is left out: a turn draws list and pointer rows around the box. S2
+// needs the box empty, because the running sign shows from the start. A modal there, or two reads in
+// a row with no box, ends `unknown(dialog_after_enter)`. The receipt says `queued`. A harness whose
+// profile does not queue, a command, and a box that would go out as a command are refused
+// `turn_running`; something open at the box is refused `not_free`.
 //
 // A pane whose harness has a profile is read through its input frame. A pane with no profile has no
 // frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
@@ -326,6 +328,28 @@ function cueAppeared(before: Snap, after: Snap): boolean {
   return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength] || CUE_RANK[after.bareCues] > CUE_RANK[before.bareCues];
 }
 
+/**
+ * The cue check of a send into a running turn: only the cue read with the frame found may grow. The
+ * frameless read is left out, because a turn draws what it reads as a cue around the box: Claude
+ * Code's queued row (a pointer row with the text, over a "ctrl+enter to send now" hint) and a
+ * numbered list streamed above the box. A real dialog takes the box away or makes the Surface claim
+ * a modal, and those end the send on their own.
+ */
+function framedCueGrew(before: Snap, after: Snap): boolean {
+  return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength];
+}
+
+/** Reads in a row with no frame before a queued send counts the box as gone: one may be a torn read. */
+const FRAMELESS_READS = 2;
+
+/**
+ * Whether the Surface claims a modal while the box is found. A read with no box (a torn read, a
+ * redraw) claims no modal here: two of those in a row count instead (FRAMELESS_READS).
+ */
+function modalAtBox(snap: Snap): boolean {
+  return snap.frame !== null && snap.surface.modal !== "none";
+}
+
 /** The non-blank rows under a frame's bottom edge. */
 function rowsBelow(snap: Snap, frame: Frame): number {
   let n = 0;
@@ -379,17 +403,18 @@ function lostTextOnly(before: readonly string[], after: readonly string[]): bool
  */
 function turnOutsideUnchanged(before: Snap, after: Snap): boolean {
   if (before.frame === null || after.frame === null) return false;
-  if (cueAppeared(before, after)) return false;
+  if (framedCueGrew(before, after)) return false;
   return rowsBelow(before, before.frame) === rowsBelow(after, after.frame);
 }
 
 /**
  * Whether the harness takes a message typed and entered while its turn runs: its profile says Enter
- * queues, for a version the binary reported, on a range that is not revoked. A provisional range
- * counts (a new version takes the probed path, which every send into a turn takes anyway).
+ * queues, for a version the binary reported, on a range that is not revoked. A provisional version
+ * counts, unless the nearest older range it borrows is revoked. Every send into a turn is probed,
+ * whatever the status: a dialog can open at any moment of a turn.
  */
 function queuesInTurn(match: ProfileMatch | null): boolean {
-  if (match === null || match.version === null || match.status === "revoked") return false;
+  if (match === null || match.version === null || match.status === "revoked" || match.range?.status === "revoked") return false;
   return match.profile.keys.enterWhileRunning === "queues";
 }
 
@@ -1132,8 +1157,10 @@ export class SendProtocol {
 
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
-    // A manual send (the person confirmed a screen that is not free) is always probed.
+    // A manual send (the person confirmed a screen that is not free) is always probed, and so is any
+    // send into a running turn (a send, Add to it, Replace): a dialog can open at any moment of a turn.
     state.probed =
+      state.queued ||
       s0.frame === null ||
       match === null ||
       match.status !== "verified" ||
@@ -1485,10 +1512,13 @@ export class SendProtocol {
     await this.writeText(state, probe, false);
     state.keys.push("probe");
     let landing: Landing | null = null;
+    let frameless = 0;
     const typed = await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, (snap) => {
       if (s0.frame !== null) {
-        // Queued: the Surface's own claim decides, not only a cue that grew. A dialog over the box fails.
-        if (state.queued && (snap.frame === null || snap.surface.modal !== "none")) return "fail";
+        // Queued: the Surface's claim of a modal over a found box fails, and so do two reads in a row
+        // with no box. One read with no box may be torn, and its Surface claims nothing to trust.
+        frameless = snap.frame === null ? frameless + 1 : 0;
+        if (state.queued && (frameless >= FRAMELESS_READS || modalAtBox(snap))) return "fail";
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
         const outside = state.queued ? turnOutsideUnchanged(s0, snap) : state.manual ? manualOutsideUnchanged(s0, snap) : outsideUnchanged(s0, snap);
@@ -1581,7 +1611,8 @@ export class SendProtocol {
     const { command, manual, queued } = state;
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
-      if (!command && (cueAppeared(s0, snap) || (queued && snap.surface.modal !== "none"))) {
+      // Queued: the cue read inside the frame and the Surface's claim only (framedCueGrew says why).
+      if (!command && (queued ? framedCueGrew(s0, snap) || modalAtBox(snap) : cueAppeared(s0, snap))) {
         why = "modal_cue";
         return "fail";
       }
@@ -1647,11 +1678,14 @@ export class SendProtocol {
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
     const { command, manual, queued } = state;
     let dialog = false;
+    let frameless = 0;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
       if (s0.frame !== null) {
         // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
-        // The box gone, the Surface claiming a modal, or a cue that grew ends the request on its own.
-        if (queued && (snap.frame === null || snap.surface.modal !== "none" || cueAppeared(s0, snap))) {
+        // The Surface claiming a modal, or two reads in a row with no box, end the request on their
+        // own. A grown cue does not: the queued row itself reads as one (framedCueGrew says why).
+        frameless = snap.frame === null ? frameless + 1 : 0;
+        if (queued && (frameless >= FRAMELESS_READS || modalAtBox(snap))) {
           dialog = true;
           return "fail";
         }

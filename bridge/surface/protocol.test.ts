@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { profileFor, resetProfileLog, type Profile, type ProfileStatus } from "../../web/src/lib/surface/profile.ts";
+import { loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
@@ -45,6 +45,11 @@ class FakePane {
   bangPrompt = false;
   dropLastChar = false;
   enterSubmits = true;
+  /**
+   * Enter during a turn draws Claude Code 2.1.301's queued shape: the text on a pointer row with the
+   * "ctrl+enter to send now" hint under it, both over the running row, instead of a transcript row.
+   */
+  drawsQueuedRow = false;
   collapseOver = 120;
   pastes = 0;
   readFails = false;
@@ -156,7 +161,8 @@ class FakePane {
       } else if (key === "ctrl+j") {
         this.box += "\n";
       } else if (key === "Enter" && this.enterSubmits) {
-        if (this.box.length > 0) this.transcript.push(`> ${this.box.replace(/\n/gu, " ")}`);
+        if (this.drawsQueuedRow && this.box.length > 0) this.over = [`❯ ${this.box.replace(/\n/gu, " ")}`, "  ctrl+enter to send now", ...this.over];
+        else if (this.box.length > 0) this.transcript.push(`> ${this.box.replace(/\n/gu, " ")}`);
         this.box = "";
       }
       this.bump();
@@ -218,10 +224,14 @@ function rig(
     locks,
     ring,
     profile: (harness: string) => {
-      const match = profileFor(harness, version, { log: () => undefined });
-      if (match === null) return Promise.resolve(null);
+      // An edited profile is matched as the bridge would match it, so an edited range moves the status.
       const { edit, status } = options;
-      return Promise.resolve({ ...match, profile: edit === undefined ? match.profile : edit(match.profile), status: status ?? match.status });
+      const base = loadProfiles().get(harness);
+      const profiles = edit === undefined || base === undefined ? undefined : new Map([[harness, edit(base)]]);
+      const lookup: ProfileForOptions = profiles === undefined ? { log: () => undefined } : { log: () => undefined, profiles };
+      const match = profileFor(harness, version, lookup);
+      if (match === null) return Promise.resolve(null);
+      return Promise.resolve(status === undefined ? match : { ...match, status });
     },
     generation: () => "gen-1",
     ledger: options.ledger,
@@ -979,6 +989,85 @@ describe("a send into a running turn", () => {
     const provisional = rig({ version: "2.1.301" });
     provisional.pane.over = [LIVE_ROW];
     expect((await provisional.send("hello there")).receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "provisional" });
+  });
+
+  test("the first queued send of a turn: the queued row and its ctrl+enter hint over the spinner end it sent, queued", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.drawsQueuedRow = true;
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.over).toEqual(["❯ then give it a title", "  ctrl+enter to send now", LIVE_ROW]);
+  });
+
+  test("a numbered list that streams above the box through S1 and S2 does not end a queued send", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.drawsQueuedRow = true;
+    let item = 0;
+    pane.beforeRead = (p) => {
+      if (p.calls.some((call) => call.includes("then give"))) p.transcript.push(`${String(++item)}. Step ${String(item)} of the plan`);
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(item).toBeGreaterThan(1);
+  });
+
+  test("one read with no box in S2 is a torn read: the send waits, reads again and ends sent", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.drawsQueuedRow = true;
+    let torn = 0;
+    pane.beforeRead = (p) => {
+      p.fixed = null;
+      if (p.keysSeen.includes("Enter") && torn === 0) {
+        torn++;
+        p.fixed = "An answer row mid redraw";
+      }
+    };
+    const answer = await send("then give it a title");
+    expect(torn).toBe(1);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+  });
+
+  test("two reads in a row with no box in S2 end unknown(dialog_after_enter)", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.fixed = "Something took the whole screen";
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+  });
+
+  test("on a verified version, Add to it and Replace into a running turn are probed", async () => {
+    const append = rig();
+    append.pane.over = [LIVE_ROW];
+    append.pane.box = "a draft";
+    expect((await append.send(" and more", { mode: "append" })).receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "verified" });
+    expect(append.pane.keysSeen.slice(0, 1)).toEqual(["Backspace"]);
+    expect(append.pane.calls[0]).toBe(`type:${PROBE}`);
+    const replace = rig();
+    replace.pane.over = [LIVE_ROW];
+    replace.pane.box = "a draft";
+    const answer = await replace.send("something else", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "verified" });
+    expect(answer.receipt?.keys).toContain("probe");
+  });
+
+  test("a version newer than every range, borrowing a revoked range, never queues", async () => {
+    const { pane, send } = rig({
+      version: "2.1.400",
+      edit: (profile) => {
+        const [first, ...rest] = profile.versions;
+        const revoked = (range: VersionRange): VersionRange => Object.assign({}, range, { status: "revoked" as const });
+        return { ...profile, versions: [revoked(first), ...rest.map(revoked)] };
+      },
+    });
+    pane.over = [LIVE_ROW];
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [], profileStatus: "provisional" });
+    expect(pane.calls).toEqual([]);
   });
 
   test("steadyRow masks a running row's spinner glyph and its bracketed digits, and nothing else", () => {
