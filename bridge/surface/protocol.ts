@@ -65,7 +65,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { isRunningRow, readCues, runningSign } from "../../web/src/lib/surface/cues.ts";
+import { isRunningRow, readCues, readCuesFor, runningSign } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -350,11 +350,14 @@ const BRACKET = /\([^()]*\)/gu;
  * its timer shows compare equal. On another row that shows a running sign (an interrupt hint, a
  * spinner with text after its bracket), the spinner glyph at its start and the digits inside its
  * brackets read as fixed marks, so a timer and a token count that ticked between two reads
- * are not a moved screen, a probe that changed two rows, or a row that gained text. Every other
+ * are not a moved screen, a probe that changed two rows, or a row that gained text. A row that the
+ * profile names as a running row (`signs`) shows its braille spinner glyph and its digits as fixed marks. Every other
  * character of the row still counts: a row such as "2. No, tell Claude... (3m)" that changes its
  * words, or stops being a running row, still changes every compare.
  */
-export function steadyRow(row: string): string {
+export function steadyRow(row: string, signs: readonly RegExp[] = []): string {
+  // A row the profile names as a running row (idle.runningRows) shows its spinner glyph as a fixed mark.
+  if (signs.some((sign) => sign.test(row.trimEnd()))) return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
   // A spinner row with or without its bracket group reads as the glyph mark and the verb alone.
   const verb = SPINNER_VERB_ROW.exec(row);
   if (verb !== null) return `${verb[1] ?? ""}*${verb[2] ?? ""}`;
@@ -1414,7 +1417,7 @@ export class SendProtocol {
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
   private keyOf(state: RunState): CounterKey {
     const { target, match } = state;
-    return { harness: target.harness === "" ? "-" : target.harness, version: match?.version ?? "-", profileId: match?.profile.id ?? "-", status: match?.status ?? "-" };
+    return { harness: match?.profile.id ?? (target.harness === "" ? "-" : target.harness), version: match?.version ?? "-", profileId: match?.profile.id ?? "-", status: match?.status ?? "-" };
   }
 
   /**
@@ -1526,6 +1529,8 @@ export class SendProtocol {
       s0.frame === null ||
       match === null ||
       match.status !== "verified" ||
+      // A probe the profile calls provisional (no live send passed on a version inside its range) is never skipped.
+      match.profile.probe.status !== "verified" ||
       (!isFree(s0.surface) && request.mode !== "append" && request.mode !== "replace") ||
       ([...text].length >= 1 && [...text].length <= SHORT_TEXT);
     let landing: Landing | null = null;
@@ -1649,13 +1654,14 @@ export class SendProtocol {
   }
 
   /**
-   * The manual path on a harness whose Enter steers a running turn: S0 found no box to read the turn
-   * from, so any running sign on the screen counts. Then the send takes the queue key, or is refused
-   * when the profile names none (or the turn holds a command). Enter never steers a turn by accident.
+   * The manual path on a harness whose Enter does not queue (it steers the turn, or no lab run measured
+   * it): S0 found no box to read the turn from, so any running sign on the screen counts. Then the send
+   * takes the queue key, or is refused when the profile names none (or the turn holds a command). Enter
+   * never steers a turn by accident.
    */
   private gateSteeringTurn(state: RunState, s0: Snap): void {
     const profile = state.match?.profile;
-    if (profile?.keys.enterWhileRunning !== "steers" || state.request.mode === "discard") return;
+    if (profile === undefined || profile.keys.enterWhileRunning === "queues" || state.request.mode === "discard") return;
     const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
     if (!runs) return;
@@ -1778,7 +1784,8 @@ export class SendProtocol {
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
     const texts = rows.map((row) => rowText(row).trimEnd());
     const plainRaw = rows.map(plainOf);
-    const plain = plainRaw.map(steadyRow);
+    const signs = (idle?.runningRows ?? []).map((source) => new RegExp(source, "u"));
+    const plain = plainRaw.map((row) => steadyRow(row, signs));
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const snap: Snap = {
@@ -1790,15 +1797,18 @@ export class SendProtocol {
       plainRaw,
       frame,
       surface,
-      cueStrength: readCues(rows, frame).strength,
+      cueStrength: readCuesFor(rows, frame, idle).strength,
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
+      // A harness that draws its dialogs in the box's place (`idle.dialogsInBox`) keeps them in.
       // A box with a blank top edge has no rule between it and the transcript, and that transcript
       // echoes each prompt behind the prompt glyph (Codex: `› the prompt`, its answer indented under
       // it), which reads as a pointer list with no anchor. There only the rows under the box count.
       bareCues:
-        frame !== null && idle?.frame.top.blank === true
-          ? readCues(rows.slice(frame.bottom + 1), null).strength
-          : readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
+        frame !== null && idle?.dialogsInBox === true
+          ? readCuesFor(rows, frame, idle).strength
+          : frame !== null && idle?.frame.top.blank === true
+            ? readCues(rows.slice(frame.bottom + 1), null).strength
+            : readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
       belowCues: frame === null ? "none" : readCues(rows.slice(frame.bottom + 1), null).strength,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       hash: shortHash(texts.join("\n")),

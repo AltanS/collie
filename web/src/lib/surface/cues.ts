@@ -31,7 +31,7 @@
 //
 // Pure: the same rows always give the same answer.
 
-import { rowText, type Frame, type FrameRow } from "./frame";
+import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { shortHash } from "./surface";
 
 export type CueKind =
@@ -258,15 +258,16 @@ function signPatterns(sources: readonly string[]): readonly RegExp[] {
 
 /**
  * Whether a found frame's volatile rows show a running sign. `profileSigns` are the profile's own
- * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge included, for a
- * harness that marks a turn there (a spinner frame on its status row, a hint only a turn shows).
+ * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge and the top
+ * edge included, for a harness that marks a turn there (a spinner frame on its status row, a hint only
+ * a turn shows, a label in the top rule).
  */
 export function runningSign(rows: readonly FrameRow[], frame: Frame, profileSigns: readonly string[] = []): boolean {
   const texts = rows.map(rowText);
   if (volatileRows(texts, frame).some((i) => isRunningRow(texts[i]!))) return true;
   if (profileSigns.length === 0) return false;
   const patterns = signPatterns(profileSigns);
-  return [...volatileRows(texts, frame), frame.bottom].some((i) => {
+  return [...volatileRows(texts, frame), frame.bottom, frame.top].some((i) => {
     const text = texts[i]!.trimEnd();
     return text.length > 0 && patterns.some((pattern) => pattern.test(text));
   });
@@ -401,6 +402,22 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
   const listed = numbered.length > 0 || checkboxes.length > 0 || pointerListed;
   const overlay = dismissRow >= 0 || commandList !== undefined || commandQueryRow >= 0 || ruledList;
   return { cues, listed, pointerListed, pointedList, keyHints, overlay };
+}
+
+/**
+ * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
+ * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
+ * the box rows included.
+ */
+export function readCuesFor(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
+  const plain = readCues(rows, frame);
+  if (idle?.dialogsInBox !== true || frame === null) return plain;
+  // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
+  const at = frame.top;
+  const down = readCues(rows.slice(at), null);
+  // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
+  if (down.strength !== "strong" || plain.strength === "strong") return plain;
+  return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
 }
 
 /**

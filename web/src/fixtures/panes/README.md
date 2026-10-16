@@ -1827,7 +1827,8 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `agy--fresh-idle.txt` | Fresh session: Antigravity header logo and session info, idle input box between horizontal rules, statusline below (`? for shortcuts`) | `idle` |
-| `agy--working.txt` | Mid-turn: tool calls, `⣾ Loading...` spinner with tip line, input box with `esc to cancel` status line | `working` |
+| `agy--working.txt` | Mid-turn (the capture of 2026-08-20, restored 2026-10-16): tool calls, a `⣟  Generating...` spinner row with a tip line, the box, and `esc to cancel` under it | `working` |
+| `agy--after-plan-idle.txt` | The 60-row capture of 2026-08-26 that stood as `agy--working.txt`: a `/plan` turn is over and the box is free, with `? for shortcuts` under it. Relabelled idle on 2026-10-16 (M56 spec 14), when the mid-turn capture below came back | `idle` |
 | `agy--done.txt` | Completed turn: tool output, assistant summary, idle input box | `idle` |
 | `agy--select-menu.txt` | AskUserQuestion single-select dialog: question, numbered options 1..3 with description sub-lines, free-text row "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip" footer | `blocked` |
 | `agy--permission-bash.txt` | Bash execution permission dialog: command, "Requesting permission for: ls -la /tmp", options 1..4 (Yes / allow in conversation / persist / No), "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command" footer | `blocked` |
@@ -1931,7 +1932,8 @@ signature.
 | `muse--draft-blank-row.txt` | Two-paragraph draft: a blank row between the `❯` head and the continuation. The tail walk steps over it, so the prompt binds, the draft folds, and no card draws (#274) | `idle` |
 | `muse--draft-image-chip.txt` | An attached image path converted in place to `[Image #1]` (N in attach order). The read stays verbatim; the attach grammar maps it back for verify (#278) | `idle` |
 | `muse--draft-quoted-path.txt` | A non-image path double-quoted in place (`"/tmp/…"`). Same split: verbatim read, attach grammar verifies (#278) | `idle` |
-| `muse--working.txt` | Mid-turn: `◇ Double checking (2m 40s · esc to interrupt)` above the live composer | `working` |
+| `muse--working.txt` | A finished turn: the transcript ends `◆ Worked for 2m 57s · 4:24 PM` and the composer is free. The name is the first capture's; relabelled idle on 2026-10-16 (M56 spec 14), since no mid-turn screen was ever captured under it | `idle` |
+| `muse--turn-running.txt` | Derived 2026-10-16 from `muse--working.txt`: its last transcript row is replaced by the running row `◇ Double checking (2m 40s · esc to interrupt)`, in the form of the `Calling tools (1m 01s · esc to interrupt)` row of `muse--approval-ls-147.txt`. Not a live capture; a live one is pending | `working` |
 | `muse--done.txt` | Completed turn: `◆ Ran command …`, `◆` summary, `◆ Worked for 1m 06s`, idle composer holding the `Start a message with ! to run a shell command yourself` placeholder (grey, not a draft) | `idle` |
 | `muse--tip-loop.txt` | The same idle composer holding the rotated `/loop 10m <prompt> schedules a recurring prompt` placeholder tip — the tip rotates, and an unlisted one reads as a ghost draft (#274) | `idle` |
 | `muse--tip-paste.txt` | The same idle composer holding the `Paste an image with Ctrl+V — file paths and URLs work too` placeholder tip — the tip rotates per context (#278) | `idle` |

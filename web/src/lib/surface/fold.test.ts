@@ -402,6 +402,137 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
   });
 });
 
+// ── The profiles of M56 spec 14 ──────────────────────────────────────────────────────────────────
+
+/**
+ * One entry per harness profile added by spec 14. `idleMin` is how many idle fixtures the set must hold.
+ * `quote` is a dialog as the harness prints it in a transcript: it goes over the live box and must
+ * leave the box free. `labels` names the fixture labels that must read `running`.
+ */
+interface ProfileCase {
+  readonly id: string;
+  readonly idleMin: number;
+  readonly quote: readonly string[];
+  /** The states the fixture set must hold; the default is all four. A harness with no draft capture lists three. */
+  readonly states?: readonly string[];
+}
+
+const SPEC14: readonly ProfileCase[] = [
+  {
+    id: "opencode",
+    idleMin: 4,
+    quote: ["Here is the dialog you asked about:", "  Permission required", "  ❯ 1. Allow once", "    2. Reject", "  Press enter to confirm or esc to cancel", "", "That is all it shows."],
+  },
+  {
+    id: "agy",
+    idleMin: 2,
+    states: ["idle", "running", "dialog"],
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
+  {
+    id: "grok",
+    idleMin: 4,
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
+  {
+    id: "muse",
+    idleMin: 2,
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
+  {
+    id: "omp",
+    idleMin: 11,
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
+  {
+    id: "pi",
+    idleMin: 14,
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
+  },
+];
+
+describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, idleMin, quote, states }) => {
+  // The profile tests (a), (b), (c) and (d) of the design record, run with this harness's profile on
+  // its mine fixtures, and with the profile applied to every fixture: a profile on a harness it does
+  // not describe must never make a dialog free either.
+  const PROFILE = requireProfile(id).idle;
+  const mine = FIXTURES.filter((name) => labelOf(name).harness === id);
+  const read = (name: string, idle = PROFILE) => readScreen(fixtureRows(name), agentOf(labelOf(name).harness), idle);
+  const signature = (r: ReturnType<typeof read>): boolean =>
+    r.frame !== null && r.surface.composer === "empty" && r.surface.turn === "idle" && r.cues?.strength === "none";
+  const detector = (r: ReturnType<typeof read>): boolean => askOf(r.surface.modal) !== null || r.cues?.strength === "strong";
+
+  it(`${id}: the set holds idle, draft, running and dialog screens`, () => {
+    const have = new Set<string>(mine.map((name) => labelOf(name).state));
+    for (const state of states ?? (["idle", "draft", "running", "dialog"] as const)) expect(have.has(state), state).toBe(true);
+  });
+
+  it(`${id}: the frame module finds the box on every idle fixture, and it reads free`, () => {
+    const idle = mine.filter((name) => labelOf(name).state === "idle");
+    expect(idle.length).toBeGreaterThanOrEqual(idleMin);
+    for (const name of idle) {
+      expect(findInputFrame(fixtureRows(name), PROFILE), name).not.toBeNull();
+      expect(isFree(read(name).surface), name).toBe(true);
+    }
+  });
+
+  it(`${id}: a draft reads as a draft, never free, and a running turn never reads free`, () => {
+    for (const name of mine.filter((n) => labelOf(n).state === "draft")) {
+      const surface = read(name).surface;
+      expect(isFree(surface), name).toBe(false);
+      if (surface.composer !== "unknown") expect(surface.composer, name).toBe("draft");
+    }
+    // A running fixture may show no sign of the turn (a derived screen with only a ghost draft): its
+    // draft then keeps it from free, and that is the claim that counts.
+    for (const name of mine.filter((n) => labelOf(n).state === "running" && LABELS.knownMismatches[n] === undefined)) {
+      expect(isFree(read(name).surface), name).toBe(false);
+    }
+  });
+
+  it(`${id} (a): the idle matcher and the modal detector never both match, on its fixtures and on every fixture`, () => {
+    expect(mine.filter((name) => signature(read(name)) && detector(read(name)))).toEqual([]);
+    expect(FIXTURES.filter((name) => signature(read(name)) && detector(read(name)))).toEqual([]);
+  });
+
+  it(`${id} (b): a perturbed fixture never frees a dialog, and no claim of a dialog moves toward free`, { timeout: 60_000 }, () => {
+    const wrong: string[] = [];
+    for (const name of mine) {
+      const label = labelOf(name);
+      const before = read(name).surface;
+      for (const perturbed of perturbations(fixtureRows(name))) {
+        const after = readScreen(perturbed.rows, agentOf(label.harness), PROFILE).surface;
+        if (isFree(after) && (!isFree(before) || NEGATIVE.has(label.state))) wrong.push(`${name} ${perturbed.name}: free`);
+        if (NEGATIVE.has(label.state)) for (const move of towardFree(before, after)) wrong.push(`${name} ${perturbed.name}: ${move}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it(`${id} (c): a dialog quoted in the transcript stays free`, () => {
+    // The quote goes straight over the live box, as the harness's reply would print it.
+    const name = mine.find((n) => labelOf(n).state === "idle" && findInputFrame(fixtureRows(n), PROFILE) !== null)!;
+    const rows = fixtureRows(name);
+    const top = findInputFrame(rows, PROFILE)!.top;
+    const withQuote = [...rows.slice(0, top), ...rowsOf(["", ...quote, ""].join("\n")), ...rows.slice(top)];
+    const r = readScreen(withQuote, id, PROFILE);
+    expect(r.frame).not.toBeNull();
+    expect(isFree(r.surface), name).toBe(true);
+  });
+
+  it(`${id} (d): the negative set never reads free with this profile, its mine dialogs included`, () => {
+    const negative = FIXTURES.filter((name) => NEGATIVE.has(labelOf(name).state));
+    expect(negative.filter((name) => labelOf(name).harness === id).length).toBeGreaterThan(0);
+    const free = negative.filter((name) => isFree(read(name).surface) || isFree(read(name, PROFILE).surface));
+    expect(free).toEqual([]);
+    const lifted = negative.filter((name) => labelOf(name).harness === id && isFree(readScreen(fixtureRows(name), id, PROFILE, { lift: false }).surface));
+    expect(lifted).toEqual([]);
+  });
+
+  it(`${id}: the incident screens never read free with this profile`, () => {
+    expect(incidentScreens().filter((incident) => isFree(readScreen(incident.rows, incident.agent, PROFILE).surface)).map((i) => i.name)).toEqual([]);
+  });
+});
+
 describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", () => {
   const read = (name: string) => readScreen(fixtureRows(name), agentOf("claude"), idleFor("claude")).surface;
 

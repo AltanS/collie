@@ -77,6 +77,7 @@ const PINNED = [
   "muse--tip-paste.txt",
   "muse--trust-prompt-147.txt",
   "muse--trust-prompt.txt",
+  "muse--turn-running.txt",
   "muse--working.txt",
 ];
 
