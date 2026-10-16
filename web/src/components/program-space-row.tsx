@@ -8,6 +8,7 @@ import { t, tn } from "@/lib/i18n";
 import { programCounts, sessionState, wearsExperimental } from "@/lib/session-cards";
 import type { AgentStatus, SessionState, SessionSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
 
 // A PROGRAM SESSION AS ONE ROW (M55 spec 02, spec 13): a durable program carried by this collie or by a
 // member of its crew, drawn as a row of the dashboard's Programs section.
@@ -100,9 +101,9 @@ export function ProgramSpaceRow({
       data-slot="program-space"
       data-state={state}
       onClick={() => onOpen(session)}
-      className="w-full text-left transition-colors hover:bg-muted/50 active:scale-[0.99]"
+      className={cn("w-full text-left transition-colors hover:bg-muted/50 active:scale-[0.99]", LIST_ROW_CORNERS)}
     >
-      <div className="flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]">
+      <div className={cn("flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[var(--edge-accent)_transparent]", LIST_ROW_CORNERS)}>
         <StatusDot status={MARK[state]} className="size-2.5" />
         <div className="min-w-0 flex-1">
           <div className="flex h-5 min-w-0 items-center gap-2">

@@ -251,3 +251,42 @@ test("the voice takeover's ring stays centred on its button under every density"
     }
   }
 });
+
+// THE THEME STRIP HOLDS EVERY CHIP (M57 spec 15). The Theme card's strip wraps instead of scrolling,
+// so under a roomy shipped theme no chip sits half under the card's edge. The density walk above
+// skips horizontal scrollers, so this checks the strip itself: under Daylight (roomy, round) and
+// under Collie, at 360 and 390 wide, every chip's box lies inside the card's box.
+for (const theme of [
+  { id: "daylight", design: { font: "geist", theme: "daylight" } },
+  { id: "collie", design: {} },
+] as const) {
+  test(`the theme strip holds every chip inside the card under ${theme.id} at 360 and 390`, async ({ browser }, testInfo) => {
+    onlyOnePhone(testInfo);
+    for (const width of [360, 390]) {
+      const context = await browser.newContext(contextOptions(testInfo, { width, height: 844 }));
+      const page = await context.newPage();
+      await installApiStub(page);
+      await page.addInitScript((design) => localStorage.setItem("collie:design:v1", design), JSON.stringify(theme.design));
+      await open(page, "/settings/appearance", undefined);
+      await page.evaluate(() => document.fonts.ready);
+      const boxes = await page.evaluate(() => {
+        const group = document.querySelector('[role="radiogroup"]');
+        const card = group?.closest('[data-slot="card"]')?.getBoundingClientRect();
+        const radios = [...(group?.querySelectorAll('[role="radio"]') ?? [])].map((el) => {
+          const box = el.getBoundingClientRect();
+          return { name: el.textContent ?? "", left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+        });
+        return { card: card ? { left: card.left, right: card.right, top: card.top, bottom: card.bottom } : null, radios };
+      });
+      const at = `${theme.id} at ${width}px`;
+      expect(boxes.card, `${at}: the card`).not.toBeNull();
+      expect(boxes.radios.map((r) => r.name), `${at}: the four shipped chips`).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
+      const card = boxes.card ?? { left: 0, right: 0, top: 0, bottom: 0 };
+      const outside = boxes.radios
+        .filter((r) => r.left < card.left || r.right > card.right || r.top < card.top || r.bottom > card.bottom)
+        .map((r) => r.name);
+      expect(outside, `${at}: chips not fully inside the card`).toEqual([]);
+      await context.close();
+    }
+  });
+}

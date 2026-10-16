@@ -194,7 +194,9 @@ export function FontSettingsControl() {
         <div
           aria-hidden="true"
           className={cn(
-            "h-12 overflow-hidden px-4 py-4 leading-none",
+            // The card's bottom corners, two pixels inside, so the square dark strip does not
+            // cover them under a soft or round theme; 0 at Collie's 2px.
+            "h-12 overflow-hidden rounded-b-[max(0px,calc(var(--radius-xl)_-_2px))] px-4 py-4 leading-none",
             MIRROR_SPACE,
             MIRROR_INVERT,
             sampleFace.className,

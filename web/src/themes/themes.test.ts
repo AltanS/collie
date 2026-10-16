@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
 import { SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
-import { SURFACE_DEFAULTS, wordDeclarations } from "@/lib/theme/surface";
+import { SURFACE_DEFAULTS, SURFACE_TOKENS, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -114,6 +114,12 @@ describe("the shipped themes", () => {
     expect(Object.keys(theme.dark ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
     expect(SHIPPED_FONTS).toContain(theme.fonts?.ui);
     expect(theme.author).toBe("Collie");
+  });
+
+  it.each(ids)("%s is version 2 and names a word for every shape token, so an export shows the whole shape", (id) => {
+    const theme = shipped(id);
+    expect(theme.version).toBe(2);
+    expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual([...SURFACE_TOKENS].toSorted());
   });
 
   it.each(ids)("%s passes every check of the contrast report in both halves", (id) => {
@@ -293,12 +299,24 @@ describe("every default shape word is today's CSS", () => {
 
   it("radius: sharp is the four 2px steps, now in @theme and no longer in @theme inline", () => {
     for (const [property, value] of wordDeclarations("radius", SURFACE_DEFAULTS.radius)) {
+      if (property === "--edge-accent" || property === "--edge-shadow") continue;
       expect(theme.get(property), property).toBe(value);
       expect(value).toBe("2px");
       expect(inline.has(property), property).toBe(false);
     }
     // The base radius stays where it was, and bare `rounded` and `rounded-full` are not steps.
     expect(root.get("--radius")).toBe("2px");
+  });
+
+  it("radius: sharp's row mark is the left bar every accent used to spell, declared on :root", () => {
+    const edge = new Map(wordDeclarations("radius", SURFACE_DEFAULTS.radius)).get("--edge-accent");
+    expect(edge).toBe("inset 2px 0 0 0");
+    expect(root.get("--edge-accent")).toBe(edge);
+    expect(theme.has("--edge-accent") || inline.has("--edge-accent")).toBe(false);
+    // Its second shadow layer is none, so a marked row draws what it drew before.
+    const second = new Map(wordDeclarations("radius", SURFACE_DEFAULTS.radius)).get("--edge-shadow");
+    expect(second).toBe("0 0 #0000");
+    expect(root.get("--edge-shadow")).toBe(second);
   });
 
   it("shadow: default is Tailwind's own value for every step the app uses", () => {
@@ -340,11 +358,13 @@ describe("every default shape word is today's CSS", () => {
   });
 
   it("writes no shape line for a shipped file without a surface block, and the words for one with", () => {
-    const files = ["collie", "nightwatch"].map((id) => ({ name: `${id}.json`, raw: read(`src/themes/${id}.json`) }));
-    const plain = buildThemesCss(files);
-    expect(plain.ok && plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-/);
+    // Nightwatch ships with a surface block (spec 15); its version 1 copy is the colour-only case.
     const raw = JSON.parse(read("src/themes/nightwatch.json"));
-    const withSurface = buildThemesCss([files[0] ?? { name: "", raw: "" }, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 2, surface: { radius: "soft", density: "roomy" } }) }]);
+    delete raw.surface;
+    const collieFile = { name: "collie.json", raw: read("src/themes/collie.json") };
+    const plain = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 1 }) }]);
+    expect(plain.ok && plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-/);
+    const withSurface = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 2, surface: { radius: "soft", density: "roomy" } }) }]);
     if (!withSurface.ok) throw new Error(withSurface.errors.join("\n"));
     expect(withSurface.css).toContain("  --radius-md: 6px;\n");
     expect(withSurface.css).toContain("  --spacing: 0.28rem;\n");

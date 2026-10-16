@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "id": "daylight",
   "name": "Daylight",
   "author": "Collie",
@@ -95,5 +95,12 @@
   },
   "fonts": {
     "ui": "geist"
+  },
+  "surface": {
+    "radius": "round",
+    "shadow": "lifted",
+    "density": "roomy",
+    "weight": "default",
+    "border": "default"
   }
 }
