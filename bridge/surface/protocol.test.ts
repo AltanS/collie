@@ -5,7 +5,7 @@
 // glyph, a rule, a status row), or, for a harness with no profile, a bare editor between two rules.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
@@ -14,6 +14,7 @@ import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, GENERIC_PROBE, LOCK_BOUND_MS, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
+import { SurfaceLedger } from "./counters.ts";
 
 const RULE = "─".repeat(40);
 const WIDTH = 38;
@@ -185,7 +186,7 @@ function nextId(): string {
   return `req-${String(ids).padStart(6, "0")}`;
 }
 
-function rig(options: { mode?: Mode; version?: string; harness?: string; paste?: boolean; pane?: FakePane; storeDir?: string } = {}): Rig {
+function rig(options: { mode?: Mode; version?: string; harness?: string; paste?: boolean; pane?: FakePane; storeDir?: string; ledger?: SurfaceLedger } = {}): Rig {
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
   const clock = { now: 1_000_000 };
   const now = (): number => clock.now;
@@ -203,6 +204,7 @@ function rig(options: { mode?: Mode; version?: string; harness?: string; paste?:
     ring,
     profile: (harness: string) => Promise.resolve(profileFor(harness, version, { log: () => undefined })),
     generation: () => "gen-1",
+    ledger: options.ledger,
     now,
     sleep: (ms: number) => {
       clock.now += ms;
@@ -1086,4 +1088,142 @@ describe("real screens from the fixture corpus", () => {
       expect(pane.keysSeen).toEqual([]);
     });
   }
+});
+
+// ── counters, the cap and the examples (M56 spec 09) ──
+
+describe("counters, the cap and the examples", () => {
+  /** A ledger on the rig's clock, in its own folder. */
+  function ledgerFor(options: { cap?: number } = {}): SurfaceLedger {
+    return new SurfaceLedger(join(dir, "state"), { now: () => 1_000_000, ...options, warn: () => undefined });
+  }
+  const rowOf = (ledger: SurfaceLedger, harness: string) => ledger.rows().find((row) => row.harness === harness);
+
+  test("a send that goes through is counted sent under its harness, version, profile and status", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ ledger });
+    await send("please fix the failing test in the parser");
+    expect(rowOf(ledger, "claude")).toMatchObject({ version: "2.1.200", profileId: "claude", status: "verified", sent: 1, probed: 0, manual: 0, refused: {} });
+  });
+
+  test("a refusal is counted by its reason, and a probed send counts probed", async () => {
+    const ledger = ledgerFor();
+    const { pane, send } = rig({ ledger, version: "2.1.999" });
+    pane.dialog = DIALOG;
+    await send("hello");
+    pane.dialog = null;
+    await send("hello again, agent");
+    expect(rowOf(ledger, "claude")).toMatchObject({ status: "provisional", refused: { not_free: 1 }, probed: 1, sent: 1 });
+  });
+
+  test("a manual send on a screen with no profile counts manual, and the first tap does not", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ mode: "generic", ledger });
+    const first = await send("hello from the phone");
+    expect(rowOf(ledger, "nothing-known")).toMatchObject({ manual: 0, refused: { unconfirmed: 1 } });
+    await send("hello from the phone", { rowsHash: first.rowsHash! });
+    expect(rowOf(ledger, "nothing-known")).toMatchObject({ manual: 1, sent: 1, probed: 1, status: "-", profileId: "-" });
+  });
+
+  test("past the cap the commit is refused once more with the count and the version, files the frame hash, and counts no manual send", async () => {
+    const ledger = ledgerFor({ cap: 2 });
+    const { pane, send } = rig({ mode: "generic", ledger });
+    for (let n = 0; n < 2; n++) {
+      const first = await send(`hello from the phone ${String(n)}`);
+      expect((await send(`hello from the phone ${String(n)}`, { rowsHash: first.rowsHash! })).receipt?.outcome).toBe("sent");
+    }
+    const first = await send("one more please");
+    const capped = await send("one more please", { rowsHash: first.rowsHash! });
+    expect(capped.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(capped.cap).toEqual({ count: 2, limit: 2, harness: "nothing-known", version: "-" });
+    expect(capped.detail).toContain("2 times on nothing-known");
+    expect(capped.offers).toEqual(["commit", "keys"]);
+    expect(capped.rowsHash).toBe(first.rowsHash);
+    // Nothing was typed for the refused commit, and no manual send was counted for it.
+    expect(pane.calls.filter((call) => call.includes("one more"))).toEqual([]);
+    expect(rowOf(ledger, "nothing-known")?.manual).toBe(2);
+    // One line in the inbox: the version and the frame hash, never the rows or the text.
+    const lines = readFileSync(join(dir, "state", "surface", "inbox.jsonl"), "utf8").trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ harness: "nothing-known", version: "-", frame: first.rowsHash, count: 2 });
+    expect(lines[0]).not.toContain("one more");
+    // The extra confirm goes through, probed, and counts.
+    const acked = await send("one more please", { rowsHash: first.rowsHash!, capAck: true });
+    expect(acked.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(rowOf(ledger, "nothing-known")?.manual).toBe(3);
+  });
+
+  test("the cap never touches a free send, and never removes the manual one: the ack always goes through", async () => {
+    const ledger = ledgerFor({ cap: 0 });
+    const free = rig({ ledger });
+    expect((await free.send("a free box sends as ever")).receipt?.outcome).toBe("sent");
+    const generic = rig({ mode: "generic", ledger });
+    const first = await generic.send("hello from the phone");
+    const capped = await generic.send("hello from the phone", { rowsHash: first.rowsHash! });
+    expect(capped.cap).toMatchObject({ count: 0, limit: 0 });
+    expect((await generic.send("hello from the phone", { rowsHash: first.rowsHash!, capAck: true })).receipt?.outcome).toBe("sent");
+  });
+
+  test("a ledger that throws never changes an outcome", async () => {
+    const broken = {
+      send: () => {
+        throw new Error("disk full");
+      },
+      noteManual: () => {
+        throw new Error("disk full");
+      },
+      capState: () => {
+        throw new Error("disk full");
+      },
+      inbox: () => undefined,
+      example: () => {
+        throw new Error("disk full");
+      },
+    };
+    const { send, deps } = rig({ mode: "generic" });
+    const protocol = new SendProtocol({ ...deps, ledger: broken });
+    const target = { session: "main", paneId: "%1", harness: "nothing-known" };
+    const first = await protocol.handle({ id: nextId(), text: "hello from the phone", mode: "send" }, target);
+    const answer = await protocol.handle({ id: nextId(), text: "hello from the phone", mode: "send", rowsHash: first.rowsHash! }, target);
+    expect(answer.receipt?.outcome).toBe("sent");
+    void send;
+  });
+
+  test("a probed send that went out keeps its S0 bottom cluster as a shape, with the typed text only as a length", async () => {
+    const ledger = ledgerFor();
+    const { pane, send } = rig({ ledger, version: "2.1.999" });
+    pane.transcript = ["> my password is hunter2 and the token is sk-live-abcdef"];
+    const answer = await send("this exact typed text must not be stored");
+    expect(answer.receipt?.outcome).toBe("sent");
+    const files = readdirSync(ledger.examplesDir);
+    expect(files).toHaveLength(1);
+    const text = readFileSync(join(ledger.examplesDir, files[0]!), "utf8");
+    // SAFETY: the file was written by `SurfaceLedger.example` a line above; only fields of the written body are read back.
+    const example = JSON.parse(text) as { cluster: string[] };
+    expect(example).toMatchObject({ outcome: "sent", text: "<typed:40>", textLength: 40, version: "2.1.999", frame: expect.any(String) });
+    expect(text).not.toMatch(/hunter2|sk-live|typed text|password|token/u);
+    expect(example.cluster.some((row) => row.includes("─"))).toBe(true);
+    expect(example.cluster.join("\n")).toMatch(/aa/u);
+  });
+
+  test("a send on the fast path stores no example", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ ledger });
+    await send("a verified profile, a free box, a long enough text");
+    expect(existsSync(ledger.examplesDir)).toBe(false);
+  });
+
+  test("recent lists the pane's settled requests newest first, with no text and no rows", async () => {
+    const { protocol, send, pane } = rig();
+    pane.dialog = DIALOG;
+    await send("refused text must not appear");
+    pane.dialog = null;
+    await send("a text that goes through");
+    const rows = protocol.recent("%1");
+    expect(rows.map((row) => row.outcome)).toEqual(["sent", "refused"]);
+    expect(rows[1]).toMatchObject({ reason: "not_free", keys: [] });
+    expect(JSON.stringify(rows)).not.toMatch(/must not appear|goes through/u);
+    expect(protocol.recent("%9")).toEqual([]);
+    expect(protocol.recent("%1", 1)).toHaveLength(1);
+  });
 });

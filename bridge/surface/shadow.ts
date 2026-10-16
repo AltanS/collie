@@ -29,6 +29,7 @@ import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, versionFromOutput, type Profile } from "../../web/src/lib/surface/profile.ts";
 import { askOf, isFree, modalWord, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import type { CounterKey } from "./counters.ts";
 
 /** How many rows of the viewport one shadow read asks for. `viewport` scope never moves a screen. */
 export const SHADOW_READ_LINES = 120;
@@ -87,6 +88,12 @@ export interface ShadowOptions {
    * nothing reads the old verdict. Defaults to on.
    */
   readonly compare?: boolean;
+  /**
+   * The persisted counters (M56 spec 09): every new read is also counted per harness, version, profile
+   * id and status in the day file, and an `unknown` one files the hash of its bottom cluster. Called
+   * inside a try; it never changes the Surface.
+   */
+  readonly ledger?: { read(key: CounterKey, surface: Surface, frame: string | null): void } | undefined;
 }
 
 interface PaneState {
@@ -101,6 +108,7 @@ interface PaneState {
   harness: string;
   version: string;
   status: string | null;
+  profileId: string;
   idle: IdleProfile | null;
   /** When each disagreement class last made a journal line on this pane. */
   logged: Map<string, number>;
@@ -242,12 +250,13 @@ export class SurfaceShadow {
 
     let state = this.panes.get(agent.paneId);
     if (state === undefined) {
-      state = { log: [], seq: 0, lastLegacy: false, countedRead: null, lastRevision: 0, read: null, harness, version, status, idle, logged: new Map() };
+      state = { log: [], seq: 0, lastLegacy: false, countedRead: null, lastRevision: 0, read: null, harness, version, status, profileId: profile?.id ?? "-", idle, logged: new Map() };
       this.panes.set(agent.paneId, state);
     }
     state.harness = harness;
     state.version = version;
     state.status = status;
+    state.profileId = profile?.id ?? "-";
     state.idle = idle;
 
     // A read is new when its revision OR its text moved. The revision alone is not enough: Herdr
@@ -280,6 +289,17 @@ export class SurfaceShadow {
     if (state.log.length > SHADOW_LOG_LIMIT) state.log.splice(0, state.log.length - SHADOW_LOG_LIMIT);
   }
 
+  /** One new read into the persisted counters. A failure is a warning, never a different Surface. */
+  private persist(state: PaneState, surface: Surface, frame: string | null): void {
+    const { ledger } = this.options;
+    if (ledger === undefined) return;
+    try {
+      ledger.read({ harness: state.harness, version: state.version, profileId: state.profileId, status: state.status ?? "-" }, surface, frame);
+    } catch (err) {
+      console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   private count(paneId: string, state: PaneState, read: SurfaceRead): void {
     const key = `${state.harness}@${state.version}`;
     let counters = this.counters.get(key);
@@ -288,6 +308,7 @@ export class SurfaceShadow {
       this.counters.set(key, counters);
     }
     const { surface } = read;
+    this.persist(state, surface, read.cues?.hash ?? null);
     const free = isFree(surface);
     counters.observed++;
     if (free) counters.free++;

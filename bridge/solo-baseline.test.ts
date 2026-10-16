@@ -799,6 +799,7 @@ describe("solo zero-tax — routes", () => {
       // rather than exempted. Write-gated through the same closure a reply rides, this collie's own
       // sessions only, and a 404 unless the operator set COLLIE_SEND_PROTOCOL=1. No crew route.
       "/api/send",
+      "/api/send/receipts",
       "/api/snapshot",
       // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
       // here rather than exempted, exactly as device pairing is. It is off until an operator
@@ -1130,6 +1131,10 @@ const STATE_DIR_ENTRIES = [
   // the consent) or removes the file, and only while no key, command or environment names a provider
   // (bridge/stt/host-http.ts, ADR 0097).
   "stt.json",
+  // The Surface counters (M56 spec 09): one counters file a day, the lab's inbox and its examples, all
+  // in this folder. Created by a bridge that computes a Surface (the Send Protocol, on by default, or
+  // COLLIE_SURFACE_SHADOW=1) the first time it reads an agent pane or settles a send.
+  "surface",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.

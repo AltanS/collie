@@ -2253,6 +2253,18 @@ describe("GET /api/health", () => {
     // page answers every path first. The field states the rule the prober applies.
     expect(healthBody("1.2.3", "lead").deposed).toBe(false);
   });
+
+  test("carries the Surface counters' totals when it has them, and no key at all when it has none (M56 spec 09)", () => {
+    expect(healthBody("1.2.3", "solo", { free: 120, unknown: 7, manual: 2 })).toEqual({
+      ok: true,
+      version: "1.2.3",
+      deposed: false,
+      mode: "solo",
+      surface: { free: 120, unknown: 7, manual: 2 },
+    });
+    expect("surface" in healthBody("1.2.3", "solo", null)).toBe(false);
+    expect("surface" in healthBody("1.2.3", "solo")).toBe(false);
+  });
 });
 
 describe("withBuildHeader", () => {

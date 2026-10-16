@@ -3,7 +3,8 @@
 // injected and the screens are the committed pane fixtures.
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig } from "../config.ts";
@@ -11,6 +12,7 @@ import type { MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { guard, SURFACE_OFF_TEXT, surfaceRoute } from "../server.ts";
 import type { AgentView } from "../types.ts";
 import { askOf } from "../../web/src/lib/surface/surface.ts";
+import { SurfaceLedger } from "./counters.ts";
 import { DISAGREE_REPEAT_MS, DISAGREE_TAG, SurfaceShadow, freeOnOldAxis, maskSurface, surfaceRouteBody } from "./shadow.ts";
 
 const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -312,5 +314,43 @@ describe("the debug route", () => {
     expect(on.status).toBe(200);
     expect(await on.json()).toMatchObject({ pane: "w1:p1", surface: { revision: 4, modal: "none" } });
     expect(surfaceRoute(r.shadow, "w9:p9", false, null).status).toBe(404);
+  });
+});
+
+describe("surface shadow: the persisted counters (M56 spec 09)", () => {
+  test("every new read lands in the ledger under harness, version, profile and status; an unknown one files its cluster hash", async () => {
+    const state = mkdtempSync(join(tmpdir(), "collie-shadow-ledger-"));
+    try {
+      const ledger = new SurfaceLedger(state, { now: () => 1_000_000, warn: () => undefined });
+      const mux = new FakeMux();
+      const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => undefined, now: () => 1_000_000, version: async () => "2.1.296", ledger });
+      mux.set("w1:p1", IDLE, 1);
+      await shadow.observe([agent("w1:p1")]);
+      // The same screen again is not a new read: counted once.
+      await shadow.observe([agent("w1:p1")]);
+      mux.set("w1:p1", PERMISSION, 2);
+      await shadow.observe([agent("w1:p1")]);
+      expect(ledger.rows()).toMatchObject([{ harness: HARNESS, version: "2.1.296", profileId: HARNESS, free: 1, modal: { permission: 1 } }]);
+      // A pane of a harness with no profile counts under `-` for its profile and status.
+      mux.set("w1:p2", IDLE, 3);
+      await shadow.observe([agent("w1:p2", "nothing-known")]);
+      const unknown = ledger.rows().find((row) => row.harness === "nothing-known");
+      expect(unknown).toMatchObject({ version: "-", profileId: "-", status: "-" });
+    } finally {
+      rmSync(state, { recursive: true, force: true });
+    }
+  });
+
+  test("a ledger that throws leaves the Surface as it was", async () => {
+    const mux = new FakeMux();
+    const broken = {
+      read: () => {
+        throw new Error("disk full");
+      },
+    };
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => undefined, now: () => 1_000_000, version: async () => "2.1.296", ledger: broken });
+    mux.set("w1:p1", IDLE, 1);
+    await shadow.observe([agent("w1:p1")]);
+    expect(shadow.surfaceOf("w1:p1")).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
   });
 });

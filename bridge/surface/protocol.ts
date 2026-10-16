@@ -40,14 +40,17 @@ import {
   wsFree,
   type ReadMark,
   type SendAnswer,
+  type SendCap,
   type SendMode,
   type SendOffer,
   type SendOutcome,
   type SendReason,
   type SendReceipt,
+  type SendReceiptRow,
   type SendStep,
 } from "../../web/src/lib/surface/send.ts";
 import { isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 
@@ -111,6 +114,19 @@ export interface SendTarget {
   readonly harness: string;
 }
 
+/**
+ * What the protocol tells the counters (M56 spec 09). Every call is made after the fact and inside a
+ * try: a ledger that throws or is slow never changes an outcome and never blocks a send. The cap only
+ * adds the one confirm its answer asks for.
+ */
+export interface SendLedger {
+  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean }): void;
+  noteManual(key: CounterKey): void;
+  capState(harness: string, version: string): CapState;
+  inbox(entry: InboxEntry): void;
+  example(entry: ExampleEntry): void;
+}
+
 export interface SendDeps {
   readonly mux: ProtocolMux;
   readonly gate: KeyGate;
@@ -121,6 +137,8 @@ export interface SendDeps {
   readonly profile: (harness: string) => Promise<ProfileMatch | null>;
   /** The pane's generation now, or null when the pane is gone. */
   readonly generation: (paneId: string) => string | null;
+  /** The counters, the cap and the lab's folders. Absent in a test that does not need them. */
+  readonly ledger?: SendLedger | undefined;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -133,6 +151,8 @@ export interface SendRequest {
   readonly rowsHash?: string;
   /** The Surface revision the phone showed when the person tapped, or 0. */
   readonly revision?: number;
+  /** The person's answer to the cap's extra confirm (M56 spec 09). */
+  readonly capAck?: boolean;
 }
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
@@ -432,6 +452,7 @@ interface EndNote {
   rowsHash?: string;
   detail?: string;
   framed?: boolean;
+  cap?: SendCap;
 }
 
 /** An answer being built, field by field. */
@@ -448,6 +469,7 @@ function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   if (note.surface !== undefined) draft.surface = note.surface;
   if (note.rowsHash !== undefined) draft.rowsHash = note.rowsHash;
   if (note.detail !== undefined) draft.detail = note.detail;
+  if (note.cap !== undefined) draft.cap = note.cap;
   return draft;
 }
 
@@ -493,6 +515,22 @@ export class SendProtocol {
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
+  /**
+   * The newest settled requests for a pane, newest first, as the session page lists them (M56 spec 09).
+   * The request files hold receipts only, so no row of the screen and no text can come out of here.
+   */
+  recent(paneId: string, limit = 10): SendReceiptRow[] {
+    const rows: SendReceiptRow[] = [];
+    for (const record of this.deps.store.list().toReversed()) {
+      if (rows.length >= limit) break;
+      const receipt = record.receipt;
+      if (record.paneId !== paneId || receipt === undefined) continue;
+      const row = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
+      rows.push(receipt.reason === undefined ? row : { ...row, reason: receipt.reason });
+    }
+    return rows;
+  }
+
   /** One request, start to receipt. Never throws for a pane's state; every end is an answer. */
   async handle(request: SendRequest, target: SendTarget): Promise<SendAnswer> {
     if (request.mode === "prepare") return this.prepare(target);
@@ -532,6 +570,7 @@ export class SendProtocol {
       state.marks.s2 = look;
       const receipt = this.receiptOf(state, "unknown", "crash");
       this.deps.store.settle(request.id, receipt);
+      this.count(state, receipt);
       return withLook({ receipt, offers: offersFor("unknown", "crash", false), replayed: true }, look);
     }
     const work = this.run(request, accepted.record, target);
@@ -655,8 +694,43 @@ export class SendProtocol {
   private settle(state: RunState, end: Ended): SendAnswer {
     const receipt = this.receiptOf(state, end.outcome, end.reason);
     this.deps.store.settle(state.record.id, receipt);
+    this.count(state, receipt);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
     return answerWith({ receipt, offers: offersFor(end.outcome, end.reason, framed) }, end.extra);
+  }
+
+  /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
+  private keyOf(state: RunState): CounterKey {
+    const { target, match } = state;
+    return { harness: target.harness === "" ? "-" : target.harness, version: match?.version ?? "-", profileId: match?.profile.id ?? "-", status: match?.status ?? "-" };
+  }
+
+  /**
+   * One settled request into the counters, and a probed send that went out into the examples folder.
+   * Never throws and never waits on anything: a counter is not a verdict.
+   */
+  private count(state: RunState, receipt: SendReceipt): void {
+    const { ledger } = this.deps;
+    if (ledger === undefined) return;
+    try {
+      const key = this.keyOf(state);
+      const probed = receipt.keys.includes("probe");
+      ledger.send(key, { outcome: receipt.outcome, reason: receipt.reason, probed });
+      const s0 = state.marks.s0;
+      if (probed && s0 !== null && (receipt.outcome === "sent" || receipt.outcome === "effective")) {
+        const win = bottomWindow(s0.plain);
+        ledger.example({
+          requestId: receipt.requestId,
+          ...key,
+          outcome: receipt.outcome,
+          cluster: s0.plain.slice(win.first, win.end),
+          frame: s0.rowsHash,
+          textLength: receipt.textLength,
+        });
+      }
+    } catch (err) {
+      console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // ── The steps ──
@@ -765,9 +839,38 @@ export class SendProtocol {
       if (state.request.rowsHash !== s0.rowsHash) {
         throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
       }
+      this.gateCap(state, s0);
       return;
     }
     throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+  }
+
+  /**
+   * The cap (M56 spec 09): after N manual sends on one harness and version inside 24 hours, the manual
+   * Send takes one more confirm. The refusal names the count and the version, files the frame hash for
+   * the lab, and offers the commit again; the next commit carries `capAck`. It only adds a tap: the
+   * manual Send and the key pad stay, and the counters never change a verdict.
+   */
+  private gateCap(state: RunState, s0: Snap): void {
+    const { ledger } = this.deps;
+    if (ledger === undefined) return;
+    const key = this.keyOf(state);
+    try {
+      const cap = ledger.capState(key.harness, key.version);
+      if (cap.reached && state.request.capAck !== true) {
+        ledger.inbox({ harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, frame: s0.rowsHash, count: cap.count });
+        throw new Ended("refused", "unconfirmed", {
+          surface: s0.surface,
+          rowsHash: s0.rowsHash,
+          cap: { count: cap.count, limit: cap.limit, harness: key.harness, version: key.version },
+          detail: `You typed past a screen Collie cannot read ${String(cap.count)} times on ${key.harness} ${key.version} in the last day. Check the screen, then confirm once more to type.`,
+        });
+      }
+      ledger.noteManual(key);
+    } catch (err) {
+      if (err instanceof Ended) throw err;
+      console.warn(`[surface] cap failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** The frame of a box that may hold a draft (append, replace, submit, discard), or a refusal. */

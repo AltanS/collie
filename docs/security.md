@@ -43,6 +43,10 @@ exists to inject headers.
 
 Pairing gates every `/api` route, reads included. Only two routes stay open: `/api/health`, which
 a monitor or a load balancer asks, and `/api/pair`, which a device needs before it holds a token.
+`/api/health` answers the build, the crew mode and three counts of the last seven days (how often the
+input box read as free, how often it could not be read, and how often a person sent by hand past a
+screen Collie could not read). The counts name no pane, no text and no person.
+
 The device header gates writes and one read, the [Files view](changes.md#files), which can show
 every file under a workspace's folder
 ([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
-import { parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendRoute, type SendRouteRuntime } from "../server.ts";
+import { parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type SendRouteRuntime } from "../server.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
@@ -23,6 +23,15 @@ describe("parseSendRequest", () => {
     expect(parseSendRequest(good)).toEqual({ ...good, mode: "send" });
     expect(parseSendRequest({ ...good, mode: "append", rowsHash: "0abc12", revision: 3 })).toEqual({ ...good, mode: "append", rowsHash: "0abc12", revision: 3 });
     expect(parseSendRequest({ ...good, text: "", mode: "prepare" })).toEqual({ ...good, text: "", mode: "prepare" });
+  });
+
+  test("takes the cap's extra confirm as a boolean, and refuses anything else (M56 spec 09)", () => {
+    expect(parseSendRequest({ ...good, rowsHash: "0abc12", capAck: true })).toEqual({ ...good, mode: "send", rowsHash: "0abc12", capAck: true });
+    expect(parseSendRequest({ ...good, capAck: false })).toEqual({ ...good, mode: "send", capAck: false });
+    for (const bad of ["yes", 1, null, []]) {
+      // SAFETY: each case is plain JSON data, a JsonValue.
+      expect(parseSendRequest({ ...good, capAck: bad } as JsonValue)).toBeNull();
+    }
   });
 
   test("refuses every malformed field", () => {
@@ -242,6 +251,43 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       expect(await res.text()).toBe(REPLY_OFF_TEXT);
       expect(pane.written).toEqual([]);
       expect(lines).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("sendReceiptsRoute (M56 spec 09)", () => {
+  test("with the flag off the route is a 404 that says why, and a call with no pane is a 400", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const off = runtime(false, dir);
+      const res = sendReceiptsRoute(off.rt, "%1", null);
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe(SEND_OFF_TEXT);
+      const on = runtime(true, dir);
+      expect(sendReceiptsRoute(on.rt, null, null).status).toBe(400);
+      expect(sendReceiptsRoute(on.rt, "", null).status).toBe(400);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("answers the pane's last ten receipts newest first, with no text and no rows", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      const { audit } = auditLines();
+      for (let n = 0; n < 12; n++) await sendRoute(rt, { id: `route-rcpt-${String(n).padStart(4, "0")}`, pane: "%1", text: `message number ${String(n)} is private` }, { audit, device: null, redact: false, acceptEncoding: null });
+      const res = sendReceiptsRoute(rt, "%1", null);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.receipts).toHaveLength(10);
+      expect(body.receipts[0]).toMatchObject({ requestId: "route-rcpt-0011", outcome: "sent", mode: "send", harness: "claude", keys: ["Enter"] });
+      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "mode", "outcome", "requestId", "version"]);
+      expect(JSON.stringify(body)).not.toMatch(/private/u);
+      const other = await sendReceiptsRoute(rt, "%9", null).json();
+      expect(other.receipts).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

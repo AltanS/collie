@@ -82,7 +82,23 @@ export interface SendRequestBody {
   readonly text: string;
   readonly mode?: SendMode;
   /** The hash of the rows the person saw, from a `prepare` or an `unconfirmed` answer. */
-  readonly rowsHash?: string;
+  readonly rowsHash?: string | undefined;
+  /** The extra confirm of the cap (M56 spec 09): true on a commit the person made after an answer that carried `cap`. */
+  readonly capAck?: boolean | undefined;
+}
+
+/**
+ * The cap's answer (M56 spec 09): after `limit` manual sends on one harness and version inside 24
+ * hours, the next one takes one more confirm that names the count and the version. It only adds a
+ * confirm: the manual Send and the Keys dock stay, and no setting turns the confirm off.
+ */
+export interface SendCap {
+  /** The manual sends counted inside the window. */
+  readonly count: number;
+  readonly limit: number;
+  readonly harness: string;
+  /** The harness's version from its binary, or `-` when it has none. */
+  readonly version: string;
 }
 
 /** One read the receipt names: the multiplexer's revision and a short hash of the rows. Never the rows. */
@@ -119,6 +135,29 @@ export interface SendReceipt {
   readonly reason?: SendReason;
 }
 
+/**
+ * One row of a pane's recent sends, for the session page (M56 spec 09): the receipt's outcome, reason,
+ * time, keys by name and measured gaps. No text, no hash of the text and no screen row: a receipt is
+ * shown the way it is stored.
+ */
+export interface SendReceiptRow {
+  readonly requestId: string;
+  /** When the bridge accepted the request, epoch ms. */
+  readonly at: number;
+  readonly mode: SendMode;
+  readonly outcome: SendOutcome;
+  readonly reason?: SendReason;
+  readonly keys: readonly string[];
+  readonly gapsMs: Readonly<Partial<Record<SendStep, number>>>;
+  readonly harness: string;
+  readonly version: string | null;
+}
+
+/** What `GET /api/send/receipts` answers: the newest first. */
+export interface SendReceiptsAnswer {
+  readonly receipts: readonly SendReceiptRow[];
+}
+
 /** What `POST /api/send` answers. A `prepare` has no receipt; every other request has one. */
 export interface SendAnswer {
   readonly receipt?: SendReceipt;
@@ -131,6 +170,8 @@ export interface SendAnswer {
   readonly detail?: string;
   /** True when the same id came back and this is the stored receipt. */
   readonly replayed?: boolean;
+  /** Set on the `unconfirmed` refusal the cap adds: the commit needs one more confirm (`capAck`). */
+  readonly cap?: SendCap;
 }
 
 /** The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead. */

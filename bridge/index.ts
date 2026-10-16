@@ -214,6 +214,7 @@ import { SurfaceShadow } from "./surface/shadow.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
 import { RequestStore } from "./surface/requests.ts";
+import { SurfaceLedger } from "./surface/counters.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { loadProfiles, profileFor, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 
@@ -1265,6 +1266,10 @@ if (sendStore !== null) {
   if (recovered.length > 0) console.log(`[send] ${String(recovered.length)} send request(s) left unsettled by the last run read as unknown`);
   sendStore.prune();
 }
+// The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
+// Created with either flag, so an instance that computes no Surface touches no new file. It never
+// blocks a send and never changes a verdict.
+const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
 const sendVersions = new VersionCache();
 /** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
 async function sendProfile(harness: string): Promise<ProfileMatch | null> {
@@ -1382,7 +1387,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // comparison with the old readers stops, and only `COLLIE_SURFACE_SHADOW=1` with the protocol off
   // still runs it. That comparison is the part a later change deletes.
   const computeSurface = (cfg.surfaceShadow || cfg.sendProtocol) && endpoint.kind === "terminal";
-  const surface = computeSurface ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol }) : undefined;
+  const surface = computeSurface ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol, ledger: surfaceLedger ?? undefined }) : undefined;
   if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
   // request store. A pane's generation is its agent and the session the agent named: a pane that
@@ -1395,6 +1400,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           store: sendStore,
           locks: new SessionLocks(),
           ring: new RowRing(),
+          ledger: surfaceLedger ?? undefined,
           profile: (harness) => sendProfile(harness),
           generation: (paneId) => {
             const { agents, shellPanes } = engine.current();
@@ -2220,6 +2226,8 @@ const server = startServer({
   // string, resolved once, so the detached updater's health gate and a peer can never be told two
   // different things about this machine (M15/04).
   version: crewVersion,
+  // The Surface counters' totals for `/api/health` (M56 spec 09); null with no ledger.
+  surfaceTotals: () => surfaceLedger?.totals() ?? null,
   audit,
   activity,
   // Built above so the cache tracker probes through the same adapters this serves history from.

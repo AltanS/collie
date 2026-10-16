@@ -131,9 +131,11 @@ import { chatParams, LiveWindows } from "./journal/live.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
+import type { SurfaceTotals } from "./surface/counters.ts";
+import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
-import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -1009,6 +1011,11 @@ export function startServer(opts: {
    * Two assemblies that "agree" would be two assemblies that drift.
    */
   crewRouter?: (surface: CrewSurface) => CrewHandler;
+  /**
+   * The Surface counters' totals for the last seven days (M56 spec 09), for `GET /api/health`: `free`,
+   * `unknown` and `manual`, numbers only. Absent, or answering null, on an instance that counts nothing.
+   */
+  surfaceTotals?: () => SurfaceTotals | null;
   /**
    * The **deposed** answer, when this collie has learned the crown has moved (CREW_PROTOCOL.md
    * §18.12). Returns a `Response` for every request it should swallow and `null` otherwise — so an
@@ -1986,6 +1993,8 @@ export function startServer(opts: {
     // M55: every session's card, so the lead can answer `/api/config?host=&session=` for a program
     // session on this machine. Null on a machine that runs no program, so its `hello` is unchanged.
     sessions: () => registry.cards(),
+    // M56 spec 09: the Surface reader version, on a build that computes a Surface.
+    surfaceVersion: cfg.sendProtocol || cfg.surfaceShadow ? SURFACE_VERSION : undefined,
     dispatch: async (req, url, from) => {
       const session = url.searchParams.get("session") ?? undefined;
       const device = crewDeviceOf(req);
@@ -2190,7 +2199,7 @@ export function startServer(opts: {
       // why a deposed peer can never be mistaken for a successful update.
       if (pathname === "/api/health") {
         if (req.method !== "GET" && req.method !== "HEAD") return text("method not allowed", 405);
-        return json(healthBody(opts.version, crew.mode), req.headers.get("accept-encoding"));
+        return json(healthBody(opts.version, crew.mode, opts.surfaceTotals?.() ?? null), req.headers.get("accept-encoding"));
       }
 
       // ── DENY BY DEFAULT (ADR 0086) ───────────────────────────────────────
@@ -2412,6 +2421,16 @@ export function startServer(opts: {
           body = undefined;
         }
         return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The session page's list of recent sends for one pane (M56 spec 09): outcome, reason, time, keys
+      // by name and gaps, read from the receipts. Never a row of the screen and never the text.
+      if (pathname === "/api/send/receipts" && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text("the send protocol does not cross a crew link yet", 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        return sendReceiptsRoute(rt, url.searchParams.get("pane"), req.headers.get("accept-encoding"));
       }
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
@@ -6879,7 +6898,7 @@ export const SEND_MAX_TEXT = 64 * 1024;
 export function parseSendRequest(body: JsonValue | undefined): ({ pane: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
@@ -6894,6 +6913,10 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string }
   if (revision !== undefined) {
     if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0) return null;
     Object.assign(request, { revision });
+  }
+  if (capAck !== undefined) {
+    if (typeof capAck !== "boolean") return null;
+    Object.assign(request, { capAck });
   }
   return request;
 }
@@ -6943,6 +6966,18 @@ export async function sendRoute(
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   return json(out, context.acceptEncoding);
+}
+
+/**
+ * `GET /api/send/receipts?pane=<id>` once the read gate passed and the session resolved: the last ten
+ * settled requests for the pane, newest first. With the protocol off the route is not there; a call
+ * with no pane is a 400.
+ */
+export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send">, pane: string | null, acceptEncoding: string | null): Response {
+  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);
+  const answer: SendReceiptsAnswer = { receipts: rt.send.recent(pane, 10) };
+  return json(answer, acceptEncoding);
 }
 
 function text(body: string, status: number): Response {
@@ -7148,10 +7183,17 @@ export interface HealthBody {
   /** Always false here — see {@link healthBody}. */
   readonly deposed: false;
   readonly mode: CrewRuntime["mode"];
+  /**
+   * The Surface counters' totals for the last seven days (M56 spec 09), numbers only, so `make health`
+   * can print one line per lane. Absent on a build that counts nothing or an instance with the Send
+   * Protocol off: the reader says "n/a" and never reads absence as zero.
+   */
+  readonly surface?: SurfaceTotals;
 }
 
-export function healthBody(version: string, mode: CrewRuntime["mode"]): HealthBody {
-  return { ok: true, version, deposed: false, mode };
+export function healthBody(version: string, mode: CrewRuntime["mode"], surface: SurfaceTotals | null = null): HealthBody {
+  const body: HealthBody = { ok: true, version, deposed: false, mode };
+  return surface === null ? body : { ...body, surface };
 }
 
 /**
