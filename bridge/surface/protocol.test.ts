@@ -435,6 +435,34 @@ class CodexPane extends FakePane {
   }
 }
 
+/**
+ * Codex 0.163.0 as Herdr reads it (send drill 2 and the lab of 2026-10-16, a 120 by 40 pane, home path
+ * as read): the header, the welcome picture of a fresh session, the box on screen row 36, the status
+ * row on 38 and the hint row on 39. Herdr's pane read leaves out the trailing blank rows, so once the
+ * hint row hides the read is one row shorter than at S0; tmux always reads the whole pane.
+ */
+class HerdrCodexPane extends FakePane {
+  sent: string[] = [];
+  constructor() {
+    super("generic");
+  }
+
+  override render(): string {
+    const empty = this.box === "";
+    const path = "~/.cache/collie-lab/lab-m56-codex-2/repo";
+    const rows: string[] = Array.from({ length: 40 }, () => "");
+    rows[1] = "  >_ \u001b[1mOpenAI Codex\u001b[0m\u001b[2m (v0.163.0)\u001b[0m";
+    rows[2] = `     \u001b[2m${path}\u001b[0m`;
+    if (this.sent.length === 0 && empty) CODEX_WELCOME.forEach((row, i) => (rows[11 + i] = " ".repeat(39) + row));
+    this.sent.forEach((text, i) => (rows[5 + 2 * i] = `\u001b[1m\u001b[2m› \u001b[0m${text}`));
+    rows[36] = empty ? "\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m" : `\u001b[1m›\u001b[0m ${this.box}`;
+    rows[38] = `  GPT-6-Luna medium · ${path}`;
+    if (empty) rows[39] = "  \u001b[1m←\u001b[0m for agents · \u001b[1m?\u001b[0m for shortcuts";
+    while (rows.length > 0 && rows[rows.length - 1]!.trim().length === 0) rows.pop();
+    return rows.join("\n");
+  }
+}
+
 describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
   test("Codex hides its hint row once the box holds a character: the manual Send passes the probe and is sent", async () => {
     const pane = new CodexPane();
@@ -465,6 +493,33 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:reply with one word: hi"]);
     expect(pane.transcript.at(-1)).toBe("> reply with one word: hi");
+  });
+
+  test("Codex on Herdr: the read is one row shorter once the hint row hides, and the first and second messages are still sent", async () => {
+    const pane = new HerdrCodexPane();
+    pane.afterInput = (p, what) => {
+      if (what.endsWith("Enter") && p instanceof HerdrCodexPane) p.sent.push(p.transcript.at(-1)!.slice(2));
+    };
+    const { send } = rig({ pane, harness: "codex" });
+    for (const text of ["reply with one word: ok", "say ok"]) {
+      const look = await send(text);
+      expect(look.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      const answer = await send(text, { rowsHash: look.rowsHash! });
+      expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+      expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+    }
+    expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:reply with one word: ok", `type:${GENERIC_PROBE}`, "type:say ok"]);
+    neverEscape(pane);
+  });
+
+  test("Codex on Herdr: a row under the box that shows other text still fails, though the read got shorter", async () => {
+    const pane = new HerdrCodexPane();
+    const render = pane.render.bind(pane);
+    pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
+    const { send } = rig({ pane, harness: "codex" });
+    const look = await send("hello");
+    const answer = await send("hello", { rowsHash: look.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch", keys: ["probe", "Backspace"] });
   });
 
   test("on the manual path a row above the box that gains text still fails the probe, with no frame and with one", async () => {

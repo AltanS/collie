@@ -147,6 +147,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A fresh Codex session takes its first message.** Codex 0.163.0 hides its welcome picture above the box once the box holds a character. On a manual send the rows above the box may now lose text (go blank, or move because rows vanished) during the probe and S1, but never gain any; a dialog or a new line of output above the box still fails, and a profiled pane on a free screen keeps the strict compare.
 
 - **Keys reach a tmux pane again on tmux 3.7.** tmux 3.7 refuses `send-keys` with "client is read-only" when the client it picks is Collie's own read-only watcher, so no key left the tmux adapter while pasted text still went in. Collie now repeats the refused call once with `-c` naming no client, which sends the keys to the pane. Other tmux versions never print that line and see no change.
+- **Text reaches Codex on Herdr through the two-tap Send.** Herdr's pane read leaves out the blank rows at the bottom of the screen, so once Codex hid its hint row the read was one row shorter, and S1 matched the rows under the box against the wrong rows: every Codex send ended `typed_not_submitted` with the text in the box and no Enter. The rows under a box with no frame are now matched by their screen row, and a row a read left out counts as blank. tmux reads the whole pane and sees no change.
 
 ### Packaging
 

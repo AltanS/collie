@@ -448,13 +448,17 @@ function afterProbe(landing: Landing): string {
 
 /**
  * Whether every row under `row` in `before` still reads the same in `after`, or went blank: a hint
- * that hides once the box holds a character. By default rows are matched from the bottom of the
- * read, where a harness with no frame keeps its footer while the box grows upward; `offset` moves
- * the match when the box itself moved. A row that shows other text fails: a list under a search
- * field that narrows to the typed text is not a hint.
+ * that hides once the box holds a character. By default rows are matched by screen row: a read is
+ * the viewport, so row i is the same screen row in both, and a harness with no frame keeps its
+ * footer there while the box grows upward. A multiplexer may leave out the trailing blank rows
+ * (Herdr's pane read does, live on Codex 0.163.0 once its hint row hid), so the two reads may differ
+ * in length; a row a read left out is blank. `offset` moves the match when the box itself moved. A
+ * row that shows other text fails: a list under a search field that narrows to the typed text is
+ * not a hint.
  */
-function belowHeldOrBlank(before: readonly string[], after: readonly string[], row: number, offset = after.length - before.length): boolean {
-  for (let i = row + 1; i < before.length; i++) {
+function belowHeldOrBlank(before: readonly string[], after: readonly string[], row: number, offset = 0): boolean {
+  const end = Math.max(before.length, after.length - offset);
+  for (let i = row + 1; i < end; i++) {
     const now = after[i + offset] ?? "";
     if (now.trim().length > 0 && wsFree(now) !== wsFree(before[i] ?? "")) return false;
   }
