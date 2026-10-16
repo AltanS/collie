@@ -1741,6 +1741,11 @@
    "version": "0.162",
    "state": "dialog"
   },
+  "codex--v0163-agents-hint-warnings.txt": {
+   "harness": "codex",
+   "version": "0.163",
+   "state": "idle"
+  },
   "codex--working.txt": {
    "harness": "codex",
    "version": "unversioned",

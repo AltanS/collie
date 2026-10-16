@@ -314,6 +314,7 @@ const COMPOSERS: Composer[] = [
       "codex--v0157-draft-notice.txt",
       "codex--v0157-busy-streaming.txt",
       "codex--reporter-294-busy-agents-hint.txt",
+      "codex--v0163-agents-hint-warnings.txt",
     ],
     band(texts) {
       let status = texts.length - 1;
@@ -633,6 +634,7 @@ const CODEX_READ_BY_PAINT = [
   "codex--v0157-draft-notice.txt",
   "codex--v0157-busy-streaming.txt",
   "codex--reporter-294-busy-agents-hint.txt",
+  "codex--v0163-agents-hint-warnings.txt",
 ];
 
 /**
