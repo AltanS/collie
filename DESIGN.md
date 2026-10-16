@@ -264,7 +264,7 @@ The radius descends from the mark, which holds a disc and a traced line and no
 soft-cornered box anywhere. 2px is the smallest radius that still reads as intentional
 rather than as a rasterizer artefact.
 
-**All four derived steps are hard-pinned to 2px** in `@theme inline` (`index.css:249-252`).
+**All four derived steps are hard-pinned to 2px** in `@theme` (`index.css:538-541`).
 Not tidiness: the stock shadcn ramp is `calc(var(--radius) - 2px)` / `- 4px`, which at a 2px
 base compute `0` and `-2px`, and a negative radius is invalid. Pinning them also means
 `rounded-md` and `rounded-xl` are the same corner, so no component can drift rounder than

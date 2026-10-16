@@ -1,6 +1,6 @@
 # Themes
 
-A theme is the look of the app: its colours and one typeface. It is one small
+A theme is the look of the app: its colours, one typeface and, in version 2, a shape. It is one small
 JSON file. Collie ships four. You can import more from a file, and you can export any theme to copy and
 edit. A theme is a setting of one device, kept in that browser, and it changes nothing on the bridge.
 
@@ -63,7 +63,7 @@ shows at most 25 causes. A file is refused for any of these:
 Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
 imported". Remove the old theme first, or change the `id`.
 
-A theme changes colours and the typeface only. It cannot run code, load files or reach a server.
+A theme changes colours, the typeface and the shape of controls only. It cannot run code, load files or reach a server.
 
 A device holds up to eight imported themes. **Remove** works only while an imported theme is on. It deletes
 that theme, and the app goes back to Collie. The typeface stays as it was.
@@ -94,7 +94,8 @@ A file has these keys, and no others. An unknown key anywhere is refused with it
 }
 ```
 
-- `version` is the number 1. Any other number is refused.
+- `version` is 1 or 2. A file that carries a `surface` block says 2; a file without one may say either. Any
+  other number is refused.
 - A version 2 file does not import into a Collie older than 1.22.0.
 - `id` is 1 to 32 characters: lower-case letters, digits and hyphens, starting with a letter or a digit.
 - `name` is 1 to 40 characters, and `author` is up to 60. Neither may hold a control character.
@@ -139,10 +140,11 @@ Each half takes any of these, in four groups.
 
 ## What a theme cannot change
 
-A theme changes the value of a colour. It cannot change anything else.
+A theme changes the value of a colour, one typeface and, in version 2, the shape of controls. It cannot change
+anything else.
 
-- **Corner radius, spacing and layout.** The shape of the app is the brand, and a phone layout is easy to
-  break.
+- **Layout and tap sizes.** A phone layout is easy to break. Radius, shadow, density, weight and border are
+  not free values either: a version 2 file picks one closed word for each in its `surface` block.
 - **The terminal mirror and its ANSI colours.** The mirror shows what the agent printed, on its own dark
   ground. [Dark mode](configure.md#dark-mode--light-mode) says why.
 - **What a status means.** Its icon and its word stay as they are, so a red or orange you picked never
