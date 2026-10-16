@@ -181,5 +181,8 @@ test("a theme naming all seven paints each one, and its display face costs exact
   await page.goto("/settings");
   await expect(page.locator("h1").first()).toBeVisible();
   expect(await page.locator("h1").first().evaluate((h) => getComputedStyle(h).fontFamily)).toMatch(/^"?Geist"?/);
+  // The settings index is a list group inside its one card: under `cards` its rows are cards too.
+  const index = page.locator('[data-slot="card"] > [data-slot="list-group"]').first();
+  expect(await index.evaluate((g) => [getComputedStyle(g).paddingTop, getComputedStyle(g.children[1] ?? g).marginTop])).toEqual(["8px", "8px"]);
   await context.close();
 });

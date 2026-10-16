@@ -150,25 +150,28 @@ export function SettingsRoute() {
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         <InstallControl />
 
-        {/* ONE card holding four rows, not four cards. They are a single list of siblings, and four
-            separated cards would say they are four unrelated subjects. The divider is on the button
-            rather than between them so the last row has none. */}
+        {/* ONE card holding the rows, not one card per row. They are a single list of siblings, and
+            separated cards would say they are unrelated subjects. The rows are a list group (M57 spec
+            17): index.css draws the line between two rows, so the last has none, and a theme's
+            `rows: cards` makes them cards inside this one card, like every other list. */}
         <Card className="gap-0 py-0">
-          {ROWS.map((row, i) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={() => nav.down(row.to(scope))}
-              className={`flex w-full items-center gap-3 p-4 text-left active:bg-muted/60 ${i > 0 ? "border-t border-border" : ""}`}
-            >
-              <row.icon className="size-5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">{t(row.title)}</div>
-                <p className="truncate text-sm text-muted-foreground">{t(row.blurb)}</p>
-              </div>
-              <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-            </button>
-          ))}
+          <div data-slot="list-group">
+            {ROWS.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => nav.down(row.to(scope))}
+                className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
+              >
+                <row.icon className="size-5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{t(row.title)}</div>
+                  <p className="truncate text-sm text-muted-foreground">{t(row.blurb)}</p>
+                </div>
+                <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
         </Card>
 
         {/* Pinned to the bottom with `mt-auto`, exactly where it was before the split. */}

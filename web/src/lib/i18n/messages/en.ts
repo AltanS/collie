@@ -67,7 +67,7 @@ export const en = {
   "theme.import": "Import",
   "theme.export": "Export",
   "theme.remove": "Remove",
-  "theme.import.promise": "A theme changes colours, the typeface and the shape of controls only. It cannot run code, load files or reach a server.",
+  "theme.import.promise": "A theme changes how the app looks and nothing else. It cannot run code, load files or reach a server.",
   "theme.preview.title": "Import this theme?",
   "theme.preview.by": "By {author}",
   "theme.preview.halves.both": "Light and dark",

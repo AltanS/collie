@@ -94,7 +94,7 @@ describe("ThemePickerControl", () => {
     render(<ThemePickerControl />);
     expect(
       screen.getByText(
-        "A theme changes colours, the typeface and the shape of controls only. It cannot run code, load files or reach a server.",
+        "A theme changes how the app looks and nothing else. It cannot run code, load files or reach a server.",
       ),
     ).toBeInTheDocument();
   });
